@@ -135,6 +135,7 @@ class HeroCompareBaselineScopeTests(TestCase):
                     id=tournament_id,
                     workspace_id=WORKSPACE,
                     name=f"T{tournament_id}",
+                    slug=f"t{tournament_id}",
                     is_finished=finished,
                     is_league=league,
                 )

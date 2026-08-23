@@ -23,35 +23,31 @@ export default function InfoDot({ term, onExplain, focusable = true }: Readonly<
   const t = useTranslations();
   const label = t(`analytics.glossary.${term}.label`);
 
+  // A real <button>, not a span with role="button": Enter/Space and the focus
+  // ring come from the platform. With no `onExplain` the dot is hover-only, so
+  // it stays a plain <span> rather than a button that does nothing.
   return (
     <MetricTooltip term={term} focusable={false} showIcon={false}>
-      <span
-        className={styles.cInfoDot}
-        role={onExplain ? "button" : undefined}
-        tabIndex={onExplain && focusable ? 0 : undefined}
-        aria-label={onExplain ? label : undefined}
-        onClick={
-          onExplain
-            ? (event) => {
-                event.stopPropagation();
-                onExplain(term);
-              }
-            : undefined
-        }
-        onKeyDown={
-          onExplain
-            ? (event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onExplain(term);
-                }
-              }
-            : undefined
-        }
-      >
-        i
-      </span>
+      {onExplain ? (
+        <button
+          type="button"
+          className={styles.cInfoDot}
+          // Nested inside another clickable element, the dot keeps its click
+          // target but leaves the tab order to the enclosing control.
+          tabIndex={focusable ? undefined : -1}
+          aria-label={label}
+          onClick={(event) => {
+            event.stopPropagation();
+            onExplain(term);
+          }}
+        >
+          i
+        </button>
+      ) : (
+        <span className={styles.cInfoDot} aria-hidden>
+          i
+        </span>
+      )}
     </MetricTooltip>
   );
 }

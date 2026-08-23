@@ -90,17 +90,17 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         new_encounter = SimpleNamespace(id=901)
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
             patch.object(stage_service, "_collect_item_team_ids", lambda item: [10, 20]),
-            patch.object(stage_service, "_generate_stage_skeleton", AsyncMock(return_value="skeleton")),
-            patch.object(stage_service, "_load_team_names", AsyncMock(return_value={})),
+            patch.object(stage_service.stage_service, "_generate_stage_skeleton", AsyncMock(return_value="skeleton")),
+            patch.object(stage_service.stage_service, "_load_team_names", AsyncMock(return_value={})),
             patch.object(
-                stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=[new_encounter])
+                stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=[new_encounter])
             ) as create,
             patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
-            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()),
+            patch.object(stage_service.stage_service, "_publish_tournament_changed", AsyncMock()),
         ):
-            result = await stage_service.generate_encounters(session, 77, commit=False)
+            result = await stage_service.stage_service.generate_encounters(session, 77, commit=False)
 
         self.assertEqual([new_encounter], result)
         # Only Group B (item 2, the one with zero existing matches) was generated.
@@ -113,11 +113,11 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([(1, 10), (2, 10)])))
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
         ):
             with self.assertRaises(HTTPException) as ctx:
-                await stage_service.generate_encounters(session, 77, commit=False)
+                await stage_service.stage_service.generate_encounters(session, 77, commit=False)
 
         self.assertEqual(409, ctx.exception.status_code)
         create.assert_not_awaited()
@@ -129,12 +129,12 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([(1, 8)])))
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_preceding_group_stage", AsyncMock(return_value=None)),
-            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=None)),
+            patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
         ):
             with self.assertRaises(HTTPException) as ctx:
-                await stage_service.generate_encounters(session, 88, commit=False)
+                await stage_service.stage_service.generate_encounters(session, 88, commit=False)
 
         self.assertEqual(409, ctx.exception.status_code)
         create.assert_not_awaited()
@@ -155,17 +155,17 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         new_encounters = [SimpleNamespace(id=1), SimpleNamespace(id=2)]
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
             patch.object(stage_service, "_collect_item_team_ids", lambda item: [1, 2, 3, 4]),
-            patch.object(stage_service, "_generate_stage_skeleton", AsyncMock(return_value="skeleton")),
-            patch.object(stage_service, "_load_team_names", AsyncMock(return_value={})),
+            patch.object(stage_service.stage_service, "_generate_stage_skeleton", AsyncMock(return_value="skeleton")),
+            patch.object(stage_service.stage_service, "_load_team_names", AsyncMock(return_value={})),
             patch.object(
-                stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=new_encounters)
+                stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=new_encounters)
             ) as create,
             patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
-            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()),
+            patch.object(stage_service.stage_service, "_publish_tournament_changed", AsyncMock()),
         ):
-            result = await stage_service.generate_encounters(session, 99, commit=False)
+            result = await stage_service.stage_service.generate_encounters(session, 99, commit=False)
 
         self.assertEqual(new_encounters, result)
         create.assert_awaited_once()
@@ -185,13 +185,13 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         session = _queued_session([_rows_result([])])
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
-            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=[])) as create,
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
+            patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=[])) as create,
             patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
-            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()),
+            patch.object(stage_service.stage_service, "_publish_tournament_changed", AsyncMock()),
         ):
-            await stage_service.generate_encounters(session, 99, commit=False)
+            await stage_service.stage_service.generate_encounters(session, 99, commit=False)
 
         skeleton = create.await_args.args[2]
         # 8 teams → 7 matches over 3 rounds, and not one of them names a team:
@@ -214,14 +214,14 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         session = _queued_session([_rows_result([(1, 3)]), _scalars_result(existing)])
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
             patch.object(stage_service, "_collect_item_team_ids", lambda item: [1, 2, 3, 4]),
-            patch.object(stage_service, "_load_team_names", AsyncMock(return_value={1: "A", 2: "B", 3: "C", 4: "D"})),
-            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
+            patch.object(stage_service.stage_service, "_load_team_names", AsyncMock(return_value={1: "A", 2: "B", 3: "C", 4: "D"})),
+            patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
             patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
-            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()),
+            patch.object(stage_service.stage_service, "_publish_tournament_changed", AsyncMock()),
         ):
-            result = await stage_service.generate_encounters(session, 99, commit=False)
+            result = await stage_service.stage_service.generate_encounters(session, 99, commit=False)
 
         # Same encounters, now seeded 1v4 / 2v3 the way the generator pairs them
         # — no second bracket, so ids, schedule and links all survive.
@@ -244,12 +244,12 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         session = _queued_session([_rows_result([(1, 3)]), _scalars_result(existing)])
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
             patch.object(stage_service, "_collect_item_team_ids", lambda item: [1, 2, 3, 4]),
-            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
+            patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
         ):
             with self.assertRaises(HTTPException) as ctx:
-                await stage_service.generate_encounters(session, 99, commit=False)
+                await stage_service.stage_service.generate_encounters(session, 99, commit=False)
 
         self.assertEqual(409, ctx.exception.status_code)
         create.assert_not_awaited()
@@ -269,12 +269,12 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         session = _queued_session([_rows_result([(1, 3)]), _scalars_result(existing)])
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
             patch.object(stage_service, "_collect_item_team_ids", lambda item: list(range(1, 9))),
-            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
+            patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
         ):
             with self.assertRaises(HTTPException) as ctx:
-                await stage_service.generate_encounters(session, 99, commit=False)
+                await stage_service.stage_service.generate_encounters(session, 99, commit=False)
 
         self.assertEqual(409, ctx.exception.status_code)
         create.assert_not_awaited()
@@ -287,10 +287,10 @@ class DeactivateStageGuardTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(execute=AsyncMock(return_value=_scalar_result(0)), flush=AsyncMock())
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(side_effect=[stage, stage])),
-            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()) as notify,
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(side_effect=[stage, stage])),
+            patch.object(stage_service.stage_service, "_publish_tournament_changed", AsyncMock()) as notify,
         ):
-            result = await stage_service.deactivate_stage(session, 5, commit=False)
+            result = await stage_service.stage_service.deactivate_stage(session, 5, commit=False)
 
         self.assertFalse(stage.is_active)
         self.assertFalse(stage.is_published)
@@ -302,9 +302,9 @@ class DeactivateStageGuardTests(IsolatedAsyncioTestCase):
         stage = SimpleNamespace(id=5, tournament_id=1, is_active=True, is_published=True)
         session = SimpleNamespace(execute=AsyncMock(return_value=_scalar_result(1)))
 
-        with patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)):
+        with patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)):
             with self.assertRaises(HTTPException) as ctx:
-                await stage_service.deactivate_stage(session, 5, commit=False)
+                await stage_service.stage_service.deactivate_stage(session, 5, commit=False)
 
         self.assertEqual(409, ctx.exception.status_code)
         # Refused before mutating anything.

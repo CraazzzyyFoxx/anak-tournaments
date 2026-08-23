@@ -160,13 +160,13 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
   const totalKills = data?.kills.length ?? 0;
 
   const legend = (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[color:var(--aqt-fg-dim)]">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[color:var(--aqt-fg-dim)]">
       <span className="inline-flex items-center gap-1">
         <Zap className="h-3 w-3 text-[color:var(--aqt-violet)]" /> {t("matches.timeline.ultStart")}
       </span>
       <span className="inline-flex items-center gap-1">
         <span
-          className="rounded px-1 text-[8px] font-bold uppercase leading-[1.4]"
+          className="rounded px-1 text-[11px] font-bold uppercase leading-[1.4]"
           style={{ color: "var(--aqt-violet)", background: "hsl(270 70% 62% / 0.16)" }}
         >
           ULT
@@ -201,7 +201,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
           background: isUltKill ? "hsl(270 70% 62% / 0.07)" : undefined
         }}
       >
-        <span className="aqt-mono w-8 shrink-0 text-[10.5px] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-mono w-8 shrink-0 text-[11px] text-[color:var(--aqt-fg-faint)]">
           {formatClock(kill.time)}
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -222,7 +222,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
         <div className="flex min-w-[52px] shrink-0 items-center justify-end gap-1">
           {isUltKill ? (
             <span
-              className="rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide"
+              className="rounded px-1 py-px text-[11px] font-bold uppercase tracking-wide"
               style={{
                 color: "var(--aqt-violet)",
                 background: "hsl(270 70% 62% / 0.16)",
@@ -262,7 +262,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
         // Ult end is dimmed so the start→end bracket around ult kills reads clearly.
         style={{ borderLeft: "2px solid transparent", opacity: isUltEnd ? 0.6 : 1 }}
       >
-        <span className="aqt-mono w-8 shrink-0 text-[10.5px] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-mono w-8 shrink-0 text-[11px] text-[color:var(--aqt-fg-faint)]">
           {formatClock(event.time)}
         </span>
         <Icon className="h-3 w-3 shrink-0" style={{ color }} aria-hidden="true" />
@@ -274,9 +274,13 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
         <span className="truncate text-[11.5px] font-medium" style={{ color: sideColor(side) }}>
           {nameOf(event.user_id)}
         </span>
-        <span className="text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">{label}</span>
+        <span className="text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">{label}</span>
         {isRez && event.related_user_id != null ? (
-          <span className="truncate text-[10.5px] text-[color:var(--aqt-fg-faint)]">→ {nameOf(event.related_user_id)}</span>
+          <span className="truncate text-[11px] text-[color:var(--aqt-fg-faint)]">
+            {/* Relation separator between reviver and target, not an icon — the
+                event type already has its own lucide glyph above. */}
+            <span aria-hidden>→</span> {nameOf(event.related_user_id)}
+          </span>
         ) : null}
       </div>
     );
@@ -285,7 +289,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
   return (
     <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <span className="aqt-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
           {t("matches.timeline.title")}
         </span>
         {status === "ready" && totalKills > 0 ? legend : null}
@@ -331,15 +335,15 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
                       <React.Fragment key={`k-${i}`}>
                         {showFight ? (
                           <div className="mb-0.5 mt-2 flex items-center gap-2 first:mt-0">
-                            <span className="aqt-mono text-[9.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+                            <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
                               {t("matches.timeline.fight", { n: block.fightOrder.get(item.fight) ?? item.fight })}
                             </span>
-                            <span className="aqt-mono text-[9.5px] text-[color:var(--aqt-fg-faint)]">
+                            <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">
                               {formatClock(item.time)}
                             </span>
                             <div className="h-px flex-1 bg-[color:var(--aqt-border)]" />
                             {fightScore ? (
-                              <span className="aqt-tnum text-[10px]">
+                              <span className="aqt-tnum text-[11px]">
                                 <span style={{ color: "var(--aqt-teal)" }}>{fightScore.home}</span>
                                 <span className="text-[color:var(--aqt-fg-faint)]">–</span>
                                 <span style={{ color: "var(--aqt-rose)" }}>{fightScore.away}</span>

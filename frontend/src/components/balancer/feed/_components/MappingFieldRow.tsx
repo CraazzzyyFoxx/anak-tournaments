@@ -75,12 +75,12 @@ export function MappingFieldRow({
               {target.label}
             </span>
             {target.required ? (
-              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
                 Required
               </span>
             ) : null}
           </div>
-          <p className="truncate font-mono text-[10px] text-muted-foreground/60" title={target.key}>
+          <p className="truncate font-mono text-[11px] text-muted-foreground/60" title={target.key}>
             {target.key}
           </p>
         </div>
@@ -146,7 +146,7 @@ export function MappingFieldRow({
 
           {showParser ? (
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/75">
                 Parser
               </span>
               <Select value={activeParser} onValueChange={onParserChange} disabled={disabled}>

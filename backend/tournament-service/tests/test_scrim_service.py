@@ -136,11 +136,11 @@ class TheOpenRoomCapIsEnforced(IsolatedAsyncioTestCase):
     """Room creation writes six rows and is reachable by any member."""
 
     async def test_under_the_cap_is_allowed(self) -> None:
-        await scrim._assert_under_cap(_ScalarSession(0), _user(), 1)
+        await scrim.scrim_service._assert_under_cap(_ScalarSession(0), _user(), 1)
 
     async def test_at_the_cap_is_refused_with_the_cap_named(self) -> None:
         with self.assertRaises(HTTPException) as ctx:
-            await scrim._assert_under_cap(_ScalarSession(1), _user(), 1)
+            await scrim.scrim_service._assert_under_cap(_ScalarSession(1), _user(), 1)
         self.assertEqual(409, ctx.exception.status_code)
         # The message has to say what the limit is: a bare "conflict" leaves the
         # captain with no idea that closing a room is the fix.
@@ -148,12 +148,12 @@ class TheOpenRoomCapIsEnforced(IsolatedAsyncioTestCase):
 
     async def test_a_raised_cap_admits_more(self) -> None:
         """The cap is a ``Settings`` value precisely so it can be raised."""
-        await scrim._assert_under_cap(_ScalarSession(2), _user(), 3)
+        await scrim.scrim_service._assert_under_cap(_ScalarSession(2), _user(), 3)
         with self.assertRaises(HTTPException):
-            await scrim._assert_under_cap(_ScalarSession(3), _user(), 3)
+            await scrim.scrim_service._assert_under_cap(_ScalarSession(3), _user(), 3)
 
     async def test_a_null_count_is_treated_as_zero(self) -> None:
-        await scrim._assert_under_cap(_ScalarSession(None), _user(), 1)
+        await scrim.scrim_service._assert_under_cap(_ScalarSession(None), _user(), 1)
 
 
 def _source_config(*, mode: MapVetoMode = MapVetoMode.POOL) -> Any:
@@ -309,14 +309,14 @@ class ACustomPoolIsValidatedBeforeItIsProvisioned(IsolatedAsyncioTestCase):
 class TheCustomPoolEnvelopeIsChecked(IsolatedAsyncioTestCase):
     async def test_an_unknown_source_is_refused(self) -> None:
         with self.assertRaises(HTTPException) as ctx:
-            await scrim._build_configs(
+            await scrim.scrim_service._build_configs(
                 _ScalarSession(), _user(), {"source": "whatever"}, tournament_id=99, stage_id=140
             )
         self.assertEqual(422, ctx.exception.status_code)
 
     async def test_an_empty_custom_pool_is_refused(self) -> None:
         with self.assertRaises(HTTPException):
-            await scrim._build_configs(
+            await scrim.scrim_service._build_configs(
                 _ScalarSession(), _user(), {"source": "custom", "configs": []}, tournament_id=99, stage_id=140
             )
 
@@ -331,7 +331,7 @@ class TheCustomPoolEnvelopeIsChecked(IsolatedAsyncioTestCase):
             ],
         }
         with self.assertRaises(HTTPException) as ctx:
-            await scrim._build_configs(_ScalarSession(), _user(), payload, tournament_id=99, stage_id=140)
+            await scrim.scrim_service._build_configs(_ScalarSession(), _user(), payload, tournament_id=99, stage_id=140)
         self.assertEqual(422, ctx.exception.status_code)
 
 
@@ -348,13 +348,13 @@ class SideClaiming(IsolatedAsyncioTestCase):
         # One scalar: `_viewer_side`'s player-id lookup, answering with the home
         # captain's own player id.
         session = _ScalarSession(100)
-        side = await scrim._viewer_side(session, room, _user())
+        side = await scrim.scrim_service._viewer_side(session, room, _user())
         self.assertEqual("home", side)
 
 
 class RoomSerialization(IsolatedAsyncioTestCase):
     async def _serialize(self, room: Any, user: Any, player_id: Any) -> dict:
-        return await scrim.serialize_room(_ScalarSession(player_id), room, user)
+        return await scrim.scrim_service.serialize_room(_ScalarSession(player_id), room, user)
 
     async def test_a_member_spectator_may_claim_the_free_side(self) -> None:
         payload = await self._serialize(_room(), _user(), 999)
@@ -397,7 +397,7 @@ class TheSerializerMatchesTheWireSchema(IsolatedAsyncioTestCase):
     async def test_a_serialized_room_validates(self) -> None:
         from src import schemas
 
-        payload = await scrim.serialize_room(_ScalarSession(100), _room(), _user())
+        payload = await scrim.scrim_service.serialize_room(_ScalarSession(100), _room(), _user())
         room = schemas.ScrimRoomRead.model_validate(payload)
         self.assertEqual("home", room.viewer_side)
         self.assertEqual(500, room.encounter_id)
@@ -408,7 +408,7 @@ class TheSerializerMatchesTheWireSchema(IsolatedAsyncioTestCase):
     async def test_the_schema_carries_no_field_the_serializer_omits(self) -> None:
         from src import schemas
 
-        payload = await scrim.serialize_room(_ScalarSession(None), _room(), None)
+        payload = await scrim.scrim_service.serialize_room(_ScalarSession(None), _room(), None)
         self.assertEqual(set(schemas.ScrimRoomRead.model_fields), set(payload))
 
 
@@ -439,7 +439,7 @@ class TheContainerSatisfiesTheTournamentReadContract(IsolatedAsyncioTestCase):
         from src import models, schemas
 
         session = _ScalarSession(None)  # one scalar: "no container yet"
-        container = await scrim._ensure_container(session, WORKSPACE_ID)
+        container = await scrim.scrim_service._ensure_container(session, WORKSPACE_ID)
         self.assertIs(container, session.added[0])
 
         columns = models.Tournament.__table__.columns
@@ -460,13 +460,13 @@ class TheContainerSatisfiesTheTournamentReadContract(IsolatedAsyncioTestCase):
     async def test_both_dates_are_the_creation_instant(self) -> None:
         """Named explicitly, not just covered by the sweep above: these two are
         the fields the shipped version left NULL."""
-        container = await scrim._ensure_container(_ScalarSession(None), WORKSPACE_ID)
+        container = await scrim.scrim_service._ensure_container(_ScalarSession(None), WORKSPACE_ID)
         self.assertIsNotNone(container.start_date)
         self.assertEqual(container.start_date, container.end_date)
 
     async def test_the_container_is_hidden_and_never_auto_advanced(self) -> None:
         session = _ScalarSession(None)
-        container = await scrim._ensure_container(session, WORKSPACE_ID)
+        container = await scrim.scrim_service._ensure_container(session, WORKSPACE_ID)
         self.assertTrue(container.is_hidden)
         self.assertFalse(container.auto_transitions_enabled)
         self.assertEqual(scrim.CONTAINER_NAME, container.name)
@@ -475,5 +475,5 @@ class TheContainerSatisfiesTheTournamentReadContract(IsolatedAsyncioTestCase):
         """One per workspace forever: ``Tournament.id`` is an ordinal ML timeline."""
         existing = SimpleNamespace(id=99, name=scrim.CONTAINER_NAME)
         session = _ScalarSession(existing)
-        self.assertIs(existing, await scrim._ensure_container(session, WORKSPACE_ID))
+        self.assertIs(existing, await scrim.scrim_service._ensure_container(session, WORKSPACE_ID))
         self.assertEqual([], session.added)

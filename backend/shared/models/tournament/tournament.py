@@ -18,6 +18,7 @@ __all__ = (
     "Tournament",
     "TournamentGroup",
     "TournamentPhaseSchedule",
+    "TournamentSlugRedirect",
 )
 
 
@@ -36,6 +37,13 @@ class Tournament(db.TimeStampIntegerMixin):
 
     workspace_id: Mapped[int] = mapped_column(ForeignKey(Workspace.id, ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String())
+    # Public-URL identity (``/tournaments/{slug}``), globally unique across every
+    # workspace -- the public tournament route carries no workspace segment, so a
+    # per-workspace-unique slug would collide across organizers. Generated once
+    # from ``name`` at creation (see ``shared.services.tournament_slug``) and
+    # frozen afterward; an explicit admin rename writes the old value to
+    # ``TournamentSlugRedirect`` so links already shared keep resolving.
+    slug: Mapped[str] = mapped_column(String(), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
     is_league: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false", nullable=False)
     is_finished: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false", nullable=False)
@@ -151,3 +159,16 @@ class TournamentGroup(db.TimeStampIntegerMixin):
 
     tournament: Mapped[Tournament] = relationship(back_populates="groups")
     stage: Mapped["Stage | None"] = relationship(foreign_keys=[stage_id])
+
+
+class TournamentSlugRedirect(db.TimeStampIntegerMixin):
+    """``tournament.slug_redirect`` -- old slug -> tournament, for links shared
+    before an explicit admin rename. The current slug lives on ``Tournament``
+    itself; a row here only exists for a value that used to be current.
+    """
+
+    __tablename__ = "slug_redirect"
+    __table_args__ = ({"schema": "tournament"},)
+
+    old_slug: Mapped[str] = mapped_column(String(), unique=True, index=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)

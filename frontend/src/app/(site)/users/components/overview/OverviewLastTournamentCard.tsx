@@ -288,7 +288,7 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
                 </span>
               ))}
             </div>
-            <span className="aqt-mono text-[10.5px] text-[color:var(--aqt-fg-faint)]">
+            <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">
               {t("users.overview.lastTournament.mapResultsAggregate")}
             </span>
           </div>
@@ -322,7 +322,7 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
                 );
               })}
             </div>
-            <span className="aqt-mono text-[10.5px] text-[color:var(--aqt-fg-faint)]">
+            <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">
               {t("users.overview.lastTournament.percentileHint")}
             </span>
           </div>

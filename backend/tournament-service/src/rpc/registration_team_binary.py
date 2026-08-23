@@ -52,7 +52,7 @@ def register(broker: Any, logger: Any) -> None:
         """
         user = _identity(data)
         team_id = _path_int(data, "team_id")
-        await team_service.assert_may_edit_team(session, team_id=team_id, auth_user=user)
+        await team_service.teams_service.assert_may_edit_team(session, team_id=team_id, auth_user=user)
         return user, team_id
 
     @broker.subscriber("rpc.tournament.regteam_image_upload")
@@ -69,7 +69,7 @@ def register(broker: Any, logger: Any) -> None:
             )
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error)
-            team = await team_service.set_team_image(
+            team = await team_service.teams_service.set_team_image(
                 session,
                 team_id=team_id,
                 auth_user=user,
@@ -77,7 +77,7 @@ def register(broker: Any, logger: Any) -> None:
             )
             # The captain is the only caller, so their own offers are theirs to
             # see — same shape regteam_create returns.
-            return _dump(await team_service.describe_team(session, team, include_invites=True))
+            return _dump(await team_service.teams_service.describe_team(session, team, include_invites=True))
 
         return await _run(logger, op)
 
@@ -91,12 +91,12 @@ def register(broker: Any, logger: Any) -> None:
             # that no longer do.
             s3 = await get_s3()
             await s3.delete_prefix(f"avatars/registration_teams/{team_id}/")
-            team = await team_service.set_team_image(
+            team = await team_service.teams_service.set_team_image(
                 session,
                 team_id=team_id,
                 auth_user=user,
                 image_url=None,
             )
-            return _dump(await team_service.describe_team(session, team, include_invites=True))
+            return _dump(await team_service.teams_service.describe_team(session, team, include_invites=True))
 
         return await _run(logger, op)

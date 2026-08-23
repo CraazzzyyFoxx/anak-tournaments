@@ -58,7 +58,7 @@ const OpponentRecord = ({ o }: { o: OpponentStat }) => (
 );
 
 const thLeft =
-  "aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2 text-left text-[10.5px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]";
+  "aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]";
 const thRight = `${thLeft} text-right`;
 
 const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) => {

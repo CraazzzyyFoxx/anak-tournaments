@@ -3,7 +3,7 @@ name = "stream-service"
 version = "0.1.0"
 description = "Tournament stream live-status poller and rpc.stream.* read service"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "apscheduler>=3.10.4",
     "asyncpg>=0.30.0",

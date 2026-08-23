@@ -6,6 +6,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from "lucide-react";
+import { useFormatter } from "next-intl";
 import {
   DayPicker,
   getDefaultClassNames,
@@ -30,6 +31,10 @@ function Calendar({
   ...props
 }: CalendarProps) {
   const defaultClassNames = getDefaultClassNames();
+  // `react-day-picker` formatters are plain callbacks, so the app locale has to
+  // be captured here rather than resolved inside them ("default" resolved to the
+  // host locale, not the UI's).
+  const format = useFormatter();
 
   return (
     <DayPicker
@@ -41,7 +46,7 @@ function Calendar({
       captionLayout={captionLayout}
       formatters={{
         formatMonthDropdown: (date) =>
-          date.toLocaleString("default", { month: "short" }),
+          format.dateTime(date, { month: "short" }),
         ...formatters,
       }}
       classNames={{

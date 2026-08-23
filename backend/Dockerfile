@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1
 
@@ -57,12 +57,16 @@ RUN if [ "${APP_PATH}" = "balancer" ]; then \
 # analytics-service: LightGBM + XGBoost link against the GCC OpenMP runtime
 # (libgomp1) which the slim base image does not ship. Without it, importing
 # lightgbm fails with: ``OSError: libgomp.so.1: cannot open shared object file``.
+# build-essential is required because `ruptures` has no Python 3.14 wheel yet
+# (upstream: https://github.com/deepcharles/ruptures) — uv falls back to
+# building its sdist, which needs a C compiler for the `ekcpd` extension.
+# Drop build-essential once ruptures ships a cp314 wheel.
 RUN if [ "${APP_PATH}" = "analytics" ]; then \
         set -eux; \
         sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
         for attempt in 1 2 3; do \
             if apt-get update -o Acquire::Retries=3 \
-                && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Acquire::Retries=3 libgomp1; then \
+                && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Acquire::Retries=3 libgomp1 build-essential; then \
                 break; \
             fi; \
             if [ "${attempt}" -eq 3 ]; then \

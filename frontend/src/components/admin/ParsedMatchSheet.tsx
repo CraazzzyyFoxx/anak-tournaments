@@ -27,7 +27,7 @@ const STATUS_TONE: Record<LogProcessingStatus, Tone> = {
 function Field({ label, value }: Readonly<{ label: string; value: string | number }>) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+      <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
         {label}
       </p>
       <p className="truncate text-sm tabular-nums">{value}</p>

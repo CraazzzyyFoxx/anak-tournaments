@@ -302,7 +302,7 @@ export default function RankAutofillPage({
             <div className="flex shrink-0 items-center divide-x divide-[color:var(--aqt-border)] rounded-lg border border-[color:var(--aqt-border-2)] bg-white/[0.03]">
               {stats.map(({ label, value, color }) => (
                 <div key={label} className="px-3 py-2 text-center">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">
                     {label}
                   </div>
                   <div className={cn("text-base font-semibold tabular-nums", color || "text-[color:var(--aqt-fg)]")}>

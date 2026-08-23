@@ -16,10 +16,20 @@ full rpc → services → domain → repository → models stack described in
   window, leaderboard, ML feature extraction, achievement condition, or
   recalculation queries behind CRUD repositories.
 
-## Legacy Exceptions
+## Exemptions
 
-`tests/test_repository_boundaries.py` contains the current allowlist for direct
-DB writes that were present before this migration. New direct write files should
-not be added to that allowlist unless the access is intentionally not CRUD, such
-as outbox draining, bracket advancement internals, analytics materialization, or
-bulk association-table updates.
+`tests/test_repository_boundaries.py` carries two lists, because "allowed" and
+"not migrated yet" are different claims:
+
+- `APPROVED_DIRECT_WRITE_FILES` — access that is intentionally not CRUD: outbox
+  draining, bracket advancement internals, analytics materialization, bulk
+  association-table updates.
+- `PENDING_REPOSITORY_MIGRATION` — direct writes that predate their repository.
+  Every entry is a line to delete once the repository method exists, not a
+  pattern to copy.
+
+Both are ratcheted: an entry whose file no longer writes directly — or no longer
+exists — fails the suite, so finishing a migration forces the line out. Without
+that ratchet the list rotted unnoticed into twelve entries for files deleted
+with `auth-service` and the old `tournament-service` HTTP routes, while the
+services that replaced them went unscanned.

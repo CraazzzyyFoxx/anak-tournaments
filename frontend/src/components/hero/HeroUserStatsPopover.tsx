@@ -134,7 +134,7 @@ const HeroUserStatsPopover = ({ hero, stats, playtimeShare, mapStats }: Props) =
         <div className="grid grid-cols-3 gap-2">
           {cells.map((cell) => (
             <div key={cell.label} className="rounded-[7px] border border-[color:var(--aqt-border)] px-2 py-1.5">
-              <div className="aqt-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">
+              <div className="aqt-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">
                 {cell.label}
               </div>
               <div

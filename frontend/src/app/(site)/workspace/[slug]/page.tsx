@@ -17,6 +17,7 @@ import heroService from "@/services/hero.service";
 import workspaceService from "@/services/workspace.service";
 import tournamentService from "@/services/tournament.service";
 import { formatDateRange } from "@/lib/utils";
+import { tournamentHref } from "@/lib/tournament-url";
 import {
   ChartCardSkeleton,
   PopularHeroesCardSkeleton,
@@ -224,7 +225,7 @@ async function EventCard({ tournament }: Readonly<{ tournament: TournamentWithCo
 
   return (
     <Link
-      href={`/tournaments/${tournament.id}`}
+      href={tournamentHref(tournament)}
       className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
     >
       <div className="group h-full rounded-xl border border-border/60 bg-card/50 p-4 flex flex-col gap-3 hover:bg-card hover:border-border transition-all duration-150">
@@ -236,14 +237,14 @@ async function EventCard({ tournament }: Readonly<{ tournament: TournamentWithCo
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
                 </span>
-                <span className="text-[10px] font-bold tracking-[0.1em] uppercase text-emerald-400">
+                <span className="text-[11px] font-bold tracking-[0.1em] uppercase text-emerald-400">
                   {t("common.live")}
                 </span>
               </>
             ) : (
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-400 inline-block shrink-0" />
-                <span className={`text-[10px] font-bold tracking-[0.1em] uppercase ${statusMeta.textClassName}`}>
+                <span className={`text-[11px] font-bold tracking-[0.1em] uppercase ${statusMeta.textClassName}`}>
                   {statusMeta.badgeLabel}
                 </span>
               </>
@@ -251,7 +252,7 @@ async function EventCard({ tournament }: Readonly<{ tournament: TournamentWithCo
           </div>
           {tournament.is_league && (
             <span
-              className="text-[9px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-full"
+              className="text-[11px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-full"
               style={{
                 background: "color-mix(in srgb, var(--aqt-violet) 14%, transparent)",
                 border: "1px solid color-mix(in srgb, var(--aqt-violet) 28%, transparent)",
@@ -281,7 +282,7 @@ async function EventCard({ tournament }: Readonly<{ tournament: TournamentWithCo
 
         <div className="pt-2.5 border-t border-border/50 flex justify-end">
           <span className="text-[12px] font-semibold tracking-[0.02em] text-indigo-400">
-            {t("common.view")} →
+            {t("common.view")} <span aria-hidden>→</span>
           </span>
         </div>
       </div>

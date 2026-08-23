@@ -193,7 +193,7 @@ export function TeamRosters({
                 )}
               >
                 {onClock && (
-                  <p className="px-3 pt-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-teal)]">
+                  <p className="px-3 pt-2 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-teal)]">
                     {t("onTheClock")}
                   </p>
                 )}

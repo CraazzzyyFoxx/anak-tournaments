@@ -256,7 +256,7 @@ class DetailScoping(IsolatedAsyncioTestCase):
         for match_id in (999_999, 100):
             session = _ScriptedSession(None)
             with self.assertRaises(errors.BaseAPIException) as caught:
-                await svc.get_admin_match(session, workspace_id=1, match_id=match_id)
+                await svc.matches_service.get_admin_match(session, workspace_id=1, match_id=match_id)
             self.assertEqual(404, caught.exception.status_code)
             details.append(caught.exception.detail)
         self.assertEqual(details[0], details[1])
@@ -267,12 +267,12 @@ class DetailScoping(IsolatedAsyncioTestCase):
         it in the first place."""
         session = _ScriptedSession(None)
         with self.assertRaises(errors.BaseAPIException):
-            await svc.get_admin_match(session, workspace_id=42, match_id=100)
+            await svc.matches_service.get_admin_match(session, workspace_id=42, match_id=100)
         self.assertIn("tournament.workspace_id", session.sql[0])
 
     async def test_counts_and_rounds_come_from_three_scans(self):
         session = _ScriptedSession(_match(), (18, 3), 400, 25)
-        detail = await svc.get_admin_match(session, workspace_id=1, match_id=100)
+        detail = await svc.matches_service.get_admin_match(session, workspace_id=1, match_id=100)
         self.assertEqual((18, 400, 25), (detail.statistics_count, detail.kill_feed_count, detail.event_count))
         self.assertEqual(3, detail.rounds)
         self.assertEqual(4, len(session.sql), "one row lookup plus one scan per stat table")
@@ -283,6 +283,6 @@ class DetailScoping(IsolatedAsyncioTestCase):
         """MAX over an empty table is NULL. Zero rounds is the finding — the log
         parsed and produced nothing — not missing information."""
         session = _ScriptedSession(_match(), (0, None), 0, 0)
-        detail = await svc.get_admin_match(session, workspace_id=1, match_id=100)
+        detail = await svc.matches_service.get_admin_match(session, workspace_id=1, match_id=100)
         self.assertEqual(0, detail.rounds)
         self.assertEqual(0, detail.statistics_count)

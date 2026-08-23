@@ -19,6 +19,7 @@ import {
   Trash2,
   Undo2,
   Wand2,
+  X,
   Zap
 } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
@@ -1247,7 +1248,7 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
                                       aria-label="Cancel item type edit"
                                       onClick={() => setEditingItemTypeId(null)}
                                     >
-                                      <span aria-hidden>×</span>
+                                      <X className="size-4" aria-hidden />
                                     </Button>
                                   </div>
                                 ) : (
@@ -1344,7 +1345,7 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
                                                   setEditingInputTeamDraft("");
                                                 }}
                                               >
-                                                <span aria-hidden>×</span>
+                                                <X className="size-4" aria-hidden />
                                               </Button>
                                             </>
                                           ) : (

@@ -29,6 +29,9 @@ export type TournamentFormFieldsValue = {
   start_date: string;
   end_date: string;
   challonge_slug?: string | null;
+  // Public-URL slug (`/tournaments/<slug>`); blank at creation auto-generates
+  // one from `name`. Renaming an existing tournament redirects the old link.
+  slug?: string | null;
   is_finished?: boolean;
   win_points?: number;
   draw_points?: number;
@@ -112,6 +115,22 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
           />
         </div>
       ) : null}
+
+      <div className="col-span-full">
+        <Label htmlFor={`${idPrefix}-slug`}>Public URL slug</Label>
+        <Input
+          id={`${idPrefix}-slug`}
+          value={value.slug ?? ""}
+          onChange={(event) => onChange({ ...value, slug: event.target.value })}
+          placeholder="auto-generated from name if left blank"
+          className="mt-1.5"
+        />
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          {mode === "edit" || mode === "workspace-edit"
+            ? "Used in the public tournament URL. Changing it keeps the previous link working via a redirect."
+            : "Used in the public tournament URL. Leave blank to generate one from the name."}
+        </p>
+      </div>
 
       {showDescription ? (
         <div className="col-span-full">

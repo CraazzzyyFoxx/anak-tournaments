@@ -33,6 +33,29 @@ import_jobs = importlib.import_module("src.services.division_grid.import_jobs")
 portable = importlib.import_module("src.services.division_grid.portable")
 marketplace = importlib.import_module("src.services.division_grid.marketplace")
 
+grid_service = division_service.division_grid_service
+marketplace_service = marketplace.marketplace_service
+import_jobs_service = import_jobs.import_jobs_service
+
+
+def _one_result(value):
+    """A ``session.execute`` result whose ``.unique().scalars().first()`` is ``value``.
+
+    BaseRepository.get/get_by go through ``session.execute``, not ``session.scalar``.
+    """
+    scalars = SimpleNamespace(first=Mock(return_value=value))
+    return SimpleNamespace(unique=Mock(return_value=SimpleNamespace(scalars=Mock(return_value=scalars))))
+
+
+def _list_result(values):
+    """A ``session.execute`` result whose ``.scalars().all()`` is ``values``."""
+    return SimpleNamespace(scalars=Mock(return_value=SimpleNamespace(all=Mock(return_value=list(values)))))
+
+
+def _count_result(value):
+    """A ``session.execute`` result whose ``.scalar_one()`` is ``value`` (BaseRepository.count)."""
+    return SimpleNamespace(scalar_one=Mock(return_value=value))
+
 
 def test_division_grid_tracks_import_provenance_and_archival() -> None:
     columns = models.DivisionGrid.__table__.c
@@ -189,10 +212,10 @@ def test_published_version_cannot_be_updated_in_place() -> None:
     async def run() -> None:
         version = SimpleNamespace(id=11, status="published", tiers=[])
         with (
-            patch.object(division_service, "get_version", AsyncMock(return_value=version)),
+            patch.object(grid_service, "get_version", AsyncMock(return_value=version)),
             pytest.raises(Exception) as caught,
         ):
-            await division_service.update_version(
+            await grid_service.update_version(
                 AsyncMock(),
                 11,
                 schemas.DivisionGridVersionUpdate(label="Changed"),
@@ -239,11 +262,11 @@ def test_draft_minor_edit_preserves_tier_ids_and_mapping_rules() -> None:
         )
 
         with patch.object(
-            division_service,
+            grid_service,
             "get_version",
             AsyncMock(side_effect=[version, version]),
         ):
-            await division_service.update_version(session, 11, payload)
+            await grid_service.update_version(session, 11, payload)
 
         assert tier.id == 91
         assert tier.name == "Champion One"
@@ -275,12 +298,12 @@ def test_activation_readiness_requires_complete_mappings_from_used_versions() ->
         )
         incomplete = SimpleNamespace(is_complete=False, rules=[])
         session = SimpleNamespace(
-            scalar=AsyncMock(return_value=0),
+            execute=AsyncMock(return_value=_count_result(0)),
             scalars=AsyncMock(return_value=[]),
         )
         with (
             patch.object(
-                division_service,
+                grid_service,
                 "get_version",
                 AsyncMock(side_effect=[target, src10, src20]),
             ),
@@ -290,12 +313,12 @@ def test_activation_readiness_requires_complete_mappings_from_used_versions() ->
                 AsyncMock(return_value={10, 20, 30}),
             ),
             patch.object(
-                division_service,
+                grid_service,
                 "get_mapping",
                 AsyncMock(side_effect=[None, incomplete]),
             ),
         ):
-            readiness = await division_service.get_activation_readiness(
+            readiness = await grid_service.get_activation_readiness(
                 session,
                 workspace_id=4,
                 target_version_id=30,
@@ -329,15 +352,15 @@ def test_activate_version_rejects_incomplete_mapping_readiness() -> None:
         )
         workspace = SimpleNamespace(id=4, default_division_grid_version_id=12)
         with (
-            patch.object(division_service, "get_version", AsyncMock(return_value=target)),
+            patch.object(grid_service, "get_version", AsyncMock(return_value=target)),
             patch.object(
-                division_service,
+                grid_service,
                 "get_activation_readiness",
                 AsyncMock(return_value=readiness),
             ),
             pytest.raises(Exception) as caught,
         ):
-            await division_service.activate_version(
+            await grid_service.activate_version(
                 AsyncMock(),
                 workspace=workspace,
                 version_id=30,
@@ -543,8 +566,8 @@ def test_marketplace_preflight_reports_conflicts_asset_policy_and_fingerprint() 
         grid = SimpleNamespace(id=5, slug="ow2", name="OW2", description=None, versions=[version])
         session = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=Mock(return_value=["ow2"]))))
 
-        with patch.object(marketplace, "load_mappings_for_versions", AsyncMock(return_value=[])):
-            result = await marketplace.preflight_division_grid_import(
+        with patch.object(marketplace_service, "load_mappings_for_versions", AsyncMock(return_value=[])):
+            result = await marketplace_service.preflight_division_grid_import(
                 session,
                 public_url="https://minio.example/aqt",
                 target_workspace_id=9,
@@ -601,8 +624,8 @@ def test_single_version_import_preflight_honors_selected_version_and_options() -
         )
         session = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=Mock(return_value=[]))))
 
-        with patch.object(marketplace, "load_mappings_for_versions", AsyncMock(return_value=[])):
-            result = await marketplace.preflight_division_grid_import(
+        with patch.object(marketplace_service, "load_mappings_for_versions", AsyncMock(return_value=[])):
+            result = await marketplace_service.preflight_division_grid_import(
                 session,
                 public_url="https://minio.example/aqt",
                 target_workspace_id=9,
@@ -691,14 +714,14 @@ def test_library_import_reuses_unchanged_import_without_writes() -> None:
         session = SimpleNamespace(add=Mock(), scalar=AsyncMock(return_value=9))
 
         with (
-            patch.object(marketplace, "load_mappings_for_versions", AsyncMock(return_value=[])),
+            patch.object(marketplace_service, "load_mappings_for_versions", AsyncMock(return_value=[])),
             patch.object(
-                marketplace,
+                marketplace_service,
                 "_load_current_imported_grids",
                 AsyncMock(return_value={5: existing}),
             ),
         ):
-            result = await marketplace.import_division_grids(
+            result = await marketplace_service.import_division_grids(
                 session,
                 SimpleNamespace(),
                 target_workspace=SimpleNamespace(id=9),
@@ -718,13 +741,12 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
     async def run() -> None:
         existing = SimpleNamespace(id=91)
         session = SimpleNamespace(
-            scalar=AsyncMock(side_effect=[None, existing]),
+            execute=AsyncMock(side_effect=[_one_result(None), _one_result(existing)]),
             add=Mock(),
             flush=AsyncMock(),
-            execute=AsyncMock(),
         )
-        with patch.object(import_jobs, "dispatch_import_job", AsyncMock()) as dispatch:
-            created = await import_jobs.create_import_job(
+        with patch.object(import_jobs_service, "dispatch_import_job", AsyncMock()) as dispatch:
+            created = await import_jobs_service.create_import_job(
                 session,
                 workspace_id=9,
                 source_workspace_id=3,
@@ -735,7 +757,7 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
                 include_ow_rank_mappings=False,
                 source_fingerprint="a" * 64,
             )
-            reused = await import_jobs.create_import_job(
+            reused = await import_jobs_service.create_import_job(
                 session,
                 workspace_id=9,
                 source_workspace_id=3,
@@ -774,10 +796,10 @@ def test_import_job_creation_requeues_a_failed_job() -> None:
             started_at=object(),
             finished_at=object(),
         )
-        session = SimpleNamespace(scalar=AsyncMock(return_value=failed))
+        session = SimpleNamespace(execute=AsyncMock(return_value=_one_result(failed)), flush=AsyncMock())
 
-        with patch.object(import_jobs, "dispatch_import_job", AsyncMock()) as dispatch:
-            retried = await import_jobs.create_import_job(
+        with patch.object(import_jobs_service, "dispatch_import_job", AsyncMock()) as dispatch:
+            retried = await import_jobs_service.create_import_job(
                 session,
                 workspace_id=9,
                 source_workspace_id=3,
@@ -814,10 +836,10 @@ def test_marketplace_import_rejects_source_changes_after_preflight() -> None:
         source_grid.name = "Changed after review"
 
         with (
-            patch.object(marketplace, "load_mappings_for_versions", AsyncMock(return_value=[])),
+            patch.object(marketplace_service, "load_mappings_for_versions", AsyncMock(return_value=[])),
             pytest.raises(Exception) as caught,
         ):
-            await marketplace.import_division_grids(
+            await marketplace_service.import_division_grids(
                 SimpleNamespace(),
                 SimpleNamespace(),
                 target_workspace=SimpleNamespace(id=9),
@@ -846,11 +868,15 @@ def test_import_worker_ignores_a_job_that_was_already_claimed() -> None:
         ):
             await import_jobs.process_import_job(91)
 
-        session.scalar.assert_awaited_once()
+        session.execute.assert_awaited_once()
         session.commit.assert_not_awaited()
         new_s3_client.assert_not_called()
 
-    session = SimpleNamespace(scalar=AsyncMock(return_value=None), commit=AsyncMock())
+    # rowcount 0: another poller already claimed this job.
+    session = SimpleNamespace(
+        execute=AsyncMock(return_value=SimpleNamespace(rowcount=0)),
+        commit=AsyncMock(),
+    )
     asyncio.run(run())
 
 
@@ -865,7 +891,7 @@ def test_stale_import_jobs_are_requeued() -> None:
     async def run() -> None:
         with (
             patch.object(import_jobs.db, "async_session_maker", Mock(return_value=SessionContext())),
-            patch.object(import_jobs, "dispatch_import_job", AsyncMock()) as dispatch,
+            patch.object(import_jobs_service, "dispatch_import_job", AsyncMock()) as dispatch,
         ):
             recovered = await import_jobs.recover_stale_import_jobs()
 
@@ -884,7 +910,8 @@ def test_stale_import_jobs_are_requeued() -> None:
         error=None,
     )
     session = SimpleNamespace(
-        scalars=AsyncMock(return_value=SimpleNamespace(all=Mock(return_value=[stale]))),
+        execute=AsyncMock(return_value=_list_result([stale])),
+        flush=AsyncMock(),
         commit=AsyncMock(),
     )
     asyncio.run(run())
@@ -951,9 +978,9 @@ def test_archiving_workspace_default_grid_is_rejected() -> None:
             versions=[SimpleNamespace(id=11), SimpleNamespace(id=12)],
         )
         session = SimpleNamespace(scalar=AsyncMock(return_value=12))
-        with patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)):
+        with patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)):
             with pytest.raises(Exception) as caught:
-                await division_service.update_grid(
+                await grid_service.update_grid(
                     session,
                     grid_id=4,
                     data=schemas.DivisionGridUpdate(archived=True),

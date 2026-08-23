@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { PlayerWithStats, TeamWithStats } from "@/types/team.types";
 import { LogStatsName } from "@/types/stats.types";
 import { TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
@@ -41,6 +41,7 @@ const StatCell = ({
   value: number;
   max: number;
 }) => {
+  const format = useFormatter();
   const meta = STAT_META[name];
   const showBar = Boolean(meta?.bar) && max > 0;
   const pct = showBar ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
@@ -48,7 +49,7 @@ const StatCell = ({
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="aqt-tnum text-[13px] text-[color:var(--aqt-fg)]">{formatStat(name, value)}</span>
+      <span className="aqt-tnum text-[13px] text-[color:var(--aqt-fg)]">{formatStat(name, value, format)}</span>
       {showBar ? (
         <div className="h-[3px] w-full max-w-[64px] overflow-hidden rounded-full bg-[color:var(--aqt-overlay-2)]">
           <div
@@ -76,6 +77,7 @@ const MatchTeamTable = ({
   tournamentGrid
 }: MatchTeamTableProps) => {
   const t = useTranslations<never>();
+  const format = useFormatter();
   const teamAccent = isHome ? "var(--aqt-teal)" : "var(--aqt-rose)";
 
   const sortedPlayers = sortTeamPlayers(team.players);
@@ -155,7 +157,7 @@ const MatchTeamTable = ({
             <TableCell className="text-center">
               <div className="flex flex-col items-center gap-1">
                 <span className="aqt-tnum text-[15px] font-bold leading-none text-[color:var(--aqt-teal)]">
-                  {formatStat(LogStatsName.ImpactPoints, player.stats[matchRound]?.impact_points)}
+                  {formatStat(LogStatsName.ImpactPoints, player.stats[matchRound]?.impact_points, format)}
                 </span>
                 <PerformanceBadge performance={resolveMatchMvpPlacement(player, matchRound)} />
               </div>

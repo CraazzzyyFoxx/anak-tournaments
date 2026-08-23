@@ -85,7 +85,7 @@ export function DraftPageHero({
               and would re-announce every captain tile with it. Only the
               connection state below is worth announcing. */}
           <div className="ml-auto flex flex-wrap items-center gap-3">
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
               {t("captain")}
             </span>
             <div className="flex">
@@ -102,7 +102,7 @@ export function DraftPageHero({
                 />
               ))}
               {captainTeams.length > MAX_CAPTAIN_TILES ? (
-                <span className="-ml-1.5 grid h-[22px] w-[22px] place-items-center rounded-lg bg-[color:var(--aqt-card-2)] font-mono text-[10px] text-[color:var(--aqt-fg-muted)] ring-2 ring-[color:var(--aqt-bg)]">
+                <span className="-ml-1.5 grid h-[22px] w-[22px] place-items-center rounded-lg bg-[color:var(--aqt-card-2)] font-mono text-[11px] text-[color:var(--aqt-fg-muted)] ring-2 ring-[color:var(--aqt-bg)]">
                   +{captainTeams.length - MAX_CAPTAIN_TILES}
                 </span>
               ) : null}
@@ -151,7 +151,7 @@ export function DraftPageHero({
             <div className="flex flex-wrap gap-1.5">
               <span
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em]",
+                  "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em]",
                   isLive
                     ? "border-[color:var(--aqt-teal)]/35 bg-[color:var(--aqt-teal)]/12 text-[color:var(--aqt-teal)]"
                     : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-amber)]"
@@ -215,7 +215,7 @@ function CaptainTile({
       title={label}
       aria-label={label}
       className={cn(
-        "relative grid h-[22px] w-[22px] place-items-center rounded-lg text-[10px] font-bold ring-2 ring-[color:var(--aqt-bg)]",
+        "relative grid h-[22px] w-[22px] place-items-center rounded-lg text-[11px] font-bold ring-2 ring-[color:var(--aqt-bg)]",
         index > 0 && "-ml-1.5",
         !online && "opacity-45"
       )}
@@ -238,7 +238,7 @@ function CaptainTile({
 function MetaPill({ label, value }: Readonly<{ label: ReactNode; value: ReactNode }>) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-2.5 py-1 text-[11.5px] text-[color:var(--aqt-fg-muted)]">
-      <span className="text-[9.5px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+      <span className="text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
         {label}
       </span>
       <span className="font-semibold text-[color:var(--aqt-fg)]">{value}</span>
@@ -260,7 +260,7 @@ function HStat({
 }>) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] font-bold uppercase tracking-[0.13em] text-[color:var(--aqt-fg-faint)]">
+      <span className="text-[11px] font-bold uppercase tracking-[0.13em] text-[color:var(--aqt-fg-faint)]">
         {label}
       </span>
       <span

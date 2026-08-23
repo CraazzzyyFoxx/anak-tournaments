@@ -17,14 +17,23 @@ os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 from shared.core.errors import BaseAPIException as HTTPException
-from src.services.registration.lifecycle import bulk_set_balancer_status  # noqa: E402
+from src.services.registration.lifecycle import lifecycle_service  # noqa: E402
 
 
 class _TournamentResult:
+    """``ensure_tournament_exists`` now goes through ``TournamentRepository.get``,
+    which reads ``result.unique().scalars().first()``."""
+
     def __init__(self, tournament: SimpleNamespace) -> None:
         self._tournament = tournament
 
-    def scalar_one_or_none(self) -> SimpleNamespace:
+    def unique(self) -> _TournamentResult:
+        return self
+
+    def scalars(self) -> _TournamentResult:
+        return self
+
+    def first(self) -> SimpleNamespace:
         return self._tournament
 
 
@@ -67,7 +76,7 @@ class BulkSetBalancerStatusTests(IsolatedAsyncioTestCase):
         tournament = SimpleNamespace(workspace_id=99)
         session = _session(_TournamentResult(tournament), _Result([approved]))
 
-        updated, skipped = await bulk_set_balancer_status(
+        updated, skipped = await lifecycle_service.bulk_set_balancer_status(
             session,
             7,
             [1, 404],
@@ -88,7 +97,7 @@ class BulkSetBalancerStatusTests(IsolatedAsyncioTestCase):
         tournament = SimpleNamespace(workspace_id=99)
         session = _session(_TournamentResult(tournament), _Result([approved, pending]))
 
-        updated, skipped = await bulk_set_balancer_status(
+        updated, skipped = await lifecycle_service.bulk_set_balancer_status(
             session,
             7,
             [1, 2],
@@ -107,5 +116,5 @@ class BulkSetBalancerStatusTests(IsolatedAsyncioTestCase):
     async def test_rejects_auto_managed_statuses_outright(self) -> None:
         session = _session()
         with self.assertRaises(HTTPException):
-            await bulk_set_balancer_status(session, 7, [1], balancer_status="ready")
+            await lifecycle_service.bulk_set_balancer_status(session, 7, [1], balancer_status="ready")
         session.execute.assert_not_awaited()

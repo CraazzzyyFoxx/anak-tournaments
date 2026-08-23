@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/auth"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
 
@@ -239,5 +240,212 @@ func TestResolver_ConcurrentMissesSingleflight(t *testing.T) {
 	}
 	if n := g.calls.Load(); n != 1 {
 		t.Fatalf("expected cached hit after flight, got %d calls", n)
+	}
+}
+
+// apiKeyReply is the shape identity-svc's validate_token returns for an
+// aqt_sk_ credential: the owner's user id, credential_type=api_key, the key's
+// own limits, and exactly one workspace entry carrying the scope intersection.
+const apiKeyReply = `{"ok":true,"data":{
+	"sub":42,"credential_type":"api_key","is_superuser":false,
+	"roles":[],"permissions":[],
+	"api_key":{"id":7,"public_id":"pub7","workspace_id":11,
+		"scopes":["team.create"],
+		"limits":{"requests_per_minute":25,"jobs_per_day":100}},
+	"workspaces":[{"workspace_id":11,"slug":"ws","rbac_roles":[],
+		"rbac_permissions":[{"resource":"team","action":"create"}]}]
+}}`
+
+// TestResolver_PrincipalTypedView asserts the typed view is parsed from the
+// payload the identity service actually sends (user id under "sub", limits
+// nested under api_key) and that it rides the SAME cache entry as Resolve — one
+// validate_token serves both views.
+func TestResolver_PrincipalTypedView(t *testing.T) {
+	s := &stubCaller{reply: []byte(apiKeyReply)}
+	r := New(s)
+
+	info, ok, err := r.Principal(reqWithToken("aqt_sk_pub7_secret"))
+	if err != nil || !ok {
+		t.Fatalf("principal failed: ok=%v err=%v", ok, err)
+	}
+	if !info.IsAPIKey() {
+		t.Errorf("credential_type=%q should read as an api key", info.CredentialType)
+	}
+	if info.UserID != 42 {
+		t.Errorf("UserID: want the owner 42, got %d", info.UserID)
+	}
+	if info.APIKeyID != 7 || info.APIKeyPublicID != "pub7" {
+		t.Errorf("key identity: want 7/pub7, got %d/%q", info.APIKeyID, info.APIKeyPublicID)
+	}
+	if info.RequestsPerMinute != 25 {
+		t.Errorf("RequestsPerMinute: want the key's own 25, got %d", info.RequestsPerMinute)
+	}
+	if info.WorkspaceGrants != 1 {
+		t.Errorf("WorkspaceGrants: want 1, got %d", info.WorkspaceGrants)
+	}
+
+	// Resolve for the same token is served from the entry Principal populated.
+	payload, ok, err := r.Resolve(reqWithToken("aqt_sk_pub7_secret"))
+	if err != nil || !ok || payload["credential_type"] != "api_key" {
+		t.Fatalf("resolve after principal: ok=%v err=%v payload=%v", ok, err, payload)
+	}
+	if s.calls != 1 {
+		t.Fatalf("both views must share one validate_token, got %d calls", s.calls)
+	}
+}
+
+// TestResolver_PrincipalSessionHasNoKeyFields guards the session path: an
+// access-token payload must yield no api-key identity (so nothing downstream
+// mistakes a session for a key) while still exposing its user id and grants.
+func TestResolver_PrincipalSessionHasNoKeyFields(t *testing.T) {
+	s := &stubCaller{reply: []byte(`{"ok":true,"data":{"user_id":9,"is_superuser":true,
+		"credential_type":"access_token",
+		"workspaces":[{"workspace_id":1,"rbac_permissions":[{"resource":"team","action":"create"},
+			{"resource":"team","action":"update"}]}]}}`)}
+	r := New(s)
+
+	info, ok, err := r.Principal(reqWithToken("session.jwt.token"))
+	if err != nil || !ok {
+		t.Fatalf("principal failed: ok=%v err=%v", ok, err)
+	}
+	if info.IsAPIKey() || info.APIKeyID != 0 || info.RequestsPerMinute != 0 {
+		t.Errorf("session must carry no key identity, got %+v", info)
+	}
+	if info.UserID != 9 || info.WorkspaceGrants != 2 {
+		t.Errorf("want user 9 with 2 grants, got %+v", info)
+	}
+}
+
+// TestResolver_APIKeyCachedShorterThanSession is the whole point of
+// apiKeyCacheTTL: a key is long-lived and revocation is the only way to stop
+// it, so its verdict must go stale much sooner than a self-expiring session's.
+func TestResolver_APIKeyCachedShorterThanSession(t *testing.T) {
+	s := &stubCaller{reply: []byte(apiKeyReply)}
+	r := New(s)
+	now := time.Now()
+	r.now = func() time.Time { return now }
+
+	if _, ok, _ := r.Principal(reqWithToken("aqt_sk_pub7_secret")); !ok {
+		t.Fatal("first api-key resolve failed")
+	}
+	if _, ok, _ := r.Resolve(reqWithToken("session.jwt.token")); !ok {
+		t.Fatal("first session resolve failed")
+	}
+	if s.calls != 2 {
+		t.Fatalf("want 2 rpc calls, got %d", s.calls)
+	}
+
+	// Past the api-key TTL but well inside the session TTL: the key is
+	// re-validated, the session is not.
+	now = now.Add(apiKeyCacheTTL + time.Second)
+	if _, ok, _ := r.Principal(reqWithToken("aqt_sk_pub7_secret")); !ok {
+		t.Fatal("api-key re-resolve failed")
+	}
+	if s.calls != 3 {
+		t.Fatalf("api key must be re-validated after apiKeyCacheTTL, calls=%d", s.calls)
+	}
+	if _, ok, _ := r.Resolve(reqWithToken("session.jwt.token")); !ok {
+		t.Fatal("session resolve failed")
+	}
+	if s.calls != 3 {
+		t.Fatalf("session must still be cached at %v, calls=%d", apiKeyCacheTTL, s.calls)
+	}
+
+	// And the session does expire at its own, longer TTL.
+	now = now.Add(cacheTTL)
+	if _, ok, _ := r.Resolve(reqWithToken("session.jwt.token")); !ok {
+		t.Fatal("session re-resolve failed")
+	}
+	if s.calls != 4 {
+		t.Fatalf("session must be re-validated after cacheTTL, calls=%d", s.calls)
+	}
+}
+
+// TestResolver_APIKeyQuota_SkipsNonKeyTraffic is the cost guarantee behind
+// wrapping the whole API mux with the per-key limiter: anything that is not an
+// aqt_sk_ credential is answered from the local prefix test alone, with no
+// validate_token call added to session or anonymous traffic.
+func TestResolver_APIKeyQuota_SkipsNonKeyTraffic(t *testing.T) {
+	s := &stubCaller{reply: []byte(apiKeyReply)}
+	r := New(s)
+
+	for _, tok := range []string{"", "session.jwt.token"} {
+		if key, rpm, ok := r.APIKeyQuota(reqWithToken(tok)); ok {
+			t.Errorf("token %q must not be metered as a key, got %q/%d", tok, key, rpm)
+		}
+	}
+	if s.calls != 0 {
+		t.Fatalf("non-key traffic must cost no rpc, got %d calls", s.calls)
+	}
+
+	key, rpm, ok := r.APIKeyQuota(reqWithToken("aqt_sk_pub7_secret"))
+	if !ok || key != "7" || rpm != 25 {
+		t.Fatalf("want bucket 7 with the key's own 25/min, got %q/%d ok=%v", key, rpm, ok)
+	}
+}
+
+// TestResolver_APIKeyQuota_BackendDownDoesNotThrottle: an unavailable identity
+// service must not turn into a 429. The route behind the limiter resolves the
+// same token and answers 503, which is the honest failure.
+func TestResolver_APIKeyQuota_BackendDownDoesNotThrottle(t *testing.T) {
+	s := &stubCaller{err: rpc.ErrOverloaded}
+	r := New(s)
+	if _, _, ok := r.APIKeyQuota(reqWithToken("aqt_sk_pub7_secret")); ok {
+		t.Fatal("a resolver error must report ok=false, not a throttling verdict")
+	}
+}
+
+// The match-log download is an `<a download>` link the browser navigates to, so
+// no script can attach an Authorization header. Without the cookie fallback the
+// route would 401 every signed-in user.
+func TestResolver_ResolveWithSessionCookie_FallsBackToTheCookie(t *testing.T) {
+	s := &stubCaller{reply: []byte(`{"ok":true,"data":{"user_id":9}}`)}
+	r := New(s)
+
+	req := httptest.NewRequest("GET", "/api/v1/matches/7/log", nil)
+	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "cookie-token"})
+
+	id, ok, err := r.ResolveWithSessionCookie(req)
+	if err != nil || !ok || id["user_id"] != float64(9) {
+		t.Fatalf("want the cookie identity, got id=%v ok=%v err=%v", id, ok, err)
+	}
+}
+
+// The header stays authoritative: an API-key client hitting the same download
+// must be judged on its key, never on a cookie the browser happened to send.
+func TestResolver_ResolveWithSessionCookie_PrefersTheHeader(t *testing.T) {
+	s := &stubCaller{reply: []byte(`{"ok":true,"data":{"user_id":9}}`)}
+	r := New(s)
+
+	req := reqWithToken("header-token")
+	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "cookie-token"})
+	if _, ok, _ := r.ResolveWithSessionCookie(req); !ok {
+		t.Fatal("expected the header credential to resolve")
+	}
+
+	// Same entry, so a second call on the header token alone is a cache hit:
+	// proof the header — not the cookie — was the token that got validated.
+	if _, ok, _ := r.Resolve(reqWithToken("header-token")); !ok {
+		t.Fatal("expected the header token to be the cached one")
+	}
+	if s.calls != 1 {
+		t.Fatalf("calls = %d, want 1 (the cookie must not be validated too)", s.calls)
+	}
+}
+
+// Plain Resolve must stay header-only: widening it would put a cookie
+// credential behind every mutating REST route, which is a CSRF surface.
+func TestResolver_ResolveIgnoresTheSessionCookie(t *testing.T) {
+	s := &stubCaller{reply: []byte(`{"ok":true,"data":{"user_id":9}}`)}
+	r := New(s)
+
+	req := httptest.NewRequest("POST", "/api/v1/tournaments", nil)
+	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "cookie-token"})
+
+	if _, ok, _ := r.Resolve(req); ok {
+		t.Fatal("Resolve must not authenticate from a cookie")
+	}
+	if s.calls != 0 {
+		t.Fatalf("rpc must not be called, calls=%d", s.calls)
 	}
 }

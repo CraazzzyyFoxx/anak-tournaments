@@ -25,6 +25,10 @@ type UseTournamentRealtimeOptions = {
   workspaceId?: number | null;
   onUpdate?: (reason: TournamentChangedReason) => void;
   onStructureChanged?: () => void;
+  // The public overview query's own key (slug/legacy id) when it differs
+  // from tournamentId -- see tournamentRealtime.helpers.getTournamentRealtimeUpdatePlan.
+  // Defaults to tournamentId for every other caller (admin pages).
+  detailRef?: string | number;
 };
 
 const CATCH_UP_COALESCE_MS = 100;
@@ -49,27 +53,43 @@ export function useTournamentRealtime({
   workspaceId,
   onUpdate,
   onStructureChanged,
+  detailRef,
 }: UseTournamentRealtimeOptions): void {
   const queryClient = useQueryClient();
+  const resolvedDetailRef = detailRef ?? tournamentId ?? undefined;
 
   const topic = tournamentId ? `tournament:${tournamentId}:bracket` : null;
   const catchUp = useMemo(
     () =>
       createLeadingCoalescer(() => {
         if (tournamentId) {
-          applyTournamentRealtimeCatchUp(queryClient, tournamentId, workspaceId);
+          applyTournamentRealtimeCatchUp(queryClient, tournamentId, workspaceId, resolvedDetailRef);
         }
       }, CATCH_UP_COALESCE_MS),
-    [queryClient, tournamentId, workspaceId],
+    [queryClient, tournamentId, workspaceId, resolvedDetailRef],
   );
 
   useEffect(() => () => catchUp.cancel(), [catchUp]);
 
   // Latest options + queryClient read at flush time (the flush runs from a timer,
   // not render, so it must not close over stale values).
-  const stateRef = useRef({ tournamentId, workspaceId, onUpdate, onStructureChanged, queryClient });
+  const stateRef = useRef({
+    tournamentId,
+    workspaceId,
+    onUpdate,
+    onStructureChanged,
+    queryClient,
+    detailRef: resolvedDetailRef,
+  });
   useEffect(() => {
-    stateRef.current = { tournamentId, workspaceId, onUpdate, onStructureChanged, queryClient };
+    stateRef.current = {
+      tournamentId,
+      workspaceId,
+      onUpdate,
+      onStructureChanged,
+      queryClient,
+      detailRef: resolvedDetailRef,
+    };
   });
 
   // Strongest bracket-family reason accumulated within the current debounce
@@ -98,12 +118,13 @@ export function useTournamentRealtime({
         onUpdate: notify,
         onStructureChanged: onStructure,
         queryClient: client,
+        detailRef: ref,
       } = stateRef.current;
       if (!id || (!reason && !hasRegistrationChange)) {
         return;
       }
       if (reason) {
-        applyTournamentRealtimeUpdate(client, id, ws, reason);
+        applyTournamentRealtimeUpdate(client, id, ws, reason, undefined, ref);
         notify?.(reason);
         if (reason === "structure_changed") {
           onStructure?.();
@@ -112,7 +133,7 @@ export function useTournamentRealtime({
       // structure_changed's plan already covers the registration keys — skip
       // the redundant second refetch when both landed in the same window.
       if (hasRegistrationChange && reason !== "structure_changed") {
-        applyTournamentRealtimeUpdate(client, id, ws, "registration_changed");
+        applyTournamentRealtimeUpdate(client, id, ws, "registration_changed", undefined, ref);
         notify?.("registration_changed");
       }
     }, delay);

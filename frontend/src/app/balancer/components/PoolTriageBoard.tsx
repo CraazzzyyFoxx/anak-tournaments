@@ -55,7 +55,9 @@ type PoolTriageBoardProps = {
 };
 
 const LANE_ACCENTS: Record<PoolLane, string> = {
-  excluded: "border-slate-300/15 bg-slate-500/[0.06]",
+  // Neutral/inactive lane: overlay tokens instead of a hue, so it reads as
+  // "no accent" beside the amber and emerald lanes.
+  excluded: "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]",
   needs_fix: "border-amber-300/20 bg-amber-500/[0.07]",
   ready: "border-emerald-300/20 bg-emerald-500/[0.07]",
 };
@@ -180,12 +182,12 @@ function TriagePlayerCard({
               {state.player.is_flex || isReady || state.issues.length > 0 || smurfTags.length > 0 ? (
                 <div className="mt-1 flex min-w-0 items-center gap-1 overflow-x-auto whitespace-nowrap pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {state.player.is_flex ? (
-                    <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-200">
+                    <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-200">
                       Flex
                     </span>
                   ) : null}
                   {isReady ? (
-                    <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+                    <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
                       Ready
                     </span>
                   ) : null}

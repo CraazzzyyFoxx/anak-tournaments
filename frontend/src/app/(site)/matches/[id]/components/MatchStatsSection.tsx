@@ -35,7 +35,7 @@ type ViewMode = "simple" | "extended";
 type ExtendedTab = "tables" | "comparison" | "timeline";
 
 const ControlLabel = ({ children }: { children: React.ReactNode }) => (
-  <span className="aqt-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+  <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
     {children}
   </span>
 );

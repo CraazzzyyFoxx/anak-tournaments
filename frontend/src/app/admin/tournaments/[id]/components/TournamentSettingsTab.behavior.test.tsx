@@ -44,7 +44,16 @@ vi.mock("@/stores/workspace.store", () => ({
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
-  useLocale: () => "en"
+  useLocale: () => "en",
+  // The settings tab renders DateRangePicker, which formats through next-intl
+  // rather than a pinned locale. Mirror the real formatter's shape so the mock
+  // does not silently drop a hook the tree depends on.
+  useFormatter: () => ({
+    dateTime: (value: Date, options?: Intl.DateTimeFormatOptions) =>
+      new Intl.DateTimeFormat("en", options).format(value),
+    number: (value: number, options?: Intl.NumberFormatOptions) =>
+      new Intl.NumberFormat("en", options).format(value)
+  })
 }));
 
 const TOURNAMENT: Tournament = {

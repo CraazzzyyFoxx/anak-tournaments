@@ -18,7 +18,7 @@ from shared.schemas.events import (
 from shared.services.encounter import events as shared_encounter_events
 from shared.services.scrim_scope import is_scrim_container
 from src import models
-from src.services.computation.jobs import request_standings_recalculation
+from src.services.computation.jobs import jobs_service
 from src.services.tournament.realtime_commit import register_tournament_realtime_update
 
 
@@ -39,7 +39,7 @@ async def enqueue_tournament_recalculation(
     # than no-opped in the worker: a job that is created, delivered and then
     # discarded is a permanent per-report cost that looks like health.
     if not await is_scrim_container(session, tournament_id):
-        await request_standings_recalculation(session, tournament_id)
+        await jobs_service.request_standings_recalculation(session, tournament_id)
     # The realtime ping still goes out: it is a cache-invalidation notification,
     # not a computation, and a room's participants are legitimate viewers of the
     # container.

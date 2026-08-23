@@ -1,5 +1,5 @@
-import { getTranslations } from "next-intl/server";
-import { ArrowRight, Swords } from "lucide-react";
+import { getFormatter, getTranslations } from "next-intl/server";
+import { ArrowRight, Swords, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { HeroWithUserStats } from "@/types/hero.types";
 import { UserMapRead } from "@/types/user.types";
@@ -73,6 +73,7 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
   if (heroes.length === 0) return null;
 
   const t = await getTranslations();
+  const format = await getFormatter();
 
   // Real per-hero game count (and wins) aggregated across every map the hero
   // was played on. This is the only place the profile exposes a games count.
@@ -175,7 +176,7 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
                         </div>
                         {r.lowSample ? (
                           <span
-                            className="aqt-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]"
+                            className="aqt-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]"
                             title={lowSampleTitle}
                           >
                             {t("users.overview.topHeroes.lowSample")}
@@ -216,7 +217,7 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
                     </td>
                   ) : null}
                   {columns.dmg10 ? (
-                    <td className={numCell}>{r.dmg10 == null ? EMPTY : formatStatValue("dmg", r.dmg10)}</td>
+                    <td className={numCell}>{r.dmg10 == null ? EMPTY : formatStatValue(format, "dmg", r.dmg10)}</td>
                   ) : null}
                   {columns.vsAvg ? (
                     <td className={numCell}>
@@ -240,7 +241,14 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
                                   : "var(--aqt-fg-muted)"
                           }}
                         >
-                          <span aria-hidden>{r.vsAvg > 0 ? "▲" : r.vsAvg < 0 ? "▼" : "–"}</span>{" "}
+                          {r.vsAvg > 0 ? (
+                            <TrendingUp aria-hidden className="inline size-4 align-[-3px]" />
+                          ) : r.vsAvg < 0 ? (
+                            <TrendingDown aria-hidden className="inline size-4 align-[-3px]" />
+                          ) : (
+                            <span aria-hidden>–</span>
+                          )}{" "}
+                          {/* The icon is decorative; direction reaches AT through this. */}
                           <span className="sr-only">{r.vsAvg > 0 ? "+" : r.vsAvg < 0 ? "−" : ""}</span>
                           {Math.abs(r.vsAvg * 100).toFixed(0)}
                         </span>

@@ -228,6 +228,12 @@ class _Result:
     def all(self):
         return list(self._rows)
 
+    def first(self):
+        # ``PickBanConfigRepository.find_for_stage_round`` (the upsert's scope
+        # lookup) and ``BaseRepository.get`` (the delete's load) read a single
+        # row through ``.unique().scalars().first()``.
+        return self._rows[0] if self._rows else None
+
 
 class _CapturingBroker:
     """Records the handler behind each subject instead of binding a queue."""
@@ -254,7 +260,12 @@ class _FakeSession:
 
     def __init__(self, *, existing=None, configs: list | None = None, stage_tournament_id=TOURNAMENT_ID) -> None:
         self._existing = existing
-        self._configs = configs if configs is not None else []
+        # One table described two ways: ``existing`` is the single row already
+        # sitting at the scope the upsert targets, ``configs`` the tournament's
+        # whole list. Both the scope lookup and the list read go through
+        # ``execute`` now, so an ``existing`` row has to be visible there too --
+        # otherwise the upsert would find nothing and insert a duplicate.
+        self._configs = configs if configs is not None else ([] if existing is None else [existing])
         self._stage_tournament_id = stage_tournament_id
         self.statements: dict[str, list] = {}
         self.added: list = []
@@ -521,7 +532,10 @@ class SlotValidationGuards(_UpsertCase):
         def _spy(slots, *, reserves):
             seen.append((slots, list(reserves)))
 
-        self.enterContext(patch.object(pick_ban_admin.pick_ban_session_service, "validate_pick_ban_slot_config", _spy))
+        # ``validate_pick_ban_slot_config`` stayed a module-level function on
+        # ``pick_ban_session`` (it takes already-built lists and no session), and
+        # the handler calls it through that module -- not through the singleton.
+        self.enterContext(patch.object(pick_ban_admin.pick_ban_session, "validate_pick_ban_slot_config", _spy))
         await self.invoke(slot_body())
 
         self.assertEqual([(CANDIDATES, RESERVES)], seen)

@@ -1,13 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import type { Hero } from "@/types/hero.types";
 import HeroImage from "@/components/hero/HeroImage";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import { normalizeRole, type AqtRoleKey } from "@/lib/player-role";
-import { formatSeconds, formatStatValue } from "@/app/(site)/users/components/heroes/utils";
+import {
+  formatSeconds,
+  formatStatValue,
+  type NumberFormatter
+} from "@/app/(site)/users/components/heroes/utils";
 import {
   Select,
   SelectContent,
@@ -39,7 +43,7 @@ const ROLE_FILTERS: ("all" | AqtRoleKey)[] = ["all", "tank", "damage", "support"
 
 const num = (v: number | null) => (v == null || !Number.isFinite(v) ? -Infinity : v);
 
-const metricValue = (key: SortKey, r: HeroRow): string => {
+const metricValue = (format: NumberFormatter, key: SortKey, r: HeroRow): string => {
   switch (key) {
     case "playtime":
       return formatSeconds(r.playtime);
@@ -48,7 +52,7 @@ const metricValue = (key: SortKey, r: HeroRow): string => {
     case "kda":
       return r.kda == null ? "—" : r.kda.toFixed(2);
     case "dmg10":
-      return r.dmg10 == null ? "—" : formatStatValue("dmg", r.dmg10);
+      return r.dmg10 == null ? "—" : formatStatValue(format, "dmg", r.dmg10);
     case "impact":
       return `${Math.round(r.impact * 100)}`;
   }
@@ -65,6 +69,7 @@ interface Props {
  *  while keeping the detail panel beside it — switching heroes needs no scroll. */
 const HeroRail = ({ rows, selectedId, onSelect }: Props) => {
   const t = useTranslations();
+  const format = useFormatter();
   const [sort, setSort] = useState<SortKey>("playtime");
   const [role, setRole] = useState<"all" | AqtRoleKey>("all");
   const [query, setQuery] = useState("");
@@ -176,7 +181,7 @@ const HeroRail = ({ rows, selectedId, onSelect }: Props) => {
                 </div>
               </div>
               <span className="aqt-mono text-right text-[14px] font-bold text-[color:var(--aqt-fg)]">
-                {metricValue(sort, r)}
+                {metricValue(format, sort, r)}
               </span>
             </button>
           );

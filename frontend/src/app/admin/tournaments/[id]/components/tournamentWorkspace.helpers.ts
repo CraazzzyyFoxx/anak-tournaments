@@ -19,6 +19,8 @@ export type TournamentFormState = {
   name: string;
   description: string;
   challonge_slug: string;
+  // Public-URL slug (`/tournaments/<slug>`); renaming it redirects the old link.
+  slug: string;
   is_league: boolean;
   is_finished: boolean;
   is_hidden: boolean;
@@ -127,6 +129,7 @@ export function getTournamentForm(tournament: Tournament, timezone: string): Tou
     name: tournament.name,
     description: tournament.description ?? "",
     challonge_slug: tournament.challonge_slug ?? "",
+    slug: tournament.slug,
     is_league: tournament.is_league,
     is_finished: tournament.is_finished,
     is_hidden: tournament.is_hidden ?? false,
@@ -161,6 +164,8 @@ function normalizeTournamentFormValues(form: TournamentFormState): TournamentUpd
     name: form.name.trim(),
     description: form.description.trim() || null,
     challonge_slug: form.challonge_slug ? normalizeChallongeSlug(form.challonge_slug) : null,
+    // Blank is a no-op on the backend (see update_tournament), not a clear.
+    slug: form.slug.trim() || null,
     is_league: form.is_league,
     is_finished: form.is_finished,
     is_hidden: form.is_hidden,

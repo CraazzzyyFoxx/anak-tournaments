@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn, hexToRgba } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import FieldLabel from "./FieldLabel";
 import { fieldControlClass, fieldInvalidClass } from "./FormField";
 
@@ -79,7 +79,8 @@ export default function VerifiedAccountSelect({
           <a
             href={connectHref}
             className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            style={{ borderColor: hexToRgba(config.color, 0.33) ?? undefined }}
+            // `color-mix`, not a JS hex parse: `config.color` is an `--aqt-brand-*` token.
+            style={{ borderColor: `color-mix(in srgb, ${config.color} 33%, transparent)` }}
           >
             <SocialIcon provider={provider} size={13} />
             {t("registration.accounts.verifiedLink", { label })}

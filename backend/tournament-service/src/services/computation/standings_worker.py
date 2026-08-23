@@ -8,21 +8,21 @@ from loguru import logger
 
 from src import models
 from src.core import db
-from src.services.computation import jobs
-from src.services.standings import service as standings_service
-from src.services.standings import swiss_auto_round
+from src.services.computation.jobs import jobs_service
+from src.services.standings.service import standings_service
+from src.services.standings.swiss_auto_round import swiss_auto_round_service
 from src.services.tournament.events import enqueue_tournament_changed
 
 
 async def process_standings_job(job_id: int) -> None:
     async with db.async_session_maker() as session:
-        job = await jobs.claim_job(session, job_id, kind="standings")
+        job = await jobs_service.claim_job(session, job_id, kind="standings")
     if job is None:
         return
 
     try:
         async with db.async_session_maker() as session:
-            current = await jobs.get_job(session, job_id, for_update=True)
+            current = await jobs_service.get_job(session, job_id, for_update=True)
             if current is None or current.status != "running":
                 return
             await session.scalar(
@@ -34,10 +34,10 @@ async def process_standings_job(job_id: int) -> None:
                 current.tournament_id,
                 commit=False,
             )
-            state = await jobs.complete_standings_generation(session, current.tournament_id, generation)
-            await swiss_auto_round.enqueue_swiss_next_rounds(session, current.tournament_id)
+            state = await jobs_service.complete_standings_generation(session, current.tournament_id, generation)
+            await swiss_auto_round_service.enqueue_swiss_next_rounds(session, current.tournament_id)
             await enqueue_tournament_changed(session, current.tournament_id, "results_changed")
-            await jobs.mark_job_succeeded(
+            await jobs_service.mark_job_succeeded(
                 session,
                 current,
                 {
@@ -47,11 +47,11 @@ async def process_standings_job(job_id: int) -> None:
             )
             await session.flush()
             if state.requested_generation > state.completed_generation:
-                await jobs.request_followup_standings_job(session, current.tournament_id)
+                await jobs_service.request_followup_standings_job(session, current.tournament_id)
             await session.commit()
     except Exception as exc:
         logger.exception("Standings computation job failed", job_id=job_id)
         async with db.async_session_maker() as session:
-            disposition = await jobs.mark_job_failed(session, job_id, f"{exc}\n{traceback.format_exc()}")
+            disposition = await jobs_service.mark_job_failed(session, job_id, f"{exc}\n{traceback.format_exc()}")
         if disposition == "failed":
             raise RejectMessage() from exc

@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.models.identity.auth_user import AuthUser
 from shared.models.platform.audit import AuditLog
 from shared.observability.correlation import get_correlation_id
+from shared.rpc.identity import api_key_label
 
 __all__ = ("AuditSource", "json_safe", "record_audit")
 
@@ -53,6 +54,27 @@ def _clip(value: str | None, limit: int) -> str | None:
     if value is None:
         return None
     return value[:limit]
+
+
+def _actor_label(actor: AuthUser | None, label: str | None) -> str | None:
+    """Fold the credential the actor used into the label they are recorded under.
+
+    ``actor_auth_user_id`` names the *account*, and an API key is owned by a real
+    account, so a keyed mutation and that same person's browser session were
+    landing as byte-identical rows. This is the whole of the fix: no new column,
+    no migration, and nothing for the 100+ call sites to pass — the credential is
+    already on the actor by the time it gets here (``shared.rpc.identity``).
+    """
+    credential = api_key_label(actor) if actor is not None else None
+    if credential is None:
+        return label
+    if not label:
+        return credential
+    # Clip the name, never the credential: which key acted is the new
+    # information the suffix exists to carry, and losing the tail of a long
+    # username is already an accepted trade (see ``_clip``).
+    suffix = f" ({credential})"
+    return f"{_clip(label, _LABEL_LIMIT - len(suffix))}{suffix}"
 
 
 def json_safe(value: Any) -> Any:
@@ -108,11 +130,15 @@ async def record_audit(
     ``workspace_id`` must be the workspace the mutation's own permission check
     ran against, reused rather than re-resolved: if the two ever disagree, the
     row claims an action was authorized in a workspace where it was not.
+
+    ``actor_label`` is stored as given for a session actor; when the actor came
+    in on an API key it gains a ``(api key: <public_id>)`` suffix, so the journal
+    records which of the account's credentials acted.
     """
     row = AuditLog(
         workspace_id=workspace_id,
         actor_auth_user_id=actor.id if actor else None,
-        actor_label=_clip(actor_label, _LABEL_LIMIT),
+        actor_label=_clip(_actor_label(actor, actor_label), _LABEL_LIMIT),
         source=source,
         action=action,
         entity_type=entity_type,

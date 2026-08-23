@@ -1,12 +1,13 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
 
 import DivisionIcon from "@/components/DivisionIcon";
 
 import { ROLE_LABELS, type PlayerValidationIssue } from "./workspace-helpers";
 
 const CHIP_CLASS =
-  "inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-100/80";
+  "inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300/20 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-100/80";
 
 function staticLabel(issue: PlayerValidationIssue): string {
   if (issue.code === "missing_ranked_role") {
@@ -38,9 +39,7 @@ export function IssueChip({ issue }: Readonly<{ issue: PlayerValidationIssue }>)
         {issue.currentDivision != null ? (
           <DivisionIcon division={issue.currentDivision} width={14} height={14} />
         ) : null}
-        <span aria-hidden className="opacity-70">
-          →
-        </span>
+        <ArrowRight className="size-4 shrink-0 opacity-70" aria-hidden />
         {issue.owDivision != null ? (
           <DivisionIcon division={issue.owDivision} width={14} height={14} />
         ) : null}

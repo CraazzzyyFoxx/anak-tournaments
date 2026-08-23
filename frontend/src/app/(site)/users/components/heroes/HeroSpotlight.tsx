@@ -30,7 +30,7 @@ interface SpotlightHero {
 
 const QuickStat = ({ label, value, delta }: { label: string; value: string; delta: number | null }) => (
   <div className="flex flex-col items-end gap-0.5">
-    <span className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">{label}</span>
+    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">{label}</span>
     <span className="aqt-display text-[28px] font-bold leading-none">{value}</span>
     {delta != null ? (
       <span

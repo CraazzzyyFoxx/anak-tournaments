@@ -80,6 +80,10 @@ const EMPTY_FORM: StatusFormState = {
   excludes_from_ready: false
 };
 
+// Swatch palette offered to the admin who is choosing a status's `icon_color`,
+// which is persisted per status row. These hexes are the picker's *content*, not
+// this page's chrome, so they are exempt from the design-token rule — a themed
+// var here would change what gets written to the database when the theme changes.
 const STATUS_COLOR_PRESETS = [
   "#94a3b8",
   "#64748b",
@@ -131,6 +135,8 @@ function StatusColorPicker({
   const [open, setOpen] = useState(false);
   const triggerId = useId();
   const hexId = useId();
+  // `<input type="color">` and the swatch preview both need a literal hex; the
+  // DOM API cannot take a CSS variable. Data-shaped, not chrome — exempt.
   const normalizedValue = normalizeHexColor(value) || "#94a3b8";
 
   return (
@@ -176,7 +182,7 @@ function StatusColorPicker({
                     key={color}
                     type="button"
                     className={cn(
-                      "h-8 w-8 shrink-0 rounded-md border border-border transition hover:scale-[1.03]",
+                      "h-8 w-8 shrink-0 rounded-md border border-border transition hover:border-[color:var(--aqt-border-3)]",
                       selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
                     )}
                     style={{ backgroundColor: color }}
@@ -204,6 +210,8 @@ function StatusColorPicker({
               <Label htmlFor={hexId} className="sr-only">
                 Icon color hex code
               </Label>
+              {/* Placeholder shows the expected hex literal — it is example
+                  input for a hex-typed field, not a colour this UI paints with. */}
               <Input
                 id={hexId}
                 value={value}

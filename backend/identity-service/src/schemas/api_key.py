@@ -25,6 +25,10 @@ class ApiKeyCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     workspace_id: int = Field(..., gt=0)
     expires_at: datetime | None = None
+    # RBAC permission names (see shared.rbac.catalog). No default: a key with an
+    # empty list authenticates but authorizes nothing, which is the only safe
+    # thing to hand out when the caller did not say what the key is for.
+    scopes: list[str] = Field(default_factory=list)
 
 
 class ApiKeyUpdate(BaseModel):
@@ -90,6 +94,12 @@ class ApiKeyStatusCounts(BaseModel):
 
 
 class ApiKeyListResponse(pagination.Paginated[ApiKeyRead]):
-    """Paginated API-key page plus workspace-wide status counts."""
+    """Paginated API-key page, status counts, and the grantable scope set.
+
+    ``available_scopes`` is the caller's own authority in this workspace, not the
+    whole catalog: the create form must not offer a scope the caller cannot
+    delegate, and the server would refuse it anyway.
+    """
 
     counts: ApiKeyStatusCounts
+    available_scopes: list[str] = Field(default_factory=list)

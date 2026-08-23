@@ -11,7 +11,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.core import enums
 from shared.core.enums import StageType
-from shared.repository import TeamRepository
+from shared.repository import EncounterRepository, StandingRepository, TeamRepository, TournamentRepository
 from shared.services.bracket.swiss_settings import swiss_bye_counts, swiss_scope_stopped
 from shared.services.tournament_utils import (
     completed_encounters as _shared_completed_encounters,
@@ -22,7 +22,7 @@ from shared.services.tournament_utils import (
 from shared.services.tournament_utils import sort_bracket_matches
 from src import models, schemas
 from src.core import utils
-from src.services.encounter import service as encounter_service
+from src.services.encounter.service import encounter_service
 
 GROUP_STAGE_TYPES = {StageType.ROUND_ROBIN, StageType.SWISS}
 ELIMINATION_STAGE_TYPES = {
@@ -91,105 +91,6 @@ def standing_entities(in_entities: list[str]) -> list[_AbstractLoad]:
         entities.append(team_entity)
         entities.extend(TeamRepository.team_entities(utils.prepare_entities(in_entities, "team"), team_entity))
     return entities
-
-
-async def get_by_tournament(
-    session: AsyncSession, tournament_id: int, entities: list[str]
-) -> typing.Sequence[models.Standing]:
-    query = (
-        sa.select(models.Standing)
-        .options(*standing_entities(entities))
-        .where(sa.and_(models.Standing.tournament_id == tournament_id))
-        .order_by(
-            models.Standing.overall_position.desc(),
-            models.Standing.stage_id.asc().nullslast(),
-            models.Standing.stage_item_id.asc().nullslast(),
-            models.Standing.position.asc(),
-        )
-    )
-    result = await session.execute(query)
-    standings = result.scalars().all()
-    logger.debug(f"Retrieved {len(standings)} standings for tournament {tournament_id}")
-    return standings
-
-
-async def get_completed_match_history_by_tournament(
-    session: AsyncSession,
-    tournament_id: int,
-) -> typing.Sequence[models.Encounter]:
-    query = (
-        sa.select(models.Encounter)
-        .where(
-            models.Encounter.tournament_id == tournament_id,
-            models.Encounter.home_team_id.isnot(None),
-            models.Encounter.away_team_id.isnot(None),
-            # Single form (encres0001 pins it to result_status == CONFIRMED).
-            models.Encounter.status == enums.EncounterStatus.COMPLETED,
-        )
-        .order_by(
-            models.Encounter.stage_id.asc().nullslast(),
-            models.Encounter.stage_item_id.asc().nullslast(),
-            sa.func.abs(models.Encounter.round).asc(),
-            models.Encounter.round.desc(),
-            models.Encounter.id.asc(),
-        )
-    )
-    result = await session.execute(query)
-    return result.scalars().all()
-
-
-async def delete_by_tournament(session: AsyncSession, tournament_id: int, *, commit: bool = True) -> None:
-    """Delete all Standing rows for a tournament.
-
-    When called as part of :func:`recalculate_for_tournament` we pass
-    ``commit=False`` so that the DELETE and the subsequent INSERT land in the
-    same transaction — avoiding the brief window where the table is empty
-    (Phase D: transactional recalculation).
-    """
-    query = sa.delete(models.Standing).where(sa.and_(models.Standing.tournament_id == tournament_id))
-    await session.execute(query)
-    if commit:
-        await session.commit()
-    logger.info(f"Deleted standings for tournament {tournament_id}")
-
-
-async def get_tournament_for_standings(
-    session: AsyncSession,
-    tournament_id: int,
-) -> models.Tournament | None:
-    result = await session.execute(
-        sa.select(models.Tournament)
-        .where(models.Tournament.id == tournament_id)
-        .options(
-            selectinload(models.Tournament.groups),
-            selectinload(models.Tournament.stages)
-            .selectinload(models.Stage.items)
-            .selectinload(models.StageItem.inputs),
-        )
-    )
-    return result.unique().scalars().first()
-
-
-async def recalculate_for_tournament(
-    session: AsyncSession,
-    tournament_id: int,
-    *,
-    commit: bool = True,
-) -> typing.Sequence[models.Standing]:
-    """Delete + rebuild standings for a tournament atomically.
-
-    Everything happens in a single transaction: readers never observe an
-    empty standings table mid-recalculation.
-    """
-    await delete_by_tournament(session, tournament_id, commit=False)
-    tournament = await get_tournament_for_standings(session, tournament_id)
-    if tournament is None:
-        if commit:
-            await session.commit()
-        else:
-            await session.flush()
-        return []
-    return await calculate_for_tournament(session, tournament, commit=commit)
 
 
 def _completed_encounters(
@@ -870,115 +771,228 @@ def sort_matches(
     return sort_bracket_matches(matches)
 
 
-async def _update_stage_completion_flags(session: AsyncSession, tournament: models.Tournament) -> None:
-    """After recalc, flip ``Stage.is_completed`` to match reality.
+#: Everything ``calculate_for_tournament`` walks: stages, their items, and each
+#: item's seed inputs.
+_STANDINGS_TOURNAMENT_LOAD = (
+    selectinload(models.Tournament.groups),
+    selectinload(models.Tournament.stages).selectinload(models.Stage.items).selectinload(models.StageItem.inputs),
+)
 
-    A stage is considered completed when every encounter that belongs to it
-    has ``status == COMPLETED``. Stages without any encounters are treated
-    as not-completed (nothing to finish).
 
-    This powers the admin UI's "Group A — 10/10 done" badge and the
-    activate-and-generate warning for downstream playoff stages.
-    """
-    stages = getattr(tournament, "stages", []) or []
-    if not stages:
-        return
+class StandingsService:
+    def __init__(
+        self,
+        *,
+        standing_repo: StandingRepository = StandingRepository(),
+        tournament_repo: TournamentRepository = TournamentRepository(),
+        encounter_repo: EncounterRepository = EncounterRepository(),
+    ) -> None:
+        self.standing_repo = standing_repo
+        self.tournament_repo = tournament_repo
+        self.encounter_repo = encounter_repo
 
-    stage_ids = [s.id for s in stages]
-    counts_result = await session.execute(
-        sa.select(
-            models.Encounter.stage_id,
-            models.Encounter.stage_item_id,
-            sa.func.count(models.Encounter.id).label("total"),
-            sa.func.sum(
-                sa.case(
-                    (
-                        models.Encounter.status == enums.EncounterStatus.COMPLETED,
-                        1,
-                    ),
-                    else_=0,
+    async def get_by_tournament(
+        self, session: AsyncSession, tournament_id: int, entities: list[str]
+    ) -> typing.Sequence[models.Standing]:
+        query = (
+            self.standing_repo.select()
+            .options(*standing_entities(entities))
+            .where(sa.and_(models.Standing.tournament_id == tournament_id))
+            .order_by(
+                models.Standing.overall_position.desc(),
+                models.Standing.stage_id.asc().nullslast(),
+                models.Standing.stage_item_id.asc().nullslast(),
+                models.Standing.position.asc(),
+            )
+        )
+        result = await session.execute(query)
+        standings = result.scalars().all()
+        logger.debug(f"Retrieved {len(standings)} standings for tournament {tournament_id}")
+        return standings
+
+    async def get_completed_match_history_by_tournament(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+    ) -> typing.Sequence[models.Encounter]:
+        query = (
+            self.encounter_repo.select()
+            .where(
+                models.Encounter.tournament_id == tournament_id,
+                models.Encounter.home_team_id.isnot(None),
+                models.Encounter.away_team_id.isnot(None),
+                # Single form (encres0001 pins it to result_status == CONFIRMED).
+                models.Encounter.status == enums.EncounterStatus.COMPLETED,
+            )
+            .order_by(
+                models.Encounter.stage_id.asc().nullslast(),
+                models.Encounter.stage_item_id.asc().nullslast(),
+                sa.func.abs(models.Encounter.round).asc(),
+                models.Encounter.round.desc(),
+                models.Encounter.id.asc(),
+            )
+        )
+        result = await session.execute(query)
+        return result.scalars().all()
+
+    async def delete_by_tournament(self, session: AsyncSession, tournament_id: int, *, commit: bool = True) -> None:
+        """Delete all Standing rows for a tournament.
+
+        When called as part of :meth:`recalculate_for_tournament` we pass
+        ``commit=False`` so that the DELETE and the subsequent INSERT land in the
+        same transaction — avoiding the brief window where the table is empty
+        (Phase D: transactional recalculation).
+        """
+        await self.standing_repo.delete_for_tournament(session, tournament_id)
+        if commit:
+            await session.commit()
+        logger.info(f"Deleted standings for tournament {tournament_id}")
+
+    async def get_tournament_for_standings(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+    ) -> models.Tournament | None:
+        return await self.tournament_repo.get(session, tournament_id, options=_STANDINGS_TOURNAMENT_LOAD)
+
+    async def recalculate_for_tournament(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        *,
+        commit: bool = True,
+    ) -> typing.Sequence[models.Standing]:
+        """Delete + rebuild standings for a tournament atomically.
+
+        Everything happens in a single transaction: readers never observe an
+        empty standings table mid-recalculation.
+        """
+        await self.delete_by_tournament(session, tournament_id, commit=False)
+        tournament = await self.get_tournament_for_standings(session, tournament_id)
+        if tournament is None:
+            if commit:
+                await session.commit()
+            else:
+                await session.flush()
+            return []
+        return await self.calculate_for_tournament(session, tournament, commit=commit)
+
+    async def _update_stage_completion_flags(self, session: AsyncSession, tournament: models.Tournament) -> None:
+        """After recalc, flip ``Stage.is_completed`` to match reality.
+
+        A stage is considered completed when every encounter that belongs to it
+        has ``status == COMPLETED``. Stages without any encounters are treated
+        as not-completed (nothing to finish).
+
+        This powers the admin UI's "Group A — 10/10 done" badge and the
+        activate-and-generate warning for downstream playoff stages.
+        """
+        stages = getattr(tournament, "stages", []) or []
+        if not stages:
+            return
+
+        stage_ids = [s.id for s in stages]
+        counts_result = await session.execute(
+            sa.select(
+                models.Encounter.stage_id,
+                models.Encounter.stage_item_id,
+                sa.func.count(models.Encounter.id).label("total"),
+                sa.func.sum(
+                    sa.case(
+                        (
+                            models.Encounter.status == enums.EncounterStatus.COMPLETED,
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("completed"),
+                sa.func.coalesce(sa.func.max(models.Encounter.round), 0).label("max_round"),
+            )
+            .where(models.Encounter.stage_id.in_(stage_ids))
+            .group_by(models.Encounter.stage_id, models.Encounter.stage_item_id)
+        )
+        rows_by_stage: dict[int, list[tuple[int | None, int, int, int]]] = defaultdict(list)
+        for row in counts_result:
+            rows_by_stage[row.stage_id].append(
+                (
+                    getattr(row, "stage_item_id", None),
+                    int(row.total or 0),
+                    int(row.completed or 0),
+                    int(row.max_round or 0),
                 )
-            ).label("completed"),
-            sa.func.coalesce(sa.func.max(models.Encounter.round), 0).label("max_round"),
-        )
-        .where(models.Encounter.stage_id.in_(stage_ids))
-        .group_by(models.Encounter.stage_id, models.Encounter.stage_item_id)
-    )
-    rows_by_stage: dict[int, list[tuple[int | None, int, int, int]]] = defaultdict(list)
-    for row in counts_result:
-        rows_by_stage[row.stage_id].append(
-            (
-                getattr(row, "stage_item_id", None),
-                int(row.total or 0),
-                int(row.completed or 0),
-                int(row.max_round or 0),
             )
-        )
 
-    for stage in stages:
-        stage_rows = rows_by_stage.get(stage.id, [])
-        if stage.stage_type == StageType.SWISS:
-            rows_by_item = {
-                stage_item_id: (total, completed, max_round)
-                for stage_item_id, total, completed, max_round in stage_rows
-            }
-            item_scopes = [
-                (item.id, *rows_by_item.get(item.id, (0, 0, 0))) for item in (getattr(stage, "items", []) or [])
-            ]
-            extra_scopes = [
-                (None, total, completed, max_round)
-                for stage_item_id, total, completed, max_round in stage_rows
-                if stage_item_id is None
-            ]
-            scopes = item_scopes or extra_scopes
-            should_be_completed = bool(scopes) and all(
-                swiss_scope_stopped(stage, stage_item_id)
-                or _swiss_scope_completed(total, completed, max_round, _stage_max_rounds(stage))
-                for stage_item_id, total, completed, max_round in scopes
-            )
+        for stage in stages:
+            stage_rows = rows_by_stage.get(stage.id, [])
+            if stage.stage_type == StageType.SWISS:
+                rows_by_item = {
+                    stage_item_id: (total, completed, max_round)
+                    for stage_item_id, total, completed, max_round in stage_rows
+                }
+                item_scopes = [
+                    (item.id, *rows_by_item.get(item.id, (0, 0, 0))) for item in (getattr(stage, "items", []) or [])
+                ]
+                extra_scopes = [
+                    (None, total, completed, max_round)
+                    for stage_item_id, total, completed, max_round in stage_rows
+                    if stage_item_id is None
+                ]
+                scopes = item_scopes or extra_scopes
+                should_be_completed = bool(scopes) and all(
+                    swiss_scope_stopped(stage, stage_item_id)
+                    or _swiss_scope_completed(total, completed, max_round, _stage_max_rounds(stage))
+                    for stage_item_id, total, completed, max_round in scopes
+                )
+                if stage.is_completed != should_be_completed:
+                    stage.is_completed = should_be_completed
+                continue
+
+            total = sum(row_total for _, row_total, _, _ in stage_rows)
+            completed = sum(row_completed for _, _, row_completed, _ in stage_rows)
+            should_be_completed = total > 0 and completed == total
             if stage.is_completed != should_be_completed:
                 stage.is_completed = should_be_completed
-            continue
 
-        total = sum(row_total for _, row_total, _, _ in stage_rows)
-        completed = sum(row_completed for _, _, row_completed, _ in stage_rows)
-        should_be_completed = total > 0 and completed == total
-        if stage.is_completed != should_be_completed:
-            stage.is_completed = should_be_completed
+    async def calculate_for_tournament(
+        self,
+        session: AsyncSession,
+        tournament: models.Tournament,
+        *,
+        commit: bool = True,
+    ) -> typing.Sequence[models.Standing]:
+        stages = sorted(getattr(tournament, "stages", []) or [], key=lambda stage: stage.order)
+        all_standings: list[models.Standing] = []
+
+        for stage in stages:
+            stage_encounters = sort_matches(
+                await encounter_service.get_by_stage_id(session, tournament.id, stage.id, [])
+            )
+            if stage.stage_type in GROUP_STAGE_TYPES:
+                stage_items = sorted(stage.items, key=lambda item: item.order) if stage.items else []
+                if stage_items:
+                    for stage_item in stage_items:
+                        item_encounters = [
+                            encounter for encounter in stage_encounters if encounter.stage_item_id == stage_item.id
+                        ]
+                        all_standings.extend(
+                            _build_group_stage_standings(tournament, stage, stage_item, item_encounters)
+                        )
+                else:
+                    all_standings.extend(_build_group_stage_standings(tournament, stage, None, stage_encounters))
+            elif stage.stage_type in ELIMINATION_STAGE_TYPES:
+                all_standings.extend(_build_elimination_stage_standings(tournament, stage, stage_encounters))
+
+        final_standings = calculate_overall_positions(all_standings, stages)
+        await self.standing_repo.create_many(session, final_standings)
+        # Phase P0.4: auto-flip Stage.is_completed to reflect encounter progress
+        # in the same transaction as the standings write.
+        await self._update_stage_completion_flags(session, tournament)
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
+        logger.info(f"Stage-first standings calculated for tournament {tournament.id}")
+        return await self.get_by_tournament(session, tournament.id, ["team", "stage", "stage_item"])
 
 
-async def calculate_for_tournament(
-    session: AsyncSession,
-    tournament: models.Tournament,
-    *,
-    commit: bool = True,
-) -> typing.Sequence[models.Standing]:
-    stages = sorted(getattr(tournament, "stages", []) or [], key=lambda stage: stage.order)
-    all_standings: list[models.Standing] = []
-
-    for stage in stages:
-        stage_encounters = sort_matches(await encounter_service.get_by_stage_id(session, tournament.id, stage.id, []))
-        if stage.stage_type in GROUP_STAGE_TYPES:
-            stage_items = sorted(stage.items, key=lambda item: item.order) if stage.items else []
-            if stage_items:
-                for stage_item in stage_items:
-                    item_encounters = [
-                        encounter for encounter in stage_encounters if encounter.stage_item_id == stage_item.id
-                    ]
-                    all_standings.extend(_build_group_stage_standings(tournament, stage, stage_item, item_encounters))
-            else:
-                all_standings.extend(_build_group_stage_standings(tournament, stage, None, stage_encounters))
-        elif stage.stage_type in ELIMINATION_STAGE_TYPES:
-            all_standings.extend(_build_elimination_stage_standings(tournament, stage, stage_encounters))
-
-    final_standings = calculate_overall_positions(all_standings, stages)
-    session.add_all(final_standings)
-    # Phase P0.4: auto-flip Stage.is_completed to reflect encounter progress
-    # in the same transaction as the standings write.
-    await _update_stage_completion_flags(session, tournament)
-    if commit:
-        await session.commit()
-    else:
-        await session.flush()
-    logger.info(f"Stage-first standings calculated for tournament {tournament.id}")
-    return await get_by_tournament(session, tournament.id, ["team", "stage", "stage_item"])
+standings_service = StandingsService()

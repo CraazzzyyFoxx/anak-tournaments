@@ -108,7 +108,7 @@ const TeammateRows = ({
             className="group grid grid-cols-[26px_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-[18px] py-2.5 transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]"
           >
             <span
-              className="aqt-display flex h-[26px] w-[26px] items-center justify-center rounded-full text-[10px] font-extrabold"
+              className="aqt-display flex h-[26px] w-[26px] items-center justify-center rounded-full text-[11px] font-extrabold"
               style={{ background: TEAMMATE_COLORS[i % TEAMMATE_COLORS.length], color: "hsl(220 30% 8%)" }}
               aria-hidden
             >
@@ -119,7 +119,7 @@ const TeammateRows = ({
                 <span className="truncate text-[13px] font-semibold text-[color:var(--aqt-fg)] group-hover:text-[color:var(--aqt-teal)]">
                   {nm}
                 </span>
-                {tag ? <span className="aqt-mono text-[10.5px] text-[color:var(--aqt-fg-faint)]">#{tag}</span> : null}
+                {tag ? <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">#{tag}</span> : null}
               </div>
               <div className="aqt-mono text-[11px] text-[color:var(--aqt-fg-dim)]">
                 {t("users.overview.teammates.playedMaps", { count: tm.tournaments, maps: tm.maps })}

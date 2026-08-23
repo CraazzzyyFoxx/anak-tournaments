@@ -37,7 +37,7 @@ from shared.messaging.config import (
 from shared.messaging.rpc import request_dict
 from shared.rbac import ensure_workspace_system_roles, get_workspace_system_role
 from shared.repository import AuthUserRepository
-from shared.rpc.identity import ensure_workspace_permission
+from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_host
 from src import models, schemas
 from src.core import config, db
@@ -175,7 +175,8 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.workspaces.list")
     async def _list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            workspaces = await workspace_service.get_all(session)
+            viewer = rehydrate_user_optional(data.get("identity"))
+            workspaces = await workspace_service.get_all(session, user=viewer)
             return [schemas.WorkspaceRead.model_validate(w, from_attributes=True) for w in workspaces]
 
         return await c.envelope(logger, "workspaces.list", op, session_factory=_SF)

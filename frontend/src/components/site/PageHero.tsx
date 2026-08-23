@@ -236,7 +236,7 @@ export function HeroStat({
 }>) {
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+      <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
         {label}
       </span>
       <span className="font-onest text-[clamp(1.7rem,2.2vw,2.15rem)] font-bold leading-none tabular-nums text-[color:var(--aqt-fg)]">

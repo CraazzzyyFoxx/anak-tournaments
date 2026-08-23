@@ -50,6 +50,7 @@ const (
 	queueCreateApiKey = "rpc.identity.create_api_key"
 	queueUpdateApiKey = "rpc.identity.update_api_key"
 	queueRevokeApiKey = "rpc.identity.revoke_api_key"
+	queueSelfApiKey   = "rpc.identity.api_key.self"
 
 	queueRbacListPermissions    = "rpc.identity.rbac.list_permissions"
 	queueRbacCreatePermission   = "rpc.identity.rbac.create_permission"
@@ -436,6 +437,19 @@ func (h *Handler) RevokeApiKey(w http.ResponseWriter, r *http.Request) {
 	}
 	body, _ := json.Marshal(map[string]any{"access_token": token, "api_key_id": r.PathValue("id")})
 	h.callIdentity(w, r, queueRevokeApiKey, body, http.StatusNoContent)
+}
+
+// SelfApiKey mirrors GET /api-keys/self: the descriptor of the key the CALLER
+// is presenting (name, scopes, limits, config_policy, expiry), so a scripted
+// client can discover its own budget and authority without an admin token.
+//
+// Deliberately not gated by credential type here. identity-svc resolves the
+// bearer itself and answers 403 "API key credential required" for a browser
+// session (which has no current key), the same way every other api-key RPC
+// decides its own eligibility — the gateway stays credential-agnostic on this
+// namespace.
+func (h *Handler) SelfApiKey(w http.ResponseWriter, r *http.Request) {
+	h.authedNoBody(w, r, queueSelfApiKey, http.StatusOK)
 }
 
 // --- RBAC admin (authenticated; permission checks enforced in identity-svc) ---

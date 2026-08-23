@@ -13,7 +13,9 @@ export interface SocialProviderConfig {
   label: string;
   /** Public icon path, or null when there is no brand image (falls back to a glyph). */
   icon: string | null;
-  /** Brand accent colour (hex) used for the badge tint. */
+  /** Brand accent colour as a CSS value (an `--aqt-brand-*` token reference).
+   *  Consumed only in CSS — inline styles and `color-mix` — never parsed in JS,
+   *  so a `var()` reference is safe here. See `SocialAccountBadge`. */
   color: string;
   /** Input placeholder for the admin add/edit form. */
   placeholder: string;
@@ -39,7 +41,7 @@ const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
     value: "battlenet",
     label: "Battle.net",
     icon: "/battlenet.svg",
-    color: "#148EFF",
+    color: "var(--aqt-brand-battlenet)",
     placeholder: "Name#1234",
     oauthEligible: true
   },
@@ -47,7 +49,7 @@ const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
     value: "discord",
     label: "Discord",
     icon: "/discord.png",
-    color: "#5865F2",
+    color: "var(--aqt-brand-discord)",
     placeholder: "username",
     oauthEligible: true
   },
@@ -55,7 +57,7 @@ const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
     value: "twitch",
     label: "Twitch",
     icon: "/twitch.png",
-    color: "#9146FF",
+    color: "var(--aqt-brand-twitch)",
     placeholder: "username",
     profileUrl: (u) => `https://twitch.tv/${encodeURIComponent(u)}`,
     oauthEligible: true
@@ -64,12 +66,12 @@ const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
     value: "boosty",
     label: "Boosty",
     icon: null,
-    color: "#F15F2C",
+    color: "var(--aqt-brand-boosty)",
     placeholder: "username",
     profileUrl: (u) => `https://boosty.to/${encodeURIComponent(u)}`
   },
-  vk: { value: "vk", label: "VK", icon: null, color: "#0077FF", placeholder: "username", profileUrl: (u) => `https://vk.com/${encodeURIComponent(u)}` },
-  youtube: { value: "youtube", label: "YouTube", icon: null, color: "#FF0000", placeholder: "@handle", profileUrl: (u) => `https://youtube.com/${encodeURIComponent(u)}` }
+  vk: { value: "vk", label: "VK", icon: null, color: "var(--aqt-brand-vk)", placeholder: "username", profileUrl: (u) => `https://vk.com/${encodeURIComponent(u)}` },
+  youtube: { value: "youtube", label: "YouTube", icon: null, color: "var(--aqt-brand-youtube)", placeholder: "@handle", profileUrl: (u) => `https://youtube.com/${encodeURIComponent(u)}` }
 };
 
 /** Config for any provider string, with a safe fallback for unknown ones. */
@@ -79,7 +81,7 @@ export function getSocialProviderConfig(provider: string): SocialProviderConfig 
       value: provider,
       label: provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : "Account",
       icon: null,
-      color: "#8B8B8B",
+      color: "var(--aqt-fg-dim)",
       placeholder: "username"
     }
   );

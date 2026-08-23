@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import { useFormatter } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
@@ -19,10 +20,11 @@ interface GreetingBarProps {
 
 export function GreetingBar({ canCreateTournament }: Readonly<GreetingBarProps>) {
   const { user } = useAuthProfile();
+  const format = useFormatter();
 
   const greeting = getGreeting();
   const displayName = user?.username ?? "Admin";
-  const today = new Date().toLocaleDateString("en-US", {
+  const today = format.dateTime(new Date(), {
     weekday: "long",
     month: "long",
     day: "numeric",

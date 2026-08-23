@@ -51,7 +51,6 @@ import (
 	"container/list"
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -100,6 +99,23 @@ type Extractor func(r *http.Request) (int64, bool)
 func FromPathValue(name string) Extractor {
 	return func(r *http.Request) (int64, bool) {
 		return parseID(r.PathValue(name))
+	}
+}
+
+// ExtractIDFromJSONBody resolves the invalidation scope from the JSON
+// response body's top-level "id" field. Pairs with Rule.ExtractFromBody for a
+// route whose path segment can be either a numeric id or an opaque slug
+// (FromPathValue fails to parse the slug case) but whose response always
+// echoes the canonical numeric id.
+func ExtractIDFromJSONBody() func(body []byte) (int64, bool) {
+	return func(body []byte) (int64, bool) {
+		var payload struct {
+			ID int64 `json:"id"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil || payload.ID <= 0 {
+			return 0, false
+		}
+		return payload.ID, true
 	}
 }
 
@@ -217,6 +233,14 @@ type Rule struct {
 	// Does NOT hold for encounters_overview, whose body carries a per-viewer
 	// my_team_count.
 	AuthedRead bool
+	// ExtractFromBody is a fallback used ONLY when Extract fails (ok=false):
+	// resolves the invalidation scope from the just-fetched response body
+	// instead of the request path. For a route whose path segment is
+	// sometimes a slug (see ExtractIDFromJSONBody) rather than the numeric id
+	// Extract expects -- without this, a slug request would never populate or
+	// hit the cache at all, silently losing the optimization for what becomes
+	// the primary URL form. nil for every route that never sees a slug.
+	ExtractFromBody func(body []byte) (int64, bool)
 	// AuthedReadUnless, when non-nil, revokes AuthedRead for requests it
 	// matches: such requests bypass the cache entirely, like any authed
 	// request on a non-AuthedRead route. Used for query shapes whose body IS
@@ -260,8 +284,8 @@ func (c *Cache) Wrap(next http.Handler, rule Rule) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		tid, ok := rule.Extract(r)
-		if !ok {
+		tid, tidOK := rule.Extract(r)
+		if !tidOK && rule.ExtractFromBody == nil {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -288,9 +312,13 @@ func (c *Cache) Wrap(next http.Handler, rule Rule) http.Handler {
 			req := r.Clone(context.WithoutCancel(r.Context()))
 			req.Header.Del("Authorization")
 			next.ServeHTTP(rec, req)
+			resolvedID, resolvedOK := tid, tidOK
+			if !resolvedOK && rule.ExtractFromBody != nil {
+				resolvedID, resolvedOK = rule.ExtractFromBody(rec.body)
+			}
 			e := &entry{
 				key:          key,
-				tournamentID: tid,
+				tournamentID: resolvedID,
 				status:       rec.status,
 				header:       rec.header,
 				body:         rec.body,
@@ -300,7 +328,7 @@ func (c *Cache) Wrap(next http.Handler, rule Rule) http.Handler {
 			// must stay live. (Anonymous 404s for hidden tournaments are
 			// deliberately not cached either — rare, and correctness-critical
 			// around visibility flips.)
-			if e.status == http.StatusOK && len(e.body) <= maxBodyBytes {
+			if resolvedOK && e.status == http.StatusOK && len(e.body) <= maxBodyBytes {
 				c.store(e)
 			}
 			return e, nil
@@ -356,13 +384,38 @@ func (c *Cache) Invalidate(tournamentID int64, patterns []string) int {
 	return n
 }
 
+// bareTournamentDetailPattern is a sentinel matched by
+// isBareTournamentDetailKey instead of literal substring containment: the
+// bare tournament-detail route's path segment is either a numeric id or an
+// opaque slug (see Rule.ExtractFromBody), so no fixed substring identifies it
+// the way "/registration/list" does for its sibling route.
+const bareTournamentDetailPattern = "\x00bare-tournament-detail"
+
 func matchesAnyPattern(key string, patterns []string) bool {
 	for _, pattern := range patterns {
+		if pattern == bareTournamentDetailPattern {
+			if isBareTournamentDetailKey(key) {
+				return true
+			}
+			continue
+		}
 		if strings.Contains(key, pattern) {
 			return true
 		}
 	}
 	return false
+}
+
+// isBareTournamentDetailKey reports whether key is exactly the tournament
+// detail route ("/api/v1/tournaments/{id-or-slug}?..."), not a sibling
+// sub-route like /stages or /standings that shares the same prefix.
+func isBareTournamentDetailKey(key string) bool {
+	rest, ok := strings.CutPrefix(key, "/api/v1/tournaments/")
+	if !ok {
+		return false
+	}
+	segment, _, found := strings.Cut(rest, "?")
+	return found && segment != "" && !strings.Contains(segment, "/")
 }
 
 // reasonPatterns returns the cached-entry URL substrings a reason can have
@@ -373,7 +426,7 @@ func matchesAnyPattern(key string, patterns []string) bool {
 //
 // over-invalidation is a cache miss; under-invalidation is a stale page, so
 // unknown reasons default to invalidating everything for the tournament.
-func reasonPatterns(reason string, tournamentID int64) []string {
+func reasonPatterns(reason string) []string {
 	switch reason {
 	case "bracket_changed":
 		return []string{"/api/v1/encounters"}
@@ -381,12 +434,10 @@ func reasonPatterns(reason string, tournamentID int64) []string {
 		// The tournament-detail response embeds live participants_count/
 		// registrations_count (tournament/flows.py::get_read), which DO
 		// change on every registration write — teams/standings/encounters do
-		// not, so only these two entries need dropping. The id-qualified "?"
-		// suffix keeps this from also matching /stages or /standings, whose
-		// cache keys share the "/api/v1/tournaments/{id}" path prefix.
+		// not, so only these two entries need dropping.
 		return []string{
 			"/registration/list",
-			fmt.Sprintf("/api/v1/tournaments/%d?", tournamentID),
+			bareTournamentDetailPattern,
 		}
 	default:
 		return nil
@@ -434,7 +485,7 @@ func (c *Cache) Broadcast(topic string, payload []byte) {
 	if !ok {
 		return
 	}
-	patterns := reasonPatterns(eventFrameReason(payload), id)
+	patterns := reasonPatterns(eventFrameReason(payload))
 	if n := c.Invalidate(id, patterns); n > 0 {
 		c.log.Debug("response cache invalidated", "tournament_id", id, "entries", n, "topic", topic)
 	}

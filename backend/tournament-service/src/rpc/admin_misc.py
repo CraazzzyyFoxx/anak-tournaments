@@ -51,16 +51,16 @@ from src.schemas.admin import tournament as tournament_schemas
 from src.schemas.admin.computation import TournamentComputationJobRead
 from src.services.admin import encounter as enc_service
 from src.services.admin import encounter_reports as reports_service
-from src.services.admin import matches as matches_service
-from src.services.admin import preview_access as preview_access_service
-from src.services.admin import standing as standing_service
-from src.services.admin import tournament as tournament_service
+from src.services.admin import preview_access as preview_access
+from src.services.admin.matches import matches_service
+from src.services.admin.standing import standing_service
+from src.services.admin.tournament import tournament_service
 from src.services.computation import jobs as computation_jobs
-from src.services.encounter import captain as captain_service
-from src.services.encounter import report_form as report_form_service
+from src.services.encounter.captain import captain_service
+from src.services.encounter.report_form import report_form_service
 from src.services.tournament import flows as tournament_flows
-from src.services.tournament import schedule as schedule_service
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
+from src.services.tournament.schedule import schedule_service
 
 
 def _serialize_result(encounter: models.Encounter) -> dict:
@@ -88,7 +88,7 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = enc_schemas.MatchUpdate.model_validate(_payload(data))
             # update_match commits internally; route returns a custom dict.
-            match = await enc_service.update_match(session, match_id, body)
+            match = await enc_service.encounter_service.update_match(session, match_id, body)
             return {
                 "id": match.id,
                 "encounter_id": match.encounter_id,
@@ -198,7 +198,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _require_id(data)
             # toggle_finished commits internally.
             tournament = await tournament_service.toggle_finished(session, tournament_id)
-            return _dump(await tournament_flows.to_pydantic(session, tournament, ["stages"]))
+            return _dump(await tournament_flows.flows_service.to_pydantic(session, tournament, ["stages"]))
 
         return await _run(logger, op)
 
@@ -223,7 +223,7 @@ def register(broker: Any, logger: Any) -> None:
                 body.status,
                 force=body.force,
             )
-            return _dump(await tournament_flows.to_pydantic(session, tournament, ["stages"]))
+            return _dump(await tournament_flows.flows_service.to_pydantic(session, tournament, ["stages"]))
 
         return await _run(logger, op)
 
@@ -237,7 +237,7 @@ def register(broker: Any, logger: Any) -> None:
             body = tournament_schemas.TournamentScheduleSet.model_validate(_payload(data))
             # set_schedule commits internally (full replace of the phase rows).
             tournament = await schedule_service.set_schedule(session, tournament_id, body.schedule)
-            return _dump(await tournament_flows.to_pydantic(session, tournament, ["stages"]))
+            return _dump(await tournament_flows.flows_service.to_pydantic(session, tournament, ["stages"]))
 
         return await _run(logger, op)
 
@@ -257,8 +257,8 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _require_id(data)
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             _require_ws_admin(user, ws_id)
-            rows = await preview_access_service.list_preview_access(session, tournament_id)
-            return [preview_access_service.serialize_entry(row) for row in rows]
+            rows = await preview_access.preview_access_service.list_preview_access(session, tournament_id)
+            return [preview_access.serialize_entry(row) for row in rows]
 
         return await _run(logger, op)
 
@@ -274,10 +274,10 @@ def register(broker: Any, logger: Any) -> None:
                 auth_user_id = int(payload["auth_user_id"])
             except (KeyError, TypeError, ValueError) as exc:
                 raise HTTPException(status_code=422, detail="auth_user_id is required") from exc
-            row = await preview_access_service.add_preview_access(session, tournament_id, auth_user_id)
+            row = await preview_access.preview_access_service.add_preview_access(session, tournament_id, auth_user_id)
             # Refresh the (viewer-agnostic) cached tournament read so the badge/state update.
             await invalidate_tournament_cache(tournament_id, "structure_changed")
-            return preview_access_service.serialize_entry(row)
+            return preview_access.serialize_entry(row)
 
         return await _run(logger, op)
 
@@ -289,7 +289,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             _require_ws_admin(user, ws_id)
             auth_user_id = _path_int(data, "auth_user_id")
-            await preview_access_service.remove_preview_access(session, tournament_id, auth_user_id)
+            await preview_access.preview_access_service.remove_preview_access(session, tournament_id, auth_user_id)
             await invalidate_tournament_cache(tournament_id, "structure_changed")
             return None
 
@@ -326,7 +326,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             job_id = _require_id(data)
-            job = await computation_jobs.get_job(session, job_id)
+            job = await computation_jobs.jobs_service.get_job(session, job_id)
             if job is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament job not found")
             await auth.require_tournament_id_permission(
@@ -371,7 +371,7 @@ def register(broker: Any, logger: Any) -> None:
                     resource="stage",
                     action="read",
                 )
-            jobs_list = await computation_jobs.list_jobs(
+            jobs_list = await computation_jobs.jobs_service.list_jobs(
                 session,
                 tournament_id=scoped_tournament_id,
                 stage_id=stage_id,
@@ -402,7 +402,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             workspace_id, params = _reports_params(data)
             return _dump(
-                await reports_service.list_encounter_reports(session, workspace_id=workspace_id, params=params)
+                await reports_service.encounter_reports_service.list_encounter_reports(session, workspace_id=workspace_id, params=params)
             )
 
         return await _run(logger, op)
@@ -411,7 +411,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _admin_encounter_reports_stats(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             workspace_id, params = _reports_params(data)
-            return _dump(await reports_service.get_reports_stats(session, workspace_id=workspace_id, params=params))
+            return _dump(await reports_service.encounter_reports_service.get_reports_stats(session, workspace_id=workspace_id, params=params))
 
         return await _run(logger, op)
 

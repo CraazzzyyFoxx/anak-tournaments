@@ -144,7 +144,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
             aria-label={isBulkSelected ? `Unselect ${player.battle_tag}` : `Select ${player.battle_tag}`}
             onClick={() => onToggleBulkSelection?.(player.id)}
             className={cn(
-              "mt-0.5 flex h-6 w-6 items-center justify-center rounded-md border text-[10px] transition-colors",
+              "mt-0.5 flex h-6 w-6 items-center justify-center rounded-md border text-[11px] transition-colors",
               isBulkSelected
                 ? "border-cyan-300/50 bg-cyan-500/18 text-cyan-100"
                 : "border-[color:var(--aqt-border-2)] bg-black/15 text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg-muted)]",
@@ -230,12 +230,12 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
             {player.is_flex || isReady || issues.length > 0 || smurfTags.length > 0 ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
                 {player.is_flex ? (
-                  <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-200">
+                  <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-200">
                     Flex
                   </span>
                 ) : null}
                 {isReady ? (
-                  <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+                  <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
                     Ready
                   </span>
                 ) : null}

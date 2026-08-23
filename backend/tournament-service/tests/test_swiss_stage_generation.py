@@ -51,13 +51,13 @@ class SwissStageGenerationTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                stage_service,
+                stage_service.stage_service,
                 "_get_swiss_generation_context",
                 AsyncMock(return_value=([swiss.SwissStanding(1, 1.0)], set(), 2)),
             ),
             patch.object(stage_service, "generate_bracket", return_value=skeleton),
         ):
-            result = await stage_service._generate_stage_skeleton(
+            result = await stage_service.stage_service._generate_stage_skeleton(
                 SimpleNamespace(),
                 stage,
                 [1, 2, 3],
@@ -77,7 +77,7 @@ class SwissStageGenerationTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                stage_service,
+                stage_service.stage_service,
                 "_get_swiss_generation_context",
                 AsyncMock(return_value=([swiss.SwissStanding(1, 1.0)], set(), 2)),
             ),
@@ -87,7 +87,7 @@ class SwissStageGenerationTests(IsolatedAsyncioTestCase):
                 side_effect=swiss.SwissPairingImpossibleError,
             ),
         ):
-            result = await stage_service._generate_stage_skeleton(
+            result = await stage_service.stage_service._generate_stage_skeleton(
                 SimpleNamespace(),
                 stage,
                 [1, 2],

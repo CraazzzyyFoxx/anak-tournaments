@@ -4,10 +4,10 @@ The gateway envelope/param-decoding plumbing this shares with the other
 typed-RPC services (``q``/``q1``/``payload``/``actor``/``require_active``/
 ``require_id``/``dump``/``require_path_int``) now lives in
 ``shared.rpc.common``, the single source of truth. Everything below that is
-genuinely balancer-local: API-key-vs-workspace-RBAC admin gating, the
-dict-detail ``_detail_message`` variant the job API needs, and the
-session-less ``call`` envelope (the job API uses the Redis-backed job store +
-broker, not a SQLAlchemy session).
+genuinely balancer-local: the workspace-RBAC admin gate, the dict-detail
+``_detail_message`` variant the job API needs, and the session-less ``call``
+envelope (the job API uses the Redis-backed job store + broker, not a
+SQLAlchemy session).
 """
 
 from __future__ import annotations
@@ -40,7 +40,6 @@ __all__ = (
     "q1",
     "payload",
     "actor",
-    "is_api_key_identity",
     "require_workspace_permission",
     "require_active",
     "active_actor",
@@ -53,23 +52,18 @@ __all__ = (
 )
 
 
-def is_api_key_identity(data: dict[str, Any]) -> bool:
-    return (data.get("identity") or {}).get("credential_type") == "api_key"
-
-
 def require_workspace_permission(
     data: dict[str, Any], user: AuthUser, workspace_id: int, resource: str, action: str
 ) -> None:
     """Imperative form of ``src/core/auth.py::_require_workspace_permission``.
 
-    API keys are rejected from balancer admin endpoints (same 403 as the HTTP
-    dependency), then the workspace RBAC is checked.
+    Credential type is deliberately *not* consulted. An API key reaches us with
+    a payload identity-service already narrowed to exactly one workspace, whose
+    ``rbac_permissions`` are the requested scopes intersected with what the key's
+    owner effectively holds there -- so a key can never out-reach its owner, and
+    workspace RBAC is the whole gate, same as a session. ``data`` is unused; it
+    stays in the signature so every handler keeps one gate call shape.
     """
-    if is_api_key_identity(data):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="API keys cannot access balancer admin endpoints",
-        )
     ensure_workspace_permission(user, workspace_id, resource, action)
 
 

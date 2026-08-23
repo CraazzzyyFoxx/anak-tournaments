@@ -12,6 +12,12 @@ const formatterCache = new Map<string, Intl.DateTimeFormat>();
 function getFormatter(timeZone: string): Intl.DateTimeFormat {
   let formatter = formatterCache.get(timeZone);
   if (!formatter) {
+    // The pinned locale is deliberate and must stay. This formatter is never
+    // rendered: only `formatToParts` is read, and the parts are parsed back to
+    // numbers (`+p.year`). `en-US` guarantees ASCII digits, so pinning it is
+    // what makes the arithmetic correct — a locale with non-Latin numerals
+    // would make every `+p.*` NaN. Nothing here reaches the UI, so next-intl
+    // is not the right tool.
     formatter = new Intl.DateTimeFormat("en-US", {
       timeZone,
       year: "numeric",

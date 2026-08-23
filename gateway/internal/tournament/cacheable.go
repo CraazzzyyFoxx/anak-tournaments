@@ -30,7 +30,16 @@ var PublicCacheableReads = map[string]respcache.Rule{
 	// anonymous-written 200 is byte-identical to what any authorized viewer
 	// would receive — logged-in spectators share the anonymous entries
 	// read-only (misses still go upstream with their own identity).
-	"/api/v1/tournaments/{id}":           {Extract: respcache.FromPathValue("id"), AuthedRead: true},
+	// {id} is a legacy numeric id or the public slug (tournament-service
+	// resolves either); ExtractFromBody falls back to the response's own
+	// "id" field when the path segment doesn't parse as one, so a slug
+	// request still populates and hits the cache instead of silently
+	// bypassing it.
+	"/api/v1/tournaments/{id}": {
+		Extract:         respcache.FromPathValue("id"),
+		ExtractFromBody: respcache.ExtractIDFromJSONBody(),
+		AuthedRead:      true,
+	},
 	"/api/v1/tournaments/{id}/stages":    {Extract: respcache.FromPathValue("id"), AuthedRead: true},
 	"/api/v1/tournaments/{id}/standings": {Extract: respcache.FromPathValue("id"), AuthedRead: true},
 	// Bracket/matches/teams tabs: list reads carry tournament_id as a query

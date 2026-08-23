@@ -47,7 +47,7 @@ export function FeedStatusCard({ feed }: Readonly<FeedStatusCardProps>) {
             {feed.last_error ? <p className="text-sm text-destructive">{feed.last_error}</p> : null}
             {feed.header_row_json?.length ? (
               <div>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/75">
                   Detected headers ({feed.header_row_json.length})
                 </p>
                 <div className="flex flex-wrap gap-1.5">

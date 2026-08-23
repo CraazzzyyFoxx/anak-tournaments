@@ -1,7 +1,7 @@
 """Team logo upload/delete: the S3 <-> DB contract, with no DB and no S3.
 
 Three things can only go wrong in the seam between ``upload_avatar`` and
-``team_service.set_team_image``, and none of them is visible to a type checker:
+``team_service.team_service.set_team_image``, and none of them is visible to a type checker:
 
 1. the upload's ``public_url`` must be what lands on the team (not the key, not
    ``None``) and must survive serialization out to ``TeamRead.image_url``;
@@ -154,7 +154,12 @@ class SetTeamImage(IsolatedAsyncioTestCase):
             self.commits = 0
 
         async def execute(self, _query):
-            return SimpleNamespace(scalar_one_or_none=lambda: self._team)
+            # ``TeamRepository.get`` reads through ``.unique().scalars().first()``.
+            scalars = SimpleNamespace(first=lambda: self._team, all=lambda: [self._team] if self._team else [])
+            return SimpleNamespace(
+                scalar_one_or_none=lambda: self._team,
+                unique=lambda: SimpleNamespace(scalars=lambda: scalars),
+            )
 
         async def commit(self) -> None:
             self.commits += 1
@@ -171,9 +176,9 @@ class SetTeamImage(IsolatedAsyncioTestCase):
 
         with (
             patch.object(team_service, "enqueue_tournament_changed", fake_enqueue),
-            patch.object(team_service, "get_team", fake_get_team),
+            patch.object(team_service.team_service, "get_team", fake_get_team),
         ):
-            result = await team_service.set_team_image(session, TEAM_ID, image_url)
+            result = await team_service.team_service.set_team_image(session, TEAM_ID, image_url)
         return result, session, enqueued
 
     async def test_sets_url_enqueues_and_returns_reloaded_team(self):
@@ -245,7 +250,7 @@ class TeamImageSubjects(IsolatedAsyncioTestCase):
             patch.object(team_binary, "upload_avatar", fake_upload_avatar),
             patch.object(team_binary.auth, "get_team_workspace_id", fake_workspace_id),
             patch.object(team_binary.team_service, "set_team_image", fake_set_team_image),
-            patch.object(team_binary.team_flows, "to_pydantic", fake_to_pydantic),
+            patch.object(team_binary.team_flows.flows_service, "to_pydantic", fake_to_pydantic),
         ):
             envelope = await broker.handlers[subject](data, None)
         self.upload_kwargs = upload_kwargs

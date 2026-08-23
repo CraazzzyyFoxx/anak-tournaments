@@ -348,7 +348,7 @@ def test_manual_transition_pauses_automation() -> None:
             try:
                 # Manual transition (automated defaults to False) — commits internally.
                 async with session_maker() as session:
-                    await admin_tournament_service.transition_status(
+                    await admin_tournament_service.tournament_service.transition_status(
                         session,
                         tournament_id,
                         enums.TournamentStatus.CHECK_IN,

@@ -260,6 +260,21 @@ export function TournamentSettingsTab({
                 />
               </div>
               <div>
+                <Label htmlFor="settings-slug" className="text-xs">
+                  Public URL slug
+                </Label>
+                <Input
+                  id="settings-slug"
+                  value={formData.slug}
+                  onChange={(event) => setFormData({ ...formData, slug: event.target.value })}
+                  className="mt-1.5 bg-background/50"
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Used in the public tournament URL. Changing it keeps the previous link working
+                  via a redirect.
+                </p>
+              </div>
+              <div>
                 <Label htmlFor="settings-description" className="text-xs">
                   Description
                 </Label>

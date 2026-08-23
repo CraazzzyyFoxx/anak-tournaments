@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
 import { Globe, Lock, X } from "lucide-react";
+import { useFormatter } from "next-intl";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -76,6 +77,8 @@ function AuditEntryDialog({
   entry: AuditLogRead | null;
   onOpenChange: (open: boolean) => void;
 }>) {
+  // Before the `entry` guard: hooks may not sit behind an early return.
+  const format = useFormatter();
   if (!entry) return null;
 
   const action = describeAuditAction(entry.action);
@@ -98,7 +101,7 @@ function AuditEntryDialog({
         <DialogHeader>
           <DialogTitle>{action.label}</DialogTitle>
           <DialogDescription>
-            {formatAuditTimestamp(entry.created_at)} &middot; by {formatAuditActor(entry)}
+            {formatAuditTimestamp(format, entry.created_at)} &middot; by {formatAuditActor(entry)}
             {target ? ` · ${target}` : ""}
           </DialogDescription>
         </DialogHeader>
@@ -148,6 +151,7 @@ export default function AdminAuditPage() {
   const { isSuperuser } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const [openEntry, setOpenEntry] = useState<AuditLogRead | null>(null);
+  const format = useFormatter();
 
   // Filters this page owns. The table owns `page`, `search`, `per_page`, `sort`
   // and `dir` and writes them straight through the History API, so these five
@@ -231,7 +235,7 @@ export default function AdminAuditPage() {
         ? "The audit log has no entries yet. It records admin actions from the moment it was switched on, so history begins with the next change."
         : "The audit log has no entries in this workspace yet. It records admin actions from the moment it was switched on, so history begins with the next change.";
     }
-    return `No activity recorded${allWorkspaces ? "" : " in this workspace"} since the audit log started on ${formatAuditDate(historyStart.data)}. Anything done before that date left no trail — there is no backfill.`;
+    return `No activity recorded${allWorkspaces ? "" : " in this workspace"} since the audit log started on ${formatAuditDate(format, historyStart.data)}. Anything done before that date left no trail — there is no backfill.`;
   })();
 
   const columns: ColumnDef<AuditLogRead>[] = [
@@ -244,7 +248,7 @@ export default function AdminAuditPage() {
           dateTime={row.original.created_at}
           className="whitespace-nowrap text-sm tabular-nums text-muted-foreground"
         >
-          {formatAuditTimestamp(row.original.created_at)}
+          {formatAuditTimestamp(format, row.original.created_at)}
         </time>
       ),
     },

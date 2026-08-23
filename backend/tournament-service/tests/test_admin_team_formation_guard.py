@@ -125,7 +125,7 @@ def _run_update(draft_status: str | None, update: admin_schemas.TournamentUpdate
                 error: BaseAPIException | None = None
                 async with session_maker() as session:
                     try:
-                        await admin_tournament.update_tournament(session, tid, update)
+                        await admin_tournament.tournament_service.update_tournament(session, tid, update)
                     except BaseAPIException as exc:
                         error = exc
                         await session.rollback()
@@ -176,6 +176,14 @@ class _FakeResult:
     def scalar_one_or_none(self):
         return self._value
 
+    # Repositories read the row off `.unique().scalars().first()`.
+    def unique(self):
+        return self
+
+    def scalars(self):
+        rows = [self._value] if self._value is not None else []
+        return SimpleNamespace(first=lambda: self._value, all=lambda: rows)
+
 
 class _FakeSession:
     """Just enough of AsyncSession for the pre-commit part of update_tournament."""
@@ -224,11 +232,11 @@ def _run_update_unit(monkeypatch, *, draft_status, update: admin_schemas.Tournam
         return tournament
 
     monkeypatch.setattr(admin_tournament, "enqueue_tournament_changed", _noop)
-    monkeypatch.setattr(admin_tournament, "get_tournament", _noop)
+    monkeypatch.setattr(admin_tournament.tournament_service, "get_tournament", _noop)
 
     error: BaseAPIException | None = None
     try:
-        asyncio.run(admin_tournament.update_tournament(session, tournament.id, update))
+        asyncio.run(admin_tournament.tournament_service.update_tournament(session, tournament.id, update))
     except BaseAPIException as exc:
         error = exc
     return error, session, tournament

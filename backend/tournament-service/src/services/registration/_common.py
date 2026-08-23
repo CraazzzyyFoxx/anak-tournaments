@@ -22,6 +22,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES, normalize_sub_role
 from shared.hero_catalog import HeroCatalog
+from shared.repository import RegistrationFormRepository, TournamentRepository
 from src import models
 from src.schemas.registration import CustomFieldDefinition
 from src.services.registration.utils import DEFAULT_SORT_PRIORITY_SENTINEL
@@ -39,13 +40,6 @@ NOT_ADDED_BALANCER_STATUS = "not_in_balancer"
 EXCLUDED_BALANCER_STATUS = "excluded"
 
 
-def _register_registration_changed(
-    session: AsyncSession,
-    registration: models.BalancerRegistration,
-) -> None:
-    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
-
-
 BATTLE_TAG_RE = re.compile(r"[\w][\w ]{0,30}#[0-9]{3,}", re.UNICODE)
 
 
@@ -61,49 +55,6 @@ def get_tournament_grid_from_rows(
     return load_runtime_grid(fallback_version)
 
 
-async def get_tournament_grid(session: AsyncSession, tournament_id: int) -> DivisionGrid:
-    fallback_version = await session.scalar(
-        sa.select(models.DivisionGridVersion)
-        .join(models.DivisionGrid, models.DivisionGrid.id == models.DivisionGridVersion.grid_id)
-        .options(selectinload(models.DivisionGridVersion.tiers))
-        .where(models.DivisionGrid.workspace_id.is_(None))
-        .order_by(models.DivisionGridVersion.id.asc())
-        .limit(1)
-    )
-    result = await session.execute(
-        sa.select(models.Tournament, models.Workspace)
-        .join(models.Workspace, models.Workspace.id == models.Tournament.workspace_id)
-        .options(
-            selectinload(models.Tournament.division_grid_version).selectinload(models.DivisionGridVersion.tiers),
-            selectinload(models.Workspace.default_division_grid_version).selectinload(models.DivisionGridVersion.tiers),
-        )
-        .where(models.Tournament.id == tournament_id)
-    )
-    row = result.first()
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-    tournament_row, workspace_row = row
-    return get_tournament_grid_from_rows(tournament_row, workspace_row, fallback_version)
-
-
-async def ensure_tournament_exists(session: AsyncSession, tournament_id: int) -> models.Tournament:
-    result = await session.execute(sa.select(models.Tournament).where(models.Tournament.id == tournament_id))
-    tournament = result.scalar_one_or_none()
-    if tournament is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-    return tournament
-
-
-async def get_registration_form(
-    session: AsyncSession,
-    tournament_id: int,
-) -> models.BalancerRegistrationForm | None:
-    result = await session.execute(
-        sa.select(models.BalancerRegistrationForm).where(models.BalancerRegistrationForm.tournament_id == tournament_id)
-    )
-    return result.scalar_one_or_none()
-
-
 def form_custom_field_defs(
     form: models.BalancerRegistrationForm | None,
 ) -> list[CustomFieldDefinition]:
@@ -116,14 +67,6 @@ def form_custom_field_defs(
         else:
             defs.append(CustomFieldDefinition.model_validate(value or {}))
     return defs
-
-
-async def get_form_custom_field_defs(
-    session: AsyncSession,
-    tournament_id: int,
-) -> list[CustomFieldDefinition]:
-    form = await get_registration_form(session, tournament_id)
-    return form_custom_field_defs(form)
 
 
 FlexRoleMode = Literal["optional", "all_roles", "forced"]
@@ -320,3 +263,76 @@ def is_included_in_balancer(
         if meta is not None:
             return not meta["excludes_from_balancer"]
     return not is_balancer_status_excluded(balancer_status)
+
+
+class RegistrationCommonService:
+    """Cross-cutting registration lookups shared by the admin subsystems."""
+
+    def __init__(
+        self,
+        *,
+        form_repo: RegistrationFormRepository = RegistrationFormRepository(),
+        tournament_repo: TournamentRepository = TournamentRepository(),
+    ) -> None:
+        self.form_repo = form_repo
+        self.tournament_repo = tournament_repo
+
+    def _register_registration_changed(
+        self,
+        session: AsyncSession,
+        registration: models.BalancerRegistration,
+    ) -> None:
+        register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
+
+    async def get_tournament_grid(self, session: AsyncSession, tournament_id: int) -> DivisionGrid:
+        # Analytical, not CRUD: the fallback is a join + order + limit across two
+        # tables, and the second read returns a (Tournament, Workspace) pair with
+        # nested eager loads. Neither fits behind a repository method.
+        fallback_version = await session.scalar(
+            sa.select(models.DivisionGridVersion)
+            .join(models.DivisionGrid, models.DivisionGrid.id == models.DivisionGridVersion.grid_id)
+            .options(selectinload(models.DivisionGridVersion.tiers))
+            .where(models.DivisionGrid.workspace_id.is_(None))
+            .order_by(models.DivisionGridVersion.id.asc())
+            .limit(1)
+        )
+        result = await session.execute(
+            sa.select(models.Tournament, models.Workspace)
+            .join(models.Workspace, models.Workspace.id == models.Tournament.workspace_id)
+            .options(
+                selectinload(models.Tournament.division_grid_version).selectinload(models.DivisionGridVersion.tiers),
+                selectinload(models.Workspace.default_division_grid_version).selectinload(
+                    models.DivisionGridVersion.tiers
+                ),
+            )
+            .where(models.Tournament.id == tournament_id)
+        )
+        row = result.first()
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+        tournament_row, workspace_row = row
+        return get_tournament_grid_from_rows(tournament_row, workspace_row, fallback_version)
+
+    async def ensure_tournament_exists(self, session: AsyncSession, tournament_id: int) -> models.Tournament:
+        tournament = await self.tournament_repo.get(session, tournament_id)
+        if tournament is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+        return tournament
+
+    async def get_registration_form(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+    ) -> models.BalancerRegistrationForm | None:
+        return await self.form_repo.get_by_tournament(session, tournament_id)
+
+    async def get_form_custom_field_defs(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+    ) -> list[CustomFieldDefinition]:
+        form = await self.get_registration_form(session, tournament_id)
+        return form_custom_field_defs(form)
+
+
+_common_service = RegistrationCommonService()

@@ -132,6 +132,14 @@ DOCS: dict[str, dict] = {
         "summary": "Revoke API key",
         "description": "Revokes the active user's API key by id; returns 204 No Content.",
     },
+    "rpc.identity.api_key.self": {
+        "summary": "Describe the calling API key",
+        "description": (
+            "Returns the descriptor -- name, scopes, limits, config policy, expiry -- of the API key "
+            "presented on this request, so a scripted client can discover its own authority and budget. "
+            "Requires an API-key credential: a session bearer gets 403."
+        ),
+    },
     # ── RBAC: permissions ──────────────────────────────────────────────────
     "rpc.identity.rbac.list_permissions": {
         "summary": "List permissions",

@@ -84,7 +84,7 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
               <WorkspaceBrandIcon
                 name={tenantWorkspace.name}
                 iconUrl={tenantWorkspace.iconUrl}
-                className="size-[22px] rounded-sm text-[10px]"
+                className="size-[22px] rounded-sm text-[11px]"
               />
             ) : (
               <Image

@@ -16,6 +16,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/clientip"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/httplog"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/protocol"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/principal"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/ratelimit"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/replay"
 )
@@ -156,6 +157,44 @@ func NewHandler(hub *Hub, a *auth.Authenticator, authz Authorizer, rep Replayer,
 		customDomainLimiter: customDomainLimiter,
 		limits:              limits,
 		anonConns:           newIPCounter(),
+	}
+}
+
+// PrincipalResolver judges an opaque credential against identity-svc and
+// returns its typed identity — principal.Resolver.PrincipalToken. Taken as a
+// function so this package does not own the RPC wiring.
+type PrincipalResolver func(ctx context.Context, token string) (principal.Info, bool, error)
+
+// APIKeyAuth adapts resolve into an auth.APIKeyResolver, so an `aqt_sk_` API
+// key can authenticate a WebSocket connection that the local JWT parser could
+// never decode (a key carries no claims). Wire it into the authenticator handed
+// to NewHandler — and ONLY that one: resolve performs an identity RPC on a
+// cache miss, which must not happen on the access-log/metrics path.
+//
+// The principal it builds is deliberately narrower than the payload permits:
+//
+//   - IsSuperuser is always false. A key must never inherit its owner's
+//     superuser bit, which the topic ACL treats as a blanket membership bypass
+//     (acl.allowWorkspaceMember) — that would hand every workspace's feed to a
+//     credential scoped to exactly one.
+//   - a key holding NO workspace grant stays anonymous. The workspace topic
+//     gate is membership-based (IsWorkspaceMember, keyed by the OWNER's user
+//     id), so it cannot tell an empty-scope key from a fully-scoped one: once
+//     authenticated, either would receive the owner's whole workspace feed.
+//     Requiring at least one grant keeps "empty scopes = zero permissions" true
+//     on this surface too. It is coarse on purpose — the socket has no
+//     per-topic permission model to be more precise with.
+//   - ExpiresAt stays zero, so ServeHTTP binds no deadline: unlike an access
+//     token, a key has no exp to bind to. A revoked key is therefore refused
+//     every new handshake (and every REST call) within apiKeyCacheTTL, but an
+//     ALREADY OPEN socket keeps its subscriptions until it drops.
+func APIKeyAuth(resolve PrincipalResolver) auth.APIKeyResolver {
+	return func(ctx context.Context, token string) *auth.User {
+		info, ok, err := resolve(ctx, token)
+		if err != nil || !ok || info.UserID == 0 || info.WorkspaceGrants == 0 {
+			return nil
+		}
+		return &auth.User{ID: info.UserID}
 	}
 }
 

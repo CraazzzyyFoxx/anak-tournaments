@@ -29,6 +29,7 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
+from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from src.services.balancer import jobs  # noqa: E402
 from src.services.balancer import solver as solver_module  # noqa: E402
@@ -48,6 +49,24 @@ def _noop_limiter() -> SimpleNamespace:
         check_request=AsyncMock(),
         reserve_job=AsyncMock(),
         release_job=AsyncMock(),
+    )
+
+
+def _api_key_user(*, scopes: list[str], workspace_id: int = 77) -> SimpleNamespace:
+    """An API-key principal shaped the way ``_resolve_user_from_token`` builds one.
+
+    ``has_workspace_permission`` stands in for the scope-intersected
+    ``rbac_permissions`` identity-service writes into the key's single workspace.
+    """
+    return SimpleNamespace(
+        id=9,
+        _credential_type="api_key",
+        _api_key_id=42,
+        _api_key_workspace_id=workspace_id,
+        _api_key_scopes=scopes,
+        has_workspace_permission=lambda ws_id, resource, action: ws_id == workspace_id
+        and resource == "team"
+        and action == "create",
     )
 
 
@@ -229,13 +248,14 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             reserve_job=AsyncMock(side_effect=lambda user, job_id: created.update(reserved=(user._api_key_id, job_id))),
             release_job=AsyncMock(),
         )
-        access_policy = SimpleNamespace(ensure_workspace_access=lambda *a, **k: None)
-        user = SimpleNamespace(id=9, _credential_type="api_key", _api_key_id=42)
+        # Deliberately NOT stubbing ``_access_policy``: the real
+        # WorkspaceAccessPolicy must admit a correctly scoped key, which is the
+        # whole point of dropping the old blanket api-key rejection.
+        user = _api_key_user(scopes=["team.create"])
 
         with (
             patch(f"{JOBS}.get_job_store", return_value=FakeStore()),
             patch(f"{JOBS}.get_api_key_limiter", return_value=limiter),
-            patch(f"{JOBS}._access_policy", access_policy),
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.is_api_key_principal", return_value=True),
             patch(f"{JOBS}.get_api_key_id", return_value=42),
@@ -261,6 +281,38 @@ class CreateJobTests(IsolatedAsyncioTestCase):
         self.assertEqual(created["credential_type"], "api_key")
         self.assertEqual(created["api_key_id"], 42)
         limiter.release_job.assert_not_awaited()
+
+    async def test_api_key_create_job_rejected_without_team_create_scope(self) -> None:
+        """The real scope gate stops an under-scoped key before any work is done.
+
+        ``ensure_workspace_access`` runs ahead of payload parsing and job
+        reservation, so a rejected request must not consume a job slot -- the
+        per-minute request check is the only quota it is allowed to touch.
+        """
+        limiter = SimpleNamespace(
+            check_request=AsyncMock(),
+            reserve_job=AsyncMock(),
+            release_job=AsyncMock(),
+        )
+        user = _api_key_user(scopes=["registration.approve"])
+
+        with (
+            patch(f"{JOBS}.get_job_store", return_value=SimpleNamespace()),
+            patch(f"{JOBS}.get_api_key_limiter", return_value=limiter),
+            self.assertRaises(HTTPException) as exc_info,
+        ):
+            await jobs.create_job(
+                session=SimpleNamespace(),
+                uploaded_file=SimpleNamespace(filename="players.json", size=1024),
+                raw_config=None,
+                workspace_id=77,
+                user=user,
+                broker=SimpleNamespace(),
+            )
+
+        self.assertEqual(exc_info.exception.status_code, 403)
+        self.assertEqual(exc_info.exception.detail, "API key scope required: team.create")
+        limiter.reserve_job.assert_not_awaited()
 
 
 def _make_fake_store(payload: dict, *, fail_marks: bool = False, optimizing_messages: list | None = None):

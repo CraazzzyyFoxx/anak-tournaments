@@ -38,7 +38,7 @@ from src.core import auth
 from src.rpc._helpers import _dump, _identity, _path_int, _payload, _run
 from src.schemas.admin import stage as admin_schemas
 from src.schemas.admin.computation import TournamentComputationJobRead
-from src.services.admin import stage as stage_service
+from src.services.admin.stage import stage_service
 from src.services.computation import jobs as computation_jobs
 
 # --- helpers -----------------------------------------------------------------

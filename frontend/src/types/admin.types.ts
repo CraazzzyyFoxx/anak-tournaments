@@ -273,6 +273,8 @@ export interface TournamentCreateInput {
   name: string;
   description?: string;
   is_league: boolean;
+  /** Public-URL slug; left blank, one is generated from `name`. */
+  slug?: string;
   /** Lazy wizard drafts (D4) are created Unpublished and published later. */
   is_hidden?: boolean;
   status?: TournamentStatus;
@@ -289,6 +291,8 @@ export interface TournamentUpdateInput {
   name?: string;
   description?: string | null;
   challonge_slug?: string | null;
+  /** Renames the public-URL slug; the retired value keeps resolving via a redirect. */
+  slug?: string | null;
   is_league?: boolean;
   is_finished?: boolean;
   is_hidden?: boolean;

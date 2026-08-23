@@ -40,6 +40,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.identity.list_api_keys": Op(response=schemas.ApiKeyListResponse, query=schemas.ApiKeyListQueryParams),
     "rpc.identity.create_api_key": Op(request=schemas.ApiKeyCreate, response=schemas.ApiKeyCreateResponse),
     "rpc.identity.update_api_key": Op(request=schemas.ApiKeyUpdate, response=schemas.ApiKeyRead),
+    "rpc.identity.api_key.self": Op(response=schemas.ApiKeyRead),
     # ── RBAC: permissions ──────────────────────────────────────────────────
     "rpc.identity.rbac.list_permissions": Op(
         response=Paginated[schemas.PermissionRead], query=schemas.PermissionListQueryParams

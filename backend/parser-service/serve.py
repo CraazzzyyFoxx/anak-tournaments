@@ -49,9 +49,7 @@ from src.clients.overfast import overfast_catalog_client
 from src.core import config, db
 from src.core.broker import set_worker_broker
 from src.core.caching import configure_cache
-from src.rpc import (
-    _clients,
-)
+from src.core.clients import realtime_redis, s3_client
 from src.rpc import (
     achievements as rpc_achievements,
 )
@@ -131,9 +129,6 @@ set_worker_broker(broker)
 # before any subscriber runs so cache reads/invalidation are routable.
 configure_cache()
 
-# Process-global S3 client shared with the match-log RPC/binary handlers.
-s3_client = _clients.s3_client
-
 # Typed-RPC subscribers for parser-unique domains served behind the gateway.
 rpc_logs.register(broker, logger)
 rpc_rank.register(broker, logger)
@@ -181,7 +176,7 @@ async def start_worker() -> None:
     rank_scheduler.start_scheduler()
     # Requeue match-log records the queue dropped (expired ProcessMatchLogEvent,
     # worker killed mid-parse). Redis leader-locked across worker replicas.
-    logs_reaper.start_scheduler(redis=_clients.realtime_redis, broker=broker)
+    logs_reaper.start_scheduler(redis=realtime_redis, broker=broker)
     subscription_scheduler.start_scheduler()
     logger.info("Parser worker started")
 
@@ -195,7 +190,7 @@ async def stop_worker() -> None:
     await overfast_catalog_client.close()
     await rank_tasks.rank_client.close()
     await rank_tasks.close_redis()
-    await _clients.realtime_redis.aclose()
+    await realtime_redis.aclose()
 
 
 @broker.subscriber(UPLOAD_MATCH_LOG_QUEUE, channel=_JOBS_CHANNEL)
@@ -281,7 +276,7 @@ async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
                     failed_workspace_id = await session.scalar(
                         sa.select(models.Tournament.workspace_id).where(models.Tournament.id == event.tournament_id)
                     )
-                await logs_realtime.publish_logs_updated(_clients.realtime_redis, failed_workspace_id, reason="failed")
+                await logs_realtime.publish_logs_updated(realtime_redis, failed_workspace_id, reason="failed")
             except Exception:
                 log.exception("Failed to emit logs.updated realtime signal")
             raise
@@ -296,7 +291,7 @@ async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
             )
             if workspace_id is None:
                 raise RuntimeError(f"Tournament {event.tournament_id} not found")
-            await logs_realtime.publish_logs_updated(_clients.realtime_redis, workspace_id, reason="done")
+            await logs_realtime.publish_logs_updated(realtime_redis, workspace_id, reason="done")
             achievement_event = AchievementEvaluateEvent(
                 workspace_id=workspace_id,
                 tournament_id=event.tournament_id,

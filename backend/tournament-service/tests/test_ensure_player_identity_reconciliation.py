@@ -146,7 +146,7 @@ def test_reuses_account_owned_player_and_attaches_new_battle_tag() -> None:
 
             async with session_maker() as session:
                 registration = _registration(battle_tag=battle_tag)
-                resolved = await reg_service.ensure_player_identity(session, registration, auth_user_id=auth_user_id)
+                resolved = await reg_service.registration_service.ensure_player_identity(session, registration, auth_user_id=auth_user_id)
                 await session.commit()
 
             async with session_maker() as session:
@@ -186,7 +186,7 @@ def test_colliding_shadow_battle_tag_collapses_onto_account_owned_player() -> No
 
             async with session_maker() as session:
                 registration = _registration(battle_tag=battle_tag)
-                resolved = await reg_service.ensure_player_identity(session, registration, auth_user_id=auth_user_id)
+                resolved = await reg_service.registration_service.ensure_player_identity(session, registration, auth_user_id=auth_user_id)
                 await session.commit()
 
             async with session_maker() as session:
@@ -230,7 +230,7 @@ def test_shadow_only_no_account_falls_back_to_battle_tag_dedup() -> None:
 
             async with session_maker() as session:
                 registration = _registration(battle_tag=battle_tag)
-                resolved = await reg_service.ensure_player_identity(session, registration, auth_user_id=None)
+                resolved = await reg_service.registration_service.ensure_player_identity(session, registration, auth_user_id=None)
                 await session.commit()
 
             return shadow_id, resolved

@@ -38,6 +38,7 @@ def _tournament() -> models.Tournament:
         updated_at=None,
         workspace_id=1,
         name="Tournament 10",
+        slug="tournament-10",
         description=None,
         is_league=False,
         is_finished=False,
@@ -63,7 +64,7 @@ class TournamentSerializationTests(IsolatedAsyncioTestCase):
         tournament = _tournament()
         make_transient_to_detached(tournament)
 
-        read = await flows.to_pydantic(cast(AsyncSession, object()), tournament, [])
+        read = await flows.flows_service.to_pydantic(cast(AsyncSession, object()), tournament, [])
 
         self.assertEqual(5, read.division_grid_version_id)
         self.assertIsNone(read.division_grid_version)
@@ -85,7 +86,7 @@ class TournamentSerializationTests(IsolatedAsyncioTestCase):
         ]
         make_transient_to_detached(tournament)
 
-        read = await flows.to_pydantic(cast(AsyncSession, object()), tournament, [])
+        read = await flows.flows_service.to_pydantic(cast(AsyncSession, object()), tournament, [])
 
         self.assertTrue(read.auto_transitions_enabled)
         self.assertFalse(read.allow_late_registration)
@@ -107,11 +108,11 @@ class TournamentSerializationTests(IsolatedAsyncioTestCase):
         count_boundary = AsyncMock(return_value=20)
 
         with patch.object(
-            team_service,
+            team_service.team_service,
             "get_team_count_by_tournament",
             count_boundary,
         ):
-            read = await flows.to_pydantic(
+            read = await flows.flows_service.to_pydantic(
                 session,
                 tournament,
                 ["teams_count"],
@@ -126,17 +127,17 @@ class TournamentSerializationTests(IsolatedAsyncioTestCase):
         unexpected_count = AsyncMock(side_effect=AssertionError("unrequested count query"))
 
         with patch.object(
-            team_service,
+            team_service.team_service,
             "get_team_count_by_tournament",
             unexpected_count,
         ):
-            read = await flows.to_pydantic(cast(AsyncSession, object()), tournament, [])
+            read = await flows.flows_service.to_pydantic(cast(AsyncSession, object()), tournament, [])
 
         self.assertIsNone(read.teams_count)
         unexpected_count.assert_not_awaited()
 
     async def test_bulk_team_count_skips_database_for_empty_tournament_ids(self) -> None:
-        result = await team_service.get_team_count_by_tournament_bulk(
+        result = await team_service.team_service.get_team_count_by_tournament_bulk(
             cast(AsyncSession, object()),
             [],
         )
@@ -157,19 +158,19 @@ class TournamentSerializationTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                flows.service,
+                flows.flows_service.tournaments,
                 "get_all",
                 AsyncMock(return_value=([tournament, second_tournament], 2)),
             ),
             patch.object(flows, "resolve_tournament_challonge", AsyncMock(return_value={})),
-            patch.object(team_service, "get_team_count_by_tournament_bulk", bulk_count_boundary),
+            patch.object(team_service.team_service, "get_team_count_by_tournament_bulk", bulk_count_boundary),
             patch.object(
-                team_service,
+                team_service.team_service,
                 "get_team_count_by_tournament",
                 unexpected_singular_count,
             ),
         ):
-            page = await flows.get_all(session, params)
+            page = await flows.flows_service.get_all(session, params)
 
         self.assertEqual([20, 16], [item.teams_count for item in page.results])
         bulk_count_boundary.assert_awaited_once_with(session, [tournament.id, second_tournament.id])
@@ -183,11 +184,11 @@ class TournamentSerializationTests(IsolatedAsyncioTestCase):
         unexpected_bulk_count = AsyncMock(side_effect=AssertionError("unrequested bulk count query"))
 
         with (
-            patch.object(flows.service, "get_all", AsyncMock(return_value=([tournament], 1))),
+            patch.object(flows.flows_service.tournaments, "get_all", AsyncMock(return_value=([tournament], 1))),
             patch.object(flows, "resolve_tournament_challonge", AsyncMock(return_value={})),
-            patch.object(team_service, "get_team_count_by_tournament_bulk", unexpected_bulk_count),
+            patch.object(team_service.team_service, "get_team_count_by_tournament_bulk", unexpected_bulk_count),
         ):
-            page = await flows.get_all(session, params)
+            page = await flows.flows_service.get_all(session, params)
 
         self.assertIsNone(page.results[0].teams_count)
         unexpected_bulk_count.assert_not_awaited()

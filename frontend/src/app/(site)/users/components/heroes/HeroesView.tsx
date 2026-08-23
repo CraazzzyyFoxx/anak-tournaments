@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { Activity } from "lucide-react";
 import { HeroWithUserStats } from "@/types/hero.types";
 import type { UserMapRead } from "@/types/user.types";
@@ -39,6 +39,7 @@ interface Props {
 
 const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
   const t = useTranslations();
+  const format = useFormatter();
   const safeHeroes = Array.isArray(heroes) ? heroes : [];
 
   // Compact label for spotlight quick-stats (falls back to humanized stat name).
@@ -170,13 +171,13 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
         return {
           name: s.name,
           label: getHumanizedStats(s.name),
-          value: formatStatValue(s.name, s.avg_10),
+          value: formatStatValue(format, s.name, s.avg_10),
           delta
         };
       })
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
       .slice(0, 8);
-  }, [selected]);
+  }, [selected, format]);
 
   // Spotlight quick-stats (Winrate / KDA / Dmg10 …) with delta vs global.
   const quickStats = useMemo(() => {
@@ -191,12 +192,12 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
       const winrateValue =
         stat.avg_10 <= 1 ? formatPercent(stat.avg_10, 0) : `${stat.avg_10.toFixed(0)}%`;
       const value =
-        name === LogStatsName.Winrate ? winrateValue : formatStatValue(name, stat.avg_10);
+        name === LogStatsName.Winrate ? winrateValue : formatStatValue(format, name, stat.avg_10);
       out.push({ name, label: quickLabel(name), value, delta });
       if (out.length === 4) break;
     }
     return out;
-  }, [selected, quickLabel]);
+  }, [selected, quickLabel, format]);
 
   // Full per-stat comparison table (All stats mode).
   const allStatsRows = useMemo(() => {
@@ -301,7 +302,7 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
                 <HeroRadar radarData={radarData} />
                 {radarCandidates.length > 0 ? (
                   <div className="flex flex-col gap-1.5">
-                    <span className="text-center text-[10px] font-bold uppercase tracking-[0.14em] text-(--aqt-fg-faint)">
+                    <span className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-(--aqt-fg-faint)">
                       {t("users.heroes.radarAxes")}
                     </span>
                     <RadarAxisPicker selected={radarStats} candidates={radarCandidates} onToggle={toggleRadarStat} />

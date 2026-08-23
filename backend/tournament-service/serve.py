@@ -49,7 +49,7 @@ from src.services.division_grid.import_jobs import process_import_job, recover_s
 # Import for side effects: registers the SQLAlchemy after-commit listeners that
 # publish encounter map-veto realtime signals (encounter:{id}:map-veto).
 from src.services.encounter import realtime_commit as _encounter_realtime_commit  # noqa: F401
-from src.services.registration import admin as registration_service
+from src.services.registration import sheet_sync
 from src.services.tournament import auto_transitions, recalculation_events
 
 logger = setup_logging(
@@ -110,14 +110,14 @@ async def drain_outbox() -> None:
 
 async def sync_registration_google_sheet_feeds() -> None:
     async with observe_scheduled_job("registration_google_sheet_sync"):
-        results = await registration_service.sync_due_google_sheet_feeds(db.async_session_maker)
+        results = await sheet_sync.sync_due_google_sheet_feeds(db.async_session_maker)
         if results:
             logger.info("Registration Google Sheets sync completed", results=results)
 
 
 async def sync_challonge_active_tournaments() -> None:
     async with observe_scheduled_job("challonge_active_sync"):
-        results = await challonge_sync.sync_active_challonge_tournaments(db.async_session_maker)
+        results = await challonge_sync.sync_service.sync_active_challonge_tournaments(db.async_session_maker)
         if results:
             logger.info("Challonge auto-sync completed", results=results)
 

@@ -3271,7 +3271,7 @@
       "summary": "Upload workspace icon"
     },
     "rpc.app.workspaces.list": {
-      "description": "Returns all workspaces (public, unpaginated).",
+      "description": "Returns every workspace, minus hidden ones the caller has no business seeing: a hidden workspace is dropped unless the caller is one of its members (any role) or a superuser (public, optional auth, unpaginated).",
       "response": {
         "array": true,
         "ref": "app.WorkspaceRead"
@@ -3677,6 +3677,14 @@
         "ref": "balancer.JobStatusResponse"
       },
       "summary": "Get balance job status"
+    },
+    "rpc.identity.api_key.self": {
+      "description": "Returns the descriptor -- name, scopes, limits, config policy, expiry -- of the API key presented on this request, so a scripted client can discover its own authority and budget. Requires an API-key credential: a session bearer gets 403.",
+      "response": {
+        "array": false,
+        "ref": "identity.ApiKeyRead"
+      },
+      "summary": "Describe the calling API key"
     },
     "rpc.identity.create_api_key": {
       "description": "Creates a workspace-scoped API key for the active user and returns it including the one-time plaintext key (201).",
@@ -5307,82 +5315,6 @@
       },
       "summary": "User subscription collection status"
     },
-    "rpc.parser.teams.challonge_preview": {
-      "description": "Previews the mapping of Challonge participants to teams for a tournament before syncing; requires challonge.read in the tournament's workspace.",
-      "response": {
-        "array": false,
-        "ref": "parser.ChallongeTeamSyncPreview"
-      },
-      "summary": "Preview Challonge team sync"
-    },
-    "rpc.parser.teams.create_balancer": {
-      "description": "Multipart (base64) import of teams from a balancer export JSON (atravkovs or internal format) for a tournament; requires team.create in the tournament's workspace.",
-      "summary": "Import balancer teams"
-    },
-    "rpc.parser.teams.create_challonge": {
-      "description": "Applies Challonge participant-to-team mappings for a tournament; requires challonge.update in the tournament's workspace.",
-      "request": {
-        "array": false,
-        "ref": "parser.ChallongeTeamSyncRequest"
-      },
-      "response": {
-        "array": false,
-        "ref": "parser.ChallongeTeamSyncResult"
-      },
-      "summary": "Sync Challonge teams"
-    },
-    "rpc.parser.tournament.create_with_groups": {
-      "description": "Creates a tournament and its group stages (optionally from a Challonge slug) for a workspace; requires workspace tournament.create.",
-      "query_params": [
-        {
-          "name": "workspace_id",
-          "required": true,
-          "schema": {
-            "type": "integer"
-          }
-        },
-        {
-          "name": "start_date",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "end_date",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "is_league",
-          "required": false,
-          "schema": {
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "division_grid_version_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
-          }
-        },
-        {
-          "name": "challonge_slug",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "response": {
-        "array": false,
-        "ref": "parser.TournamentRead"
-      },
-      "summary": "Create tournament with groups"
-    },
     "rpc.stream.health": {
       "description": "Outcome of the last Twitch live-status poll tick next to the config that produced it: status, when it ran, how many tournaments and channels it covered, how many channels were live, and Twitch's remaining rate-limit budget. Exists because the tick swallows every Helix failure by design so an outage cannot kill the scheduler \u2014 without this a poller rejected by Twitch is indistinguishable from a working one. A null status means no tick has been recorded yet, which is not the same as a recorded failure. Requires a global stream-read permission: there is one poller for the whole platform, so the numbers carry no workspace dimension and a workspace-scoped grant is not enough.",
       "response": {
@@ -6291,6 +6223,58 @@
       "description": "Lets a captain ban or pick a map in the encounter's veto and returns the updated pool entry; requires authentication.",
       "summary": "Veto map"
     },
+    "rpc.tournament.challonge_create_tournament": {
+      "description": "Creates a tournament from an existing Challonge bracket -- fetches it for the name/description, links it, and imports its current structure and results in one shot; requires workspace tournament.create.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "start_date",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "end_date",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "challonge_slug",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "is_league",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "division_grid_version_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.TournamentRead"
+      },
+      "summary": "Create tournament from Challonge"
+    },
     "rpc.tournament.challonge_export": {
       "description": "Exports a tournament's bracket to Challonge; requires challonge-update permission on the tournament.",
       "summary": "Export to Challonge"
@@ -6330,6 +6314,44 @@
     "rpc.tournament.challonge_sync_log": {
       "description": "Returns recent Challonge sync-log entries for a tournament (limit-bounded); requires challonge-read permission on the tournament.",
       "summary": "Get Challonge sync log"
+    },
+    "rpc.tournament.challonge_team_apply": {
+      "description": "Applies Challonge participant-to-team mappings for a tournament; requires challonge.update on the tournament's workspace.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "request": {
+        "array": false,
+        "ref": "tournament.ChallongeTeamSyncRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.ChallongeTeamSyncResult"
+      },
+      "summary": "Sync Challonge teams"
+    },
+    "rpc.tournament.challonge_team_preview": {
+      "description": "Previews the mapping of Challonge participants to teams for a tournament before syncing; requires challonge.read on the tournament's workspace.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.ChallongeTeamSyncPreview"
+      },
+      "summary": "Preview Challonge team sync"
     },
     "rpc.tournament.encounter_reopen_result": {
       "description": "Un-confirms an encounter so it can be replayed or re-reported, clearing its score, closeness and confirmation, and cascading through anything the old result advanced. Captain reports are kept. 409 when there is no recorded result. Requires match-update permission on the encounter's workspace.",
@@ -7910,6 +7932,22 @@
         "ref": "tournament.BalancerRegistrationStatusRead"
       },
       "summary": "Update custom status"
+    },
+    "rpc.tournament.regteam_image_delete": {
+      "description": "Removes a registered team's image from S3 and clears its URL; only that team's captain may call it, and only while the team is still forming.",
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamRead"
+      },
+      "summary": "Delete registered team image"
+    },
+    "rpc.tournament.regteam_image_upload": {
+      "description": "Uploads a registered team's image to S3 and stores its URL; only that team's captain may call it, and only while the team is still forming.",
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamRead"
+      },
+      "summary": "Upload registered team image"
     },
     "rpc.tournament.report_form_get": {
       "description": "Returns the tournament's captain match-report form config: which built-in fields (closeness, map codes, comment) are enabled and required, plus any organizer-defined text fields. Always a complete config \u2014 a tournament that has never been configured answers the defaults rather than null. Requires match-read permission on the tournament's workspace.",
@@ -11540,7 +11578,7 @@
       "type": "object"
     },
     "app.HeroClass": {
-      "description": "A roster role OR a hero's class -- two concepts on one Postgres type.\n\n``tank``/``damage``/``support`` mean both things at once, which is why the\nsame ``heroclass`` type backs ``overwatch.hero.type``,\n``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``\nonly ever means the third: a player who holds no fixed role, which is what\na role-less (all-``flex``) roster shape drafts and balances for. No hero has\na class of \"flex\", so the two hero-side columns are narrowed back to\n:data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by\nCHECK constraints in the database (migration ``heroflex0001``).\n\nMember NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),\nso the DB sees ``flex`` while the Python value is ``\"Flex\"``.",
+      "description": "A roster role OR a hero's class -- two concepts on one Postgres type.\n\n``tank``/``damage``/``support`` mean both things at once, which is why the\nsame ``heroclass`` type backs ``overwatch.hero.type``,\n``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``\nonly ever means the third: a player who holds no fixed role, which is what\na role-less (all-``flex``) roster shape drafts and balances for. No hero has\na class of \"flex\", so the two hero-side columns are narrowed back to\n:data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by\nCHECK constraints in the database (migration ``heroflex0001``).\n\nMember NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),\nso the DB sees ``flex`` while the Python value is ``\"Flex\"``.\n\nTHE single role enum for the whole backend (frontend mirror:\n``PlayerRoleOption`` in ``lib/player-role.ts``). Draft/balancer/registration\ncode historically spelled ``damage`` as ``dps`` -- that spelling is a wire\nformat, not a second role vocabulary, and lives on as :attr:`slot_code`.",
       "enum": [
         "Tank",
         "Damage",
@@ -17104,8 +17142,22 @@
           "title": "Is Active",
           "type": "boolean"
         },
+        "is_hidden": {
+          "default": false,
+          "title": "Is Hidden",
+          "type": "boolean"
+        },
         "name": {
           "title": "Name",
+          "type": "string"
+        },
+        "newcomer_scope": {
+          "default": "global",
+          "enum": [
+            "global",
+            "workspace"
+          ],
+          "title": "Newcomer Scope",
           "type": "string"
         },
         "seo_description": {
@@ -17386,6 +17438,18 @@
           "default": null,
           "title": "Is Active"
         },
+        "is_hidden": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Hidden"
+        },
         "name": {
           "anyOf": [
             {
@@ -17397,6 +17461,22 @@
           ],
           "default": null,
           "title": "Name"
+        },
+        "newcomer_scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "global",
+                "workspace"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Newcomer Scope"
         },
         "seo_description": {
           "anyOf": [
@@ -18042,7 +18122,13 @@
           "type": "boolean"
         },
         "primary_role": {
-          "$ref": "#/components/schemas/balancer.DraftRole"
+          "enum": [
+            "tank",
+            "dps",
+            "support"
+          ],
+          "title": "Primary Role",
+          "type": "string"
         },
         "rank_value": {
           "anyOf": [
@@ -18058,7 +18144,12 @@
         },
         "secondary_roles": {
           "items": {
-            "$ref": "#/components/schemas/balancer.DraftRole"
+            "enum": [
+              "tank",
+              "dps",
+              "support"
+            ],
+            "type": "string"
           },
           "title": "Secondary Roles",
           "type": "array"
@@ -18146,7 +18237,13 @@
           "title": "Reason Code"
         },
         "role": {
-          "$ref": "#/components/schemas/balancer.DraftRole"
+          "enum": [
+            "tank",
+            "dps",
+            "support"
+          ],
+          "title": "Role",
+          "type": "string"
         },
         "suggestion_score": {
           "anyOf": [
@@ -18252,13 +18349,19 @@
         "target_role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/balancer.DraftRole"
+              "enum": [
+                "tank",
+                "dps",
+                "support"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "title": "Target Role"
         }
       },
       "required": [
@@ -18411,13 +18514,19 @@
         "target_role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/balancer.DraftRole"
+              "enum": [
+                "tank",
+                "dps",
+                "support"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "title": "Target Role"
         }
       },
       "required": [
@@ -18680,15 +18789,6 @@
       "title": "DraftPoolSource",
       "type": "string"
     },
-    "balancer.DraftRole": {
-      "enum": [
-        "tank",
-        "dps",
-        "support"
-      ],
-      "title": "DraftRole",
-      "type": "string"
-    },
     "balancer.DraftRoleEditRequest": {
       "properties": {
         "expected_version": {
@@ -18722,7 +18822,13 @@
           "type": "string"
         },
         "role": {
-          "$ref": "#/components/schemas/balancer.DraftRole"
+          "enum": [
+            "tank",
+            "dps",
+            "support"
+          ],
+          "title": "Role",
+          "type": "string"
         }
       },
       "required": [
@@ -18754,7 +18860,13 @@
           "type": "integer"
         },
         "role": {
-          "$ref": "#/components/schemas/balancer.DraftRole"
+          "enum": [
+            "tank",
+            "dps",
+            "support"
+          ],
+          "title": "Role",
+          "type": "string"
         }
       },
       "required": [
@@ -19244,7 +19356,13 @@
           "type": "integer"
         },
         "role": {
-          "$ref": "#/components/schemas/balancer.DraftRole"
+          "enum": [
+            "tank",
+            "dps",
+            "support"
+          ],
+          "title": "Role",
+          "type": "string"
         }
       },
       "required": [
@@ -20097,6 +20215,13 @@
           "title": "Name",
           "type": "string"
         },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        },
         "workspace_id": {
           "exclusiveMinimum": 0,
           "title": "Workspace Id",
@@ -20199,8 +20324,15 @@
       "type": "object"
     },
     "identity.ApiKeyListResponse": {
-      "description": "Paginated API-key page plus workspace-wide status counts.",
+      "description": "Paginated API-key page, status counts, and the grantable scope set.\n\n``available_scopes`` is the caller's own authority in this workspace, not the\nwhole catalog: the create form must not offer a scope the caller cannot\ndelegate, and the server would refuse it anyway.",
       "properties": {
+        "available_scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Available Scopes",
+          "type": "array"
+        },
         "counts": {
           "$ref": "#/components/schemas/identity.ApiKeyStatusCounts"
         },
@@ -23239,227 +23371,6 @@
       "title": "AchievementRuleUpdate",
       "type": "object"
     },
-    "parser.ChallongeTeamMapping": {
-      "properties": {
-        "group_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Group Id"
-        },
-        "participant_id": {
-          "exclusiveMinimum": 0,
-          "title": "Participant Id",
-          "type": "integer"
-        },
-        "team_id": {
-          "exclusiveMinimum": 0,
-          "title": "Team Id",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "participant_id",
-        "team_id"
-      ],
-      "title": "ChallongeTeamMapping",
-      "type": "object"
-    },
-    "parser.ChallongeTeamPreviewParticipant": {
-      "properties": {
-        "active": {
-          "title": "Active",
-          "type": "boolean"
-        },
-        "challonge_id": {
-          "title": "Challonge Id",
-          "type": "integer"
-        },
-        "challonge_tournament_id": {
-          "title": "Challonge Tournament Id",
-          "type": "integer"
-        },
-        "group_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Group Id"
-        },
-        "group_name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Group Name"
-        },
-        "mapped_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Mapped Team Id"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "participant_id": {
-          "title": "Participant Id",
-          "type": "integer"
-        },
-        "suggested_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Suggested Team Id"
-        }
-      },
-      "required": [
-        "participant_id",
-        "challonge_id",
-        "group_id",
-        "group_name",
-        "challonge_tournament_id",
-        "name",
-        "active",
-        "suggested_team_id",
-        "mapped_team_id"
-      ],
-      "title": "ChallongeTeamPreviewParticipant",
-      "type": "object"
-    },
-    "parser.ChallongeTeamPreviewTeam": {
-      "properties": {
-        "balancer_name": {
-          "title": "Balancer Name",
-          "type": "string"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "balancer_name"
-      ],
-      "title": "ChallongeTeamPreviewTeam",
-      "type": "object"
-    },
-    "parser.ChallongeTeamSyncPreview": {
-      "properties": {
-        "participants": {
-          "items": {
-            "$ref": "#/components/schemas/parser.ChallongeTeamPreviewParticipant"
-          },
-          "title": "Participants",
-          "type": "array"
-        },
-        "teams": {
-          "items": {
-            "$ref": "#/components/schemas/parser.ChallongeTeamPreviewTeam"
-          },
-          "title": "Teams",
-          "type": "array"
-        }
-      },
-      "required": [
-        "teams",
-        "participants"
-      ],
-      "title": "ChallongeTeamSyncPreview",
-      "type": "object"
-    },
-    "parser.ChallongeTeamSyncRequest": {
-      "properties": {
-        "mappings": {
-          "items": {
-            "$ref": "#/components/schemas/parser.ChallongeTeamMapping"
-          },
-          "title": "Mappings",
-          "type": "array"
-        }
-      },
-      "required": [
-        "mappings"
-      ],
-      "title": "ChallongeTeamSyncRequest",
-      "type": "object"
-    },
-    "parser.ChallongeTeamSyncResult": {
-      "properties": {
-        "count": {
-          "title": "Count",
-          "type": "integer"
-        },
-        "created": {
-          "title": "Created",
-          "type": "integer"
-        },
-        "errors": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Errors",
-          "type": "array"
-        },
-        "skipped": {
-          "title": "Skipped",
-          "type": "integer"
-        },
-        "success": {
-          "title": "Success",
-          "type": "boolean"
-        },
-        "unchanged": {
-          "title": "Unchanged",
-          "type": "integer"
-        },
-        "updated": {
-          "title": "Updated",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "success",
-        "count",
-        "created",
-        "updated",
-        "unchanged",
-        "skipped"
-      ],
-      "title": "ChallongeTeamSyncResult",
-      "type": "object"
-    },
     "parser.CollectTriggerRequest": {
       "properties": {
         "social_account_ids": {
@@ -23874,131 +23785,6 @@
         "channel_id"
       ],
       "title": "DiscordChannelUpsert",
-      "type": "object"
-    },
-    "parser.DivisionGridTierRead": {
-      "properties": {
-        "icon_url": {
-          "title": "Icon Url",
-          "type": "string"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "number": {
-          "title": "Number",
-          "type": "integer"
-        },
-        "rank_max": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Rank Max"
-        },
-        "rank_min": {
-          "title": "Rank Min",
-          "type": "integer"
-        },
-        "slug": {
-          "title": "Slug",
-          "type": "string"
-        },
-        "sort_order": {
-          "title": "Sort Order",
-          "type": "integer"
-        },
-        "version_id": {
-          "title": "Version Id",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "id",
-        "version_id",
-        "slug",
-        "number",
-        "name",
-        "sort_order",
-        "rank_min",
-        "rank_max",
-        "icon_url"
-      ],
-      "title": "DivisionGridTierRead",
-      "type": "object"
-    },
-    "parser.DivisionGridVersionRead": {
-      "properties": {
-        "created_from_version_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Created From Version Id"
-        },
-        "grid_id": {
-          "title": "Grid Id",
-          "type": "integer"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "label": {
-          "title": "Label",
-          "type": "string"
-        },
-        "published_at": {
-          "anyOf": [
-            {
-              "format": "date-time",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Published At"
-        },
-        "status": {
-          "title": "Status",
-          "type": "string"
-        },
-        "tiers": {
-          "items": {
-            "$ref": "#/components/schemas/parser.DivisionGridTierRead"
-          },
-          "title": "Tiers",
-          "type": "array"
-        },
-        "version": {
-          "title": "Version",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "id",
-        "grid_id",
-        "version",
-        "label",
-        "status",
-        "created_from_version_id",
-        "published_at"
-      ],
-      "title": "DivisionGridVersionRead",
       "type": "object"
     },
     "parser.EvaluateRequest": {
@@ -25054,264 +24840,6 @@
       "title": "SettingUpsert",
       "type": "object"
     },
-    "parser.StageItemInputRead": {
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "input_type": {
-          "$ref": "#/components/schemas/parser.StageItemInputType"
-        },
-        "slot": {
-          "title": "Slot",
-          "type": "integer"
-        },
-        "source_position": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Source Position"
-        },
-        "source_stage_item_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Source Stage Item Id"
-        },
-        "stage_item_id": {
-          "title": "Stage Item Id",
-          "type": "integer"
-        },
-        "team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Team Id"
-        }
-      },
-      "required": [
-        "id",
-        "stage_item_id",
-        "slot",
-        "input_type",
-        "team_id",
-        "source_stage_item_id",
-        "source_position"
-      ],
-      "title": "StageItemInputRead",
-      "type": "object"
-    },
-    "parser.StageItemInputType": {
-      "enum": [
-        "final",
-        "tentative",
-        "empty"
-      ],
-      "title": "StageItemInputType",
-      "type": "string"
-    },
-    "parser.StageItemRead": {
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "inputs": {
-          "default": [],
-          "items": {
-            "$ref": "#/components/schemas/parser.StageItemInputRead"
-          },
-          "title": "Inputs",
-          "type": "array"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "order": {
-          "title": "Order",
-          "type": "integer"
-        },
-        "stage_id": {
-          "title": "Stage Id",
-          "type": "integer"
-        },
-        "type": {
-          "$ref": "#/components/schemas/parser.StageItemType"
-        }
-      },
-      "required": [
-        "id",
-        "stage_id",
-        "name",
-        "type",
-        "order"
-      ],
-      "title": "StageItemRead",
-      "type": "object"
-    },
-    "parser.StageItemType": {
-      "enum": [
-        "group",
-        "bracket_upper",
-        "bracket_lower",
-        "single_bracket"
-      ],
-      "title": "StageItemType",
-      "type": "string"
-    },
-    "parser.StageRead": {
-      "properties": {
-        "advance_count": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Advance Count"
-        },
-        "challonge_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Challonge Id"
-        },
-        "challonge_slug": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Challonge Slug"
-        },
-        "description": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Description"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "is_active": {
-          "title": "Is Active",
-          "type": "boolean"
-        },
-        "is_completed": {
-          "title": "Is Completed",
-          "type": "boolean"
-        },
-        "is_published": {
-          "default": false,
-          "title": "Is Published",
-          "type": "boolean"
-        },
-        "items": {
-          "default": [],
-          "items": {
-            "$ref": "#/components/schemas/parser.StageItemRead"
-          },
-          "title": "Items",
-          "type": "array"
-        },
-        "max_rounds": {
-          "title": "Max Rounds",
-          "type": "integer"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "order": {
-          "title": "Order",
-          "type": "integer"
-        },
-        "settings_json": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Settings Json"
-        },
-        "split_lower_bracket": {
-          "default": false,
-          "title": "Split Lower Bracket",
-          "type": "boolean"
-        },
-        "stage_type": {
-          "$ref": "#/components/schemas/parser.StageType"
-        },
-        "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "id",
-        "tournament_id",
-        "name",
-        "description",
-        "stage_type",
-        "max_rounds",
-        "order",
-        "is_active",
-        "is_completed",
-        "settings_json",
-        "challonge_id",
-        "challonge_slug"
-      ],
-      "title": "StageRead",
-      "type": "object"
-    },
-    "parser.StageType": {
-      "enum": [
-        "round_robin",
-        "single_elimination",
-        "double_elimination",
-        "swiss"
-      ],
-      "title": "StageType",
-      "type": "string"
-    },
     "parser.SubscriptionCheckLogRead": {
       "properties": {
         "auth_user_id": {
@@ -25749,200 +25277,6 @@
       ],
       "title": "SubscriptionUserCollectionRead",
       "type": "object"
-    },
-    "parser.TournamentPhaseScheduleRead": {
-      "description": "One phase-schedule row: when phase ``status`` starts (and its action window ends).",
-      "properties": {
-        "ends_at": {
-          "anyOf": [
-            {
-              "format": "date-time",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Ends At"
-        },
-        "starts_at": {
-          "format": "date-time",
-          "title": "Starts At",
-          "type": "string"
-        },
-        "status": {
-          "$ref": "#/components/schemas/parser.TournamentStatus"
-        }
-      },
-      "required": [
-        "status",
-        "starts_at"
-      ],
-      "title": "TournamentPhaseScheduleRead",
-      "type": "object"
-    },
-    "parser.TournamentRead": {
-      "properties": {
-        "allow_late_registration": {
-          "default": false,
-          "title": "Allow Late Registration",
-          "type": "boolean"
-        },
-        "auto_transitions_enabled": {
-          "default": true,
-          "title": "Auto Transitions Enabled",
-          "type": "boolean"
-        },
-        "challonge_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Challonge Id"
-        },
-        "challonge_slug": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Challonge Slug"
-        },
-        "description": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Description"
-        },
-        "division_grid_version": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/parser.DivisionGridVersionRead"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "division_grid_version_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Division Grid Version Id"
-        },
-        "draw_points": {
-          "default": 0.5,
-          "title": "Draw Points",
-          "type": "number"
-        },
-        "end_date": {
-          "format": "date-time",
-          "title": "End Date",
-          "type": "string"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "is_finished": {
-          "title": "Is Finished",
-          "type": "boolean"
-        },
-        "is_league": {
-          "title": "Is League",
-          "type": "boolean"
-        },
-        "loss_points": {
-          "default": 0.0,
-          "title": "Loss Points",
-          "type": "number"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "phase_schedule": {
-          "default": [],
-          "items": {
-            "$ref": "#/components/schemas/parser.TournamentPhaseScheduleRead"
-          },
-          "title": "Phase Schedule",
-          "type": "array"
-        },
-        "stages": {
-          "default": [],
-          "items": {
-            "$ref": "#/components/schemas/parser.StageRead"
-          },
-          "title": "Stages",
-          "type": "array"
-        },
-        "start_date": {
-          "format": "date-time",
-          "title": "Start Date",
-          "type": "string"
-        },
-        "status": {
-          "$ref": "#/components/schemas/parser.TournamentStatus"
-        },
-        "win_points": {
-          "default": 1.0,
-          "title": "Win Points",
-          "type": "number"
-        },
-        "workspace_id": {
-          "title": "Workspace Id",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "id",
-        "workspace_id",
-        "name",
-        "description",
-        "challonge_id",
-        "challonge_slug",
-        "is_league",
-        "is_finished",
-        "status",
-        "start_date",
-        "end_date",
-        "division_grid_version_id"
-      ],
-      "title": "TournamentRead",
-      "type": "object"
-    },
-    "parser.TournamentStatus": {
-      "enum": [
-        "registration",
-        "draft",
-        "check_in",
-        "live",
-        "playoffs",
-        "completed",
-        "archived"
-      ],
-      "title": "TournamentStatus",
-      "type": "string"
     },
     "stream.StreamEntryRead": {
       "description": "One channel in the tournament's stream block.",
@@ -29254,6 +28588,234 @@
         "group_player_ids"
       ],
       "title": "ChallongeParticipant",
+      "type": "object"
+    },
+    "tournament.ChallongeTeamMapping": {
+      "properties": {
+        "group_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group Id"
+        },
+        "participant_id": {
+          "exclusiveMinimum": 0,
+          "title": "Participant Id",
+          "type": "integer"
+        },
+        "team_id": {
+          "exclusiveMinimum": 0,
+          "title": "Team Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "participant_id",
+        "team_id"
+      ],
+      "title": "ChallongeTeamMapping",
+      "type": "object"
+    },
+    "tournament.ChallongeTeamPreviewParticipant": {
+      "properties": {
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "challonge_id": {
+          "title": "Challonge Id",
+          "type": "integer"
+        },
+        "challonge_tournament_id": {
+          "title": "Challonge Tournament Id",
+          "type": "integer"
+        },
+        "group_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group Id"
+        },
+        "group_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group Name"
+        },
+        "mapped_team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mapped Team Id"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "participant_id": {
+          "title": "Participant Id",
+          "type": "integer"
+        },
+        "suggested_team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Suggested Team Id"
+        }
+      },
+      "required": [
+        "participant_id",
+        "challonge_id",
+        "group_id",
+        "group_name",
+        "challonge_tournament_id",
+        "name",
+        "active",
+        "suggested_team_id",
+        "mapped_team_id"
+      ],
+      "title": "ChallongeTeamPreviewParticipant",
+      "type": "object"
+    },
+    "tournament.ChallongeTeamPreviewTeam": {
+      "properties": {
+        "balancer_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Balancer Name"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "balancer_name"
+      ],
+      "title": "ChallongeTeamPreviewTeam",
+      "type": "object"
+    },
+    "tournament.ChallongeTeamSyncPreview": {
+      "properties": {
+        "participants": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ChallongeTeamPreviewParticipant"
+          },
+          "title": "Participants",
+          "type": "array"
+        },
+        "teams": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ChallongeTeamPreviewTeam"
+          },
+          "title": "Teams",
+          "type": "array"
+        }
+      },
+      "required": [
+        "teams",
+        "participants"
+      ],
+      "title": "ChallongeTeamSyncPreview",
+      "type": "object"
+    },
+    "tournament.ChallongeTeamSyncRequest": {
+      "properties": {
+        "mappings": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ChallongeTeamMapping"
+          },
+          "title": "Mappings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "mappings"
+      ],
+      "title": "ChallongeTeamSyncRequest",
+      "type": "object"
+    },
+    "tournament.ChallongeTeamSyncResult": {
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "created": {
+          "title": "Created",
+          "type": "integer"
+        },
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "skipped": {
+          "title": "Skipped",
+          "type": "integer"
+        },
+        "success": {
+          "title": "Success",
+          "type": "boolean"
+        },
+        "unchanged": {
+          "title": "Unchanged",
+          "type": "integer"
+        },
+        "updated": {
+          "title": "Updated",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "success",
+        "count",
+        "created",
+        "updated",
+        "unchanged",
+        "skipped"
+      ],
+      "title": "ChallongeTeamSyncResult",
       "type": "object"
     },
     "tournament.ChallongeTournament": {
@@ -33192,7 +32754,7 @@
       "type": "object"
     },
     "tournament.HeroClass": {
-      "description": "A roster role OR a hero's class -- two concepts on one Postgres type.\n\n``tank``/``damage``/``support`` mean both things at once, which is why the\nsame ``heroclass`` type backs ``overwatch.hero.type``,\n``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``\nonly ever means the third: a player who holds no fixed role, which is what\na role-less (all-``flex``) roster shape drafts and balances for. No hero has\na class of \"flex\", so the two hero-side columns are narrowed back to\n:data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by\nCHECK constraints in the database (migration ``heroflex0001``).\n\nMember NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),\nso the DB sees ``flex`` while the Python value is ``\"Flex\"``.",
+      "description": "A roster role OR a hero's class -- two concepts on one Postgres type.\n\n``tank``/``damage``/``support`` mean both things at once, which is why the\nsame ``heroclass`` type backs ``overwatch.hero.type``,\n``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``\nonly ever means the third: a player who holds no fixed role, which is what\na role-less (all-``flex``) roster shape drafts and balances for. No hero has\na class of \"flex\", so the two hero-side columns are narrowed back to\n:data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by\nCHECK constraints in the database (migration ``heroflex0001``).\n\nMember NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),\nso the DB sees ``flex`` while the Python value is ``\"Flex\"``.\n\nTHE single role enum for the whole backend (frontend mirror:\n``PlayerRoleOption`` in ``lib/player-role.ts``). Draft/balancer/registration\ncode historically spelled ``damage`` as ``dps`` -- that spelling is a wire\nformat, not a second role vocabulary, and lives on as :attr:`slot_code`.",
       "enum": [
         "Tank",
         "Damage",
@@ -35467,11 +35029,6 @@
           "title": "Custom Fields",
           "type": "array"
         },
-        "is_open": {
-          "default": false,
-          "title": "Is Open",
-          "type": "boolean"
-        },
         "open_profile_scope": {
           "default": "main",
           "title": "Open Profile Scope",
@@ -35698,6 +35255,17 @@
           "default": null,
           "title": "Subscription Verdicts"
         },
+        "team": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.RegistrationTeamBrief"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "tournament_id": {
           "title": "Tournament Id",
           "type": "integer"
@@ -35809,6 +35377,292 @@
         "message"
       ],
       "title": "RegistrationStatusResponse",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamBrief": {
+      "description": "The registered team a roster read carries inline.\n\nDeliberately not the full ``RegistrationTeamRead``: this rides in every row of\nthe public participants list, so it holds only what a team column and the\n\u00a712.5 status line need. In particular it carries **no invites** \u2014 a public\nroster must not leak who has been asked and declined.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "is_captain": {
+          "default": false,
+          "title": "Is Captain",
+          "type": "boolean"
+        },
+        "is_substitute": {
+          "default": false,
+          "title": "Is Substitute",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slot_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slot Code"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "status"
+      ],
+      "title": "RegistrationTeamBrief",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamInviteRead": {
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "invited_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invited At"
+        },
+        "is_link": {
+          "default": false,
+          "title": "Is Link",
+          "type": "boolean"
+        },
+        "is_substitute": {
+          "title": "Is Substitute",
+          "type": "boolean"
+        },
+        "slot_code": {
+          "title": "Slot Code",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "target_battle_tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Battle Tag"
+        }
+      },
+      "required": [
+        "id",
+        "slot_code",
+        "is_substitute",
+        "state"
+      ],
+      "title": "RegistrationTeamInviteRead",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamMemberRead": {
+      "properties": {
+        "battle_tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Battle Tag"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Name"
+        },
+        "is_captain": {
+          "default": false,
+          "title": "Is Captain",
+          "type": "boolean"
+        },
+        "is_substitute": {
+          "default": false,
+          "title": "Is Substitute",
+          "type": "boolean"
+        },
+        "registration_id": {
+          "title": "Registration Id",
+          "type": "integer"
+        },
+        "slot_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slot Code"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "registration_id",
+        "status"
+      ],
+      "title": "RegistrationTeamMemberRead",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamRead": {
+      "properties": {
+        "captain_registration_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Captain Registration Id"
+        },
+        "exported_team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exported Team Id"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
+        },
+        "invites": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.RegistrationTeamInviteRead"
+          },
+          "title": "Invites",
+          "type": "array"
+        },
+        "is_complete": {
+          "default": false,
+          "title": "Is Complete",
+          "type": "boolean"
+        },
+        "max_substitutes": {
+          "default": 0,
+          "title": "Max Substitutes",
+          "type": "integer"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.RegistrationTeamMemberRead"
+          },
+          "title": "Members",
+          "type": "array"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "open_slots": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Open Slots",
+          "type": "object"
+        },
+        "shortfall": {
+          "default": "roster complete",
+          "title": "Shortfall",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "substitutes_used": {
+          "default": 0,
+          "title": "Substitutes Used",
+          "type": "integer"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "tournament_id",
+        "name",
+        "status"
+      ],
+      "title": "RegistrationTeamRead",
       "type": "object"
     },
     "tournament.RegistrationUpdate": {
@@ -39350,6 +39204,18 @@
           ],
           "default": null,
           "title": "Roster Locked By Draft"
+        },
+        "roster_locked_by_teams": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roster Locked By Teams"
         },
         "roster_shape": {
           "anyOf": [

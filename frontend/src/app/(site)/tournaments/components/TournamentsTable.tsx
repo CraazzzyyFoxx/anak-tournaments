@@ -8,6 +8,7 @@ import type { Tournament } from "@/types/tournament.types";
 import { cn, formatDateRange } from "@/lib/utils";
 import { getTournamentStatusMeta } from "@/lib/tournament-status";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { tournamentHref } from "@/lib/tournament-url";
 import { relativeTime, stageProgress } from "./tournaments-helpers";
 
 const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
@@ -29,13 +30,13 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
                 (+408px at 375px wide). The name link is the boring, correct
                 target: focusable, announced, and contained. */}
             <Link
-              href={`/tournaments/${tournament.id}`}
+              href={tournamentHref(tournament)}
               className="rounded-[2px] outline-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
             >
               {tournament.name}
             </Link>
             {(tournament.status === "live" || tournament.status === "playoffs") && (
-              <span className="status-pill live" style={{ fontSize: "8.5px", padding: "2px 7px" }}>
+              <span className="status-pill live" style={{ padding: "2px 7px" }}>
                 <span aria-hidden className="dot" />
                 {t("common.live")}
               </span>
@@ -44,7 +45,6 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
               <span
                 className="status-pill"
                 style={{
-                  fontSize: "8.5px",
                   padding: "2px 7px",
                   background: "hsl(var(--muted) / 0.6)",
                   color: "hsl(var(--muted-foreground))",
@@ -109,14 +109,14 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
       <td className="r">
         <div className="tn-actions">
           <Link
-            href={`/tournaments/${tournament.id}/bracket`}
+            href={tournamentHref(tournament, "/bracket")}
             className="icon-btn"
             aria-label={t("tournamentsList.row.bracketAria", { name: tournament.name })}
           >
             <LayoutGrid aria-hidden width={13} height={13} />
           </Link>
           <Link
-            href={`/tournaments/${tournament.id}`}
+            href={tournamentHref(tournament)}
             className="icon-btn"
             aria-label={t("tournamentsList.row.openAria", { name: tournament.name })}
           >

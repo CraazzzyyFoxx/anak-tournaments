@@ -21,12 +21,12 @@ from faststream.rabbit import RabbitMessage
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
 from src.core import db
+from src.core.clients import realtime_redis
 from src.core.config import settings
 from src.schemas.admin import subscription_collection as sc_schemas
 from src.services.subscription_collection import admin as subscription_admin
 
 from . import _common as c
-from ._clients import realtime_redis
 
 _SF = db.async_session_maker
 

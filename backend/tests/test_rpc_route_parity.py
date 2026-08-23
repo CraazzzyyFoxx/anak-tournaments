@@ -19,20 +19,24 @@ from unittest import TestCase
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GATEWAY_TOURNAMENT = REPO_ROOT / "gateway" / "internal" / "tournament"
-GATEWAY_BALANCER = REPO_ROOT / "gateway" / "internal" / "balancer"
-TOURNAMENT_SRC = REPO_ROOT / "backend" / "tournament-service" / "src"
-BALANCER_SRC = REPO_ROOT / "backend" / "balancer-service" / "src"
 
 #: Modules that *name* subjects without registering them. Scanning them would let a
 #: genuine orphan hide behind its own documentation entry.
 _DOC_ONLY_MODULES = frozenset({"openapi_docs.py", "openapi_schemas.py"})
 
-#: The two (route dir, worker src) pairs this guard covers. Kept explicit rather
-#: than globbing every service: a pair only belongs here once its route table and
-#: its subscribers are known to be in sync, so adding one is a deliberate act.
-_PAIRS = (
-    ("rpc.tournament", GATEWAY_TOURNAMENT, TOURNAMENT_SRC),
-    ("rpc.balancer", GATEWAY_BALANCER, BALANCER_SRC),
+#: Every RPC service behind the gateway. The subject prefix, the gateway route
+#: package and the worker source root all carry the same name, so one entry is
+#: enough — and a service missing from this tuple is a service whose routes are
+#: unguarded, which is why it lists all of them rather than the two it started with.
+_SERVICES = ("tournament", "balancer", "app", "parser", "stream", "analytics", "identity")
+
+_PAIRS = tuple(
+    (
+        f"rpc.{name}",
+        REPO_ROOT / "gateway" / "internal" / name,
+        REPO_ROOT / "backend" / f"{name}-service" / "src",
+    )
+    for name in _SERVICES
 )
 
 
@@ -41,17 +45,37 @@ def _queue_re(prefix: str) -> re.Pattern[str]:
 
 
 def _subject_re(prefix: str) -> re.Pattern[str]:
-    """Any subject literal in the worker's source.
+    """Any subject literal — or f-string template — in the worker's source.
 
-    Deliberately NOT anchored to ``@broker.subscriber("...")``. Two real
-    registration styles defeat an anchored pattern, and both were found by trying
-    it: five balancer draft subjects register through a
-    ``_make_lifecycle(subject, ...)`` factory, and the whole
-    ``rpc.tournament.admin.*`` CRUD family registers from
-    ``services/admin/registry.py`` — outside ``src/rpc`` entirely. Matching any
-    literal, minus the doc-only modules, is the accurate trade.
+    Deliberately NOT anchored to ``@broker.subscriber("...")``. Three real
+    registration styles defeat an anchored pattern, and all three were found by
+    trying it: five balancer draft subjects register through a
+    ``_make_lifecycle(subject, ...)`` factory, the whole ``rpc.tournament.admin.*``
+    CRUD family registers from ``services/admin/registry.py`` — outside ``src/rpc``
+    entirely — and app-service's metadata admin registers twelve subjects from one
+    ``f"rpc.app.{prefix}.admin_list"`` factory, which is why a ``{...}`` segment is
+    allowed here and resolved by ``_subject_templates``. Matching any literal,
+    minus the doc-only modules, is the accurate trade.
     """
-    return re.compile(rf'"({re.escape(prefix)}\.[a-z0-9_.]+)"')
+    return re.compile(rf'"({re.escape(prefix)}\.[a-z0-9_.{{}}]+)"')
+
+
+def _template_re(subject: str) -> re.Pattern[str] | None:
+    """Turn ``rpc.app.{prefix}.admin_list`` into a matcher; None for a plain literal.
+
+    An interpolated segment matches any single subject segment. That is looser
+    than the values the factory is actually called with, but reading those would
+    mean importing the worker; a route whose only "consumer" is a template with
+    the right shape is still a route someone deliberately generated.
+    """
+    if "{" not in subject:
+        return None
+    pattern = "".join(
+        r"[a-z0-9_]+" if part.startswith("{") else re.escape(part)
+        for part in re.split(r"(\{[^}]*\})", subject)
+        if part
+    )
+    return re.compile(pattern)
 
 
 def _routed_subjects() -> dict[str, set[str]]:
@@ -68,29 +92,55 @@ def _routed_subjects() -> dict[str, set[str]]:
 
 
 def _consumed_subjects() -> set[str]:
-    consumed: set[str] = set()
+    """Literal subjects named anywhere in the worker sources."""
+    return {subject for subject in _named_subjects() if "{" not in subject}
+
+
+def _subject_templates() -> list[re.Pattern[str]]:
+    """Matchers for the f-string subjects a registration factory expands."""
+    return [pattern for subject in _named_subjects() if (pattern := _template_re(subject))]
+
+
+def _named_subjects() -> set[str]:
+    named: set[str] = set()
     for prefix, _gateway_dir, service_dir in _PAIRS:
         pattern = _subject_re(prefix)
         for path in service_dir.rglob("*.py"):
             if path.name in _DOC_ONLY_MODULES:
                 continue
-            consumed.update(pattern.findall(path.read_text(encoding="utf-8")))
-    return consumed
+            named.update(pattern.findall(path.read_text(encoding="utf-8")))
+    return named
 
 
 class RouteSubjectParityTests(TestCase):
-    def test_the_parser_finds_both_sides(self) -> None:
-        """Guards the guard: a regex that silently matches nothing would make every
-        assertion below vacuously true."""
-        self.assertGreater(len(_routed_subjects()), 40)
-        self.assertGreater(len(_consumed_subjects()), 40)
+    def test_every_pair_finds_both_sides(self) -> None:
+        """Guards the guard: a wrong directory or a regex that silently matches
+        nothing would make every assertion below vacuously true — per pair, so one
+        misnamed service cannot hide behind the six that parse."""
+        for prefix, gateway_dir, service_dir in _PAIRS:
+            with self.subTest(prefix=prefix):
+                self.assertTrue(gateway_dir.is_dir(), gateway_dir)
+                self.assertTrue(service_dir.is_dir(), service_dir)
+                routes = _queue_re(prefix)
+                routed = [
+                    subject
+                    for path in gateway_dir.glob("*.go")
+                    if not path.name.endswith("_test.go")
+                    for subject in routes.findall(path.read_text(encoding="utf-8"))
+                ]
+                self.assertNotEqual([], routed, "no gateway routes parsed")
 
     def test_every_routed_subject_has_a_consumer(self) -> None:
         """A route pointing at a subject nobody subscribes to times out instead of
         failing — the caller cannot tell it apart from a slow worker."""
         routed = _routed_subjects()
         consumed = _consumed_subjects()
-        orphans = {subject: sorted(files) for subject, files in routed.items() if subject not in consumed}
+        templates = _subject_templates()
+        orphans = {
+            subject: sorted(files)
+            for subject, files in routed.items()
+            if subject not in consumed and not any(t.fullmatch(subject) for t in templates)
+        }
         self.assertEqual({}, orphans)
 
     def test_the_team_registration_subjects_are_wired_end_to_end(self) -> None:
@@ -211,16 +261,25 @@ class TeamRouteShapeTests(TestCase):
             with self.subTest(writer=writer):
                 self.assertNotIn(writer, body)
 
-    def test_the_public_team_read_leaks_no_invites(self) -> None:
-        """The one AuthOptional team route. Its safety is server-side — the handler
-        calls ``describe_team`` without ``include_invites`` — so this pins the
-        handler, not the route."""
+    def test_the_public_team_read_only_shows_a_captain_their_own_invites(self) -> None:
+        """The one AuthOptional team route. Its safety is server-side, so this pins
+        the handler, not the route.
+
+        The handler used to call ``describe_team`` with no ``include_invites`` at
+        all; it now passes the captaincy check as the flag, so a captain sees the
+        offers on their own team and nobody else sees any. What must never appear
+        is an unconditional ``include_invites=True`` — that single edit would turn
+        a public roster into a list of everyone who was asked and declined.
+        """
         source = (REPO_ROOT / "backend" / "tournament-service" / "src" / "rpc" / "public_rpc.py").read_text(
             encoding="utf-8"
         )
         handler = source[source.index("_regteam_list_public") :]
         handler = handler[: handler.index("# ── public team registration")]
-        self.assertIn("describe_team(session, team)", handler)
+        self.assertIn(
+            "include_invites=user is not None and await team_service.teams_service.is_team_captain(",
+            handler,
+        )
         self.assertNotIn("include_invites=True", handler)
 
     def test_the_invite_token_never_travels_in_a_url(self) -> None:

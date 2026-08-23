@@ -16,7 +16,7 @@ import { RETURN_TO_PARAM, withReturnTo } from "@/lib/return-to";
 import scrimService from "@/services/scrim.service";
 import type { ScrimRoom } from "@/types/scrim.types";
 
-import { PregameRoom } from "@/app/(site)/tournaments/[id]/pregame/[encounterId]/_components/PregameRoom";
+import { PregameRoom } from "@/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameRoom";
 
 /** Where a scrim room hands the viewer back when it is done with them. */
 const SCRIM_RETURN_TO = "/scrims";

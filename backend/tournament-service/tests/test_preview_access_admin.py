@@ -121,11 +121,11 @@ def test_add_list_remove_idempotent() -> None:
 
             try:
                 async with session_maker() as session:
-                    first = await preview_access_service.add_preview_access(session, tid, uid)
-                    again = await preview_access_service.add_preview_access(session, tid, uid)
-                    listed = await preview_access_service.list_preview_access(session, tid)
-                    await preview_access_service.remove_preview_access(session, tid, uid)
-                    after = await preview_access_service.list_preview_access(session, tid)
+                    first = await preview_access_service.preview_access_service.add_preview_access(session, tid, uid)
+                    again = await preview_access_service.preview_access_service.add_preview_access(session, tid, uid)
+                    listed = await preview_access_service.preview_access_service.list_preview_access(session, tid)
+                    await preview_access_service.preview_access_service.remove_preview_access(session, tid, uid)
+                    after = await preview_access_service.preview_access_service.list_preview_access(session, tid)
                     return (
                         first.id,
                         again.id,

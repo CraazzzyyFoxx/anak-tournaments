@@ -104,7 +104,10 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
                 <span className="sr-only">{t("stream.page.play", { name })}</span>
                 <span
                   aria-hidden
-                  className="inline-flex size-16 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_18%,hsl(220_22%_6%/0.8))] text-[color:var(--aqt-teal)] shadow-[0_8px_32px_hsl(220_22%_2%/0.55)] transition-transform group-hover:scale-105 group-focus-visible:scale-105"
+                  // Hover/focus brightens the teal edge and fill instead of
+                  // scaling — a size change here nudges the centred disc and
+                  // reflows nothing else, so it reads as a jitter.
+                  className="inline-flex size-16 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_18%,hsl(220_22%_6%/0.8))] text-[color:var(--aqt-teal)] shadow-[0_8px_32px_hsl(220_22%_2%/0.55)] transition-colors group-hover:border-[color:var(--aqt-teal)] group-hover:bg-[color:color-mix(in_srgb,var(--aqt-teal)_32%,hsl(220_22%_6%/0.8))] group-focus-visible:border-[color:var(--aqt-teal)] group-focus-visible:bg-[color:color-mix(in_srgb,var(--aqt-teal)_32%,hsl(220_22%_6%/0.8))]"
                 >
                   <Play className="size-7 translate-x-0.5 fill-current" />
                 </span>

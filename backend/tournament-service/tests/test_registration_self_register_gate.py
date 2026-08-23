@@ -173,7 +173,7 @@ def test_first_registration_creates_member_and_player_role() -> None:
             try:
                 async with session_maker() as session:
                     actor = _authed_user(auth_user_id)
-                    registration = await reg_service.create_registration(
+                    registration = await reg_service.registration_service.create_registration(
                         session,
                         tournament_id=tournament_id,
                         workspace_id=workspace_id,
@@ -245,7 +245,7 @@ def test_workspace_scoped_self_register_deny_returns_403() -> None:
                 raised = None
                 async with session_maker() as session:
                     try:
-                        await reg_service.create_registration(
+                        await reg_service.registration_service.create_registration(
                             session,
                             tournament_id=tournament_id,
                             workspace_id=workspace_id,
@@ -299,7 +299,7 @@ def test_second_registration_does_not_duplicate_member() -> None:
             try:
                 actor = _authed_user(auth_user_id)
                 async with session_maker() as session:
-                    registration_a = await reg_service.create_registration(
+                    registration_a = await reg_service.registration_service.create_registration(
                         session,
                         tournament_id=tournament_a_id,
                         workspace_id=workspace_id,
@@ -316,7 +316,7 @@ def test_second_registration_does_not_duplicate_member() -> None:
                     )
                     member_id_a = registration_a.workspace_member_id
                 async with session_maker() as session:
-                    registration_b = await reg_service.create_registration(
+                    registration_b = await reg_service.registration_service.create_registration(
                         session,
                         tournament_id=tournament_b_id,
                         workspace_id=workspace_id,

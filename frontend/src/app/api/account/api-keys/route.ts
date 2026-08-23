@@ -48,6 +48,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // The body is forwarded verbatim (name, workspace_id, scopes, expires_at), so
+    // new create fields need no change here. Authorization comes from the httpOnly
+    // session cookie only — never from an inbound header, so an API key can never
+    // be used to mint another API key.
     const body = await request.json();
     const response = await fetch(`${AUTH_SERVICE_URL}/api-keys`, {
       method: "POST",

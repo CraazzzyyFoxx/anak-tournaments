@@ -89,8 +89,11 @@ export default class tournamentService {
     }).then((response) => response.json());
   }
 
-  static async getPublicOverview(id: number): Promise<Tournament> {
-    return apiFetch(`/api/v1/tournaments/${id}`, {
+  // `ref` is the raw `/tournaments/{ref}` URL segment: the current slug, a
+  // legacy numeric id, or an old slug an admin rename retired -- the backend
+  // resolves all three to the same tournament (see resolve_public_ref).
+  static async getPublicOverview(ref: string | number): Promise<Tournament> {
+    return apiFetch(`/api/v1/tournaments/${ref}`, {
       skipWorkspace: true,
       query: {
         entities: [

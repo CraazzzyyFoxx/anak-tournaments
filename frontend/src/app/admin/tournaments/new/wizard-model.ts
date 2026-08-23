@@ -110,6 +110,7 @@ export function buildDraftCreateInput(
     name: form.name.trim(),
     description: form.description.trim() || undefined,
     is_league: form.is_league,
+    slug: form.slug?.trim() || undefined,
     start_date: form.start_date,
     end_date: form.end_date,
     win_points: form.win_points,
@@ -132,8 +133,10 @@ export function buildDraftUpdateInput(
   { publish }: { publish: boolean }
 ): TournamentUpdateInput {
   const name = form.name.trim();
+  const slug = form.slug?.trim();
   return {
     ...(name ? { name } : {}),
+    ...(slug ? { slug } : {}),
     description: form.description.trim() || null,
     is_league: form.is_league,
     start_date: form.start_date,
@@ -179,6 +182,7 @@ export function wizardStateFromDraft(
       is_league: state.is_league,
       start_date: state.start_date,
       end_date: state.end_date,
+      slug: state.slug,
       division_grid_version_id: state.division_grid_version_id,
       team_formation: state.team_formation,
       win_points: state.win_points,

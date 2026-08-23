@@ -149,7 +149,7 @@ function BalanceEditorPlayerTableRow({
           </div>
           {subRoleLabel ? (
             <span
-              className="truncate text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]"
+              className="truncate text-[11px] font-medium uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]"
               title={subRoleLabel}
             >
               {subRoleLabel}
@@ -185,7 +185,7 @@ function BalanceEditorPlayerTableRow({
                   <PlayerRoleIcon
                     role={preference}
                     size={14}
-                    color={highlightPreferredRole ? "#fbbf24" : undefined}
+                    color={highlightPreferredRole ? "var(--aqt-amber)" : undefined}
                   />
                 </span>
               );

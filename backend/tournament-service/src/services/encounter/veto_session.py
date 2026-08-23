@@ -39,6 +39,12 @@ from shared.core.enums import (
     VetoSeedSource,
 )
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import (
+    EncounterMapPoolRepository,
+    EncounterVetoSessionRepository,
+    MapVetoConfigRepository,
+    MapVetoConfigSlotRepository,
+)
 from shared.services.bracket.usability import is_encounter_live
 from src import models
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
@@ -329,62 +335,6 @@ def slot_candidates(rows: Sequence[models.MapVetoConfigSlot]) -> list[list[int]]
     return [[entry.map_id for entry in row.maps] for row in ordered_slots(rows)]
 
 
-async def load_slot_rows(session: AsyncSession, config: models.MapVetoConfig) -> list[models.MapVetoConfigSlot]:
-    """Fetch ``config``'s slot rows with their candidate maps loaded.
-
-    ``MapVetoConfig.slots`` is deliberately lazy and the pure slot helpers are
-    synchronous, so the async session-creation path cannot reach the slot chain
-    through the relationship without risking ``MissingGreenlet``. Querying the
-    slots directly keeps the eager-load visible at the call site — the convention
-    the model documents — and does not depend on whoever loaded ``config`` having
-    asked for the two-level chain.
-
-    Returns the ROWS, not just their candidate ids: session creation needs each
-    slot's ``position`` (stamped onto its pool entries) and ``reserve_map_id``
-    (snapshotted onto the session) off the same load. A second query for those
-    would be a second source of truth that a concurrent config edit can make
-    disagree with the first. Row order is not meaningful — every consumer goes
-    through ``ordered_slots``, directly or via ``slot_candidates`` /
-    ``slots_in_play``.
-
-    A slot with no candidate maps comes back with an empty ``maps`` rather than
-    disappearing: dropping it would silently shorten the sequence, whereas an
-    empty entry keeps one entry per slot for ``slot_refusal``'s floor check.
-    """
-    result = await session.execute(
-        select(models.MapVetoConfigSlot)
-        .where(models.MapVetoConfigSlot.map_veto_config_id == config.id)
-        .options(selectinload(models.MapVetoConfigSlot.maps))
-    )
-    return list(result.scalars().all())
-
-
-async def _slot_plan(
-    session: AsyncSession,
-    config: models.MapVetoConfig,
-    best_of: int,
-) -> tuple[list[models.MapVetoConfigSlot], str | None]:
-    """One load, one truncation, one decision.
-
-    Returns the slots the encounter PLAYS (position-ordered, ``best_of``-capped)
-    and the reason to refuse them, or None.
-
-    Truncating here rather than in ``slot_refusal`` is what makes the ordering
-    Decision 21 needs structural instead of conventional: the refusal only ever
-    sees the in-play set, so "check the floor before truncating" is not a bug you
-    can write in one function without the other noticing. Both callers ignore the
-    untruncated rows entirely, so nothing needs them.
-
-    Shared by ``ensure_veto_session`` (which refuses) and ``unavailable_reason``
-    (which names the refusal) so the two can never disagree about whether a
-    config is playable.
-    """
-    rows = await load_slot_rows(session, config)
-    in_play = slots_in_play(rows, best_of)
-    refusal = slot_refusal([len(row.maps) for row in in_play], slot_count=len(rows), best_of=best_of)
-    return in_play, refusal
-
-
 def validate_slot_config(slots: list[list[int]], *, reserves: list[int | None]) -> None:
     """Validate a slot-mode config upsert.
 
@@ -446,37 +396,6 @@ def select_config(
     return best
 
 
-async def resolve_config(session: AsyncSession, encounter: models.Encounter) -> models.MapVetoConfig | None:
-    """Cascade-resolve the veto config applicable to this encounter.
-
-    Loads ``map_pool`` and deliberately NOT the slot chain, which is why it is
-    the one ``selectinload(MapVetoConfig.map_pool)`` site in the codebase with no
-    ``slots`` beside it. Every consumer -- ``ensure_veto_session`` and ``unavailable_reason`` -- reads
-    only columns off the config (``id``, ``mode``, ``preset``,
-    ``first_ban_rotation``, ``turn_timer_seconds``, ``veto_sequence_json``) plus
-    this ``map_pool``; the slot rows they need arrive from ``load_slot_rows``,
-    which carries its own eager load and does not depend on how ``config`` was
-    fetched. Adding the chain here would buy two SELECTs per unavailable-room
-    poll for data nobody reads.
-    """
-    result = await session.execute(
-        select(models.MapVetoConfig)
-        .where(
-            models.MapVetoConfig.tournament_id == encounter.tournament_id,
-            sa.or_(
-                models.MapVetoConfig.stage_id.is_(None),
-                models.MapVetoConfig.stage_id == encounter.stage_id,
-            ),
-        )
-        .options(selectinload(models.MapVetoConfig.map_pool))
-    )
-    return select_config(
-        list(result.scalars().all()),
-        stage_id=encounter.stage_id,
-        round=encounter.round,
-    )
-
-
 # ── seed resolution ──────────────────────────────────────────────────────────
 
 
@@ -513,70 +432,6 @@ def decide_seeds(
     return SeedResolution(None, None, VetoSeedSource.FALLBACK_HOME, MapPickSide.HOME)
 
 
-async def resolve_seeds(session: AsyncSession, encounter: models.Encounter) -> SeedResolution:
-    """Resolve both teams' seeds for the encounter (snapshot at session init).
-
-    1. ``StageItemInput.slot`` of the encounter's stage item (seed = slot).
-    2. ``Standing.position`` of the previous stage (by ``Stage.order`` within
-       the tournament; min position when a team has rows in several items).
-    3. Fallback: home acts first, ``seed_source=fallback_home``.
-    """
-    home_team_id = encounter.home_team_id
-    away_team_id = encounter.away_team_id
-    if home_team_id is None or away_team_id is None:
-        return decide_seeds(None, None, None, None)
-    team_ids = (home_team_id, away_team_id)
-
-    home_slot: int | None = None
-    away_slot: int | None = None
-    if encounter.stage_item_id is not None:
-        rows = await session.execute(
-            select(models.StageItemInput.team_id, models.StageItemInput.slot).where(
-                models.StageItemInput.stage_item_id == encounter.stage_item_id,
-                models.StageItemInput.team_id.in_(team_ids),
-            )
-        )
-        for team_id, slot in rows.all():
-            if team_id == home_team_id:
-                home_slot = slot
-            elif team_id == away_team_id:
-                away_slot = slot
-    if home_slot is not None and away_slot is not None:
-        return decide_seeds(home_slot, away_slot, None, None)
-
-    home_position: int | None = None
-    away_position: int | None = None
-    if encounter.stage_id is not None:
-        current_order = await session.scalar(select(models.Stage.order).where(models.Stage.id == encounter.stage_id))
-        previous_stage_id = None
-        if current_order is not None:
-            previous_stage_id = await session.scalar(
-                select(models.Stage.id)
-                .where(
-                    models.Stage.tournament_id == encounter.tournament_id,
-                    models.Stage.order < current_order,
-                )
-                .order_by(models.Stage.order.desc())
-                .limit(1)
-            )
-        if previous_stage_id is not None:
-            rows = await session.execute(
-                select(models.Standing.team_id, sa.func.min(models.Standing.position))
-                .where(
-                    models.Standing.stage_id == previous_stage_id,
-                    models.Standing.team_id.in_(team_ids),
-                )
-                .group_by(models.Standing.team_id)
-            )
-            for team_id, position in rows.all():
-                if team_id == home_team_id:
-                    home_position = position
-                elif team_id == away_team_id:
-                    away_position = position
-
-    return decide_seeds(home_slot, away_slot, home_position, away_position)
-
-
 # ── sequence token mapping ───────────────────────────────────────────────────
 
 
@@ -597,232 +452,410 @@ def resolve_sequence_tokens(sequence: list[str], first_side: MapPickSide | str) 
 # ── session lifecycle ────────────────────────────────────────────────────────
 
 
-async def get_veto_session(
-    session: AsyncSession,
-    encounter_id: int,
-    *,
-    for_update: bool = False,
-) -> models.EncounterVetoSession | None:
-    query = select(models.EncounterVetoSession).where(models.EncounterVetoSession.encounter_id == encounter_id)
-    if for_update:
-        query = query.with_for_update()
-    result = await session.execute(query)
-    return result.scalar_one_or_none()
+class VetoSessionService:
+    """The session-taking half of the veto lifecycle.
 
-
-async def unavailable_reason(session: AsyncSession, encounter: models.Encounter) -> str:
-    """Why ``ensure_veto_session`` returned None for this encounter.
-
-    Re-derives the decision rather than having ``ensure_veto_session`` hand it
-    over: the alternatives are a wider return type on a function with several
-    callers, or stashing the cause on the encounter instance, which degrades to
-    ``not_configured`` — a lie that tells the captain to wait for something that
-    will not happen — for any caller that skips the ensure. Both refusal reasons
-    come from the same ``_slot_plan`` as the refusal itself, so the two cannot
-    diverge.
-
-    COST, stated plainly because it is permanent, not transient: an encounter on
-    this branch never gains a session, so every poll of the room pays for it
-    again. ``resolve_config`` runs TWICE per request (once in the ensure, once
-    here) — three queries per poll where the unavailable path used to cost two,
-    and four in slot mode. The steady-state room is untouched, because
-    ``ensure_veto_session`` returns before ``resolve_config`` once a session
-    exists. Judged the right trade against a reason that can lie; revisit by
-    widening ``ensure_veto_session``'s return type, never by caching the cause
-    on the encounter instance.
+    Everything above stays module-level because it is pure: the upsert
+    validators, the sequence/slot generators, ``select_config`` and
+    ``decide_seeds``. Only what needs an ``AsyncSession`` is a method here.
     """
-    if encounter.home_team_id is None or encounter.away_team_id is None:
-        return REASON_TEAMS_UNKNOWN
-    if not await is_encounter_live(session, encounter):
-        return REASON_BRACKET_PREVIEW
-    config = await resolve_config(session, encounter)
-    if config is None:
+
+    def __init__(
+        self,
+        *,
+        config_repo: MapVetoConfigRepository = MapVetoConfigRepository(),
+        slot_repo: MapVetoConfigSlotRepository = MapVetoConfigSlotRepository(),
+        veto_repo: EncounterVetoSessionRepository = EncounterVetoSessionRepository(),
+        pool_repo: EncounterMapPoolRepository = EncounterMapPoolRepository(),
+    ) -> None:
+        self.config_repo = config_repo
+        self.slot_repo = slot_repo
+        self.veto_repo = veto_repo
+        self.pool_repo = pool_repo
+
+    async def load_slot_rows(
+        self,
+        session: AsyncSession,
+        config: models.MapVetoConfig,
+    ) -> list[models.MapVetoConfigSlot]:
+        """Fetch ``config``'s slot rows with their candidate maps loaded.
+
+        ``MapVetoConfig.slots`` is deliberately lazy and the pure slot helpers are
+        synchronous, so the async session-creation path cannot reach the slot chain
+        through the relationship without risking ``MissingGreenlet``. Querying the
+        slots directly keeps the eager-load visible at the call site — the convention
+        the model documents — and does not depend on whoever loaded ``config`` having
+        asked for the two-level chain.
+
+        Returns the ROWS, not just their candidate ids: session creation needs each
+        slot's ``position`` (stamped onto its pool entries) and ``reserve_map_id``
+        (snapshotted onto the session) off the same load. A second query for those
+        would be a second source of truth that a concurrent config edit can make
+        disagree with the first. Row order is not meaningful — every consumer goes
+        through ``ordered_slots``, directly or via ``slot_candidates`` /
+        ``slots_in_play``.
+
+        A slot with no candidate maps comes back with an empty ``maps`` rather than
+        disappearing: dropping it would silently shorten the sequence, whereas an
+        empty entry keeps one entry per slot for ``slot_refusal``'s floor check.
+        """
+        rows = await self.slot_repo.list_for_config(
+            session,
+            config.id,
+            options=[selectinload(models.MapVetoConfigSlot.maps)],
+        )
+        return list(rows)
+
+    async def _slot_plan(
+        self,
+        session: AsyncSession,
+        config: models.MapVetoConfig,
+        best_of: int,
+    ) -> tuple[list[models.MapVetoConfigSlot], str | None]:
+        """One load, one truncation, one decision.
+
+        Returns the slots the encounter PLAYS (position-ordered, ``best_of``-capped)
+        and the reason to refuse them, or None.
+
+        Truncating here rather than in ``slot_refusal`` is what makes the ordering
+        Decision 21 needs structural instead of conventional: the refusal only ever
+        sees the in-play set, so "check the floor before truncating" is not a bug you
+        can write in one function without the other noticing. Both callers ignore the
+        untruncated rows entirely, so nothing needs them.
+
+        Shared by ``ensure_veto_session`` (which refuses) and ``unavailable_reason``
+        (which names the refusal) so the two can never disagree about whether a
+        config is playable.
+        """
+        rows = await self.load_slot_rows(session, config)
+        in_play = slots_in_play(rows, best_of)
+        refusal = slot_refusal([len(row.maps) for row in in_play], slot_count=len(rows), best_of=best_of)
+        return in_play, refusal
+
+    async def resolve_config(
+        self,
+        session: AsyncSession,
+        encounter: models.Encounter,
+    ) -> models.MapVetoConfig | None:
+        """Cascade-resolve the veto config applicable to this encounter.
+
+        Loads ``map_pool`` and deliberately NOT the slot chain, which is why it is
+        the one ``selectinload(MapVetoConfig.map_pool)`` site in the codebase with no
+        ``slots`` beside it. Every consumer -- ``ensure_veto_session`` and ``unavailable_reason`` -- reads
+        only columns off the config (``id``, ``mode``, ``preset``,
+        ``first_ban_rotation``, ``turn_timer_seconds``, ``veto_sequence_json``) plus
+        this ``map_pool``; the slot rows they need arrive from ``load_slot_rows``,
+        which carries its own eager load and does not depend on how ``config`` was
+        fetched. Adding the chain here would buy two SELECTs per unavailable-room
+        poll for data nobody reads.
+
+        The repository fetches every config in the tournament and the cascade is
+        ranked in Python. ``select_config`` re-applies the stage filter the old
+        inline ``stage_id IS NULL OR stage_id = :stage`` predicate did, so the winner
+        is unchanged; the cost is other stages' rows crossing the wire, which is
+        cheaper than a query per cascade level.
+        """
+        configs = await self.config_repo.list_by_tournament(
+            session,
+            encounter.tournament_id,
+            options=[selectinload(models.MapVetoConfig.map_pool)],
+        )
+        return select_config(
+            list(configs),
+            stage_id=encounter.stage_id,
+            round=encounter.round,
+        )
+
+    async def resolve_seeds(self, session: AsyncSession, encounter: models.Encounter) -> SeedResolution:
+        """Resolve both teams' seeds for the encounter (snapshot at session init).
+
+        1. ``StageItemInput.slot`` of the encounter's stage item (seed = slot).
+        2. ``Standing.position`` of the previous stage (by ``Stage.order`` within
+           the tournament; min position when a team has rows in several items).
+        3. Fallback: home acts first, ``seed_source=fallback_home``.
+
+        Every query here is a column-only projection (and the standings one groups
+        with ``min()``), so they stay in the service rather than moving to a CRUD
+        repository.
+        """
+        home_team_id = encounter.home_team_id
+        away_team_id = encounter.away_team_id
+        if home_team_id is None or away_team_id is None:
+            return decide_seeds(None, None, None, None)
+        team_ids = (home_team_id, away_team_id)
+
+        home_slot: int | None = None
+        away_slot: int | None = None
+        if encounter.stage_item_id is not None:
+            rows = await session.execute(
+                select(models.StageItemInput.team_id, models.StageItemInput.slot).where(
+                    models.StageItemInput.stage_item_id == encounter.stage_item_id,
+                    models.StageItemInput.team_id.in_(team_ids),
+                )
+            )
+            for team_id, slot in rows.all():
+                if team_id == home_team_id:
+                    home_slot = slot
+                elif team_id == away_team_id:
+                    away_slot = slot
+        if home_slot is not None and away_slot is not None:
+            return decide_seeds(home_slot, away_slot, None, None)
+
+        home_position: int | None = None
+        away_position: int | None = None
+        if encounter.stage_id is not None:
+            current_order = await session.scalar(select(models.Stage.order).where(models.Stage.id == encounter.stage_id))
+            previous_stage_id = None
+            if current_order is not None:
+                previous_stage_id = await session.scalar(
+                    select(models.Stage.id)
+                    .where(
+                        models.Stage.tournament_id == encounter.tournament_id,
+                        models.Stage.order < current_order,
+                    )
+                    .order_by(models.Stage.order.desc())
+                    .limit(1)
+                )
+            if previous_stage_id is not None:
+                rows = await session.execute(
+                    select(models.Standing.team_id, sa.func.min(models.Standing.position))
+                    .where(
+                        models.Standing.stage_id == previous_stage_id,
+                        models.Standing.team_id.in_(team_ids),
+                    )
+                    .group_by(models.Standing.team_id)
+                )
+                for team_id, position in rows.all():
+                    if team_id == home_team_id:
+                        home_position = position
+                    elif team_id == away_team_id:
+                        away_position = position
+
+        return decide_seeds(home_slot, away_slot, home_position, away_position)
+
+    async def get_veto_session(
+        self,
+        session: AsyncSession,
+        encounter_id: int,
+        *,
+        for_update: bool = False,
+    ) -> models.EncounterVetoSession | None:
+        return await self.veto_repo.get_for_encounter(session, encounter_id, for_update=for_update)
+
+    async def unavailable_reason(self, session: AsyncSession, encounter: models.Encounter) -> str:
+        """Why ``ensure_veto_session`` returned None for this encounter.
+
+        Re-derives the decision rather than having ``ensure_veto_session`` hand it
+        over: the alternatives are a wider return type on a function with several
+        callers, or stashing the cause on the encounter instance, which degrades to
+        ``not_configured`` — a lie that tells the captain to wait for something that
+        will not happen — for any caller that skips the ensure. Both refusal reasons
+        come from the same ``_slot_plan`` as the refusal itself, so the two cannot
+        diverge.
+
+        COST, stated plainly because it is permanent, not transient: an encounter on
+        this branch never gains a session, so every poll of the room pays for it
+        again. ``resolve_config`` runs TWICE per request (once in the ensure, once
+        here) — three queries per poll where the unavailable path used to cost two,
+        and four in slot mode. The steady-state room is untouched, because
+        ``ensure_veto_session`` returns before ``resolve_config`` once a session
+        exists. Judged the right trade against a reason that can lie; revisit by
+        widening ``ensure_veto_session``'s return type, never by caching the cause
+        on the encounter instance.
+        """
+        if encounter.home_team_id is None or encounter.away_team_id is None:
+            return REASON_TEAMS_UNKNOWN
+        if not await is_encounter_live(session, encounter):
+            return REASON_BRACKET_PREVIEW
+        config = await self.resolve_config(session, encounter)
+        if config is None:
+            return REASON_NOT_CONFIGURED
+        if config.mode == MapVetoMode.SLOTS:
+            _, refusal = await self._slot_plan(session, config, encounter.best_of)
+            if refusal is not None:
+                return refusal
         return REASON_NOT_CONFIGURED
-    if config.mode == MapVetoMode.SLOTS:
-        _, refusal = await _slot_plan(session, config, encounter.best_of)
-        if refusal is not None:
-            return refusal
-    return REASON_NOT_CONFIGURED
 
+    async def ensure_veto_session(
+        self,
+        session: AsyncSession,
+        encounter: models.Encounter,
+        *,
+        commit: bool = True,
+    ) -> models.EncounterVetoSession | None:
+        """Idempotently create the encounter's veto session (and pool) if possible.
 
-async def ensure_veto_session(
-    session: AsyncSession,
-    encounter: models.Encounter,
-    *,
-    commit: bool = True,
-) -> models.EncounterVetoSession | None:
-    """Idempotently create the encounter's veto session (and pool) if possible.
+        Returns the existing session untouched when one exists. No-ops (returns
+        None) when either team is unknown, no config cascades onto the encounter, or
+        a slot-mode config cannot be reconciled with the bracket's ``best_of`` —
+        ``unavailable_reason`` names which. The config pool is copied to
+        ``encounter_map_pool`` ONLY when the encounter has no pool rows yet, so a
+        pre-existing admin-assigned pool is respected.
 
-    Returns the existing session untouched when one exists. No-ops (returns
-    None) when either team is unknown, no config cascades onto the encounter, or
-    a slot-mode config cannot be reconciled with the bracket's ``best_of`` —
-    ``unavailable_reason`` names which. The config pool is copied to
-    ``encounter_map_pool`` ONLY when the encounter has no pool rows yet, so a
-    pre-existing admin-assigned pool is respected.
+        The step sequence comes from ``effective_sequence``: the bracket's
+        ``best_of`` drives it unless the config is explicitly ``custom``, and a
+        slot-mode config derives it from the slots it actually plays instead.
 
-    The step sequence comes from ``effective_sequence``: the bracket's
-    ``best_of`` drives it unless the config is explicitly ``custom``, and a
-    slot-mode config derives it from the slots it actually plays instead.
-
-    Slot mode additionally stamps each pool row with its slot's ``position`` and
-    snapshots the played slots' reserves onto ``slot_reserves_json``, because
-    ``build_map_pool_state`` never sees a config and must not be able to observe
-    a later config edit (design Decision 18).
-    """
-    existing = await get_veto_session(session, encounter.id)
-    if existing is not None:
-        return existing
-    if encounter.home_team_id is None or encounter.away_team_id is None:
-        return None
-    if not await is_encounter_live(session, encounter):
-        return None
-    config = await resolve_config(session, encounter)
-    if config is None:
-        return None
-
-    # Counted before the sequence is built, not after: a generated sequence is
-    # sized against the pool it will actually draw from, which is the
-    # admin-assigned pool when one already exists and the config's otherwise.
-    pool_count = await session.scalar(
-        select(sa.func.count())
-        .select_from(models.EncounterMapPool)
-        .where(models.EncounterMapPool.encounter_id == encounter.id)
-    )
-    pool_size = pool_count or len(config.map_pool)
-    # Slot mode only, and awaited here because the slot chain is lazy while
-    # ``effective_sequence`` and the reconciliation are sync. One load feeds all
-    # three of the sequence, the pool rows' ``slot`` and the reserve snapshot.
-    slot_rows: list[models.MapVetoConfigSlot] | None = None
-    slots: list[list[int]] | None = None
-    if config.mode == MapVetoMode.SLOTS:
-        slot_rows, refusal = await _slot_plan(session, config, encounter.best_of)
-        if refusal is not None:
-            # The bracket and the config disagree, or a slot in play has nothing
-            # left to ban. Either way a session built here would stall with no
-            # recovery but a reset; the room reports the reason instead.
+        Slot mode additionally stamps each pool row with its slot's ``position`` and
+        snapshots the played slots' reserves onto ``slot_reserves_json``, because
+        ``build_map_pool_state`` never sees a config and must not be able to observe
+        a later config edit (design Decision 18).
+        """
+        existing = await self.get_veto_session(session, encounter.id)
+        if existing is not None:
+            return existing
+        if encounter.home_team_id is None or encounter.away_team_id is None:
             return None
-        # ``slot_candidates`` re-sorts an already-ordered list. That is a no-op on
-        # at most a handful of rows, and it is where the sort is pinned; reaching
-        # past it to save the call would duplicate its mapping and un-pin the one
-        # ordering guarantee the whole mode rests on.
-        slots = slot_candidates(slot_rows)
+        if not await is_encounter_live(session, encounter):
+            return None
+        config = await self.resolve_config(session, encounter)
+        if config is None:
+            return None
 
-    seeds = await resolve_seeds(session, encounter)
-    now = datetime.now(UTC)
-    veto = models.EncounterVetoSession(
-        encounter_id=encounter.id,
-        config_id=config.id,
-        first_side=seeds.first_side,
-        seed_source=seeds.seed_source,
-        home_seed=seeds.home_seed,
-        away_seed=seeds.away_seed,
-        resolved_sequence_json=resolve_sequence_tokens(
-            effective_sequence(config, encounter.best_of, pool_size, slots=slots), seeds.first_side
-        ),
-        turn_timer_seconds=config.turn_timer_seconds,
-        slot_reserves_json=None if slot_rows is None else slot_reserves(slot_rows),
-        status=MapVetoSessionStatus.ACTIVE,
-        started_at=now,
-        current_step_started_at=now,
-    )
-    session.add(veto)
+        # Counted before the sequence is built, not after: a generated sequence is
+        # sized against the pool it will actually draw from, which is the
+        # admin-assigned pool when one already exists and the config's otherwise.
+        pool_count = await self.pool_repo.count(
+            session,
+            filters=[models.EncounterMapPool.encounter_id == encounter.id],
+        )
+        pool_size = pool_count or len(config.map_pool)
+        # Slot mode only, and awaited here because the slot chain is lazy while
+        # ``effective_sequence`` and the reconciliation are sync. One load feeds all
+        # three of the sequence, the pool rows' ``slot`` and the reserve snapshot.
+        slot_rows: list[models.MapVetoConfigSlot] | None = None
+        slots: list[list[int]] | None = None
+        if config.mode == MapVetoMode.SLOTS:
+            slot_rows, refusal = await self._slot_plan(session, config, encounter.best_of)
+            if refusal is not None:
+                # The bracket and the config disagree, or a slot in play has nothing
+                # left to ban. Either way a session built here would stall with no
+                # recovery but a reset; the room reports the reason instead.
+                return None
+            # ``slot_candidates`` re-sorts an already-ordered list. That is a no-op on
+            # at most a handful of rows, and it is where the sort is pinned; reaching
+            # past it to save the call would duplicate its mapping and un-pin the one
+            # ordering guarantee the whole mode rests on.
+            slots = slot_candidates(slot_rows)
 
-    if not pool_count:
-        if slot_rows is not None:
-            # ``order`` runs across the whole pool as flat mode's does, so
-            # ``get_current_step``'s arithmetic is unchanged; ``slot`` is the
-            # slot's ``position`` VALUE, never its index in this list — the two
-            # differ as soon as a deleted slot leaves a gap in the positions.
-            order = 0
-            for row in slot_rows:
-                for entry in row.maps:
+        seeds = await self.resolve_seeds(session, encounter)
+        now = datetime.now(UTC)
+        veto = models.EncounterVetoSession(
+            encounter_id=encounter.id,
+            config_id=config.id,
+            first_side=seeds.first_side,
+            seed_source=seeds.seed_source,
+            home_seed=seeds.home_seed,
+            away_seed=seeds.away_seed,
+            resolved_sequence_json=resolve_sequence_tokens(
+                effective_sequence(config, encounter.best_of, pool_size, slots=slots), seeds.first_side
+            ),
+            turn_timer_seconds=config.turn_timer_seconds,
+            slot_reserves_json=None if slot_rows is None else slot_reserves(slot_rows),
+            status=MapVetoSessionStatus.ACTIVE,
+            started_at=now,
+            current_step_started_at=now,
+        )
+        # ``session.add``, not ``repo.create``: this row and every pool row below
+        # must reach the DB in ONE flush, because the unique-violation recovery
+        # under ``commit`` is what makes the whole method idempotent against a
+        # concurrent creator. Flushing per row would move that race.
+        session.add(veto)
+
+        if not pool_count:
+            if slot_rows is not None:
+                # ``order`` runs across the whole pool as flat mode's does, so
+                # ``get_current_step``'s arithmetic is unchanged; ``slot`` is the
+                # slot's ``position`` VALUE, never its index in this list — the two
+                # differ as soon as a deleted slot leaves a gap in the positions.
+                order = 0
+                for row in slot_rows:
+                    for entry in row.maps:
+                        session.add(
+                            models.EncounterMapPool(
+                                encounter_id=encounter.id,
+                                map_id=entry.map_id,
+                                order=order,
+                                slot=row.position,
+                                status=MapPoolEntryStatus.AVAILABLE,
+                            )
+                        )
+                        order += 1
+            else:
+                for idx, config_map in enumerate(config.map_pool):
                     session.add(
                         models.EncounterMapPool(
                             encounter_id=encounter.id,
-                            map_id=entry.map_id,
-                            order=order,
-                            slot=row.position,
+                            map_id=config_map.map_id,
+                            order=idx,
                             status=MapPoolEntryStatus.AVAILABLE,
                         )
                     )
-                    order += 1
+
+        register_map_veto_realtime_update(session, encounter.id)
+        if commit:
+            try:
+                await session.commit()
+            except IntegrityError:
+                # A concurrent reader created the session first — use theirs.
+                await session.rollback()
+                return await self.get_veto_session(session, encounter.id)
         else:
-            for idx, config_map in enumerate(config.map_pool):
-                session.add(
-                    models.EncounterMapPool(
-                        encounter_id=encounter.id,
-                        map_id=config_map.map_id,
-                        order=idx,
-                        status=MapPoolEntryStatus.AVAILABLE,
-                    )
-                )
+            await session.flush()
+        return veto
 
-    register_map_veto_realtime_update(session, encounter.id)
-    if commit:
-        try:
-            await session.commit()
-        except IntegrityError:
-            # A concurrent reader created the session first — use theirs.
-            await session.rollback()
-            return await get_veto_session(session, encounter.id)
-    else:
+    async def reset_veto_session(
+        self,
+        session: AsyncSession,
+        encounter: models.Encounter,
+        *,
+        commit: bool = True,
+    ) -> models.EncounterVetoSession | None:
+        """Drop the encounter's veto session + pool rows and re-create them.
+
+        Re-resolves config and seeds from scratch; returns the new session (or None
+        when it can no longer be created — see ``unavailable_reason``). A config
+        switched to slot mode, or a bracket whose ``best_of`` has outgrown the slot
+        count, is applied here: sessions are never rewritten in place.
+        """
+        await self.veto_repo.delete_for_encounter(session, encounter.id)
+        await self.pool_repo.delete_for_encounter(session, encounter.id)
         await session.flush()
-    return veto
+        # Signal even when the re-ensure no-ops: the room just lost its session.
+        register_map_veto_realtime_update(session, encounter.id)
+        veto = await self.ensure_veto_session(session, encounter, commit=False)
+        if commit:
+            await session.commit()
+        return veto
 
+    async def sync_veto_session_after_team_change(
+        self,
+        session: AsyncSession,
+        encounter: models.Encounter,
+    ) -> None:
+        """Team-assignment hook (bracket propagation / admin encounter edits).
 
-async def reset_veto_session(
-    session: AsyncSession,
-    encounter: models.Encounter,
-    *,
-    commit: bool = True,
-) -> models.EncounterVetoSession | None:
-    """Drop the encounter's veto session + pool rows and re-create them.
-
-    Re-resolves config and seeds from scratch; returns the new session (or None
-    when it can no longer be created — see ``unavailable_reason``). A config
-    switched to slot mode, or a bracket whose ``best_of`` has outgrown the slot
-    count, is applied here: sessions are never rewritten in place.
-    """
-    await session.execute(
-        sa.delete(models.EncounterVetoSession).where(models.EncounterVetoSession.encounter_id == encounter.id)
-    )
-    await session.execute(
-        sa.delete(models.EncounterMapPool).where(models.EncounterMapPool.encounter_id == encounter.id)
-    )
-    await session.flush()
-    # Signal even when the re-ensure no-ops: the room just lost its session.
-    register_map_veto_realtime_update(session, encounter.id)
-    veto = await ensure_veto_session(session, encounter, commit=False)
-    if commit:
-        await session.commit()
-    return veto
-
-
-async def sync_veto_session_after_team_change(
-    session: AsyncSession,
-    encounter: models.Encounter,
-) -> None:
-    """Team-assignment hook (bracket propagation / admin encounter edits).
-
-    Called after an encounter's home/away team ids changed. Both teams now
-    set with no session -> ensure one. Session already exists -> the snapshot
-    is stale, reset it — UNLESS a pool entry is already ``played`` (the match
-    is underway; an admin resets manually). Runs inside the caller's
-    transaction (no commit).
-    """
-    veto = await get_veto_session(session, encounter.id)
-    if veto is None:
-        if encounter.home_team_id is not None and encounter.away_team_id is not None:
-            await ensure_veto_session(session, encounter, commit=False)
-        return
-    played_count = await session.scalar(
-        select(sa.func.count())
-        .select_from(models.EncounterMapPool)
-        .where(
-            models.EncounterMapPool.encounter_id == encounter.id,
-            models.EncounterMapPool.status == MapPoolEntryStatus.PLAYED,
+        Called after an encounter's home/away team ids changed. Both teams now
+        set with no session -> ensure one. Session already exists -> the snapshot
+        is stale, reset it — UNLESS a pool entry is already ``played`` (the match
+        is underway; an admin resets manually). Runs inside the caller's
+        transaction (no commit).
+        """
+        veto = await self.get_veto_session(session, encounter.id)
+        if veto is None:
+            if encounter.home_team_id is not None and encounter.away_team_id is not None:
+                await self.ensure_veto_session(session, encounter, commit=False)
+            return
+        played_count = await self.pool_repo.count(
+            session,
+            filters=[
+                models.EncounterMapPool.encounter_id == encounter.id,
+                models.EncounterMapPool.status == MapPoolEntryStatus.PLAYED,
+            ],
         )
-    )
-    if played_count:
-        return
-    await reset_veto_session(session, encounter, commit=False)
+        if played_count:
+            return
+        await self.reset_veto_session(session, encounter, commit=False)
+
+
+veto_session_service = VetoSessionService()

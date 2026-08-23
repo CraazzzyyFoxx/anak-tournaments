@@ -77,8 +77,8 @@ class AdvanceCompletedMatches(IsolatedAsyncioTestCase):
             encounter.status = enums.EncounterStatus.COMPLETED
             return SimpleNamespace(encounter=encounter, advanced_encounters=[])
 
-        with patch.object(sync, "finalize_encounter_score", AsyncMock(side_effect=fake_finalize)):
-            await sync._advance_completed_challonge_matches(session, matches, match_lookup=lookup)
+        with patch.object(sync.finalize_service, "finalize_encounter_score", AsyncMock(side_effect=fake_finalize)):
+            await sync.sync_service._advance_completed_challonge_matches(session, matches, match_lookup=lookup)
         return captured, added
 
     async def test_confirms_an_unconfirmed_complete_match(self) -> None:

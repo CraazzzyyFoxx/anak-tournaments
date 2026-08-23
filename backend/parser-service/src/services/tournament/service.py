@@ -11,6 +11,7 @@ from shared.repository import (
     TournamentGroupRepository,
     TournamentRepository,
 )
+from shared.services.tournament_slug import generate_unique_tournament_slug
 from src import models
 from src.core import enums, utils
 
@@ -104,6 +105,7 @@ class TournamentService:
             workspace_id=workspace_id,
             is_league=is_league,
             name=name,
+            slug=await generate_unique_tournament_slug(session, name, tournament_repo=self.tournament_repo),
             description=description,
             start_date=start_date,
             end_date=end_date,

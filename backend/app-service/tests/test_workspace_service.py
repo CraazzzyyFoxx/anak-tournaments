@@ -225,3 +225,45 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
         self.assertIs(result, created_member)
         ensure_for_auth_user.assert_awaited_once_with(session, auth_user_id=22, name_hint="staff")
         get_or_create.assert_awaited_once_with(session, workspace_id=2, player_id=77)
+
+class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
+    """``is_hidden`` only gates the anonymous/other-member view of ``get_all``:
+    a workspace member always sees their own hidden workspace, and a
+    superuser always sees every workspace."""
+
+    def _workspaces(self) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(id=1, is_hidden=False),
+            SimpleNamespace(id=2, is_hidden=True),
+        ]
+
+    async def test_anonymous_never_sees_a_hidden_workspace(self) -> None:
+        session = SimpleNamespace()
+        with patch.object(workspaces.workspace_repo, "list_ordered", AsyncMock(return_value=self._workspaces())):
+            result = await workspaces.get_all(session, user=None)
+
+        self.assertEqual([1], [w.id for w in result])
+
+    async def test_non_member_never_sees_another_workspaces_hidden_entry(self) -> None:
+        session = SimpleNamespace()
+        user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[99]))
+        with patch.object(workspaces.workspace_repo, "list_ordered", AsyncMock(return_value=self._workspaces())):
+            result = await workspaces.get_all(session, user=user)
+
+        self.assertEqual([1], [w.id for w in result])
+
+    async def test_member_sees_their_own_hidden_workspace(self) -> None:
+        session = SimpleNamespace()
+        user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[2]))
+        with patch.object(workspaces.workspace_repo, "list_ordered", AsyncMock(return_value=self._workspaces())):
+            result = await workspaces.get_all(session, user=user)
+
+        self.assertEqual([1, 2], [w.id for w in result])
+
+    async def test_superuser_sees_every_workspace_unfiltered(self) -> None:
+        session = SimpleNamespace()
+        user = SimpleNamespace(is_superuser=True, get_workspace_ids=Mock(return_value=[]))
+        with patch.object(workspaces.workspace_repo, "list_ordered", AsyncMock(return_value=self._workspaces())):
+            result = await workspaces.get_all(session, user=user)
+
+        self.assertEqual([1, 2], [w.id for w in result])

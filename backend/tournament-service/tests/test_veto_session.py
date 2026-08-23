@@ -42,7 +42,6 @@ from src.services.encounter.veto_session import (  # noqa: E402
     build_slot_sequence,
     decide_seeds,
     effective_sequence,
-    ensure_veto_session,
     ordered_slots,
     resolve_sequence_tokens,
     select_config,
@@ -50,9 +49,9 @@ from src.services.encounter.veto_session import (  # noqa: E402
     slot_refusal,
     slot_reserves,
     slots_in_play,
-    unavailable_reason,
     validate_slot_config,
     validate_veto_config,
+    veto_session_service,
 )
 
 
@@ -613,11 +612,20 @@ class _Result:
     def __init__(self, rows: list[Any]) -> None:
         self._rows = rows
 
+    def unique(self) -> _Result:
+        return self
+
     def scalars(self) -> _Result:
         return self
 
     def all(self) -> list[Any]:
         return list(self._rows)
+
+    def first(self) -> Any:
+        return self._rows[0] if self._rows else None
+
+    def scalar_one(self) -> Any:
+        return self._rows[0] if self._rows else None
 
     def scalar_one_or_none(self) -> Any:
         return self._rows[0] if self._rows else None
@@ -630,10 +638,13 @@ class _FakeSession:
     order, so adding or reordering a query in the service cannot silently make a
     test assert against the wrong result set -- it raises instead.
 
-    ``scalar`` sees two shapes: the pool-size ``count()`` probe (no entity) and
-    ``resolve_seeds``' previous-stage lookup (``Stage``). Answering the latter
-    with ``None`` short-circuits the standings branch, so every session here
-    lands on ``fallback_home`` and the resolved sequence is readable.
+    ``execute`` sees the pool-size ``count()`` probe as an
+    ``EncounterMapPool`` statement, because
+    ``BaseRepository.count`` counts ``Model.id`` and SQLAlchemy reports the
+    mapped entity for that column. ``scalar`` is left with only
+    ``resolve_seeds``' previous-stage lookup (``Stage``); answering it with
+    ``None`` short-circuits the standings branch, so every session here lands
+    on ``fallback_home`` and the resolved sequence is readable.
     """
 
     def __init__(
@@ -672,12 +683,12 @@ class _FakeSession:
         if entity is models.MapVetoConfigSlot:
             self.slot_statements.append(statement)
             return _Result(self.slot_rows)
+        if entity is models.EncounterMapPool:
+            return _Result([self.pool_count])
         raise AssertionError(f"unexpected execute() entity: {entity}")
 
     async def scalar(self, statement: Any) -> Any:
         entity = statement.column_descriptions[0]["entity"]
-        if entity is None:
-            return self.pool_count
         if entity is models.Stage:
             return None
         raise AssertionError(f"unexpected scalar() entity: {entity}")
@@ -877,7 +888,7 @@ class EnsureVetoSessionSlotModeTests(IsolatedAsyncioTestCase):
             slot_rows=self.slot_rows() if slot_rows is None else slot_rows,
             **kwargs,
         )
-        veto = await ensure_veto_session(session, _encounter(best_of=best_of))
+        veto = await veto_session_service.ensure_veto_session(session, _encounter(best_of=best_of))
         return session, veto
 
     async def test_pool_rows_carry_the_slot_position_not_its_index(self) -> None:
@@ -925,7 +936,7 @@ class EnsureVetoSessionSlotModeTests(IsolatedAsyncioTestCase):
         rows = self.slot_rows()
         session = _FakeSession(config=_config(), slot_rows=rows)
         encounter = _encounter(best_of=3)
-        veto = await ensure_veto_session(session, encounter)
+        veto = await veto_session_service.ensure_veto_session(session, encounter)
         snapshot = veto.slot_reserves_json
 
         # The admin edits the config's reserves afterwards. The session already
@@ -934,7 +945,7 @@ class EnsureVetoSessionSlotModeTests(IsolatedAsyncioTestCase):
         for row in rows:
             row.reserve_map_id = 777
         session.existing = veto
-        again = await ensure_veto_session(session, encounter)
+        again = await veto_session_service.ensure_veto_session(session, encounter)
 
         self.assertIs(veto, again)
         self.assertEqual({"3": self.RESERVE_IN_PLAY}, snapshot)
@@ -1007,7 +1018,7 @@ class LoadSlotRowsEagerLoadTests(IsolatedAsyncioTestCase):
     async def test_the_slot_query_eager_loads_each_slot_s_candidates(self) -> None:
         session = _FakeSession(config=_config(), slot_rows=[_slot(1, [11, 12]), _slot(2, [21, 22])])
 
-        veto = await ensure_veto_session(session, _encounter(best_of=2))
+        veto = await veto_session_service.ensure_veto_session(session, _encounter(best_of=2))
 
         self.assertIsNotNone(veto)
         eager_loading.assert_eager_loads(self, session.slot_statements[0], "MapVetoConfigSlot.maps")
@@ -1018,7 +1029,7 @@ class LoadSlotRowsEagerLoadTests(IsolatedAsyncioTestCase):
         # session -- so the room re-pays for it on every poll.
         session = _FakeSession(config=_config(), slot_rows=[_slot(1, [11, 12])])
 
-        reason = await unavailable_reason(session, _encounter(best_of=3))
+        reason = await veto_session_service.unavailable_reason(session, _encounter(best_of=3))
 
         self.assertEqual(REASON_SLOT_COUNT_MISMATCH, reason)
         eager_loading.assert_eager_loads(self, session.slot_statements[0], "MapVetoConfigSlot.maps")
@@ -1030,7 +1041,7 @@ class EnsureVetoSessionFlatModeTests(IsolatedAsyncioTestCase):
     async def test_flat_pool_rows_have_no_slot_and_no_reserve_snapshot(self) -> None:
         session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13, 14, 15]))
 
-        veto = await ensure_veto_session(session, _encounter(best_of=3))
+        veto = await veto_session_service.ensure_veto_session(session, _encounter(best_of=3))
 
         self.assertEqual([None] * 5, [row.slot for row in session.pool_rows])
         self.assertEqual([11, 12, 13, 14, 15], [row.map_id for row in session.pool_rows])
@@ -1041,7 +1052,7 @@ class EnsureVetoSessionFlatModeTests(IsolatedAsyncioTestCase):
     async def test_flat_mode_never_queries_the_slot_tables(self) -> None:
         session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13, 14, 15]))
 
-        await ensure_veto_session(session, _encounter(best_of=3))
+        await veto_session_service.ensure_veto_session(session, _encounter(best_of=3))
 
         self.assertEqual(0, session.slot_queries)
 
@@ -1050,7 +1061,7 @@ class EnsureVetoSessionFlatModeTests(IsolatedAsyncioTestCase):
         # reach a config that has no slots to reconcile.
         session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13]))
 
-        veto = await ensure_veto_session(session, _encounter(best_of=9))
+        veto = await veto_session_service.ensure_veto_session(session, _encounter(best_of=9))
 
         self.assertIsNotNone(veto)
 
@@ -1070,7 +1081,7 @@ class EnsureVetoSessionFlatModeTests(IsolatedAsyncioTestCase):
         # ban where 5 buys two.
         session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13, 14, 15]), pool_count=4)
 
-        veto = await ensure_veto_session(session, _encounter(best_of=3))
+        veto = await veto_session_service.ensure_veto_session(session, _encounter(best_of=3))
 
         self.assertEqual([], session.pool_rows)
         self.assertEqual(["ban_home", "pick_home", "pick_away", "decider"], veto.resolved_sequence_json)
@@ -1082,29 +1093,29 @@ class UnavailableReasonTests(IsolatedAsyncioTestCase):
     async def test_unknown_teams_short_circuit_before_any_query(self) -> None:
         session = _FakeSession()
 
-        self.assertEqual(REASON_TEAMS_UNKNOWN, await unavailable_reason(session, _encounter(best_of=3, away=None)))
+        self.assertEqual(REASON_TEAMS_UNKNOWN, await veto_session_service.unavailable_reason(session, _encounter(best_of=3, away=None)))
 
     async def test_no_config_is_not_configured(self) -> None:
         session = _FakeSession(config=None)
 
-        self.assertEqual(REASON_NOT_CONFIGURED, await unavailable_reason(session, _encounter(best_of=3)))
+        self.assertEqual(REASON_NOT_CONFIGURED, await veto_session_service.unavailable_reason(session, _encounter(best_of=3)))
 
     async def test_a_playable_flat_config_reports_not_configured(self) -> None:
         # Unreachable in practice (a session would exist); pinned so a slot
         # reason can never leak onto a flat config.
         session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13]))
 
-        self.assertEqual(REASON_NOT_CONFIGURED, await unavailable_reason(session, _encounter(best_of=9)))
+        self.assertEqual(REASON_NOT_CONFIGURED, await veto_session_service.unavailable_reason(session, _encounter(best_of=9)))
 
     async def test_more_maps_than_slots_is_slot_count_mismatch(self) -> None:
         session = _FakeSession(config=_config(), slot_rows=[_slot(1, [11, 12]), _slot(3, [21, 22, 23])])
 
-        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, await unavailable_reason(session, _encounter(best_of=3)))
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, await veto_session_service.unavailable_reason(session, _encounter(best_of=3)))
 
     async def test_an_underfilled_slot_in_play_is_slot_underfilled(self) -> None:
         session = _FakeSession(config=_config(), slot_rows=[_slot(1, [11, 12]), _slot(3, [21])])
 
-        self.assertEqual(REASON_SLOT_UNDERFILLED, await unavailable_reason(session, _encounter(best_of=2)))
+        self.assertEqual(REASON_SLOT_UNDERFILLED, await veto_session_service.unavailable_reason(session, _encounter(best_of=2)))
 
     async def test_a_config_with_no_slots_is_slot_count_mismatch(self) -> None:
         # Both refusals reach the room through the same ``_slot_plan``, so the
@@ -1112,7 +1123,7 @@ class UnavailableReasonTests(IsolatedAsyncioTestCase):
         # create.
         session = _FakeSession(config=_config(), slot_rows=[])
 
-        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, await unavailable_reason(session, _encounter(best_of=0)))
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, await veto_session_service.unavailable_reason(session, _encounter(best_of=0)))
 
     async def test_an_underfilled_slot_out_of_play_is_not_a_reason(self) -> None:
         # The ordering pin on this side of ``_slot_plan``: slot 5 is beyond
@@ -1122,7 +1133,7 @@ class UnavailableReasonTests(IsolatedAsyncioTestCase):
         rows = [_slot(1, [11, 12]), _slot(3, [21, 22, 23]), _slot(5, [31])]
         session = _FakeSession(config=_config(), slot_rows=rows)
 
-        self.assertEqual(REASON_NOT_CONFIGURED, await unavailable_reason(session, _encounter(best_of=2)))
+        self.assertEqual(REASON_NOT_CONFIGURED, await veto_session_service.unavailable_reason(session, _encounter(best_of=2)))
 
     async def test_the_two_slot_reasons_are_distinct_strings(self) -> None:
         self.assertNotEqual(REASON_SLOT_COUNT_MISMATCH, REASON_SLOT_UNDERFILLED)
@@ -1132,9 +1143,9 @@ class UnavailableReasonTests(IsolatedAsyncioTestCase):
     async def test_stage_not_published_is_bracket_preview(self) -> None:
         session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13]), stage_published=False)
 
-        self.assertEqual(REASON_BRACKET_PREVIEW, await unavailable_reason(session, _encounter(best_of=3)))
+        self.assertEqual(REASON_BRACKET_PREVIEW, await veto_session_service.unavailable_reason(session, _encounter(best_of=3)))
 
     async def test_ensure_veto_session_returns_none_when_stage_not_published(self) -> None:
         session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13]), stage_published=False)
 
-        self.assertIsNone(await ensure_veto_session(session, _encounter(best_of=3)))
+        self.assertIsNone(await veto_session_service.ensure_veto_session(session, _encounter(best_of=3)))

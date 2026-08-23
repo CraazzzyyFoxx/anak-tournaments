@@ -10,6 +10,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,6 +23,24 @@ import (
 // fallback during the aqt->owt rename so existing sessions are not logged out.
 const CookieName = "owt_access_token"
 const LegacyCookieName = "aqt_access_token"
+
+// APIKeyPrefix marks an opaque workspace-scoped API key
+// ("aqt_sk_<public_id>_<secret>" — identity-service's ApiKeyService.PREFIX).
+// Such a credential is not a JWT at all: it carries no claims and can only be
+// judged by identity-svc, so parseToken must never be handed one.
+const APIKeyPrefix = "aqt_sk_"
+
+// IsAPIKey reports whether token is an opaque API key rather than a signed
+// access token. It is a purely local prefix test, and that is what lets every
+// surface skip the identity RPC for ordinary session traffic.
+func IsAPIKey(token string) bool { return strings.HasPrefix(token, APIKeyPrefix) }
+
+// APIKeyResolver judges an opaque API key against identity-svc and returns the
+// principal it authenticates, or nil when the key is invalid or carries no
+// usable authority. It is injected as a function rather than imported so this
+// package keeps its zero-dependency local-JWT posture — the implementation
+// speaks RPC (see internal/principal and ws.APIKeyAuth).
+type APIKeyResolver func(ctx context.Context, token string) *User
 
 // User is an authenticated WebSocket/HTTP principal. A nil *User means anonymous.
 type User struct {
@@ -42,6 +61,8 @@ type User struct {
 type Authenticator struct {
 	secret []byte
 	parser *jwt.Parser
+	// apiKeys is nil unless a surface opted in via WithAPIKeys.
+	apiKeys APIKeyResolver
 }
 
 // New returns an Authenticator bound to the shared JWT secret. Only HS256 is
@@ -54,6 +75,19 @@ func New(secret string) *Authenticator {
 	}
 }
 
+// WithAPIKeys returns a COPY of a that additionally authenticates opaque API
+// keys through resolve. A copy rather than a mutation because only some
+// surfaces may pay for it: resolve performs an identity RPC on a cache miss,
+// and httplog/metrics call UserFromRequest after the response is already
+// written — an RPC there would put the identity backend on the access-log
+// path. The WebSocket handler gets the api-key-aware authenticator; those two
+// keep the JWT-only one.
+func (a *Authenticator) WithAPIKeys(resolve APIKeyResolver) *Authenticator {
+	c := *a
+	c.apiKeys = resolve
+	return &c
+}
+
 // UserFromRequest resolves the principal from a request. It mirrors the
 // realtime-service behaviour: a missing OR invalid token yields anonymous
 // (nil, nil) rather than rejecting the connection. Authorization is enforced
@@ -62,6 +96,16 @@ func (a *Authenticator) UserFromRequest(r *http.Request) *User {
 	token := extractToken(r)
 	if token == "" {
 		return nil
+	}
+	// An opaque API key can never parse as a JWT, so without this branch it
+	// degraded silently to anonymous. Only surfaces that opted in via
+	// WithAPIKeys resolve one; for the rest a key stays unauthenticated,
+	// exactly as before.
+	if IsAPIKey(token) {
+		if a.apiKeys == nil {
+			return nil
+		}
+		return a.apiKeys(r.Context(), token)
 	}
 	return a.parseToken(token)
 }

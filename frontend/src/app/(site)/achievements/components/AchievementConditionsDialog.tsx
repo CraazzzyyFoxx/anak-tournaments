@@ -70,7 +70,7 @@ const AchievementConditionsDialog = ({ achievement, onClose }: Props) => {
             </div>
 
             <div className="flex flex-col gap-2">
-              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+              <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
                 {t("achievements.conditionsTitle")}
               </div>
               <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] p-3">

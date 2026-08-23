@@ -71,7 +71,7 @@ packages, so application code imports them locally:
 from src import models
 
 user = models.User(name="example")
-tournament = models.Tournament(name="Tournament #1")
+tournament = models.Tournament(name="Tournament #1", slug="tournament-1")
 ```
 
 Base classes and enums are exposed through each service's `src.core`:

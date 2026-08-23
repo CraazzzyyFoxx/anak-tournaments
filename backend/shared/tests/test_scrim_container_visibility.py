@@ -43,6 +43,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
+from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament.preview_access import TournamentPreviewAccess  # noqa: E402
 from shared.models.tournament.scrim import ScrimRoom  # noqa: E402
 from shared.models.tournament.tournament import Tournament  # noqa: E402
@@ -74,6 +75,7 @@ TABLE_NAMES = (
     "tournament.tournament_phase_schedule",
     "tournament.tournament_preview_access",
     "tournament.scrim_room",
+    "workspace",
 )
 WORKSPACE_ID = 1
 OTHER_WORKSPACE_ID = 2
@@ -136,6 +138,9 @@ class ScrimContainerVisibilityTests(IsolatedAsyncioTestCase):
         self.shim = _AsyncSessionShim(self.session)
         self.addCleanup(self._close)
 
+        self.session.execute(
+            sa.insert(Workspace.__table__).values(id=WORKSPACE_ID, slug="ws", name="WS")
+        )
         for tournament_id, name, hidden in (
             (CONTAINER_ID, "Scrims", True),
             (PREVIEW_ID, "Season 9", True),
@@ -146,6 +151,7 @@ class ScrimContainerVisibilityTests(IsolatedAsyncioTestCase):
                     id=tournament_id,
                     workspace_id=WORKSPACE_ID,
                     name=name,
+                    slug=f"tournament-{tournament_id}",
                     is_hidden=hidden,
                     is_league=False,
                     start_date=datetime(2026, 8, 12, tzinfo=UTC),

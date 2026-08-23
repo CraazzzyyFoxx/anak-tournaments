@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ChevronDown, LoaderCircle, Lock } from "lucide-react";
+import { useFormatter } from "next-intl";
 
 import {
   AUDIT_TRAIL_PAGE_SIZE,
@@ -86,7 +87,7 @@ export function AuditFieldDiff({
           <div key={row.field} className="grid gap-0.5">
             <dt className="flex items-baseline gap-1.5">
               <span className="font-mono text-xs text-foreground">{row.field}</span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
                 {DIFF_KIND_WORD[row.kind]}
               </span>
             </dt>
@@ -155,6 +156,7 @@ function AuditEntryDetail({ entry }: Readonly<{ entry: AuditLogRead }>) {
 
 function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
   const [open, setOpen] = useState(false);
+  const format = useFormatter();
   const action = describeAuditAction(entry.action);
   const hasDetail =
     entry.before_json != null ||
@@ -176,7 +178,7 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
               dateTime={entry.created_at}
               className="shrink-0 tabular-nums text-xs text-muted-foreground"
             >
-              {formatAuditTimestamp(entry.created_at)}
+              {formatAuditTimestamp(format, entry.created_at)}
             </time>
             <span
               className="text-sm font-medium text-foreground"
@@ -239,6 +241,7 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
  */
 export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) {
   const entityNoun = (auditEntityLabel(scope.entityType) ?? "record").toLowerCase();
+  const format = useFormatter();
 
   const trailQuery = useInfiniteQuery({
     queryKey: auditTrailQueryKey(scope),
@@ -296,8 +299,8 @@ export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) 
       return (
         <p className="text-sm text-muted-foreground">
           No changes recorded for this {entityNoun}. The audit log in this workspace starts on{" "}
-          <span className="text-foreground">{formatAuditDate(historyStart.data)}</span> — anything
-          done before that date left no trail.
+          <span className="text-foreground">{formatAuditDate(format, historyStart.data)}</span> —
+          anything done before that date left no trail.
         </p>
       );
     }

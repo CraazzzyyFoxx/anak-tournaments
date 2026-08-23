@@ -15,6 +15,7 @@ function form(partial: Partial<TournamentFormState> = {}): TournamentFormState {
     name: "OWT 64",
     description: "",
     challonge_slug: "owt-64",
+    slug: "owt-64",
     is_league: false,
     is_finished: false,
     is_hidden: false,
@@ -69,6 +70,15 @@ describe("getTournamentUpdatePayload", () => {
     expect(getTournamentUpdatePayload(changed, initial)).toEqual({
       roster_slots_json: { tank: 2, dps: 2, support: 1 }
     });
+  });
+
+  it("diffs slug by trimmed value; re-sending the same slug is not a change", () => {
+    const initial = form({ slug: "owt-64" });
+    const renamed = form({ slug: "owt-64-finals" });
+    const retyped = form({ slug: "  owt-64  " });
+
+    expect(getTournamentUpdatePayload(renamed, initial)).toEqual({ slug: "owt-64-finals" });
+    expect(getTournamentUpdatePayload(retyped, initial)).toEqual({});
   });
 
   it("combines every changed field, leaving untouched ones out entirely", () => {

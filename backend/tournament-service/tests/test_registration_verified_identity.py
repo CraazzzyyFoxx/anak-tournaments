@@ -65,7 +65,7 @@ def _payload(**values: str | None) -> SimpleNamespace:
 class VerifiedIdentityValidationTests(IsolatedAsyncioTestCase):
     async def test_ungated_field_skips_query(self) -> None:
         session = _FakeSession([])
-        await validation.validate_verified_identity(
+        await validation.validation_service.validate_verified_identity(
             session,
             form=_form({"battle_tag": {"enabled": True, "required": True}}),
             payload=_payload(battle_tag="Player#1234"),
@@ -76,7 +76,7 @@ class VerifiedIdentityValidationTests(IsolatedAsyncioTestCase):
     async def test_gated_without_player_is_rejected(self) -> None:
         session = _FakeSession([])
         with self.assertRaises(HTTPException):
-            await validation.validate_verified_identity(
+            await validation.validation_service.validate_verified_identity(
                 session,
                 form=_form({"battle_tag": {"enabled": True, "require_verified": True}}),
                 payload=_payload(battle_tag="Player#1234"),
@@ -86,7 +86,7 @@ class VerifiedIdentityValidationTests(IsolatedAsyncioTestCase):
     async def test_gated_without_verified_account_is_rejected(self) -> None:
         session = _FakeSession([])  # no verified rows
         with self.assertRaises(HTTPException):
-            await validation.validate_verified_identity(
+            await validation.validation_service.validate_verified_identity(
                 session,
                 form=_form({"battle_tag": {"enabled": True, "require_verified": True}}),
                 payload=_payload(battle_tag="Player#1234"),
@@ -95,7 +95,7 @@ class VerifiedIdentityValidationTests(IsolatedAsyncioTestCase):
 
     async def test_matching_verified_account_passes(self) -> None:
         session = _FakeSession([("battlenet", "crazzzyyfoxx#2875")])
-        await validation.validate_verified_identity(
+        await validation.validation_service.validate_verified_identity(
             session,
             form=_form({"battle_tag": {"enabled": True, "require_verified": True}}),
             payload=_payload(battle_tag=" CrazzzyyFoxx # 2875 "),
@@ -105,7 +105,7 @@ class VerifiedIdentityValidationTests(IsolatedAsyncioTestCase):
     async def test_mismatched_value_is_rejected(self) -> None:
         session = _FakeSession([("battlenet", "crazzzyyfoxx#2875")])
         with self.assertRaises(HTTPException):
-            await validation.validate_verified_identity(
+            await validation.validation_service.validate_verified_identity(
                 session,
                 form=_form({"battle_tag": {"enabled": True, "require_verified": True}}),
                 payload=_payload(battle_tag="Other#9999"),
@@ -115,7 +115,7 @@ class VerifiedIdentityValidationTests(IsolatedAsyncioTestCase):
     async def test_empty_value_is_rejected_when_gated(self) -> None:
         session = _FakeSession([("discord", "verified_user")])
         with self.assertRaises(HTTPException):
-            await validation.validate_verified_identity(
+            await validation.validation_service.validate_verified_identity(
                 session,
                 form=_form({"discord_nick": {"enabled": True, "require_verified": True}}),
                 payload=_payload(discord_nick=""),
@@ -124,7 +124,7 @@ class VerifiedIdentityValidationTests(IsolatedAsyncioTestCase):
 
     async def test_disabled_gated_field_is_ignored(self) -> None:
         session = _FakeSession([])
-        await validation.validate_verified_identity(
+        await validation.validation_service.validate_verified_identity(
             session,
             form=_form({"battle_tag": {"enabled": False, "require_verified": True}}),
             payload=_payload(battle_tag="Player#1234"),

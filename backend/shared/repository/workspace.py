@@ -71,6 +71,42 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
     async def get_with_default_grid(self, session: AsyncSession, workspace_id: int) -> models.Workspace | None:
         return await self.get(session, workspace_id, options=self.default_grid_options())
 
+    async def lock_by_id(self, session: AsyncSession, workspace_id: int) -> int | None:
+        """``SELECT id ... FOR UPDATE`` — serialize concurrent writers on one workspace.
+
+        Used by the division-grid import paths, where two imports into the same
+        workspace must not interleave. The projection is deliberate: the caller wants
+        the lock, not the row.
+        """
+        return await session.scalar(
+            sa.select(models.Workspace.id)
+            .where(models.Workspace.id == workspace_id)
+            .with_for_update()
+        )
+
+    async def clear_default_grid_version(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        version_ids: Sequence[int],
+    ) -> None:
+        """Detach the workspace default when the version it points at is being deleted.
+
+        One statement over the whole set of doomed versions rather than a load-then-check
+        per version.
+        """
+        if not version_ids:
+            return
+        await session.execute(
+            sa.update(models.Workspace)
+            .where(
+                models.Workspace.id == workspace_id,
+                models.Workspace.default_division_grid_version_id.in_(tuple(version_ids)),
+            )
+            .values(default_division_grid_version_id=None)
+        )
+
     async def list_ordered(self, session: AsyncSession) -> Sequence[models.Workspace]:
         result = await session.execute(
             sa.select(models.Workspace).options(*self.default_grid_options()).order_by(models.Workspace.id.asc())

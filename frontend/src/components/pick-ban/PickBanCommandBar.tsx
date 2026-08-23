@@ -83,7 +83,7 @@ export function PickBanCommandBar({
             <PickBanCountdown deadline={deadline} totalSeconds={session.turn_timer_seconds} />
           ) : null}
           <div className="min-w-0 flex-1">
-            <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[color:var(--aqt-teal)]">
+            <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[color:var(--aqt-teal)]">
               {captainAction != null ? t("captain.yourTurn") : "\u00A0"}
             </p>
             <p className="truncate text-sm font-medium">{turnBanner ?? "\u00A0"}</p>

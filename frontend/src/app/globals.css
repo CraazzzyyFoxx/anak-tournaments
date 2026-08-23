@@ -114,13 +114,13 @@
 
 /* Handle */
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background: var(--aqt-border-3);
   border-radius: 5px;
 }
 
 /* Handle on hover */
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--aqt-fg-faint);
 }
 
 .user-map {
@@ -356,69 +356,6 @@
   background: linear-gradient(180deg, hsl(215 15% 50%), hsl(215 12% 32%));
 }
 
-/* hero avatars */
-.aqt-hero-av {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 1px solid var(--aqt-border-2);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--aqt-display);
-  font-weight: 800;
-  font-size: 11px;
-  color: hsl(220 30% 8%);
-  flex-shrink: 0;
-}
-.aqt-hero-av.sm {
-  width: 26px;
-  height: 26px;
-  font-size: 10px;
-}
-.aqt-hero-av.lg {
-  width: 40px;
-  height: 40px;
-  font-size: 14px;
-}
-.aqt-hero-av.tank {
-  background: linear-gradient(135deg, hsl(210 78% 72%), hsl(210 60% 48%));
-}
-.aqt-hero-av.damage {
-  background: linear-gradient(135deg, hsl(340 78% 72%), hsl(340 60% 48%));
-}
-.aqt-hero-av.support {
-  background: linear-gradient(135deg, hsl(142 65% 65%), hsl(142 50% 42%));
-}
-.aqt-hero-av.amber {
-  background: linear-gradient(135deg, hsl(38 95% 68%), hsl(38 80% 48%));
-}
-.aqt-hero-av.violet {
-  background: linear-gradient(135deg, hsl(270 70% 72%), hsl(270 55% 50%));
-}
-.aqt-hero-av.rose {
-  background: linear-gradient(135deg, hsl(0 75% 70%), hsl(0 60% 48%));
-}
-.aqt-hero-av.cyan {
-  background: linear-gradient(135deg, hsl(190 75% 65%), hsl(190 60% 45%));
-}
-.aqt-hero-av.lime {
-  background: linear-gradient(135deg, hsl(80 70% 65%), hsl(80 55% 42%));
-}
-
-/* hero strip */
-.aqt-hero-strip {
-  display: inline-flex;
-  align-items: center;
-}
-.aqt-hero-strip .aqt-hero-av {
-  margin-left: -8px;
-  box-shadow: 0 0 0 2px var(--aqt-card);
-}
-.aqt-hero-strip .aqt-hero-av:first-child {
-  margin-left: 0;
-}
-
 /* form streak chips */
 .aqt-form-chip {
   width: 18px;
@@ -429,7 +366,7 @@
   justify-content: center;
   font-family: var(--aqt-display);
   font-weight: 800;
-  font-size: 10px;
+  font-size: 11px;
   color: hsl(220 30% 8%);
 }
 .aqt-form-chip.w {
@@ -483,7 +420,7 @@
   background: var(--aqt-overlay-3);
   border: 1px solid var(--aqt-border-2);
   color: var(--aqt-fg-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -620,7 +557,7 @@
 }
 .aqt-filter-chip .aqt-count {
   font-family: var(--aqt-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--aqt-fg-faint);
   background: var(--aqt-overlay-3);
   padding: 1px 6px;
@@ -635,65 +572,6 @@
   height: 20px;
   background: var(--aqt-border-2);
   margin: 0 2px;
-}
-
-/* placement spark */
-.aqt-place-spark {
-  display: flex;
-  align-items: flex-end;
-  height: 90px;
-  gap: 5px;
-  padding: 6px 0;
-}
-.aqt-place-spark .aqt-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  height: 100%;
-  cursor: pointer;
-  position: relative;
-}
-.aqt-place-spark .aqt-bar {
-  width: 100%;
-  background: linear-gradient(180deg, var(--aqt-teal), color-mix(in srgb, var(--aqt-teal) 35%, transparent));
-  border-radius: 3px 3px 0 0;
-  transition: 0.15s;
-  min-height: 4px;
-}
-.aqt-place-spark .aqt-col:hover .aqt-bar {
-  filter: brightness(1.2);
-}
-.aqt-place-spark .aqt-col.podium .aqt-bar {
-  background: linear-gradient(180deg, var(--aqt-amber), color-mix(in srgb, var(--aqt-amber) 40%, transparent));
-}
-.aqt-place-spark .aqt-col.first .aqt-bar {
-  background: linear-gradient(180deg, hsl(45 95% 60%), hsl(38 90% 48%));
-}
-.aqt-place-spark .aqt-lbl {
-  font-family: var(--aqt-mono);
-  font-size: 9px;
-  color: var(--aqt-fg-faint);
-}
-.aqt-place-spark .aqt-val {
-  position: absolute;
-  bottom: 100%;
-  font-family: var(--aqt-mono);
-  font-size: 9.5px;
-  color: var(--aqt-fg-muted);
-  margin-bottom: 2px;
-}
-.aqt-place-spark-axis {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--aqt-mono);
-  font-size: 9.5px;
-  color: var(--aqt-fg-faint);
-  border-top: 1px solid var(--aqt-border);
-  padding-top: 6px;
-  margin-top: 2px;
 }
 
 /* role pyramid bar */
@@ -737,7 +615,7 @@
 }
 .aqt-opp-row .aqt-rank {
   font-family: var(--aqt-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--aqt-fg-faint);
   text-align: right;
 }
@@ -801,7 +679,7 @@
   overflow: hidden;
 }
 .aqt-mode-card .aqt-l {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -856,7 +734,7 @@
   width: 56px;
   height: 32px;
   border-radius: 5px;
-  background: linear-gradient(135deg, #1b2735, #0e1620);
+  background: linear-gradient(135deg, var(--aqt-card-2), var(--aqt-bg-2));
   border: 1px solid var(--aqt-border-2);
   display: flex;
   align-items: center;
@@ -952,7 +830,7 @@
 }
 .aqt-ach-rank .aqt-tier .aqt-l {
   font-family: var(--aqt-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   color: var(--aqt-fg-faint);
   text-transform: uppercase;
@@ -1055,7 +933,7 @@
   align-items: center;
   gap: 5px;
   font-family: var(--aqt-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1083,7 +961,7 @@
   top: 8px;
   right: 10px;
   font-family: var(--aqt-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--aqt-fg-muted);
   background: var(--aqt-overlay-3);
@@ -1213,7 +1091,7 @@
   right: 10px;
   z-index: 5;
   font-family: var(--aqt-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
   color: hsl(var(--rar));
@@ -1238,7 +1116,7 @@
   right: 10px;
   z-index: 4;
   font-family: var(--aqt-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   color: hsl(210 20% 90%);
   background: hsl(220 30% 4% / 0.5);
@@ -1420,7 +1298,7 @@
 }
 .aqt-radar-axis {
   font-family: var(--aqt-mono);
-  font-size: 10px;
+  font-size: 11px;
   fill: var(--aqt-fg-muted);
 }
 
@@ -1472,7 +1350,7 @@
   flex-direction: column;
   justify-content: space-between;
   font-family: var(--aqt-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--aqt-fg-faint);
   text-align: right;
   padding-right: 6px;
@@ -1499,13 +1377,13 @@
   z-index: 5;
 }
 .aqt-timeline .aqt-dot.gold {
-  background: linear-gradient(135deg, #fcd34d, #d97706);
+  background: linear-gradient(135deg, var(--aqt-medal-gold), color-mix(in srgb, var(--aqt-medal-gold) 65%, black));
 }
 .aqt-timeline .aqt-dot.silver {
-  background: linear-gradient(135deg, #e5e7eb, #9ca3af);
+  background: linear-gradient(135deg, var(--aqt-medal-silver), color-mix(in srgb, var(--aqt-medal-silver) 65%, black));
 }
 .aqt-timeline .aqt-dot.bronze {
-  background: linear-gradient(135deg, #d97706, #7c2d12);
+  background: linear-gradient(135deg, var(--aqt-medal-bronze), color-mix(in srgb, var(--aqt-medal-bronze) 65%, black));
 }
 .aqt-timeline .aqt-dot.mid {
   background: var(--aqt-teal);
@@ -1521,7 +1399,7 @@
   display: flex;
   justify-content: space-between;
   font-family: var(--aqt-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--aqt-fg-faint);
 }
 
@@ -1621,9 +1499,30 @@
   --aqt-live: var(--aqt-rose);
   --aqt-warm: var(--aqt-amber);
   /* Third-party brand marks. Not ours to re-hue, but they belong in one place
-     rather than as raw hex sprinkled through participant and profile cards. */
+     rather than as raw hex sprinkled through participant and profile cards.
+     These are the only sanctioned raw-hex declarations in this file: holding
+     the vendor's exact hue IS the job. Now covers every OAuth/social provider
+     the app speaks to, across both consumers — the admin OAuth badges and the
+     profile social links.
+
+     Base = fill/border at low alpha. The -fg pair is the same mark
+     hand-lightened for legible text on our dark surfaces (the vendor hue
+     alone fails contrast), mirroring the --aqt-medal-*-fg split. Do NOT
+     derive -fg with color-mix — these values are tuned, not computed. Only
+     the marks used as text carry a -fg; add one when a surface needs it. */
   --aqt-brand-discord: #5865f2;
+  --aqt-brand-discord-fg: #7289da;
   --aqt-brand-twitch: #9146ff;
+  --aqt-brand-twitch-fg: #b380ff;
+  --aqt-brand-battlenet: #148eff;
+  --aqt-brand-battlenet-fg: #60b0ff;
+  --aqt-brand-google: #ea4335;
+  --aqt-brand-google-fg: #f28b82;
+  --aqt-brand-github: #6e7681;
+  --aqt-brand-github-fg: #c9d1d9;
+  --aqt-brand-boosty: #f15f2c;
+  --aqt-brand-vk: #0077ff;
+  --aqt-brand-youtube: #ff0000;
   /* Nested-surface elevation. First-level cards sit on --aqt-card; a nested
      card uses --aqt-card-2 OR one of these translucent white overlays; deeper
      nesting always uses overlays. White alpha composites over ANY parent
@@ -1655,8 +1554,14 @@
   --aqt-sticky-top: 88px;
   --aqt-radius: 14px;
   --aqt-radius-sm: 8px;
+  /* These alias next/font variables, so they only resolve if --font-* is
+     defined on this same element. layout.tsx therefore mounts the three
+     `.variable` classes on <html>, not <body>: a custom property is
+     substituted where it is DECLARED, and an unresolved var() poisons the
+     whole value — the literal "JetBrains Mono" tail below does not rescue it.
+     Moving these to <body>, or the classes off <html>, silently renders every
+     mono and display surface in Inter. */
   --aqt-display: var(--font-onest), var(--font-inter), Inter, system-ui, sans-serif;
-  --aqt-onest: var(--font-onest), var(--font-inter), Inter, system-ui, sans-serif;
   --aqt-mono: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
   /* Editorial Tactical hero (design-book): role-spectrum accent + ONE
      restrained teal glow. The spectrum is the single sanctioned multi-hue
@@ -1733,7 +1638,6 @@
   font-size: 52px;
   line-height: 1.05;
   letter-spacing: 0.02em;
-  text-transform: uppercase;
   margin: 8px 0 12px;
 }
 .aqt-tn .h1 em {
@@ -1800,7 +1704,7 @@
   gap: 4px;
 }
 .aqt-tn .hero-stat .label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1886,7 +1790,7 @@
 }
 .aqt-tn .tn-btn .kbd {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--fg-faint);
   background: var(--aqt-overlay-3);
   padding: 1px 5px;
@@ -2072,7 +1976,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2131,7 +2035,7 @@
   color: var(--fg-faint);
 }
 .aqt-tn .meta-pill .k {
-  font-size: 9.5px;
+  font-size: 11px;
   color: var(--fg-faint);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2155,7 +2059,7 @@
   gap: 2px;
 }
 .aqt-tn .feat-stat .l {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2174,7 +2078,7 @@
   color: var(--teal);
 }
 .aqt-tn .feat-stat .s {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--fg-dim);
 }
 .aqt-tn .feat-now {
@@ -2195,14 +2099,14 @@
   gap: 1px;
 }
 .aqt-tn .feat-now .now-lbl .k {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--rose);
 }
 .aqt-tn .feat-now .now-lbl .v {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--fg-dim);
   font-family: var(--mono);
 }
@@ -2246,7 +2150,7 @@
 }
 .aqt-tn .feat-now .map-pill {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--fg-muted);
   background: var(--aqt-overlay-3);
   padding: 3px 7px;
@@ -2322,7 +2226,7 @@
   border-collapse: collapse;
 }
 .aqt-tn table.tn th {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2399,7 +2303,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -2503,7 +2407,7 @@
   font-variant-numeric: tabular-nums;
 }
 .aqt-tn .tn-teams .sub {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--fg-dim);
 }
 .aqt-tn .tn-actions {
@@ -2626,7 +2530,6 @@
   font-size: 52px;
   line-height: 1;
   letter-spacing: 0.02em;
-  text-transform: uppercase;
   margin: 4px 0 8px;
   display: flex;
   align-items: baseline;
@@ -2657,7 +2560,7 @@
   text-align: right;
 }
 .aqt-tn .tn-h-stat .l {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2676,7 +2579,7 @@
   color: var(--teal);
 }
 .aqt-tn .tn-h-stat .s {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--fg-dim);
 }
 .aqt-tn .tn-hero .tn-actions {
@@ -2735,7 +2638,7 @@
 }
 .aqt-tn .tab .count {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--fg-faint);
   background: var(--aqt-overlay-2);
   padding: 1px 6px;
@@ -2829,7 +2732,7 @@
 }
 .aqt-tn .stage-tab .count {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--fg-faint);
   background: var(--aqt-overlay-3);
   padding: 1px 6px;
@@ -2923,7 +2826,7 @@
   gap: 1px;
 }
 .aqt-tn .standings-card .head .right-info .stat .k {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2950,7 +2853,7 @@
   border-collapse: collapse;
 }
 .aqt-tn table.st th {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -3005,7 +2908,7 @@
 }
 .aqt-tn .st-footer .sep {
   color: var(--fg-faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 .aqt-tn .st-footer .badge {
   background: var(--aqt-overlay-2);
@@ -3190,7 +3093,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--display);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   color: hsl(220 30% 8%);
 }
@@ -3208,7 +3111,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -3255,7 +3158,7 @@
   transform: translate(-50%, -50%);
   padding: 2px 10px;
   background: var(--tn-card);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -3294,7 +3197,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -3375,7 +3278,7 @@
   flex-shrink: 0;
 }
 .team-card .tc-sr .l {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--aqt-fg-faint);
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -3396,7 +3299,7 @@
   border-collapse: collapse;
 }
 .roster th {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -3486,7 +3389,7 @@
   border-collapse: collapse;
 }
 .aqt-matches table.m th {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -3623,7 +3526,7 @@
   font-size: 11px;
 }
 .aqt-matches .m-when .day {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -3645,7 +3548,7 @@
   align-items: center;
   gap: 4px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--fg-muted);
   background: var(--aqt-overlay-2);
@@ -3688,7 +3591,7 @@
   border-collapse: collapse;
 }
 .aqt-tn .data-table th {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -3738,7 +3641,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3803,7 +3706,7 @@
 }
 .aqt-tn .hero-name .meta {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--fg-faint);
   letter-spacing: 0.02em;
 }
@@ -3850,7 +3753,7 @@
 }
 .aqt-tn .hero-row .hero-stats .pct {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--fg-dim);
   font-weight: 500;
 }

@@ -12,36 +12,88 @@ type MermaidApi = (typeof import("mermaid"))["default"];
 let mermaidPromise: Promise<MermaidApi> | null = null;
 let initialized = false;
 
+// Mermaid's theming is a JS API: it takes plain colour strings and runs its own
+// colour maths over them, so it cannot read CSS custom properties — `var()` in
+// `themeVariables` would not resolve. Rather than hardcode a second copy of the
+// palette, resolve the --aqt-* tokens once at init and hand mermaid the computed
+// values, so the diagrams follow the app theme. The hex fallbacks are the values
+// this file used to carry, for when the tokens are unreachable (no DOM).
+const THEME_FALLBACK = {
+  "--aqt-bg": "#0d1117",
+  "--aqt-card": "#12171f",
+  "--aqt-card-2": "#161b22",
+  "--aqt-border-3": "#2b3440",
+  "--aqt-fg": "#e6edf3",
+  "--aqt-teal": "#2dd4bf"
+};
+const MONO_FALLBACK = '"JetBrains Mono", ui-monospace, Consolas, monospace';
+
+/**
+ * Reads the palette + mono stack off `<body>`, where next/font declares its
+ * `--font-*` variables and the `:root` `--aqt-*` tokens have inherited down.
+ * Note it reads `--font-jetbrains-mono`, not `--aqt-mono`: the latter is
+ * declared on `:root` yet references a `<body>`-scoped variable, so it computes
+ * to the guaranteed-invalid value and always reads back empty.
+ */
+function readTheme(): { c: Record<string, string>; mono: string } {
+  const c: Record<string, string> = { ...THEME_FALLBACK };
+  if (typeof document === "undefined" || typeof getComputedStyle !== "function" || !document.body) {
+    return { c, mono: MONO_FALLBACK };
+  }
+  const bodyStyle = getComputedStyle(document.body);
+  const probe = document.createElement("div");
+  probe.style.display = "none";
+  document.body.appendChild(probe);
+  try {
+    for (const token of Object.keys(THEME_FALLBACK)) {
+      const raw = bodyStyle.getPropertyValue(token).trim();
+      if (!raw) continue;
+      // Tokens are authored as `hsl(h s% l%)`, which mermaid's colour maths does
+      // not parse. Round-trip through `color` so the browser returns `rgb(...)`.
+      probe.style.color = "";
+      probe.style.color = raw;
+      if (!probe.style.color) continue;
+      const normalised = getComputedStyle(probe).color;
+      if (normalised) c[token] = normalised;
+    }
+    const face = bodyStyle.getPropertyValue("--font-jetbrains-mono").trim();
+    return { c, mono: face ? `${face}, ${MONO_FALLBACK}` : MONO_FALLBACK };
+  } finally {
+    probe.remove();
+  }
+}
+
 async function getMermaid(): Promise<MermaidApi> {
   if (!mermaidPromise) {
     mermaidPromise = import("mermaid").then((mod) => mod.default);
   }
   const mermaid = await mermaidPromise;
   if (!initialized) {
+    const { c, mono } = readTheme();
     mermaid.initialize({
       startOnLoad: false,
       theme: "dark",
       securityLevel: "loose",
-      fontFamily: "ui-monospace, 'JetBrains Mono', Consolas, monospace",
+      fontFamily: mono,
       themeVariables: {
         darkMode: true,
-        background: "#0d1117",
-        mainBkg: "#161b22",
-        primaryColor: "#161b22",
-        primaryBorderColor: "#2dd4bf",
-        primaryTextColor: "#e6edf3",
-        secondaryColor: "#12171f",
-        tertiaryColor: "#0d1117",
-        lineColor: "#2dd4bf",
-        textColor: "#e6edf3",
+        background: c["--aqt-bg"],
+        mainBkg: c["--aqt-card-2"],
+        primaryColor: c["--aqt-card-2"],
+        primaryBorderColor: c["--aqt-teal"],
+        primaryTextColor: c["--aqt-fg"],
+        secondaryColor: c["--aqt-card"],
+        tertiaryColor: c["--aqt-bg"],
+        lineColor: c["--aqt-teal"],
+        textColor: c["--aqt-fg"],
         // ER attribute rows
-        attributeBackgroundColorOdd: "#12171f",
-        attributeBackgroundColorEven: "#0d1117",
+        attributeBackgroundColorOdd: c["--aqt-card"],
+        attributeBackgroundColorEven: c["--aqt-bg"],
         // Flowchart clusters (domain map)
-        clusterBkg: "#12171f",
-        clusterBorder: "#2b3440",
-        nodeBorder: "#2dd4bf",
-        edgeLabelBackground: "#0d1117"
+        clusterBkg: c["--aqt-card"],
+        clusterBorder: c["--aqt-border-3"],
+        nodeBorder: c["--aqt-teal"],
+        edgeLabelBackground: c["--aqt-bg"]
       },
       er: {
         useMaxWidth: false,

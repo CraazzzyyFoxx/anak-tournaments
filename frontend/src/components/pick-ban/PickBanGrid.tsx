@@ -241,13 +241,13 @@ export function PickBanGrid({
             {itemName(entry.item_id)}
           </span>
           <span className="flex flex-wrap items-center gap-1.5">
-            <Badge variant={STATUS_BADGE_VARIANT[entry.status]} className="px-1.5 py-0 text-[10px]">
+            <Badge variant={STATUS_BADGE_VARIANT[entry.status]} className="px-1.5 py-0 text-[11px]">
               {t(statusLabelKey(entry))}
             </Badge>
             {entry.picked_by ? (
               <Badge
                 variant="outline"
-                className="px-1.5 py-0 text-[10px] font-normal text-[color:var(--aqt-fg-muted)]"
+                className="px-1.5 py-0 text-[11px] font-normal text-[color:var(--aqt-fg-muted)]"
               >
                 {t(`by.${entry.picked_by}`)}
               </Badge>
@@ -255,7 +255,7 @@ export function PickBanGrid({
             {entry.protected_by ? (
               <Badge
                 variant="outline"
-                className="px-1.5 py-0 text-[10px] font-normal text-[color:var(--aqt-fg-muted)]"
+                className="px-1.5 py-0 text-[11px] font-normal text-[color:var(--aqt-fg-muted)]"
               >
                 {t(`protectedBy.${entry.protected_by}`)}
               </Badge>
@@ -342,7 +342,7 @@ export function PickBanGrid({
           </span>
         ) : null}
         {entry.action_index != null ? (
-          <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-black/70 font-mono text-[8px] font-semibold tabular-nums text-[color:var(--aqt-fg)]">
+          <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-black/70 font-mono text-[11px] font-semibold tabular-nums text-[color:var(--aqt-fg)]">
             {entry.action_index + 1}
           </span>
         ) : null}
@@ -413,7 +413,7 @@ export function PickBanGrid({
                   </span>
                   <Badge
                     variant={state === "current" ? "default" : "outline"}
-                    className="px-1.5 py-0 text-[10px] font-normal"
+                    className="px-1.5 py-0 text-[11px] font-normal"
                   >
                     {state === "current"
                       ? t("round.current")

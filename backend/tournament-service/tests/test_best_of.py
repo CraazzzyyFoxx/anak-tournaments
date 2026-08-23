@@ -121,15 +121,15 @@ class ApplyBestOfToExistingTests(TestCase):
         async def _fake_publish(_session, tournament_id, reason):
             published.append((tournament_id, reason))
 
-        orig_get_stage = stage_service.get_stage
-        orig_publish = stage_service._publish_tournament_changed
-        stage_service.get_stage = _fake_get_stage
-        stage_service._publish_tournament_changed = _fake_publish
+        orig_get_stage = stage_service.stage_service.get_stage
+        orig_publish = stage_service.stage_service._publish_tournament_changed
+        stage_service.stage_service.get_stage = _fake_get_stage
+        stage_service.stage_service._publish_tournament_changed = _fake_publish
         try:
-            changed = asyncio.run(stage_service.apply_best_of_to_existing(session, stage.id))
+            changed = asyncio.run(stage_service.stage_service.apply_best_of_to_existing(session, stage.id))
         finally:
-            stage_service.get_stage = orig_get_stage
-            stage_service._publish_tournament_changed = orig_publish
+            stage_service.stage_service.get_stage = orig_get_stage
+            stage_service.stage_service._publish_tournament_changed = orig_publish
         return changed, session, published
 
     def test_rewrites_per_round_and_final_for_elimination(self) -> None:

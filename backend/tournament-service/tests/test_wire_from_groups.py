@@ -29,7 +29,7 @@ stage_service = importlib.import_module("src.services.admin.stage")
 admin_schemas_module = importlib.import_module("src.schemas.admin.stage")
 enums = importlib.import_module("shared.core.enums")
 
-stage_service._publish_tournament_changed = AsyncMock()
+stage_service.stage_service._publish_tournament_changed = AsyncMock()
 
 
 def _group_stage(*, stage_id: int, tournament_id: int, num_groups: int) -> SimpleNamespace:
@@ -80,11 +80,11 @@ class WireFromGroupsTests(IsolatedAsyncioTestCase):
         )
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source, target]),
         ):
-            await stage_service.wire_from_groups(
+            await stage_service.stage_service.wire_from_groups(
                 session,
                 target_stage_id=target.id,
                 source_stage_id=source.id,
@@ -123,11 +123,11 @@ class WireFromGroupsTests(IsolatedAsyncioTestCase):
         )
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source, target]),
         ):
-            await stage_service.wire_from_groups(
+            await stage_service.stage_service.wire_from_groups(
                 session,
                 target_stage_id=target.id,
                 source_stage_id=source.id,
@@ -162,11 +162,11 @@ class WireFromGroupsTests(IsolatedAsyncioTestCase):
         )
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source, target]),
         ):
-            await stage_service.wire_from_groups(
+            await stage_service.stage_service.wire_from_groups(
                 session,
                 target_stage_id=target.id,
                 source_stage_id=source.id,
@@ -205,11 +205,11 @@ class WireFromGroupsTests(IsolatedAsyncioTestCase):
         )
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source, target]),
         ):
-            await stage_service.wire_from_groups(
+            await stage_service.stage_service.wire_from_groups(
                 session,
                 target_stage_id=target.id,
                 source_stage_id=source.id,
@@ -231,12 +231,12 @@ class WireFromGroupsTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(add=Mock(), commit=AsyncMock())
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source]),
         ):
             with self.assertRaises(Exception) as ctx:
-                await stage_service.wire_from_groups(
+                await stage_service.stage_service.wire_from_groups(
                     session,
                     target_stage_id=target.id,
                     source_stage_id=source.id,
@@ -257,12 +257,12 @@ class WireFromGroupsTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(add=Mock(), commit=AsyncMock())
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source]),
         ):
             with self.assertRaises(Exception) as ctx:
-                await stage_service.wire_from_groups(
+                await stage_service.stage_service.wire_from_groups(
                     session,
                     target_stage_id=target.id,
                     source_stage_id=source.id,
@@ -365,11 +365,11 @@ class SplitSeedingTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(add=Mock(side_effect=_add), commit=AsyncMock())
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source, target]),
         ):
-            await stage_service.wire_from_groups(
+            await stage_service.stage_service.wire_from_groups(
                 session,
                 target_stage_id=target.id,
                 source_stage_id=source.id,
@@ -405,11 +405,11 @@ class SplitSeedingTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(add=Mock(side_effect=_add), commit=AsyncMock())
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source, target]),
         ):
-            await stage_service.wire_from_groups(
+            await stage_service.stage_service.wire_from_groups(
                 session,
                 target_stage_id=target.id,
                 source_stage_id=source.id,
@@ -430,12 +430,12 @@ class SplitSeedingTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(add=Mock(), commit=AsyncMock())
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source]),
         ):
             with self.assertRaises(Exception) as ctx:
-                await stage_service.wire_from_groups(
+                await stage_service.stage_service.wire_from_groups(
                     session,
                     target_stage_id=target.id,
                     source_stage_id=source.id,
@@ -467,12 +467,12 @@ class SplitSeedingTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(add=Mock(), commit=AsyncMock())
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source]),
         ):
             with self.assertRaises(Exception) as ctx:
-                await stage_service.wire_from_groups(
+                await stage_service.stage_service.wire_from_groups(
                     session,
                     target_stage_id=target.id,
                     source_stage_id=source.id,
@@ -495,11 +495,11 @@ class SplitSeedingTests(IsolatedAsyncioTestCase):
         )
 
         with patch.object(
-            stage_service,
+            stage_service.stage_service,
             "get_stage",
             AsyncMock(side_effect=[target, source, target]),
         ):
-            await stage_service.wire_from_groups(
+            await stage_service.stage_service.wire_from_groups(
                 session,
                 target_stage_id=target.id,
                 source_stage_id=source.id,

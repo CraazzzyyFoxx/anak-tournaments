@@ -31,8 +31,8 @@ from shared.services.distributed_lock import (
 from shared.services.scheduler import IntervalScheduler
 from src.core import db
 from src.core.broker import optional_broker
+from src.core.clients import realtime_redis
 from src.core.config import settings
-from src.rpc._clients import realtime_redis
 
 from .service import subscription_collection_service
 

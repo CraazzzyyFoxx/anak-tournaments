@@ -58,7 +58,7 @@ const ChipButton = ({
     )}
   >
     {children}
-    <span className="aqt-mono aqt-tnum text-[10.5px] opacity-80">{count}</span>
+    <span className="aqt-mono aqt-tnum text-[11px] opacity-80">{count}</span>
   </button>
 );
 

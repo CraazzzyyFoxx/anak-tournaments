@@ -29,7 +29,7 @@ export const PlaceBadge = ({ placement, size = "md" }: { placement: number | nul
 /** Violet "League" pill (matches the former LeagueGroup badge). */
 export const LeagueBadge = ({ children }: { children: React.ReactNode }) => (
   <span
-    className="aqt-mono shrink-0 rounded-[5px] border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]"
+    className="aqt-mono shrink-0 rounded-[5px] border px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em]"
     style={{ background: "hsl(258 60% 62% / 0.1)", borderColor: "hsl(258 60% 62% / 0.25)", color: "var(--aqt-violet)" }}
   >
     {children}
@@ -106,7 +106,7 @@ export const SummaryStrip = ({ cells }: { cells: SummaryCell[] }) => (
           key={cell.key}
           className="flex flex-col gap-1 border-l border-[color:var(--aqt-border)] px-3 py-2.5 first:border-l-0"
         >
-          <span className="aqt-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+          <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
             {cell.label}
           </span>
           <span className="aqt-display aqt-tnum text-[16px] font-bold leading-none" style={{ color: cell.color ?? "var(--aqt-fg)" }}>

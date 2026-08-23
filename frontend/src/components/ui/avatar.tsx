@@ -98,7 +98,9 @@ const AvatarStack = ({
             marginLeft: -ov,
             width: size,
             height: size,
-            fontSize: Math.max(9, Math.round(size * 0.38)),
+            // The `+N` collapse carries a real count, so it obeys the 11px
+            // readability floor rather than shrinking with the stack.
+            fontSize: Math.max(11, Math.round(size * 0.38)),
             background: "hsl(0 0% 100% / 0.08)",
             color: "var(--aqt-fg-muted, #9aa4b2)",
             boxShadow: ring

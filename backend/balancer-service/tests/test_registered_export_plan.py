@@ -66,7 +66,7 @@ class _Session:
 
 
 def _tournament() -> models.Tournament:
-    tournament = models.Tournament(name="T", workspace_id=3)
+    tournament = models.Tournament(name="T", slug="t", workspace_id=3)
     tournament.id = 7
     return tournament
 

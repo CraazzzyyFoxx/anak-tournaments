@@ -1,8 +1,17 @@
-// Package ratelimit is a small in-memory token-bucket rate limiter used to blunt
+// Package ratelimit is a small in-memory token-bucket rate limiter. It blunts
 // brute-force / credential-stuffing against the auth endpoints (login/register/
-// refresh/oauth-callback). It is keyed by client IP + request path and is
-// intentionally best-effort: per-process (not shared across replicas) and
-// dependency-free. nginx limit_req provides the coarse outer defense layer.
+// refresh/oauth-callback), bounds anonymous traffic per client IP, and meters
+// workspace-scoped API keys against their own per-key requests_per_minute
+// budget (WrapAPIKey).
+//
+// Every variant shares one deliberate limitation: the buckets live in THIS
+// process only. Nothing is shared across replicas, so with N gateway pods a
+// caller's effective budget is up to N x the configured limit. That is fine for
+// the anti-brute-force and anti-abuse jobs here — nginx limit_req is the coarse
+// outer layer, and the balancer worker enforces the same API-key quotas in Redis
+// where the exact number matters — but it means these limits are a guardrail,
+// not an accounting boundary. Making them exact needs a shared store (Redis),
+// which this package deliberately does not depend on.
 package ratelimit
 
 import (
@@ -70,22 +79,30 @@ func (l *Limiter) Allow(key string) bool {
 	return l.allow(key)
 }
 
-// allow consumes one token for key, returning false when the bucket is empty.
-func (l *Limiter) allow(key string) bool {
+// allow consumes one token for key against the limiter's configured budget.
+func (l *Limiter) allow(key string) bool { return l.allowQuota(key, l.burst) }
+
+// allowQuota consumes one token for key against an explicit budget of `limit`
+// requests per window, returning false when the bucket is empty. It is the same
+// bucket machinery allow uses, with the rate supplied per call: an API key's
+// requests_per_minute is a property of the key, not of the process config, so
+// one Limiter has to serve many different budgets at once.
+func (l *Limiter) allowQuota(key string, limit float64) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
+	rate := limit / l.window.Seconds()
 	b, ok := l.buckets[key]
 	if !ok {
 		if len(l.buckets) >= maxKeys {
 			l.purge(now)
 		}
-		b = &bucket{tokens: l.burst, last: now}
+		b = &bucket{tokens: limit, last: now}
 		l.buckets[key] = b
 	}
-	b.tokens += now.Sub(b.last).Seconds() * l.rate
-	if b.tokens > l.burst {
-		b.tokens = l.burst
+	b.tokens += now.Sub(b.last).Seconds() * rate
+	if b.tokens > limit {
+		b.tokens = limit
 	}
 	b.last = now
 	if b.tokens < 1 {
@@ -204,6 +221,45 @@ func (l *Limiter) WrapAnon(next http.Handler) http.Handler {
 		if isAnonymous(r) && !l.allow(clientip.From(r)) {
 			tooManyRequests(w, l.window)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// KeyQuota identifies the API key behind a request and the per-minute request
+// budget that key itself carries. ok=false means the request is not API-key
+// traffic — or its identity could not be judged — and must not be metered here.
+// Implemented by principal.Resolver.APIKeyQuota, which answers without any
+// identity lookup for session/anonymous traffic.
+type KeyQuota func(r *http.Request) (key string, perMinute int, ok bool)
+
+// WrapAPIKey returns next guarded by a PER-KEY budget: an API-key request is
+// metered against its own key id — a global budget across all paths, like
+// WrapAnon's per-IP one — using the requests_per_minute that key was issued
+// rather than one flat process-wide number. Session and anonymous traffic pass
+// through untouched, as do all requests when the limiter is disabled. Like
+// WrapAnon it takes/returns http.Handler so it can wrap the whole API mux.
+//
+// A key carrying no explicit requests_per_minute falls back to the limiter's
+// configured limit, which doubles as the kill switch: a non-positive
+// GATEWAY_API_KEY_RATE_LIMIT disables per-key throttling entirely.
+//
+// Rejection uses the shared 429 body + Retry-After, so an API client sees the
+// same contract here as it does from the balancer worker's Redis-backed quota.
+func (l *Limiter) WrapAPIKey(next http.Handler, quota KeyQuota) http.Handler {
+	if !l.Enabled() || quota == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if key, perMinute, ok := quota(r); ok {
+			limit := float64(perMinute)
+			if limit <= 0 {
+				limit = l.burst
+			}
+			if !l.allowQuota(key, limit) {
+				tooManyRequests(w, l.window)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})

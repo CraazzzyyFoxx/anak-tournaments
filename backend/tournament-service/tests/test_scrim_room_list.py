@@ -162,6 +162,7 @@ class _Fixture:
             id=CONTAINER_ID,
             workspace_id=WORKSPACE_ID,
             name=scrim.CONTAINER_NAME,
+            slug="scrims",
             is_hidden=True,
             is_league=False,
             start_date=datetime(2026, 8, 12, tzinfo=UTC),
@@ -246,7 +247,7 @@ class _ListCase(IsolatedAsyncioTestCase):
 
     async def rooms_for(self, user: Any) -> list[dict]:
         self.db.session.commit()
-        return await scrim.list_rooms_for_viewer(self.db.shim, user, WORKSPACE_ID)
+        return await scrim.scrim_service.list_rooms_for_viewer(self.db.shim, user, WORKSPACE_ID)
 
 
 class TheListRuns(_ListCase):

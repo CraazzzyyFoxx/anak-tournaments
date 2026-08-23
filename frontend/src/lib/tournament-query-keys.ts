@@ -1,5 +1,11 @@
 export const tournamentQueryKeys = {
-  detail: (tournamentId: number) => ["tournament", tournamentId] as const,
+  // `ref` is either the resolved numeric tournament id (admin flow, and
+  // every other key in this object) or the public `/tournaments/{ref}` URL
+  // segment (slug / legacy numeric id / retired slug) -- the public overview
+  // query stays keyed by that ref for its whole lifecycle; realtime
+  // invalidation targets it via the same ref (see tournamentRealtime.helpers
+  // `detailRef`), never the resolved numeric id.
+  detail: (ref: string | number) => ["tournament", ref] as const,
   stages: (tournamentId: number) => ["tournament", tournamentId, "stages"] as const,
   streams: (tournamentId: number) => ["tournament", tournamentId, "streams"] as const,
   links: (tournamentId: number) => ["tournament", tournamentId, "links"] as const,

@@ -80,6 +80,22 @@ class EncounterRedesignFilterTests(TestCase):
 
 
 class _EmptyScalarResult:
+    """Empty result in both shapes the service layer reads.
+
+    ``delete_saved_view`` now goes through ``EncounterSavedViewRepository.get_by``,
+    which ends in ``unique().scalars().first()``; the query itself is still
+    asserted on ``_FakeSession.query``, so only the result protocol widens.
+    """
+
+    def unique(self):
+        return self
+
+    def scalars(self):
+        return self
+
+    def first(self):
+        return None
+
     def scalar_one_or_none(self):
         return None
 
@@ -109,7 +125,7 @@ class EncounterRedesignSerializationTests(IsolatedAsyncioTestCase):
         session = _FakeSession()
         session.execute = AsyncMock(return_value=_EmptyMatchResult())
 
-        result = await service.get_match(cast(AsyncSession, session), 6748, [], workspace_id=2)
+        result = await service.encounter_service.get_match(cast(AsyncSession, session), 6748, [], workspace_id=2)
 
         self.assertIsNone(result)
         compiled = str(session.execute.await_args.args[0].compile(compile_kwargs={"literal_binds": True})).lower()
@@ -122,7 +138,7 @@ class EncounterRedesignSerializationTests(IsolatedAsyncioTestCase):
         session = _FakeSession()
 
         with self.assertRaises(HTTPException) as exc:
-            await service.delete_saved_view(
+            await service.encounter_service.delete_saved_view(
                 cast(AsyncSession, session),
                 workspace_id=7,
                 auth_user_id=42,
@@ -178,7 +194,7 @@ class EncounterRedesignSerializationTests(IsolatedAsyncioTestCase):
         prefetched = {(5, 9): StageRefs(stage_id=31, stage_item_id=77, tournament_group_id=9)}
 
         with patch.object(flows, "resolve_stage_refs_from_group", AsyncMock()) as resolver:
-            read = await flows.to_pydantic(
+            read = await flows.flows_service.to_pydantic(
                 cast(AsyncSession, object()),
                 encounter,
                 [],
@@ -204,7 +220,7 @@ class EncounterRedesignSerializationTests(IsolatedAsyncioTestCase):
             stage_item_id=77,
         )
 
-        refs = await flows._prefetch_stage_refs(cast(AsyncSession, object()), [encounter])
+        refs = await flows.flows_service._prefetch_stage_refs(cast(AsyncSession, object()), [encounter])
 
         self.assertEqual(refs, {})
 
@@ -239,8 +255,8 @@ class EncounterRedesignSerializationTests(IsolatedAsyncioTestCase):
             },
         }
 
-        with patch.object(service, "get_overview_data", AsyncMock(return_value=raw)):
-            read = await flows.get_encounters_overview(
+        with patch.object(service.encounter_service, "get_overview_data", AsyncMock(return_value=raw)):
+            read = await flows.flows_service.get_encounters_overview(
                 cast(AsyncSession, object()),
                 schemas.EncounterSearchParams(),
             )

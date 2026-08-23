@@ -3,10 +3,12 @@
 import { useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Globe, MonitorSmartphone, Shield } from "lucide-react";
+import { useFormatter } from "next-intl";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TONE_TEXT, type Tone } from "@/components/admin/tone";
+import type { AdminDateFormatter } from "@/components/admin/format-time";
 import {
   Select,
   SelectContent,
@@ -27,10 +29,10 @@ const STATUS_META: Record<AdminSessionStatus, { label: string; tone: Tone }> = {
   expired: { label: "Expired", tone: "neutral" },
 };
 
-function formatTimestamp(value: string | null | undefined): string {
+function formatTimestamp(format: AdminDateFormatter, value: string | null | undefined): string {
   if (!value) return "Unavailable";
 
-  return new Date(value).toLocaleString("en-US", {
+  return format.dateTime(new Date(value), {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -63,6 +65,7 @@ function StatusCell({ status }: Readonly<{ status: AdminSessionStatus }>) {
 }
 
 export default function AccessAdminSessionsPage() {
+  const format = useFormatter();
   const [statusFilter, setStatusFilter] = useState<"all" | AdminSessionStatus>("all");
 
   const columns: ColumnDef<AdminAuthSession>[] = [
@@ -107,7 +110,7 @@ export default function AccessAdminSessionsPage() {
       header: "Signed in",
       cell: ({ row }) => (
         <span className="text-sm tabular-nums text-muted-foreground">
-          {formatTimestamp(row.original.login_at)}
+          {formatTimestamp(format, row.original.login_at)}
         </span>
       ),
     },
@@ -116,7 +119,7 @@ export default function AccessAdminSessionsPage() {
       header: "Last seen",
       cell: ({ row }) => (
         <span className="text-sm tabular-nums text-muted-foreground">
-          {formatTimestamp(row.original.last_seen_at)}
+          {formatTimestamp(format, row.original.last_seen_at)}
         </span>
       ),
     },
@@ -125,7 +128,7 @@ export default function AccessAdminSessionsPage() {
       header: "Expires",
       cell: ({ row }) => (
         <span className="text-sm tabular-nums text-muted-foreground">
-          {formatTimestamp(row.original.expires_at)}
+          {formatTimestamp(format, row.original.expires_at)}
         </span>
       ),
     },

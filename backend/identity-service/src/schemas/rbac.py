@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from shared.core import pagination
 
@@ -60,8 +60,7 @@ class PermissionRead(PermissionBase):
     created_at: datetime
     updated_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Role Schemas
@@ -96,8 +95,7 @@ class RoleRead(RoleBase):
     created_at: datetime
     updated_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RoleWithPermissions(RoleRead):
@@ -105,8 +103,7 @@ class RoleWithPermissions(RoleRead):
 
     permissions: list[PermissionRead] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuthUserLinkedPlayerRead(BaseModel):
@@ -135,8 +132,7 @@ class AuthUserListRead(BaseModel):
     created_at: datetime
     updated_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuthUserDetailRead(AuthUserListRead):

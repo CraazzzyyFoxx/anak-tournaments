@@ -167,7 +167,7 @@ DOCS: dict[str, dict] = {
     # ── workspaces (reads + writes + members) ──────────────────────────────────────
     "rpc.app.workspaces.list": {
         "summary": "List workspaces",
-        "description": "Returns all workspaces (public, unpaginated).",
+        "description": "Returns every workspace, minus hidden ones the caller has no business seeing: a hidden workspace is dropped unless the caller is one of its members (any role) or a superuser (public, optional auth, unpaginated).",
     },
     "rpc.app.workspaces.get": {
         "summary": "Get workspace",

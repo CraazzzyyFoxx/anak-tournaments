@@ -31,8 +31,11 @@ pick_ban_models = importlib.import_module("shared.models.tournament.pick_ban")
 def _scalars_result(values: list):
     scalars = Mock()
     scalars.all.return_value = values
+    scalars.first.return_value = values[0] if values else None
     result = Mock()
     result.scalars.return_value = scalars
+    # Repositories read rows off `.unique().scalars()`.
+    result.unique.return_value = result
     return result
 
 
@@ -133,7 +136,7 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                stage_service,
+                stage_service.stage_service,
                 "get_stage",
                 AsyncMock(side_effect=[target_stage, "merged-stage"]),
             ),
@@ -143,12 +146,12 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=fake_enqueue),
             ) as enqueue_recalc,
             patch.object(
-                stage_service,
+                stage_service.stage_service,
                 "_publish_tournament_changed",
                 AsyncMock(side_effect=fake_publish),
             ) as publish_changed,
         ):
-            result = await stage_service.merge_group_stages(
+            result = await stage_service.stage_service.merge_group_stages(
                 session,
                 target_stage_id=target_stage.id,
                 source_stage_ids=[source_stage_b.id, source_stage_c.id],
@@ -452,7 +455,7 @@ class PickBanConfigMergeDedupTests(IsolatedAsyncioTestCase):
         )
 
     async def _merge(self, session: SimpleNamespace) -> None:
-        await stage_service._merge_pick_ban_configs(
+        await stage_service.stage_service._merge_pick_ban_configs(
             session,
             target_stage=SimpleNamespace(id=10, tournament_id=99),
             source_stage_ids=[11, 12],

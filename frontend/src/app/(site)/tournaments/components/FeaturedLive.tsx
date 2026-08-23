@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { ArrowRight, Users } from "lucide-react";
 
 import TeamName from "@/components/TeamName";
+import { tournamentHref } from "@/lib/tournament-url";
 import {
   type LiveTournamentGroup,
   currentMapName,
@@ -45,7 +46,7 @@ const FeaturedTournamentCard = ({
               never sit above the overlay. The title carries the link instead. */}
           <h3 className="feat-name">
             <Link
-              href={`/tournaments/${tournament.id}`}
+              href={tournamentHref(tournament)}
               className="text-inherit no-underline outline-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
             >
               {tournament.name}
@@ -134,11 +135,11 @@ const FeaturedTournamentCard = ({
           </span>
         </div>
         <div className="right">
-          <Link href={`/tournaments/${tournament.id}/bracket`} className="tn-btn">
+          <Link href={tournamentHref(tournament, "/bracket")} className="tn-btn">
             {t("common.bracket")}
             <ArrowRight aria-hidden width={11} height={11} />
           </Link>
-          <Link href={`/tournaments/${tournament.id}`} className="tn-btn primary">
+          <Link href={tournamentHref(tournament)} className="tn-btn primary">
             {t("common.open")}
             <ArrowRight aria-hidden width={11} height={11} />
           </Link>

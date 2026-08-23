@@ -3,7 +3,7 @@ name = "shared"
 version = "0.1.0"
 description = "Shared ORM models, schemas, clients, and utilities used across OWT services"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "sqlalchemy>=2.0.37",
     "sqlalchemy-utils>=0.41.2",

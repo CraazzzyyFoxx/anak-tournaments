@@ -86,9 +86,12 @@ export function createLeadingCoalescer<TTimer = ReturnType<typeof setTimeout>>(
   };
 }
 
-function getResultQueryPrefixes(tournamentId: number): readonly (readonly unknown[])[] {
+function getResultQueryPrefixes(
+  tournamentId: number,
+  detailRef: string | number,
+): readonly (readonly unknown[])[] {
   return [
-    tournamentQueryKeys.detail(tournamentId),
+    tournamentQueryKeys.detail(detailRef),
     tournamentQueryKeys.heroPlaytime(tournamentId),
     tournamentQueryKeys.standings(tournamentId),
     tournamentQueryKeys.encounters(tournamentId),
@@ -114,6 +117,11 @@ export function getTournamentRealtimeUpdatePlan(
   tournamentId: number,
   workspaceId: number | null | undefined,
   reason: TournamentChangedReason,
+  // The public overview query stays keyed by the URL ref (slug/legacy id) for
+  // its whole lifecycle -- see tournamentQueryKeys.detail. Callers outside the
+  // public tournament page (admin) have no such ref, so it defaults to the
+  // numeric id, which is exactly what they key by anyway.
+  detailRef: string | number = tournamentId,
 ): TournamentRealtimeUpdatePlan {
   if (reason === "bracket_changed") {
     return {
@@ -133,14 +141,14 @@ export function getTournamentRealtimeUpdatePlan(
       // respcache.go::reasonPatterns), and TournamentClientLayout renders those
       // counts straight off this key.
       queryKeys: [
-        tournamentQueryKeys.detail(tournamentId),
+        tournamentQueryKeys.detail(detailRef),
         ...getParticipantQueryPrefixes(tournamentId, workspaceId),
       ],
       shouldRefreshRoute: false,
     };
   }
 
-  const resultQueryPrefixes = getResultQueryPrefixes(tournamentId);
+  const resultQueryPrefixes = getResultQueryPrefixes(tournamentId, detailRef);
   if (reason === "results_changed") {
     return {
       workspaceScope: "results",
@@ -163,9 +171,10 @@ export function getTournamentRealtimeUpdatePlan(
 export function getTournamentRealtimeCatchUpPlan(
   tournamentId: number,
   workspaceId: number | null | undefined,
+  detailRef: string | number = tournamentId,
 ): readonly (readonly unknown[])[] {
   return [
-    tournamentQueryKeys.detail(tournamentId),
+    tournamentQueryKeys.detail(detailRef),
     tournamentQueryKeys.teams(tournamentId),
     tournamentQueryKeys.heroPlaytime(tournamentId),
     tournamentQueryKeys.standings(tournamentId),
@@ -229,8 +238,9 @@ export function applyTournamentRealtimeUpdate(
   workspaceId: number | null | undefined,
   reason: TournamentChangedReason,
   onStructureChanged?: () => void,
+  detailRef: string | number = tournamentId,
 ): void {
-  const plan = getTournamentRealtimeUpdatePlan(tournamentId, workspaceId, reason);
+  const plan = getTournamentRealtimeUpdatePlan(tournamentId, workspaceId, reason, detailRef);
   invalidateQueryPrefixes(queryClient, plan.queryKeys);
   invalidateAdminTournamentQueries(queryClient, tournamentId, plan.workspaceScope);
 
@@ -243,10 +253,11 @@ export function applyTournamentRealtimeCatchUp(
   queryClient: QueryClient,
   tournamentId: number,
   workspaceId: number | null | undefined,
+  detailRef: string | number = tournamentId,
 ): void {
   invalidateQueryPrefixes(
     queryClient,
-    getTournamentRealtimeCatchUpPlan(tournamentId, workspaceId),
+    getTournamentRealtimeCatchUpPlan(tournamentId, workspaceId, detailRef),
   );
 }
 

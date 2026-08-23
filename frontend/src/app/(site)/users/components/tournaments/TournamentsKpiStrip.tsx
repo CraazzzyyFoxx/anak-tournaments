@@ -23,7 +23,7 @@ const KpiCard = ({
   color?: string;
 }) => (
   <div className="flex flex-col gap-1 rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-4 py-3">
-    <span className="aqt-mono text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+    <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
       {label}
     </span>
     <span className="aqt-display aqt-tnum text-[30px] font-bold leading-none" style={{ color: color ?? "var(--aqt-fg)" }}>

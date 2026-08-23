@@ -110,11 +110,11 @@ class TestPublicCreatePersistsEveryHandle(IsolatedAsyncioTestCase):
         # ensure_player_identity and the RBAC grant are the only DB reachers on
         # this path; the row itself is built purely in memory.
         with (
-            mock.patch.object(reg_service, "ensure_player_identity", _noop),
+            mock.patch.object(reg_service.registration_service, "ensure_player_identity", _noop),
             mock.patch.object(reg_service, "assign_workspace_system_role", _noop),
             mock.patch.object(reg_service, "enqueue_registration_approved", _noop),
         ):
-            return await reg_service.create_registration(session, **payload)
+            return await reg_service.registration_service.create_registration(session, **payload)
 
     async def test_boosty_nick_reaches_the_column(self) -> None:
         registration = await self._create()
@@ -138,7 +138,7 @@ class TestPublicCreatePersistsEveryHandle(IsolatedAsyncioTestCase):
         # ``roles`` is written as its own normalized rows by
         # submit_public_registration, not as a column on this call.
         written_elsewhere = {"roles"}
-        parameters = set(inspect.signature(reg_service.create_registration).parameters)
+        parameters = set(inspect.signature(reg_service.registration_service.create_registration).parameters)
 
         missing = set(RegistrationCreate.model_fields) - written_elsewhere - parameters
 
@@ -152,7 +152,7 @@ class TestSelfUpdateColumnMapping(IsolatedAsyncioTestCase):
     async def test_custom_fields_land_in_the_json_column(self) -> None:
         registration = self._registration()
 
-        await reg_service.update_registration(_RecordingSession(), registration, custom_fields={"vk": "vk.com/player"})
+        await reg_service.registration_service.update_registration(_RecordingSession(), registration, custom_fields={"vk": "vk.com/player"})
 
         assert registration.custom_fields_json == {"vk": "vk.com/player"}
 
@@ -161,21 +161,21 @@ class TestSelfUpdateColumnMapping(IsolatedAsyncioTestCase):
         a subset is a legal PATCH -- replacing wholesale would wipe the rest."""
         registration = self._registration(custom_fields_json={"vk": "old", "tg": "kept"})
 
-        await reg_service.update_registration(_RecordingSession(), registration, custom_fields={"vk": "new"})
+        await reg_service.registration_service.update_registration(_RecordingSession(), registration, custom_fields={"vk": "new"})
 
         assert registration.custom_fields_json == {"vk": "new", "tg": "kept"}
 
     async def test_battle_tag_is_cleaned_and_normalized(self) -> None:
         registration = self._registration()
 
-        await reg_service.update_registration(_RecordingSession(), registration, battle_tag="Player # 1234")
+        await reg_service.registration_service.update_registration(_RecordingSession(), registration, battle_tag="Player # 1234")
 
         assert registration.battle_tag == "Player#1234"
         assert registration.battle_tag_normalized == "player#1234"
 
     async def test_an_unmapped_field_raises_instead_of_vanishing(self) -> None:
         with self.assertRaises(ValueError):
-            await reg_service.update_registration(_RecordingSession(), self._registration(), primary_role="tank")
+            await reg_service.registration_service.update_registration(_RecordingSession(), self._registration(), primary_role="tank")
 
     def test_every_update_field_is_mapped_to_a_column(self) -> None:
         unmapped = set(RegistrationUpdate.model_fields) - set(reg_service._SELF_UPDATE_COLUMNS)
@@ -210,17 +210,17 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
             **overrides,
         }
         with (
-            mock.patch.object(reg_lifecycle, "ensure_unique_battle_tag", _noop),
-            mock.patch.object(reg_lifecycle, "get_registration_form", mock.AsyncMock(return_value=None)),
-            mock.patch.object(reg_lifecycle, "validate_registration_status_value", _noop),
+            mock.patch.object(reg_lifecycle.lifecycle_service, "ensure_unique_battle_tag", _noop),
+            mock.patch.object(reg_lifecycle.lifecycle_service.common, "get_registration_form", mock.AsyncMock(return_value=None)),
+            mock.patch.object(reg_lifecycle.lifecycle_service, "validate_registration_status_value", _noop),
             mock.patch.object(reg_lifecycle, "enqueue_registration_approved", _approved),
             mock.patch.object(
-                reg_lifecycle,
+                reg_lifecycle.lifecycle_service,
                 "get_registration_by_id",
                 mock.AsyncMock(side_effect=lambda _s, _i: session.added[0]),
             ),
         ):
-            registration = await reg_lifecycle.create_manual_registration(session, **payload)
+            registration = await reg_lifecycle.lifecycle_service.create_manual_registration(session, **payload)
         return registration, events
 
     async def test_the_default_is_still_approved(self) -> None:
@@ -263,7 +263,7 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
     def test_every_admin_create_field_is_a_writer_parameter(self) -> None:
         # ``roles`` arrives as dicts under the same name; ``auth_user_id`` too.
         renamed = {"status": "status_value", "balancer_status": "balancer_status_value"}
-        parameters = set(inspect.signature(reg_lifecycle.create_manual_registration).parameters)
+        parameters = set(inspect.signature(reg_lifecycle.lifecycle_service.create_manual_registration).parameters)
 
         missing = {
             renamed.get(name, name) for name in admin_schemas.BalancerRegistrationCreateRequest.model_fields
@@ -288,10 +288,10 @@ class TestAdminProfileUpdateCustomFields(IsolatedAsyncioTestCase):
             **overrides,
         }
         with (
-            mock.patch.object(reg_lifecycle, "get_registration_by_id", mock.AsyncMock(return_value=registration)),
-            mock.patch.object(reg_lifecycle, "_register_registration_changed", lambda *_a, **_k: None),
+            mock.patch.object(reg_lifecycle.lifecycle_service, "get_registration_by_id", mock.AsyncMock(return_value=registration)),
+            mock.patch.object(reg_lifecycle.lifecycle_service.common, "_register_registration_changed", lambda *_a, **_k: None),
         ):
-            await reg_lifecycle.update_registration_profile(_RecordingSession(), registration.id, **payload)
+            await reg_lifecycle.lifecycle_service.update_registration_profile(_RecordingSession(), registration.id, **payload)
 
     async def test_custom_fields_replace_the_stored_answers(self) -> None:
         """The admin editor renders every definition on the form, so its payload
@@ -315,7 +315,7 @@ class TestAdminProfileUpdateCustomFields(IsolatedAsyncioTestCase):
 
     def test_every_admin_update_field_is_a_writer_parameter(self) -> None:
         renamed = {"status": "status_value", "balancer_status": "balancer_status_value"}
-        parameters = set(inspect.signature(reg_lifecycle.update_registration_profile).parameters)
+        parameters = set(inspect.signature(reg_lifecycle.lifecycle_service.update_registration_profile).parameters)
 
         missing = {
             renamed.get(name, name) for name in admin_schemas.BalancerRegistrationUpdateRequest.model_fields
@@ -346,10 +346,10 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
             **overrides,
         }
         with (
-            mock.patch.object(reg_lifecycle, "get_registration_by_id", mock.AsyncMock(return_value=registration)),
-            mock.patch.object(reg_lifecycle, "_register_registration_changed", lambda *_a, **_k: None),
+            mock.patch.object(reg_lifecycle.lifecycle_service, "get_registration_by_id", mock.AsyncMock(return_value=registration)),
+            mock.patch.object(reg_lifecycle.lifecycle_service.common, "_register_registration_changed", lambda *_a, **_k: None),
         ):
-            await reg_lifecycle.update_registration_profile(_RecordingSession(), registration.id, **payload)
+            await reg_lifecycle.lifecycle_service.update_registration_profile(_RecordingSession(), registration.id, **payload)
 
     async def test_resaving_a_ready_registration_recomputes_instead_of_rejecting(self) -> None:
         registration = models.BalancerRegistration(id=1, tournament_id=7, status="approved", balancer_status="ready")

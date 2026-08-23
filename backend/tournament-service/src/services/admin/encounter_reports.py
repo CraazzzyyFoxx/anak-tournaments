@@ -38,7 +38,7 @@ from src.schemas.admin.encounter_reports import (
     valid_series_scores,
 )
 
-__all__ = ("get_reports_stats", "list_encounter_reports")
+__all__ = ("encounter_reports_service",)
 
 
 def _report_aggregate() -> sa.Subquery:
@@ -218,109 +218,122 @@ def _row(
     )
 
 
-async def list_encounter_reports(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    params: EncounterReportsSearchParams,
-) -> pagination.Paginated[EncounterReportsRow]:
-    builder = _Query(workspace_id, params)
-    where = builder.scope_predicates() + builder.chip_predicates()
+class AdminEncounterReportsService:
+    """Read-only admin views over captain reports.
 
-    actor = aliased(models.User, name="audit_actor")
-    query = (
-        builder.join(
-            sa.select(
-                models.Encounter,
-                builder.agg.c.reported_count,
-                builder.agg.c.distinct_scores,
-                builder.audit.c.action,
-                builder.audit.c.actor_user_id,
-                builder.audit.c.created_at.label("resolved_at"),
-                actor.name.label("actor_name"),
-            )
-        )
-        .outerjoin(builder.audit, builder.audit.c.encounter_id == models.Encounter.id)
-        .outerjoin(actor, actor.id == builder.audit.c.actor_user_id)
-        .where(*where)
-        .options(
-            selectinload(models.Encounter.captain_reports).selectinload(models.EncounterCaptainReport.reporter),
-            selectinload(models.Encounter.home_team),
-            selectinload(models.Encounter.away_team),
-            selectinload(models.Encounter.tournament),
-            selectinload(models.Encounter.stage),
-            selectinload(models.Encounter.stage_item),
-        )
-        .order_by(models.Encounter.updated_at.desc().nullslast(), models.Encounter.id.desc())
-    )
-    # The shared helper, not a hand-rolled offset/limit: it is what caps
-    # ``per_page=-1`` at MAX_UNLIMITED_RESULTS and honours ``only_count``. Doing
-    # the arithmetic here emitted ``LIMIT -1``, which Postgres rejects outright.
-    query = params.apply_pagination(query)
-
-    total_query = builder.join(sa.select(sa.func.count()).select_from(models.Encounter)).where(*where)
-
-    rows = (await session.execute(query)).unique().all()
-    total = (await session.execute(total_query)).scalar_one()
-
-    results = [
-        _row(
-            row[0],
-            row.reported_count,
-            row.distinct_scores,
-            LastResolutionRead(
-                action=row.action,
-                actor_user_id=row.actor_user_id,
-                actor_name=row.actor_name,
-                created_at=row.resolved_at,
-            )
-            if row.action is not None
-            else None,
-        )
-        for row in rows
-    ]
-    return pagination.Paginated(
-        page=params.page,
-        per_page=params.per_page,
-        total=total,
-        results=results,
-    )
-
-
-async def get_reports_stats(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    params: EncounterReportsSearchParams,
-) -> EncounterReportsStats:
-    """Counters for the filter chips.
-
-    Scoped by tournament/stage/search but **not** by the chip filters: a chip
-    must say how many rows it would select, not how many survive its own
-    selection. Selecting "disputed" otherwise zeroes every other chip.
+    Both methods are analytical, not CRUD — a window-function join for the newest
+    audit row per encounter, aggregate chip counters, and pagination — so the
+    statements stay here rather than behind repository methods
+    (``backend/docs/repository-boundaries.md``). There is nothing to inject.
     """
-    builder = _Query(workspace_id, params)
-    scope = builder.scope_predicates()
 
-    by_status_query = (
-        builder.join(sa.select(models.Encounter.result_status, sa.func.count()).select_from(models.Encounter))
-        .where(*scope)
-        .group_by(models.Encounter.result_status)
-    )
-    by_status = {status.value: int(count) for status, count in (await session.execute(by_status_query)).all()}
+    async def list_encounter_reports(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        params: EncounterReportsSearchParams,
+    ) -> pagination.Paginated[EncounterReportsRow]:
+        builder = _Query(workspace_id, params)
+        where = builder.scope_predicates() + builder.chip_predicates()
 
-    counts_query = builder.join(
-        sa.select(
-            sa.func.count()
-            .filter(sa.and_(builder.agg.c.reported_count >= 2, builder.agg.c.distinct_scores > 1))
-            .label("mismatch"),
-            sa.func.count().filter(builder.agg.c.reported_count == 1).label("awaiting_second"),
-        ).select_from(models.Encounter)
-    ).where(*scope)
-    counts = (await session.execute(counts_query)).one()
+        actor = aliased(models.User, name="audit_actor")
+        query = (
+            builder.join(
+                sa.select(
+                    models.Encounter,
+                    builder.agg.c.reported_count,
+                    builder.agg.c.distinct_scores,
+                    builder.audit.c.action,
+                    builder.audit.c.actor_user_id,
+                    builder.audit.c.created_at.label("resolved_at"),
+                    actor.name.label("actor_name"),
+                )
+            )
+            .outerjoin(builder.audit, builder.audit.c.encounter_id == models.Encounter.id)
+            .outerjoin(actor, actor.id == builder.audit.c.actor_user_id)
+            .where(*where)
+            .options(
+                selectinload(models.Encounter.captain_reports).selectinload(models.EncounterCaptainReport.reporter),
+                selectinload(models.Encounter.home_team),
+                selectinload(models.Encounter.away_team),
+                selectinload(models.Encounter.tournament),
+                selectinload(models.Encounter.stage),
+                selectinload(models.Encounter.stage_item),
+            )
+            .order_by(models.Encounter.updated_at.desc().nullslast(), models.Encounter.id.desc())
+        )
+        # The shared helper, not a hand-rolled offset/limit: it is what caps
+        # ``per_page=-1`` at MAX_UNLIMITED_RESULTS and honours ``only_count``. Doing
+        # the arithmetic here emitted ``LIMIT -1``, which Postgres rejects outright.
+        query = params.apply_pagination(query)
 
-    return EncounterReportsStats(
-        by_result_status=by_status,
-        mismatch_count=int(counts.mismatch),
-        awaiting_second_count=int(counts.awaiting_second),
-    )
+        total_query = builder.join(sa.select(sa.func.count()).select_from(models.Encounter)).where(*where)
+
+        rows = (await session.execute(query)).unique().all()
+        total = (await session.execute(total_query)).scalar_one()
+
+        results = [
+            _row(
+                row[0],
+                row.reported_count,
+                row.distinct_scores,
+                LastResolutionRead(
+                    action=row.action,
+                    actor_user_id=row.actor_user_id,
+                    actor_name=row.actor_name,
+                    created_at=row.resolved_at,
+                )
+                if row.action is not None
+                else None,
+            )
+            for row in rows
+        ]
+        return pagination.Paginated(
+            page=params.page,
+            per_page=params.per_page,
+            total=total,
+            results=results,
+        )
+
+    async def get_reports_stats(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        params: EncounterReportsSearchParams,
+    ) -> EncounterReportsStats:
+        """Counters for the filter chips.
+
+        Scoped by tournament/stage/search but **not** by the chip filters: a chip
+        must say how many rows it would select, not how many survive its own
+        selection. Selecting "disputed" otherwise zeroes every other chip.
+        """
+        builder = _Query(workspace_id, params)
+        scope = builder.scope_predicates()
+
+        by_status_query = (
+            builder.join(sa.select(models.Encounter.result_status, sa.func.count()).select_from(models.Encounter))
+            .where(*scope)
+            .group_by(models.Encounter.result_status)
+        )
+        by_status = {status.value: int(count) for status, count in (await session.execute(by_status_query)).all()}
+
+        counts_query = builder.join(
+            sa.select(
+                sa.func.count()
+                .filter(sa.and_(builder.agg.c.reported_count >= 2, builder.agg.c.distinct_scores > 1))
+                .label("mismatch"),
+                sa.func.count().filter(builder.agg.c.reported_count == 1).label("awaiting_second"),
+            ).select_from(models.Encounter)
+        ).where(*scope)
+        counts = (await session.execute(counts_query)).one()
+
+        return EncounterReportsStats(
+            by_result_status=by_status,
+            mismatch_count=int(counts.mismatch),
+            awaiting_second_count=int(counts.awaiting_second),
+        )
+
+
+encounter_reports_service = AdminEncounterReportsService()

@@ -26,13 +26,23 @@ const (
 type Binary struct {
 	rpc      edge.RPCCaller
 	identity edge.IdentityResolver
+	// download resolves the credential for routes a browser NAVIGATES to (the
+	// match-log link), where an Authorization header cannot be attached — see
+	// principal.Resolver.ResolveWithSessionCookie. Falls back to identity when
+	// nil so a caller that does not serve downloads need not supply it.
+	download edge.IdentityResolver
 	log      *slog.Logger
 }
 
 // NewBinary builds the binary handler set. identity must be non-nil for the
-// authenticated upload/delete routes; the match-log read is public.
-func NewBinary(caller edge.RPCCaller, identity edge.IdentityResolver, log *slog.Logger) *Binary {
-	return &Binary{rpc: caller, identity: identity, log: log}
+// authenticated upload/delete routes; download additionally accepts the session
+// cookie and backs the match-log read (nil reuses identity, which then rejects
+// every browser-navigated download).
+func NewBinary(caller edge.RPCCaller, identity, download edge.IdentityResolver, log *slog.Logger) *Binary {
+	if download == nil {
+		download = identity
+	}
+	return &Binary{rpc: caller, identity: identity, download: download, log: log}
 }
 
 // IconUpload: POST /api/v1/workspaces/{id}/icon (workspace.update in worker).
@@ -85,10 +95,19 @@ func (b *Binary) AssetDelete(w http.ResponseWriter, r *http.Request) {
 	b.relayJSON(w, r, "rpc.app.assets.delete", data, http.StatusOK)
 }
 
-// MatchLog: GET /api/v1/matches/{match_id}/log (public). Returns the raw log
-// bytes decoded from the worker's base64 payload.
+// MatchLog: GET /api/v1/matches/{match_id}/log. Returns the raw log bytes
+// decoded from the worker's base64 payload.
+//
+// Authenticated, like every other route in this file — the declared contract
+// (docroutes.go) always said so while the handler read no credential at all.
+// The credential resolves through b.download rather than b.identity because the
+// frontend exposes this as an `<a download>` link the BROWSER navigates to, so
+// the session cookie is the only thing the request carries.
 func (b *Binary) MatchLog(w http.ResponseWriter, r *http.Request) {
-	data := map[string]any{"id": r.PathValue("match_id")}
+	data, ok := b.identityFrom(w, r, b.download, map[string]any{"id": r.PathValue("match_id")})
+	if !ok {
+		return
+	}
 	raw, ok := b.invoke(w, r, "rpc.app.matches.log", data)
 	if !ok {
 		return
@@ -166,11 +185,23 @@ func (b *Binary) UsersCsvImport(w http.ResponseWriter, r *http.Request) {
 // identityInto resolves the bearer identity (required) and injects it into data.
 // Returns ok=false (and writes 401) when no valid identity is present.
 func (b *Binary) identityInto(w http.ResponseWriter, r *http.Request, data map[string]any) (map[string]any, bool) {
-	if b.identity == nil {
+	return b.identityFrom(w, r, b.identity, data)
+}
+
+// identityFrom is identityInto against an explicit resolver, so a route whose
+// credential arrives somewhere else (the match-log download, see b.download)
+// shares the identical 401/503 handling instead of reimplementing it.
+func (b *Binary) identityFrom(
+	w http.ResponseWriter,
+	r *http.Request,
+	resolve edge.IdentityResolver,
+	data map[string]any,
+) (map[string]any, bool) {
+	if resolve == nil {
 		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return nil, false
 	}
-	id, ok, err := b.identity(r)
+	id, ok, err := resolve(r)
 	if err != nil {
 		b.log.Error("identity resolution unavailable", "err", err)
 		w.Header().Set("Retry-After", "1")

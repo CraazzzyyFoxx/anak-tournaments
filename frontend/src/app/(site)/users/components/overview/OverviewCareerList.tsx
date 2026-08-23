@@ -30,7 +30,7 @@ const StatCell = ({
 }) => (
   <div className="flex min-w-[140px] flex-1 flex-col gap-1 rounded-[8px] border border-[color:var(--aqt-border)] px-3 py-2.5">
     <span
-      className="aqt-mono text-[10.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]"
+      className="aqt-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]"
       title={title}
     >
       {label}

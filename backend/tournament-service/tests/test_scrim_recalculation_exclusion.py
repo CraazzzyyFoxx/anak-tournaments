@@ -187,6 +187,7 @@ class _Fixture:
             id=tournament_id,
             workspace_id=WORKSPACE_ID,
             name=name,
+            slug=f"tournament-{tournament_id}",
             is_hidden=is_hidden,
             is_league=False,
             # A lazily provisioned scrim container never gets a start date; a real
@@ -303,7 +304,9 @@ class RecalculationEnqueueTests(_DatabaseTestCase):
     async def _enqueue(self, tournament_id: int) -> AsyncMock:
         request = AsyncMock()
         with (
-            patch.object(tournament_events, "request_standings_recalculation", request),
+            patch.object(
+                tournament_events.jobs_service, "request_standings_recalculation", request
+            ),
             patch.object(tournament_events, "register_tournament_realtime_update", lambda *a, **k: None),
         ):
             await tournament_events.enqueue_tournament_recalculation(self.db.shim, tournament_id)
@@ -343,7 +346,7 @@ class EncounterCompletedFanoutTests(_DatabaseTestCase):
         encounter = self.db.session.get(models.Encounter, encounter_id)
         enqueue = AsyncMock()
         with patch.object(captain, "enqueue_outbox_event", enqueue):
-            await captain._enqueue_encounter_completed(self.db.shim, encounter)
+            await captain.captain_service._enqueue_encounter_completed(self.db.shim, encounter)
         return enqueue
 
     async def test_scrim_encounter_completion_publishes_no_achievement_event(self) -> None:
@@ -382,7 +385,7 @@ class ScrimStandingsInventionTests(_DatabaseTestCase):
             self.db.session.scalar(sa.select(sa.func.count()).select_from(models.Standing.__table__)),
         )
 
-        await standings_service.recalculate_for_tournament(self.db.shim, CONTAINER_ID, commit=True)
+        await standings_service.standings_service.recalculate_for_tournament(self.db.shim, CONTAINER_ID, commit=True)
 
         rows = self.db.session.execute(
             sa.select(

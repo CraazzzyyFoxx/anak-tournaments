@@ -44,9 +44,14 @@ def test_create_database_passes_pool_tuning_options(monkeypatch):
     }
     assert captured["async_sessionmaker_args"] == (async_engine,)
     assert captured["async_sessionmaker_kwargs"] == {
-        "class_": db_module.AsyncSession,
+        "class_": db_module.ResilientAsyncSession,
         "expire_on_commit": False,
     }
+    # The session class is the whole point of ``ResilientAsyncSession``: a plain
+    # ``AsyncSession`` re-raises from ``__aexit__`` when a statement_timeout has
+    # already killed the connection, replacing the real failure with a generic
+    # InterfaceError. It must stay a drop-in AsyncSession for every caller.
+    assert issubclass(db_module.ResilientAsyncSession, db_module.AsyncSession)
     assert db.async_engine is async_engine
     assert db.async_session_maker is async_session_factory
     assert not hasattr(db, "sync_engine")

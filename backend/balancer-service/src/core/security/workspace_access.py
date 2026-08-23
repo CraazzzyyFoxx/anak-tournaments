@@ -1,5 +1,6 @@
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.rbac import scope_grants
 from src.core.security.api_key_limiter import is_api_key_principal
 
 
@@ -42,11 +43,17 @@ class WorkspaceAccessPolicy:
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="API key cannot access jobs created by another key",
                 )
+            # Scopes are catalog permission names, so this gate speaks the same
+            # vocabulary as RBAC below. It is pinned to ``team.create`` -- the
+            # permission every balancer job path guards -- rather than to the
+            # ``resource``/``action`` arguments, so it stays a floor a caller
+            # cannot lower by declaring a weaker pair. ``scope_grants`` is
+            # wildcard-aware, so an ``admin.*`` key passes without enumerating.
             scopes = getattr(user, "_api_key_scopes", []) or []
-            if "balancer.jobs" not in scopes:
+            if not scope_grants(scopes, "team", "create"):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="API key scope required: balancer.jobs",
+                    detail="API key scope required: team.create",
                 )
             if user.has_workspace_permission(workspace_id, resource, action):
                 return

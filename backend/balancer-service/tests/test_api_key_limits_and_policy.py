@@ -39,6 +39,7 @@ from src.core.security.api_key_limiter import (  # noqa: E402
 )
 from src.core.security.api_key_policy import validate_api_key_config_policy  # noqa: E402
 from src.core.security.workspace_access import WorkspaceAccessPolicy  # noqa: E402
+from src.rpc import _common as rpc_common  # noqa: E402
 
 
 class FakeRedis:
@@ -87,7 +88,10 @@ def _api_key_user(**overrides):
         "_credential_type": "api_key",
         "_api_key_id": 42,
         "_api_key_workspace_id": 11,
-        "_api_key_scopes": ["balancer.jobs"],
+        # Scopes reaching the balancer are already-normalized catalog permission
+        # names: identity-service expands the legacy "balancer.jobs" alias into
+        # team.create before it ever signs a payload.
+        "_api_key_scopes": ["team.create"],
         "_api_key_limits": {
             "requests_per_minute": 60,
             "jobs_per_day": 100,
@@ -136,6 +140,7 @@ def test_config_policy_rejects_expensive_caps() -> None:
         "max": 150,
     }
 
+
 def test_config_policy_rejects_nan_cap_bypass() -> None:
     with pytest.raises(HTTPException) as exc_info:
         validate_api_key_config_policy(_api_key_user(), {"population_size": float("nan")})
@@ -152,7 +157,6 @@ def test_config_policy_rejects_non_numeric_cap_value() -> None:
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail["code"] == "api_key_config_value_invalid"
     assert exc_info.value.detail["field"] == "population_size"
-
 
 
 def test_config_policy_rejects_algorithm_override_field() -> None:
@@ -238,3 +242,58 @@ def test_workspace_policy_limits_api_key_to_own_workspace_and_jobs() -> None:
     assert exc_info.value.detail == "API key is not scoped to this workspace"
 
 
+def test_workspace_policy_requires_team_create_scope() -> None:
+    """A key whose scopes do not cover team.create cannot touch the job API.
+
+    The owner still holds team.create here (the fixture's RBAC says so), so this
+    proves the scope gate is a real floor and not a restatement of RBAC.
+    """
+    policy = WorkspaceAccessPolicy()
+    user = _api_key_user(_api_key_scopes=["registration.approve"])
+
+    with pytest.raises(HTTPException) as exc_info:
+        policy.ensure_workspace_access(user, 11, api_key_id=42, require_api_key_job_match=True)
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "API key scope required: team.create"
+
+
+def test_workspace_policy_accepts_admin_wildcard_scope() -> None:
+    """``admin.*`` is the catalog's ("*", "*") entry, so it covers team.create."""
+    policy = WorkspaceAccessPolicy()
+    user = _api_key_user(_api_key_scopes=["admin.*"])
+
+    policy.ensure_workspace_access(user, 11, api_key_id=42, require_api_key_job_match=True)
+
+
+def test_workspace_policy_rejects_empty_scopes() -> None:
+    """An unscoped key grants nothing -- there is no implicit default scope."""
+    policy = WorkspaceAccessPolicy()
+    user = _api_key_user(_api_key_scopes=[])
+
+    with pytest.raises(HTTPException) as exc_info:
+        policy.ensure_workspace_access(user, 11, api_key_id=42)
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "API key scope required: team.create"
+
+
+def test_admin_gate_authorizes_api_key_by_workspace_rbac() -> None:
+    """Balancer admin RPC no longer blanket-rejects API keys.
+
+    Identity-service already intersected the key's scopes with its owner's rights
+    in the key's single workspace, so ``rbac_permissions`` are authoritative and
+    the gate is plain workspace RBAC -- credential type is not consulted.
+    """
+    api_key_data = {"identity": {"credential_type": "api_key"}}
+    user = _api_key_user()
+
+    rpc_common.require_workspace_permission(api_key_data, user, 11, "team", "create")
+
+    # Still bounded by what the payload actually grants: another workspace, and
+    # a permission the key does not carry, both stay 403.
+    with pytest.raises(HTTPException) as exc_info:
+        rpc_common.require_workspace_permission(api_key_data, user, 12, "team", "create")
+    assert exc_info.value.status_code == 403
+
+    with pytest.raises(HTTPException) as exc_info:
+        rpc_common.require_workspace_permission(api_key_data, user, 11, "workspace", "update")
+    assert exc_info.value.status_code == 403

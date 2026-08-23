@@ -106,6 +106,32 @@ func AuthedOnly(routes []edge.RouteSpec) []edge.RouteSpec {
 	return out
 }
 
+// credentialNote is appended to every generated document's info.description. It
+// is the one place the two credential types are explained, because the per-route
+// security requirements deliberately carry no scopes (see security()).
+const credentialNote = "\n\n## Authentication\n\n" +
+	"Two credential types share the `Authorization: Bearer` header, and every authenticated " +
+	"operation below accepts either one (its `security` list is a logical OR).\n\n" +
+	"A **session JWT** is the browser credential: short-lived, minted by `POST /api/auth/login` " +
+	"and refreshed via `POST /api/auth/refresh`, carrying the caller's full RBAC — global roles " +
+	"and permissions plus every workspace they belong to.\n\n" +
+	"A **workspace-scoped API key** (`aqt_sk_<public_id>_<secret>`) is the machine credential: " +
+	"long-lived, created by `POST /api/auth/api-keys` and shown once. Its authorization is the " +
+	"intersection of the scopes granted to the key with what the key's owner actually holds in " +
+	"that one workspace, so a key can never outrank its owner and never reaches a second " +
+	"workspace. Scopes are RBAC permission names — the same vocabulary the endpoints are " +
+	"checked against; the catalog lives in `backend/shared/rbac/catalog.py`. A key carries no " +
+	"global permissions and no role names by design, so role-based shortcuts (workspace owner, " +
+	"admin) never apply to it.\n\n" +
+	"Session-only surfaces: the `/api/auth` operations that act on the caller's own account or " +
+	"session — logout, session list and revoke, `/api/auth/me`, password changes, and API-key " +
+	"management (creating, updating and revoking keys) — resolve the caller by decoding the " +
+	"bearer as a JWT, so an API key is rejected there with 401. " +
+	"`GET /api/auth/api-keys/self` is the inverse: it describes the calling key, so it needs a " +
+	"key. WebSocket connections (`/ws`, `/api/realtime/ws`) accept either credential, but a key " +
+	"only authenticates the socket if it holds at least one grant in its workspace; a " +
+	"zero-scope key connects anonymously and cannot subscribe to auth-gated topics."
+
 // Build assembles an OpenAPI 3.1.0 document (indented JSON) from the groups.
 // Output is deterministic: encoding/json sorts the paths/methods maps, and the
 // tags array follows the declared group order. components.schemas carries only
@@ -144,7 +170,7 @@ func Build(info Info, groups []Group) []byte {
 		"info": map[string]any{
 			"title":       info.Title,
 			"version":     version,
-			"description": info.Description,
+			"description": info.Description + credentialNote,
 		},
 		"servers":    []any{map[string]any{"url": "/"}},
 		"tags":       tags,
@@ -323,7 +349,7 @@ func (b *builder) responses(route edge.RouteSpec) map[string]any {
 }
 
 // components builds components.schemas (Error + the transitive closure of every
-// referenced model) and the bearer security scheme.
+// referenced model) and the two bearer security schemes.
 func (b *builder) components() map[string]any {
 	schemas := map[string]any{
 		"Error": map[string]any{
@@ -340,12 +366,23 @@ func (b *builder) components() map[string]any {
 		}
 	}
 	return map[string]any{
+		// Both credentials ride the same `Authorization: Bearer` header, so both
+		// are `type: http, scheme: bearer` and only the description distinguishes
+		// them. Deliberately NOT modelled as `type: apiKey, in: header`: that
+		// would make generated clients send a bare header value without the
+		// `Bearer ` scheme, which the gateway rejects.
 		"securitySchemes": map[string]any{
 			"bearerAuth": map[string]any{
 				"type":         "http",
 				"scheme":       "bearer",
 				"bearerFormat": "JWT",
-				"description":  "JWT access token. Also accepted via the `owt_access_token` cookie (legacy `aqt_access_token` still read as a fallback) or a `?token=Bearer <jwt>` query parameter.",
+				"description":  "Session JWT access token. REST operations read it from this header only; the `owt_access_token` cookie (legacy `aqt_access_token` as a fallback) and the `?token=Bearer <jwt>` query parameter authenticate WebSocket connections.",
+			},
+			"apiKeyAuth": map[string]any{
+				"type":         "http",
+				"scheme":       "bearer",
+				"bearerFormat": "aqt_sk_<public_id>_<secret>",
+				"description":  "Workspace-scoped API key, issued by `POST /api/auth/api-keys` and shown once at creation. Sent as `Authorization: Bearer aqt_sk_...` — the same header as the session JWT. A key's scopes are RBAC permission names (`team.create`, `registration.approve`, `admin.*`) from the permission catalog, and its effective authorization is those scopes intersected with what the key's owner holds in that single workspace: a key can never exceed its owner's rights and never reaches another workspace.",
 			},
 		},
 		"schemas": schemas,
@@ -420,13 +457,29 @@ func operationID(route edge.RouteSpec) string {
 // security maps the RouteSpec auth mode onto an OpenAPI security requirement.
 // AuthNone returns an explicit empty list — a valid "no auth required" override
 // that also satisfies strict linters (every operation has security defined).
+//
+// An authenticated route lists both schemes: the security array is a logical OR,
+// and the gateway accepts either credential on the same header, so a generated
+// client must know a key is as valid as a session JWT here.
+//
+// The requirement arrays are intentionally EMPTY rather than carrying the
+// route's required permission as an OAuth-style scope list. The permission a
+// route needs is asserted imperatively inside the Python worker that serves the
+// RPC subject; there is no machine-readable per-route source to derive it from,
+// so hand-annotating ~460 operations here would create a second declaration that
+// drifts out of step with the enforcement the moment either side changes. The
+// document points readers at the permission catalog instead
+// (backend/shared/rbac/catalog.py). Do not "fix" this by adding scope literals
+// unless the worker-side requirement becomes exportable the way request/response
+// schemas already are (see schemas.json).
 func security(route edge.RouteSpec) []any {
 	bearer := map[string]any{"bearerAuth": []any{}}
+	apiKey := map[string]any{"apiKeyAuth": []any{}}
 	switch route.Auth {
 	case edge.AuthRequired:
-		return []any{bearer}
+		return []any{bearer, apiKey}
 	case edge.AuthOptional:
-		return []any{map[string]any{}, bearer}
+		return []any{map[string]any{}, bearer, apiKey}
 	default:
 		return []any{}
 	}

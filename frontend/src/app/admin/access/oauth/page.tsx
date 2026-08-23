@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { ColumnDef } from "@tanstack/react-table";
 import { ExternalLink, Globe, Trash2 } from "lucide-react";
+import { useFormatter } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
@@ -28,20 +29,13 @@ import type { OAuthConnectionAdmin, OAuthProvider } from "@/types/rbac.types";
 
 const PAGE_SIZE = 20;
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  });
-}
-
 function isTokenExpired(expiresAt: string | null | undefined): boolean {
   if (!expiresAt) return false;
   return new Date(expiresAt) < new Date();
 }
 
 export default function OAuthConnectionsAdminPage() {
+  const format = useFormatter();
   const queryClient = useQueryClient();
   const { hasPermission } = usePermissions();
   const canDeleteConnections = hasPermission("auth_user.update");
@@ -139,7 +133,11 @@ export default function OAuthConnectionsAdminPage() {
       header: "Connected",
       cell: ({ row }) => (
         <span className="text-sm tabular-nums text-muted-foreground">
-          {formatDate(row.original.created_at)}
+          {format.dateTime(new Date(row.original.created_at), {
+            year: "numeric",
+            month: "short",
+            day: "numeric"
+          })}
         </span>
       )
     },

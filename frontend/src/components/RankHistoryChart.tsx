@@ -21,23 +21,38 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LineChart as ChartIcon, Compass, type LucideIcon } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 
 import type { Granularity } from "@/hooks/useRankHistory";
 import { cn } from "@/lib/utils";
 
 type GroupBy = "role" | "battle_tag";
 
+/** Only `dateTime` is needed here; `useFormatter()` and `await getFormatter()` both satisfy it. */
+type DateFormatter = Pick<ReturnType<typeof useFormatter>, "dateTime">;
+
 // Design-book role hues (tank=blue, damage=pink, support=green) so this chart
-// matches role colours everywhere else. Concrete hex because recharts applies
-// stroke/fill as SVG attributes, where CSS var() doesn't resolve reliably.
+// matches role colours everywhere else. Tokens, not hex: these values are only
+// ever emitted by `ChartStyle` into a `--color-<key>` CSS custom property (see
+// ui/chart.tsx), and `<Line stroke>` reads that variable — so nothing here is
+// ever parsed by JS and `var()` resolves normally.
 const ROLE_COLORS: Record<string, string> = {
-  tank: "#5aa6ef",
-  damage: "#ef6398",
-  support: "#3fcb86"
+  tank: "var(--aqt-tank)",
+  damage: "var(--aqt-damage)",
+  support: "var(--aqt-support)"
 };
 
-const PALETTE = ["#2563eb", "#a855f7", "#06b6d4", "#f59e0b", "#ec4899", "#14b8a6"];
+// Categorical series palette for battle-tag grouping. The five shadcn chart
+// tokens hold bare HSL triplets, so they must be wrapped in `hsl()`; the sixth
+// slot borrows an existing accent rather than inventing a `--chart-6`.
+const PALETTE = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+  "var(--aqt-blue)"
+];
 
 const TRIGGER_CLASS =
   "h-8 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] text-xs";
@@ -48,18 +63,22 @@ const CARD_CLASS =
 // Shared by the x-axis tick and tooltip label: both need the same
 // granularity-aware date formatting, falling back to the raw value when it
 // isn't a parseable timestamp.
-function formatTimestampTick(value: string | number, granularity: Granularity): string {
+function formatTimestampTick(
+  format: DateFormatter,
+  value: string | number,
+  granularity: Granularity
+): string {
   try {
     const date = new Date(value);
     if (isNaN(date.getTime())) return String(value);
     if (granularity === "date") {
-      return date.toLocaleDateString();
+      return format.dateTime(date, { dateStyle: "short" });
     }
-    return date.toLocaleString([], {
+    return format.dateTime(date, {
       month: "short",
       day: "numeric",
       hour: "2-digit",
-      minute: "2-digit",
+      minute: "2-digit"
     });
   } catch {
     return String(value);
@@ -250,6 +269,7 @@ export default function RankHistoryChart({
   }, [data]);
 
   const t = useTranslations();
+  const format = useFormatter();
 
   if (series.length === 0) {
     return (
@@ -365,7 +385,7 @@ export default function RankHistoryChart({
                 axisLine={false}
                 tickMargin={6}
                 minTickGap={24}
-                tickFormatter={(value) => formatTimestampTick(value, granularity)}
+                tickFormatter={(value) => formatTimestampTick(format, value, granularity)}
               />
               <YAxis
                 tickLine={false}
@@ -381,7 +401,7 @@ export default function RankHistoryChart({
               <ChartTooltip
                 content={
                   <ChartTooltipContent
-                    labelFormatter={(value) => formatTimestampTick(value, granularity)}
+                    labelFormatter={(value) => formatTimestampTick(format, value, granularity)}
                     formatter={(value, name, item) => {
                       const rank = Number(value);
                       const tier = getTierForRank(OW_REFERENCE_GRID, rank);

@@ -1,0 +1,661 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+
+import { BracketView } from "@/components/BracketView";
+import StandingsTable from "@/components/StandingsTable";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
+import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
+import { notify } from "@/lib/notify";
+import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { usePermissions } from "@/hooks/usePermissions";
+import captainService from "@/services/captain.service";
+import encounterService from "@/services/encounter.service";
+import type { Encounter } from "@/types/encounter.types";
+import type { StreamEntry } from "@/types/stream.types";
+import type { Standings, Tournament, Stage, StageItem } from "@/types/tournament.types";
+
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+import { tournamentHref } from "@/lib/tournament-url";
+import { useTranslations } from "next-intl";
+import { TournamentPageState } from "../_components/TournamentPageState";
+import { TournamentBracketSkeleton } from "../_components/TournamentSkeletons";
+import { UpdatingBadge } from "../_components/UpdatingBadge";
+import { useTournamentQuery } from "../_hooks/useTournamentClientData";
+import { useTournamentStreamsQuery } from "../_hooks/useTournamentStreams";
+import styles from "../TournamentDetail.module.css";
+import { isTournamentStatusEnded } from "@/lib/tournament-status";
+import {
+  createBracketQueryPlan,
+  deriveBracketLoadState,
+  isStageReportable,
+  isStageVisibleToViewer
+} from "./bracketData";
+import { buildLiveTeamStreams } from "./bracketLiveStreams";
+// Re-exported purely so TournamentBracketPage.test.ts's dynamic-import probe
+// (`bracketModule.getBracketRefetchInterval?.(status)`) can assert the
+// lifecycle polling policy without reaching into bracketData.ts directly.
+export { getBracketRefetchInterval } from "./bracketData";
+
+const ADMIN_ROLES = new Set(["admin", "superadmin", "tournament_admin"]);
+
+interface TournamentBracketViewProps {
+  tournament: Tournament;
+}
+
+function GroupStagePanel({
+  stage,
+  stageItem,
+  encounters,
+  standings,
+  stages,
+  onEdit,
+  onReport,
+  canEdit,
+  canReport,
+  bracketTabs,
+  liveTeamStreams
+}: Readonly<{
+  stage: Stage;
+  stageItem?: StageItem;
+  encounters: Encounter[];
+  standings: Standings[];
+  stages: Stage[];
+  onEdit?: (encounter: Encounter) => void;
+  onReport?: (encounter: Encounter) => void;
+  canEdit?: (encounter: Encounter) => boolean;
+  canReport?: (encounter: Encounter) => boolean;
+  bracketTabs?: Array<{
+    key: string;
+    href: string;
+    label: string;
+    isActive: boolean;
+  }>;
+  liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
+}>) {
+  const t = useTranslations();
+  const hasStandings = standings.length > 0;
+  const isPreview = !stage.is_published && !stage.is_completed;
+  const title = stageItem?.name ?? stage.name;
+  const subtitle = stageItem
+    ? `${stage.name} - ${stage.stage_type.replace(/_/g, " ")}`
+    : stage.stage_type.replace(/_/g, " ");
+
+  return (
+    <Tabs
+      defaultValue="matches"
+      className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
+    >
+      <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        {bracketTabs && bracketTabs.length > 1 ? (
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <div className="stage-tabs">
+                {bracketTabs.map((tab) => (
+                  <Link
+                    key={tab.key}
+                    href={tab.href}
+                    className={cn("stage-tab", tab.isActive && "active")}
+                  >
+                    {tab.label}
+                  </Link>
+                ))}
+              </div>
+              {stageItem && (
+                <span className="text-sm font-semibold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
+                  / {stageItem.name}
+                </span>
+              )}
+              {isPreview && <Badge variant="outline">{t("common.bracketPreview")}</Badge>}
+            </div>
+            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+              {subtitle}
+            </p>
+          </div>
+        ) : (
+          <div className="min-w-0">
+            <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">
+              {title}
+              {isPreview && (
+                <Badge variant="outline" className="ml-2 align-middle">
+                  {t("common.bracketPreview")}
+                </Badge>
+              )}
+            </h3>
+            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+              {subtitle}
+            </p>
+          </div>
+        )}
+
+        <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
+          {hasStandings && (
+            <TabsTrigger
+              value="standings"
+              className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+            >
+              {t("common.standings")}
+            </TabsTrigger>
+          )}
+          <TabsTrigger
+            value="matches"
+            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+          >
+            {t("common.bracket")}
+          </TabsTrigger>
+        </TabsList>
+      </div>
+
+      {hasStandings && (
+        <TabsContent value="standings" className="mt-0">
+          <div className="min-w-0 overflow-x-auto">
+            <StandingsTable standings={standings} stages={stages} is_groups />
+          </div>
+        </TabsContent>
+      )}
+
+      <TabsContent value="matches" className="mt-0 p-4">
+        <section
+          aria-label={t("tournamentDetail.bracketRegion")}
+          tabIndex={0}
+          className={styles.bracketScroller}
+        >
+          <BracketView
+            encounters={encounters}
+            type={stage.stage_type}
+            onEdit={onEdit}
+            onReport={onReport}
+            canEdit={canEdit}
+            canReport={canReport}
+            liveTeamStreams={liveTeamStreams}
+          />
+        </section>
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewProps>) {
+  const searchParams = useSearchParams();
+  const selectedStageParam = searchParams.get("stage");
+  const viewParam = searchParams.get("view");
+
+  const { isSuperuser, isWorkspaceAdmin } = usePermissions();
+  const { status: authStatus, user: authUser } = useAuthProfile();
+  const isAuthenticated = authStatus === "authenticated";
+  const isAdmin =
+    isAuthenticated &&
+    (isSuperuser ||
+      isWorkspaceAdmin(tournament.workspace_id) ||
+      (authUser?.roles ?? []).some((r) => ADMIN_ROLES.has(r)));
+
+  const t = useTranslations();
+  const [editEncounter, setEditEncounter] = useState<Encounter | null>(null);
+  const [reportEncounter, setReportEncounter] = useState<Encounter | null>(null);
+
+  const initialQueryPlan = useMemo(
+    () => createBracketQueryPlan(tournament, selectedStageParam),
+    [selectedStageParam, tournament]
+  );
+  const stagesQuery = useQuery(initialQueryPlan.stages);
+  const queryPlan = useMemo(
+    () => createBracketQueryPlan(tournament, selectedStageParam, stagesQuery.data),
+    [selectedStageParam, stagesQuery.data, tournament]
+  );
+  const encountersQuery = useQuery(queryPlan.encounters);
+  const standingsQuery = useQuery(queryPlan.standings);
+  // A stage the organizer generated ahead of time (`is_published=false`) is a
+  // preview: hidden from spectators entirely, visible to admins with a badge
+  // and no report action (the backend rejects captain reports/veto for it
+  // regardless — see `shared.services.bracket.usability.is_encounter_live`).
+  const stages = (stagesQuery.data ?? []).filter((stage) => isStageVisibleToViewer(stage, isAdmin));
+  const stageById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
+
+  // Read-only consumer of the stream cache the tournament shell already owns:
+  // `TournamentClientLayout` is subscribed to `tournament:{id}:streams` and
+  // invalidates `tournamentQueryKeys.streams(id)` on every event. A second
+  // subscription here, or a second `useQuery` declaring the same key with its own
+  // options, would be a rival updater of one cache entry — so this reuses the
+  // shared hook and lets the layout stay the only writer.
+  const streamsQuery = useTournamentStreamsQuery(tournament.id);
+  const liveTeamStreams = useMemo(
+    () => buildLiveTeamStreams(streamsQuery.data),
+    [streamsQuery.data]
+  );
+
+  const captainPlayerIds = useMemo(
+    () => new Set((authUser?.linkedPlayers ?? []).map((p) => p.playerId)),
+    [authUser?.linkedPlayers]
+  );
+  const isEncounterCaptain = (enc: Encounter) => {
+    const homeCaptain = enc.home_team?.captain_id;
+    const awayCaptain = enc.away_team?.captain_id;
+    return (
+      (homeCaptain != null && captainPlayerIds.has(homeCaptain)) ||
+      (awayCaptain != null && captainPlayerIds.has(awayCaptain))
+    );
+  };
+  const canEdit = isAdmin ? () => true : undefined;
+  const canReport = isAuthenticated
+    ? (enc: Encounter) =>
+        enc.result_status !== "confirmed" &&
+        isEncounterCaptain(enc) &&
+        isStageReportable(enc.stage_id == null ? undefined : stageById.get(enc.stage_id))
+    : undefined;
+  const handleEdit = isAdmin ? (enc: Encounter) => setEditEncounter(enc) : undefined;
+  const handleReport = isAuthenticated
+    ? async (enc: Encounter) => {
+        try {
+          const [fresh, role] = await Promise.all([
+            encounterService.getEncounter(enc.id),
+            captainService.getMyRole(enc.id)
+          ]);
+          if (fresh.result_status === "confirmed") {
+            // The result was confirmed after this bracket data was cached; the
+            // report action is no longer valid. Tell the captain why, then
+            // refresh so the stale report action disappears.
+            notify.error(t("matchReport.confirmedLockedTitle"), {
+              description: t("matchReport.confirmedLockedBody")
+            });
+            void encountersQuery.refetch();
+            return;
+          }
+          if (role.side === null) {
+            notify.error(t("common.noAccess"), { description: t("common.notCaptain") });
+            return;
+          }
+          setReportEncounter(fresh);
+        } catch {
+          notify.error(t("common.error"), { description: t("common.roleVerificationFailed") });
+        }
+      }
+    : undefined;
+
+  const groupStages = stages.filter(
+    (stage) => stage.stage_type === "round_robin" || stage.stage_type === "swiss"
+  );
+
+  const eliminationStages = stages.filter(
+    (stage) =>
+      stage.stage_type === "single_elimination" || stage.stage_type === "double_elimination"
+  );
+
+  const activeStage = stages.find((stage) => stage.is_active);
+  const fallbackStage = activeStage ?? eliminationStages[0] ?? stages[0];
+  const requestedStage = stages.find((stage) => stage.id === queryPlan.initialStageId);
+  const primaryStage = requestedStage ?? fallbackStage;
+  const shouldShowGroupStage =
+    viewParam === "groups" ||
+    (primaryStage ? groupStages.some((stage) => stage.id === primaryStage.id) : false);
+  // The dedicated groups view lists every group stage; arriving on a group
+  // stage by any other route shows only that one.
+  const activeGroupStages =
+    shouldShowGroupStage && viewParam === "groups"
+      ? groupStages
+      : shouldShowGroupStage && primaryStage
+        ? [primaryStage]
+        : [];
+  const activeStages = shouldShowGroupStage
+    ? activeGroupStages
+    : primaryStage
+      ? [primaryStage]
+      : [];
+
+  const bracketTabs = useMemo(() => {
+    const tabs: Array<{
+      key: string;
+      href: string;
+      label: string;
+      isActive: boolean;
+    }> = [];
+
+    const groupScopeCount = groupStages.reduce(
+      (count, stage) => count + Math.max(stage.items.length, 1),
+      0
+    );
+
+    const activeStageId = queryPlan.initialStageId ?? fallbackStage?.id;
+
+    const isGroupViewActive =
+      viewParam === "groups" ||
+      (!!activeStageId && groupStages.some((stage) => stage.id === activeStageId));
+
+    if (groupScopeCount > 1) {
+      tabs.push({
+        key: "group-stage",
+        href:
+          groupStages.length === 1
+            ? tournamentHref(tournament, `/bracket?stage=${groupStages[0].id}`)
+            : tournamentHref(tournament, "/bracket?view=groups"),
+        label: t("common.groupStage"),
+        isActive: isGroupViewActive
+      });
+    } else if (groupStages.length === 1) {
+      const stage = groupStages[0];
+      tabs.push({
+        key: `stage-${stage.id}`,
+        href: tournamentHref(tournament, `/bracket?stage=${stage.id}`),
+        label: stage.name,
+        isActive: !viewParam && stage.id === activeStageId
+      });
+    }
+
+    eliminationStages.forEach((stage) => {
+      tabs.push({
+        key: `stage-${stage.id}`,
+        href: tournamentHref(tournament, `/bracket?stage=${stage.id}`),
+        label:
+          eliminationStages.length === 1 && groupStages.length > 0
+            ? t("common.playoff")
+            : stage.name,
+        isActive: !viewParam && stage.id === activeStageId
+      });
+    });
+
+    return tabs;
+  }, [
+    groupStages,
+    eliminationStages,
+    fallbackStage?.id,
+    queryPlan.initialStageId,
+    viewParam,
+    tournament.id,
+    t
+  ]);
+
+  const allEncounters = encountersQuery.data;
+  const allStandings = standingsQuery.data ?? [];
+
+  const groupStagePanels = useMemo(() => {
+    const encounters = allEncounters?.results ?? [];
+
+    return activeGroupStages.flatMap((stage) => {
+      if (stage.items.length === 0) {
+        return [
+          {
+            key: `stage-${stage.id}`,
+            stage,
+            stageItem: undefined as StageItem | undefined,
+            encounters: encounters.filter((encounter) => encounter.stage_id === stage.id),
+            standings: allStandings.filter((standing) => standing.stage_id === stage.id)
+          }
+        ];
+      }
+
+      return stage.items.map((stageItem) => ({
+        key: `stage-${stage.id}-item-${stageItem.id}`,
+        stage,
+        stageItem,
+        encounters: encounters.filter(
+          (encounter) => encounter.stage_id === stage.id && encounter.stage_item_id === stageItem.id
+        ),
+        standings: allStandings.filter(
+          (standing) => standing.stage_id === stage.id && standing.stage_item_id === stageItem.id
+        )
+      }));
+    });
+  }, [activeGroupStages, allEncounters?.results, allStandings]);
+
+  const encountersByStage = useMemo(() => {
+    const map = new Map<number, Encounter[]>();
+
+    for (const stage of activeStages) {
+      map.set(
+        stage.id,
+        (allEncounters?.results ?? []).filter((encounter) => encounter.stage_id === stage.id)
+      );
+    }
+
+    return map;
+  }, [activeStages, allEncounters?.results]);
+
+  const playoffStandings = useMemo(
+    () =>
+      allStandings.filter((standing) =>
+        ["single_elimination", "double_elimination"].includes(standing.stage?.stage_type ?? "")
+      ),
+    [allStandings]
+  );
+
+  const retryQueries = () => {
+    const requests: Array<Promise<unknown>> = [stagesQuery.refetch()];
+    if (queryPlan.initialStageId != null) {
+      requests.push(encountersQuery.refetch(), standingsQuery.refetch());
+    }
+    void Promise.all(requests);
+  };
+  const loadState = deriveBracketLoadState({
+    hasStageId: queryPlan.initialStageId != null,
+    stages: {
+      hasData: stagesQuery.data !== undefined,
+      isPending: stagesQuery.isPending,
+      isError: stagesQuery.isError,
+      isFetching: stagesQuery.isFetching
+    },
+    encounters: {
+      hasData: encountersQuery.data !== undefined,
+      isPending: encountersQuery.isPending,
+      isError: encountersQuery.isError,
+      isFetching: encountersQuery.isFetching
+    },
+    standings: {
+      hasData: standingsQuery.data !== undefined,
+      isPending: standingsQuery.isPending,
+      isError: standingsQuery.isError,
+      isFetching: standingsQuery.isFetching
+    }
+  });
+
+  if (loadState.kind === "initial-error") {
+    return <TournamentPageState state="initial-error" onRetry={retryQueries} />;
+  }
+
+  if (loadState.kind === "initial-loading") {
+    return <TournamentBracketSkeleton />;
+  }
+
+  const content = (
+    <div className={styles.publicDataPage} data-page-section="bracket">
+      {loadState.isUpdating && loadState.kind !== "refresh-error" ? <UpdatingBadge /> : null}
+      {activeStages.length > 0 ? (
+        <div className="space-y-6">
+          {shouldShowGroupStage
+            ? groupStagePanels.map((panel, index) => (
+                <GroupStagePanel
+                  key={panel.key}
+                  stage={panel.stage}
+                  stageItem={panel.stageItem}
+                  encounters={panel.encounters}
+                  standings={panel.standings}
+                  stages={stages}
+                  onEdit={handleEdit}
+                  onReport={handleReport}
+                  canEdit={canEdit}
+                  canReport={canReport}
+                  bracketTabs={index === 0 ? bracketTabs : undefined}
+                  liveTeamStreams={liveTeamStreams}
+                />
+              ))
+            : activeStages.map((stage) => {
+                const encounters = encountersByStage.get(stage.id) ?? [];
+                if (encounters.length === 0 && bracketTabs.length <= 1) {
+                  return (
+                    <div
+                      key={stage.id}
+                      className="rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-8 text-center text-[color:var(--aqt-fg-muted)]"
+                    >
+                      {t("common.noMatches", { stage: stage.name })}
+                    </div>
+                  );
+                }
+
+                const stagePlayoffStandings = playoffStandings.filter(
+                  (standing) => standing.stage_id === stage.id
+                );
+                const hasPlayoffStandings = stagePlayoffStandings.length > 0;
+
+                return (
+                  <Tabs
+                    key={stage.id}
+                    defaultValue="bracket"
+                    className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
+                  >
+                    <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      {bracketTabs.length > 1 ? (
+                        <div className="min-w-0">
+                          <div className="stage-tabs">
+                            {bracketTabs.map((tab) => (
+                              <Link
+                                key={tab.key}
+                                href={tab.href}
+                                className={cn("stage-tab", tab.isActive && "active")}
+                              >
+                                {tab.label}
+                              </Link>
+                            ))}
+                          </div>
+                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+                            {stage.stage_type.replace(/_/g, " ")}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="min-w-0">
+                          <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">
+                            {stage.name}
+                            {!stage.is_published && !stage.is_completed && (
+                              <Badge variant="outline" className="ml-2 align-middle">
+                                {t("common.bracketPreview")}
+                              </Badge>
+                            )}
+                          </h3>
+                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+                            {stage.stage_type.replace(/_/g, " ")}
+                          </p>
+                        </div>
+                      )}
+
+                      <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
+                        {hasPlayoffStandings && (
+                          <TabsTrigger
+                            value="standings"
+                            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+                          >
+                            {t("common.standings")}
+                          </TabsTrigger>
+                        )}
+                        <TabsTrigger
+                          value="bracket"
+                          className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+                        >
+                          {t("common.bracket")}
+                        </TabsTrigger>
+                      </TabsList>
+                    </div>
+
+                    {hasPlayoffStandings && (
+                      <TabsContent value="standings" className="mt-0">
+                        <div className="min-w-0 overflow-x-auto">
+                          <StandingsTable
+                            standings={stagePlayoffStandings}
+                            stages={stages}
+                            is_groups={false}
+                            crownTop={isTournamentStatusEnded(tournament.status)}
+                          />
+                        </div>
+                      </TabsContent>
+                    )}
+
+                    <TabsContent value="bracket" className="mt-0 p-4">
+                      {encounters.length === 0 ? (
+                        <div className="py-8 text-center text-[color:var(--aqt-fg-muted)]">
+                          {t("common.noMatches", { stage: stage.name })}
+                        </div>
+                      ) : (
+                        <section
+                          aria-label={t("tournamentDetail.bracketRegion")}
+                          tabIndex={0}
+                          className={styles.bracketScroller}
+                        >
+                          <BracketView
+                            encounters={encounters}
+                            type={stage.stage_type}
+                            onEdit={handleEdit}
+                            onReport={handleReport}
+                            canEdit={canEdit}
+                            canReport={canReport}
+                            liveTeamStreams={liveTeamStreams}
+                          />
+                        </section>
+                      )}
+                    </TabsContent>
+                  </Tabs>
+                );
+              })}
+        </div>
+      ) : (
+        <TournamentPageState state="empty" />
+      )}
+
+      {editEncounter && (
+        <EncounterEditDialog
+          open={!!editEncounter}
+          onOpenChange={(open) => {
+            if (!open) setEditEncounter(null);
+          }}
+          encounter={editEncounter}
+        />
+      )}
+
+      {reportEncounter && (
+        <MatchReportDialog
+          open={!!reportEncounter}
+          onOpenChange={(open) => {
+            if (!open) setReportEncounter(null);
+          }}
+          encounter={reportEncounter}
+        />
+      )}
+    </div>
+  );
+
+  if (loadState.kind === "refresh-error") {
+    return (
+      <TournamentPageState
+        state="refresh-error"
+        onRetry={retryQueries}
+        isUpdating={loadState.isUpdating}
+      >
+        {content}
+      </TournamentPageState>
+    );
+  }
+
+  return content;
+}
+
+/**
+ * Resolves the shared tournament overview so the route file stays a one-line
+ * delegation, matching every other tournament sub-route. The overview is
+ * already primed by the layout, so this is a cache read in practice — the
+ * guards below only fire if that layout contract ever changes.
+ */
+export default function TournamentBracketPage({ slug }: Readonly<{ slug: string }>) {
+  // Keyed by `slug`: shares TournamentClientLayout's overview cache entry.
+  const tournamentQuery = useTournamentQuery(slug);
+
+  if (!tournamentQuery.data) {
+    if (tournamentQuery.isError) {
+      return (
+        <TournamentPageState state="initial-error" onRetry={() => void tournamentQuery.refetch()} />
+      );
+    }
+    return <TournamentBracketSkeleton />;
+  }
+
+  return <TournamentBracketView tournament={tournamentQuery.data} />;
+}

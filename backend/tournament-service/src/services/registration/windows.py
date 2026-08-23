@@ -57,13 +57,19 @@ def is_registration_open(
     return is_registration_window_open(tournament.status, tournament.phase_schedule, now)
 
 
-async def load_registration_open(session: AsyncSession, tournament_id: int) -> bool:
-    """Openness for a tournament we hold only the id of.
+class RegistrationWindowService:
+    """The one session-taking window read; the two predicates above stay pure."""
 
-    One scalar read of the *same* SQL clause the aggregate readers use, so the
-    per-tournament and in-query answers cannot drift apart. Prefer
-    :func:`is_registration_open` when a ``Tournament`` is already loaded.
-    """
-    return bool(
-        await session.scalar(sa.select(registration_open_clause()).where(models.Tournament.id == tournament_id))
-    )
+    async def load_registration_open(self, session: AsyncSession, tournament_id: int) -> bool:
+        """Openness for a tournament we hold only the id of.
+
+        One scalar read of the *same* SQL clause the aggregate readers use, so the
+        per-tournament and in-query answers cannot drift apart. Prefer
+        :func:`is_registration_open` when a ``Tournament`` is already loaded.
+        """
+        return bool(
+            await session.scalar(sa.select(registration_open_clause()).where(models.Tournament.id == tournament_id))
+        )
+
+
+windows_service = RegistrationWindowService()

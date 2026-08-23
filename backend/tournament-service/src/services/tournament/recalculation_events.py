@@ -15,7 +15,7 @@ from shared.messaging.config import (
 from shared.observability import observe_message_processing
 from shared.schemas.events import TournamentChangedEvent, TournamentStandingsInvalidatedEvent
 from src.core import db
-from src.services.computation.jobs import request_standings_recalculation
+from src.services.computation.jobs import jobs_service
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
 from src.services.tournament.realtime_pubsub import publish_tournament_update
 
@@ -54,5 +54,5 @@ async def process_standings_invalidated(data: dict[str, Any], msg: RabbitMessage
     ):
         event = TournamentStandingsInvalidatedEvent.model_validate(data)
         async with db.async_session_maker() as session:
-            await request_standings_recalculation(session, event.tournament_id)
+            await jobs_service.request_standings_recalculation(session, event.tournament_id)
             await session.commit()

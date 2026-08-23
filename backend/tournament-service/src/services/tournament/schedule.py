@@ -9,64 +9,69 @@ allowed phases / ordering lives in ``TournamentScheduleSet``.
 
 from __future__ import annotations
 
-from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import TournamentPhaseScheduleRepository, TournamentRepository
 from src import models
 from src.schemas.admin import tournament as admin_schemas
 from src.services.tournament.events import enqueue_tournament_changed
 
+_TOURNAMENT_LOAD = (
+    selectinload(models.Tournament.stages).selectinload(models.Stage.items).selectinload(models.StageItem.inputs),
+)
 
-async def set_schedule(
-    session: AsyncSession,
-    tournament_id: int,
-    entries: list[admin_schemas.TournamentScheduleEntryInput],
-) -> models.Tournament:
-    """Replace the tournament's phase schedule with ``entries`` (full replace)."""
-    result = await session.execute(
-        select(models.Tournament)
-        .where(models.Tournament.id == tournament_id)
-        .options(
-            selectinload(models.Tournament.stages)
-            .selectinload(models.Stage.items)
-            .selectinload(models.StageItem.inputs)
+
+class TournamentScheduleService:
+    def __init__(
+        self,
+        *,
+        tournament_repo: TournamentRepository = TournamentRepository(),
+        schedule_repo: TournamentPhaseScheduleRepository = TournamentPhaseScheduleRepository(),
+    ) -> None:
+        self.tournament_repo = tournament_repo
+        self.schedule_repo = schedule_repo
+
+    async def set_schedule(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        entries: list[admin_schemas.TournamentScheduleEntryInput],
+    ) -> models.Tournament:
+        """Replace the tournament's phase schedule with ``entries`` (full replace)."""
+        tournament = await self.tournament_repo.get(session, tournament_id, options=_TOURNAMENT_LOAD)
+
+        if not tournament:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+        await self.schedule_repo.delete_for_tournament(session, tournament_id)
+        await self.schedule_repo.create_many(
+            session,
+            [
+                models.TournamentPhaseSchedule(
+                    tournament_id=tournament_id,
+                    status=entry.status,
+                    starts_at=entry.starts_at,
+                    ends_at=entry.ends_at,
+                )
+                for entry in entries
+            ],
         )
-    )
-    tournament = result.scalar_one_or_none()
 
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+        await enqueue_tournament_changed(session, tournament_id, "structure_changed")
+        await session.commit()
 
-    await session.execute(
-        delete(models.TournamentPhaseSchedule).where(models.TournamentPhaseSchedule.tournament_id == tournament_id)
-    )
-    session.add_all(
-        models.TournamentPhaseSchedule(
-            tournament_id=tournament_id,
-            status=entry.status,
-            starts_at=entry.starts_at,
-            ends_at=entry.ends_at,
+        # Fresh read (pattern of admin transition_status); populate_existing forces
+        # the eager ``phase_schedule`` relationship past the identity-map hit
+        # (expire_on_commit=False) so it reflects the new rows.
+        refreshed = await self.tournament_repo.get(
+            session, tournament_id, options=_TOURNAMENT_LOAD, populate_existing=True
         )
-        for entry in entries
-    )
+        if refreshed is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+        return refreshed
 
-    await enqueue_tournament_changed(session, tournament_id, "structure_changed")
-    await session.commit()
 
-    # Fresh read (pattern of admin transition_status); populate_existing forces
-    # the eager ``phase_schedule`` relationship past the identity-map hit
-    # (expire_on_commit=False) so it reflects the new rows.
-    result = await session.execute(
-        select(models.Tournament)
-        .where(models.Tournament.id == tournament_id)
-        .options(
-            selectinload(models.Tournament.stages)
-            .selectinload(models.Stage.items)
-            .selectinload(models.StageItem.inputs)
-        )
-        .execution_options(populate_existing=True)
-    )
-    return result.scalar_one()
+schedule_service = TournamentScheduleService()

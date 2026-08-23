@@ -31,7 +31,7 @@ def test_to_pydantic_returns_unified_social_accounts():
         _acc(2, SocialProvider.DISCORD, "coolguy"),
         _acc(3, SocialProvider.TWITCH, "streamer"),
     ]
-    res = asyncio.run(flows.to_pydantic(None, _user_with(accounts), ["battle_tag", "discord", "twitch"]))
+    res = asyncio.run(flows.flows_service.to_pydantic(None, _user_with(accounts), ["battle_tag", "discord", "twitch"]))
     assert len(res.social_accounts) == 3
     assert {s.provider for s in res.social_accounts} == {"battlenet", "discord", "twitch"}
     primary = next(s for s in res.social_accounts if s.username == "Player#1234")
@@ -40,5 +40,5 @@ def test_to_pydantic_returns_unified_social_accounts():
 
 
 def test_to_pydantic_empty_entities_skips_identity_access():
-    res = asyncio.run(flows.to_pydantic(None, models.User(id=7, name="Tester"), []))
+    res = asyncio.run(flows.flows_service.to_pydantic(None, models.User(id=7, name="Tester"), []))
     assert res.social_accounts == []

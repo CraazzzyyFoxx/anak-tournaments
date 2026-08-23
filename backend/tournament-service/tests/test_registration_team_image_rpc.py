@@ -189,9 +189,9 @@ class RegistrationTeamImageSubjects(IsolatedAsyncioTestCase):
             patch.object(helpers.db, "async_session_maker", _FakeSessionMaker()),
             patch.object(regteam_binary, "get_s3", fake_get_s3),
             patch.object(regteam_binary, "upload_avatar", fake_upload_avatar),
-            patch.object(regteam_binary.team_service, "assert_may_edit_team", fake_gate),
-            patch.object(regteam_binary.team_service, "set_team_image", fake_set_team_image),
-            patch.object(regteam_binary.team_service, "describe_team", fake_describe_team),
+            patch.object(regteam_binary.team_service.teams_service, "assert_may_edit_team", fake_gate),
+            patch.object(regteam_binary.team_service.teams_service, "set_team_image", fake_set_team_image),
+            patch.object(regteam_binary.team_service.teams_service, "describe_team", fake_describe_team),
         ):
             envelope = await broker.handlers[subject](data, None)
         self.upload_kwargs = upload_kwargs
@@ -314,7 +314,7 @@ class GateSignature(TestCase):
     def test_set_team_image_is_keyword_only(self):
         import inspect
 
-        params = inspect.signature(team_service.set_team_image).parameters
+        params = inspect.signature(team_service.teams_service.set_team_image).parameters
         self.assertEqual(["session", "team_id", "auth_user", "image_url"], list(params))
         for name in ("team_id", "auth_user", "image_url"):
             self.assertIs(inspect.Parameter.KEYWORD_ONLY, params[name].kind)

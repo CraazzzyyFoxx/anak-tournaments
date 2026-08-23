@@ -114,6 +114,7 @@ class _Fixture:
             id=tournament_id,
             workspace_id=workspace_id,
             name=f"Tournament {tournament_id}",
+            slug=f"tournament-{tournament_id}",
             start_date=start_date,
         )
         return tournament_id

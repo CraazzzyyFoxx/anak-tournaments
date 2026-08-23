@@ -361,7 +361,14 @@ const StandingsTable = ({
               const label = tiebreakerLabel(metricId, labelFor);
               return (
                 <React.Fragment key={metricId}>
-                  {idx > 0 && <span className="sep">→</span>}
+                  {/* Ordering separator beside real text, so it takes the same
+                      aria-hidden treatment as the sanctioned "View all →". The
+                      rank each badge holds is already in its title. */}
+                  {idx > 0 && (
+                    <span className="sep" aria-hidden>
+                      →
+                    </span>
+                  )}
                   <span className="badge" title={t("standings.priority", { n: String(idx + 1) })}>
                     {label}
                   </span>

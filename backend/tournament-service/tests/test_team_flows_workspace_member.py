@@ -1,4 +1,4 @@
-"""P5.3: ``team_flows.to_pydantic_player`` builds ``PlayerRead.user_id`` (a
+"""P5.3: ``team_flows.flows_service.to_pydantic_player`` builds ``PlayerRead.user_id`` (a
 required field) from ``player.to_dict()`` plus an explicit override, since
 ``Player.user_id`` was dropped in the contract step (iwrefac07) and
 ``to_dict()`` only reflects real ORM columns. This must keep resolving to
@@ -63,7 +63,7 @@ class ToPydanticPlayerWorkspaceMemberTests(IsolatedAsyncioTestCase):
         session = object()
         player = _player(workspace_member_player_id=42)
 
-        result = await team_flows.to_pydantic_player(session, player, [], grid=None)
+        result = await team_flows.flows_service.to_pydantic_player(session, player, [], grid=None)
 
         self.assertEqual(42, result.user_id)
         self.assertIsNone(result.user)
@@ -74,8 +74,8 @@ class ToPydanticPlayerWorkspaceMemberTests(IsolatedAsyncioTestCase):
         player.workspace_member.player = SimpleNamespace(id=77)
 
         fake_user_read = team_flows.schemas.UserRead(id=77, name="Roster Player")
-        with patch.object(team_flows.user_flows, "to_pydantic", AsyncMock(return_value=fake_user_read)):
-            result = await team_flows.to_pydantic_player(session, player, ["user"], grid=None)
+        with patch.object(team_flows.user_flows_service, "to_pydantic", AsyncMock(return_value=fake_user_read)):
+            result = await team_flows.flows_service.to_pydantic_player(session, player, ["user"], grid=None)
 
         self.assertEqual(77, result.user_id)
         self.assertEqual(fake_user_read, result.user)

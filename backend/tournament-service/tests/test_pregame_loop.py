@@ -66,9 +66,13 @@ from shared.models.tournament.pick_ban import (  # noqa: E402
     PickBanEntry,
     PickBanSession,
 )
-from src.services.encounter import map_report as map_report_service  # noqa: E402
-from src.services.encounter import pick_ban_action as action_service  # noqa: E402
-from src.services.encounter import pick_ban_session as session_service  # noqa: E402
+from src.services.encounter import map_report as map_report_module  # noqa: E402
+from src.services.encounter.map_report import map_report_service  # noqa: E402
+from src.services.encounter.pick_ban_action import pick_ban_action_service  # noqa: E402
+from src.services.encounter.pick_ban_session import (  # noqa: E402
+    REASON_WAITING_MAP,
+    pick_ban_session_service,
+)
 from src.services.encounter.realtime_commit import (  # noqa: E402
     pop_registered_map_veto_realtime_updates,
 )
@@ -123,6 +127,11 @@ def _matches(row: Any, clause: Any) -> bool:
 class _Result:
     def __init__(self, rows: list[Any]) -> None:
         self._rows = rows
+
+    def unique(self) -> _Result:
+        # `shared.repository` reads go through `result.unique().scalars()`, so the
+        # store has to answer it -- a no-op here (no joined eager loads).
+        return self
 
     def scalars(self) -> _Result:
         return self
@@ -332,17 +341,17 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
 
     # -- helpers ----------------------------------------------------------
     async def map_state(self) -> dict:
-        return await action_service.get_pick_ban_state(
+        return await pick_ban_action_service.get_pick_ban_state(
             self.store, self.encounter_id, PickBanKind.MAP, viewer_side=MapPickSide.HOME.value
         )
 
     async def hero_state(self) -> dict:
-        return await action_service.get_pick_ban_state(
+        return await pick_ban_action_service.get_pick_ban_state(
             self.store, self.encounter_id, PickBanKind.HERO, viewer_side=MapPickSide.HOME.value
         )
 
     async def act(self, kind: PickBanKind, side: str, item_id: int, action: str = "ban") -> None:
-        await action_service.perform_pick_ban_action(self.store, self.encounter_id, kind, side, item_id, action)
+        await pick_ban_action_service.perform_pick_ban_action(self.store, self.encounter_id, kind, side, item_id, action)
 
     async def ban_out_the_map_round(self) -> int:
         """Both sides ban this round's first two candidates; the decider takes
@@ -399,7 +408,7 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
         # round's map is picked.
         hero = await self.hero_state()
         self.assertIsNone(hero["session"])
-        self.assertEqual(session_service.REASON_WAITING_MAP, hero["reason"])
+        self.assertEqual(REASON_WAITING_MAP, hero["reason"])
 
         map_one = await self.ban_out_the_map_round()
 
@@ -647,7 +656,7 @@ class LoserChoiceStallTests(IsolatedAsyncioTestCase):
             readiness.encounter_id = self.encounter_id
 
     async def state(self, kind: PickBanKind) -> dict:
-        return await action_service.get_pick_ban_state(
+        return await pick_ban_action_service.get_pick_ban_state(
             self.store, self.encounter_id, kind, viewer_side=MapPickSide.HOME.value
         )
 
@@ -659,7 +668,7 @@ class LoserChoiceStallTests(IsolatedAsyncioTestCase):
             available = [
                 entry["item_id"] for entry in state["pool"] if entry["status"] == MapPoolEntryStatus.AVAILABLE.value
             ]
-            await action_service.perform_pick_ban_action(
+            await pick_ban_action_service.perform_pick_ban_action(
                 self.store, self.encounter_id, PickBanKind.MAP, state["turn_side"], available[0], "ban"
             )
         map_one = next(
@@ -674,7 +683,7 @@ class LoserChoiceStallTests(IsolatedAsyncioTestCase):
                 for entry in state["pool"]
                 if entry["status"] == MapPoolEntryStatus.AVAILABLE.value and entry["round"] == state["current_round"]
             ]
-            await action_service.perform_pick_ban_action(
+            await pick_ban_action_service.perform_pick_ban_action(
                 self.store, self.encounter_id, PickBanKind.HERO, state["turn_side"], available[0], "ban"
             )
         for team_id in (HOME_TEAM, AWAY_TEAM):
@@ -694,7 +703,7 @@ class LoserChoiceStallTests(IsolatedAsyncioTestCase):
                 for entry in state["pool"]
                 if entry["status"] == MapPoolEntryStatus.AVAILABLE.value and entry["round"] == state["current_round"]
             ]
-            await action_service.perform_pick_ban_action(
+            await pick_ban_action_service.perform_pick_ban_action(
                 self.store, self.encounter_id, PickBanKind.MAP, state["turn_side"], available[0], "ban"
             )
         # The hero session catches up with the map phase on a READ
@@ -723,7 +732,7 @@ class LoserChoiceStallTests(IsolatedAsyncioTestCase):
         await self.play_map_one()
 
         with self.assertRaises(HTTPException) as caught:
-            await session_service.elect_round_opener(
+            await pick_ban_session_service.elect_round_opener(
                 self.store, self.hero_session(), first_side="home", acting_side=MapPickSide.HOME.value
             )
         self.assertEqual(403, caught.exception.status_code)
@@ -732,7 +741,7 @@ class LoserChoiceStallTests(IsolatedAsyncioTestCase):
     async def test_an_admin_elects_for_an_unreachable_captain_and_the_round_opens(self) -> None:
         await self.play_map_one()
 
-        await session_service.elect_round_opener(
+        await pick_ban_session_service.elect_round_opener(
             self.store, self.hero_session(), first_side=MapPickSide.AWAY.value, acting_side=None
         )
 
@@ -745,12 +754,12 @@ class LoserChoiceStallTests(IsolatedAsyncioTestCase):
 
     async def test_electing_twice_is_refused_rather_than_appending_a_second_round(self) -> None:
         await self.play_map_one()
-        await session_service.elect_round_opener(
+        await pick_ban_session_service.elect_round_opener(
             self.store, self.hero_session(), first_side=MapPickSide.AWAY.value, acting_side=None
         )
 
         with self.assertRaises(HTTPException) as caught:
-            await session_service.elect_round_opener(
+            await pick_ban_session_service.elect_round_opener(
                 self.store, self.hero_session(), first_side=MapPickSide.HOME.value, acting_side=None
             )
         self.assertEqual(400, caught.exception.status_code)
@@ -782,7 +791,7 @@ class DeletedConfigStallTests(IsolatedAsyncioTestCase):
             readiness.encounter_id = self.encounter_id
 
     async def test_it_says_the_config_is_gone(self) -> None:
-        state = await action_service.get_pick_ban_state(
+        state = await pick_ban_action_service.get_pick_ban_state(
             self.store, self.encounter_id, PickBanKind.MAP, viewer_side=MapPickSide.HOME.value
         )
         pick_ban = next(row for row in self.store.all_of(PickBanSession) if row.kind == PickBanKind.MAP)
@@ -790,16 +799,16 @@ class DeletedConfigStallTests(IsolatedAsyncioTestCase):
             entry["item_id"] for entry in state["pool"] if entry["status"] == MapPoolEntryStatus.AVAILABLE.value
         ]
         for item_id in available[:2]:
-            state = await action_service.get_pick_ban_state(
+            state = await pick_ban_action_service.get_pick_ban_state(
                 self.store, self.encounter_id, PickBanKind.MAP, viewer_side=MapPickSide.HOME.value
             )
-            await action_service.perform_pick_ban_action(
+            await pick_ban_action_service.perform_pick_ban_action(
                 self.store, self.encounter_id, PickBanKind.MAP, state["turn_side"], item_id, "ban"
             )
         pick_ban.config_id = None
 
         with self.assertRaises(HTTPException) as caught:
-            await session_service.advance_to_next_round(
+            await pick_ban_session_service.advance_to_next_round(
                 self.store, pick_ban, completed_round=1, winner=MapPickSide.HOME.value
             )
         self.assertEqual(422, caught.exception.status_code)
@@ -825,7 +834,7 @@ class ScrimLoopTests(PregameLoopTests):
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        patcher = patch.object(map_report_service, "is_scrim_container", AsyncMock(return_value=True))
+        patcher = patch.object(map_report_module, "is_scrim_container", AsyncMock(return_value=True))
         patcher.start()
         self.addCleanup(patcher.stop)
 

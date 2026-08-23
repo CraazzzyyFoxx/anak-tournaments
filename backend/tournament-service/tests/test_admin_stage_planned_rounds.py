@@ -62,8 +62,8 @@ class GetPlannedRoundsTests(IsolatedAsyncioTestCase):
         stage = SimpleNamespace(id=5, stage_type=enums.StageType.DOUBLE_ELIMINATION, items=[])
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([(1,), (-2,), (2,)])))
 
-        with patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)):
-            rounds = await stage_service.get_planned_rounds(session, 5)
+        with patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)):
+            rounds = await stage_service.stage_service.get_planned_rounds(session, 5)
 
         # Ground truth once encounters exist: sorted, never re-predicted.
         self.assertEqual([-2, 1, 2], rounds)
@@ -78,8 +78,8 @@ class GetPlannedRoundsTests(IsolatedAsyncioTestCase):
         )
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([])))
 
-        with patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)):
-            rounds = await stage_service.get_planned_rounds(session, 5)
+        with patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)):
+            rounds = await stage_service.stage_service.get_planned_rounds(session, 5)
 
         self.assertEqual([-4, -3, -2, -1, 1, 2, 3, 4], rounds)
 
@@ -96,8 +96,8 @@ class GetPlannedRoundsTests(IsolatedAsyncioTestCase):
         stage = SimpleNamespace(id=5, stage_type=enums.StageType.SINGLE_ELIMINATION, items=[_item(1, inputs)])
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([])))
 
-        with patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)):
-            rounds = await stage_service.get_planned_rounds(session, 5)
+        with patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)):
+            rounds = await stage_service.stage_service.get_planned_rounds(session, 5)
 
         self.assertEqual([1, 2], rounds)  # 4 known teams -> 2 rounds
 
@@ -109,8 +109,8 @@ class GetPlannedRoundsTests(IsolatedAsyncioTestCase):
         )
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([])))
 
-        with patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)):
-            rounds = await stage_service.get_planned_rounds(session, 5)
+        with patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)):
+            rounds = await stage_service.stage_service.get_planned_rounds(session, 5)
 
         self.assertEqual([], rounds)
 
@@ -123,10 +123,10 @@ class GetPlannedRoundsTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([])))
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_preceding_group_stage", AsyncMock(return_value=None)),
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=None)),
         ):
-            rounds = await stage_service.get_planned_rounds(session, 5)
+            rounds = await stage_service.stage_service.get_planned_rounds(session, 5)
 
         self.assertEqual([], rounds)
 
@@ -150,10 +150,10 @@ class GetPlannedRoundsTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([])))
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
         ):
-            rounds = await stage_service.get_planned_rounds(session, 5)
+            rounds = await stage_service.stage_service.get_planned_rounds(session, 5)
 
         self.assertEqual([-4, -3, -2, -1, 1, 2, 3], rounds)
 
@@ -175,11 +175,11 @@ class GetPlannedRoundsTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([])))
 
         with (
-            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
         ):
-            rounds = await stage_service.get_planned_rounds(session, 5)
-            projected = await stage_service._projected_bracket_seed_counts(session, stage)
+            rounds = await stage_service.stage_service.get_planned_rounds(session, 5)
+            projected = await stage_service.stage_service._projected_bracket_seed_counts(session, stage)
 
         self.assertEqual((4, 2), projected)
         self.assertEqual([-4, -3, -2, -1, 1, 2, 3], rounds)

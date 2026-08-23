@@ -31,14 +31,18 @@ admin_encounter_schema = importlib.import_module("src.schemas.admin.encounter")
 def _result(value):
     result = Mock()
     result.scalar_one_or_none.return_value = value
+    result.unique.return_value = result
+    result.scalars.return_value = SimpleNamespace(first=lambda: value, all=lambda: [] if value is None else [value])
     return result
 
 
 def _scalars_result(values):
     scalars = Mock()
     scalars.all.return_value = values
+    scalars.first.return_value = values[0] if values else None
     result = Mock()
     result.scalars.return_value = scalars
+    result.unique.return_value = result
     return result
 
 
@@ -93,7 +97,7 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=fake_invalidate),
             ) as invalidate_cache,
         ):
-            encounter = await admin_encounter_service.create_encounter(session, payload)
+            encounter = await admin_encounter_service.encounter_service.create_encounter(session, payload)
 
         self.assertEqual(encounter.tournament_id, 1)
         enqueue_recalc.assert_awaited_once_with(session, 1)
@@ -148,7 +152,7 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=fake_invalidate),
             ) as invalidate_cache,
         ):
-            updated = await admin_encounter_service.update_encounter(session, encounter.id, payload)
+            updated = await admin_encounter_service.encounter_service.update_encounter(session, encounter.id, payload)
 
         self.assertEqual(updated.home_score, 2)
         self.assertEqual(updated.away_score, 1)

@@ -1,7 +1,7 @@
 # Gateway
 
 The Go gateway is OWT's **sole HTTP and WebSocket entry point**. It terminates HTTP,
-validates JWTs locally, and translates REST routes into typed **request/reply RPC over
+resolves the caller's credential, and translates REST routes into typed **request/reply RPC over
 RabbitMQ** (`rpc.<service>.<method>`) to the headless FastStream workers. Business logic
 stays in the workers; the gateway routes, authorizes, proxies, and relays realtime events.
 
@@ -21,9 +21,10 @@ speaks HTTP to the outside world.
 
 ## Responsibilities
 
-- **AuthN / AuthZ** — validates JWTs locally against the shared HS256 secret; RBAC-gated
-  routes are revalidated via `rpc.identity.validate_token`, which injects the principal and
-  permission set.
+- **AuthN / AuthZ** — resolves the bearer credential (session JWT or API key) via
+  `rpc.identity.validate_token` and injects the resulting RBAC payload into every downstream
+  RPC as `data["identity"]`; WebSocket handshakes additionally validate a session JWT locally
+  against the shared HS256 secret. See [Authentication](#authentication).
 - **RPC dispatch** — typed request/reply RPC over RabbitMQ to `rpc.<service>.*` workers
   (`app`, `identity`, `tournament`, `parser`, `balancer`, `analytics`), with `reply_to` +
   `correlation_id`, an `x-deadline-ms` deadline, and a per-queue in-flight bulkhead
@@ -34,7 +35,8 @@ speaks HTTP to the outside world.
 - **Response cache** — an in-process, in-memory cache of anonymous public reads
   (`respcache`, default 30s TTL), invalidated by workers' Redis pub/sub.
 - **Rate limiting** — per-IP token buckets (auth endpoints, anonymous API traffic, and the
-  pre-handshake WS custom-domain Origin lookup).
+  pre-handshake WS custom-domain Origin lookup). Per-API-key quotas are a different layer,
+  enforced in `balancer-service` (see [Authentication](#authentication)).
 - **API docs** — Scalar API-reference pages served from the gateway's own route tables.
 - **Observability** — Prometheus metrics on `:9110` (top endpoints, active-users
   HyperLogLog, RPS/errors/latency) and OpenTelemetry tracing.
@@ -48,14 +50,72 @@ internet → Traefik (TLS) → nginx :80 → gateway :8080 →
     └─ /ws + /api/realtime/ws → Redis→WebSocket hub (replay from realtime.workspace_event)
 ```
 
+## Authentication
+
+Two credential types share the `Authorization: Bearer` header, and every authenticated REST
+route accepts either one.
+
+| | Session JWT | API key |
+|---|---|---|
+| Format | HS256 JWT | `aqt_sk_<public_id>_<secret>` |
+| Issued by | `POST /api/auth/login` (refreshed via `/api/auth/refresh`) | `POST /api/auth/api-keys` — the plaintext key is returned once and never again |
+| Lifetime | short, tied to a session that can be revoked | until its `expires_at`, or until revoked |
+| Reach | the caller's full RBAC — global roles/permissions and every workspace | one workspace, and only the permissions the key was scoped to |
+
+```bash
+curl -H "Authorization: Bearer aqt_sk_a1b2c3_..." https://<host>/api/v1/...
+```
+
+REST routes read the credential from the `Authorization` header only
+(`internal/principal`, `internal/identity/handler.go:787`). The `owt_access_token` cookie
+(legacy `aqt_access_token` as a fallback) and the `?token=` query parameter are read by
+`internal/auth` and apply to WebSocket handshakes, not to REST authorization.
+
+### How a credential becomes authorization
+
+`internal/principal` calls `rpc.identity.validate_token` — the gateway is not an auth authority,
+it only caches the verdict (30s TTL, concurrent misses for one credential collapsed by
+singleflight). identity-svc is the single place that branches on credential type; both branches
+return the same payload shape, which the gateway injects as `data["identity"]` and the workers
+rehydrate into an `AuthUser`.
+
+For an API key that payload is its **owner's RBAC, narrowed to the key**: one workspace entry
+whose permissions are the key's scopes intersected with what the owner actually holds there, no
+global permissions and no role names. Scopes are RBAC permission names (`team.create`,
+`registration.approve`, the `admin.*` wildcard) from `backend/shared/rbac/catalog.py` — the same
+vocabulary the endpoints are checked against — so a key is authorized by the ordinary permission
+check, with no key-specific branch in any worker. A key can never outrank its owner, never
+reaches a second workspace, and a key with no scopes can do nothing. See
+[`../backend/ARCHITECTURE.md`](../backend/ARCHITECTURE.md) § "Two credentials, one branch".
+
+### Session-only surfaces
+
+`/api/auth` operations that act on the caller's own account or session — logout, session list
+and revoke, `/api/auth/me`, password changes, and creating/updating/revoking API keys — resolve
+the caller by JWT-decoding the bearer inside identity-svc, so an API key is rejected there with
+401. A key can therefore neither mint another key nor extend a session.
+`GET /api/auth/api-keys/self` is the inverse: it describes the calling key, so it needs one.
+
+WebSocket connections (`/ws`, `/api/realtime/ws`) accept either credential, but a key
+authenticates the socket only if it holds at least one grant in its workspace; a zero-scope key
+connects anonymously and cannot subscribe to auth-gated topics.
+
+### Rate limits
+
+The gateway's own limiter is per-IP (`internal/ratelimit`) and does not know about keys.
+Per-key quotas — `requests_per_minute`, `jobs_per_day`, `concurrent_jobs`, `max_upload_bytes`,
+stored on the key and carried in the token payload — are enforced by `balancer-service`
+(`src/core/security/api_key_limiter.py`) on the balancer job paths that consume them; exceeding
+one returns 429 with `Retry-After`.
+
 ## Internal packages
 
 Under `internal/`:
 
 | Package | Role |
 |---|---|
-| `auth` | local JWT validation |
-| `principal` | RPC JWT validation (`rpc.identity.validate_token`) + RBAC injection |
+| `auth` | local JWT validation (WebSocket handshake, request logging, active-user metrics) |
+| `principal` | credential resolution via `rpc.identity.validate_token` (session JWT or API key) + RBAC injection |
 | `acl` | workspace membership authorization |
 | `rpc` | RabbitMQ request-reply client (per-queue bulkhead, `x-deadline-ms`) |
 | `edge` | typed route dispatcher |

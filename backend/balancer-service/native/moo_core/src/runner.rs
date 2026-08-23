@@ -24,7 +24,7 @@ pub(crate) fn emit_progress_event(
         return Ok(());
     };
 
-    Python::with_gil(|py| -> PyResult<()> {
+    Python::attach(|py| -> PyResult<()> {
         let payload = PyDict::new(py);
         payload.set_item("status", "running")?;
         payload.set_item("stage", stage)?;

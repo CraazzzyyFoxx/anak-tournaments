@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -153,4 +154,87 @@ func TestUserFromRequest_Sources(t *testing.T) {
 			t.Fatalf("expected anonymous on invalid token, got %+v", u)
 		}
 	})
+}
+
+func TestIsAPIKey(t *testing.T) {
+	cases := map[string]bool{
+		"aqt_sk_pub_secret":            true,
+		"aqt_sk_":                      true, // malformed, but identity-svc's problem to reject
+		"eyJhbGciOiJIUzI1NiJ9.a.b":     false,
+		"":                             false,
+		"sk_aqt_pub_secret":            false,
+		"prefix_aqt_sk_pub_secret":     false,
+		"AQT_SK_pub_secret":            false, // the prefix is case-sensitive, like the issuer
+	}
+	for token, want := range cases {
+		if got := IsAPIKey(token); got != want {
+			t.Errorf("IsAPIKey(%q) = %v, want %v", token, got, want)
+		}
+	}
+}
+
+// TestUserFromRequest_APIKeyWithoutResolverIsAnonymous pins the default: a
+// plain Authenticator (httplog's and metrics') never resolves an API key, so it
+// costs no identity RPC there and a key stays unauthenticated — exactly the
+// pre-change behaviour.
+func TestUserFromRequest_APIKeyWithoutResolverIsAnonymous(t *testing.T) {
+	a := New(testSecret)
+	r := httptest.NewRequest(http.MethodGet, "/ws?token=aqt_sk_pub_secret", nil)
+	if u := a.UserFromRequest(r); u != nil {
+		t.Fatalf("expected anonymous without an api-key resolver, got %+v", u)
+	}
+}
+
+// TestUserFromRequest_APIKeyResolved covers the opted-in surface: the key is
+// handed to the resolver verbatim and its principal is returned.
+func TestUserFromRequest_APIKeyResolved(t *testing.T) {
+	base := New(testSecret)
+	var seen string
+	a := base.WithAPIKeys(func(_ context.Context, token string) *User {
+		seen = token
+		return &User{ID: 42}
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/ws?token=aqt_sk_pub_secret", nil)
+	u := a.UserFromRequest(r)
+	if u == nil || u.ID != 42 {
+		t.Fatalf("expected the resolved principal, got %+v", u)
+	}
+	if seen != "aqt_sk_pub_secret" {
+		t.Errorf("resolver got %q, want the raw key", seen)
+	}
+	// WithAPIKeys returns a copy: the original must stay JWT-only, or httplog
+	// and metrics would start resolving keys over RPC too.
+	if u := base.UserFromRequest(r); u != nil {
+		t.Fatalf("WithAPIKeys must not mutate the receiver, got %+v", u)
+	}
+}
+
+// TestUserFromRequest_JWTPathUnchangedWithAPIKeys proves opting in costs the
+// session path nothing: a JWT never reaches the resolver.
+func TestUserFromRequest_JWTPathUnchangedWithAPIKeys(t *testing.T) {
+	called := false
+	a := New(testSecret).WithAPIKeys(func(context.Context, string) *User {
+		called = true
+		return &User{ID: 99}
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/ws?token="+signHS256(t, accessClaims("7")), nil)
+	if u := a.UserFromRequest(r); u == nil || u.ID != 7 {
+		t.Fatalf("session token must still decode locally, got %+v", u)
+	}
+	if called {
+		t.Fatal("a JWT must never be sent to the api-key resolver")
+	}
+}
+
+// TestUserFromRequest_APIKeyRejectedStaysAnonymous: an invalid or
+// insufficiently-scoped key resolves to nil, which must degrade to anonymous
+// rather than a zero-valued principal (user id 0 would pass nil checks).
+func TestUserFromRequest_APIKeyRejectedStaysAnonymous(t *testing.T) {
+	a := New(testSecret).WithAPIKeys(func(context.Context, string) *User { return nil })
+	r := httptest.NewRequest(http.MethodGet, "/ws?token=aqt_sk_pub_secret", nil)
+	if u := a.UserFromRequest(r); u != nil {
+		t.Fatalf("a rejected key must be anonymous, got %+v", u)
+	}
 }

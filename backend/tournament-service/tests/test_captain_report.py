@@ -119,27 +119,30 @@ def _mk_session(
         nonlocal execute_count
         execute_count += 1
 
-        # Every result answers scalar_one_or_none()/scalars().all()/all(), so any
-        # query shape is safe regardless of call order: the encounter load, the
-        # linked-player lookup, the report-form config load, delete(codes), the
-        # picked-pool select, the challonge probe, and the bracket's
-        # EncounterLink fan-out.
+        # Every result answers unique().scalars().first() -- how the repositories
+        # read a single row -- plus scalars().all() and all(), so any query shape
+        # is safe regardless of call order: the encounter load, the linked-player
+        # lookup, the report-form config load, delete(codes), the picked-pool
+        # select, the challonge probe, and the bracket's EncounterLink fan-out.
         result_mock = Mock()
         scalars_mock = Mock()
         scalars_mock.all.return_value = []
         result_mock.scalars.return_value = scalars_mock
+        # ``Result.unique()`` returns the same result, so a repository's
+        # ``.unique().scalars()`` lands on the same scalars stub as a bare
+        # ``.scalars()`` does.
+        result_mock.unique.return_value = result_mock
         result_mock.all.return_value = list(rows)
 
         if execute_count == 1:  # encounter load
-            result_mock.scalar_one_or_none.return_value = encounter
+            row = encounter
         elif execute_count == 2:  # linked-player lookup (submit flow)
-            result_mock.scalar_one_or_none.return_value = (
-                SimpleNamespace(id=linked_player_id) if linked_player_id is not None else None
-            )
+            row = SimpleNamespace(id=linked_player_id) if linked_player_id is not None else None
         elif execute_count == 3:  # report-form config (None => all defaults)
-            result_mock.scalar_one_or_none.return_value = report_form_row
+            row = report_form_row
         else:
-            result_mock.scalar_one_or_none.return_value = None
+            row = None
+        scalars_mock.first.return_value = row
         return result_mock
 
     async def fake_get(model, _pk):
@@ -184,21 +187,21 @@ class CaptainReportValidation(IsolatedAsyncioTestCase):
     async def test_rejects_closeness_out_of_range(self) -> None:
         session = _mk_session(_mk_encounter(), [100])
         with assert_http_status(self, 422):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=2, away_score=1, closeness=11
             )
 
     async def test_rejects_negative_score(self) -> None:
         session = _mk_session(_mk_encounter(), [100])
         with assert_http_status(self, 422):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=-1, away_score=1, closeness=5
             )
 
     async def test_rejects_duplicate_map_index(self) -> None:
         session = _mk_session(_mk_encounter(), [100])
         with assert_http_status(self, 422):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session,
                 _mk_user(),
                 10,
@@ -211,7 +214,7 @@ class CaptainReportValidation(IsolatedAsyncioTestCase):
     async def test_non_captain_forbidden(self) -> None:
         session = _mk_session(_mk_encounter(), [999])
         with assert_http_status(self, 403):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=2, away_score=1, closeness=5
             )
 
@@ -219,7 +222,7 @@ class CaptainReportValidation(IsolatedAsyncioTestCase):
         encounter = _mk_encounter(result_status=enums.EncounterResultStatus.CONFIRMED)
         session = _mk_session(encounter, [100])
         with assert_http_status(self, 400):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=2, away_score=1, closeness=5
             )
 
@@ -228,7 +231,7 @@ class CaptainReportValidation(IsolatedAsyncioTestCase):
         preview) must not be reportable until the stage goes live."""
         session = _mk_session(_mk_encounter(), [100], stage_published=False)
         with assert_http_status(self, 409):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=2, away_score=1, closeness=5
             )
 
@@ -237,8 +240,8 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
     async def test_first_report_sets_pending_no_closeness(self) -> None:
         encounter = _mk_encounter()
         session = _mk_session(encounter, [100])  # home captain
-        with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()) as recalc:
-            await captain_service.submit_captain_report(
+        with patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", AsyncMock()) as recalc:
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=2, away_score=1, closeness=7
             )
         recalc.assert_awaited_once_with(session, encounter.tournament_id)
@@ -268,11 +271,15 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
             return SimpleNamespace(encounter=encounter, advanced_encounters=[])
 
         with (
-            patch.object(captain_service, "finalize_encounter_score", AsyncMock(side_effect=fake_finalize)) as fin,
-            patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()) as recalc,
-            patch.object(captain_service, "_enqueue_encounter_completed", AsyncMock()) as completed,
+            patch.object(
+                captain_service.captain_service.finalize,
+                "finalize_encounter_score",
+                AsyncMock(side_effect=fake_finalize),
+            ) as fin,
+            patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", AsyncMock()) as recalc,
+            patch.object(captain_service.captain_service, "_enqueue_encounter_completed", AsyncMock()) as completed,
         ):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=2, away_score=1, closeness=6
             )
 
@@ -296,10 +303,10 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         )
         session = _mk_session(encounter, [200])  # away captain
         with (
-            patch.object(captain_service, "finalize_encounter_score", AsyncMock()) as fin,
-            patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()) as recalc,
+            patch.object(captain_service.captain_service.finalize, "finalize_encounter_score", AsyncMock()) as fin,
+            patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", AsyncMock()) as recalc,
         ):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=3, away_score=0, closeness=4
             )
         fin.assert_not_awaited()
@@ -315,8 +322,8 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
             captain_reports=[existing],
         )
         session = _mk_session(encounter, [100])  # home captain re-submits
-        with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
-            await captain_service.submit_captain_report(
+        with patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=2, away_score=0, closeness=9
             )
         self.assertEqual(len(encounter.captain_reports), 1)
@@ -333,8 +340,8 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         # engine writes, and `action_index` is what decides play order — so map
         # 66 is the FIRST map of the series and map 55 the second.
         session = _mk_session(encounter, [100], settled_rows=[(1000, 5, 55), (0, 3, 66)])
-        with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
-            await captain_service.submit_captain_report(
+        with patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
+            await captain_service.captain_service.submit_captain_report(
                 session,
                 _mk_user(),
                 10,
@@ -360,8 +367,8 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         enforces the seeding; this pins the codes still landing on the report."""
         encounter = _mk_encounter()
         session = _mk_session(encounter, [100])
-        with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
-            await captain_service.submit_captain_report(
+        with patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
+            await captain_service.captain_service.submit_captain_report(
                 session,
                 _mk_user(),
                 10,
@@ -387,8 +394,8 @@ class ConfigurableReportFields(IsolatedAsyncioTestCase):
                 custom=[{"key": "vod", "label": "VOD link", "type": "text", "required": True}]
             ),
         )
-        with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
-            await captain_service.submit_captain_report(
+        with patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
+            await captain_service.captain_service.submit_captain_report(
                 session,
                 _mk_user(),
                 10,
@@ -411,7 +418,7 @@ class ConfigurableReportFields(IsolatedAsyncioTestCase):
             ),
         )
         with assert_http_status(self, 422):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=2, away_score=1, closeness=7
             )
 
@@ -428,11 +435,11 @@ class ConfigurableReportFields(IsolatedAsyncioTestCase):
             report_form_row=_mk_report_form(built_in={"closeness": {"enabled": False, "required": False}}),
         )
         with (
-            patch.object(captain_service, "finalize_encounter_score", AsyncMock()),
-            patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()),
-            patch.object(captain_service, "_enqueue_encounter_completed", AsyncMock()),
+            patch.object(captain_service.captain_service.finalize, "finalize_encounter_score", AsyncMock()),
+            patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", AsyncMock()),
+            patch.object(captain_service.captain_service, "_enqueue_encounter_completed", AsyncMock()),
         ):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=2, away_score=1, closeness=9
             )
         # Submitted 9, but the field is disabled: the value is dropped, not rejected.
@@ -447,7 +454,7 @@ class ConfigurableReportFields(IsolatedAsyncioTestCase):
         )
         with assert_http_status(self, 422):
             # 2-1 played three maps; only one code supplied.
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 session,
                 _mk_user(),
                 10,
@@ -475,12 +482,16 @@ class AdminSetResult(IsolatedAsyncioTestCase):
             return SimpleNamespace(encounter=encounter, advanced_encounters=[])
 
         with (
-            patch.object(captain_service, "finalize_encounter_score", AsyncMock(side_effect=fake_finalize)),
-            patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()),
-            patch.object(captain_service, "_enqueue_encounter_completed", AsyncMock()),
+            patch.object(
+                captain_service.captain_service.finalize,
+                "finalize_encounter_score",
+                AsyncMock(side_effect=fake_finalize),
+            ),
+            patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", AsyncMock()),
+            patch.object(captain_service.captain_service, "_enqueue_encounter_completed", AsyncMock()),
             patch.object(captain_service, "resolve_encounter_challonge", AsyncMock(return_value={})),
         ):
-            await captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, **kwargs)
+            await captain_service.captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, **kwargs)
         return captured, session
 
     async def test_pending_single_report_adopts_reported_score(self) -> None:
@@ -577,13 +588,13 @@ class AdminSetResult(IsolatedAsyncioTestCase):
         encounter = _mk_encounter(result_status=enums.EncounterResultStatus.NONE)
         session = _mk_session(encounter, [])
         with assert_http_status(self, 422):
-            await captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN)
+            await captain_service.captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN)
 
     async def test_rejects_a_half_specified_score(self) -> None:
         encounter = _mk_encounter(result_status=enums.EncounterResultStatus.NONE)
         session = _mk_session(encounter, [])
         with assert_http_status(self, 422):
-            await captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, home_score=2)
+            await captain_service.captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, home_score=2)
 
     async def test_rejects_adopting_a_team_that_never_reported(self) -> None:
         report = _mk_report(team_id=1, home=3, away=0, closeness=7)
@@ -593,7 +604,7 @@ class AdminSetResult(IsolatedAsyncioTestCase):
         )
         session = _mk_session(encounter, [])
         with assert_http_status(self, 422):
-            await captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, adopt_report_team_id=2)
+            await captain_service.captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, adopt_report_team_id=2)
 
     async def test_rejects_reconfirming_a_confirmed_result(self) -> None:
         """Unlike the old confirm, ``none`` is now a legal starting point — the
@@ -601,7 +612,7 @@ class AdminSetResult(IsolatedAsyncioTestCase):
         encounter = _mk_encounter(result_status=enums.EncounterResultStatus.CONFIRMED)
         session = _mk_session(encounter, [])
         with assert_http_status(self, 409):
-            await captain_service.set_encounter_result(
+            await captain_service.captain_service.set_encounter_result(
                 session, 10, actor_user_id=self.ADMIN, home_score=2, away_score=0
             )
 
@@ -620,8 +631,8 @@ class AdminReopenResult(IsolatedAsyncioTestCase):
         encounter.closeness = 0.7
         session = _mk_session(encounter, [])
 
-        with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()) as recalc:
-            await captain_service.reopen_encounter_result(session, 10, actor_user_id=self.ADMIN)
+        with patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", AsyncMock()) as recalc:
+            await captain_service.captain_service.reopen_encounter_result(session, 10, actor_user_id=self.ADMIN)
 
         self.assertEqual(enums.EncounterResultStatus.NONE, encounter.result_status)
         self.assertEqual(enums.EncounterStatus.OPEN, encounter.status)
@@ -642,4 +653,4 @@ class AdminReopenResult(IsolatedAsyncioTestCase):
         encounter = _mk_encounter(result_status=enums.EncounterResultStatus.NONE)
         session = _mk_session(encounter, [])
         with assert_http_status(self, 409):
-            await captain_service.reopen_encounter_result(session, 10, actor_user_id=self.ADMIN)
+            await captain_service.captain_service.reopen_encounter_result(session, 10, actor_user_id=self.ADMIN)

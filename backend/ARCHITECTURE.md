@@ -7,10 +7,13 @@ This one describes what happens **inside one service's `src/`** — the layers e
 which layer new code belongs in.
 
 It is not a proposal. It is a description of the pattern `identity-service` has followed
-since it was written, that `app-service` (2026-08-20) and `balancer-service` (2026-08-21)
-were converted to. Every new domain, in every service, follows it. Case studies with before/
-after numbers live in `docs/plans/2026-08-20-app-service-oop-repositories.md` and
-`docs/plans/2026-08-21-balancer-service-oop-repositories.md`.
+since it was written, that `app-service` (2026-08-20), `balancer-service` (2026-08-21),
+`parser-service` (2026-08-21) and `tournament-service` (2026-08-22) were converted to. Every
+new domain, in every service, follows it. Case studies with before/after numbers live in
+`docs/plans/2026-08-20-app-service-oop-repositories.md`,
+`docs/plans/2026-08-21-balancer-service-oop-repositories.md`,
+`docs/plans/2026-08-21-parser-service-oop-repositories.md` and
+`docs/plans/2026-08-22-tournament-service-oop-repositories.md`.
 
 ## The five layers
 
@@ -44,8 +47,12 @@ shared.repository.*                CRUD. `BaseRepository[Model]` + concrete repo
                                    publishers. Write methods flush only — see
                                    `backend/docs/repository-boundaries.md`.
   ↓
-shared.models.* / src/models.py    ORM. SQLAlchemy models, one shared `MetaData`, the single
-                                   source of truth for the schema (`backend/migrations/`).
+shared.models.*                    ORM. SQLAlchemy models, one shared `MetaData`, the single
+                                   source of truth for the schema (`backend/migrations/`). Every
+                                   table lives here; a service's `src/models*` is a curated
+                                   re-export facade over `shared.models` (zero `__tablename__` in
+                                   all seven services as of this writing) and never declares a
+                                   table of its own.
 ```
 
 `src/schemas/*.py` sits beside this stack, not inside it: Pydantic wire contracts for the RPC
@@ -81,7 +88,10 @@ orchestration lives there) for the price of an `__all__` entry updated by hand e
 wrapped client grows a method. Nothing in this document flagged that shape as wrong at the
 time — it matched an identical pre-existing file in `tournament-service`, so it was carried
 forward as "established precedent" during the parser-service conversion instead of being
-questioned; this section exists so the next service conversion does not repeat it.
+questioned. That second copy is gone too: `tournament-service`'s
+`services/challonge/service.py` was deleted on 2026-08-22 in favour of
+`src/clients/challonge.py`, so no instance of the shape survives — which is the point of
+writing the rule down rather than letting the next reader infer it from whatever exists.
 
 Two placement traps this avoids:
 
@@ -92,10 +102,43 @@ Two placement traps this avoids:
    if any `services/` code needs to import it — a service reaching into the transport package
    inverts the `rpc → services` dependency direction. `app-service`'s original `rpc/_clients.py`
    moved to `core/clients.py` for exactly this reason (§2.5 of
-   `docs/plans/2026-08-20-app-service-oop-repositories.md`); `parser-service` still has one live
-   instance of the same problem as of this writing —
-   `services/subscription_collection/scheduler.py` imports `src.rpc._clients.realtime_redis` —
-   not yet cleaned up, named here so it doesn't get treated as precedent either.
+   `docs/plans/2026-08-20-app-service-oop-repositories.md`), and `parser-service`'s did the same
+   once `services/subscription_collection/scheduler.py` started importing `realtime_redis` from
+   it. Both live in `core/clients.py` now; a new `rpc/_clients.py` is the mistake this names.
+
+`src/core/*.py` is the third thing beside the stack: process-wide wiring, not layers.
+`config.py` (pydantic settings), `db.py` (engine + `async_session_maker`), `caching.py`,
+`clients.py`, `broker.py`, `redis.py`, `enums.py`, `workspace.py`. Any layer may import from
+`core`; `core` imports from no layer — that is the whole rule, and it is why `rpc/_clients.py`
+had to become `core/clients.py` (above). A service with a `core/auth.py`/`core/metrics.py`
+beyond this set is fine; a `core/` module that grew a query or a business rule is a
+`services/` file wearing the wrong name.
+
+## Where does this go
+
+| The code… | goes in |
+| --- | --- |
+| decodes an envelope, gates permission, calls one service method | `src/rpc/<domain>.py` |
+| awaits a session/repository, orders several steps, maps rows to schemas | `src/services/<domain>/*.py` |
+| is pure: no `session`, no `await` | `src/domain/` (one service) or `shared/domain/` (two+) |
+| awaits a session and two+ services need it | `shared/services/` |
+| is CRUD SQL for one model | `shared/repository/<x>.py` |
+| is an analytical query (CTE, window fn, leaderboard) | the domain's `queries.py` / service class |
+| is a wire contract | `src/schemas/` (or `shared/schemas/` if two+ services send it) |
+| is a process-wide singleton or setting | `src/core/` |
+| is a table | `shared/models/` + an Alembic revision in `backend/migrations/` |
+| is a fact other services must learn about | an event in `shared/schemas/events.py`, sent via the outbox |
+
+## `shared/` vs `src/`, for session-taking code
+
+`shared/domain/` is the easy half (pure logic, two+ consumers). The harder half is
+`shared/services/` — ~50 modules that *do* take an `AsyncSession`: `bracket/`, `encounter/`,
+`team_export/`, `workspace_scope`, `registration_window`, `subscription_*`, `audit`,
+`distributed_lock`, `realtime_publisher`. Something belongs there **iff two or more services
+already need it** (not "might"), and it can be written without importing any service's `src.*`.
+Per-service inputs — a Redis URL, a feature flag, a settings object — arrive as arguments, never
+as `from src.core import config`. A `shared/services/` module that needs one service's settings
+is that service's `services/` file, and the second consumer should call it over RPC.
 
 ## Concrete shape of a layer
 
@@ -191,6 +234,66 @@ refactor's own correction pass explicitly walked back — see §6-7 of
   inlined in the service, and never generalized into `BaseRepository.get(..., lock=True)`; each
   locking shape is preserved verbatim in its own named repository method.
 
+## Events leave through the outbox, never `broker.publish`
+
+A service never publishes to RabbitMQ from inside a request. It calls
+`shared.messaging.outbox.enqueue_outbox_event(session, event, exchange=..., routing_key=...)`
+in the *same transaction* as the mutation, so "the row changed" and "the world was told" commit
+or roll back together. `serve.py`'s scheduler drains the table with
+`publish_pending_outbox_events` (`tournament-service/serve.py`'s `event_outbox_drain`), retrying
+failures with exponential backoff capped at 300s.
+
+- Event payloads are Pydantic models in `shared/schemas/events.py` and **must** carry
+  `event_id` — `enqueue_outbox_event` raises `ValueError` without one. That id is the
+  consumer's idempotency key; every consumer must tolerate redelivery.
+- Exchange/queue/DLQ names are constants in `shared/messaging/config.py`, declared with
+  `shared.messaging.topology.declare_dead_letter_queue`. No string literals at call sites.
+- Exactly one service owns each queue (`TOURNAMENT_CHANGED_APP_QUEUE` → app-service's
+  `services/tournament_events.py`). Two consumers of one queue is a bug, not fan-out; fan-out
+  is two queues bound to the same exchange.
+- Synchronous cross-service calls use `shared.messaging.request_dict(broker, payload, queue)`
+  and nothing else — `broker.request()` returns a message, not a body, and mistaking the two
+  is how the Discord entity endpoints shipped empty lists to production.
+
+## Realtime patches are part of the transaction
+
+`shared/services/realtime_publisher.publish_event` / `publish_patch` persist a `WorkspaceEvent`
+row on the caller's session and *then* push to Redis. Call them inside the mutation's
+transaction so the persisted event id orders with the write; Redis failures are swallowed on
+purpose (clients self-heal by refetching from the ordered event log). Topics come from
+`shared/services/realtime_topics.py` — never a formatted string at the call site — and a patch
+event names the client-cache `resource` it mutates so the frontend folds the delta instead of
+refetching.
+
+## Cache
+
+Cache decorators live on `services/` methods, never on a repository or a `domain/` function.
+Backends are registered per key-prefix in `src/core/caching.py`: cashews has no default backend
+and raises `NotConfiguredError` for an unroutable key, so **every** entrypoint that can read,
+write, or invalidate the cache calls `configure_cache()` before the first subscriber runs
+(`app-service/serve.py`). The prefix tuple in `core/caching.py` is the single source for
+invalidation patterns — an invalidation consumer generates its patterns from it rather than
+re-typing them.
+
+## Errors
+
+Nothing below `rpc/` imports FastAPI. Services and domain code raise
+`shared.core.errors.BaseAPIException`, imported as `HTTPException`
+(`from shared.core.errors import BaseAPIException as HTTPException`) so raise/except sites read
+like the FastAPI ones they replaced. `c.envelope` maps `status_code` through `status_to_code`
+and flattens `detail` into the `{ok, data, error}` envelope; unhandled exceptions become
+`internal`. Error codes are contract, not prose: `backend/tests/test_rpc_error_code_parity.py`
+keeps them in step with the gateway.
+
+## Cross-service data access
+
+All services share one Postgres and one `MetaData`, so nothing *stops* a service from selecting
+another's tables. The rule is: **read freely through `shared/repository` and `shared/services`;
+write only what your service owns.** A write to a table another service owns goes through that
+service — `request_dict` for a command that needs an answer, an outbox event when it doesn't.
+Direct cross-service writes are the failure mode this convention exists to prevent, because the
+DB will not catch them and neither will a test.
+
 ## Class + singleton, not a bag of functions, not a DI container
 
 Every `services/<domain>/*.py` file exports exactly one class and one instance of it, built with
@@ -221,9 +324,12 @@ Unchanged, repo-wide, since `backend/docs/repository-boundaries.md`:
 - Large analytical queries (CTEs, window functions, leaderboards, ML feature extraction,
   achievement/recalculation queries) live in a domain's `queries.py`/service class, never behind
   a CRUD repository method.
-- `backend/tests/test_repository_boundaries.py` enforces this by regex across every service; its
-  allowlist is for pre-existing, intentionally-not-CRUD direct writes (outbox draining, bracket
-  advancement, bulk association-table updates) — new files are not added to it for convenience.
+- `backend/tests/test_repository_boundaries.py` enforces this by regex across every service.
+  It exempts two named sets: `APPROVED_DIRECT_WRITE_FILES` (intentionally not CRUD — outbox
+  draining, bracket advancement, bulk association-table updates) and
+  `PENDING_REPOSITORY_MIGRATION` (debt, one line to delete per finished migration). Both are
+  ratcheted — an exemption whose file stopped writing directly fails the suite — so neither
+  list can rot the way the single allowlist did.
 
 ## Import layering between domains, when it's worth enforcing
 
@@ -238,6 +344,96 @@ dependency hierarchy — `app-service`'s `services.achievements` → `services.{
 direction, and grandfathers pre-existing violations by name so they can't grow silently. Adding
 one to a flat service (`balancer-service`) would enforce nothing real; skip it there and say so
 in the plan doc, as `docs/plans/2026-08-21-balancer-service-oop-repositories.md` §5/§7 do.
+
+## What actually lives in `serve.py`
+
+"Registers subscribers, no business logic" is the rule; the honest list of what a real
+`serve.py` also does is: `setup_logging`/`setup_sentry`/`setup_tracing`, `make_rabbit_broker`,
+`configure_cache()`, `start_worker_metrics_server`, health checks, the scheduler loops (each
+wrapped in `observe_scheduled_job`, e.g. the outbox drain), and `@app.on_shutdown` client
+teardown. Event *consumers* are subscribers too, but they belong in a module
+(`services/tournament_events.py`, `rpc/<domain>.py`) that `serve.py` calls `register(...)` on —
+a handler body in `serve.py` is business logic in the entrypoint.
+
+`identity-service` was the long-standing exception — 55 `@broker.subscriber` handlers inline in
+a 1091-line `serve.py`, no `src/rpc/` package — and is now split like everything else
+(`src/rpc/{tokens,auth,oauth,api_keys,rbac,players,avatars}.py`). Its envelope helpers stayed
+identity-local in `src/rpc/_common.py` rather than moving to `shared.rpc.common`: this service
+takes a flat `data` dict and resolves the caller from a bearer `data["access_token"]` itself,
+so the shared `{payload, query, identity}` decoders do not apply.
+
+## Two credentials, one branch
+
+`Authorization: Bearer` carries either a **session JWT** or a **workspace-scoped API key**
+(`aqt_sk_<public_id>_<secret>`). Exactly one place in the backend knows the difference:
+`rpc.identity.validate_token` → `services/token_validation.py::TokenValidationService.validate`,
+which asks `ApiKeyService.is_api_key` and forks. Both branches return the same
+`schemas.TokenPayload`, the gateway injects it into every RPC as `data["identity"]`, and
+`shared.rpc.identity.rehydrate_user` rebuilds an `AuthUser` from it. Everything downstream —
+every gate in every service — sees one shape and must keep it that way: a handler that inspects
+`credential_type` to decide authorization has re-implemented the fork in the wrong layer.
+
+An API key's payload is its **owner's RBAC, narrowed**
+(`services/api_keys.py::ApiKeyService.validate`):
+
+- `is_superuser=False`, `roles=[]`, `permissions=[]`. The emptiness is deliberate, not an
+  omission. Global permissions would ignore the key's workspace, and role *names* are worse:
+  `AuthUser._has_admin_equivalent_role` and `is_workspace_admin` short-circuit
+  `has_workspace_permission` (`shared/models/identity/auth_user.py:167-207`) on a name like
+  `owner`/`admin` before any permission is examined, so a key carrying one would inherit its
+  owner's whole workspace instead of its scopes.
+- `denies` is the owner's deny overlay, **verbatim**. It is the one thing that must not be
+  narrowed: `has_workspace_permission` checks `is_denied` first, so dropping it makes negative
+  RBAC fail open for keys.
+- `workspaces` has exactly one entry — the key's workspace — with `rbac_roles=[]` and
+  `rbac_permissions` set to the key's scopes **intersected** with what the owner effectively
+  holds there. The intersection is the whole security model: a key cannot outrank its owner, and
+  revoking the owner's grant revokes the key's.
+- `credential_type="api_key"` plus an `api_key` block (`id`, `public_id`, `workspace_id`,
+  `scopes`, `limits`, `config_policy`) for the consumers that legitimately need the credential
+  itself — per-key usage limits and config policy in `balancer-service`
+  (`core/security/api_key_limiter.py`, `core/security/api_key_policy.py`).
+
+Because the intersection is already written into `rbac_permissions`, an API key is authorized by
+the ordinary path: `AuthUser.has_workspace_permission`, the single source of truth for
+precedence. Do not add scope checks alongside it.
+
+A scope **is** a permission name from `PERMISSION_CATALOG` (`shared/rbac/catalog.py`) —
+`team.create`, `registration.approve`, the `admin.*` wildcard — not a parallel taxonomy.
+`shared/rbac/scopes.py` owns that vocabulary: `normalize_scopes` (expands legacy aliases, drops
+names retired from the catalog), `unknown_scopes` (creation-time validation), `scope_pairs`, and
+`scope_grants` for the rare gate that must test scopes directly. Keys minted before scopes were
+real carry `balancer.jobs`; `LEGACY_SCOPE_ALIASES` maps it to `team.create`, the permission the
+balancer job paths already checked, so no data migration is needed. An empty scope list means
+zero permissions — there is no implicit default.
+
+Key and session management stay JWT-only, and structurally so rather than by an explicit check:
+those handlers resolve the caller through `src/rpc/_common.py::with_active_user` →
+`TokenValidationService.resolve_active_user` → `_resolve_bearer`, which JWT-decodes the bearer
+(`services/token_validation.py:99-102`). An `aqt_sk_` string is not a JWT, so it 401s. That
+covers creating/updating/revoking keys, logout and logout-all, session list and revoke, and the
+`/api/auth/me` family (profile read/update, delete, password change) — a key can neither mint
+another key nor extend a session. Login and refresh never see a bearer at all: they take
+credentials or a refresh token from the request body.
+
+## Gateway contract
+
+The Go gateway is the only HTTP surface; it publishes to `rpc.<service>.<domain>.<method>` and
+waits for the envelope. Three things must agree for a route to exist, and none of them is
+checked at startup — a missing subscriber shows up as a client-side *timeout* with nothing in
+the logs:
+
+1. the gateway route table (`gateway/internal/<service>/`),
+2. the `@broker.subscriber("...")` literal,
+3. `src/openapi_docs.py` (prose) and `src/openapi_schemas.py` (request/response shapes), keyed
+   by subject and merged into the published OpenAPI by
+   `backend/scripts/export_openapi_schemas.py`.
+
+`backend/tests/test_rpc_route_parity.py` statically compares (1) and (2) for all seven RPC
+services. It resolves f-string subjects (`f"rpc.app.{prefix}.admin_list"`) as templates, because
+a factory that registers twelve subjects from one literal would otherwise read as twelve
+orphans. Nothing checks (3): an openapi entry missing for a live subject only shows up as a hole
+in the published API docs.
 
 ## Testing conventions that fall out of this
 
@@ -267,6 +463,13 @@ in the plan doc, as `docs/plans/2026-08-21-balancer-service-oop-repositories.md`
 4. **RPC handler.** One `@broker.subscriber` per method, decoding via `src.rpc._common`
    (`c.q1`, `c.require_id`, `c.gate_*`, `c.envelope`), calling exactly one service method, no
    inline SQL, explicit `session.commit()` if the handler mutates.
-5. **Verify:** `ruff check`, the service's `pytest` suite (with a real, migrated Postgres —
+5. **Side effects, if the handler mutates.** Outbox event (same transaction) for anything
+   another service must learn about; `publish_patch`/`publish_event` for anything a connected
+   client is watching; cache invalidation for any prefix the write invalidates.
+6. **Contract.** Gateway route + `openapi_docs.py` + `openapi_schemas.py` entries for the new
+   subject; a new table also needs an Alembic revision in `backend/migrations/`.
+7. **Verify:** `ruff check`, the service's `pytest` suite (with a real, migrated Postgres —
    `alembic upgrade head` first if the DB is fresh), `python -c "import serve"` to catch import
-   cycles, and `lint-imports` if the service has an `.importlinter`.
+   cycles, `lint-imports` if the service has an `.importlinter`, and the repo-wide guards in
+   `backend/tests/` (`test_repository_boundaries.py`, `test_rpc_route_parity.py`,
+   `test_rpc_error_code_parity.py`).

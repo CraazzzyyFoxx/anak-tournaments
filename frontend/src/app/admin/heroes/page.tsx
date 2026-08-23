@@ -34,7 +34,13 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 
 const HERO_ROLES = ["Tank", "Damage", "Support"];
-/** Overwatch blue: the form default, the color-picker fallback and the hex hint. */
+/**
+ * Overwatch blue: the form default, the color-picker fallback and the hex hint.
+ *
+ * Exempt from the design-token rule: `color` is a persisted hero column the
+ * admin edits, so this literal is the initial *value* of a data field and is
+ * also what `<input type="color">` requires — not chrome this page paints with.
+ */
 const DEFAULT_HERO_COLOR = "#3b82f6";
 // Key order matters: `hasUnsavedChanges` compares JSON, so `getHeroForm` below
 // must list the shared fields in the same order or every dialog opens dirty.

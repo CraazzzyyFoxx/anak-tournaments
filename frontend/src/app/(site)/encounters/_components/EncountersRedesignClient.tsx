@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark, Loader2, Pin, Save, Trash2 } from "lucide-react";
+import { Bookmark, Loader2, Pin, Save, Trash2, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useDebounce } from "use-debounce";
@@ -80,6 +80,10 @@ import styles from "./EncountersRedesign.module.css";
 // module-level helpers can accept `t` straight through (strictFunctionTypes-safe).
 type Translate = ReturnType<typeof useTranslations<never>>;
 
+// Same idea for number formatting: module-level helpers take the locale-aware
+// formatter instead of pinning a locale of their own.
+type NumberFormatter = Pick<ReturnType<typeof useFormatter>, "number">;
+
 type EncountersRedesignClientProps = {
   initialData: PaginatedResponse<Encounter>;
   initialOverview: EncounterOverview;
@@ -104,8 +108,8 @@ const STAGE_DONUT_COLORS = [
   "var(--aqt-violet)"
 ];
 
-function countLabel(value?: number): string {
-  return typeof value === "number" ? value.toLocaleString("en") : "-";
+function countLabel(format: NumberFormatter, value?: number): string {
+  return typeof value === "number" ? format.number(value) : "-";
 }
 
 function tournamentLabel(encounter: Encounter, t: Translate): string {
@@ -182,6 +186,7 @@ export default function EncountersRedesignClient({
   initialError
 }: Readonly<EncountersRedesignClientProps>) {
   const t = useTranslations();
+  const format = useFormatter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
   const { user } = useAuthProfile();
@@ -430,7 +435,7 @@ export default function EncountersRedesignClient({
                 />
               ) : null}
               <span>{t(view.labelKey)}</span>
-              <span className={styles.viewCount}>{countLabel(overview.preset_counts[view.id])}</span>
+              <span className={styles.viewCount}>{countLabel(format, overview.preset_counts[view.id])}</span>
             </button>
           ))}
           {savedViewsQuery.data?.map((view) => (
@@ -539,7 +544,7 @@ export default function EncountersRedesignClient({
               <FilterChip
                 key={chip.id}
                 active={effectiveFilters.status === chip.value}
-                count={chip.count == null ? undefined : countLabel(chip.count)}
+                count={chip.count == null ? undefined : countLabel(format, chip.count)}
                 onClick={() =>
                   setFilterPatch({
                     status: effectiveFilters.status === chip.value ? null : chip.value
@@ -677,7 +682,7 @@ export default function EncountersRedesignClient({
               <span className={styles.pill}>
                 {t("encounters.insights.max")}{" "}
                 <span className={cn(styles.mono, styles.pillAccent)}>
-                  {countLabel(heatmap.max)}
+                  {countLabel(format, heatmap.max)}
                 </span>
               </span>
             </div>
@@ -743,7 +748,7 @@ export default function EncountersRedesignClient({
                     ))}
                   </svg>
                   <div className={styles.donutCenter}>
-                    <span className={styles.donutValue}>{countLabel(stageDonut.total)}</span>
+                    <span className={styles.donutValue}>{countLabel(format, stageDonut.total)}</span>
                     <span className={styles.donutLabel}>{t("encounters.insights.series")}</span>
                   </div>
                 </div>
@@ -758,7 +763,7 @@ export default function EncountersRedesignClient({
                         />
                         <span className={styles.legendName}>{segment.name}</span>
                         <span className={cn(styles.legendValue, "tabular-nums")}>
-                          {countLabel(segment.count)} · {segment.pct}%
+                          {countLabel(format, segment.count)} · {segment.pct}%
                         </span>
                       </div>
                     ))
@@ -814,7 +819,7 @@ export default function EncountersRedesignClient({
               summary={t("encounters.list.showing", {
                 start: String(showingStart),
                 end: String(showingEnd),
-                total: countLabel(encounters.total)
+                total: countLabel(format, encounters.total)
               })}
             />
           </div>
@@ -829,15 +834,15 @@ export default function EncountersRedesignClient({
                   label={t("encounters.pulse.avgLength")}
                   value={formatDuration(overview.pulse.avg_series_seconds)}
                   meta={t("encounters.pulse.avgLengthMeta", {
-                    count: countLabel(overview.pulse.completed_series_count)
+                    count: countLabel(format, overview.pulse.completed_series_count)
                   })}
                 />
                 <Insight
                   label={t("encounters.pulse.sweepRate")}
                   value={`${overview.pulse.sweep_rate}%`}
                   meta={t("encounters.pulse.sweepMeta", {
-                    sweeps: countLabel(overview.pulse.sweep_count),
-                    distance: countLabel(overview.pulse.went_distance_count)
+                    sweeps: countLabel(format, overview.pulse.sweep_count),
+                    distance: countLabel(format, overview.pulse.went_distance_count)
                   })}
                 />
                 <Insight
@@ -870,7 +875,7 @@ export default function EncountersRedesignClient({
                         />
                       </div>
                       <span className={cn(styles.mapNum, "tabular-nums")}>
-                        {countLabel(map.count)}
+                        {countLabel(format, map.count)}
                       </span>
                     </div>
                   ))
@@ -925,6 +930,7 @@ export default function EncountersRedesignClient({
 
 function Hero({ overview }: Readonly<{ overview: EncounterOverview }>) {
   const t = useTranslations();
+  const format = useFormatter();
   return (
     <PageHero
       eyebrow={<HeroCoord>{t("encounters.hero.eyebrow")}</HeroCoord>}
@@ -936,11 +942,15 @@ function Hero({ overview }: Readonly<{ overview: EncounterOverview }>) {
         <div className={styles.heroStats}>
           <HeroStat
             label={t("encounters.hero.totalLabel")}
-            value={countLabel(overview.kpis.total_encounters)}
+            value={countLabel(format, overview.kpis.total_encounters)}
             foot={
               overview.kpis.recent_count ? (
                 <>
-                  <span className={styles.delta}>▲ {countLabel(overview.kpis.recent_count)}</span>{" "}
+                  <span className={styles.delta}>
+                    <TrendingUp aria-hidden className="inline size-4 align-[-3px]" />
+                    {/* Icon is decorative; the sign reaches AT through this. */}
+                    <span className="sr-only">+</span> {countLabel(format, overview.kpis.recent_count)}
+                  </span>{" "}
                   {t("encounters.hero.last7Days")}
                 </>
               ) : (
@@ -957,8 +967,8 @@ function Hero({ overview }: Readonly<{ overview: EncounterOverview }>) {
               </>
             }
             foot={t("encounters.hero.ofSeries", {
-              count: countLabel(overview.kpis.with_logs_count),
-              total: countLabel(overview.kpis.total_encounters)
+              count: countLabel(format, overview.kpis.with_logs_count),
+              total: countLabel(format, overview.kpis.total_encounters)
             })}
           />
           <HeroStat
@@ -977,9 +987,9 @@ function Hero({ overview }: Readonly<{ overview: EncounterOverview }>) {
           />
           <HeroStat
             label={t("encounters.hero.liveNowLabel")}
-            value={countLabel(overview.kpis.live_now_count)}
+            value={countLabel(format, overview.kpis.live_now_count)}
             foot={t("encounters.hero.upcomingCount", {
-              count: countLabel(overview.kpis.upcoming_count)
+              count: countLabel(format, overview.kpis.upcoming_count)
             })}
           />
         </div>
@@ -1048,6 +1058,7 @@ function RowCells({
   matrix: Record<string, number>;
   max: number;
 }>) {
+  const format = useFormatter();
   return (
     <>
       <div className={styles.scoreSide}>{row}</div>
@@ -1064,7 +1075,7 @@ function RowCells({
             )}
             style={{ "--alpha": String(alpha) } as CSSProperties}
           >
-            {count > 0 ? countLabel(count) : "—"}
+            {count > 0 ? countLabel(format, count) : "—"}
           </div>
         );
       })}

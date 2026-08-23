@@ -405,7 +405,7 @@ fn run_moo_optimizer(
 ) -> PyResult<String> {
     // GIL отпускается на всё время оптимизации — иначе event loop сервиса
     // замирает на минуты. emit_progress_event берёт GIL заново на каждое событие.
-    py.allow_threads(|| {
+    py.detach(|| {
         let req = serde_json::from_str::<NativeRequest>(request_json)
             .map_err(|e| PyValueError::new_err(format!("invalid payload: {e}")))?;
         let ctx = Context::from_request(req)

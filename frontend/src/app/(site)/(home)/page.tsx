@@ -15,6 +15,7 @@ import workspaceService from "@/services/workspace.service";
 import tournamentService from "@/services/tournament.service";
 import { isTenantHost } from "@/lib/tenant-host";
 import { formatDateRange } from "@/lib/utils";
+import { tournamentHref } from "@/lib/tournament-url";
 import {
   ChartCardSkeleton,
   StatsGridSkeleton,
@@ -262,7 +263,7 @@ async function EventCard({
   );
 
   return (
-    <Link href={`/tournaments/${tournament.id}`} className={CARD_LINK_FOCUS}>
+    <Link href={tournamentHref(tournament)} className={CARD_LINK_FOCUS}>
       <div className="group h-full rounded-xl border border-border/60 bg-card/50 p-4 flex flex-col gap-3 hover:bg-card hover:border-border transition-all duration-150">
         {/* Status + badges row */}
         <div className="flex items-center justify-between">
@@ -273,7 +274,7 @@ async function EventCard({
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[color:var(--aqt-emerald)] opacity-75" />
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[color:var(--aqt-emerald)]" />
                 </span>
-                <span className="text-[10px] font-bold tracking-[0.1em] uppercase text-[color:var(--aqt-emerald)]">
+                <span className="text-[11px] font-bold tracking-[0.1em] uppercase text-[color:var(--aqt-emerald)]">
                   {t("common.live")}
                 </span>
               </>
@@ -281,7 +282,7 @@ async function EventCard({
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--aqt-amber)] inline-block flex-shrink-0" />
                 <span
-                  className={`text-[10px] font-bold tracking-[0.1em] uppercase ${statusMeta.textClassName}`}
+                  className={`text-[11px] font-bold tracking-[0.1em] uppercase ${statusMeta.textClassName}`}
                 >
                   {statusMeta.badgeLabel}
                 </span>
@@ -292,7 +293,7 @@ async function EventCard({
           <div className="flex items-center gap-1.5">
             {tournament.is_league && (
               <span
-                className="text-[9px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-full"
+                className="text-[11px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-full"
                 style={{
                   background: accentTint("var(--aqt-violet)", 14),
                   border: `1px solid ${accentTint("var(--aqt-violet)", 28)}`,
@@ -304,7 +305,7 @@ async function EventCard({
             )}
             {workspace && showWorkspaceBadge && (
               <span
-                className="text-[9px] font-bold tracking-[0.08em] uppercase px-1.5 py-0.5 rounded-full"
+                className="text-[11px] font-bold tracking-[0.08em] uppercase px-1.5 py-0.5 rounded-full"
                 style={{
                   background: accentTint(accent, 12),
                   border: `1px solid ${accentTint(accent, 25)}`,
@@ -343,7 +344,7 @@ async function EventCard({
             className="text-[12px] font-semibold tracking-[0.02em]"
             style={{ color: accent }}
           >
-            {t("common.view")} →
+            {t("common.view")} <span aria-hidden>→</span>
           </span>
         </div>
       </div>
@@ -638,7 +639,7 @@ async function TournamentActivityCard() {
             <span
               key={entry.id}
               className="flex-1 text-center"
-              style={{ fontSize: 9, color: "var(--aqt-fg-faint)" }}
+              style={{ fontSize: 11, color: "var(--aqt-fg-faint)" }}
             >
               {i % labelEvery === 0 ? entry.name : ""}
             </span>

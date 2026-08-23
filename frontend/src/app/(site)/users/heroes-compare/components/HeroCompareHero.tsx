@@ -101,7 +101,7 @@ const HeroCompareHero = ({ selectedHero, rows }: HeroCompareHeroProps) => {
         <div className="grid grid-cols-2 gap-x-7 gap-y-5 text-left sm:grid-cols-4 lg:text-right">
           {stats.map((stat) => (
             <div key={stat.label} className="flex flex-col gap-1 lg:items-end">
-              <span className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
                 {stat.label}
               </span>
               <span
@@ -114,7 +114,7 @@ const HeroCompareHero = ({ selectedHero, rows }: HeroCompareHeroProps) => {
                 {stat.value}
               </span>
               {stat.sub ? (
-                <span className="text-[10.5px] text-[color:var(--aqt-fg-dim)]">{stat.sub}</span>
+                <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">{stat.sub}</span>
               ) : null}
             </div>
           ))}

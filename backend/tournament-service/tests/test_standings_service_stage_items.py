@@ -641,6 +641,8 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
 
         session = SimpleNamespace(
             add_all=Mock(),
+            # ``StandingRepository.create_many`` flushes the batch it just added.
+            flush=AsyncMock(),
             execute=AsyncMock(),
             commit=AsyncMock(),
         )
@@ -652,17 +654,17 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=encounters),
             ),
             patch.object(
-                standings_service,
+                standings_service.standings_service,
                 "_update_stage_completion_flags",
                 AsyncMock(),
             ),
             patch.object(
-                standings_service,
+                standings_service.standings_service,
                 "get_by_tournament",
                 AsyncMock(return_value=[]),
             ),
         ):
-            await standings_service.calculate_for_tournament(session, tournament)
+            await standings_service.standings_service.calculate_for_tournament(session, tournament)
 
         persisted = session.add_all.call_args.args[0]
         by_item_and_team = {
@@ -712,7 +714,7 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
 
         session = SimpleNamespace(execute=AsyncMock(return_value=_CountsResult()))
 
-        await standings_service._update_stage_completion_flags(session, tournament)
+        await standings_service.standings_service._update_stage_completion_flags(session, tournament)
 
         self.assertFalse(stage.is_completed)
 
@@ -776,7 +778,7 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
 
         session = SimpleNamespace(execute=AsyncMock(return_value=_CountsResult()))
 
-        await standings_service._update_stage_completion_flags(session, tournament)
+        await standings_service.standings_service._update_stage_completion_flags(session, tournament)
 
         self.assertFalse(stage.is_completed)
 
@@ -827,6 +829,6 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
 
         session = SimpleNamespace(execute=AsyncMock(return_value=_CountsResult()))
 
-        await standings_service._update_stage_completion_flags(session, tournament)
+        await standings_service.standings_service._update_stage_completion_flags(session, tournament)
 
         self.assertTrue(stage.is_completed)

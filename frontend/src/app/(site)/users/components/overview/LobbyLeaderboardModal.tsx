@@ -142,7 +142,7 @@ const LobbyLeaderboardModal = ({ userId, tournamentId, stat, statLabel, onClose 
                           {e.name}
                         </Link>
                         {isYou ? (
-                          <span className="aqt-mono ml-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-teal)]">
+                          <span className="aqt-mono ml-2 text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-teal)]">
                             {t("users.overview.leaderboard.you")}
                           </span>
                         ) : null}

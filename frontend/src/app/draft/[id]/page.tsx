@@ -6,7 +6,8 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 import { DraftBoard } from "@/components/draft/DraftBoard";
-import { useTournamentQuery } from "@/app/(site)/tournaments/[id]/_hooks/useTournamentClientData";
+import { tournamentHref } from "@/lib/tournament-url";
+import { useTournamentQuery } from "@/app/(site)/tournaments/[slug]/_hooks/useTournamentClientData";
 import { Button } from "@/components/ui/button";
 
 import styles from "./DraftRoom.module.css";
@@ -16,12 +17,13 @@ import { shouldShowInitialDraftSkeleton } from "./draft-loading-state";
 export default function PublicDraftRoomPage() {
   const t = useTranslations("draftRedesign");
   const params = useParams<{ id: string }>();
-  const tournamentId = Number(params.id);
-  const tournamentQuery = useTournamentQuery(tournamentId);
+  // Legacy numeric ref: this route is addressed by tournament id directly
+  // (not by slug), and the backend resolves a numeric ref like any other.
+  const tournamentQuery = useTournamentQuery(params.id);
   const tournament = tournamentQuery.data;
 
   if (tournament && tournament.team_formation !== "draft") {
-    redirect(`/tournaments/${tournamentId}`);
+    redirect(tournamentHref(tournament));
   }
 
   if (shouldShowInitialDraftSkeleton(tournamentQuery)) {

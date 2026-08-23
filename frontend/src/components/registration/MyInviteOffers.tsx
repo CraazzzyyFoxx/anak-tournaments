@@ -3,11 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
-import { normalizePlayerRole } from "@/lib/player-role";
 import { translateRegistrationTeamError } from "@/lib/registration-team-errors";
 import { ROSTER_SLOT_CODES } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
@@ -110,7 +109,7 @@ export default function MyInviteOffers({ tournament }: Readonly<{ tournament: To
             key={offer.invite_id}
             className="flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] px-3 py-2 text-sm"
           >
-            <PlayerRoleIcon role={normalizePlayerRole(offer.slot_code)} size={18} decorative />
+            <RosterSlotGlyph code={offer.slot_code} size={18} decorative />
             <span>
               {offer.is_substitute
                 ? t("offers.sentenceSubstitute", {

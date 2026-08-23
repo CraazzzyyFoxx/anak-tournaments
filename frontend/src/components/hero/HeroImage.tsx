@@ -57,7 +57,9 @@ const HeroImage = ({ hero, size = "md", className, title, rounded = "full", popo
       <AvatarFallback
         className={cn("aqt-display font-extrabold", radiusClass)}
         style={{
-          fontSize: Math.max(9, Math.round(px * 0.4)),
+          // Initials stand in for the portrait, so they hold the 11px floor
+          // rather than scaling below it on the smallest avatars.
+          fontSize: Math.max(11, Math.round(px * 0.4)),
           color: "var(--aqt-bg)",
           background: `var(--aqt-${variant})`
         }}
@@ -111,7 +113,9 @@ const HoverPopover = ({ trigger, content }: { trigger: React.ReactNode; content:
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+          // Hover brightens a ring rather than scaling: a size change on hover
+          // shifts neighbouring portraits in an avatar stack.
+          className="inline-flex rounded-full transition-shadow hover:ring-2 hover:ring-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
           onPointerEnter={(e) => {
             if (e.pointerType !== "mouse") return;
             cancel();
