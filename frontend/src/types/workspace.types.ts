@@ -206,6 +206,10 @@ export interface Workspace {
   description: string | null;
   icon_url: string | null;
   is_active: boolean;
+  /** Excludes this workspace from the anonymous/non-member `/api/v1/workspaces`
+   * list (home page, other members' workspace picker). A member still sees
+   * it; direct access by slug/subdomain/custom domain is unaffected. */
+  is_hidden: boolean;
   /** IANA zone tournament schedule forms display and parse times in. */
   timezone: string;
   /** Per-workspace main-site branding (see lib/workspace-theme). */

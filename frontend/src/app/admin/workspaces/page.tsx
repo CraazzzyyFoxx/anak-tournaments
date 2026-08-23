@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { Plus, Pencil, Trash2, CheckCircle, XCircle } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { Badge } from "@/components/ui/badge";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
@@ -147,6 +148,16 @@ export default function WorkspacesPage() {
         ) : (
           <StatusIcon icon={XCircle} label="Inactive" variant="muted" />
         )
+    },
+    {
+      accessorKey: "is_hidden",
+      header: "Visibility",
+      cell: ({ row }) =>
+        row.getValue("is_hidden") ? (
+          <Badge variant="outline" className="text-muted-foreground">
+            Hidden
+          </Badge>
+        ) : null
     },
     {
       id: "actions",

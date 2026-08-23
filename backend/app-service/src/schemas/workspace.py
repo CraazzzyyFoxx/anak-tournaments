@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shared.schemas.roster_slots import RosterSlotsField
 from shared.tenancy.hostnames import validate_subdomain_label
@@ -41,6 +41,9 @@ class WorkspaceRead(BaseRead):
     description: str | None
     icon_url: str | None
     is_active: bool
+    # Excludes this workspace from another workspace's member picker and from
+    # the anonymous listing; a member still sees it (`WorkspaceService.get_all`).
+    is_hidden: bool = False
     timezone: str = "Europe/Moscow"
     branding_enabled: bool = False
     brand_primary: str | None = None
@@ -89,6 +92,7 @@ class WorkspaceUpdate(BaseModel):
     description: str | None = None
     icon_url: str | None = None
     is_active: bool | None = None
+    is_hidden: bool | None = None
     timezone: str | None = None
     branding_enabled: bool | None = None
     brand_primary: str | None = Field(default=None, pattern=_HEX_COLOR)
@@ -178,8 +182,7 @@ class WorkspaceMemberRoleRead(BaseModel):
     is_system: bool
     workspace_id: int | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WorkspaceMemberRead(BaseRead):

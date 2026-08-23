@@ -42,6 +42,7 @@ interface EditFormData {
   description: string;
   timezone: string;
   newcomer_scope: "global" | "workspace";
+  is_hidden: boolean;
   branding_enabled: boolean;
   brand_primary: string | null;
   brand_secondary: string | null;
@@ -65,6 +66,7 @@ function formFromWorkspace(ws: Workspace): EditFormData {
     description: ws.description ?? "",
     timezone: ws.timezone ?? DEFAULT_WORKSPACE_TIMEZONE,
     newcomer_scope: ws.newcomer_scope ?? "global",
+    is_hidden: ws.is_hidden,
     branding_enabled: ws.branding_enabled,
     brand_primary: ws.brand_primary,
     brand_secondary: ws.brand_secondary,
@@ -349,6 +351,7 @@ export default function WorkspaceEditPage({ params }: Readonly<{ params: Promise
       description: form.description,
       timezone: form.timezone,
       newcomer_scope: form.newcomer_scope,
+      is_hidden: form.is_hidden,
       branding_enabled: form.branding_enabled,
       brand_primary: hexOrNull(form.brand_primary),
       brand_secondary: hexOrNull(form.brand_secondary),
@@ -446,6 +449,21 @@ export default function WorkspaceEditPage({ params }: Readonly<{ params: Promise
             this-workspace-only ignores it — a veteran of another workspace will show as a newcomer
             the first time they join this one.
           </p>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Label htmlFor="edit-is-hidden">Hidden</Label>
+            <p className="max-w-prose text-xs text-muted-foreground">
+              Removed from the home page and from other members&apos; workspace picker. Members of
+              this workspace still see it; direct links (slug page, subdomain, custom domain) keep
+              working.
+            </p>
+          </div>
+          <Switch
+            id="edit-is-hidden"
+            checked={form.is_hidden}
+            onCheckedChange={(checked) => patch({ is_hidden: checked })}
+          />
         </div>
         <div>
           <Label htmlFor="discord-guild-id">Discord guild ID</Label>

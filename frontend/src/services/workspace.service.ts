@@ -61,6 +61,7 @@ export default class workspaceService {
       description?: string;
       icon_url?: string | null;
       is_active?: boolean;
+      is_hidden?: boolean;
       branding_enabled?: boolean;
       brand_primary?: string | null;
       brand_secondary?: string | null;

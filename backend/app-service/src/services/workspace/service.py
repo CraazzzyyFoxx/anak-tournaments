@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.models.identity.auth_user import AuthUser
 from shared.rbac import (
     assign_workspace_system_role,
     ensure_workspace_system_roles,
@@ -85,8 +86,24 @@ class WorkspaceService:
         """
         return await self.workspace_repo.get_by_verified_custom_domain(session, domain)
 
-    async def get_all(self, session: AsyncSession) -> typing.Sequence[models.Workspace]:
-        return await self.workspace_repo.list_ordered(session)
+    async def get_all(
+        self, session: AsyncSession, *, user: AuthUser | None = None
+    ) -> typing.Sequence[models.Workspace]:
+        """Every workspace, minus ones ``user`` has no business seeing.
+
+        ``is_hidden`` only gates discoverability here: a member (any role, via
+        ``AuthUser.get_workspace_ids``) still sees their own hidden workspace,
+        superusers see everything, and an anonymous/non-member caller never
+        sees a hidden one. Direct lookups (``get_by_id``, ``get_by_slug``,
+        ``get_by_subdomain``, ``get_by_custom_domain``) are untouched -- a
+        hidden workspace stays reachable by slug, subdomain or verified custom
+        domain, it just drops out of this list.
+        """
+        workspaces = await self.workspace_repo.list_ordered(session)
+        if user is not None and user.is_superuser:
+            return workspaces
+        member_ids = set(user.get_workspace_ids()) if user is not None else set()
+        return [w for w in workspaces if not w.is_hidden or w.id in member_ids]
 
     # --- custom domain (white-label Phase 2) --------------------------------
 

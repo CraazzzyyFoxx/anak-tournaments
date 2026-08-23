@@ -3271,7 +3271,7 @@
       "summary": "Upload workspace icon"
     },
     "rpc.app.workspaces.list": {
-      "description": "Returns all workspaces (public, unpaginated).",
+      "description": "Returns every workspace, minus hidden ones the caller has no business seeing: a hidden workspace is dropped unless the caller is one of its members (any role) or a superuser (public, optional auth, unpaginated).",
       "response": {
         "array": true,
         "ref": "app.WorkspaceRead"
@@ -17142,6 +17142,11 @@
           "title": "Is Active",
           "type": "boolean"
         },
+        "is_hidden": {
+          "default": false,
+          "title": "Is Hidden",
+          "type": "boolean"
+        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -17432,6 +17437,18 @@
           ],
           "default": null,
           "title": "Is Active"
+        },
+        "is_hidden": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Hidden"
         },
         "name": {
           "anyOf": [

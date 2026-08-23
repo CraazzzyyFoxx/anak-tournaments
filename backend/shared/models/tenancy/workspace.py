@@ -25,6 +25,13 @@ class Workspace(db.TimeStampIntegerMixin):
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
     icon_url: Mapped[str | None] = mapped_column(String(), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean(), server_default="true")
+    # Excludes the workspace from the public directory (home page + anonymous
+    # `/api/v1/workspaces` list) and from another workspace's member picker.
+    # Orthogonal to ``is_active``. A member of the workspace still sees it in
+    # that same list (``WorkspaceService.get_all``); direct access by slug,
+    # subdomain or verified custom domain is unaffected — this only controls
+    # discoverability, not reachability.
+    is_hidden: Mapped[bool] = mapped_column(Boolean(), server_default="false", nullable=False)
     # IANA timezone all workspace tournaments run in (admin schedule forms
     # display/parse wall-clock times in this zone; storage stays UTC).
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, server_default="Europe/Moscow")

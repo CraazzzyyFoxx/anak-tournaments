@@ -81,8 +81,8 @@ def _workspace(**overrides) -> models.Workspace:
 
     A real model, not a namespace: the handlers end by serializing it, and the
     columns whose defaults are server-side (``timezone``, ``branding_enabled``,
-    ``is_active``, ``newcomer_scope``) are None on a transient row, which
-    ``WorkspaceRead`` rejects.
+    ``is_active``, ``is_hidden``, ``newcomer_scope``) are None on a transient
+    row, which ``WorkspaceRead`` rejects.
     """
     base = {
         "id": _WORKSPACE_ID,
@@ -91,6 +91,7 @@ def _workspace(**overrides) -> models.Workspace:
         "description": None,
         "icon_url": None,
         "is_active": True,
+        "is_hidden": False,
         "timezone": "Europe/Moscow",
         "branding_enabled": False,
         "newcomer_scope": "global",
