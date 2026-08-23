@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from shared.core import pagination
 
@@ -128,8 +128,7 @@ class OAuthUserInfo(BaseModel):
     avatar_url: str | None = None
     raw_data: dict = Field(default_factory=dict)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OAuthConnectionRead(BaseModel):
@@ -145,8 +144,7 @@ class OAuthConnectionRead(BaseModel):
     created_at: datetime
     updated_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OAuthConnectionAdminRead(OAuthConnectionRead):
@@ -195,8 +193,7 @@ class LinkedPlayer(BaseModel):
     is_primary: bool
     linked_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlayerLinkResponse(BaseModel):

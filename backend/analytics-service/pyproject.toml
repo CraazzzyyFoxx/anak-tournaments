@@ -3,7 +3,7 @@ name = "analytics-service"
 version = "0.1.0"
 description = "Analytics service: v1 OpenSkill/linear shifts and predictions, v2 ML pipeline (planned)"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "aiobotocore>=2.17.0",
     "alembic>=1.14.0",
@@ -25,6 +25,10 @@ dependencies = [
     "xgboost>=2.1",
     "scipy>=1.13",
     "shap>=0.46",
+    # Transitive dep of shap; numba<0.67 lacks a Python 3.14 build (its own
+    # setup.py refuses to install rather than being absent a wheel), and its
+    # PyPI metadata doesn't declare the cap, so the resolver can't see it.
+    "numba>=0.67",
     "ruptures>=1.1",
     "statsmodels>=0.14",
     "psycopg[binary]>=3.2.3",

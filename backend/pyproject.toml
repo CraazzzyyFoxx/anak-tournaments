@@ -23,7 +23,7 @@ exclude = ["venv", ".venv", "alembic"]
 # Point ty at the workspace venv so it resolves `shared` (editable install)
 # and all third-party packages.
 python = ".venv"
-python-version = "3.13"
+python-version = "3.14"
 # Roots for import resolution:
 # - "." so `shared/` resolves as `shared`
 # - each service dir so `from src.xxx` works inside that service
@@ -51,7 +51,7 @@ extra-paths = [
 ]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 120
 exclude = ["alembic"]
 
