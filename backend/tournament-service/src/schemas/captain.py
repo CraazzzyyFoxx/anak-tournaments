@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
-from src.services.encounter import captain as captain_service
+from src.services.encounter import captain as captain_mod
 
 # ── Schemas ──────────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ class CaptainReportSubmission(BaseModel):
 
 
 # HTTP 403 Forbidden — matched without importing fastapi so this module stays
-# fastapi-free. ``captain_service.resolve_captain_side`` raises a fastapi
+# fastapi-free. ``captain_service.resolve_captain_side`` raises a
 # ``HTTPException`` whose ``status_code`` we inspect by attribute.
 _HTTP_403_FORBIDDEN = 403
 
@@ -95,7 +95,7 @@ async def resolve_optional_viewer_side(
     if auth_user is None:
         return None
     try:
-        return await captain_service.resolve_captain_side(session, auth_user, encounter)
+        return await captain_mod.captain_service.resolve_captain_side(session, auth_user, encounter)
     except Exception as exc:  # noqa: BLE001 - re-raised below unless it's a 403
         if getattr(exc, "status_code", None) == _HTTP_403_FORBIDDEN:
             return None

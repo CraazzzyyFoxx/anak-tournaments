@@ -13,6 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from shared.core.enums import PickBanKind
 from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
 from src import models
 from src.core import enums, pagination
@@ -675,7 +676,7 @@ class UserEncounterQueries:
                 .join(PickBanEntry, PickBanEntry.session_id == PickBanSession.id)
                 .where(
                     PickBanSession.encounter_id.in_(ids),
-                    PickBanSession.kind == enums.PickBanKind.MAP,
+                    PickBanSession.kind == PickBanKind.MAP,
                 )
             )
         ).all()
