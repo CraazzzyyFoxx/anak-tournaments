@@ -684,6 +684,25 @@ describe("registration rank pin save", () => {
     });
     expect(patch.pin).toBe(true);
   });
+
+  it("keeps roles when clear_pin is requested", () => {
+    const patch = buildRegistrationUpdateFromPlayerPayload({
+      role_entries_json: roleEntries,
+      is_flex: false,
+      clear_pin: true,
+    });
+    expect(patch.clear_pin).toBe(true);
+    expect(patch.roles).toEqual([
+      {
+        role: "support",
+        subrole: null,
+        priority: 1,
+        is_primary: true,
+        rank_value: 900,
+        is_active: true,
+      },
+    ]);
+  });
 });
 
 

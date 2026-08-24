@@ -121,10 +121,6 @@ export function buildRegistrationUpdateFromPlayerPayload(
   payload: BalancerPlayerUpdateInput,
   existingRoles?: AdminRegistration["roles"]
 ): AdminRegistrationUpdateInput {
-  if (payload.clear_pin) {
-    return { clear_pin: true };
-  }
-
   const registrationPatch: AdminRegistrationUpdateInput = {};
 
   if (payload.role_entries_json !== undefined) {
@@ -163,6 +159,9 @@ export function buildRegistrationUpdateFromPlayerPayload(
   }
   if (payload.pin) {
     registrationPatch.pin = true;
+  }
+  if (payload.clear_pin) {
+    registrationPatch.clear_pin = true;
   }
   return registrationPatch;
 }

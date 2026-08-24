@@ -997,7 +997,17 @@ export function PlayerEditModal({
   };
 
   const handleClearPin = () => {
-    onSave(player.id, { clear_pin: true });
+    onSave(player.id, {
+      role_entries_json: normalizeRoleEntries(roleEntries),
+      is_flex: isFlex,
+      admin_notes: notes || null,
+      registration_status: registration && registrationStatus !== registration.status ? registrationStatus : null,
+      registration_balancer_status:
+        registration && registrationBalancerStatus !== registration.balancer_status
+          ? registrationBalancerStatus
+          : null,
+      clear_pin: true
+    });
   };
 
   const hasOverride = roleEntries.some((entry) => entry.rank_source === "override");
