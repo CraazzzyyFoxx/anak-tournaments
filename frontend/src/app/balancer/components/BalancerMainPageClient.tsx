@@ -147,6 +147,7 @@ export function BalancerMainPageClient() {
   const variantsRef = useRef<BalanceVariant[]>([]);
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
   const playersPanelRef = useRef<ImperativePanelHandle>(null);
+  const isWideLayout = useIsWideBalancerLayout();
 
   useEffect(() => {
     playersPanelRef.current?.collapse();
