@@ -2,6 +2,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy import String, UniqueConstraint
 
 from shared.models.workspace_player.workspace_player import WorkspacePlayer, WorkspacePlayerRank
+from shared.models.registration.registration import BalancerRegistration
 
 
 def _fk(column):
@@ -100,3 +101,13 @@ def test_workspace_player_rank_role_is_string_not_enum():
     assert not isinstance(col.type, SAEnum)
     assert col.type.length == 16
     assert col.nullable is False
+
+
+def test_registration_workspace_player_id_fk_set_null():
+    col = BalancerRegistration.__table__.columns["workspace_player_id"]
+    assert col.nullable is True
+    fk = _fk(col)
+    assert fk.column.table.name == "workspace_player"
+    assert fk.column.table.schema == "balancer"
+    assert fk.ondelete == "SET NULL"
+    assert any("workspace_player_id" in {c.name for c in idx.columns} for idx in BalancerRegistration.__table__.indexes)
