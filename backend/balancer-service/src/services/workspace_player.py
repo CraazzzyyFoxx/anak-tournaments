@@ -72,11 +72,11 @@ class WorkspacePlayerService:
             return await self._merge_link(
                 session, survivor_id=taken.id, donor_id=row.id, workspace_member_id=workspace_member_id
             )
-        row.player_id = player_id
-        if workspace_member_id is not None:
-            row.workspace_member_id = workspace_member_id
         try:
             async with session.begin_nested():
+                row.player_id = player_id
+                if workspace_member_id is not None:
+                    row.workspace_member_id = workspace_member_id
                 await session.flush()
         except IntegrityError:
             raced = await self.players.get_active_by_player_id(session, row.workspace_id, player_id)
