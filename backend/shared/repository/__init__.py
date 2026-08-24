@@ -146,6 +146,11 @@ from .workspace import (
     get_or_create_workspace_member,
     resolve_workspace_member_id,
 )
+from .workspace_player import (
+    WorkspacePlayerRankRepository,
+    WorkspacePlayerRepository,
+)
+
 
 __all__ = (
     "TOURNAMENT_SOURCE_TYPE",
@@ -263,6 +268,8 @@ __all__ = (
     "VerifiedChannelRow",
     "WorkspaceBalancerConfigRepository",
     "WorkspaceMemberRepository",
+    "WorkspacePlayerRankRepository",
+    "WorkspacePlayerRepository",
     "WorkspaceRepository",
     "WorkspaceSubscriptionRequirementRepository",
     "get_or_create_workspace_member",
