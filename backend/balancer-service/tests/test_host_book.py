@@ -77,7 +77,7 @@ class HostBookServiceTests(IsolatedAsyncioTestCase):
         self.memberships.delete.assert_awaited_once()
         self.assertIs(self.memberships.delete.await_args.args[1], membership)
         self.book.delete.assert_not_called()
-        leftover = await self.service.get_book(self.session, host_user_id=9, workspace_player_id=7)
+        leftover = await self.service.get_book(self.session, workspace_id=1, host_user_id=9, workspace_player_id=7)
         self.assertEqual(leftover, {"tank": 2800})
 
     async def test_write_other_host_403(self) -> None:
@@ -97,7 +97,7 @@ class HostBookServiceTests(IsolatedAsyncioTestCase):
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.set_ranks(
-                self.session, host_user_id=9, workspace_player_id=7, ranks={"tank": 1}, actor_user_id=2
+                self.session, workspace_id=1, host_user_id=9, workspace_player_id=7, ranks={"tank": 1}, actor_user_id=2
             )
         self.assertEqual(ctx.exception.status_code, 403)
         self.book.create.assert_not_called()
@@ -107,10 +107,24 @@ class HostBookServiceTests(IsolatedAsyncioTestCase):
         self.memberships.list_pool.return_value = [pool_row]
         self.book.list_book.return_value = [_row(role="dps", rank_value=1900)]
         pool = await self.service.list_pool(self.session, workspace_id=1, host_user_id=9)
-        book = await self.service.get_book(self.session, host_user_id=9, workspace_player_id=7)
+        book = await self.service.get_book(self.session, workspace_id=1, host_user_id=9, workspace_player_id=7)
         self.assertEqual(pool, [pool_row])
         self.assertEqual(book, {"dps": 1900})
 
+
+    async def test_cross_workspace_player_404(self) -> None:
+        self.players.get.return_value = _row(id=7, workspace_id=2)
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_ranks(
+                self.session, workspace_id=1, host_user_id=9, workspace_player_id=7, ranks={"tank": 1}, actor_user_id=9
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.book.create.assert_not_called()
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.get_book(self.session, workspace_id=1, host_user_id=9, workspace_player_id=7)
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.book.list_book.assert_not_called()
 
 class HostMergeTests(IsolatedAsyncioTestCase):
     if sys.platform == "win32":

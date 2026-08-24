@@ -100,15 +100,14 @@ class HostBookService:
         self,
         session: AsyncSession,
         *,
+        workspace_id: int,
         host_user_id: int,
         workspace_player_id: int,
         ranks: Mapping[str, int],
         actor_user_id: int,
     ) -> dict[str, int]:
         _require_host(actor_user_id, host_user_id)
-        player = await self.players.get(session, workspace_player_id)
-        if player is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace player not found")
+        await self._player_in_workspace(session, workspace_id, workspace_player_id)
         existing = {row.role: row for row in await self.book.list_book(session, host_user_id, workspace_player_id)}
         for role, value in ranks.items():
             row = existing.get(role)
@@ -141,8 +140,9 @@ class HostBookService:
         return list(await self.memberships.list_pool(session, workspace_id, host_user_id))
 
     async def get_book(
-        self, session: AsyncSession, *, host_user_id: int, workspace_player_id: int
+        self, session: AsyncSession, *, workspace_id: int, host_user_id: int, workspace_player_id: int
     ) -> dict[str, int]:
+        await self._player_in_workspace(session, workspace_id, workspace_player_id)
         rows = await self.book.list_book(session, host_user_id, workspace_player_id)
         return {row.role: row.rank_value for row in rows}
 

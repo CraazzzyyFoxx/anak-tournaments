@@ -117,6 +117,7 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="ranks is required")
             ranks_out = await host_book_service.set_ranks(
                 session,
+                workspace_id=workspace_id,
                 host_user_id=host_user_id,
                 workspace_player_id=_int(data, "workspace_player_id"),
                 ranks={str(role): int(value) for role, value in ranks.items()},
@@ -136,7 +137,7 @@ def register(broker: Any, logger: Any) -> None:
             host_user_id = _opt_int(data, "host_user_id") or user.id
             workspace_player_id = _int(data, "workspace_player_id")
             ranks = await host_book_service.get_book(
-                session, host_user_id=host_user_id, workspace_player_id=workspace_player_id
+                session, workspace_id=workspace_id, host_user_id=host_user_id, workspace_player_id=workspace_player_id
             )
             return {"host_user_id": host_user_id, "workspace_player_id": workspace_player_id, "ranks": ranks}
 
