@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { GoogleAnalytics } from "@next/third-parties/google";
+import Script from "next/script";
 import Cookies from "js-cookie";
 import { X } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -89,7 +89,18 @@ export default function CookieConsent({ initial, gaId }: Readonly<CookieConsentP
 
   return (
     <>
-      {consent === "accepted" && <GoogleAnalytics gaId={gaId} />}
+      {consent === "accepted" ? (
+        <>
+          <Script id="ga-init" strategy="lazyOnload">
+            {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${gaId}');`}
+          </Script>
+          <Script
+            id="ga-src"
+            strategy="lazyOnload"
+            src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`}
+          />
+        </>
+      ) : null}
 
       {(consent === null || isReopened) && (
         // Pinned to the inline end on wide viewports so it never covers the
