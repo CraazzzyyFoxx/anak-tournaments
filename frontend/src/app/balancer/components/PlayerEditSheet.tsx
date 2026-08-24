@@ -73,6 +73,7 @@ import {
   AdminRegistration,
   BalancerPlayerRecord,
   BalancerPlayerRoleEntry,
+  BalancerPlayerUpdateInput,
   BalancerRoleCode,
   BalancerRoleSubtype
 } from "@/types/balancer-admin.types";
@@ -143,7 +144,8 @@ function normalizeRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlaye
       division_number: entry.division_number ?? null,
       rank_value: entry.rank_value,
       is_active: entry.is_active ?? true,
-      ow_rank_value: entry.ow_rank_value ?? null
+      ow_rank_value: entry.ow_rank_value ?? null,
+      rank_source: entry.rank_source
     });
   }
 
@@ -463,11 +465,16 @@ function SortableRoleEntry({
               {entry.rank_value != null ? (
                 <span
                   className={cn(
-                    "text-[11px] font-semibold",
+                    "flex items-center gap-1 text-[11px] font-semibold",
                     entry.is_active ? accent.text : "text-[color:var(--aqt-fg-dim)]"
                   )}
                 >
                   {entry.rank_value}
+                  {entry.rank_source && entry.rank_source !== "none" ? (
+                    <Badge className={cn("h-4 border px-1.5 text-[10px] uppercase", accent.chip)}>
+                      {entry.rank_source}
+                    </Badge>
+                  ) : null}
                 </span>
               ) : null}
             </div>
@@ -703,17 +710,7 @@ type PlayerEditModalProps = {
   };
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (
-    playerId: number,
-    payload: {
-      role_entries_json: BalancerPlayerRoleEntry[];
-      is_in_pool?: boolean;
-      is_flex: boolean;
-      admin_notes: string | null;
-      registration_status?: string | null;
-      registration_balancer_status?: string | null;
-    }
-  ) => void;
+  onSave: (playerId: number, payload: BalancerPlayerUpdateInput) => void;
   onRemove?: (playerId: number) => void;
   saving?: boolean;
   rankHistory?: Partial<Record<BalancerRoleCode, number>> | null;
@@ -803,6 +800,7 @@ export function PlayerEditModal({
   const [historyPreview, setHistoryPreview] = useState<PlayerRankHistoryPreview | null>(null);
   const [historyPreviewRequested, setHistoryPreviewRequested] = useState(false);
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null);
+  const [pinToTournament, setPinToTournament] = useState(false);
 
   const { workspaces } = useWorkspaceStore();
   const [historyWorkspaceValue, setHistoryWorkspaceValue] = useState<string>(() => {
@@ -825,6 +823,7 @@ export function PlayerEditModal({
     setHistoryPreview(null);
     setHistoryPreviewRequested(false);
     setHistoryLoadError(null);
+    setPinToTournament(false);
     setRoleEntries(applyHistoryToSelectedRoles(normalized, rankHistory, resolveDivision));
   }, [player, registration, rankHistory, divisionGrid]);
 
@@ -975,7 +974,8 @@ export function PlayerEditModal({
       registration_balancer_status:
         registration && registrationBalancerStatus !== registration.balancer_status
           ? registrationBalancerStatus
-          : null
+          : null,
+      ...(pinToTournament ? { pin: true } : {})
     });
   };
 
@@ -991,9 +991,16 @@ export function PlayerEditModal({
       is_flex: isFlex,
       admin_notes: notes || null,
       registration_status: registration && registrationStatus !== registration.status ? registrationStatus : null,
-      is_in_pool: true
+      is_in_pool: true,
+      ...(pinToTournament ? { pin: true } : {})
     });
   };
+
+  const handleClearPin = () => {
+    onSave(player.id, { clear_pin: true });
+  };
+
+  const hasOverride = roleEntries.some((entry) => entry.rank_source === "override");
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -1187,6 +1194,32 @@ export function PlayerEditModal({
                 </div>
               </div>
             ) : null}
+
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-white/[0.03] px-3 py-2">
+              <Label htmlFor="pin-tournament" className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]">
+                Only this tournament
+              </Label>
+              <div className="flex items-center gap-2">
+                {hasOverride ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 border-[color:var(--aqt-border-2)] bg-black/20 px-2 text-[11px] text-[color:var(--aqt-fg)] hover:bg-white/5"
+                    disabled={saving}
+                    onClick={handleClearPin}
+                  >
+                    Use workspace rank
+                  </Button>
+                ) : null}
+                <Switch
+                  id="pin-tournament"
+                  checked={pinToTournament}
+                  onCheckedChange={setPinToTournament}
+                  aria-label="Only this tournament"
+                />
+              </div>
+            </div>
 
             <DndContext
               sensors={sensors}
