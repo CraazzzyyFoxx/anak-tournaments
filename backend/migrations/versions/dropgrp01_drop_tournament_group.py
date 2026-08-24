@@ -23,21 +23,70 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _drop_fks_on_column(schema: str, table: str, column: str) -> None:
+    """Drop every FK on ``schema.table.column``, whatever Postgres named it.
+
+    ``initial_v6`` created these FKs unnamed; v5 used ``*_fkey``. A live DB
+    may have either, neither, or a leftover name from the public→tournament
+    schema move.
+    """
+    op.execute(
+        f"""
+        DO $$
+        DECLARE r record;
+        BEGIN
+          FOR r IN
+            SELECT c.conname
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY (c.conkey)
+            WHERE c.contype = 'f'
+              AND n.nspname = '{schema}'
+              AND t.relname = '{table}'
+              AND a.attname = '{column}'
+          LOOP
+            EXECUTE format('ALTER TABLE {schema}.{table} DROP CONSTRAINT %I', r.conname);
+          END LOOP;
+        END $$;
+        """
+    )
+
+
 def upgrade() -> None:
-    op.drop_constraint("encounter_tournament_group_id_fkey", "encounter", schema="tournament", type_="foreignkey")
-    op.drop_constraint("standing_group_id_fkey", "standing", schema="tournament", type_="foreignkey")
-    op.drop_constraint("challonge_team_group_id_fkey", "challonge_team", schema="tournament", type_="foreignkey")
+    _drop_fks_on_column("tournament", "encounter", "tournament_group_id")
+    _drop_fks_on_column("tournament", "standing", "group_id")
+    _drop_fks_on_column("tournament", "challonge_team", "group_id")
 
-    op.drop_index("ix_encounter_tournament_group", table_name="encounter", schema="tournament")
-    op.drop_index("ix_encounter_tournament_group_id", table_name="encounter", schema="tournament")
-    op.drop_index("ix_standing_group_id", table_name="standing", schema="tournament")
-    op.drop_index("ix_tournament_challonge_team_group_id", table_name="challonge_team", schema="tournament")
+    # v5 names and the ``op.f("ix_tournament_*")`` names from initial_v6.
+    for name in (
+        "ix_encounter_tournament_group",
+        "ix_encounter_tournament_group_id",
+        "ix_tournament_encounter_tournament_group_id",
+        "ix_standing_group_id",
+        "ix_tournament_standing_group_id",
+        "ix_tournament_challonge_team_group_id",
+    ):
+        op.execute(f"DROP INDEX IF EXISTS tournament.{name}")
 
-    op.drop_column("encounter", "tournament_group_id", schema="tournament")
-    op.drop_column("standing", "group_id", schema="tournament")
-    op.drop_column("challonge_team", "group_id", schema="tournament")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+          IF to_regclass('tournament.encounter') IS NOT NULL THEN
+            ALTER TABLE tournament.encounter DROP COLUMN IF EXISTS tournament_group_id;
+          END IF;
+          IF to_regclass('tournament.standing') IS NOT NULL THEN
+            ALTER TABLE tournament.standing DROP COLUMN IF EXISTS group_id;
+          END IF;
+          IF to_regclass('tournament.challonge_team') IS NOT NULL THEN
+            ALTER TABLE tournament.challonge_team DROP COLUMN IF EXISTS group_id;
+          END IF;
+        END $$;
+        """
+    )
 
-    op.drop_table("group", schema="tournament")
+    op.execute("DROP TABLE IF EXISTS tournament.group")
 
 
 def downgrade() -> None:
