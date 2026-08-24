@@ -60,31 +60,6 @@ def _identity_user_id(data: dict[str, Any]) -> int | None:
         return None
 
 
-def _map_config_from_pick_ban(config: dict) -> dict:
-    """Adapts a serialized ``PickBanConfig(kind=map)`` back to the legacy
-    ``MapVetoConfig`` wire shape (Decision #12: map-veto API shapes stay
-    as-is), for ``TournamentMapsPage.tsx``'s public read."""
-    return {
-        "id": config["id"],
-        "tournament_id": config["tournament_id"],
-        "stage_id": config["stage_id"],
-        "round": config["round"],
-        "mode": config["mode"],
-        "preset": config["preset"],
-        "first_pick_rule": config["first_pick_rule"],
-        "first_ban_rotation": config["first_ban_rotation"],
-        "turn_timer_seconds": config["turn_timer_seconds"],
-        "sequence": config["sequence"],
-        "map_ids": config["item_ids"],
-        "slots": [
-            {
-                "position": slot["position"],
-                "candidates": slot["candidates"],
-                "reserve_map_id": slot["reserve_item_id"],
-            }
-            for slot in config["slots"]
-        ],
-    }
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -331,8 +306,8 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _read(logger, op, exclude_none=True)
 
-    @broker.subscriber("rpc.tournament.get_veto_configs")
-    async def _get_veto_configs(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.tournament.get_pick_ban_configs")
+    async def _get_pick_ban_configs(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             viewer = rehydrate_user_optional(data.get("identity"))
             tournament_id = _require_id(data)
@@ -342,8 +317,7 @@ def register(broker: Any, logger: Any) -> None:
             )
             return {
                 "configs": [
-                    _map_config_from_pick_ban(pick_ban_session_service.serialize_pick_ban_config(config))
-                    for config in configs
+                    pick_ban_session_service.serialize_pick_ban_config(config) for config in configs
                 ]
             }
 

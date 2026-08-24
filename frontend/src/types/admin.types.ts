@@ -424,12 +424,6 @@ export interface StageMergeGroupStagesInput {
   target_name?: string | null;
 }
 
-// ─── Captain Submission ─────────────────────────────────────────────────────
-
-export interface VetoActionInput {
-  map_id: number;
-  action: "ban" | "pick";
-}
 
 // ─── Team ────────────────────────────────────────────────────────────────────
 

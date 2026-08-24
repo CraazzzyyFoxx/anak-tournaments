@@ -773,17 +773,9 @@ DOCS: dict[str, dict] = {
             "view the encounter."
         ),
     },
-    "rpc.tournament.captain_map_pool": {
-        "summary": "Get encounter map pool",
-        "description": "Returns the public map pool for an encounter; no authentication required.",
-    },
-    "rpc.tournament.captain_map_pool_state": {
-        "summary": "Get map veto state",
-        "description": "Returns the encounter's map-veto room state, lazily creating the veto session when both teams and a config are known; without a session it reports the reason (not_configured/teams_unknown, or slot_count_mismatch/slot_underfilled when a slot-mode config disagrees with the bracket) instead of failing. With optional auth the requesting captain's side is annotated, otherwise viewer_side is null.",
-    },
-    "rpc.tournament.captain_veto": {
-        "summary": "Veto map",
-        "description": "Lets a captain ban or pick a map in the encounter's veto and returns the updated pool entry; requires authentication.",
+    "rpc.tournament.get_pick_ban_configs": {
+        "summary": "List public map pick-ban configs",
+        "description": "Returns the tournament's map pick-ban configs in cascade order. Visibility-gated like other public tournament reads.",
     },
     "rpc.tournament.reg_pub_form": {
         "summary": "Get public registration form",

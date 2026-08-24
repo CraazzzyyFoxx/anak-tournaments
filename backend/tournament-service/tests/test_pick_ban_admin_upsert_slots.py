@@ -858,11 +858,9 @@ class SerializeNeedsTheSlotChain(_UpsertCase):
             self, session.statements["PickBanConfig"][0], "PickBanConfig.slots", "PickBanConfigSlot.items"
         )
 
-    # The legacy suite's ``test_the_public_read_loads_the_slot_chain`` is
-    # dropped: there is no public list route (``rpc.tournament.get_pick_ban_configs``
-    # or similar) over ``PickBanConfig`` yet -- confirmed absent from
-    # ``src/rpc/reads.py`` and the rest of the RPC surface -- so there is
-    # nothing to port this case onto.
+    # Public list (`rpc.tournament.get_pick_ban_configs`) uses the same
+    # `list_configs` + `serialize_pick_ban_config` path as the admin list above.
+
 
 
 class RefreshMustNotReachForTheSlotChain(_UpsertCase):

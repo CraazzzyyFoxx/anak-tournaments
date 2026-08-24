@@ -16,10 +16,6 @@ from src.services.encounter import captain as captain_mod
 # ── Schemas ──────────────────────────────────────────────────────────────
 
 
-class VetoAction(BaseModel):
-    map_id: int
-    action: str  # "ban" or "pick"
-
 
 class PickBanActionInput(BaseModel):
     """One ban/pick/protect against a hero- or map-kind pick-ban session."""

@@ -12,10 +12,9 @@ import (
 // the #115 regression.
 func TestVisibilityGatedPublicReadsForwardIdentity(t *testing.T) {
 	gated := map[string]bool{
-		"rpc.tournament.captain_map_pool": true,
-		"rpc.tournament.reg_pub_form":     true,
-		"rpc.tournament.reg_pub_list":     true,
-		"rpc.tournament.get_veto_configs": true,
+		"rpc.tournament.reg_pub_form":          true,
+		"rpc.tournament.reg_pub_list":          true,
+		"rpc.tournament.get_pick_ban_configs":  true,
 	}
 	seen := map[string]bool{}
 	for _, r := range PublicWriteRoutes {
@@ -34,15 +33,12 @@ func TestVisibilityGatedPublicReadsForwardIdentity(t *testing.T) {
 }
 
 // `IDParam` copies the path value to `data["id"]`; `Path` copies params verbatim
-// under their own names (see registration_routes.go's header and
-// edge/dispatch.go). A worker reading the id via `_require_id` therefore REQUIRES
-// `IDParam` — pairing it with `Path` leaves `data["id"]` unset and 422s every
-// call with "id is required". `get_veto_configs` lives in tournament-service's
-// `reads.py`, whose whole-module contract is `data["id"]`, and shipped as `Path`.
+// under their own names. A worker reading the id via `_require_id` therefore
+// REQUIRES `IDParam`. `get_pick_ban_configs` lives in tournament-service's
+// `reads.py`, whose whole-module contract is `data["id"]`.
 func TestRequireIDWorkersUseIDParam(t *testing.T) {
-	// Queues whose handler resolves the path id through `_require_id`.
 	requireID := map[string]bool{
-		"rpc.tournament.get_veto_configs": true,
+		"rpc.tournament.get_pick_ban_configs": true,
 	}
 	seen := map[string]bool{}
 	for _, r := range PublicWriteRoutes {

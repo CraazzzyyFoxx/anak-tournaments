@@ -6199,14 +6199,6 @@
       "description": "Drops an encounter's pick-ban session (map or hero, per the body's `kind`) and its entries, re-creates them with freshly resolved seeds and returns the new room state; requires match-update permission on its workspace.",
       "summary": "Reset pick-ban session"
     },
-    "rpc.tournament.captain_map_pool": {
-      "description": "Returns the public map pool for an encounter; no authentication required.",
-      "summary": "Get encounter map pool"
-    },
-    "rpc.tournament.captain_map_pool_state": {
-      "description": "Returns the encounter's map-veto room state, lazily creating the veto session when both teams and a config are known; without a session it reports the reason (not_configured/teams_unknown, or slot_count_mismatch/slot_underfilled when a slot-mode config disagrees with the bracket) instead of failing. With optional auth the requesting captain's side is annotated, otherwise viewer_side is null.",
-      "summary": "Get map veto state"
-    },
     "rpc.tournament.captain_my_role": {
       "description": "Returns the calling user's captain side (home/away) for an encounter, or null if they are not a captain; requires authentication.",
       "summary": "Get my captain side"
@@ -6218,10 +6210,6 @@
     "rpc.tournament.captain_submit_report": {
       "description": "Lets an encounter captain submit their own report: series score plus whatever the tournament's match-report form enables \u2014 closeness 1..10, per-map match codes, a free-text comment and any organizer-defined text fields. Fields the config disables are dropped rather than rejected, so a stale client cannot fail a submit; fields it marks required are enforced with a 422. Reports are per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes their average (null when either side left it blank), otherwise it is disputed \u2014 comments and custom values never take part in that comparison. Upsert allowed until confirmed; requires authentication.",
       "summary": "Submit captain report"
-    },
-    "rpc.tournament.captain_veto": {
-      "description": "Lets a captain ban or pick a map in the encounter's veto and returns the updated pool entry; requires authentication.",
-      "summary": "Veto map"
     },
     "rpc.tournament.challonge_create_tournament": {
       "description": "Creates a tournament from an existing Challonge bracket -- fetches it for the name/description, links it, and imports its current structure and results in one shot; requires workspace tournament.create.",
@@ -6660,6 +6648,10 @@
         "ref": "tournament.MatchReadWithStats"
       },
       "summary": "Get match with stats"
+    },
+    "rpc.tournament.get_pick_ban_configs": {
+      "description": "Returns the tournament's map pick-ban configs in cascade order. Visibility-gated like other public tournament reads.",
+      "summary": "List public map pick-ban configs"
     },
     "rpc.tournament.get_stages": {
       "description": "Returns all stages of a tournament ordered by stage order, with their items and item inputs hydrated.",

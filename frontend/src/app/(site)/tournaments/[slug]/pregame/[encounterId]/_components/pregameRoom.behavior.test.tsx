@@ -31,7 +31,6 @@ const getAllMaps = vi.fn();
 const getAllHeroes = vi.fn();
 const getMyRole = vi.fn();
 const getReports = vi.fn();
-const getMapPoolState = vi.fn();
 const submitReport = vi.fn();
 const routerPush = vi.fn();
 /** The room's `?from=` param, rewritten per test. */
@@ -56,7 +55,6 @@ vi.mock("@/services/captain.service", () => ({
   default: {
     getMyRole: (...args: unknown[]) => getMyRole(...args),
     getReports: (...args: unknown[]) => getReports(...args),
-    getMapPoolState: (...args: unknown[]) => getMapPoolState(...args),
     submitReport: (...args: unknown[]) => submitReport(...args)
   }
 }));
@@ -195,7 +193,6 @@ beforeEach(() => {
   getEncounter.mockResolvedValue(encounter());
   getMyRole.mockResolvedValue({ side: null });
   getReports.mockResolvedValue({ reports: [], form: undefined });
-  getMapPoolState.mockResolvedValue(null);
   realtimeHandlers.clear();
   search = new URLSearchParams();
   usePermissionsMock.mockReturnValue({

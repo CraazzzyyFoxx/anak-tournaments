@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import captainService, { type CaptainReportSubmitResult } from "@/services/captain.service";
+import pickBanService from "@/services/pickBan.service";
 import mapService from "@/services/map.service";
 import { CaptainReportsView } from "@/components/tournaments/CaptainReportsView";
 import { refreshEncounterViews } from "@/components/tournaments/refreshEncounterViews";
@@ -211,8 +212,8 @@ export function MatchReportForm({
     queryFn: () => captainService.getMyRole(encounter.id)
   });
   const mapPoolQuery = useQuery({
-    queryKey: ["encounter", encounter.id, "map-pool-state"],
-    queryFn: () => captainService.getMapPoolState(encounter.id)
+    queryKey: ["encounter", encounter.id, "pick-ban-state", "map"],
+    queryFn: () => pickBanService.getPickBanState("map", encounter.id)
   });
   const mapsQuery = useQuery({
     queryKey: ["maps-all"],

@@ -1,4 +1,4 @@
-import type { EncounterMapPoolEntry, EncounterMapPoolState } from "@/types/tournament.types";
+import type { PickBanEntry, PickBanState } from "@/types/tournament.types";
 
 export interface MapCodeSlot {
   /** 1-based map number in the series; used as `map_index` in the payload. */
@@ -10,7 +10,7 @@ export interface MapCodeSlot {
 const DEFAULT_BEST_OF = 3;
 
 /** Play order: the veto's global action order, falling back to the pool order. */
-function playOrder(entry: EncounterMapPoolEntry): number {
+function playOrder(entry: PickBanEntry): number {
   return entry.action_index ?? entry.order;
 }
 
@@ -33,7 +33,7 @@ function playOrder(entry: EncounterMapPoolEntry): number {
  * Mirrored server-side by `report_form.series_map_indices`.
  */
 export function buildMapCodeSlots(
-  poolState: EncounterMapPoolState | null | undefined,
+  poolState: PickBanState | null | undefined,
   bestOf: number | null | undefined
 ): MapCodeSlot[] {
   const settled = (poolState?.pool ?? [])
@@ -42,7 +42,7 @@ export function buildMapCodeSlots(
     .sort((a, b) => playOrder(a) - playOrder(b));
 
   if (settled.length > 0) {
-    return settled.map((entry, index) => ({ mapIndex: index + 1, mapId: entry.map_id }));
+    return settled.map((entry, index) => ({ mapIndex: index + 1, mapId: entry.item_id }));
   }
 
   const count = bestOf && bestOf > 0 ? bestOf : DEFAULT_BEST_OF;
