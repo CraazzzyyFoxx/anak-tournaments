@@ -203,3 +203,21 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["overrides"][(7, "tank")], 1500)
         self.assertEqual(kwargs["overrides"][(7, "dps")], 1500)
         self.assertEqual(kwargs["overrides"][(7, "support")], 1500)
+
+    async def test_record_outcome_terminal_409(self) -> None:
+        for status in ("completed", "cancelled"):
+            with self.subTest(status=status):
+                self.games.get.return_value = _row(
+                    id=11, workspace_id=1, host_user_id=9, name="Scrim", status=status
+                )
+                with self.assertRaises(HTTPException) as ctx:
+                    await self.service.record_outcome(
+                        self.session,
+                        workspace_id=1,
+                        custom_game_id=11,
+                        outcome_json={"winner": 1},
+                        actor_user_id=9,
+                    )
+                self.assertEqual(ctx.exception.status_code, 409)
+                self.session.flush.assert_not_called()
+                self.session.flush.reset_mock()

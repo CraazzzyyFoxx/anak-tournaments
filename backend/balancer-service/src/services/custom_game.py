@@ -282,10 +282,9 @@ class CustomGameService:
         outcome_json: Mapping[str, Any],
         actor_user_id: int,
     ) -> models.CustomGame:
-        game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
-        _require_host(actor_user_id, game.host_user_id)
-        if game.status == "cancelled":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Game is cancelled")
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
         game.status = "completed"
         game.outcome_json = dict(outcome_json)
         await session.flush()
