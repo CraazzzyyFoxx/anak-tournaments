@@ -13,9 +13,18 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
 from src import models
 from src.core import enums, pagination
 from src.core.workspace import workspace_filter
+
+_PLAYED_AT = sa.func.coalesce(
+    models.Encounter.ended_at,
+    models.Encounter.started_at,
+    models.Encounter.scheduled_at,
+    models.Encounter.created_at,
+)
+
 
 _HERO_JSON = sa.func.jsonb_build_object(
     "id",
@@ -274,7 +283,7 @@ class UserEncounterQueries:
                     *([models.Team.tournament_id == tournament_id] if tournament_id is not None else []),
                 )
             )
-            .order_by(models.Team.id, models.Encounter.id)
+            .order_by(_PLAYED_AT.asc(), models.Encounter.id.asc(), models.Match.map_index.asc().nulls_last(), models.Match.id.asc())
         )
 
         result = await session.execute(query)
@@ -336,7 +345,7 @@ class UserEncounterQueries:
         )
 
         encounters_query = (
-            sa.select(models.Encounter, models.Player.id.label("player_id"))
+            sa.select(models.Encounter, models.Player.id.label("player_id"), _PLAYED_AT.label("played_at"))
             .select_from(models.Player)
             .join(
                 models.Encounter,
@@ -471,7 +480,15 @@ class UserEncounterQueries:
         total_query = apply_filters(total_query)
         encounters_query = apply_filters(encounters_query)
 
-        encounters_query = params.apply_pagination_sort(encounters_query)
+        if params.sort == "played_at":
+            descending = params.order == pagination.SortOrder.DESC or params.order == "desc"
+            encounters_query = encounters_query.order_by(
+                _PLAYED_AT.desc() if descending else _PLAYED_AT.asc(),
+                models.Encounter.id.desc() if descending else models.Encounter.id.asc(),
+            )
+            encounters_query = params.apply_pagination(encounters_query)
+        else:
+            encounters_query = params.apply_pagination_sort(encounters_query)
         encounters_query = encounters_query.subquery()
 
         paginated_match_ids = (
@@ -611,7 +628,16 @@ class UserEncounterQueries:
                 isouter=True,
             )
         )
-        query = params.apply_sort(query)
+        if params.sort == "played_at":
+            descending = params.order == pagination.SortOrder.DESC or params.order == "desc"
+            query = query.order_by(
+                encounters_query.c.played_at.desc() if descending else encounters_query.c.played_at.asc(),
+                encounters_query.c.id.desc() if descending else encounters_query.c.id.asc(),
+                models.Match.map_index.asc().nulls_last(),
+                models.Match.id.asc(),
+            )
+        else:
+            query = params.apply_sort(query)
         result = await session.execute(query)
         total_result = await session.execute(total_query)
         # Custom identity — the row contains a `jsonb_agg` list (heroes) which
@@ -620,6 +646,58 @@ class UserEncounterQueries:
             result.unique(_encounter_match_identity).all(),  # type: ignore[arg-type]
             total_result.scalar_one(),
         )
+
+    async def get_settled_map_ids(
+        self, session: AsyncSession, encounter_ids: typing.Sequence[int]
+    ) -> dict[int, list[int]]:
+        """Play-order map ids per encounter, from pick-ban then legacy map pool."""
+        from src.services.user import _mappers
+
+        if not encounter_ids:
+            return {}
+        ids = tuple(dict.fromkeys(int(encounter_id) for encounter_id in encounter_ids))
+        pick_ban_rows = (
+            await session.execute(
+                sa.select(
+                    PickBanSession.encounter_id,
+                    PickBanEntry.item_id,
+                    PickBanEntry.status,
+                    PickBanEntry.action_index,
+                    PickBanEntry.order,
+                )
+                .join(PickBanEntry, PickBanEntry.session_id == PickBanSession.id)
+                .where(
+                    PickBanSession.encounter_id.in_(ids),
+                    PickBanSession.kind == enums.PickBanKind.MAP,
+                )
+            )
+        ).all()
+        grouped: dict[int, list[tuple[object, object, object, object]]] = {}
+        for encounter_id, item_id, status, action_index, order in pick_ban_rows:
+            grouped.setdefault(int(encounter_id), []).append((item_id, status, action_index, order))
+        result = {encounter_id: _mappers.settled_map_ids(rows) for encounter_id, rows in grouped.items() if rows}
+        missing = [encounter_id for encounter_id in ids if encounter_id not in result]
+        if not missing:
+            return result
+        legacy_rows = (
+            await session.execute(
+                sa.select(
+                    models.EncounterMapPool.encounter_id,
+                    models.EncounterMapPool.map_id,
+                    models.EncounterMapPool.status,
+                    models.EncounterMapPool.action_index,
+                    models.EncounterMapPool.order,
+                ).where(models.EncounterMapPool.encounter_id.in_(tuple(missing)))
+            )
+        ).all()
+        legacy: dict[int, list[tuple[object, object, object, object]]] = {}
+        for encounter_id, map_id, status, action_index, order in legacy_rows:
+            legacy.setdefault(int(encounter_id), []).append((map_id, status, action_index, order))
+        for encounter_id, rows in legacy.items():
+            settled = _mappers.settled_map_ids(rows)
+            if settled:
+                result[encounter_id] = settled
+        return result
 
     async def get_user_opponents(
         self,

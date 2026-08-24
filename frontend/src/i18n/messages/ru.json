@@ -3032,6 +3032,7 @@
       "mapsCount": "{count, plural, one {# карта} few {# карты} many {# карт} other {# карты}}",
       "win": "W",
       "loss": "L",
+      "draw": "D",
       "career": {
         "title": "Карьера",
         "tournamentsWon": "Побед на турнирах",
@@ -3148,6 +3149,7 @@
         "mapResultsAggregate": "Суммарный итог · порядок карт не сохранён",
         "mapWon": "Карта выиграна",
         "mapLost": "Карта проиграна",
+        "mapDraw": "Карта сыграна вничью",
         "stat": {
           "kda": "KDA",
           "mvpScore": "Очки MVP",

@@ -3032,6 +3032,7 @@
       "mapsCount": "{count, plural, one {# map} other {# maps}}",
       "win": "W",
       "loss": "L",
+      "draw": "D",
       "career": {
         "title": "Career",
         "tournamentsWon": "Tournaments won",
@@ -3148,6 +3149,7 @@
         "mapResultsAggregate": "Aggregate result · map order not recorded",
         "mapWon": "Map won",
         "mapLost": "Map lost",
+        "mapDraw": "Map drawn",
         "stat": {
           "kda": "KDA",
           "mvpScore": "MVP score",

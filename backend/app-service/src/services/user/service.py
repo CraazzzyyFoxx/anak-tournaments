@@ -1216,7 +1216,7 @@ class UserService:
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournament_encounters:{id}:{tournament_id}",
+        key="backend:user_tournament_encounters:v2:{id}:{tournament_id}",
     )
     async def get_tournament_encounters(
         self,
@@ -1264,13 +1264,17 @@ class UserService:
                     )
                 )
 
+        pool_ids = await self.encounters.get_settled_map_ids(session, encounters_cache)
         return [
             _mappers.to_encounter_with_user_stats(
                 encounter,
-                matches=matches_cache.get(encounter_id, []),
+                matches=_mappers.sort_user_matches(
+                    matches_cache.get(encounter.id, []),
+                    pool_ids.get(encounter.id),
+                ),
                 viewer_user_id=user.id,
             )
-            for encounter_id, encounter in encounters_cache.items()
+            for encounter in sorted(encounters_cache.values(), key=_mappers.encounter_play_key)
         ]
 
     # ``grid`` is a pure function of ``tournament_id`` (a tournament pins its own
@@ -1629,11 +1633,15 @@ class UserService:
                     )
                 )
 
+        pool_ids = await self.encounters.get_settled_map_ids(session, encounters_cache)
         for encounter_id, encounter in encounters_cache.items():
             encounters_read.append(
                 _mappers.to_encounter_with_user_stats(
                     encounter,
-                    matches=matches_cache.get(encounter_id, []),
+                    matches=_mappers.sort_user_matches(
+                        matches_cache.get(encounter_id, []),
+                        pool_ids.get(encounter_id),
+                    ),
                     viewer_user_id=user.id,
                 )
             )

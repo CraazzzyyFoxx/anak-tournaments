@@ -26,7 +26,7 @@ from src.services.user.service import users as user_service
 _SF = db.async_session_maker
 
 _USERS_SORT = typing.Literal["id", "name", "similarity:name"]
-_ENCOUNTER_SORT = typing.Literal["id", "name", "home_team_id", "away_team_id", "closeness", "round"]
+_ENCOUNTER_SORT = typing.Literal["id", "name", "home_team_id", "away_team_id", "closeness", "round", "played_at"]
 _MAPS_SORT = typing.Literal["id", "count", "win", "loss", "draw", "winrate", "gamemode_id", "slug", "name"]
 _TEAMMATES_SORT = typing.Literal["id", "name", "winrate", "tournaments"]
 

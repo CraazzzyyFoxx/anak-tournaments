@@ -30,7 +30,7 @@ _GAMEMODE_SORT = typing.Literal["id", "name", "slug", "similarity:name", "simila
 _ACH_SORT = typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
 _USER_SORT = typing.Literal["id", "name", "similarity:name"]
 _STAT_SORT = typing.Literal["id", "name", "value"]
-_ENC_SORT = typing.Literal["id", "name", "home_team_id", "away_team_id", "closeness", "round"]
+_ENC_SORT = typing.Literal["id", "name", "home_team_id", "away_team_id", "closeness", "round", "played_at"]
 _MATE_SORT = typing.Literal["id", "name", "winrate", "tournaments"]
 
 # Reusable ad-hoc query params (handlers read these via c.q/c.q1, no query model).

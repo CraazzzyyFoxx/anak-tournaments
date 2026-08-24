@@ -11,6 +11,7 @@ import OverviewCareerList from "@/app/(site)/users/components/overview/OverviewC
 import OverviewTeammatesSynergy from "@/app/(site)/users/components/overview/OverviewTeammatesSynergy";
 import OverviewTopHeroesTable from "@/app/(site)/users/components/overview/OverviewTopHeroesTable";
 import OverviewAchievementsPreview from "@/app/(site)/users/components/overview/OverviewAchievementsPreview";
+import { tournamentMapPips } from "@/app/(site)/users/components/overview/map-results";
 import { getPlayerSlug } from "@/utils/player";
 
 interface OverviewPageProps {
@@ -43,14 +44,15 @@ const UserOverviewPage = async ({ profile, tournamentId, user }: OverviewPagePro
   const resolvedTournamentId = tournamentId ?? profile.tournaments[0]?.id;
   const userSlug = getPlayerSlug(user.name);
 
-  const [tournament, teammates, tournaments, encounters, heroesRes, mapsRes, achievements] = await Promise.all([
+  const [tournament, teammates, tournaments, encounters, heroesRes, mapsRes, achievements, tournamentEncounters] =
+    await Promise.all([
     resolvedTournamentId
       ? userService.getUserTournament(user.id, resolvedTournamentId)
       : Promise.resolve(null),
     userService.getUserBestTeammates(user.id, -1).catch(() => ({ results: [], total: 0 })),
     userService.getUserTournaments(user.id).catch(() => []),
     userService
-      .getUserEncounters(user.id, 1, 5, "id", "desc", [
+      .getUserEncounters(user.id, 1, 5, "played_at", "desc", [
         "tournament",
         "stage",
         "stage_item",
@@ -61,7 +63,10 @@ const UserOverviewPage = async ({ profile, tournamentId, user }: OverviewPagePro
       .catch(() => ({ results: [], total: 0 })),
     userService.getUserHeroes(user.id).catch(() => null),
     userService.getUserMaps(user.id, { perPage: -1, minCount: 1 }).catch(() => null),
-    userService.getUserAchievements(user.id).catch(() => [] as AchievementRarity[])
+    userService.getUserAchievements(user.id).catch(() => [] as AchievementRarity[]),
+    resolvedTournamentId
+      ? userService.getUserTournamentEncounters(user.id, resolvedTournamentId).catch(() => [])
+      : Promise.resolve([])
   ]);
 
   const totalSharedMaps = teammates.results.reduce((sum, tm) => sum + (tm.tournaments ?? 0), 0);
@@ -76,6 +81,7 @@ const UserOverviewPage = async ({ profile, tournamentId, user }: OverviewPagePro
             tournament={tournament}
             tournaments={profile.tournaments}
             userId={user.id}
+            mapPips={tournamentMapPips(tournamentEncounters, user.id)}
           />
         ) : null}
         <OverviewCareerList profile={profile} tournaments={tournaments} />

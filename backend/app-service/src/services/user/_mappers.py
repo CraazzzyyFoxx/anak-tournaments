@@ -6,6 +6,8 @@ only the fields the frontend actually renders on user-scoped pages.
 """
 
 from __future__ import annotations
+from datetime import UTC, datetime
+
 
 import sqlalchemy as sa
 
@@ -137,6 +139,7 @@ def to_match_with_user_stats(
         log_name=match.log_name,
         encounter_id=match.encounter_id,
         map_id=match.map_id,
+        map_index=match.map_index,
         code=getattr(match, "code", None),
         map=map_read,
         performance=performance,
@@ -259,3 +262,71 @@ def to_encounter_with_user_stats(
         away_team=away_team_summary,
         matches=matches,
     )
+
+
+_SETTLED_POOL_STATUSES = frozenset({"picked", "played"})
+_MISSING_PLAYED_AT = datetime.min.replace(tzinfo=UTC)
+
+
+def _pool_status(value: object) -> str:
+    return str(getattr(value, "value", value))
+
+
+def encounter_play_key(encounter: models.Encounter) -> tuple[datetime, int]:
+    """Sort key for a series: when it was played, then id.
+
+    ``ended_at`` / ``started_at`` / ``scheduled_at`` beat ``id``: bracket rows
+    are often inserted playoffs-first, so ``id`` is not play order.
+    """
+    played = encounter.ended_at or encounter.started_at or encounter.scheduled_at or encounter.created_at
+    return (played or _MISSING_PLAYED_AT, encounter.id)
+
+
+def sort_user_matches(
+    matches: list[schemas.MatchReadWithUserStats],
+    pool_map_ids: list[int] | None = None,
+) -> list[schemas.MatchReadWithUserStats]:
+    """Play order: ``map_index``, then map-pool settle order for unindexed rows."""
+    if not matches:
+        return matches
+    indexed = sorted(matches, key=lambda match: (match.map_index is None, match.map_index or 0, match.id))
+    if not pool_map_ids or all(match.map_index is not None for match in matches):
+        return indexed
+
+    claimed: set[int] = set()
+    ordered: list[schemas.MatchReadWithUserStats] = []
+    for position, map_id in enumerate(pool_map_ids, start=1):
+        exact = next(
+            (
+                match
+                for match in matches
+                if match.id not in claimed and match.map_id == map_id and match.map_index == position
+            ),
+            None,
+        )
+        if exact is not None:
+            claimed.add(exact.id)
+            ordered.append(exact)
+            continue
+        adopted = next(
+            (
+                match
+                for match in matches
+                if match.id not in claimed and match.map_id == map_id and match.map_index is None
+            ),
+            None,
+        )
+        if adopted is not None:
+            claimed.add(adopted.id)
+            ordered.append(adopted)
+    ordered.extend(match for match in indexed if match.id not in claimed)
+    return ordered
+
+
+def settled_map_ids(rows: list[tuple[object, object, object, object]]) -> list[int]:
+    """``(map_id, status, action_index, order)`` → play-order map ids."""
+    settled = [
+        row for row in rows if _pool_status(row[1]) in _SETTLED_POOL_STATUSES
+    ]
+    settled.sort(key=lambda row: row[2] if row[2] is not None else row[3])
+    return [int(row[0]) for row in settled]
