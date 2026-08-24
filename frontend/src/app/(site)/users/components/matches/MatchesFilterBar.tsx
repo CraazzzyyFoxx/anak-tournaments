@@ -27,7 +27,7 @@ const MatchesFilterBar = ({ activeFilter, onApplyFilter, search, onSearchChange 
     { key: "has_logs", label: t("users.matches.filters.hasLogs") }
   ];
   return (
-    <FilterChipGroup label={t("common.filters")} className="mb-3.5">
+    <FilterChipGroup label={t("common.filters")} className="mb-3.5 rounded-xl border border-[color:var(--aqt-border)] p-2.5">
       {filters.map((f) => (
         <FilterChip key={f.key} active={activeFilter === f.key} onClick={() => onApplyFilter(f.key)}>
           {f.label}
