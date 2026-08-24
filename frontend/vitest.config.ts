@@ -64,6 +64,7 @@ export default defineConfig({
       "src/app/balancer/components/balancer-page-selectors.test.ts",
       "src/app/balancer/components/forced-flex-parity.test.ts",
       "src/app/balancer/components/BalancingPoolSidebar.behavior.test.tsx",
+      "src/app/balancer/components/WorkspacePlayersSidebar.behavior.test.tsx",
       "src/app/balancer/tool-context.test.ts",
       "src/app/balancer/redirect-map.test.ts",
       // Both extensions: the pickup lineup rules are `.ts` and the panel's

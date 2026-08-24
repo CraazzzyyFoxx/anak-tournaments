@@ -31,7 +31,7 @@ export function DivisionRankPicker({ rank, disabled, label, onChange }: Readonly
           aria-label={label}
           className={cn(
             "flex size-8 items-center justify-center rounded-md border border-[color:var(--aqt-border)] bg-black/20 transition-colors hover:bg-white/5 disabled:opacity-50",
-            division == null && "text-[10px] text-muted-foreground",
+            division == null && "text-[11px] text-muted-foreground",
           )}
         >
           {division == null ? "—" : <DivisionIcon division={division} width={22} height={22} />}

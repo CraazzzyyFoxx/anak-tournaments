@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
-import { getRegistrationBattleTags } from "./balancer-page-helpers";
+import { getRegistrationBattleTags, splitBattleTag } from "./balancer-page-helpers";
 import { BalancerStatusContextMenuItems, BalancerStatusMenu, type StatusOptionGroups } from "./BalancerStatusMenu";
 import { BattleTagContextMenuItems, BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
 import { IssueChip, issueChipKey } from "./IssueChip";
@@ -58,18 +58,6 @@ const INITIAL_VIEWPORT_HEIGHT = 800;
 const ROW_GAP = 6;
 /** Below this a plain list is cheaper than measuring every row; matches the pool sizes we see. */
 const VIRTUALIZATION_THRESHOLD = 50;
-
-function splitBattleTag(battleTag: string): { name: string; suffix: string | null } {
-  const hashIndex = battleTag.indexOf("#");
-  if (hashIndex < 0) {
-    return { name: battleTag, suffix: null };
-  }
-
-  return {
-    name: battleTag.slice(0, hashIndex),
-    suffix: battleTag.slice(hashIndex),
-  };
-}
 
 
 type PoolPlayerRowProps = {

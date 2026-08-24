@@ -149,9 +149,6 @@ export function BalancerMainPageClient() {
   const playersPanelRef = useRef<ImperativePanelHandle>(null);
   const isWideLayout = useIsWideBalancerLayout();
 
-  useEffect(() => {
-    playersPanelRef.current?.collapse();
-  }, []);
   const [selectedPreset, setSelectedPreset] = useState("DEFAULT");
   const [jobState, dispatchJob] = useBalancerJob();
   const [variants, setVariants] = useState<BalanceVariant[]>([]);
@@ -701,8 +698,8 @@ export function BalancerMainPageClient() {
     <BalancingPoolSidebar
       ref={sidebarRef}
       key={tournamentId}
-      collapsed={isPoolSidebarCollapsed}
-      onToggleCollapsed={handleToggleSidebarCollapsed}
+      collapsed={isWideLayout && isPoolSidebarCollapsed}
+      onToggleCollapsed={isWideLayout ? handleToggleSidebarCollapsed : undefined}
       allPlayerValidationStates={enrichedPlayerValidationStates}
       applications={applications}
       addableApplications={addableApplications}
@@ -722,21 +719,29 @@ export function BalancerMainPageClient() {
     />
   );
 
+  // Stacked (below `xl`) the sidebars are full-width rows, where a collapsed rail
+  // would be a viewport-wide strip of vertical text — so the rail only exists
+  // beside the editor.
   const playersElement =
     workspaceId == null ? null : (
       <WorkspacePlayersSidebar
+        key={workspaceId}
         workspaceId={workspaceId}
         canEdit={canAccessPermission("team.update", workspaceId)}
-        collapsed={isPlayersSidebarCollapsed}
-        onToggleCollapsed={() => {
-          const panel = playersPanelRef.current;
-          if (panel) {
-            if (panel.isCollapsed()) panel.expand();
-            else panel.collapse();
-            return;
-          }
-          setIsPlayersSidebarCollapsed((current) => !current);
-        }}
+        collapsed={isWideLayout && isPlayersSidebarCollapsed}
+        onToggleCollapsed={
+          isWideLayout
+            ? () => {
+                const panel = playersPanelRef.current;
+                if (panel) {
+                  if (panel.isCollapsed()) panel.expand();
+                  else panel.collapse();
+                  return;
+                }
+                setIsPlayersSidebarCollapsed((current) => !current);
+              }
+            : undefined
+        }
       />
     );
 
@@ -914,7 +919,11 @@ export function BalancerMainPageClient() {
                 <ResizablePanel
                   ref={playersPanelRef}
                   id="balancer-players-sidebar-panel"
-                  defaultSize={22}
+                  // `defaultSize === collapsedSize` starts the panel collapsed on a
+                  // first visit and fires `onCollapse`; a mount-time `collapse()` call
+                  // instead re-collapsed it on every mount, so `autoSaveId` could never
+                  // restore a sidebar the user had expanded.
+                  defaultSize={5}
                   minSize={16}
                   maxSize={36}
                   collapsible

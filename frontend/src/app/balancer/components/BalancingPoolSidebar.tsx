@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { AdminRegistration, BalancerApplication, WorkspaceBalancerConfig } from "@/types/balancer-admin.types";
 import type { StatusMeta } from "@/types/registration.types";
 import type { PlayerValidationState, PoolView, PoolSortValue } from "./balancer-page-helpers";
-import { PANEL_CLASS, hasBlockingIssues, sortPlayerStates } from "./balancer-page-helpers";
+import { ICON_BUTTON_CLASS, PANEL_CLASS, hasBlockingIssues, sortPlayerStates } from "./balancer-page-helpers";
 import { buildPlayerSearchIndex } from "./workspace-helpers";
 import { PoolAvailableList } from "./PoolAvailableList";
 import { PoolPlayerCompactList } from "./PoolPlayerCompactList";
@@ -39,9 +39,6 @@ const SORT_OPTIONS: Array<{ value: PoolSortValue; label: string }> = [
   { value: "added_asc", label: "Oldest in pool" },
   { value: "added_desc", label: "Newest in pool" },
 ];
-
-const ICON_BUTTON_CLASS =
-  "h-8 w-8 rounded-lg border border-[color:var(--aqt-border)] bg-black/15 text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]";
 
 type BalancingPoolSidebarProps = {
   collapsed?: boolean;
@@ -287,7 +284,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
 
     if (collapsed) {
       return (
-        <div className={cn(PANEL_CLASS, "flex min-h-0 flex-col items-center gap-3 p-2")}>
+        <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col items-center gap-3 p-2")}>
           <Button
             type="button"
             variant="ghost"
@@ -324,7 +321,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
     }
 
     return (
-      <div className={cn(PANEL_CLASS, "flex min-h-0 flex-col p-4")}>
+      <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col p-4")}>
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-dim)]">
@@ -358,16 +355,20 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
               <Kanban className="h-4 w-4" aria-hidden="true" />
               <span className="sr-only">Open the triage board</span>
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={ICON_BUTTON_CLASS}
-              onClick={onToggleCollapsed}
-            >
-              <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only">Collapse Balancing Pool sidebar</span>
-            </Button>
+            {/* Stacked layouts pass no handler: a full-width vertical rail is not a
+                usable collapsed state, so the control is absent rather than inert. */}
+            {onToggleCollapsed ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={ICON_BUTTON_CLASS}
+                onClick={onToggleCollapsed}
+              >
+                <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+                <span className="sr-only">Collapse Balancing Pool sidebar</span>
+              </Button>
+            ) : null}
           </div>
         </div>
 

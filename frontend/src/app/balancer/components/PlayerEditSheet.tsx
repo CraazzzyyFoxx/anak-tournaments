@@ -471,7 +471,7 @@ function SortableRoleEntry({
                 >
                   {entry.rank_value}
                   {entry.rank_source && entry.rank_source !== "none" ? (
-                    <Badge className={cn("h-4 border px-1.5 text-[10px] uppercase", accent.chip)}>
+                    <Badge className={cn("h-4 border px-1.5 text-[11px] uppercase", accent.chip)}>
                       {entry.rank_source}
                     </Badge>
                   ) : null}
