@@ -55,7 +55,6 @@ from shared.services.stage_refs import StageRefs, resolve_stage_refs_from_group
 from src import models, schemas
 from src.clients.challonge import challonge_client
 from src.core import config
-from src.schemas.admin import team as team_schemas
 from src.services.encounter.finalize import finalize_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service
 from src.services.team.service import team_service
@@ -1289,7 +1288,7 @@ class ChallongeMappingService:
 
     async def preview_team_mapping(
         self, session: AsyncSession, tournament_id: int
-    ) -> team_schemas.ChallongeTeamSyncPreview:
+    ) -> schemas.ChallongeTeamSyncPreview:
         """Read-only: for every Challonge participant on this tournament's linked
         source(s), suggest a local team by normalized-name match and report any
         mapping already persisted. Counterpart to ``apply_team_mapping``, which
@@ -1300,7 +1299,7 @@ class ChallongeMappingService:
         source_ids = {source.source_id for source, _fetch in fetches if source.source_id is not None}
         existing_mappings = await self._existing_participant_mappings(session, source_ids)
 
-        participants: list[team_schemas.ChallongeTeamPreviewParticipant] = []
+        participants: list[schemas.ChallongeTeamPreviewParticipant] = []
         for source, fetch in fetches:
             group = source.group
             for participant in fetch.participants:
@@ -1313,7 +1312,7 @@ class ChallongeMappingService:
                     else None
                 )
                 participants.append(
-                    team_schemas.ChallongeTeamPreviewParticipant(
+                    schemas.ChallongeTeamPreviewParticipant(
                         participant_id=participant.id,
                         challonge_id=participant.id,
                         group_id=group.id if group is not None else None,
@@ -1326,17 +1325,17 @@ class ChallongeMappingService:
                     )
                 )
 
-        return team_schemas.ChallongeTeamSyncPreview(
+        return schemas.ChallongeTeamSyncPreview(
             teams=[
-                team_schemas.ChallongeTeamPreviewTeam(id=team.id, name=team.name, balancer_name=team.balancer_name)
+                schemas.ChallongeTeamPreviewTeam(id=team.id, name=team.name, balancer_name=team.balancer_name)
                 for team in teams
             ],
             participants=participants,
         )
 
     async def apply_team_mapping(
-        self, session: AsyncSession, tournament_id: int, mappings: list[team_schemas.ChallongeTeamMapping]
-    ) -> team_schemas.ChallongeTeamSyncResult:
+        self, session: AsyncSession, tournament_id: int, mappings: list[schemas.ChallongeTeamMapping]
+    ) -> schemas.ChallongeTeamSyncResult:
         """Persist an admin's explicit Challonge participant -> team mappings.
 
         Every ``(participant_id, group_id)`` in ``mappings`` must resolve against
@@ -1394,7 +1393,7 @@ class ChallongeMappingService:
         await session.commit()
         mapped_keys = {(mapping.participant_id, mapping.group_id) for mapping in mappings}
         skipped = max(len(rows_by_request_key) - len(mapped_keys), 0)
-        return team_schemas.ChallongeTeamSyncResult(
+        return schemas.ChallongeTeamSyncResult(
             success=True,
             count=created + updated + unchanged,
             created=created,
@@ -1441,12 +1440,12 @@ class ChallongeSyncService:
 
     async def preview_team_mapping(
         self, session: AsyncSession, tournament_id: int
-    ) -> team_schemas.ChallongeTeamSyncPreview:
+    ) -> schemas.ChallongeTeamSyncPreview:
         return await self.mapping.preview_team_mapping(session, tournament_id)
 
     async def apply_team_mapping(
-        self, session: AsyncSession, tournament_id: int, mappings: list[team_schemas.ChallongeTeamMapping]
-    ) -> team_schemas.ChallongeTeamSyncResult:
+        self, session: AsyncSession, tournament_id: int, mappings: list[schemas.ChallongeTeamMapping]
+    ) -> schemas.ChallongeTeamSyncResult:
         return await self.mapping.apply_team_mapping(session, tournament_id, mappings)
 
     # ── Import (Challonge -> local) ──────────────────────────────────────

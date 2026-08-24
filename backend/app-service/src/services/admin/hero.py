@@ -12,9 +12,8 @@ from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
 from shared.repository import HeroRepository
-from src import models
+from src import models, schemas
 from src.schemas import HeroRead
-from src.schemas.admin import hero as admin_schemas
 
 __all__ = ("HeroAdminService", "heroes", "normalize_aliases")
 
@@ -28,7 +27,7 @@ class HeroAdminService:
     def __init__(self, *, repo: HeroRepository = HeroRepository()) -> None:
         self.repo = repo
 
-    async def get_heroes(self, session: AsyncSession, params: admin_schemas.HeroListParams) -> dict:
+    async def get_heroes(self, session: AsyncSession, params: schemas.HeroListParams) -> dict:
         """Get paginated list of heroes"""
         filters: list[sa.ColumnElement[bool]] = []
         if params.search:
@@ -44,7 +43,7 @@ class HeroAdminService:
             params,
         )
 
-    async def create_hero(self, session: AsyncSession, data: admin_schemas.HeroCreate) -> models.Hero:
+    async def create_hero(self, session: AsyncSession, data: schemas.HeroCreate) -> models.Hero:
         """Create a new hero"""
         existing = await self.repo.get_by(session, name=data.name)
         if existing:
@@ -67,7 +66,7 @@ class HeroAdminService:
         return hero
 
     async def update_hero(
-        self, session: AsyncSession, hero_id: int, data: admin_schemas.HeroUpdate
+        self, session: AsyncSession, hero_id: int, data: schemas.HeroUpdate
     ) -> models.Hero:
         """Update hero fields"""
         hero = await self.repo.get(session, hero_id)

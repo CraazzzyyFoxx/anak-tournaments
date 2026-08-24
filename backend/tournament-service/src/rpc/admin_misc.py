@@ -30,7 +30,7 @@ from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
-from src import models
+from src import models, schemas
 from src.core import auth
 from src.rpc._helpers import (
     _bool,
@@ -44,11 +44,6 @@ from src.rpc._helpers import (
     _run,
 )
 from src.schemas import encounter_report_form as report_form_schemas
-from src.schemas.admin import encounter as enc_schemas
-from src.schemas.admin import encounter_reports as reports_schemas
-from src.schemas.admin import matches as matches_schemas
-from src.schemas.admin import tournament as tournament_schemas
-from src.schemas.admin.computation import TournamentComputationJobRead
 from src.services.admin import encounter as enc_service
 from src.services.admin import encounter_reports as reports_service
 from src.services.admin import preview_access as preview_access
@@ -65,7 +60,7 @@ from src.services.tournament.schedule import schedule_service
 
 def _serialize_result(encounter: models.Encounter) -> dict:
     """The settled result state both result endpoints return."""
-    return enc_schemas.EncounterResultRead(
+    return schemas.EncounterResultRead(
         id=encounter.id,
         status=encounter.status,
         result_status=encounter.result_status,
@@ -86,7 +81,7 @@ def register(broker: Any, logger: Any) -> None:
             match_id = _require_id(data)
             ws_id = await auth.get_match_workspace_id(session, match_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            body = enc_schemas.MatchUpdate.model_validate(_payload(data))
+            body = schemas.MatchUpdate.model_validate(_payload(data))
             # update_match commits internally; route returns a custom dict.
             match = await enc_service.encounter_service.update_match(session, match_id, body)
             return {
@@ -111,7 +106,7 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            body = enc_schemas.EncounterSetResultInput.model_validate(_payload(data))
+            body = schemas.EncounterSetResultInput.model_validate(_payload(data))
             # set_encounter_result commits internally; route returns the settled state.
             encounter = await captain_service.set_encounter_result(
                 session,
@@ -209,7 +204,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _require_id(data)
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "tournament", "update")
-            body = tournament_schemas.TournamentStatusTransition.model_validate(_payload(data))
+            body = schemas.TournamentStatusTransition.model_validate(_payload(data))
             # force bypass is superuser-only (matches the route's explicit gate).
             if body.force and not user.is_superuser:
                 raise HTTPException(
@@ -234,7 +229,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _require_id(data)
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "tournament", "update")
-            body = tournament_schemas.TournamentScheduleSet.model_validate(_payload(data))
+            body = schemas.TournamentScheduleSet.model_validate(_payload(data))
             # set_schedule commits internally (full replace of the phase rows).
             tournament = await schedule_service.set_schedule(session, tournament_id, body.schedule)
             return _dump(await tournament_flows.flows_service.to_pydantic(session, tournament, ["stages"]))
@@ -315,7 +310,7 @@ def register(broker: Any, logger: Any) -> None:
                 tournament_id,
                 requested_by_user_id=int(user.id),
             )
-            return _dump(TournamentComputationJobRead.model_validate(job, from_attributes=True))
+            return _dump(schemas.TournamentComputationJobRead.model_validate(job, from_attributes=True))
 
         return await _run(logger, op)
 
@@ -336,7 +331,7 @@ def register(broker: Any, logger: Any) -> None:
                 resource="standing" if job.kind == "standings" else "stage",
                 action="update",
             )
-            return _dump(TournamentComputationJobRead.model_validate(job, from_attributes=True))
+            return _dump(schemas.TournamentComputationJobRead.model_validate(job, from_attributes=True))
 
         return await _run(logger, op)
 
@@ -378,7 +373,7 @@ def register(broker: Any, logger: Any) -> None:
                 active_only=active_only,
                 limit=limit,
             )
-            return [_dump(TournamentComputationJobRead.model_validate(job, from_attributes=True)) for job in jobs_list]
+            return [_dump(schemas.TournamentComputationJobRead.model_validate(job, from_attributes=True)) for job in jobs_list]
 
         return await _run(logger, op)
 
@@ -394,8 +389,8 @@ def register(broker: Any, logger: Any) -> None:
         user = _identity(data)
         workspace_id = _require_q1(data, "workspace_id", int)
         ensure_workspace_permission(user, workspace_id, "match", "read")
-        qp = build_query_model(reports_schemas.EncounterReportsQueryParams, data.get("query"))
-        return workspace_id, reports_schemas.EncounterReportsSearchParams.from_query_params(qp)
+        qp = build_query_model(schemas.EncounterReportsQueryParams, data.get("query"))
+        return workspace_id, schemas.EncounterReportsSearchParams.from_query_params(qp)
 
     @broker.subscriber("rpc.tournament.admin_encounter_reports_list")
     async def _admin_encounter_reports_list(data: dict, msg: RabbitMessage) -> dict:
@@ -434,8 +429,8 @@ def register(broker: Any, logger: Any) -> None:
         the workspace, so there is no single tournament to derive the scope from.
         """
         workspace_id = _matches_workspace(data)
-        qp = build_query_model(matches_schemas.AdminMatchesQueryParams, data.get("query"))
-        return workspace_id, matches_schemas.AdminMatchesSearchParams.from_query_params(qp)
+        qp = build_query_model(schemas.AdminMatchesQueryParams, data.get("query"))
+        return workspace_id, schemas.AdminMatchesSearchParams.from_query_params(qp)
 
     @broker.subscriber("rpc.tournament.admin_matches_list")
     async def _admin_matches_list(data: dict, msg: RabbitMessage) -> dict:

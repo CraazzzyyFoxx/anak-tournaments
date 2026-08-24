@@ -19,8 +19,7 @@ from shared.repository import (
     WorkspaceBalancerConfigRepository,
 )
 from shared.services.team_export import ExportPlan, team_materialization
-from src import models
-from src.schemas.admin import balancer as admin_schemas
+from src import models, schemas
 from src.schemas.team import InternalBalancerTeamsPayload
 from src.services.admin.balance_analytics import BalanceAnalyticsService, balance_analytics_service
 from src.services.admin.balancer_dual_write import BalancerVariantService, balancer_variant_service
@@ -185,7 +184,7 @@ class BalancerAdminService:
         self,
         session: AsyncSession,
         tournament_id: int,
-        data: admin_schemas.BalanceSaveRequest,
+        data: schemas.BalanceSaveRequest,
         auth_user: models.AuthUser,
     ) -> models.BalancerBalance:
         await self.ensure_tournament_exists(session, tournament_id)

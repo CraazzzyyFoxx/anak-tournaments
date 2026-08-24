@@ -7,7 +7,7 @@ from src.core import pagination
 
 __all__ = (
     "UserCreate",
-    "UserUpdate",
+    "UserAdminUpdate",
     "SocialAccountCreate",
     "SocialAccountUpdate",
     "SocialVisibilityUpdate",
@@ -23,7 +23,7 @@ class UserCreate(BaseModel):
     name: str
 
 
-class UserUpdate(BaseModel):
+class UserAdminUpdate(BaseModel):
     """Schema for updating a user"""
 
     name: str | None = None

@@ -4,8 +4,7 @@ from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.player_sub_roles import normalize_role, normalize_sub_role
 from shared.repository import PlayerSubRoleRepository
-from src import models
-from src.schemas.admin import player_sub_role as schemas
+from src import models, schemas
 
 
 def _normalize_role_or_raise(role: str | None) -> str:

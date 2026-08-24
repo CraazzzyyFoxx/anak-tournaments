@@ -24,9 +24,8 @@ from sqlalchemy.dialects import postgresql
 from shared.models.platform.audit import AuditLog
 from shared.rpc.identity import rehydrate_user
 from shared.rpc.query import build_query_model
-from src import openapi_docs, openapi_schemas
+from src import openapi_docs, openapi_schemas, schemas
 from src.rpc import audit as audit_rpc
-from src.schemas.admin import audit as audit_schemas
 from src.services.admin.audit import audit_log as audit_queries
 from tests.conftest import _CaptureBroker, build_query
 
@@ -69,10 +68,10 @@ def _call(identity: dict, **params) -> dict:
     return asyncio.run(handler({"identity": identity, "query": build_query(params)}, None))
 
 
-def _params(**overrides) -> audit_schemas.AuditLogListParams:
+def _params(**overrides) -> schemas.AuditLogListParams:
     """Build list params through the same query-model path the handler uses."""
-    qp = build_query_model(audit_schemas.AuditLogListQueryParams, build_query(overrides))
-    return audit_schemas.AuditLogListParams.from_query_params(qp)
+    qp = build_query_model(schemas.AuditLogListQueryParams, build_query(overrides))
+    return schemas.AuditLogListParams.from_query_params(qp)
 
 
 def _compiled(stmt) -> str:
@@ -94,13 +93,13 @@ def test_the_subject_is_documented() -> None:
 
 def test_the_subject_is_typed() -> None:
     # Missing here => generic `object` in gateway/internal/openapi/schemas.json.
-    assert openapi_schemas.OPERATIONS[_SUBJECT].query is audit_schemas.AuditLogListQueryParams
+    assert openapi_schemas.OPERATIONS[_SUBJECT].query is schemas.AuditLogListQueryParams
 
 
 def test_the_filter_set_is_exactly_the_designed_ten() -> None:
     # The design cut this from eleven filters to five plus pagination; a
     # reinstated date range or `source` select should fail here first.
-    assert set(audit_schemas.AuditLogListQueryParams.model_fields) == {
+    assert set(schemas.AuditLogListQueryParams.model_fields) == {
         "workspace_id",
         "entity_type",
         "entity_id",
@@ -119,7 +118,7 @@ def test_the_filter_set_is_exactly_the_designed_ten() -> None:
 
 def test_the_read_model_carries_every_stored_column() -> None:
     stored = {column.key for column in AuditLog.__table__.columns}
-    assert stored <= set(audit_schemas.AuditLogRead.model_fields)
+    assert stored <= set(schemas.AuditLogRead.model_fields)
 
 
 # --- the scope gate -------------------------------------------------------
@@ -177,9 +176,9 @@ def test_a_search_term_narrows_within_the_scope_it_does_not_replace_it() -> None
     # which doubles them ('%%delete%%'). Assert on the column list instead: what
     # matters is that every search field is OR-ed inside the scoped query, not
     # how the driver escapes a percent sign.
-    for field in audit_schemas.AUDIT_SEARCH_FIELDS:
+    for field in schemas.AUDIT_SEARCH_FIELDS:
         assert f"audit_log.{field} ILIKE" in sql, field
-    assert sql.count("ILIKE") == len(audit_schemas.AUDIT_SEARCH_FIELDS)
+    assert sql.count("ILIKE") == len(schemas.AUDIT_SEARCH_FIELDS)
 
 
 def test_the_count_query_carries_the_same_scope_as_the_page_query() -> None:
@@ -224,7 +223,7 @@ def test_ascending_order_keeps_the_id_tiebreaker_in_the_same_direction() -> None
     assert sql.split("ORDER BY")[1].strip().startswith("audit_log.created_at ASC, audit_log.id ASC")
 
 
-@pytest.mark.parametrize("field", audit_schemas.AUDIT_SORT_FIELDS)
+@pytest.mark.parametrize("field", schemas.AUDIT_SORT_FIELDS)
 def test_every_sortable_column_still_ends_on_the_id_tiebreaker(field: str) -> None:
     order_by = _compiled(audit_queries.rows_query(7, _params(sort=field))).split("ORDER BY")[1]
     assert order_by.strip().endswith("audit_log.id DESC")

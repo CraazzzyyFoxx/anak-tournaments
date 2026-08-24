@@ -28,8 +28,7 @@ from shared.repository import (
     HeroRepository,
     MapRepository,
 )
-from src import models
-from src.schemas.admin import catalog_alias as alias_schemas
+from src import models, schemas
 
 __all__ = ("CatalogAliasService", "catalog_aliases")
 
@@ -56,7 +55,7 @@ class CatalogAliasService:
         self.misses = misses
         self.entities = ENTITY_REPOSITORIES if entities is None else entities
 
-    async def list_misses(self, session: AsyncSession, params: alias_schemas.CatalogAliasMissListParams) -> dict:
+    async def list_misses(self, session: AsyncSession, params: schemas.CatalogAliasMissListParams) -> dict:
         miss = models.CatalogAliasMiss
         filters: list[sa.ColumnElement[bool]] = []
         if not params.include_resolved:
@@ -81,7 +80,7 @@ class CatalogAliasService:
 
         return {
             "results": [
-                alias_schemas.CatalogAliasMissRead.model_validate(row, from_attributes=True).model_copy(
+                schemas.CatalogAliasMissRead.model_validate(row, from_attributes=True).model_copy(
                     update={"last_log_tournament_id": tournament_id}
                 )
                 for row, tournament_id in rows
@@ -91,7 +90,7 @@ class CatalogAliasService:
             "per_page": params.per_page,
         }
 
-    async def attach(self, session: AsyncSession, data: alias_schemas.CatalogAliasAttach) -> None:
+    async def attach(self, session: AsyncSession, data: schemas.CatalogAliasAttach) -> None:
         """Add ``alias`` to the entity's ``aliases`` and close the matching miss, atomically."""
         obj = await self.entities[data.entity_type].get(session, data.entity_id)
         if obj is None:

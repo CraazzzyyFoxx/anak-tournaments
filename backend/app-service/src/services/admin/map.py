@@ -11,9 +11,8 @@ from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
 from shared.repository import GamemodeRepository, MapRepository
-from src import models
+from src import models, schemas
 from src.schemas import MapRead
-from src.schemas.admin import map as admin_schemas
 
 __all__ = ("MapAdminService", "maps", "normalize_aliases")
 
@@ -28,7 +27,7 @@ class MapAdminService:
         self.repo = repo
         self.gamemodes = gamemodes
 
-    async def get_maps(self, session: AsyncSession, params: admin_schemas.MapListParams) -> dict:
+    async def get_maps(self, session: AsyncSession, params: schemas.MapListParams) -> dict:
         """Get paginated list of maps"""
         filters: list[sa.ColumnElement[bool]] = []
         if params.search:
@@ -51,7 +50,7 @@ class MapAdminService:
             params,
         )
 
-    async def create_map(self, session: AsyncSession, data: admin_schemas.MapCreate) -> models.Map:
+    async def create_map(self, session: AsyncSession, data: schemas.MapCreate) -> models.Map:
         """Create a new map"""
         gamemode = await self.gamemodes.get(session, data.gamemode_id)
 
@@ -80,7 +79,7 @@ class MapAdminService:
 
         return map_obj
 
-    async def update_map(self, session: AsyncSession, map_id: int, data: admin_schemas.MapUpdate) -> models.Map:
+    async def update_map(self, session: AsyncSession, map_id: int, data: schemas.MapUpdate) -> models.Map:
         """Update map fields"""
         map_obj = await self.repo.get_expanded(session, map_id, ("gamemode",))
 

@@ -325,7 +325,7 @@ class ExecuteMergeWorkspaceMemberWiringTests(IsolatedAsyncioTestCase):
         method itself calls ``_repoint_player_workspace_members`` exactly
         once (it is no longer part of REFERENCE_CONFIG at all -- Player has no
         plain user-id column left to reassign generically)."""
-        merge_schemas = user_merge.merge_schemas
+        merge_schemas = user_merge.schemas
         request = merge_schemas.UserMergeExecuteRequest(
             source_user_id=5,
             target_user_id=6,

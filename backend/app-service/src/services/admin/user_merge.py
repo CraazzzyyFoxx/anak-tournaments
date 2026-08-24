@@ -29,8 +29,7 @@ from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import normalize_social_handle
 from shared.repository import SocialAccountRepository, UserMergeAuditRepository, get_or_create_workspace_member
-from src import models
-from src.schemas.admin import user_merge as merge_schemas
+from src import models, schemas
 from src.services import user_cache
 
 __all__ = ("UserMergeService", "merges")
@@ -81,8 +80,8 @@ def empty_affected_counts() -> dict[str, int]:
 
 def _build_preview_from_context(
     context: MergeContext,
-    request: merge_schemas.UserMergePreviewRequest,
-) -> merge_schemas.UserMergePreviewResponse:
+    request: schemas.UserMergePreviewRequest,
+) -> schemas.UserMergePreviewResponse:
     target_dup_keys = {
         (account.provider, normalize_social_handle(account.provider, account.username))
         for account in context.target.social_accounts
@@ -103,15 +102,15 @@ def _build_preview_from_context(
     if has_auth_conflict:
         summary = "Merge blocked: both profiles already have auth links."
 
-    preview = merge_schemas.UserMergePreviewResponse(
+    preview = schemas.UserMergePreviewResponse(
         source=source_summary,
         target=target_summary,
-        conflicts=merge_schemas.UserMergeConflictSummary(
+        conflicts=schemas.UserMergeConflictSummary(
             has_auth_conflict=has_auth_conflict,
             summary=summary,
         ),
         affected_counts=dict(context.affected_counts),
-        field_options=merge_schemas.UserMergeFieldOptions(
+        field_options=schemas.UserMergeFieldOptions(
             name={"source": context.source.name, "target": context.target.name},
             avatar_url={
                 "source": context.source.avatar_url,
@@ -129,8 +128,8 @@ def _build_user_summary(
     *,
     auth_links: int,
     target_dup_keys: set[tuple[str, str]] | None,
-) -> merge_schemas.UserMergeUserSummary:
-    return merge_schemas.UserMergeUserSummary(
+) -> schemas.UserMergeUserSummary:
+    return schemas.UserMergeUserSummary(
         id=user.id,
         name=user.name,
         avatar_url=user.avatar_url,
@@ -142,12 +141,12 @@ def _build_user_summary(
 def _build_identity_options(
     user: models.User,
     duplicate_keys: set[tuple[str, str]] | None = None,
-) -> list[merge_schemas.UserMergeIdentityOption]:
+) -> list[schemas.UserMergeIdentityOption]:
     items = []
     for account in sorted(user.social_accounts, key=lambda a: (a.provider, not a.is_primary, a.id)):
         key = (account.provider, normalize_social_handle(account.provider, account.username))
         items.append(
-            merge_schemas.UserMergeIdentityOption(
+            schemas.UserMergeIdentityOption(
                 id=account.id,
                 provider=account.provider,
                 value=account.username,
@@ -169,7 +168,7 @@ def _validate_merge_pair(source_user_id: int, target_user_id: int) -> None:
         )
 
 
-def _build_preview_fingerprint(preview: merge_schemas.UserMergePreviewResponse) -> str:
+def _build_preview_fingerprint(preview: schemas.UserMergePreviewResponse) -> str:
     payload = preview.model_dump(mode="json")
     payload.pop("preview_fingerprint", None)
     serialized = json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
@@ -206,8 +205,8 @@ class UserMergeService:
     async def preview_merge(
         self,
         session: AsyncSession,
-        request: merge_schemas.UserMergePreviewRequest,
-    ) -> merge_schemas.UserMergePreviewResponse:
+        request: schemas.UserMergePreviewRequest,
+    ) -> schemas.UserMergePreviewResponse:
         _validate_merge_pair(request.source_user_id, request.target_user_id)
         context = await self._load_merge_context(session, request.source_user_id, request.target_user_id)
         return _build_preview_from_context(context=context, request=request)
@@ -215,12 +214,12 @@ class UserMergeService:
     async def execute_merge(
         self,
         session: AsyncSession,
-        request: merge_schemas.UserMergeExecuteRequest,
+        request: schemas.UserMergeExecuteRequest,
         *,
         operator_auth_user_id: int | None,
-    ) -> merge_schemas.UserMergeExecuteResponse:
+    ) -> schemas.UserMergeExecuteResponse:
         _validate_merge_pair(request.source_user_id, request.target_user_id)
-        preview_request = merge_schemas.UserMergePreviewRequest(
+        preview_request = schemas.UserMergePreviewRequest(
             source_user_id=request.source_user_id,
             target_user_id=request.target_user_id,
         )
@@ -355,11 +354,11 @@ class UserMergeService:
             preview=preview,
         )
 
-        return merge_schemas.UserMergeExecuteResponse(
+        return schemas.UserMergeExecuteResponse(
             deleted_source_user_id=request.source_user_id,
             surviving_target_user_id=request.target_user_id,
             affected_counts=affected_counts,
-            identity_results=merge_schemas.UserMergeIdentityResult(**identity_result_raw),
+            identity_results=schemas.UserMergeIdentityResult(**identity_result_raw),
             audit_id=audit.id,
         )
 
@@ -370,7 +369,7 @@ class UserMergeService:
         session: AsyncSession,
         source: models.User,
         target: models.User,
-        identity_selection: merge_schemas.UserMergeIdentitySelection,
+        identity_selection: schemas.UserMergeIdentitySelection,
     ) -> dict[str, list[int]]:
         """Move the selected source social accounts to the target, deduping on
         (provider, normalized handle). Moved accounts arrive non-primary; a single
@@ -891,7 +890,7 @@ class UserMergeService:
         *,
         source_user_id: int,
         target_user_id: int,
-        preview: merge_schemas.UserMergePreviewResponse,
+        preview: schemas.UserMergePreviewResponse,
     ) -> None:
         patterns = {
             "backend:get_statistics_by_heroes_all_values*",

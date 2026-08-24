@@ -34,10 +34,9 @@ from typing import Any
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.rpc.identity import ensure_workspace_permission
+from src import schemas
 from src.core import auth
 from src.rpc._helpers import _dump, _identity, _path_int, _payload, _run
-from src.schemas.admin import stage as admin_schemas
-from src.schemas.admin.computation import TournamentComputationJobRead
 from src.services.admin.stage import stage_service
 from src.services.computation import jobs as computation_jobs
 
@@ -83,7 +82,7 @@ def register(broker: Any, logger: Any) -> None:
             # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
-            body = admin_schemas.MergeGroupStagesRequest.model_validate(_payload(data))
+            body = schemas.MergeGroupStagesRequest.model_validate(_payload(data))
             # merge_group_stages commits internally; returns a Stage.
             stage = await stage_service.merge_group_stages(
                 session,
@@ -91,8 +90,6 @@ def register(broker: Any, logger: Any) -> None:
                 source_stage_ids=body.source_stage_ids,
                 target_name=body.target_name,
             )
-            from src import schemas  # noqa: PLC0415
-
             return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
 
         return await _run(logger, op)
@@ -109,8 +106,6 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, ws_id, "stage", "update")
             # activate_stage commits internally (commit=True default).
             stage = await stage_service.activate_stage(session, stage_id)
-            from src import schemas  # noqa: PLC0415
-
             return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
 
         return await _run(logger, op)
@@ -128,8 +123,6 @@ def register(broker: Any, logger: Any) -> None:
             # deactivate_stage commits internally (commit=True default); 409s
             # if any of the stage's encounters left OPEN.
             stage = await stage_service.deactivate_stage(session, stage_id)
-            from src import schemas  # noqa: PLC0415
-
             return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
 
         return await _run(logger, op)
@@ -155,7 +148,7 @@ def register(broker: Any, logger: Any) -> None:
                 requested_by_user_id=int(user.id),
             )
             await session.commit()
-            return _dump(TournamentComputationJobRead.model_validate(job, from_attributes=True))
+            return _dump(schemas.TournamentComputationJobRead.model_validate(job, from_attributes=True))
 
         return await _run(logger, op)
 
@@ -204,7 +197,7 @@ def register(broker: Any, logger: Any) -> None:
                 requested_by_user_id=int(user.id),
             )
             await session.commit()
-            return _dump(TournamentComputationJobRead.model_validate(job, from_attributes=True))
+            return _dump(schemas.TournamentComputationJobRead.model_validate(job, from_attributes=True))
 
         return await _run(logger, op)
 
@@ -218,7 +211,7 @@ def register(broker: Any, logger: Any) -> None:
             # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
-            body = admin_schemas.WireFromGroupsRequest.model_validate(_payload(data))
+            body = schemas.WireFromGroupsRequest.model_validate(_payload(data))
             # wire_from_groups commits internally; returns a Stage.
             stage = await stage_service.wire_from_groups(
                 session,
@@ -228,8 +221,6 @@ def register(broker: Any, logger: Any) -> None:
                 top_lb=body.top_lb,
                 mode=body.mode,
             )
-            from src import schemas  # noqa: PLC0415
-
             return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
 
         return await _run(logger, op)
@@ -244,7 +235,7 @@ def register(broker: Any, logger: Any) -> None:
             # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
-            body = admin_schemas.SeedTeamsRequest.model_validate(_payload(data))
+            body = schemas.SeedTeamsRequest.model_validate(_payload(data))
             # seed_teams commits internally; returns a Stage.
             stage = await stage_service.seed_teams(
                 session,
@@ -252,8 +243,6 @@ def register(broker: Any, logger: Any) -> None:
                 team_ids=body.team_ids,
                 mode=body.mode,
             )
-            from src import schemas  # noqa: PLC0415
-
             return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
 
         return await _run(logger, op)

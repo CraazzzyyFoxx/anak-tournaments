@@ -34,7 +34,7 @@ from shared.services.division_grid_normalization import (
     build_division_grid_normalizer,
 )
 from src import models
-from src.services.registration.utils import normalize_battle_tag_key
+from src.domain.registration.utils import normalize_battle_tag_key
 
 
 @dataclass

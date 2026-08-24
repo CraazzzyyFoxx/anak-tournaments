@@ -33,7 +33,7 @@ os.environ.setdefault("CHALLONGE_USERNAME", "test")
 os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 captain_service = importlib.import_module("src.services.encounter.captain")
-schemas = importlib.import_module("src.schemas.admin.encounter_reports")
+schemas = importlib.import_module("src.schemas")
 
 
 class ValidSeriesScores(TestCase):

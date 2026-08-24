@@ -19,12 +19,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.schemas.registration import CustomFieldDefinition
-from src.services.registration.utils import (
+from src.domain.registration.utils import (
     normalize_header,
     parse_boolean_value,
     parse_integer,
 )
+from src.schemas.registration import CustomFieldDefinition
 
 ROLE_CODES = ("tank", "dps", "support")
 

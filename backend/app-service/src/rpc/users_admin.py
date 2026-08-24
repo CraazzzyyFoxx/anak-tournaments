@@ -44,8 +44,6 @@ from shared.core.social import SOCIAL_PROVIDERS, SocialProvider
 from shared.rpc.query import build_query_model
 from src import schemas
 from src.core import clients, db
-from src.schemas.admin import user as admin_schemas
-from src.schemas.admin import user_merge as merge_schemas
 from src.services import user_cache
 from src.services.admin.favorites import favorites as favorites_service
 from src.services.admin.user import users as admin_users
@@ -117,8 +115,8 @@ def register(broker: Any, logger: Any) -> None:
     async def _list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _gate(data, "read")
-            qp = build_query_model(admin_schemas.UserListQueryParams, data.get("query"))
-            res = await admin_users.get_users(session, admin_schemas.UserListParams.from_query_params(qp))
+            qp = build_query_model(schemas.UserListQueryParams, data.get("query"))
+            res = await admin_users.get_users(session, schemas.UserListParams.from_query_params(qp))
             results = [user_service.to_read(user, _ENTITIES).model_dump(mode="json") for user in res["results"]]
             return {
                 "results": results,
@@ -133,7 +131,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _create(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _gate(data, "create")
-            created = await admin_users.create_user(session, admin_schemas.UserCreate.model_validate(c.payload(data)))
+            created = await admin_users.create_user(session, schemas.UserCreate.model_validate(c.payload(data)))
             return user_service.to_read(created, _ENTITIES)
 
         return await c.envelope(logger, "users.admin_create", op, session_factory=_SF)
@@ -143,7 +141,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             _gate(data, "update")
             updated = await admin_users.update_user(
-                session, c.require_id(data), admin_schemas.UserUpdate.model_validate(c.payload(data))
+                session, c.require_id(data), schemas.UserAdminUpdate.model_validate(c.payload(data))
             )
             return user_service.to_read(updated, _ENTITIES)
 
@@ -164,7 +162,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
             return await merge_service.preview_merge(
-                session, merge_schemas.UserMergePreviewRequest.model_validate(c.payload(data))
+                session, schemas.UserMergePreviewRequest.model_validate(c.payload(data))
             )
 
         return await c.envelope(logger, "users.merge_preview", op, session_factory=_SF)
@@ -176,7 +174,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_superuser(user)
             return await merge_service.execute_merge(
                 session,
-                merge_schemas.UserMergeExecuteRequest.model_validate(c.payload(data)),
+                schemas.UserMergeExecuteRequest.model_validate(c.payload(data)),
                 operator_auth_user_id=user.id,
             )
 
@@ -187,7 +185,7 @@ def register(broker: Any, logger: Any) -> None:
         user = await admin_users.get_user_or_404(session, user_id)
         return user_service.to_read(user, _ENTITIES)
 
-    def _validate_social_create(payload: admin_schemas.SocialAccountCreate) -> None:
+    def _validate_social_create(payload: schemas.SocialAccountCreate) -> None:
         if payload.provider not in SOCIAL_PROVIDERS:
             raise HTTPException(status_code=400, detail=f"Unknown provider: {payload.provider}")
         if not payload.username.strip():
@@ -200,7 +198,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
             user_id = c.require_id(data)
-            payload = admin_schemas.SocialAccountCreate.model_validate(c.payload(data))
+            payload = schemas.SocialAccountCreate.model_validate(c.payload(data))
             _validate_social_create(payload)
             await admin_users.add_social_account(
                 session,
@@ -218,7 +216,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
             user_id = c.require_id(data)
-            payload = admin_schemas.SocialAccountUpdate.model_validate(c.payload(data))
+            payload = schemas.SocialAccountUpdate.model_validate(c.payload(data))
             await admin_users.update_social_account(
                 session,
                 user_id=user_id,
@@ -271,7 +269,7 @@ def register(broker: Any, logger: Any) -> None:
             # editing identities: anyone with ``user.read`` may configure it.
             _gate(data, "read")
             user_id = c.require_id(data)
-            payload = admin_schemas.SocialVisibilityUpdate.model_validate(c.payload(data))
+            payload = schemas.SocialVisibilityUpdate.model_validate(c.payload(data))
             await admin_users.set_social_visibility(
                 session,
                 user_id=user_id,
@@ -342,7 +340,7 @@ def register(broker: Any, logger: Any) -> None:
             # tournament page is the bug this endpoint exists to fix.
             user = _account_gate(data)
             player_id = await admin_users.resolve_my_player_id(session, user.id)
-            payload = admin_schemas.StreamVisibilityUpdate.model_validate(c.payload(data))
+            payload = schemas.StreamVisibilityUpdate.model_validate(c.payload(data))
             await admin_users.set_stream_visible(session, player_id, visible=payload.visible)
             await user_cache.invalidate_user_caches(player_id)
             return await _refresh_user(session, player_id)

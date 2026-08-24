@@ -15,8 +15,7 @@ from sqlalchemy.orm import selectinload
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import TournamentPhaseScheduleRepository, TournamentRepository
-from src import models
-from src.schemas.admin import tournament as admin_schemas
+from src import models, schemas
 from src.services.tournament.events import enqueue_tournament_changed
 
 _TOURNAMENT_LOAD = (
@@ -38,7 +37,7 @@ class TournamentScheduleService:
         self,
         session: AsyncSession,
         tournament_id: int,
-        entries: list[admin_schemas.TournamentScheduleEntryInput],
+        entries: list[schemas.TournamentScheduleEntryInput],
     ) -> models.Tournament:
         """Replace the tournament's phase schedule with ``entries`` (full replace)."""
         tournament = await self.tournament_repo.get(session, tournament_id, options=_TOURNAMENT_LOAD)

@@ -36,9 +36,8 @@ from shared.services.bracket.swiss_settings import (
 )
 from shared.services.bracket.types import BracketSkeleton, Pairing
 from shared.services.encounter_naming import build_encounter_name_from_ids
-from src import models
-from src.schemas.admin import stage as admin_schemas
-from src.services.admin.best_of import parse_best_of_config, resolve_best_of
+from src import models, schemas
+from src.domain.admin.best_of import parse_best_of_config, resolve_best_of
 from src.services.standings import swiss_auto_round
 from src.services.tournament.events import (
     enqueue_tournament_changed,
@@ -416,7 +415,7 @@ class AdminStageService:
         return output
 
     async def create_stage(
-        self, session: AsyncSession, tournament_id: int, data: admin_schemas.StageCreate
+        self, session: AsyncSession, tournament_id: int, data: schemas.StageCreate
     ) -> models.Stage:
         tournament = await self.tournament_repo.get(session, tournament_id)
         if not tournament:
@@ -444,7 +443,7 @@ class AdminStageService:
         await session.commit()
         return await self.get_stage(session, stage.id)
 
-    async def update_stage(self, session: AsyncSession, stage_id: int, data: admin_schemas.StageUpdate) -> models.Stage:
+    async def update_stage(self, session: AsyncSession, stage_id: int, data: schemas.StageUpdate) -> models.Stage:
         stage = await self.get_stage(session, stage_id)
         tournament_id = stage.tournament_id
         update_data = data.model_dump(exclude_unset=True)
@@ -749,7 +748,7 @@ class AdminStageService:
         )
 
     async def create_stage_item(
-        self, session: AsyncSession, stage_id: int, data: admin_schemas.StageItemCreate
+        self, session: AsyncSession, stage_id: int, data: schemas.StageItemCreate
     ) -> models.StageItem:
         stage = await self.get_stage(session, stage_id)
         tournament_id = stage.tournament_id
@@ -766,7 +765,7 @@ class AdminStageService:
         self,
         session: AsyncSession,
         stage_item_id: int,
-        data: admin_schemas.StageItemUpdate,
+        data: schemas.StageItemUpdate,
     ) -> models.StageItem:
         item = await self.get_stage_item(session, stage_item_id)
         tournament_id = await self.stage_repo.get_tournament_id(session, item.stage_id)
@@ -781,7 +780,7 @@ class AdminStageService:
         self,
         session: AsyncSession,
         stage_item_id: int,
-        data: admin_schemas.StageItemInputCreate,
+        data: schemas.StageItemInputCreate,
     ) -> models.StageItemInput:
         stage_item = await self.stage_item_repo.get(
             session, stage_item_id, options=[selectinload(models.StageItem.stage)]
@@ -801,7 +800,7 @@ class AdminStageService:
         self,
         session: AsyncSession,
         input_id: int,
-        data: admin_schemas.StageItemInputUpdate,
+        data: schemas.StageItemInputUpdate,
     ) -> models.StageItemInput:
         inp = await self.stage_item_input_repo.get(
             session,

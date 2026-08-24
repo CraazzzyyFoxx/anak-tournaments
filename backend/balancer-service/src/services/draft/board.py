@@ -19,15 +19,8 @@ from shared.repository.draft import (
     DraftTeamRepository,
 )
 from shared.services import realtime_topics
+from src import schemas
 from src.domain.draft import ranks
-from src.schemas.draft import (
-    DraftBoardSnapshot,
-    DraftPickRead,
-    DraftPlayerCustomFieldRead,
-    DraftPlayerRead,
-    DraftSessionRead,
-    DraftTeamRead,
-)
 from src.services.draft import loaders
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 
@@ -70,7 +63,7 @@ class VisibleCustomField(NamedTuple):
 def player_custom_fields(
     additional_info: dict[str, Any] | None,
     fields: list[VisibleCustomField],
-) -> list[DraftPlayerCustomFieldRead]:
+) -> list[schemas.DraftPlayerCustomFieldRead]:
     """Answer + current label for each visible field this player actually filled.
 
     Unanswered fields are dropped rather than rendered empty: the inspector is a
@@ -80,7 +73,7 @@ def player_custom_fields(
     if not isinstance(answers, dict):
         return []
     return [
-        DraftPlayerCustomFieldRead(key=field.key, label=field.label, type=field.type, value=answers[field.key])
+        schemas.DraftPlayerCustomFieldRead(key=field.key, label=field.label, type=field.type, value=answers[field.key])
         for field in fields
         if answers.get(field.key) not in (None, "")
     ]
@@ -141,7 +134,7 @@ class DraftBoardService:
             )
         return fields
 
-    async def session_read(self, session: AsyncSession, draft_session: DraftSession) -> DraftSessionRead:
+    async def session_read(self, session: AsyncSession, draft_session: DraftSession) -> schemas.DraftSessionRead:
         """The only way a draft session leaves the service.
 
         The roster shape is no longer a column on the row, so every reader resolves
@@ -149,9 +142,9 @@ class DraftBoardService:
         levels are cached, so this is free on the hot board path.
         """
         shape = await self.feasibility.resolve_shape(session, draft_session)
-        return DraftSessionRead.from_session(draft_session, shape=shape)
+        return schemas.DraftSessionRead.from_session(draft_session, shape=shape)
 
-    async def build_board(self, session: AsyncSession, draft_session: DraftSession) -> DraftBoardSnapshot:
+    async def build_board(self, session: AsyncSession, draft_session: DraftSession) -> schemas.DraftBoardSnapshot:
         # The cheap max-event-id read runs on every request and doubles as the
         # cache key: every draft mutation persists a WorkspaceEvent in the same
         # transaction (services.draft.realtime), so new event -> new key -> fresh
@@ -198,12 +191,12 @@ class DraftBoardService:
         # too; both levels of the lookup are cached, so this costs nothing beyond the
         # resolve `session_read` already does.
         shape = await self.feasibility.resolve_shape(session, draft_session)
-        snapshot = DraftBoardSnapshot(
+        snapshot = schemas.DraftBoardSnapshot(
             session=await self.session_read(session, draft_session),
-            teams=[DraftTeamRead.model_validate(t) for t in teams],
-            picks=[DraftPickRead.model_validate(p) for p in picks],
+            teams=[schemas.DraftTeamRead.model_validate(t) for t in teams],
+            picks=[schemas.DraftPickRead.model_validate(p) for p in picks],
             players=[
-                DraftPlayerRead.model_validate(p).model_copy(
+                schemas.DraftPlayerRead.model_validate(p).model_copy(
                     update={
                         "additional_info": public_additional_info(p.additional_info),
                         "custom_fields": player_custom_fields(p.additional_info, custom_field_defs),
@@ -215,7 +208,7 @@ class DraftBoardService:
                 )
                 for p in players
             ],
-            current_pick=DraftPickRead.model_validate(current) if current else None,
+            current_pick=schemas.DraftPickRead.model_validate(current) if current else None,
             server_time=datetime.now(UTC),
             last_event_id=last_event_id,
         )

@@ -22,7 +22,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-best_of = importlib.import_module("src.services.admin.best_of")
+best_of = importlib.import_module("src.domain.admin.best_of")
 stage_service = importlib.import_module("src.services.admin.stage")
 enums = importlib.import_module("shared.core.enums")
 

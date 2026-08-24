@@ -9,7 +9,6 @@ is re-exported by the ``admin`` facade.
 
 from __future__ import annotations
 
-import re
 from typing import Any, Literal
 
 import sqlalchemy as sa
@@ -24,8 +23,8 @@ from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES, normalize_su
 from shared.hero_catalog import HeroCatalog
 from shared.repository import RegistrationFormRepository, TournamentRepository
 from src import models
+from src.domain.registration.utils import DEFAULT_SORT_PRIORITY_SENTINEL
 from src.schemas.registration import CustomFieldDefinition
-from src.services.registration.utils import DEFAULT_SORT_PRIORITY_SENTINEL
 from src.services.tournament.realtime_commit import register_tournament_realtime_update
 
 VALID_REGISTRATION_STATUSES = get_builtin_status_values("registration")
@@ -38,9 +37,6 @@ VALID_BALANCER_STATUSES = get_builtin_status_values("balancer")
 AUTO_MANAGED_BALANCER_STATUSES = frozenset({"incomplete", "ready"})
 NOT_ADDED_BALANCER_STATUS = "not_in_balancer"
 EXCLUDED_BALANCER_STATUS = "excluded"
-
-
-BATTLE_TAG_RE = re.compile(r"[\w][\w ]{0,30}#[0-9]{3,}", re.UNICODE)
 
 
 def get_tournament_grid_from_rows(

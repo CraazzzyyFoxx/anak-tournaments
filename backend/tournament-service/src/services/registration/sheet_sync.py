@@ -35,31 +35,21 @@ from shared.repository import (
     GoogleSheetFeedRepository,
 )
 from src import models
-from src.schemas.registration import CustomFieldDefinition
-from src.services.registration._common import (
-    FlexRoleMode,
-    RegistrationCommonService,
-    _common_service,
-    flex_role_mode,
-    replace_registration_roles,
-    sync_included_balancer_status,
-)
-from src.services.registration.mapping_catalog import (
+from src.domain.registration.mapping_catalog import (
     PARSER_CATALOG,
     build_target_specs,
     classify_row_disposition,
     target_spec_map,
     validate_mapping_config,
 )
-from src.services.registration.service import registration_service
-from src.services.registration.sheet_parsing import (
+from src.domain.registration.sheet_parsing import (
     build_default_value_mapping,
     build_registration_role_payloads,
     parse_sheet_row_detailed,
     serialize_parsed_fields,
     suggest_mapping_from_headers,
 )
-from src.services.registration.utils import (
+from src.domain.registration.utils import (
     DEFAULT_SYNC_INTERVAL_SECONDS,
     GOOGLE_SHEET_FETCH_TIMEOUT,
     MIN_SYNC_INTERVAL_SECONDS,
@@ -70,6 +60,16 @@ from src.services.registration.utils import (
     normalize_battle_tag_key,
     row_to_json,
 )
+from src.schemas.registration import CustomFieldDefinition
+from src.services.registration._common import (
+    FlexRoleMode,
+    RegistrationCommonService,
+    _common_service,
+    flex_role_mode,
+    replace_registration_roles,
+    sync_included_balancer_status,
+)
+from src.services.registration.service import registration_service
 from src.services.tournament.realtime_commit import register_tournament_realtime_update
 
 logger = logging.getLogger(__name__)

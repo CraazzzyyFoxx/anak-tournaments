@@ -16,8 +16,8 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.auth_user import AuthUser
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
+from src import schemas
 from src.core import db
-from src.schemas.admin import audit as audit_schemas
 from src.services.admin.audit import audit_log as audit_service
 
 from . import _common as c
@@ -53,8 +53,8 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
-            qp = build_query_model(audit_schemas.AuditLogListQueryParams, data.get("query"))
-            params = audit_schemas.AuditLogListParams.from_query_params(qp)
+            qp = build_query_model(schemas.AuditLogListQueryParams, data.get("query"))
+            params = schemas.AuditLogListParams.from_query_params(qp)
             return await audit_service.list_page(session, _scope(user, params.workspace_id), params)
 
         return await c.envelope(logger, "audit_list", op, session_factory=_SF)

@@ -27,17 +27,10 @@ from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE, PROCESS_TOURNAMENT_
 from shared.models.ingestion.log_processing import LogProcessingSource, LogProcessingStatus
 from shared.observability import publish_message
 from shared.schemas.events import ProcessMatchLogEvent, ProcessTournamentLogsEvent
-from src import models
+from src import models, schemas
 from src.core import auth, db
 from src.core import clients as _clients
 from src.core.config import settings
-from src.schemas.admin.logs import (
-    LogRecordRead,
-    LogStatsRead,
-    LogUploadError,
-    LogUploadItem,
-    LogUploadResponse,
-)
 from src.services.match_logs import uploads as upload_service
 from src.services.match_logs.admin_reads import (
     _fetch_queue_depths,
@@ -192,7 +185,7 @@ def register(broker: Any, logger: Any) -> None:
             ).one()
 
             total, pending, processing, done, failed, avg_duration, last_created_at = row
-            return LogStatsRead(
+            return schemas.LogStatsRead(
                 total=int(total or 0),
                 pending=int(pending or 0),
                 processing=int(processing or 0),
@@ -221,7 +214,7 @@ def register(broker: Any, logger: Any) -> None:
             event = ProcessMatchLogEvent(tournament_id=record.tournament_id, filename=record.filename)
             await publish_message(broker, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
 
-            return LogRecordRead.model_validate(_record_to_dict(record))
+            return schemas.LogRecordRead.model_validate(_record_to_dict(record))
 
         return await c.envelope(logger, "logs.retry", op, session_factory=_SF)
 
@@ -260,8 +253,8 @@ def register(broker: Any, logger: Any) -> None:
             )
             uploader_id = await upload_service.resolve_auth_uploader_id(session, user)
 
-            uploaded: list[LogUploadItem] = []
-            errors: list[LogUploadError] = []
+            uploaded: list[schemas.LogUploadItem] = []
+            errors: list[schemas.LogUploadError] = []
             attached_encounter_id = attached_encounter.id if attached_encounter else None
 
             max_log_bytes = settings.max_match_log_bytes
@@ -294,19 +287,19 @@ def register(broker: Any, logger: Any) -> None:
                     event = ProcessMatchLogEvent(tournament_id=tournament.id, filename=filename)
                     await publish_message(broker, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
                     uploaded.append(
-                        LogUploadItem(
+                        schemas.LogUploadItem(
                             record_id=record.id,
                             filename=record.filename,
                             attached_encounter_id=record.attached_encounter_id,
                         )
                     )
                 except HTTPException as exc:
-                    errors.append(LogUploadError(filename=filename, error=str(exc.detail)))
+                    errors.append(schemas.LogUploadError(filename=filename, error=str(exc.detail)))
                 except Exception as exc:  # noqa: BLE001 - collected per-file, mirrors the route
                     logger.exception("Failed to upload and queue admin log %s", filename)
-                    errors.append(LogUploadError(filename=filename, error=str(exc)))
+                    errors.append(schemas.LogUploadError(filename=filename, error=str(exc)))
 
-            return LogUploadResponse(uploaded=uploaded, errors=errors)
+            return schemas.LogUploadResponse(uploaded=uploaded, errors=errors)
 
         return await c.envelope(logger, "logs.upload", op, session_factory=_SF)
 

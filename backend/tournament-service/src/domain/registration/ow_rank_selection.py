@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from src.services.registration.utils import normalize_battle_tag_key
+from src.domain.registration.utils import normalize_battle_tag_key
 
 
 def select_main_account_ow_ranks(

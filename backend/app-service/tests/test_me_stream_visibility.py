@@ -27,7 +27,6 @@ from pydantic import ValidationError
 from shared.core.errors import BaseAPIException
 from src import models, schemas
 from src.rpc import users_admin
-from src.schemas.admin.user import StreamVisibilityUpdate
 from src.services.user.service import UserService
 
 SUBJECT = "rpc.app.users.me_set_stream_visibility"
@@ -162,7 +161,7 @@ def test_a_denied_account_capability_is_refused():
 
 def test_the_body_must_say_which_way():
     with pytest.raises(ValidationError):
-        StreamVisibilityUpdate.model_validate({})
+        schemas.StreamVisibilityUpdate.model_validate({})
 
 
 def test_user_read_reports_the_flag_for_a_vetoed_player():

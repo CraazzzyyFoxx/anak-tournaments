@@ -28,9 +28,9 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-catalog = importlib.import_module("src.services.registration.mapping_catalog")
+catalog = importlib.import_module("src.domain.registration.mapping_catalog")
 schemas = importlib.import_module("src.schemas.registration")
-sheet_parsing = importlib.import_module("src.services.registration.sheet_parsing")
+sheet_parsing = importlib.import_module("src.domain.registration.sheet_parsing")
 sheet_sync = importlib.import_module("src.services.registration.sheet_sync")
 
 CustomFieldDefinition = schemas.CustomFieldDefinition

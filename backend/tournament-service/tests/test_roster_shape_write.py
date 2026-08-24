@@ -46,7 +46,7 @@ os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.services.draft_guards import assert_no_active_draft_session  # noqa: E402
-from src.schemas.admin import tournament as admin_schemas  # noqa: E402
+from src import schemas  # noqa: E402
 from src.services.admin import tournament as admin_tournament  # noqa: E402
 
 # The exact detail the guard produced before it took a ``change`` argument. Its
@@ -70,33 +70,33 @@ _INVALID_SLOTS = [
 
 
 def test_update_accepts_a_flex_only_shape() -> None:
-    assert admin_schemas.TournamentUpdate(roster_slots_json={"flex": 6}).roster_slots_json == {"flex": 6}
+    assert schemas.TournamentUpdate(roster_slots_json={"flex": 6}).roster_slots_json == {"flex": 6}
 
 
 def test_update_normalizes_zero_counts_away() -> None:
     # A role-less roster arrives from the form as "every role zero, flex six".
     # Storing the zeros would make ``has_role_slots`` answer on key presence
     # instead of on real slots.
-    model = admin_schemas.TournamentUpdate(roster_slots_json={"tank": 0, "dps": 0, "support": 0, "flex": 6})
+    model = schemas.TournamentUpdate(roster_slots_json={"tank": 0, "dps": 0, "support": 0, "flex": 6})
     assert model.roster_slots_json == {"flex": 6}
 
 
 def test_update_normalizes_key_order() -> None:
-    model = admin_schemas.TournamentUpdate(roster_slots_json={"support": 2, "tank": 1, "dps": 2})
+    model = schemas.TournamentUpdate(roster_slots_json={"support": 2, "tank": 1, "dps": 2})
     assert list(model.roster_slots_json) == ["tank", "dps", "support"]
 
 
 @pytest.mark.parametrize(("raw", "code"), _INVALID_SLOTS)
 def test_update_rejects_invalid_slots_with_the_machine_readable_code(raw, code) -> None:
     with pytest.raises(ValidationError) as exc_info:
-        admin_schemas.TournamentUpdate(roster_slots_json=raw)
+        schemas.TournamentUpdate(roster_slots_json=raw)
     assert code in str(exc_info.value)
 
 
 @pytest.mark.parametrize(("raw", "code"), _INVALID_SLOTS)
 def test_create_rejects_invalid_slots_with_the_machine_readable_code(raw, code) -> None:
     with pytest.raises(ValidationError) as exc_info:
-        admin_schemas.TournamentCreate(
+        schemas.TournamentCreate(
             workspace_id=1,
             name="T",
             start_date="2026-01-01",
@@ -107,16 +107,16 @@ def test_create_rejects_invalid_slots_with_the_machine_readable_code(raw, code) 
 
 
 def test_create_defaults_to_inheriting() -> None:
-    created = admin_schemas.TournamentCreate(workspace_id=1, name="T", start_date="2026-01-01", end_date="2026-01-02")
+    created = schemas.TournamentCreate(workspace_id=1, name="T", start_date="2026-01-01", end_date="2026-01-02")
     assert created.roster_slots_json is None
 
 
 def test_explicit_none_clears_the_override_and_is_distinct_from_omission() -> None:
     # None means "drop the override, inherit the workspace default"; an absent
     # field means "don't touch it". ``exclude_unset`` is what keeps them apart.
-    cleared = admin_schemas.TournamentUpdate(roster_slots_json=None)
+    cleared = schemas.TournamentUpdate(roster_slots_json=None)
     assert cleared.model_dump(exclude_unset=True) == {"roster_slots_json": None}
-    assert "roster_slots_json" not in admin_schemas.TournamentUpdate(name="x").model_dump(exclude_unset=True)
+    assert "roster_slots_json" not in schemas.TournamentUpdate(name="x").model_dump(exclude_unset=True)
 
 
 # ─── Guard ───────────────────────────────────────────────────────────────────
@@ -215,7 +215,7 @@ def _run_update(
     monkeypatch,
     *,
     draft_status: str | None,
-    update: admin_schemas.TournamentUpdate,
+    update: schemas.TournamentUpdate,
     stored_slots: dict[str, int] | None = None,
 ):
     """Return (error, session, tournament, invalidation spy)."""
@@ -248,7 +248,7 @@ def test_roster_shape_change_blocked_by_unfinished_draft(monkeypatch) -> None:
     error, session, tournament, spy = _run_update(
         monkeypatch,
         draft_status="live",
-        update=admin_schemas.TournamentUpdate(roster_slots_json={"flex": 6}),
+        update=schemas.TournamentUpdate(roster_slots_json={"flex": 6}),
         stored_slots=dict(_STORED_ROLE_SHAPE),
     )
     assert error is not None and error.status_code == 400
@@ -263,7 +263,7 @@ def test_roster_shape_change_allowed_when_draft_is_terminal(monkeypatch, termina
     error, session, tournament, spy = _run_update(
         monkeypatch,
         draft_status=terminal,
-        update=admin_schemas.TournamentUpdate(roster_slots_json={"flex": 6}),
+        update=schemas.TournamentUpdate(roster_slots_json={"flex": 6}),
         stored_slots=dict(_STORED_ROLE_SHAPE),
     )
     assert error is None
@@ -277,7 +277,7 @@ def test_unchanged_roster_shape_does_not_trip_the_guard(monkeypatch) -> None:
     error, session, tournament, spy = _run_update(
         monkeypatch,
         draft_status="live",
-        update=admin_schemas.TournamentUpdate(roster_slots_json=dict(_STORED_ROLE_SHAPE), name="renamed"),
+        update=schemas.TournamentUpdate(roster_slots_json=dict(_STORED_ROLE_SHAPE), name="renamed"),
         stored_slots=dict(_STORED_ROLE_SHAPE),
     )
     assert error is None
@@ -293,7 +293,7 @@ def test_reordered_and_padded_resend_still_counts_as_unchanged(monkeypatch) -> N
     error, session, _, spy = _run_update(
         monkeypatch,
         draft_status="live",
-        update=admin_schemas.TournamentUpdate(roster_slots_json={"support": 2, "dps": 2, "tank": 1, "flex": 0}),
+        update=schemas.TournamentUpdate(roster_slots_json={"support": 2, "dps": 2, "tank": 1, "flex": 0}),
         stored_slots=dict(_STORED_ROLE_SHAPE),
     )
     assert error is None
@@ -306,7 +306,7 @@ def test_other_fields_are_editable_mid_draft(monkeypatch) -> None:
     error, session, _, spy = _run_update(
         monkeypatch,
         draft_status="live",
-        update=admin_schemas.TournamentUpdate(name="renamed"),
+        update=schemas.TournamentUpdate(name="renamed"),
         stored_slots=dict(_STORED_ROLE_SHAPE),
     )
     assert error is None
@@ -319,7 +319,7 @@ def test_successful_change_invalidates_the_cache_once_after_commit(monkeypatch) 
     _, session, _, spy = _run_update(
         monkeypatch,
         draft_status=None,
-        update=admin_schemas.TournamentUpdate(roster_slots_json={"flex": 6}),
+        update=schemas.TournamentUpdate(roster_slots_json={"flex": 6}),
         stored_slots=dict(_STORED_ROLE_SHAPE),
     )
     assert session.committed is True
@@ -330,7 +330,7 @@ def test_clearing_the_override_invalidates_the_cache(monkeypatch) -> None:
     _, _, tournament, spy = _run_update(
         monkeypatch,
         draft_status=None,
-        update=admin_schemas.TournamentUpdate(roster_slots_json=None),
+        update=schemas.TournamentUpdate(roster_slots_json=None),
         stored_slots=dict(_STORED_ROLE_SHAPE),
     )
     assert tournament.roster_slots_json is None
@@ -342,7 +342,7 @@ def test_resending_the_same_shape_does_not_invalidate_the_cache(monkeypatch) -> 
     _, session, _, spy = _run_update(
         monkeypatch,
         draft_status=None,
-        update=admin_schemas.TournamentUpdate(roster_slots_json=dict(_STORED_ROLE_SHAPE)),
+        update=schemas.TournamentUpdate(roster_slots_json=dict(_STORED_ROLE_SHAPE)),
         stored_slots=dict(_STORED_ROLE_SHAPE),
     )
     assert session.committed is True

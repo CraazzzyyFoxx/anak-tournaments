@@ -12,3 +12,9 @@ from .standing import *
 from .team import *
 from .tournament import *
 from .user import *
+from .admin.achievement_rule import *
+from .admin.discord_channel import *
+from .admin.logs import *
+from .admin.rank_collection import *
+from .admin.settings import *
+from .admin.subscription_collection import *

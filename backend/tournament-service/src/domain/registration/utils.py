@@ -38,6 +38,9 @@ MIN_SYNC_INTERVAL_SECONDS = 30
 DEFAULT_SYNC_INTERVAL_SECONDS = 300
 """Default interval (seconds) between automatic Google Sheet feed syncs."""
 
+BATTLE_TAG_RE = re.compile(r"[\w][\w ]{0,30}#[0-9]{3,}", re.UNICODE)
+"""Battle tag pattern shared by registration/audit and the sheet-mapping parser."""
+
 VALID_ROLES = set(REGISTRATION_ROLE_CODES)
 ROLE_ORDER = REGISTRATION_ROLE_CODES
 

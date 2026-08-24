@@ -49,8 +49,7 @@ from shared.services.bracket.usability import is_encounter_live
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.encounter.result_audit import record_result_transition
 from shared.services.scrim_scope import is_scrim_container
-from src import models
-from src.schemas.admin.encounter_reports import CaptainReportRead, EncounterMapCodeRead
+from src import models, schemas
 from src.services.challonge.sync import sync_service
 from src.services.encounter import report_form
 from src.services.encounter.finalize import FinalizeService, finalize_service
@@ -68,8 +67,8 @@ _ENCOUNTER_LOCK_OPTIONS = (
 )
 
 
-def serialize_map_code(code: models.EncounterMapCode) -> EncounterMapCodeRead:
-    return EncounterMapCodeRead(
+def serialize_map_code(code: models.EncounterMapCode) -> schemas.EncounterMapCodeRead:
+    return schemas.EncounterMapCodeRead(
         id=code.id,
         map_index=code.map_index,
         map_id=code.map_id,
@@ -82,14 +81,14 @@ def serialize_captain_report(
     encounter: models.Encounter,
     map_codes: Sequence[models.EncounterMapCode],
     reporter_name: str | None = None,
-) -> CaptainReportRead:
+) -> schemas.CaptainReportRead:
     """Build the report payload shared by the public read and the admin list."""
     side: str | None = None
     if report.team_id == encounter.home_team_id:
         side = "home"
     elif report.team_id == encounter.away_team_id:
         side = "away"
-    return CaptainReportRead(
+    return schemas.CaptainReportRead(
         id=report.id,
         encounter_id=report.encounter_id,
         team_id=report.team_id,

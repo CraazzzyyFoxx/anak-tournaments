@@ -22,7 +22,7 @@ from shared.repository import (
 from shared.services import division_grid_cache
 from shared.services.division_grid_access import get_workspace_source_version_ids
 from src import models, schemas
-from src.services.division_grid import automap
+from src.domain.division_grid import automap
 
 __all__ = (
     "DivisionGridService",

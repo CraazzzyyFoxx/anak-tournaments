@@ -16,11 +16,8 @@ from typing import Any
 from faststream.rabbit import RabbitMessage
 
 from shared.rpc.query import build_query_model
+from src import schemas
 from src.core import db
-from src.schemas import GamemodeRead, HeroRead, MapRead
-from src.schemas.admin import gamemode as gamemode_schemas
-from src.schemas.admin import hero as hero_schemas
-from src.schemas.admin import map as map_schemas
 from src.services.admin.gamemode import gamemodes as gamemode_service
 from src.services.admin.hero import heroes as hero_service
 from src.services.admin.map import maps as map_service
@@ -92,11 +89,11 @@ def register(broker: Any, logger: Any) -> None:
 
     _register_entity(
         prefix="heroes",
-        list_qp=hero_schemas.HeroListQueryParams,
-        list_params=hero_schemas.HeroListParams,
-        create_schema=hero_schemas.HeroCreate,
-        update_schema=hero_schemas.HeroUpdate,
-        read_schema=HeroRead,
+        list_qp=schemas.HeroListQueryParams,
+        list_params=schemas.HeroListParams,
+        create_schema=schemas.HeroCreate,
+        update_schema=schemas.HeroUpdate,
+        read_schema=schemas.HeroRead,
         list_fn=hero_service.get_heroes,
         create_fn=hero_service.create_hero,
         update_fn=hero_service.update_hero,
@@ -104,11 +101,11 @@ def register(broker: Any, logger: Any) -> None:
     )
     _register_entity(
         prefix="maps",
-        list_qp=map_schemas.MapListQueryParams,
-        list_params=map_schemas.MapListParams,
-        create_schema=map_schemas.MapCreate,
-        update_schema=map_schemas.MapUpdate,
-        read_schema=MapRead,
+        list_qp=schemas.MapListQueryParams,
+        list_params=schemas.MapListParams,
+        create_schema=schemas.MapCreate,
+        update_schema=schemas.MapUpdate,
+        read_schema=schemas.MapRead,
         list_fn=map_service.get_maps,
         create_fn=map_service.create_map,
         update_fn=map_service.update_map,
@@ -116,11 +113,11 @@ def register(broker: Any, logger: Any) -> None:
     )
     _register_entity(
         prefix="gamemodes",
-        list_qp=gamemode_schemas.GamemodeListQueryParams,
-        list_params=gamemode_schemas.GamemodeListParams,
-        create_schema=gamemode_schemas.GamemodeCreate,
-        update_schema=gamemode_schemas.GamemodeUpdate,
-        read_schema=GamemodeRead,
+        list_qp=schemas.GamemodeListQueryParams,
+        list_params=schemas.GamemodeListParams,
+        create_schema=schemas.GamemodeCreate,
+        update_schema=schemas.GamemodeUpdate,
+        read_schema=schemas.GamemodeRead,
         list_fn=gamemode_service.get_gamemodes,
         create_fn=gamemode_service.create_gamemode,
         update_fn=gamemode_service.update_gamemode,

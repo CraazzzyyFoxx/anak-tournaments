@@ -25,7 +25,7 @@ os.environ.setdefault("CHALLONGE_USERNAME", "test")
 os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 admin_encounter_service = importlib.import_module("src.services.admin.encounter")
-admin_encounter_schema = importlib.import_module("src.schemas.admin.encounter")
+schemas = importlib.import_module("src.schemas")
 
 
 def _result(value):
@@ -78,7 +78,7 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
             commit=AsyncMock(side_effect=fake_commit),
             refresh=AsyncMock(),
         )
-        payload = admin_encounter_schema.EncounterCreate(
+        payload = schemas.EncounterCreate(
             name="Round 1",
             tournament_id=1,
             stage_id=10,
@@ -138,7 +138,7 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
             commit=AsyncMock(side_effect=fake_commit),
             refresh=AsyncMock(),
         )
-        payload = admin_encounter_schema.EncounterUpdate(home_score=2, away_score=1)
+        payload = schemas.EncounterUpdate(home_score=2, away_score=1)
 
         with (
             patch.object(

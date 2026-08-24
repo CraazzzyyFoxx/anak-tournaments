@@ -34,7 +34,7 @@ os.environ.setdefault("CHALLONGE_USERNAME", "test")
 os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 svc = importlib.import_module("src.services.admin.encounter_reports")
-schemas = importlib.import_module("src.schemas.admin.encounter_reports")
+schemas = importlib.import_module("src.schemas")
 enums = importlib.import_module("shared.core.enums")
 
 

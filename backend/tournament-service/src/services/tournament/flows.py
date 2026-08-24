@@ -19,7 +19,6 @@ from shared.services.roster_shape_access import get_tournament_roster_slots, get
 from shared.services.tournament_visibility import visible_tournaments_predicate
 from src import models, schemas
 from src.core import config, enums, errors, pagination
-from src.schemas.admin import tournament_link as tournament_link_schemas
 from src.services.admin.tournament_link import tournament_link_service
 from src.services.registration.service import registration_service
 from src.services.team.service import team_service
@@ -144,7 +143,7 @@ class TournamentFlowsService:
             # The other half of the same lock: a registered team's members hold slots
             # assigned from the current shape, so changing it would invalidate them.
             roster_locked_by_teams = await has_registered_teams(session, tournament.id)
-        links: list[tournament_link_schemas.TournamentLinkRead] = []
+        links: list[schemas.TournamentLinkRead] = []
         if _entity_requested(entities, "links"):
             # Explicit query, not a relationship: `Tournament` deliberately declares no
             # `links` relationship, so there is nothing here that could lazy-load
@@ -152,7 +151,7 @@ class TournamentFlowsService:
             # TournamentRead is rebuilt. Same opt-in gate as `roster_shape` — this
             # costs a query, so the six schemas that nest TournamentRead don't pay it.
             links = [
-                tournament_link_schemas.TournamentLinkRead.model_validate(row, from_attributes=True)
+                schemas.TournamentLinkRead.model_validate(row, from_attributes=True)
                 for row in await tournament_link_service.list_links(session, tournament.id, active_only=True)
             ]
         tournament_challonge_id, tournament_challonge_slug = (

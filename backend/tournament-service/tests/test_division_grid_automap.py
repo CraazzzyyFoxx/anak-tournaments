@@ -18,7 +18,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-automap = importlib.import_module("src.services.division_grid.automap")
+automap = importlib.import_module("src.domain.division_grid.automap")
 division_service = importlib.import_module("src.services.division_grid.service")
 
 

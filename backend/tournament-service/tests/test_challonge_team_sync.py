@@ -34,7 +34,7 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 challonge_sync = importlib.import_module("src.services.challonge.sync")
-team_admin_schemas = importlib.import_module("src.schemas.admin.team")
+schemas = importlib.import_module("src.schemas")
 
 
 def _participant(id_: int, name: str, active: bool = True) -> SimpleNamespace:
@@ -152,7 +152,7 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
             ),
         ):
             result = await challonge_sync.sync_service.apply_team_mapping(
-                session, 1, [team_admin_schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)]
+                session, 1, [schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)]
             )
 
         self.assertTrue(result.success)
@@ -181,7 +181,7 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
             result = await challonge_sync.sync_service.apply_team_mapping(
                 _FakeSession(),
                 1,
-                [team_admin_schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)],
+                [schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)],
             )
 
         self.assertEqual(1, result.updated)
@@ -208,7 +208,7 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
             result = await challonge_sync.sync_service.apply_team_mapping(
                 _FakeSession(),
                 1,
-                [team_admin_schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)],
+                [schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)],
             )
 
         self.assertEqual(0, result.updated)
@@ -226,7 +226,7 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
                 await challonge_sync.sync_service.apply_team_mapping(
                     _FakeSession(),
                     1,
-                    [team_admin_schemas.ChallongeTeamMapping(participant_id=999, group_id=None, team_id=5)],
+                    [schemas.ChallongeTeamMapping(participant_id=999, group_id=None, team_id=5)],
                 )
         self.assertEqual(400, ctx.exception.status_code)
 
@@ -242,6 +242,6 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
                 await challonge_sync.sync_service.apply_team_mapping(
                     _FakeSession(),
                     1,
-                    [team_admin_schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=999)],
+                    [schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=999)],
                 )
         self.assertEqual(400, ctx.exception.status_code)

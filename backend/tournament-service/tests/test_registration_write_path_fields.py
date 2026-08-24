@@ -52,8 +52,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from src import models  # noqa: E402
-from src.schemas.admin import balancer as admin_schemas  # noqa: E402
+from src import (
+    models,  # noqa: E402
+    schemas,  # noqa: E402
+)
 from src.schemas.registration import RegistrationCreate, RegistrationUpdate  # noqa: E402
 from src.services.registration import lifecycle as reg_lifecycle  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
@@ -266,7 +268,7 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
         parameters = set(inspect.signature(reg_lifecycle.lifecycle_service.create_manual_registration).parameters)
 
         missing = {
-            renamed.get(name, name) for name in admin_schemas.BalancerRegistrationCreateRequest.model_fields
+            renamed.get(name, name) for name in schemas.BalancerRegistrationCreateRequest.model_fields
         } - parameters
 
         assert missing == set(), f"create request fields no writer accepts: {sorted(missing)}"
@@ -318,7 +320,7 @@ class TestAdminProfileUpdateCustomFields(IsolatedAsyncioTestCase):
         parameters = set(inspect.signature(reg_lifecycle.lifecycle_service.update_registration_profile).parameters)
 
         missing = {
-            renamed.get(name, name) for name in admin_schemas.BalancerRegistrationUpdateRequest.model_fields
+            renamed.get(name, name) for name in schemas.BalancerRegistrationUpdateRequest.model_fields
         } - parameters
 
         assert missing == set(), f"update request fields no writer accepts: {sorted(missing)}"

@@ -37,7 +37,7 @@ os.environ.setdefault("CHALLONGE_USERNAME", "test")
 os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 svc = importlib.import_module("src.services.admin.matches")
-schemas = importlib.import_module("src.schemas.admin.matches")
+schemas = importlib.import_module("src.schemas")
 log_processing = importlib.import_module("shared.models.ingestion.log_processing")
 errors = importlib.import_module("shared.core.errors")
 

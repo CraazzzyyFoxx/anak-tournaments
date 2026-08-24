@@ -25,13 +25,6 @@ from shared.rpc.crud import CrudDispatcher, EntityConfig
 from src import schemas
 from src.core import auth, db
 from src.core.workspace import get_division_grid
-from src.schemas.admin import encounter as enc_schemas
-from src.schemas.admin import player_sub_role as psr_schemas
-from src.schemas.admin import stage as stage_schemas
-from src.schemas.admin import standing as standing_schemas
-from src.schemas.admin import team as team_schemas
-from src.schemas.admin import tournament as tournament_schemas
-from src.schemas.admin import tournament_link as tlink_schemas
 from src.services.admin.encounter import encounter_service as enc_service
 from src.services.admin.player_sub_role import PlayerSubRoleService
 from src.services.admin.player_sub_role import player_sub_role_service as psr_service
@@ -179,10 +172,10 @@ class AdminRegistryService:
         return _dump(await self.standings_flows.to_pydantic(session, m, ["team", "stage", "stage_item", "tournament"]))
 
     async def _ser_player_sub_role(self, session: AsyncSession, m: Any) -> Any:
-        return _dump(psr_schemas.PlayerSubRoleRead.model_validate(m, from_attributes=True))
+        return _dump(schemas.PlayerSubRoleRead.model_validate(m, from_attributes=True))
 
     async def _ser_tournament_link(self, session: AsyncSession, m: Any) -> Any:
-        return _dump(tlink_schemas.TournamentLinkRead.model_validate(m, from_attributes=True))
+        return _dump(schemas.TournamentLinkRead.model_validate(m, from_attributes=True))
 
     # --- list functions ---
 
@@ -202,7 +195,7 @@ class AdminRegistryService:
         rows = await self.player_sub_roles.list_sub_roles(
             session, workspace_id=workspace_id, role=role, include_inactive=include_inactive
         )
-        return [_dump(psr_schemas.PlayerSubRoleRead.model_validate(r, from_attributes=True)) for r in rows]
+        return [_dump(schemas.PlayerSubRoleRead.model_validate(r, from_attributes=True)) for r in rows]
 
     async def _list_tournament_links(self, session: AsyncSession, data: dict[str, Any]) -> Any:
         q = _query(data)
@@ -211,7 +204,7 @@ class AdminRegistryService:
         act = act_raw[0] if isinstance(act_raw, list) else act_raw
         active_only = str(act).lower() in ("1", "true", "yes", "on") if act is not None else False
         rows = await self.tournament_links.list_links(session, tournament_id, active_only=active_only)
-        return [_dump(tlink_schemas.TournamentLinkRead.model_validate(r, from_attributes=True)) for r in rows]
+        return [_dump(schemas.TournamentLinkRead.model_validate(r, from_attributes=True)) for r in rows]
 
 
 registry_service = AdminRegistryService()
@@ -225,8 +218,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,  # service hooks own all DB access; model unused
         permission_resource="tournament",
         serializer=registry_service._ser_tournament,
-        create_schema=tournament_schemas.TournamentCreate,
-        update_schema=tournament_schemas.TournamentUpdate,
+        create_schema=schemas.TournamentCreate,
+        update_schema=schemas.TournamentUpdate,
         resolve_ws_from_id=auth.get_tournament_workspace_id,
         resolve_ws_for_create=lambda s, d: _ws_body(d),
         service_create=lambda s, p, d: tournament_service.create_tournament(s, p),
@@ -241,8 +234,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="team",
         serializer=registry_service._ser_team,
-        create_schema=team_schemas.TeamCreate,
-        update_schema=team_schemas.TeamUpdate,
+        create_schema=schemas.TeamCreate,
+        update_schema=schemas.TeamUpdate,
         resolve_ws_from_id=auth.get_team_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_tournament_body,
         service_create=lambda s, p, d: team_service.create_team(s, p),
@@ -257,8 +250,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="player",
         serializer=registry_service._ser_player,
-        create_schema=team_schemas.PlayerCreate,
-        update_schema=team_schemas.PlayerUpdate,
+        create_schema=schemas.PlayerCreate,
+        update_schema=schemas.PlayerUpdate,
         resolve_ws_from_id=auth.get_player_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_team_body,
         service_create=lambda s, p, d: team_service.create_player(s, p),
@@ -272,8 +265,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="stage",
         serializer=registry_service._ser_stage,
-        create_schema=stage_schemas.StageCreate,
-        update_schema=stage_schemas.StageUpdate,
+        create_schema=schemas.StageCreate,
+        update_schema=schemas.StageUpdate,
         resolve_ws_from_id=auth.get_stage_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_tournament_path,
         resolve_ws_for_list=registry_service._ws_via_tournament_path,
@@ -292,8 +285,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="stage",
         serializer=registry_service._ser_stage_item,
-        create_schema=stage_schemas.StageItemCreate,
-        update_schema=stage_schemas.StageItemUpdate,
+        create_schema=schemas.StageItemCreate,
+        update_schema=schemas.StageItemUpdate,
         resolve_ws_from_id=auth.get_stage_item_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_stage_path,
         service_create=lambda s, p, d: stage_service.create_stage_item(
@@ -308,8 +301,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="stage",
         serializer=registry_service._ser_stage_item_input,
-        create_schema=stage_schemas.StageItemInputCreate,
-        update_schema=stage_schemas.StageItemInputUpdate,
+        create_schema=schemas.StageItemInputCreate,
+        update_schema=schemas.StageItemInputUpdate,
         resolve_ws_from_id=auth.get_stage_item_input_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_stage_item_path,
         service_create=lambda s, p, d: stage_service.create_stage_item_input(
@@ -324,8 +317,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="match",
         serializer=registry_service._ser_encounter,
-        create_schema=enc_schemas.EncounterCreate,
-        update_schema=enc_schemas.EncounterUpdate,
+        create_schema=schemas.EncounterCreate,
+        update_schema=schemas.EncounterUpdate,
         resolve_ws_from_id=auth.get_encounter_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_tournament_body,
         service_create=lambda s, p, d: enc_service.create_encounter(s, p),
@@ -339,7 +332,7 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="standing",
         serializer=registry_service._ser_standing,
-        update_schema=standing_schemas.StandingUpdate,
+        update_schema=schemas.StandingUpdate,
         resolve_ws_from_id=auth.get_standing_workspace_id,
         service_update=lambda s, i, p, d: standing_service.update_standing(s, i, p),
         service_delete=lambda s, i, d: standing_service.delete_standing(s, i),
@@ -351,8 +344,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="player",
         serializer=registry_service._ser_player_sub_role,
-        create_schema=psr_schemas.PlayerSubRoleCreate,
-        update_schema=psr_schemas.PlayerSubRoleUpdate,
+        create_schema=schemas.PlayerSubRoleCreate,
+        update_schema=schemas.PlayerSubRoleUpdate,
         resolve_ws_from_id=auth.get_player_sub_role_workspace_id,
         resolve_ws_for_create=lambda s, d: _ws_body(d),
         resolve_ws_for_list=registry_service._ws_query,
@@ -368,8 +361,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="tournament_link",
         serializer=registry_service._ser_tournament_link,
-        create_schema=tlink_schemas.TournamentLinkCreate,
-        update_schema=tlink_schemas.TournamentLinkUpdate,
+        create_schema=schemas.TournamentLinkCreate,
+        update_schema=schemas.TournamentLinkUpdate,
         resolve_ws_from_id=auth.get_tournament_link_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_tournament_body,
         resolve_ws_for_list=registry_service._ws_via_tournament_query,

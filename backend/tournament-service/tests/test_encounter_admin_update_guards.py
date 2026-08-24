@@ -36,7 +36,7 @@ os.environ.setdefault("CHALLONGE_USERNAME", "test")
 os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 enc_service = importlib.import_module("src.services.admin.encounter")
-admin_schemas = importlib.import_module("src.schemas.admin.encounter")
+schemas = importlib.import_module("src.schemas")
 enums = importlib.import_module("shared.core.enums")
 
 
@@ -97,7 +97,7 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
             await enc_service.encounter_service.update_encounter(
                 _session(encounter),
                 10,
-                admin_schemas.EncounterUpdate(status="completed"),
+                schemas.EncounterUpdate(status="completed"),
             )
 
     async def test_rejects_creating_an_already_completed_encounter(self) -> None:
@@ -106,7 +106,7 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
         with assert_http_status(self, 409):
             await enc_service.encounter_service.create_encounter(
                 _session(_encounter()),
-                admin_schemas.EncounterCreate(
+                schemas.EncounterCreate(
                     name="a vs b",
                     tournament_id=1,
                     home_team_id=1,
@@ -135,7 +135,7 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
             patch.object(enc_service.encounter_service, "_resolve_stage_refs", AsyncMock(return_value=(5, 6, None))),
         ):
             await enc_service.encounter_service.update_encounter(
-                session, 10, admin_schemas.EncounterUpdate(name="renamed")
+                session, 10, schemas.EncounterUpdate(name="renamed")
             )
 
         self.assertEqual("renamed", encounter.name)
@@ -147,7 +147,7 @@ class BulkEndpointIsGone(IsolatedAsyncioTestCase):
         """Zero frontend callers, and a second unguarded status writer is exactly
         what the single-mechanism rule forbids."""
         self.assertFalse(hasattr(enc_service, "bulk_update_encounters"))
-        self.assertFalse(hasattr(admin_schemas, "BulkEncounterUpdate"))
+        self.assertFalse(hasattr(schemas, "BulkEncounterUpdate"))
 
 
 class MatchLogNameIsNotEditable(IsolatedAsyncioTestCase):
@@ -155,8 +155,8 @@ class MatchLogNameIsNotEditable(IsolatedAsyncioTestCase):
         """An unvalidated log_name edit detached a match from every log record.
         Since mtchlog001 provenance is a foreign key, so there is nothing left to
         gain by allowing the string to be rewritten."""
-        self.assertNotIn("log_name", admin_schemas.MatchUpdate.model_fields)
+        self.assertNotIn("log_name", schemas.MatchUpdate.model_fields)
 
     def test_the_other_match_fields_are_still_editable(self) -> None:
-        fields = set(admin_schemas.MatchUpdate.model_fields)
+        fields = set(schemas.MatchUpdate.model_fields)
         assert {"home_score", "away_score", "map_id", "code", "time"} <= fields

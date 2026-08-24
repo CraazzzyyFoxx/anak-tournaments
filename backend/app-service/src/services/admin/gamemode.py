@@ -10,9 +10,8 @@ from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
 from shared.repository import GamemodeRepository
-from src import models
+from src import models, schemas
 from src.schemas import GamemodeRead
-from src.schemas.admin import gamemode as admin_schemas
 
 __all__ = ("GamemodeAdminService", "gamemodes", "normalize_aliases")
 
@@ -21,7 +20,7 @@ class GamemodeAdminService:
     def __init__(self, *, repo: GamemodeRepository = GamemodeRepository()) -> None:
         self.repo = repo
 
-    async def get_gamemodes(self, session: AsyncSession, params: admin_schemas.GamemodeListParams) -> dict:
+    async def get_gamemodes(self, session: AsyncSession, params: schemas.GamemodeListParams) -> dict:
         """Get paginated list of gamemodes"""
         filters: list[sa.ColumnElement[bool]] = []
         if params.search:
@@ -36,7 +35,7 @@ class GamemodeAdminService:
         )
 
     async def create_gamemode(
-        self, session: AsyncSession, data: admin_schemas.GamemodeCreate
+        self, session: AsyncSession, data: schemas.GamemodeCreate
     ) -> models.Gamemode:
         """Create a new gamemode"""
         existing = await self.repo.get_by(session, name=data.name)
@@ -53,7 +52,7 @@ class GamemodeAdminService:
         return gamemode
 
     async def update_gamemode(
-        self, session: AsyncSession, gamemode_id: int, data: admin_schemas.GamemodeUpdate
+        self, session: AsyncSession, gamemode_id: int, data: schemas.GamemodeUpdate
     ) -> models.Gamemode:
         """Update gamemode fields"""
         gamemode = await self.repo.get(session, gamemode_id)

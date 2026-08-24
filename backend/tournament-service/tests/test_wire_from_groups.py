@@ -26,7 +26,7 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 stage_service = importlib.import_module("src.services.admin.stage")
-admin_schemas_module = importlib.import_module("src.schemas.admin.stage")
+schemas = importlib.import_module("src.schemas")
 enums = importlib.import_module("shared.core.enums")
 
 stage_service.stage_service._publish_tournament_changed = AsyncMock()
@@ -275,7 +275,7 @@ class WireFromGroupsTests(IsolatedAsyncioTestCase):
 class StageItemInputSchemaValidationTests(IsolatedAsyncioTestCase):
     async def test_tentative_requires_source(self) -> None:
         with self.assertRaises(Exception) as ctx:
-            admin_schemas_module.StageItemInputCreate(
+            schemas.StageItemInputCreate(
                 slot=1,
                 input_type=enums.StageItemInputType.TENTATIVE,
             )
@@ -283,7 +283,7 @@ class StageItemInputSchemaValidationTests(IsolatedAsyncioTestCase):
 
     async def test_tentative_rejects_team_id(self) -> None:
         with self.assertRaises(Exception) as ctx:
-            admin_schemas_module.StageItemInputCreate(
+            schemas.StageItemInputCreate(
                 slot=1,
                 input_type=enums.StageItemInputType.TENTATIVE,
                 team_id=555,
@@ -294,14 +294,14 @@ class StageItemInputSchemaValidationTests(IsolatedAsyncioTestCase):
 
     async def test_final_requires_team_id(self) -> None:
         with self.assertRaises(Exception) as ctx:
-            admin_schemas_module.StageItemInputCreate(
+            schemas.StageItemInputCreate(
                 slot=1,
                 input_type=enums.StageItemInputType.FINAL,
             )
         self.assertIn("team_id", str(ctx.exception))
 
     async def test_final_with_team_id_ok(self) -> None:
-        created = admin_schemas_module.StageItemInputCreate(
+        created = schemas.StageItemInputCreate(
             slot=1,
             input_type=enums.StageItemInputType.FINAL,
             team_id=42,
@@ -309,7 +309,7 @@ class StageItemInputSchemaValidationTests(IsolatedAsyncioTestCase):
         self.assertEqual(42, created.team_id)
 
     async def test_tentative_with_source_ok(self) -> None:
-        created = admin_schemas_module.StageItemInputCreate(
+        created = schemas.StageItemInputCreate(
             slot=3,
             input_type=enums.StageItemInputType.TENTATIVE,
             source_stage_item_id=10,

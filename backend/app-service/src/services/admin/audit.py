@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core.pagination import Paginated
 from shared.models.identity.auth_user import AuthUser
 from shared.models.platform.audit import AuditLog
-from src.schemas.admin import audit as audit_schemas
+from src import schemas
 
 __all__ = ("AuditLogService", "audit_log")
 
@@ -31,7 +31,7 @@ class AuditLogService:
     per-entity trail, plus the page assembly over it."""
 
     def _filters(
-        self, workspace_id: int | None, params: audit_schemas.AuditLogListParams
+        self, workspace_id: int | None, params: schemas.AuditLogListParams
     ) -> list[sa.ColumnElement[bool]]:
         """Build the WHERE clauses with the tenant scope first and unconditionally.
 
@@ -57,11 +57,11 @@ class AuditLogService:
         if params.search:
             pattern = f"%{params.search}%"
             filters.append(
-                sa.or_(*[getattr(AuditLog, field).ilike(pattern) for field in audit_schemas.AUDIT_SEARCH_FIELDS])
+                sa.or_(*[getattr(AuditLog, field).ilike(pattern) for field in schemas.AUDIT_SEARCH_FIELDS])
             )
         return filters
 
-    def _order_by(self, params: audit_schemas.AuditLogListParams) -> list[sa.UnaryExpression[Any]]:
+    def _order_by(self, params: schemas.AuditLogListParams) -> list[sa.UnaryExpression[Any]]:
         """Primary sort key, then ``id`` in the same direction, always.
 
         ``created_at`` is ``func.now()`` — the transaction's *start* time — so every
@@ -78,7 +78,7 @@ class AuditLogService:
             return [tiebreak]
         return [column.desc() if descending else column.asc(), tiebreak]
 
-    def rows_query(self, workspace_id: int | None, params: audit_schemas.AuditLogListParams) -> sa.Select:
+    def rows_query(self, workspace_id: int | None, params: schemas.AuditLogListParams) -> sa.Select:
         """The page query: scoped rows plus the actor's current name.
 
         The join is a strict LEFT OUTER: ``actor_auth_user_id`` carries no foreign
@@ -94,7 +94,7 @@ class AuditLogService:
             .order_by(*self._order_by(params))
         )
 
-    def count_query(self, workspace_id: int | None, params: audit_schemas.AuditLogListParams) -> sa.Select:
+    def count_query(self, workspace_id: int | None, params: schemas.AuditLogListParams) -> sa.Select:
         """``total`` for the pager. No join: the actor name is not a filter input."""
         return sa.select(sa.func.count()).select_from(AuditLog).where(*self._filters(workspace_id, params))
 
@@ -102,17 +102,17 @@ class AuditLogService:
         self,
         session: AsyncSession,
         workspace_id: int | None,
-        params: audit_schemas.AuditLogListParams,
-    ) -> Paginated[audit_schemas.AuditLogRead]:
+        params: schemas.AuditLogListParams,
+    ) -> Paginated[schemas.AuditLogRead]:
         total = await session.scalar(self.count_query(workspace_id, params)) or 0
         rows = (await session.execute(params.apply_pagination(self.rows_query(workspace_id, params)))).all()
         results = [
-            audit_schemas.AuditLogRead.model_validate(row, from_attributes=True).model_copy(
+            schemas.AuditLogRead.model_validate(row, from_attributes=True).model_copy(
                 update={"actor_label": row.actor_label or username}
             )
             for row, username in rows
         ]
-        return Paginated[audit_schemas.AuditLogRead](
+        return Paginated[schemas.AuditLogRead](
             page=params.page, per_page=params.per_page, total=total, results=results
         )
 

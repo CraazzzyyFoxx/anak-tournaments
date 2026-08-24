@@ -20,9 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from src import models
+from src import models, schemas
 from src.core import config
-from src.schemas.admin.logs import QueueDepth
 
 MONITORED_QUEUES = [
     "process_match_log",
@@ -32,12 +31,12 @@ MONITORED_QUEUES = [
 ]
 
 
-async def _fetch_queue_depths() -> list[QueueDepth]:
+async def _fetch_queue_depths() -> list[schemas.QueueDepth]:
     """Query RabbitMQ Management API for queue depths."""
     cfg = config.settings
     base = cfg.rabbitmq_management_url.rstrip("/")
     auth_tuple = (cfg.rabbitmq_management_user, cfg.rabbitmq_management_password)
-    depths: list[QueueDepth] = []
+    depths: list[schemas.QueueDepth] = []
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             for queue_name in MONITORED_QUEUES:
@@ -46,7 +45,7 @@ async def _fetch_queue_depths() -> list[QueueDepth]:
                 if resp.status_code == 200:
                     data = resp.json()
                     depths.append(
-                        QueueDepth(
+                        schemas.QueueDepth(
                             name=queue_name,
                             messages_ready=data.get("messages_ready", 0),
                             messages_unacknowledged=data.get("messages_unacknowledged", 0),
@@ -55,7 +54,7 @@ async def _fetch_queue_depths() -> list[QueueDepth]:
                     )
                 elif resp.status_code == 404:
                     depths.append(
-                        QueueDepth(
+                        schemas.QueueDepth(
                             name=queue_name,
                             messages_ready=-1,
                             messages_unacknowledged=-1,
@@ -65,7 +64,7 @@ async def _fetch_queue_depths() -> list[QueueDepth]:
                     )
                 else:
                     depths.append(
-                        QueueDepth(
+                        schemas.QueueDepth(
                             name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0, status="error"
                         )
                     )
@@ -73,7 +72,7 @@ async def _fetch_queue_depths() -> list[QueueDepth]:
         logger.warning(f"Failed to fetch queue depths from RabbitMQ management API: {exc}")
         for queue_name in MONITORED_QUEUES:
             depths.append(
-                QueueDepth(name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0, status="error")
+                schemas.QueueDepth(name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0, status="error")
             )
     return depths
 

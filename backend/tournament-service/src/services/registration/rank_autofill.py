@@ -20,6 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.balancer_registration_statuses import is_balancer_status_excluded
 from shared.division_grid import DivisionGrid
 from src import models
+from src.domain.registration.utils import (
+    DEFAULT_SORT_PRIORITY_SENTINEL,
+    normalize_battle_tag_key,
+)
 from src.services.registration._common import (
     RegistrationCommonService,
     _active_roles,
@@ -36,10 +40,6 @@ from src.services.registration.rank_sources import (
     _OwRankSignals,
     _RankData,
     rank_sources_service,
-)
-from src.services.registration.utils import (
-    DEFAULT_SORT_PRIORITY_SENTINEL,
-    normalize_battle_tag_key,
 )
 
 

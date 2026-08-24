@@ -9,18 +9,12 @@ from __future__ import annotations
 
 from shared.rpc.openapi import Op, QueryParam
 from src import schemas
-from src.schemas.admin import achievement_rule as ach_schemas
-from src.schemas.admin import discord_channel as discord_schemas
-from src.schemas.admin import logs as admin_logs_schemas
-from src.schemas.admin import rank_collection as rc_schemas
-from src.schemas.admin import settings as settings_schemas
-from src.schemas.admin import subscription_collection as sc_schemas
 
 OPERATIONS: dict[str, Op] = {
     # ── match-log admin ────────────────────────────────────────────────────
-    "rpc.parser.logs.queue_status": Op(response=admin_logs_schemas.QueueDepth, response_array=True),
+    "rpc.parser.logs.queue_status": Op(response=schemas.QueueDepth, response_array=True),
     "rpc.parser.logs.history": Op(
-        response=admin_logs_schemas.LogHistoryResponse,
+        response=schemas.LogHistoryResponse,
         query_params=(
             QueryParam("tournament_id", "integer"),
             QueryParam("encounter_id", "integer"),
@@ -32,15 +26,15 @@ OPERATIONS: dict[str, Op] = {
         ),
     ),
     "rpc.parser.logs.stats": Op(
-        response=admin_logs_schemas.LogStatsRead,
+        response=schemas.LogStatsRead,
         query_params=(
             QueryParam("tournament_id", "integer"),
             QueryParam("encounter_id", "integer"),
             QueryParam("workspace_id", "integer"),
         ),
     ),
-    "rpc.parser.logs.retry": Op(response=admin_logs_schemas.LogRecordRead),
-    "rpc.parser.logs.upload": Op(response=admin_logs_schemas.LogUploadResponse),
+    "rpc.parser.logs.retry": Op(response=schemas.LogRecordRead),
+    "rpc.parser.logs.upload": Op(response=schemas.LogUploadResponse),
     # ── OverFast rank (public reads) ───────────────────────────────────────
     "rpc.parser.rank.user_history": Op(
         response=schemas.RankHistoryResponse,
@@ -66,22 +60,22 @@ OPERATIONS: dict[str, Op] = {
     "rpc.parser.rank.user_current": Op(
         response=schemas.CurrentRanksResponse, query_params=(QueryParam("platform", required=True),)
     ),
-    "rpc.parser.rank.stats": Op(response=rc_schemas.RankCollectionStats),
-    "rpc.parser.rank.fetch_log": Op(response=rc_schemas.FetchLogRead, response_array=True),
-    "rpc.parser.rank.user_collection": Op(response=rc_schemas.CollectionStatusRead, response_array=True),
-    "rpc.parser.rank.collect": Op(request=rc_schemas.CollectTriggerRequest, response=rc_schemas.CollectTriggerResponse),
+    "rpc.parser.rank.stats": Op(response=schemas.RankCollectionStats),
+    "rpc.parser.rank.fetch_log": Op(response=schemas.FetchLogRead, response_array=True),
+    "rpc.parser.rank.user_collection": Op(response=schemas.CollectionStatusRead, response_array=True),
+    "rpc.parser.rank.collect": Op(request=schemas.CollectTriggerRequest, response=schemas.CollectTriggerResponse),
     "rpc.parser.rank.reenable_disabled": Op(
-        request=rc_schemas.ReenableDisabledRequest, response=rc_schemas.ReenableDisabledResponse
+        request=schemas.ReenableDisabledRequest, response=schemas.ReenableDisabledResponse
     ),
     # ── subscription collection admin ──────────────────────────────────────
-    "rpc.parser.subscription.stats": Op(response=sc_schemas.SubscriptionCollectionStats),
-    "rpc.parser.subscription.check_log": Op(response=sc_schemas.SubscriptionCheckLogRead, response_array=True),
+    "rpc.parser.subscription.stats": Op(response=schemas.SubscriptionCollectionStats),
+    "rpc.parser.subscription.check_log": Op(response=schemas.SubscriptionCheckLogRead, response_array=True),
     "rpc.parser.subscription.user_collection": Op(
-        response=sc_schemas.SubscriptionUserCollectionRead, response_array=True
+        response=schemas.SubscriptionUserCollectionRead, response_array=True
     ),
     "rpc.parser.subscription.collect": Op(
-        request=sc_schemas.SubscriptionCollectTriggerRequest,
-        response=sc_schemas.SubscriptionCollectTriggerResponse,
+        request=schemas.SubscriptionCollectTriggerRequest,
+        response=schemas.SubscriptionCollectTriggerResponse,
     ),
     # ── achievement calculate ──────────────────────────────────────────────
     "rpc.parser.ach.calculate": Op(
@@ -91,31 +85,31 @@ OPERATIONS: dict[str, Op] = {
         request=schemas.AchievementCalculateRequest, response=schemas.AchievementCalculateResponse
     ),
     # ── settings ───────────────────────────────────────────────────────────
-    "rpc.parser.settings.list": Op(response=settings_schemas.SettingRead, response_array=True),
-    "rpc.parser.settings.get": Op(response=settings_schemas.SettingRead),
-    "rpc.parser.settings.upsert": Op(request=settings_schemas.SettingUpsert, response=settings_schemas.SettingRead),
+    "rpc.parser.settings.list": Op(response=schemas.SettingRead, response_array=True),
+    "rpc.parser.settings.get": Op(response=schemas.SettingRead),
+    "rpc.parser.settings.upsert": Op(request=schemas.SettingUpsert, response=schemas.SettingRead),
     # ── discord channel ────────────────────────────────────────────────────
-    "rpc.parser.discord_channel.get": Op(response=discord_schemas.DiscordChannelRead),
+    "rpc.parser.discord_channel.get": Op(response=schemas.DiscordChannelRead),
     "rpc.parser.discord_channel.upsert": Op(
-        request=discord_schemas.DiscordChannelUpsert, response=discord_schemas.DiscordChannelRead
+        request=schemas.DiscordChannelUpsert, response=schemas.DiscordChannelRead
     ),
     # ── achievement rules admin ────────────────────────────────────────────
-    "rpc.parser.ach.condition_types": Op(response=ach_schemas.ConditionTypeInfo, response_array=True),
+    "rpc.parser.ach.condition_types": Op(response=schemas.ConditionTypeInfo, response_array=True),
     "rpc.parser.ach.validate": Op(
-        request=ach_schemas.ConditionTreeValidateRequest, response=ach_schemas.ConditionTreeValidateResponse
+        request=schemas.ConditionTreeValidateRequest, response=schemas.ConditionTreeValidateResponse
     ),
     "rpc.parser.ach.list": Op(
-        response=ach_schemas.AchievementRuleRead,
+        response=schemas.AchievementRuleRead,
         response_array=True,
         query_params=(QueryParam("category"), QueryParam("enabled", "boolean")),
     ),
-    "rpc.parser.ach.get": Op(response=ach_schemas.AchievementRuleRead),
-    "rpc.parser.ach.create": Op(request=ach_schemas.AchievementRuleCreate, response=ach_schemas.AchievementRuleRead),
-    "rpc.parser.ach.update": Op(request=ach_schemas.AchievementRuleUpdate, response=ach_schemas.AchievementRuleRead),
-    "rpc.parser.ach.evaluate": Op(request=ach_schemas.EvaluateRequest, response=ach_schemas.EvaluationRunRead),
-    "rpc.parser.ach.runs": Op(response=ach_schemas.EvaluationRunRead, response_array=True),
-    "rpc.parser.ach.lib_workspaces": Op(response=ach_schemas.AchievementLibraryWorkspaceRead, response_array=True),
-    "rpc.parser.ach.lib_list": Op(response=ach_schemas.AchievementLibraryRuleRead, response_array=True),
-    "rpc.parser.ach.overrides_list": Op(response=ach_schemas.OverrideRead, response_array=True),
-    "rpc.parser.ach.override_create": Op(request=ach_schemas.OverrideCreate, response=ach_schemas.OverrideRead),
+    "rpc.parser.ach.get": Op(response=schemas.AchievementRuleRead),
+    "rpc.parser.ach.create": Op(request=schemas.AchievementRuleCreate, response=schemas.AchievementRuleRead),
+    "rpc.parser.ach.update": Op(request=schemas.AchievementRuleUpdate, response=schemas.AchievementRuleRead),
+    "rpc.parser.ach.evaluate": Op(request=schemas.EvaluateRequest, response=schemas.EvaluationRunRead),
+    "rpc.parser.ach.runs": Op(response=schemas.EvaluationRunRead, response_array=True),
+    "rpc.parser.ach.lib_workspaces": Op(response=schemas.AchievementLibraryWorkspaceRead, response_array=True),
+    "rpc.parser.ach.lib_list": Op(response=schemas.AchievementLibraryRuleRead, response_array=True),
+    "rpc.parser.ach.overrides_list": Op(response=schemas.OverrideRead, response_array=True),
+    "rpc.parser.ach.override_create": Op(request=schemas.OverrideCreate, response=schemas.OverrideRead),
 }

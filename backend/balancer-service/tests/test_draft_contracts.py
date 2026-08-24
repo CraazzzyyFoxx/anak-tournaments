@@ -34,10 +34,13 @@ from shared.core.enums import (  # noqa: E402
 )
 from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession  # noqa: E402
-from src import openapi_docs, openapi_schemas  # noqa: E402
+from src import (  # noqa: E402
+    openapi_docs,
+    openapi_schemas,
+    schemas,  # noqa: E402
+)
 from src.domain.draft import rules  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
-from src.schemas import draft as schemas  # noqa: E402
 from src.services.draft import board, lifecycle  # noqa: E402
 from src.services.draft.feasibility import feasibility_service  # noqa: E402
 

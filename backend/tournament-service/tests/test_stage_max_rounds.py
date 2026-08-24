@@ -18,13 +18,13 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-admin_stage_schemas = importlib.import_module("src.schemas.admin.stage")
+schemas = importlib.import_module("src.schemas")
 enums = importlib.import_module("shared.core.enums")
 
 
 class StageMaxRoundsTests(TestCase):
     def test_stage_create_defaults_max_rounds_to_five(self) -> None:
-        data = admin_stage_schemas.StageCreate(
+        data = schemas.StageCreate(
             name="Swiss",
             stage_type=enums.StageType.SWISS,
         )

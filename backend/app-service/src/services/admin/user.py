@@ -20,8 +20,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
 from shared.repository import AuthUserRepository, UserRepository
 from shared.services import social_identity as social_svc
-from src import models
-from src.schemas.admin import user as admin_schemas
+from src import models, schemas
 
 __all__ = ("UserAdminService", "users")
 
@@ -50,7 +49,7 @@ class UserAdminService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         return user
 
-    async def get_users(self, session: AsyncSession, params: admin_schemas.UserListParams) -> dict:
+    async def get_users(self, session: AsyncSession, params: schemas.UserListParams) -> dict:
         """Get a paginated list of users with social identities eager-loaded.
 
         Returns raw ``User`` models; the RPC layer serializes them via the shared
@@ -81,7 +80,7 @@ class UserAdminService:
 
         return paginated_dict(list(users_page), total, params)
 
-    async def create_user(self, session: AsyncSession, data: admin_schemas.UserCreate) -> models.User:
+    async def create_user(self, session: AsyncSession, data: schemas.UserCreate) -> models.User:
         """Create a new user"""
         result = await session.execute(select(models.User).where(models.User.name == data.name))
         existing_user = result.scalar_one_or_none()
@@ -98,7 +97,7 @@ class UserAdminService:
         return await self.get_user_or_404(session, user_id)
 
     async def update_user(
-        self, session: AsyncSession, user_id: int, data: admin_schemas.UserUpdate
+        self, session: AsyncSession, user_id: int, data: schemas.UserAdminUpdate
     ) -> models.User:
         """Update user fields"""
         result = await session.execute(select(models.User).where(models.User.id == user_id))

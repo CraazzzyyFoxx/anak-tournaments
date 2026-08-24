@@ -30,6 +30,10 @@ from shared.repository import (
     TournamentRepository,
 )
 from src import models
+from src.domain.registration.utils import (
+    normalize_battle_tag,
+    normalize_battle_tag_key,
+)
 from src.schemas.registration_build import registration_read_loaders
 from src.services.registration._common import (
     AUTO_MANAGED_BALANCER_STATUSES,
@@ -45,10 +49,6 @@ from src.services.registration._common import (
     sync_included_balancer_status,
 )
 from src.services.registration.service import RegistrationService, registration_service
-from src.services.registration.utils import (
-    normalize_battle_tag,
-    normalize_battle_tag_key,
-)
 from src.services.registration.windows import is_check_in_window_active
 from src.services.tournament.events import (
     enqueue_registration_approved,

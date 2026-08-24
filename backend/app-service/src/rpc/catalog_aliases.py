@@ -13,8 +13,8 @@ from typing import Any
 from faststream.rabbit import RabbitMessage
 
 from shared.rpc.query import build_query_model
+from src import schemas
 from src.core import db
-from src.schemas.admin import catalog_alias as alias_schemas
 from src.services.admin.catalog_aliases import catalog_aliases as alias_service
 
 from . import _common as c
@@ -31,8 +31,8 @@ def register(broker: Any, logger: Any) -> None:
     async def _misses_list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _gate(data)
-            qp = build_query_model(alias_schemas.CatalogAliasMissListQueryParams, data.get("query"))
-            params = alias_schemas.CatalogAliasMissListParams.from_query_params(qp)
+            qp = build_query_model(schemas.CatalogAliasMissListQueryParams, data.get("query"))
+            params = schemas.CatalogAliasMissListParams.from_query_params(qp)
             res = await alias_service.list_misses(session, params)
             return {
                 "results": [r.model_dump(mode="json") for r in res["results"]],
@@ -47,7 +47,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _attach(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _gate(data)
-            await alias_service.attach(session, alias_schemas.CatalogAliasAttach.model_validate(c.payload(data)))
+            await alias_service.attach(session, schemas.CatalogAliasAttach.model_validate(c.payload(data)))
             return None
 
         return await c.envelope(logger, "catalog_aliases.attach", op, session_factory=_SF)

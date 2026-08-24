@@ -193,7 +193,7 @@ class CollectionStatsAssemblyTests(IsolatedAsyncioTestCase):
     async def test_assembles_rates_tiers_and_validates(self) -> None:
         from unittest.mock import patch
 
-        from src.schemas.admin.rank_collection import RankCollectionStats
+        from src import schemas
         from src.services.overwatch_rank import admin
 
         raw = {
@@ -218,6 +218,6 @@ class CollectionStatsAssemblyTests(IsolatedAsyncioTestCase):
         self.assertEqual(result["error_rate_24h"], 0.3)  # (error 20 + rate_limited 10) / 100
         self.assertEqual(result["scope"], "all")
         # Coerces nested dicts into RankStatusCounts and ignores the extra keys.
-        model = RankCollectionStats.model_validate(result)
+        model = schemas.RankCollectionStats.model_validate(result)
         self.assertEqual(model.by_status.disabled, 10)
         self.assertEqual(model.fetch_24h.error, 20)

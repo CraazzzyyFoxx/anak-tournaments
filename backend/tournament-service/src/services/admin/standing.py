@@ -6,8 +6,7 @@ from sqlalchemy.orm import selectinload
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import StandingRepository, TournamentRepository
-from src import models
-from src.schemas.admin import standing as admin_schemas
+from src import models, schemas
 from src.services.computation.jobs import jobs_service
 from src.services.tournament.events import enqueue_tournament_changed
 
@@ -46,7 +45,7 @@ class AdminStandingService:
         return standing
 
     async def update_standing(
-        self, session: AsyncSession, standing_id: int, data: admin_schemas.StandingUpdate
+        self, session: AsyncSession, standing_id: int, data: schemas.StandingUpdate
     ) -> models.Standing:
         """Update standing fields"""
         standing = await self.get_standing(session, standing_id)

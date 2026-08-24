@@ -46,8 +46,6 @@ from src.clients.challonge import challonge_client
 from src.core import auth
 from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _require_q1, _run
 from src.rpc._s3 import get_s3
-from src.schemas.admin import balancer as admin_schemas
-from src.schemas.admin import team as team_admin_schemas
 from src.services.admin import tournament as tournament_admin_service
 from src.services.challonge import sync as challonge_sync
 from src.services.division_grid import import_jobs as division_grid_import_jobs
@@ -278,7 +276,7 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
-            body = team_admin_schemas.ChallongeTeamSyncRequest.model_validate(_payload(data))
+            body = schemas.ChallongeTeamSyncRequest.model_validate(_payload(data))
             return _dump(await challonge_sync.sync_service.apply_team_mapping(session, tournament_id, body.mappings))
 
         return await _run(logger, op)
@@ -311,7 +309,7 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="create"
             )
-            body = admin_schemas.BalancerGoogleSheetFeedUpsert.model_validate(_payload(data))
+            body = schemas.BalancerGoogleSheetFeedUpsert.model_validate(_payload(data))
             # upsert_google_sheet_feed commits internally.
             feed = await sheet_sync.sheet_sync_service.upsert_google_sheet_feed(
                 session,
@@ -339,13 +337,13 @@ def register(broker: Any, logger: Any) -> None:
             # sync_google_sheet_feed commits internally.
             result = await sheet_sync.sheet_sync_service.sync_google_sheet_feed(session, tournament_id)
             return _dump(
-                admin_schemas.BalancerGoogleSheetFeedSyncResponse(
+                schemas.BalancerGoogleSheetFeedSyncResponse(
                     created=result.created,
                     updated=result.updated,
                     withdrawn=result.withdrawn,
                     total=result.total,
                     skipped=result.skipped,
-                    errors=[admin_schemas.MappingPreviewFieldError(**error) for error in result.errors],
+                    errors=[schemas.MappingPreviewFieldError(**error) for error in result.errors],
                     feed=serialize_feed(result.feed),
                 )
             )
@@ -365,7 +363,7 @@ def register(broker: Any, logger: Any) -> None:
             catalog = await sheet_sync.sheet_sync_service.get_mapping_catalog(
                 session, tournament_id, include_headers=include_headers
             )
-            return _dump(admin_schemas.BalancerGoogleSheetMappingCatalogResponse(**catalog))
+            return _dump(schemas.BalancerGoogleSheetMappingCatalogResponse(**catalog))
 
         return await _run(logger, op)
 
@@ -378,12 +376,12 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="read"
             )
-            body = admin_schemas.BalancerGoogleSheetMappingSuggestRequest.model_validate(_payload(data))
+            body = schemas.BalancerGoogleSheetMappingSuggestRequest.model_validate(_payload(data))
             _, headers, mapping = await sheet_sync.sheet_sync_service.suggest_google_sheet_mapping(
                 session, tournament_id, source_url=body.source_url
             )
             return _dump(
-                admin_schemas.BalancerGoogleSheetMappingSuggestResponse(
+                schemas.BalancerGoogleSheetMappingSuggestResponse(
                     headers=headers,
                     mapping_config_json=mapping,
                 )
@@ -400,7 +398,7 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="read"
             )
-            body = admin_schemas.BalancerGoogleSheetMappingPreviewRequest.model_validate(_payload(data))
+            body = schemas.BalancerGoogleSheetMappingPreviewRequest.model_validate(_payload(data))
             preview = await sheet_sync.sheet_sync_service.preview_google_sheet_mapping(
                 session,
                 tournament_id,
@@ -409,7 +407,7 @@ def register(broker: Any, logger: Any) -> None:
                 value_mapping_json=body.value_mapping_json,
                 sample_rows=body.sample_rows,
             )
-            return _dump(admin_schemas.BalancerGoogleSheetMappingPreviewResponse(**preview))
+            return _dump(schemas.BalancerGoogleSheetMappingPreviewResponse(**preview))
 
         return await _run(logger, op)
 
@@ -423,7 +421,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="player", action="read"
             )
             payload = await reg_export.export_service.export_active_registrations(session, tournament_id)
-            return _dump(admin_schemas.BalancerPlayerExportResponse(**payload))
+            return _dump(schemas.BalancerPlayerExportResponse(**payload))
 
         return await _run(logger, op)
 

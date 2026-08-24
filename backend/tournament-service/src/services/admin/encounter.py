@@ -18,9 +18,8 @@ from shared.repository import (
     TournamentGroupRepository,
     TournamentRepository,
 )
-from src import models
+from src import models, schemas
 from src.core import enums
-from src.schemas.admin import encounter as admin_schemas
 from src.services.encounter.pick_ban_session import pick_ban_session_service
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
 from src.services.tournament.events import (
@@ -173,7 +172,7 @@ class AdminEncounterService:
             )
         return team
 
-    async def create_encounter(self, session: AsyncSession, data: admin_schemas.EncounterCreate) -> models.Encounter:
+    async def create_encounter(self, session: AsyncSession, data: schemas.EncounterCreate) -> models.Encounter:
         """Create a new encounter"""
         _reject_completed_status(data.status)
 
@@ -239,7 +238,7 @@ class AdminEncounterService:
         return encounter
 
     async def update_encounter(
-        self, session: AsyncSession, encounter_id: int, data: admin_schemas.EncounterUpdate
+        self, session: AsyncSession, encounter_id: int, data: schemas.EncounterUpdate
     ) -> models.Encounter:
         """Update encounter fields"""
         _reject_completed_status(data.status)
@@ -323,7 +322,7 @@ class AdminEncounterService:
         self,
         session: AsyncSession,
         match_id: int,
-        data: admin_schemas.MatchUpdate,
+        data: schemas.MatchUpdate,
     ) -> models.Match:
         """Update a single Match (map) belonging to an encounter."""
         match = await self.match_repo.get(session, match_id, options=[selectinload(models.Match.encounter)])

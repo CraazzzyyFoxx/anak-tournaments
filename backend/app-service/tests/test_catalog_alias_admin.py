@@ -7,20 +7,17 @@ rather than three copies that drift apart.
 
 from shared import catalog_aliases as shared_aliases
 from src import schemas
-from src.schemas.admin import gamemode as admin_gamemode
-from src.schemas.admin import hero as admin_hero
-from src.schemas.admin import map as admin_map
 from src.services.admin import gamemode as gamemode_service
 from src.services.admin import hero as hero_service
 from src.services.admin import map as map_service
 
 _WRITE_SCHEMAS = (
-    admin_hero.HeroCreate,
-    admin_hero.HeroUpdate,
-    admin_map.MapCreate,
-    admin_map.MapUpdate,
-    admin_gamemode.GamemodeCreate,
-    admin_gamemode.GamemodeUpdate,
+    schemas.HeroCreate,
+    schemas.HeroUpdate,
+    schemas.MapCreate,
+    schemas.MapUpdate,
+    schemas.GamemodeCreate,
+    schemas.GamemodeUpdate,
 )
 
 _READ_SCHEMAS = (schemas.HeroRead, schemas.MapRead, schemas.GamemodeRead)
@@ -34,7 +31,7 @@ def test_every_create_and_update_schema_accepts_aliases() -> None:
 def test_omitting_aliases_writes_nothing() -> None:
     # exclude_unset is what the update services key off: an absent `aliases`
     # must not blank an entity's existing list.
-    for schema in (admin_hero.HeroUpdate, admin_map.MapUpdate, admin_gamemode.GamemodeUpdate):
+    for schema in (schemas.HeroUpdate, schemas.MapUpdate, schemas.GamemodeUpdate):
         assert "aliases" not in schema().model_dump(exclude_unset=True)
 
 

@@ -20,10 +20,10 @@ from faststream.rabbit import RabbitMessage
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
+from src import schemas
 from src.core import db
 from src.core.clients import realtime_redis
 from src.core.config import settings
-from src.schemas.admin import subscription_collection as sc_schemas
 from src.services.subscription_collection import admin as subscription_admin
 
 from . import _common as c
@@ -56,7 +56,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             workspace_id = _authorize(data, "read")
             result = await subscription_admin.get_collection_stats(session, workspace_id=workspace_id)
-            return sc_schemas.SubscriptionCollectionStats.model_validate(result)
+            return schemas.SubscriptionCollectionStats.model_validate(result)
 
         return await c.envelope(logger, "subscription.stats", op, session_factory=_SF)
 
@@ -75,7 +75,7 @@ def register(broker: Any, logger: Any) -> None:
                 before_id=c.q1(data, "before_id", int),
                 limit=c.q1(data, "limit", int, 50),
             )
-            return [sc_schemas.SubscriptionCheckLogRead.model_validate(row) for row in rows]
+            return [schemas.SubscriptionCheckLogRead.model_validate(row) for row in rows]
 
         return await c.envelope(logger, "subscription.check_log", op, session_factory=_SF)
 
@@ -87,7 +87,7 @@ def register(broker: Any, logger: Any) -> None:
             rows = await subscription_admin.get_user_collection_status(
                 session, c.require_id(data), workspace_id=workspace_id
             )
-            return [sc_schemas.SubscriptionUserCollectionRead.model_validate(row) for row in rows]
+            return [schemas.SubscriptionUserCollectionRead.model_validate(row) for row in rows]
 
         return await c.envelope(logger, "subscription.user_collection", op, session_factory=_SF)
 
@@ -96,7 +96,7 @@ def register(broker: Any, logger: Any) -> None:
         # POST /admin/subscriptions/collect — subscription.update, scoped by workspace_id.
         async def op(session: Any) -> Any:
             workspace_id = _authorize(data, "update")
-            body = sc_schemas.SubscriptionCollectTriggerRequest.model_validate(c.payload(data))
+            body = schemas.SubscriptionCollectTriggerRequest.model_validate(c.payload(data))
             checked = await subscription_admin.trigger_collection(
                 session,
                 user_id=body.user_id,
@@ -108,6 +108,6 @@ def register(broker: Any, logger: Any) -> None:
                 proxy=settings.proxy_url,
                 redis=realtime_redis,
             )
-            return sc_schemas.SubscriptionCollectTriggerResponse(checked=checked)
+            return schemas.SubscriptionCollectTriggerResponse(checked=checked)
 
         return await c.envelope(logger, "subscription.collect", op, session_factory=_SF)

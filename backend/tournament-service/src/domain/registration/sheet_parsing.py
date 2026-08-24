@@ -15,16 +15,15 @@ from typing import Any
 
 from shared.division_grid import DivisionGrid
 from shared.domain.player_sub_roles import normalize_sub_role
-from src.schemas.registration import CustomFieldDefinition
-from src.services.registration._common import BATTLE_TAG_RE
-from src.services.registration.mapping_catalog import (
+from src.domain.registration.mapping_catalog import (
     ParsedRowResult,
     build_target_specs,
     coerce_custom_field_value,
     custom_field_target_key,
     target_spec_map,
 )
-from src.services.registration.utils import (
+from src.domain.registration.utils import (
+    BATTLE_TAG_RE,
     DEFAULT_BOOLEAN_TRUE_VALUES,
     ROLE_ORDER,
     VALID_ROLES,
@@ -39,9 +38,10 @@ from src.services.registration.utils import (
     row_to_json,
     unique_strings,
 )
-from src.services.registration.utils import (
+from src.domain.registration.utils import (
     extract_battle_tags as _extract_battle_tags,
 )
+from src.schemas.registration import CustomFieldDefinition
 
 
 def parse_boolean(value: str | None, value_mapping: dict[str, Any]) -> bool:

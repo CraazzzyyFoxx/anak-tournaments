@@ -21,7 +21,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-ow_rank_selection = importlib.import_module("src.services.registration.ow_rank_selection")
+ow_rank_selection = importlib.import_module("src.domain.registration.ow_rank_selection")
 select_main_account_ow_ranks = ow_rank_selection.select_main_account_ow_ranks
 
 
