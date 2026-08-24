@@ -1567,7 +1567,7 @@ class UserService:
     @cache(
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_encounters:{user_id}:{workspace_id}:{params.page}:{params.per_page}:"
+            "backend:user_encounters:v2:{user_id}:{workspace_id}:{params.page}:{params.per_page}:"
             "{params.sort}:{params.order}:{result_filter}:{stage}:{mvp1}:{has_logs}:{opponent}"
         ),
         lock=True,

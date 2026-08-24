@@ -33,6 +33,24 @@ def test_encounter_play_key_prefers_ended_at_over_id():
     assert encounter_play_key(earlier) < encounter_play_key(later)
 
 
+def test_encounter_play_key_uses_confirmed_at_not_insert_order():
+    group = SimpleNamespace(
+        id=6136,
+        ended_at=None,
+        confirmed_at=datetime(2026, 8, 15, 18, 0, tzinfo=UTC),
+        started_at=None,
+        created_at=datetime(2026, 8, 16, 10, 0, tzinfo=UTC),
+    )
+    playoff = SimpleNamespace(
+        id=6104,
+        ended_at=None,
+        confirmed_at=datetime(2026, 8, 16, 18, 32, tzinfo=UTC),
+        started_at=None,
+        created_at=datetime(2026, 8, 14, 10, 0, tzinfo=UTC),
+    )
+    assert encounter_play_key(group) < encounter_play_key(playoff)
+
+
 def test_sort_user_matches_uses_map_index():
     matches = [_match(3, 15, None), _match(1, 31, 2), _match(2, 44, 1)]
     assert [m.id for m in sort_user_matches(matches)] == [2, 1, 3]

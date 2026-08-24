@@ -291,10 +291,11 @@ def _pool_status(value: object) -> str:
 def encounter_play_key(encounter: models.Encounter) -> tuple[datetime, int]:
     """Sort key for a series: when it was played, then id.
 
-    ``ended_at`` / ``started_at`` / ``scheduled_at`` beat ``id``: bracket rows
-    are often inserted playoffs-first, so ``id`` is not play order.
+    Bracket rows are inserted playoffs-first, so ``id``/``created_at`` are not
+    play order. ``confirmed_at`` is when the result landed; ``scheduled_at`` is
+    ignored — it is a plan, not a play.
     """
-    played = encounter.ended_at or encounter.started_at or encounter.scheduled_at or encounter.created_at
+    played = encounter.ended_at or encounter.confirmed_at or encounter.started_at or encounter.created_at
     return (played or _MISSING_PLAYED_AT, encounter.id)
 
 

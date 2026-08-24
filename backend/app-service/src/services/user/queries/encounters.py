@@ -18,10 +18,17 @@ from src import models
 from src.core import enums, pagination
 from src.core.workspace import workspace_filter
 
+_LAST_MATCH_AT = (
+    sa.select(sa.func.max(models.Match.created_at))
+    .where(models.Match.encounter_id == models.Encounter.id)
+    .correlate(models.Encounter)
+    .scalar_subquery()
+)
 _PLAYED_AT = sa.func.coalesce(
     models.Encounter.ended_at,
+    models.Encounter.confirmed_at,
     models.Encounter.started_at,
-    models.Encounter.scheduled_at,
+    _LAST_MATCH_AT,
     models.Encounter.created_at,
 )
 
