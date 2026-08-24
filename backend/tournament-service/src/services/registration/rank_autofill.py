@@ -31,6 +31,7 @@ from src.services.registration._common import (
     included_balancer_status,
     sync_included_balancer_status,
 )
+from src.services.registration import workspace_player as workspace_players
 from src.services.registration.rank_sources import (
     OW_RANK_WEEK_WINDOW,
     RANK_ROLE_BY_REGISTRATION_ROLE,
@@ -207,13 +208,20 @@ def build_registration_rank_autofill_plan(
 
 
 def _active_roles_ranked_after_updates(
-    registration: models.BalancerRegistration | Any, updates: list[tuple[Any, Any]]
+    registration: models.BalancerRegistration | Any,
+    updates: list[tuple[Any, Any]],
+    resolved_ranks: dict[str, int | None] | None = None,
 ) -> bool:
     roles = _active_roles(registration)
     if not roles:
         return False
-    updated_role_ids = {id(role_entry) for role_entry, _snapshot in updates}
-    return all(getattr(role, "rank_value", None) is not None or id(role) in updated_role_ids for role in roles)
+    updated_roles = {getattr(role_entry, "role", None) for role_entry, _snapshot in updates}
+    return all(
+        (resolved_ranks or {}).get(getattr(role, "role", None)) is not None
+        or getattr(role, "rank_value", None) is not None
+        or getattr(role, "role", None) in updated_roles
+        for role in roles
+    )
 
 
 def _rank_autofill_balancer_addition(
@@ -221,6 +229,7 @@ def _rank_autofill_balancer_addition(
     updates: list[tuple[Any, Any]],
     *,
     add_to_balancer: bool,
+    resolved_ranks: dict[str, int | None] | None = None,
 ) -> tuple[bool, str | None]:
     if not add_to_balancer:
         return False, None
@@ -228,7 +237,7 @@ def _rank_autofill_balancer_addition(
         return False, "Registration must be approved before it can be added to balancer."
     if not is_balancer_status_excluded(getattr(registration, "balancer_status", None)):
         return False, "Registration is already in balancer."
-    if not _active_roles_ranked_after_updates(registration, updates):
+    if not _active_roles_ranked_after_updates(registration, updates, resolved_ranks):
         return False, "Registration will still be missing active role ranks."
     return True, None
 
@@ -439,18 +448,32 @@ class RankAutofillService:
 
             changed = False
             if apply and updates:
-                for role_entry, rank_data in updates:
-                    role_entry.rank_value = getattr(rank_data, "rank_value", None)
-                    role_updates += 1
-                registration.balancer_profile_overridden_at = now
+                workspace_id = getattr(tournament, "workspace_id", None) if tournament is not None else None
+                await workspace_players.attach_workspace_player(
+                    session, registration, workspace_id=workspace_id
+                )
+                ranks = {
+                    getattr(role_entry, "role"): getattr(rank_data, "rank_value", None)
+                    for role_entry, rank_data in updates
+                    if getattr(rank_data, "rank_value", None) is not None
+                }
+                await workspace_players.write_follow_ranks(
+                    session, registration, ranks, only_empty=not overwrite_existing
+                )
+                role_updates += len(updates)
                 applied_registrations += 1
                 changed = True
             elif not apply:
                 role_updates += len(updates)
 
             if apply and will_add_to_balancer:
+                values = await workspace_players.resolved_value_map(session, registration, grid=grid)
+                for role_entry, rank_data in updates:
+                    val = getattr(rank_data, "rank_value", None)
+                    if val is not None:
+                        values[role_entry.role] = val
                 registration.exclude_reason = None
-                registration.balancer_status = included_balancer_status(registration)
+                registration.balancer_status = included_balancer_status(registration, values)
                 balancer_additions += 1
                 changed = True
             elif not apply and will_add_to_balancer:
@@ -458,7 +481,12 @@ class RankAutofillService:
 
             if apply and changed:
                 if not will_add_to_balancer:
-                    sync_included_balancer_status(registration)
+                    values = await workspace_players.resolved_value_map(session, registration, grid=grid)
+                    for role_entry, rank_data in updates:
+                        val = getattr(rank_data, "rank_value", None)
+                        if val is not None:
+                            values[role_entry.role] = val
+                    sync_included_balancer_status(registration, values)
                 self.common._register_registration_changed(session, registration)
 
             players.append(row)

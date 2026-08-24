@@ -79,6 +79,7 @@ from src.services.registration.serializers import (
     serialize_registration_form,
     serialize_status,
 )
+from src.services.registration import workspace_player as workspace_players
 from src.services.registration.windows import windows_service
 
 # --- helpers -----------------------------------------------------------------
@@ -172,7 +173,15 @@ async def _registration_response(session: Any, ctx: _Ctx, registration: Any) -> 
         workspace_id=ctx.ws_id,
         actor_user_id=ctx.user.id,
     )
-    return _dump(serialize_registration(registration, workspace_id=ctx.ws_id, status_meta_map=status_meta_map))
+    resolved = await workspace_players.resolve_registration_ranks(session, [registration])
+    return _dump(
+        serialize_registration(
+            registration,
+            workspace_id=ctx.ws_id,
+            status_meta_map=status_meta_map,
+            resolved_ranks=resolved.get(registration.id),
+        )
+    )
 
 
 async def _stage_transition(
@@ -415,6 +424,9 @@ def register(broker: Any, logger: Any) -> None:
                 if registration.workspace_member is not None
             }
             ow_ranks = normalize_ow_ranks_to_grid(raw_ow_ranks_by_registration, grid)
+            resolved_by_reg = await workspace_players.resolve_registration_ranks(
+                session, registrations, grid=grid
+            )
             # Same resolution the public participants list uses, so the admin
             # Subscription / Profile columns agree with what the player sees.
             form = await reg_svc.registration_service.get_registration_form(session, ctx.id)
@@ -434,6 +446,7 @@ def register(broker: Any, logger: Any) -> None:
                             if registration.id in subscription_reads
                             else None
                         ),
+                        resolved_ranks=resolved_by_reg.get(registration.id),
                     )
                 )
                 for registration in registrations
@@ -539,6 +552,8 @@ def register(broker: Any, logger: Any) -> None:
                 roles=[role.model_dump() for role in body.roles] if body.roles is not None else None,
                 auth_user_id=body.auth_user_id,
                 exclude_reason=body.exclude_reason,
+                pin=body.pin,
+                clear_pin=body.clear_pin,
             )
             return await _registration_response(session, ctx, registration)
 

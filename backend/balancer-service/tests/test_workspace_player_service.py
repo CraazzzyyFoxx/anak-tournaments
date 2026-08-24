@@ -61,6 +61,7 @@ class WorkspacePlayerServiceTests(IsolatedAsyncioTestCase):
         self.players.create = AsyncMock()
         self.players.delete = AsyncMock()
         self.ranks.list_ranks = AsyncMock(return_value=[])
+        self.ranks.create = AsyncMock(side_effect=lambda _s, row: row)
         self.ranks.delete = AsyncMock()
         self.service = WorkspacePlayerService(players=self.players, ranks=self.ranks)
         self.session = _session()
@@ -150,3 +151,30 @@ class WorkspacePlayerServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(d_dps.workspace_player_id, 2)
         self.players.delete.assert_awaited_once()
         self.assertIs(self.players.delete.await_args.args[1], donor)
+
+    async def test_set_ranks_creates_empty_cell(self) -> None:
+        self.ranks.list_ranks.return_value = []
+        result = await self.service.set_ranks(
+            self.session, workspace_player_id=1, ranks={"tank": 2500}, only_empty=True
+        )
+        self.ranks.create.assert_awaited_once()
+        self.assertEqual(result["tank"], 2500)
+
+    async def test_set_ranks_only_empty_skips_existing(self) -> None:
+        existing = _row(role="tank", rank_value=2000)
+        self.ranks.list_ranks.return_value = [existing]
+        result = await self.service.set_ranks(
+            self.session, workspace_player_id=1, ranks={"tank": 3000}, only_empty=True
+        )
+        self.ranks.create.assert_not_called()
+        self.assertEqual(existing.rank_value, 2000)
+        self.assertEqual(result["tank"], 2000)
+
+    async def test_set_ranks_overwrites_when_not_only_empty(self) -> None:
+        existing = _row(role="tank", rank_value=2000)
+        self.ranks.list_ranks.return_value = [existing]
+        result = await self.service.set_ranks(
+            self.session, workspace_player_id=1, ranks={"tank": 3000}, only_empty=False
+        )
+        self.assertEqual(existing.rank_value, 3000)
+        self.assertEqual(result["tank"], 3000)

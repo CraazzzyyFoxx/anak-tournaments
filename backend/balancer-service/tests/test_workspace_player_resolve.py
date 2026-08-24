@@ -25,7 +25,7 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 from shared.domain.workspace_player import ResolvedRank  # noqa: E402
 from src.services.workspace_player import WorkspacePlayerService  # noqa: E402
 
-_FETCH = "src.services.workspace_player.fetch_latest_ow_ranks_by_account"
+_FETCH = "shared.services.workspace_player.fetch_latest_ow_ranks_by_account"
 
 
 def _row(**fields) -> SimpleNamespace:

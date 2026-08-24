@@ -52,6 +52,7 @@ from src.schemas.registration_build import (
     registration_read_loaders,
 )
 from src.services.registration._common import FlexRoleMode, apply_all_roles, flex_role_mode
+from src.services.registration import workspace_player as workspace_players
 from src.services.registration.subscription_reads import (
     RegistrationSubscription,
     build_subscription_reads,
@@ -625,6 +626,9 @@ class RegistrationService:
                 workspace_id=workspace_id,
                 auth_user_id=auth_user_id,
             )
+        await workspace_players.attach_workspace_player(
+            session, registration, workspace_id=workspace_id, player_id=player_id
+        )
         if auto_approve:
             await enqueue_registration_approved(session, registration)
         else:
@@ -833,11 +837,14 @@ class RegistrationService:
                 registration.registration_team_id = team_placement.registration_team_id
                 registration.team_slot_code = team_placement.slot_code
                 registration.is_substitute = team_placement.is_substitute
-
             # Write normalized roles
             for entry in role_entries:
                 entry.registration_id = registration.id
+            incoming = workspace_players.incoming_role_ranks(role_entries)
+            workspace_players.clear_role_rank_values(role_entries)
             await self.role_repo.create_many(session, role_entries)
+            if incoming:
+                await workspace_players.write_follow_ranks(session, registration, incoming, only_empty=True)
             if commit:
                 await session.commit()
             else:

@@ -208,6 +208,7 @@ class BalancerRegistrationRoleRead(BaseModel):
     priority: int = 0
     is_primary: bool = False
     rank_value: int | None = None
+    rank_source: Literal["override", "canon", "ow", "none"] = "none"
     is_active: bool = True
     top_heroes: list[str] = Field(default_factory=list)  # ordered hero slugs (read-only display)
     # Latest OW2 rank for this role, normalised to the workspace grid. Injected from
@@ -450,18 +451,14 @@ class BalancerRegistrationUpdateRequest(BaseModel):
     stream_pov: bool | None = None
     notes: str | None = None
     admin_notes: str | None = None
-    # Replaced wholesale when present (the admin editor submits every definition
-    # on the form), left untouched when omitted.
     custom_fields_json: dict[str, Any] | None = None
     status: RegistrationStatus | None = None
-    # `ready`/`incomplete` are rejected (computed from role ranks only); use
-    # `not_in_balancer`, `excluded`, or a custom slug.
     balancer_status: BalancerStatus | None = None
     roles: list[BalancerRegistrationRoleInput] | None = None
-    # When set, (re)anchor the registration on this site account's player.
     auth_user_id: int | None = None
-    # Only meaningful together with balancer_status == "excluded".
     exclude_reason: str | None = None
+    pin: bool | None = None
+    clear_pin: bool = False
 
 
 class SetBalancerStatusRequest(BaseModel):

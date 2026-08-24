@@ -26,3 +26,4 @@ from shared.models.tournament.stage import *
 from shared.models.tournament.standings import *
 from shared.models.tournament.team import *
 from shared.models.tournament.tournament import *
+from shared.models.workspace_player.workspace_player import *

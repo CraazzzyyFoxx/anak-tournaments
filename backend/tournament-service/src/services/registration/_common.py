@@ -7,8 +7,7 @@ replacement and the active-role / balancer-status predicates. Everything here
 is re-exported by the ``admin`` facade.
 """
 
-from __future__ import annotations
-
+from collections.abc import Mapping
 from typing import Any, Literal
 
 import sqlalchemy as sa
@@ -214,17 +213,35 @@ def registration_has_active_roles(registration: models.BalancerRegistration | An
     return len(_active_roles(registration)) > 0
 
 
-def active_roles_all_ranked(registration: models.BalancerRegistration | Any) -> bool:
+def active_roles_all_ranked(
+    registration: models.BalancerRegistration | Any,
+    resolved_ranks: Mapping[str, int | None] | None = None,
+) -> bool:
     roles = _active_roles(registration)
-    return len(roles) > 0 and all(getattr(r, "rank_value", None) is not None for r in roles)
+    if not roles:
+        return False
+
+    def rank_of(role: Any) -> int | None:
+        resolved = resolved_ranks.get(role.role) if resolved_ranks is not None else None
+        if resolved is not None:
+            return resolved
+        return getattr(role, "rank_value", None)
+
+    return all(rank_of(role) is not None for role in roles)
 
 
-def included_balancer_status(registration: models.BalancerRegistration | Any) -> str:
-    return "ready" if active_roles_all_ranked(registration) else "incomplete"
+def included_balancer_status(
+    registration: models.BalancerRegistration | Any,
+    resolved_ranks: Mapping[str, int | None] | None = None,
+) -> str:
+    return "ready" if active_roles_all_ranked(registration, resolved_ranks) else "incomplete"
 
 
-def sync_included_balancer_status(registration: models.BalancerRegistration | Any) -> None:
-    """Recompute `ready`/`incomplete` from role ranks -- the only two
+def sync_included_balancer_status(
+    registration: models.BalancerRegistration | Any,
+    resolved_ranks: Mapping[str, int | None] | None = None,
+) -> None:
+    """Recompute `ready`/`incomplete` from resolved role ranks -- the only two
     balancer statuses a role edit is allowed to change. `not_in_balancer`,
     `excluded` and any custom status are exclusively admin-managed: they can
     no longer be picked FOR ready/incomplete (see `set_balancer_status`), so
@@ -235,7 +252,7 @@ def sync_included_balancer_status(registration: models.BalancerRegistration | An
         getattr(registration, "status", None) == "approved"
         and current_balancer_status in AUTO_MANAGED_BALANCER_STATUSES
     ):
-        registration.balancer_status = included_balancer_status(registration)
+        registration.balancer_status = included_balancer_status(registration, resolved_ranks)
 
 
 def is_included_in_balancer(

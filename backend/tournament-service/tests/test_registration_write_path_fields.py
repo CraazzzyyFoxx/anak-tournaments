@@ -30,6 +30,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, mock
 
 
@@ -87,6 +88,34 @@ class _RecordingSession:
     async def scalar(self, *_args: Any, **_kwargs: Any) -> Any:
         return self._scalar_value
 
+    def begin_nested(self) -> Any:
+        return _Savepoint()
+
+
+class _Savepoint:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+async def _fake_attach(session: Any, registration: Any, **_kwargs: Any) -> Any:
+    registration.workspace_player_id = 99
+    return SimpleNamespace(id=99, player_id=None)
+
+
+async def _fake_resolve(*_args: Any, **_kwargs: Any) -> dict:
+    return {}
+
+
+def _wp_patches():
+    return (
+        mock.patch("src.services.registration.workspace_player.attach_workspace_player", _fake_attach),
+        mock.patch("src.services.registration.workspace_player.write_follow_ranks", mock.AsyncMock(return_value={})),
+        mock.patch("src.services.registration.workspace_player.resolved_value_map", _fake_resolve),
+    )
+
 
 async def _noop(*_args: Any, **_kwargs: Any) -> None:
     return None
@@ -109,12 +138,14 @@ class TestPublicCreatePersistsEveryHandle(IsolatedAsyncioTestCase):
             "custom_fields": None,
             **overrides,
         }
-        # ensure_player_identity and the RBAC grant are the only DB reachers on
-        # this path; the row itself is built purely in memory.
+        patches = _wp_patches()
         with (
             mock.patch.object(reg_service.registration_service, "ensure_player_identity", _noop),
             mock.patch.object(reg_service, "assign_workspace_system_role", _noop),
             mock.patch.object(reg_service, "enqueue_registration_approved", _noop),
+            patches[0],
+            patches[1],
+            patches[2],
         ):
             return await reg_service.registration_service.create_registration(session, **payload)
 
@@ -211,6 +242,7 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
             "roles": [],
             **overrides,
         }
+        patches = _wp_patches()
         with (
             mock.patch.object(reg_lifecycle.lifecycle_service, "ensure_unique_battle_tag", _noop),
             mock.patch.object(reg_lifecycle.lifecycle_service.common, "get_registration_form", mock.AsyncMock(return_value=None)),
@@ -221,6 +253,9 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
                 "get_registration_by_id",
                 mock.AsyncMock(side_effect=lambda _s, _i: session.added[0]),
             ),
+            patches[0],
+            patches[1],
+            patches[2],
         ):
             registration = await reg_lifecycle.lifecycle_service.create_manual_registration(session, **payload)
         return registration, events
