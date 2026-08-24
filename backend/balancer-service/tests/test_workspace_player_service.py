@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock
@@ -105,10 +106,47 @@ class WorkspacePlayerServiceTests(IsolatedAsyncioTestCase):
 
     async def test_link_merges_when_player_id_taken(self) -> None:
         donor = _row(id=1, workspace_id=1, player_id=None)
-        survivor = _row(id=2, workspace_id=1, player_id=44)
+        survivor = _row(id=2, workspace_id=1, player_id=44, workspace_member_id=None)
         self.players.get.side_effect = lambda _session, pk: {1: donor, 2: survivor}[pk]
         self.players.get_active_by_player_id.return_value = survivor
-        result = await self.service.link(self.session, workspace_player_id=1, player_id=44)
+        result = await self.service.link(
+            self.session, workspace_player_id=1, player_id=44, workspace_member_id=7
+        )
         self.assertIs(result, survivor)
+        self.assertEqual(survivor.workspace_member_id, 7)
+        self.players.delete.assert_awaited_once()
+        self.assertIs(self.players.delete.await_args.args[1], donor)
+
+    async def test_link_integrity_error_merges_into_existing(self) -> None:
+        row = _row(id=1, workspace_id=1, player_id=None, workspace_member_id=None)
+        survivor = _row(id=2, workspace_id=1, player_id=44, workspace_member_id=None)
+        self.players.get.side_effect = lambda _session, pk: {1: row, 2: survivor}[pk]
+        self.players.get_active_by_player_id.side_effect = [None, survivor]
+        self.session.flush.side_effect = [IntegrityError("UPDATE", {}, Exception("dup")), None]
+        result = await self.service.link(
+            self.session, workspace_player_id=1, player_id=44, workspace_member_id=7
+        )
+        self.assertIs(result, survivor)
+        self.assertEqual(survivor.workspace_member_id, 7)
+        self.session.begin_nested.assert_called_once()
+        self.players.delete.assert_awaited_once()
+        self.assertIs(self.players.delete.await_args.args[1], row)
+
+    async def test_merge_reassigns_and_deletes_ranks(self) -> None:
+        older = datetime(2026, 1, 1, tzinfo=UTC)
+        newer = datetime(2026, 2, 1, tzinfo=UTC)
+        survivor = _row(id=2, workspace_id=1, player_id=44)
+        donor = _row(id=1, workspace_id=1, player_id=None)
+        s_tank = _row(id=10, role="tank", rank_value=1000, updated_at=older, workspace_player_id=2)
+        d_tank = _row(id=11, role="tank", rank_value=2500, updated_at=newer, workspace_player_id=1)
+        d_dps = _row(id=12, role="dps", rank_value=2000, updated_at=older, workspace_player_id=1)
+        self.players.get.side_effect = lambda _session, pk: {1: donor, 2: survivor}[pk]
+        self.ranks.list_ranks.side_effect = lambda _session, wpid: {2: [s_tank], 1: [d_tank, d_dps]}[wpid]
+        result = await self.service.merge(self.session, survivor_id=2, donor_id=1)
+        self.assertIs(result, survivor)
+        self.ranks.delete.assert_awaited_once()
+        self.assertIs(self.ranks.delete.await_args.args[1], s_tank)
+        self.assertEqual(d_tank.workspace_player_id, 2)
+        self.assertEqual(d_dps.workspace_player_id, 2)
         self.players.delete.assert_awaited_once()
         self.assertIs(self.players.delete.await_args.args[1], donor)

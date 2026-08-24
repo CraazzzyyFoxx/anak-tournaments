@@ -69,12 +69,38 @@ class WorkspacePlayerService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace player not found")
         taken = await self.players.get_active_by_player_id(session, row.workspace_id, player_id)
         if taken is not None and taken.id != row.id:
-            return await self.merge(session, survivor_id=taken.id, donor_id=row.id)
+            return await self._merge_link(
+                session, survivor_id=taken.id, donor_id=row.id, workspace_member_id=workspace_member_id
+            )
         row.player_id = player_id
         if workspace_member_id is not None:
             row.workspace_member_id = workspace_member_id
-        await session.flush()
+        try:
+            async with session.begin_nested():
+                await session.flush()
+        except IntegrityError:
+            raced = await self.players.get_active_by_player_id(session, row.workspace_id, player_id)
+            if raced is None or raced.id == row.id:
+                raise
+            return await self._merge_link(
+                session, survivor_id=raced.id, donor_id=row.id, workspace_member_id=workspace_member_id
+            )
         return row
+
+    async def _merge_link(
+        self,
+        session: AsyncSession,
+        *,
+        survivor_id: int,
+        donor_id: int,
+        workspace_member_id: int | None,
+    ) -> models.WorkspacePlayer:
+        merged = await self.merge(session, survivor_id=survivor_id, donor_id=donor_id)
+        if workspace_member_id is not None:
+            merged.workspace_member_id = workspace_member_id
+            await session.flush()
+        return merged
+
 
     async def merge(self, session: AsyncSession, *, survivor_id: int, donor_id: int) -> models.WorkspacePlayer:
         survivor = await self.players.get(session, survivor_id)
