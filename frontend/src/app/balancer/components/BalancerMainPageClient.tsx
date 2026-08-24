@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Shuffle, Users } from "lucide-react";
 import type { ImperativePanelHandle } from "react-resizable-panels";
@@ -135,6 +135,38 @@ function useIsWideBalancerLayout(): boolean {
   return isWide;
 }
 
+/**
+ * A collapsed sidebar is a 36px icon rail in 8px of padding, so it wants ~56px
+ * — but `react-resizable-panels` only speaks percentages, and a flat
+ * `collapsedSize={5}` grew with the viewport (78px at 1568px, wider still on a
+ * 4K monitor). Measure the group and convert once, then keep it in sync while
+ * the window resizes.
+ */
+const RAIL_WIDTH_PX = 56;
+
+function useRailPercent(groupRef: RefObject<HTMLDivElement | null>): number {
+  const [percent, setPercent] = useState(4);
+
+  useEffect(() => {
+    const element = groupRef.current;
+    if (!element) return;
+
+    const sync = () => {
+      const width = element.getBoundingClientRect().width;
+      if (width <= 0) return;
+      // Clamped so a freak measurement can never hide the rail or eat the editor.
+      setPercent(Math.min(12, Math.max(2, (RAIL_WIDTH_PX / width) * 100)));
+    };
+
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [groupRef]);
+
+  return percent;
+}
+
 export function BalancerMainPageClient() {
   const tournamentId = useBalancerTournamentId();
   const divisionGrid = useDivisionGrid();
@@ -147,7 +179,9 @@ export function BalancerMainPageClient() {
   const variantsRef = useRef<BalanceVariant[]>([]);
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
   const playersPanelRef = useRef<ImperativePanelHandle>(null);
+  const panelGroupRef = useRef<HTMLDivElement | null>(null);
   const isWideLayout = useIsWideBalancerLayout();
+  const railPercent = useRailPercent(panelGroupRef);
 
   const [selectedPreset, setSelectedPreset] = useState("DEFAULT");
   const [jobState, dispatchJob] = useBalancerJob();
@@ -180,6 +214,14 @@ export function BalancerMainPageClient() {
   const [lastJsonImportFile, setLastJsonImportFile] = useState<File | null>(null);
   const [draftConfig, setDraftConfig] = useState<BalancerConfig>({});
   const [savedTournamentConfig, setSavedTournamentConfig] = useState<BalancerConfig>({});
+
+  // `collapse()` snaps to the CURRENT `collapsedSize`, so an already-collapsed rail
+  // has to be re-collapsed after the group is measured or resized. Panels the user
+  // left expanded are untouched, which is what keeps `autoSaveId` meaningful.
+  useEffect(() => {
+    if (isPoolSidebarCollapsed) sidebarPanelRef.current?.collapse();
+    if (isPlayersSidebarCollapsed) playersPanelRef.current?.collapse();
+  }, [railPercent, isPoolSidebarCollapsed, isPlayersSidebarCollapsed]);
 
   const balancerConfigQuery = useQuery({
     queryKey: ["balancer-public", "config"],
@@ -888,7 +930,7 @@ export function BalancerMainPageClient() {
       <BalancerPresenceStack userIds={presenceUserIds} workspaceId={workspaceId} />
 
       {/* The shell already insets the tool with `p-3 md:p-4`; a second bottom pad just wasted space. */}
-      <div className="flex min-h-0 w-full flex-1 flex-col gap-3">
+      <div ref={panelGroupRef} className="flex min-h-0 w-full flex-1 flex-col gap-3">
         {isWideLayout ? (
           <ResizablePanelGroup
             direction="horizontal"
@@ -902,7 +944,7 @@ export function BalancerMainPageClient() {
               minSize={20}
               maxSize={45}
               collapsible
-              collapsedSize={5}
+              collapsedSize={railPercent}
               onCollapse={() => setIsPoolSidebarCollapsed(true)}
               onExpand={() => setIsPoolSidebarCollapsed(false)}
               className="grid min-h-0"
@@ -923,11 +965,11 @@ export function BalancerMainPageClient() {
                   // first visit and fires `onCollapse`; a mount-time `collapse()` call
                   // instead re-collapsed it on every mount, so `autoSaveId` could never
                   // restore a sidebar the user had expanded.
-                  defaultSize={5}
+                  defaultSize={railPercent}
                   minSize={16}
                   maxSize={36}
                   collapsible
-                  collapsedSize={5}
+                  collapsedSize={railPercent}
                   onCollapse={() => setIsPlayersSidebarCollapsed(true)}
                   onExpand={() => setIsPlayersSidebarCollapsed(false)}
                   className="grid min-h-0 pl-3"

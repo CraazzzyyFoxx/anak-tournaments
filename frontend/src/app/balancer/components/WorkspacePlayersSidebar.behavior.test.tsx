@@ -199,10 +199,17 @@ describe("WorkspacePlayersSidebar", () => {
     expect(button(scope, "Retry")).toBeDefined();
   });
 
-  it("validates the add field on submit rather than disabling the action", async () => {
+  it("keeps adding a player secondary and validates it on submit", async () => {
     const scope = await mount();
-    const submit = button(scope, "Add player");
-    const battleTag = scope.querySelector<HTMLInputElement>("input[placeholder='Name#1234']");
+
+    // The permanent three-row form is gone: the panel is a roster first.
+    expect(scope.querySelector("input[placeholder='Name#1234']")).toBeNull();
+
+    await click(button(scope, "Add a workspace player"));
+
+    // Radix portals the popover, so the form lives outside the panel subtree.
+    const submit = button(document.body, "Add player");
+    const battleTag = document.body.querySelector<HTMLInputElement>("input[placeholder='Name#1234']");
     if (!submit || !battleTag) throw new Error("Expected the add-player form");
 
     expect(submit.disabled).toBe(false);
@@ -210,11 +217,11 @@ describe("WorkspacePlayersSidebar", () => {
     await click(submit);
 
     expect(upsert).not.toHaveBeenCalled();
-    expect(scope.textContent).toContain("Enter a BattleTag");
+    expect(document.body.textContent).toContain("Enter a BattleTag");
     expect(battleTag.getAttribute("aria-invalid")).toBe("true");
 
     await type(battleTag, "Cyrus#3333");
-    await click(button(scope, "Add player"));
+    await click(button(document.body, "Add player"));
 
     expect(upsert).toHaveBeenCalledWith(WORKSPACE_ID, "Cyrus#3333");
   });

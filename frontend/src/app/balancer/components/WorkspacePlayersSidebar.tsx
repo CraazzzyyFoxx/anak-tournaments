@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useId, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, PanelRightClose, PanelRightOpen, Search, Users, X } from "lucide-react";
+import { Loader2, PanelRightClose, PanelRightOpen, Search, UserPlus, Users, X } from "lucide-react";
 
 import { DivisionRankPicker } from "@/app/balancer/components/DivisionRankPicker";
 import {
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
 import { ROLE_LABELS, ROLES } from "@/lib/roles";
@@ -62,6 +63,7 @@ export function WorkspacePlayersSidebar({
   const [page, setPage] = useState(1);
   const [battleTag, setBattleTag] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  const [isAddOpen, setIsAddOpen] = useState(false);
   const deferredSearch = useDeferredValue(search.trim());
   const searchRef = useRef<HTMLInputElement>(null);
   const battleTagRef = useRef<HTMLInputElement>(null);
@@ -82,6 +84,7 @@ export function WorkspacePlayersSidebar({
     mutationFn: (tag: string) => workspacePlayerService.upsert(workspaceId, tag),
     onSuccess: async (_player, tag) => {
       setBattleTag("");
+      setIsAddOpen(false);
       notify.success(`${tag} saved to the workspace`);
       await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(workspaceId) });
     },
@@ -171,119 +174,137 @@ export function WorkspacePlayersSidebar({
     // `min-w-0`: as a grid item this panel inherits `min-width: auto`, so below
     // roughly 300px it overflowed its own track instead of truncating rows.
     <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col p-4")}>
-      <div className="mb-3 flex items-start justify-between gap-2">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
+          {/* Short enough to hold one line at the narrowest sidebar width; the
+              workspace is already the tool's context, and the rail says the same. */}
           <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-dim)]">
-            Workspace Players
+            Players
           </div>
           <div className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
             {total == null ? "Loading\u2026" : `${total} ${total === 1 ? "player" : "players"}`}
           </div>
         </div>
-        {onToggleCollapsed ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={cn(ICON_BUTTON_CLASS, "shrink-0")}
-            onClick={onToggleCollapsed}
-          >
-            <PanelRightClose className="h-4 w-4" aria-hidden="true" />
-            <span className="sr-only">Collapse workspace players sidebar</span>
-          </Button>
-        ) : null}
-      </div>
-
-      <div className="space-y-2">
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--aqt-fg-dim)]"
-            aria-hidden="true"
-          />
-          <Input
-            ref={searchRef}
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
-            placeholder="Search name or BattleTag"
-            aria-label="Search workspace players"
-            autoComplete="off"
-            className={cn(
-              "h-9 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 pl-9 text-sm",
-              search && "pr-9",
-            )}
-          />
-          {search ? (
+        <div className="flex shrink-0 items-center gap-1">
+          {/* Secondary: adding a tag is rare next to reading and ranking the roster,
+              so it lives behind an icon instead of a permanent three-row form. */}
+          {canEdit ? (
+            <Popover
+              open={isAddOpen}
+              onOpenChange={(open) => {
+                setIsAddOpen(open);
+                if (!open) setAddError(null);
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" className={ICON_BUTTON_CLASS}>
+                  <UserPlus className="h-4 w-4" aria-hidden="true" />
+                  <span className="sr-only">Add a workspace player</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 p-3">
+                <form
+                  className="space-y-1.5"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    submitBattleTag();
+                  }}
+                >
+                  <label
+                    htmlFor={battleTagId}
+                    className="block text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]"
+                  >
+                    Add by BattleTag
+                  </label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      ref={battleTagRef}
+                      id={battleTagId}
+                      value={battleTag}
+                      onChange={(event) => {
+                        setBattleTag(event.target.value);
+                        if (addError) setAddError(null);
+                      }}
+                      placeholder="Name#1234"
+                      autoComplete="off"
+                      aria-invalid={addError ? true : undefined}
+                      aria-describedby={battleTagHintId}
+                      // `min-w-0`: an `<input>` carries an intrinsic ~170px width that
+                      // `min-width: auto` in a flex row turns into a floor.
+                      className="h-9 min-w-0 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 text-sm"
+                    />
+                    {/* Enabled while empty on purpose: submit validates and points at the field. */}
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="h-9 shrink-0 px-3"
+                      disabled={addPlayer.isPending}
+                    >
+                      {addPlayer.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                      ) : null}
+                      Add player
+                    </Button>
+                  </div>
+                  <p
+                    id={battleTagHintId}
+                    className={cn(
+                      "text-[11px]",
+                      addError ? "text-rose-200" : "text-[color:var(--aqt-fg-dim)]",
+                    )}
+                  >
+                    {addError ?? "Ranks here carry across every tournament in this workspace."}
+                  </p>
+                </form>
+              </PopoverContent>
+            </Popover>
+          ) : null}
+          {onToggleCollapsed ? (
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-0.5 top-1/2 h-8 w-8 -translate-y-1/2 rounded-lg text-[color:var(--aqt-fg-dim)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
-              onClick={clearSearch}
+              className={ICON_BUTTON_CLASS}
+              onClick={onToggleCollapsed}
             >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="sr-only">Clear the player search</span>
+              <PanelRightClose className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">Collapse workspace players sidebar</span>
             </Button>
           ) : null}
         </div>
+      </div>
 
-        {canEdit ? (
-          <form
-            className="space-y-1.5"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submitBattleTag();
-            }}
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--aqt-fg-dim)]"
+          aria-hidden="true"
+        />
+        <Input
+          ref={searchRef}
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
+          }}
+          placeholder="Search name or BattleTag"
+          aria-label="Search workspace players"
+          autoComplete="off"
+          className={cn(
+            "h-9 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 pl-9 text-sm",
+            search && "pr-9",
+          )}
+        />
+        {search ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-0.5 top-1/2 h-8 w-8 -translate-y-1/2 rounded-lg text-[color:var(--aqt-fg-dim)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
+            onClick={clearSearch}
           >
-            <label
-              htmlFor={battleTagId}
-              className="block text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]"
-            >
-              Add by BattleTag
-            </label>
-            <div className="flex gap-1.5">
-              <Input
-                ref={battleTagRef}
-                id={battleTagId}
-                value={battleTag}
-                onChange={(event) => {
-                  setBattleTag(event.target.value);
-                  if (addError) setAddError(null);
-                }}
-                placeholder="Name#1234"
-                autoComplete="off"
-                aria-invalid={addError ? true : undefined}
-                aria-describedby={battleTagHintId}
-                // `min-w-0`: an `<input>` carries an intrinsic ~170px width that
-                // `min-width: auto` in a flex row turns into a floor, and the panel
-                // then clips its own controls at the narrowest allowed sidebar size.
-                className="h-9 min-w-0 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 text-sm"
-              />
-              {/* Enabled while empty on purpose: submit validates and points at the field. */}
-              <Button
-                type="submit"
-                size="sm"
-                className="h-9 shrink-0 px-3"
-                disabled={addPlayer.isPending}
-              >
-                {addPlayer.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                ) : null}
-                Add player
-              </Button>
-            </div>
-            <p
-              id={battleTagHintId}
-              className={cn(
-                "text-[11px]",
-                addError ? "text-rose-200" : "text-[color:var(--aqt-fg-dim)]",
-              )}
-            >
-              {addError ?? "Ranks here carry across every tournament in this workspace."}
-            </p>
-          </form>
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="sr-only">Clear the player search</span>
+          </Button>
         ) : null}
       </div>
 
