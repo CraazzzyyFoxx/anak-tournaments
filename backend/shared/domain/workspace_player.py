@@ -4,14 +4,17 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 __all__ = (
     "MergeRanksResult",
+    "RankSource",
+    "ResolvedRank",
     "RoleRank",
     "merge_ranks",
     "normalize_battle_tag",
     "normalize_battle_tag_key",
+    "pick_rank",
 )
 
 
@@ -91,3 +94,22 @@ def merge_ranks(survivor_ranks: Sequence[object], donor_ranks: Sequence[object])
             if did is not None:
                 delete_ids.append(did)
     return MergeRanksResult(keep=keep, delete_ids=delete_ids, move=move)
+
+
+RankSource = Literal["override", "canon", "ow", "none"]
+
+
+@dataclass(frozen=True)
+class ResolvedRank:
+    value: int | None
+    source: RankSource
+
+
+def pick_rank(*, override: int | None, canon: int | None, ow: int | None) -> ResolvedRank:
+    if override is not None:
+        return ResolvedRank(override, "override")
+    if canon is not None:
+        return ResolvedRank(canon, "canon")
+    if ow is not None:
+        return ResolvedRank(ow, "ow")
+    return ResolvedRank(None, "none")

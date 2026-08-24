@@ -1,6 +1,13 @@
 from datetime import UTC, datetime
 
-from shared.domain.workspace_player import RoleRank, merge_ranks, normalize_battle_tag, normalize_battle_tag_key
+from shared.domain.workspace_player import (
+    ResolvedRank,
+    RoleRank,
+    merge_ranks,
+    normalize_battle_tag,
+    normalize_battle_tag_key,
+    pick_rank,
+)
 
 T1 = datetime(2026, 1, 1, tzinfo=UTC)
 T2 = datetime(2026, 2, 1, tzinfo=UTC)
@@ -57,3 +64,19 @@ def test_merge_moves_role_survivor_lacks():
     assert {row.role for row in plan.keep} == {"tank", "dps"}
     assert plan.delete_ids == []
     assert plan.move == [donor]
+
+
+def test_pick_rank_override_wins():
+    assert pick_rank(override=1, canon=2, ow=3) == ResolvedRank(1, "override")
+
+
+def test_pick_rank_canon():
+    assert pick_rank(override=None, canon=2, ow=3) == ResolvedRank(2, "canon")
+
+
+def test_pick_rank_ow():
+    assert pick_rank(override=None, canon=None, ow=3) == ResolvedRank(3, "ow")
+
+
+def test_pick_rank_none():
+    assert pick_rank(override=None, canon=None, ow=None) == ResolvedRank(None, "none")

@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.workspace_player import merge_ranks, normalize_battle_tag, normalize_battle_tag_key
+from shared.division_grid import DivisionGrid
+from shared.domain.workspace_player import (
+    ResolvedRank,
+    merge_ranks,
+    normalize_battle_tag,
+    normalize_battle_tag_key,
+    pick_rank,
+)
 from shared.repository import WorkspacePlayerRankRepository, WorkspacePlayerRepository
+from shared.services.rank_snapshots import fetch_latest_ow_ranks_by_account, normalize_ow_ranks_to_grid
 
 __all__ = ("WorkspacePlayerService", "workspace_player_service")
 
@@ -128,6 +138,72 @@ class WorkspacePlayerService:
             await session.flush()
         await self.players.delete(session, donor)
         return survivor
+
+    async def resolve_ranks(
+        self,
+        session: AsyncSession,
+        *,
+        players: Sequence[models.WorkspacePlayer],
+        roles: Sequence[str],
+        overrides: Mapping[tuple[int, str], int] | None = None,
+        grid: DivisionGrid | None = None,
+    ) -> dict[tuple[int, str], ResolvedRank]:
+        if not players or not roles:
+            return {}
+        pins = overrides or {}
+        rows = await self.ranks.list_ranks_for_players(session, [player.id for player in players])
+        canon = {(row.workspace_player_id, row.role): row.rank_value for row in rows}
+
+        need_ow: list[int] = []
+        seen: set[int] = set()
+        for player in players:
+            uid = player.player_id
+            if uid is None or uid in seen:
+                continue
+            if any(pins.get((player.id, role)) is None and canon.get((player.id, role)) is None for role in roles):
+                seen.add(uid)
+                need_ow.append(uid)
+
+        ow_by_user: dict[int, dict[str, int]] = {}
+        if need_ow:
+            collapsed = _max_ow_by_user(await fetch_latest_ow_ranks_by_account(session, need_ow))
+            ow_by_user = normalize_ow_ranks_to_grid(collapsed, grid) if grid is not None else collapsed
+
+        out: dict[tuple[int, str], ResolvedRank] = {}
+        for player in players:
+            ow_roles = ow_by_user.get(player.player_id, {}) if player.player_id is not None else {}
+            for role in roles:
+                key = (player.id, role)
+                out[key] = pick_rank(override=pins.get(key), canon=canon.get(key), ow=ow_roles.get(role))
+        return out
+
+    async def resolve_rank(
+        self,
+        session: AsyncSession,
+        *,
+        player: models.WorkspacePlayer,
+        role: str,
+        overrides: Mapping[tuple[int, str], int] | None = None,
+        grid: DivisionGrid | None = None,
+    ) -> ResolvedRank:
+        resolved = await self.resolve_ranks(
+            session, players=[player], roles=[role], overrides=overrides, grid=grid
+        )
+        return resolved[(player.id, role)]
+
+
+def _max_ow_by_user(accounts: dict[int, dict[str, dict[str, int]]]) -> dict[int, dict[str, int]]:
+    out: dict[int, dict[str, int]] = {}
+    for user_id, by_tag in accounts.items():
+        by_role: dict[str, int] = {}
+        for ranks in by_tag.values():
+            for role, value in ranks.items():
+                prev = by_role.get(role)
+                if prev is None or value > prev:
+                    by_role[role] = value
+        if by_role:
+            out[user_id] = by_role
+    return out
 
 
 workspace_player_service = WorkspacePlayerService()

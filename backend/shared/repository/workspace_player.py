@@ -46,3 +46,13 @@ class WorkspacePlayerRankRepository(BaseRepository[models.WorkspacePlayerRank]):
     async def list_ranks(self, session: AsyncSession, workspace_player_id: int) -> Sequence[models.WorkspacePlayerRank]:
         result = await session.scalars(self.select().where(self.model.workspace_player_id == workspace_player_id))
         return result.all()
+
+    async def list_ranks_for_players(
+        self, session: AsyncSession, workspace_player_ids: Sequence[int]
+    ) -> Sequence[models.WorkspacePlayerRank]:
+        if not workspace_player_ids:
+            return []
+        result = await session.scalars(
+            self.select().where(self.model.workspace_player_id.in_(workspace_player_ids))
+        )
+        return result.all()
