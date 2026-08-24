@@ -66,7 +66,6 @@ describe("admin navigation lifecycle grouping (D12, §5)", () => {
     expect(group?.items.map((item) => item.href)).toEqual([
       "/admin/divisions",
       "/admin/balancer",
-      "/admin/pickup",
       "/admin/sub-roles",
       "/admin/achievements",
       "/admin/workspaces/members",
@@ -78,9 +77,6 @@ describe("admin navigation lifecycle grouping (D12, §5)", () => {
     expect(getMatchingAdminRoute("/admin/balancer/anything")?.permissions).toEqual(["team.read"]);
   });
 
-  it("gates /admin/pickup by team.read", () => {
-    expect(getMatchingAdminRoute("/admin/pickup")?.permissions).toEqual(["team.read"]);
-  });
 
 
   it("gates /admin/sub-roles by player.read, not the broad workspace-admin entry", () => {

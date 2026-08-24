@@ -49,7 +49,13 @@ export function BalancerToolTopBar({ summary }: Readonly<BalancerToolTopBarProps
       <div id="balancer-presence-slot" className="flex shrink-0 items-center empty:hidden" />
       {/* PresetRunPanel portals the Run controls here — this container must always exist (D30). */}
       <div id="balancer-header-slot" className="ml-auto flex min-w-0 items-center gap-2" />
-      {/* Sits beside the controls PresetRunPanel portals into the slot above — same chrome. */}
+      <Button
+        asChild
+        variant="outline"
+        className="h-8 shrink-0 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 px-3 text-sm text-[color:var(--aqt-fg-muted)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg)]"
+      >
+        <Link href="/balancer/pickup">Mixes</Link>
+      </Button>
       <Button
         asChild
         variant="outline"

@@ -50,7 +50,7 @@ var AdminRoutes = []edge.RouteSpec{
 
 // WorkspacePlayerRoutes are workspace pickup players, host book, and custom games.
 var WorkspacePlayerRoutes = []edge.RouteSpec{
-	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/players", Queue: "rpc.balancer.players.list", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
+	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/players", Queue: "rpc.balancer.players.list", Path: []string{"workspace_id"}, AllQuery: true, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/players", Queue: "rpc.balancer.players.upsert", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/players/{player_id}/ranks", Queue: "rpc.balancer.players.set_ranks", IDParam: "player_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/hosts", Queue: "rpc.balancer.hosts.list_pool", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: fastReadTimeout},

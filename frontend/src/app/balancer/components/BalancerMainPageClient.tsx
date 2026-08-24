@@ -10,6 +10,7 @@ import {
   type BalancingPoolSidebarHandle
 } from "@/app/balancer/components/BalancingPoolSidebar";
 import { PlayerEditModal } from "@/app/balancer/components/PlayerEditSheet";
+import { WorkspacePlayersSidebar } from "@/app/balancer/components/WorkspacePlayersSidebar";
 import { BalancerConfigDrawer } from "@/app/balancer/components/BalancerConfigDrawer";
 import { PresetRunPanel } from "@/app/balancer/components/PresetRunPanel";
 import { TeamDistributionPanel } from "@/app/balancer/components/TeamDistributionPanel";
@@ -22,6 +23,7 @@ import {
   useBalancerRealtime,
 } from "@/app/balancer/components/useBalancerRealtime";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { mergeStatusOptions } from "@/lib/balancer-statuses";
 import { notify } from "@/lib/notify";
@@ -137,14 +139,18 @@ export function BalancerMainPageClient() {
   const tournamentId = useBalancerTournamentId();
   const divisionGrid = useDivisionGrid();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const { canAccessPermission } = usePermissions();
   const currentUserId = useAuthProfileStore((state) => state.user?.id ?? null);
   const queryClient = useQueryClient();
   const sidebarRef = useRef<BalancingPoolSidebarHandle>(null);
   const balanceEditorRef = useRef<HTMLDivElement | null>(null);
   const variantsRef = useRef<BalanceVariant[]>([]);
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
-  const isWideLayout = useIsWideBalancerLayout();
+  const playersPanelRef = useRef<ImperativePanelHandle>(null);
 
+  useEffect(() => {
+    playersPanelRef.current?.collapse();
+  }, []);
   const [selectedPreset, setSelectedPreset] = useState("DEFAULT");
   const [jobState, dispatchJob] = useBalancerJob();
   const [variants, setVariants] = useState<BalanceVariant[]>([]);
@@ -158,6 +164,7 @@ export function BalancerMainPageClient() {
   const [excludeInvalidPlayers, setExcludeInvalidPlayers] = useState(false);
   const [collapsedTeamIds, setCollapsedTeamIds] = useState<number[]>([]);
   const [isPoolSidebarCollapsed, setIsPoolSidebarCollapsed] = useState(false);
+  const [isPlayersSidebarCollapsed, setIsPlayersSidebarCollapsed] = useState(true);
   const [isConfigDrawerOpen, setIsConfigDrawerOpen] = useState(false);
   const [isImageExportOpen, setIsImageExportOpen] = useState(false);
   const [isTournamentExportOpen, setIsTournamentExportOpen] = useState(false);
@@ -714,6 +721,24 @@ export function BalancerMainPageClient() {
     />
   );
 
+  const playersElement =
+    workspaceId == null ? null : (
+      <WorkspacePlayersSidebar
+        workspaceId={workspaceId}
+        canEdit={canAccessPermission("team.update", workspaceId)}
+        collapsed={isPlayersSidebarCollapsed}
+        onToggleCollapsed={() => {
+          const panel = playersPanelRef.current;
+          if (panel) {
+            if (panel.isCollapsed()) panel.expand();
+            else panel.collapse();
+            return;
+          }
+          setIsPlayersSidebarCollapsed((current) => !current);
+        }}
+      />
+    );
+
   const balancerContentElement = (
     <div className="flex min-h-0 flex-col gap-3">
       <PresetRunPanel
@@ -879,14 +904,34 @@ export function BalancerMainPageClient() {
               {sidebarElement}
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel id="balancer-pool-content-panel" minSize={45} className="grid min-h-0 pl-3">
+            <ResizablePanel id="balancer-pool-content-panel" minSize={40} className="grid min-h-0 pl-3">
               {balancerContentElement}
             </ResizablePanel>
+            {playersElement ? (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  ref={playersPanelRef}
+                  id="balancer-players-sidebar-panel"
+                  defaultSize={22}
+                  minSize={16}
+                  maxSize={36}
+                  collapsible
+                  collapsedSize={5}
+                  onCollapse={() => setIsPlayersSidebarCollapsed(true)}
+                  onExpand={() => setIsPlayersSidebarCollapsed(false)}
+                  className="grid min-h-0 pl-3"
+                >
+                  {playersElement}
+                </ResizablePanel>
+              </>
+            ) : null}
           </ResizablePanelGroup>
         ) : (
           <div className="grid min-h-0 flex-1 gap-3">
             {sidebarElement}
             {balancerContentElement}
+            {playersElement}
           </div>
         )}
       </div>

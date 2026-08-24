@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-fetch";
+import type { PaginatedResponse } from "@/types/pagination.types";
 
 export const WORKSPACE_PLAYER_ROLES = ["tank", "dps", "support"] as const;
 
@@ -13,8 +14,16 @@ export type WorkspacePlayer = {
   ranks: Record<string, number>;
 };
 
+export type WorkspacePlayerListParams = {
+  page?: number;
+  perPage?: number;
+  query?: string;
+};
+
 export const workspacePlayerKeys = {
-  list: (workspaceId: number) => ["workspace-players", workspaceId] as const,
+  all: (workspaceId: number) => ["workspace-players", workspaceId] as const,
+  list: (workspaceId: number, params: WorkspacePlayerListParams = {}) =>
+    [...workspacePlayerKeys.all(workspaceId), params.page ?? 1, params.perPage ?? 30, params.query ?? ""] as const,
 };
 
 export function parseRoleRanks(input: Record<string, string>): Record<string, number> {
@@ -32,8 +41,14 @@ export function parseRoleRanks(input: Record<string, string>): Record<string, nu
 }
 
 export const workspacePlayerService = {
-  list(workspaceId: number): Promise<WorkspacePlayer[]> {
-    return apiFetch(`/api/balancer/workspaces/${workspaceId}/players`).then((r) => r.json());
+  list(workspaceId: number, params: WorkspacePlayerListParams = {}): Promise<PaginatedResponse<WorkspacePlayer>> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/players`, {
+      query: {
+        page: params.page ?? 1,
+        per_page: params.perPage ?? 30,
+        query: params.query ?? "",
+      },
+    }).then((r) => r.json());
   },
 
   upsert(workspaceId: number, battleTag: string, displayName?: string): Promise<WorkspacePlayer> {

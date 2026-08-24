@@ -2,12 +2,15 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { BalancerToolTopBar } from "@/app/balancer/BalancerToolTopBar";
 import { BalancerShell } from "@/app/balancer/components/BalancerShell";
 import { useToolContext } from "@/app/balancer/useToolContext";
+import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import { adminEntryPermissions } from "@/lib/admin-permissions";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 function LoadingState() {
   return (
@@ -48,16 +51,38 @@ function NoTournamentState() {
       <div className="text-center">
         <h1 className="text-4xl font-bold">No tournament selected</h1>
         <p className="mt-4 text-muted-foreground">
-          The balancer is a per-tournament tool. Open it from a tournament to get started.
+          Open the balancer from a tournament, or manage workspace mixes.
         </p>
-        <Link
-          href="/admin/tournaments"
-          className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          Open a tournament
-        </Link>
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <Link
+            href="/admin/tournaments"
+            className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Open a tournament
+          </Link>
+          <Link
+            href="/balancer/pickup"
+            className="inline-block rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            Mixes
+          </Link>
+        </div>
       </div>
     </div>
+  );
+}
+
+function PickupToolTopBar() {
+  return (
+    <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:px-5">
+      <Link href="/admin/tournaments" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+        Tournaments
+      </Link>
+      <span className="text-sm font-medium">Mixes</span>
+      <div className="ml-auto">
+        <WorkspaceSwitcher />
+      </div>
+    </header>
   );
 }
 
@@ -66,8 +91,30 @@ type BalancerLayoutClientProps = {
 };
 
 export function BalancerLayoutClient({ children }: Readonly<BalancerLayoutClientProps>) {
-  const { isLoaded, isOrganizer, canAccessAdminRoute } = usePermissions();
+  const pathname = usePathname();
+  const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const { isLoaded, isOrganizer, canAccessAdminRoute, canAccessPermission } = usePermissions();
   const { status: contextStatus, summary } = useToolContext();
+  const isPickup = pathname.startsWith("/balancer/pickup");
+
+  if (isPickup) {
+    if (!isLoaded) {
+      return <LoadingState />;
+    }
+    const pickupAllowed =
+      isOrganizer || workspaceId == null || canAccessPermission("team.read", workspaceId);
+    if (!pickupAllowed) {
+      return <UnauthorizedState />;
+    }
+    return (
+      <div className="admin-theme flex min-h-svh flex-col bg-background/95 xl:fixed xl:inset-0 xl:h-svh xl:min-h-0 xl:overflow-hidden">
+        <PickupToolTopBar />
+        <div className="flex flex-1 flex-col gap-4 overflow-x-hidden p-3 xl:min-h-0 xl:overflow-hidden md:p-4">
+          <BalancerShell>{children}</BalancerShell>
+        </div>
+      </div>
+    );
+  }
 
   // Render gate (D29, Risk 1): children fire apiFetch calls that inject
   // workspace_id from the store, so nothing below may render until the

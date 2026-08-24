@@ -11,7 +11,7 @@ from typing import Any
 from faststream.rabbit import RabbitMessage
 
 from shared import models
-from shared.core import http_status as status
+from shared.core import http_status as status, pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from src.core import db
 from src.rpc import _common as c
@@ -60,6 +60,38 @@ def _dump(row: Any, ranks: dict[str, int]) -> dict[str, Any]:
         "ranks": ranks,
     }
 
+_SEARCH_FIELDS = ("battle_tag", "battle_tag_normalized", "display_name")
+
+
+def _list_params(data: dict[str, Any]) -> pagination.PaginationSortSearchParams:
+    raw = data.get("query")
+    if not isinstance(raw, dict):
+        raw = {}
+
+    def first(key: str) -> Any:
+        value = raw.get(key)
+        if isinstance(value, list):
+            return value[0] if value else None
+        return value
+
+    try:
+        page = max(int(first("page") or 1), 1)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = int(first("per_page") or 30)
+    except (TypeError, ValueError):
+        per_page = 30
+    per_page = min(max(per_page, 1), 100)
+    search = str(first("query") or "").strip()
+    return pagination.PaginationSortSearchParams(
+        page=page,
+        per_page=per_page,
+        sort="id",
+        query=search,
+        fields=list(_SEARCH_FIELDS) if search else [],
+    )
+
 
 async def _load_visible(session: Any, workspace_id: int, workspace_player_id: int) -> models.WorkspacePlayer:
     player = await workspace_player_service.players.get(session, workspace_player_id)
@@ -82,8 +114,10 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
             _require_member(user, workspace_id)
-            rows, _total = await workspace_player_service.players.list(
+            params = _list_params(data)
+            rows, total = await workspace_player_service.players.list(
                 session,
+                params,
                 filters=[
                     models.WorkspacePlayer.workspace_id == workspace_id,
                     models.WorkspacePlayer.hidden_at.is_(None),
@@ -91,7 +125,11 @@ def register(broker: Any, logger: Any) -> None:
                 order_by=[models.WorkspacePlayer.id.asc()],
             )
             ranks = await _ranks_for(session, [row.id for row in rows])
-            return [_dump(row, ranks.get(row.id, {})) for row in rows]
+            return pagination.paginated_dict(
+                [_dump(row, ranks.get(row.id, {})) for row in rows],
+                total,
+                params,
+            )
 
         return await c.envelope(logger, "players.list", op, session_factory=_SF)
 
