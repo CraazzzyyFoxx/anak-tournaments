@@ -5,9 +5,8 @@ import type { CustomGamePlayer } from "@/services/custom-game.service";
 import {
   averageRank,
   getLineupIssue,
-  groupTeams,
   moveRole,
-  parseAssignedRoles,
+  parseVariants,
   playerLabel,
   resolveRoleOrder,
   sortLineup,
@@ -121,45 +120,89 @@ describe("sortLineup", () => {
   });
 });
 
-describe("groupTeams", () => {
-  it("builds teams from team_index and skips unassigned rows", () => {
-    const teams = groupTeams([
-      row({ workspace_player_id: 1, team_index: 1, roles: ["tank"], ranks: { tank: 2000 } }),
-      row({ workspace_player_id: 2, team_index: 0, roles: ["tank"], ranks: { tank: 3000 } }),
-      row({ workspace_player_id: 3, team_index: null }),
-    ]);
-    expect(teams.map((team) => team.index)).toEqual([0, 1]);
-    expect(teams[0].players.map((item) => item.workspace_player_id)).toEqual([2]);
-    expect(teams[0].averageRank).toBe(3000);
-  });
-});
-
-describe("parseAssignedRoles", () => {
-  it("reads the solver's canonical role names off the first variant", () => {
-    expect(
-      parseAssignedRoles({
-        variants: [
+describe("parseVariants", () => {
+  const payload = {
+    variants: [
+      {
+        teams: [
           {
-            teams: [
-              { roster: { Tank: [{ uuid: "7" }], Damage: [{ uuid: "8" }, { uuid: "9" }] } },
-              { roster: { Support: [{ uuid: "10" }] } },
-            ],
+            id: 1,
+            name: "karin",
+            average_mmr: 3000,
+            total_rating: 15000,
+            roster: {
+              Damage: [
+                {
+                  uuid: "8",
+                  name: "DemonDimon",
+                  assigned_rating: 4100,
+                  is_flex: false,
+                  role_preferences: ["Tank", "Damage"],
+                },
+              ],
+              Tank: [{ uuid: "7", name: "karin", assigned_rating: 2900, role_preferences: ["Tank"] }],
+            },
           },
+          { id: 2, name: "Tolgrn", average_mmr: 2950, roster: { Support: [{ uuid: "9", name: "Tolgrn" }] } },
         ],
-      }),
-    ).toEqual({ "7": "tank", "8": "dps", "9": "dps", "10": "support" });
+        statistics: { composite_score: 0.87, mmr_std_dev: 12.34, max_total_rating_gap: 150, off_role_count: 1 },
+        benched_players: [{ uuid: "10", name: "Egor" }],
+      },
+      { teams: [] },
+    ],
+  };
+
+  it("returns one entry per solver option", () => {
+    expect(parseVariants(payload)).toHaveLength(2);
+  });
+
+  it("flattens role buckets into seats in canonical role order", () => {
+    const [first] = parseVariants(payload);
+    expect(first.teams[0].seats.map((seat) => [seat.role, seat.name])).toEqual([
+      ["tank", "karin"],
+      ["dps", "DemonDimon"],
+    ]);
+    expect(first.teams[0].seats[0].rating).toBe(2900);
+    expect(first.teams[0].averageRank).toBe(3000);
+  });
+
+  it("marks a seat off-role only when it is not the player's first choice", () => {
+    const [first] = parseVariants(payload);
+    const seats = first.teams[0].seats;
+    expect(seats.find((seat) => seat.name === "karin")?.offRole).toBe(false);
+    expect(seats.find((seat) => seat.name === "DemonDimon")?.offRole).toBe(true);
+  });
+
+  it("never marks a flex player off-role", () => {
+    const [variant] = parseVariants({
+      teams: [{ roster: { Support: [{ uuid: "1", name: "Flexy", is_flex: true, role_preferences: ["Tank"] }] } }],
+    });
+    expect(variant.teams[0].seats[0].offRole).toBe(false);
+    expect(variant.teams[0].seats[0].isFlex).toBe(true);
+  });
+
+  it("carries the stats and the benched names the pager shows", () => {
+    const [first] = parseVariants(payload);
+    expect(first.stats).toEqual({
+      compositeScore: 0.87,
+      mmrStdDev: 12.34,
+      ratingGap: 150,
+      offRoleCount: 1,
+      benchedCount: 1,
+    });
+    expect(first.benched).toEqual(["Egor"]);
   });
 
   it("reads a payload stored without a variants wrapper", () => {
-    expect(parseAssignedRoles({ teams: [{ roster: { tank: [{ uuid: "7" }] } }] })).toEqual({
-      "7": "tank",
-    });
+    const variants = parseVariants({ teams: [{ roster: { tank: [{ uuid: "7", name: "karin" }] } }] });
+    expect(variants).toHaveLength(1);
+    expect(variants[0].teams[0].seats[0].role).toBe("tank");
   });
 
-  it("degrades to an empty map instead of throwing on an unknown shape", () => {
-    expect(parseAssignedRoles(null)).toEqual({});
-    expect(parseAssignedRoles({ teams: "nope" })).toEqual({});
-    expect(parseAssignedRoles({ teams: [{ roster: [{ uuid: "7" }] }] })).toEqual({});
+  it("degrades to an empty list instead of throwing on an unknown shape", () => {
+    expect(parseVariants(null)).toEqual([]);
+    expect(parseVariants({ teams: "nope" })).toEqual([]);
+    expect(parseVariants({ variants: [{ teams: [{ roster: [{ uuid: "7" }] }] }] })[0].teams).toEqual([]);
   });
 });
 

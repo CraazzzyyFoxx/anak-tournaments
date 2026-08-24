@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, UserMinus } from "lucide-react";
 
 import { DivisionRankPicker } from "@/app/balancer/components/DivisionRankPicker";
 import { splitBattleTag } from "@/app/balancer/components/balancer-page-helpers";
@@ -33,6 +33,7 @@ type PickupPlayerSheetProps = {
   saving: boolean;
   onOpenChange: (open: boolean) => void;
   onPatch: (patch: CustomGamePlayerPatch) => void;
+  onRemove: () => void;
 };
 
 /**
@@ -47,6 +48,7 @@ export function PickupPlayerSheet({
   saving,
   onOpenChange,
   onPatch,
+  onRemove,
 }: Readonly<PickupPlayerSheetProps>) {
   const label = row ? playerLabel(row) : "";
   const { name, suffix } = splitBattleTag(label);
@@ -190,6 +192,26 @@ export function PickupPlayerSheet({
                 )}
               </div>
             </section>
+
+            {canEdit ? (
+              <section className="border-t border-border/60 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={saving}
+                  className="text-[color:var(--aqt-fg-muted)] hover:text-rose-200"
+                  onClick={onRemove}
+                >
+                  <UserMinus className="mr-1.5 size-3.5" aria-hidden="true" />
+                  {`Remove ${label} from this mix`}
+                </Button>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Drops these settings too. To sit them out for one game, switch off &ldquo;In the
+                  balance&rdquo; instead.
+                </p>
+              </section>
+            ) : null}
           </div>
         )}
       </SheetContent>

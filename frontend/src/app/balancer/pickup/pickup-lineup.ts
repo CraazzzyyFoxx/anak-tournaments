@@ -141,82 +141,132 @@ export function sortLineup(rows: CustomGamePlayer[]): CustomGamePlayer[] {
   });
 }
 
-export type PickupTeam = {
-  index: number;
-  players: CustomGamePlayer[];
-  averageRank: number | null;
+/** One assigned seat in a balanced team, flattened out of the role buckets. */
+export type PickupSeat = {
+  uuid: string;
+  name: string;
+  role: RoleCode;
+  rating: number | null;
+  /** The solver put them off their first choice. */
+  offRole: boolean;
+  isFlex: boolean;
+  isCaptain: boolean;
+  subRole: string | null;
 };
 
-/**
- * Teams as the last balance assigned them, read from `team_index` on the rows.
- * A benched or unassigned row has no `team_index` and is simply absent.
- */
-export function groupTeams(rows: CustomGamePlayer[]): PickupTeam[] {
-  const byTeam = new Map<number, CustomGamePlayer[]>();
-  for (const row of rows) {
-    if (row.team_index == null) {
+export type PickupTeam = {
+  id: number;
+  averageRank: number | null;
+  seats: PickupSeat[];
+};
+
+export type PickupVariantStats = {
+  compositeScore: number | null;
+  mmrStdDev: number | null;
+  ratingGap: number | null;
+  offRoleCount: number | null;
+  benchedCount: number;
+};
+
+export type PickupVariant = {
+  teams: PickupTeam[];
+  stats: PickupVariantStats;
+  benched: string[];
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value != null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parseSeats(roster: Record<string, unknown>): PickupSeat[] {
+  const seats: PickupSeat[] = [];
+  for (const [name, group] of Object.entries(roster)) {
+    // The solver keys buckets by its own role vocabulary (`Tank`/`Damage`/…
+    // for tournaments, `tank`/`dps`/… for pickup masks); both normalise here.
+    const role = canonicalToRegistrationRole(name);
+    if (role == null || !Array.isArray(group)) {
       continue;
     }
-    const bucket = byTeam.get(row.team_index);
-    if (bucket) {
-      bucket.push(row);
-    } else {
-      byTeam.set(row.team_index, [row]);
+    for (const entry of group) {
+      const player = asRecord(entry);
+      if (player?.uuid == null) {
+        continue;
+      }
+      const preferences = Array.isArray(player.role_preferences) ? player.role_preferences : [];
+      const isFlex = player.is_flex === true;
+      seats.push({
+        uuid: String(player.uuid),
+        name: typeof player.name === "string" ? player.name : String(player.uuid),
+        role,
+        rating: asNumber(player.assigned_rating),
+        // A flex player is never off-role: any seat is their first choice.
+        offRole: !isFlex && preferences.length > 0 && preferences[0] !== name,
+        isFlex,
+        isCaptain: player.is_captain === true,
+        subRole: typeof player.sub_role === "string" ? player.sub_role : null,
+      });
     }
   }
-  return [...byTeam.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([index, players]) => {
-      const ranks = players.map(averageRank).filter((value): value is number => value != null);
-      return {
-        index,
-        players: sortLineup(players),
-        averageRank:
-          ranks.length === 0 ? null : Math.round(ranks.reduce((sum, value) => sum + value, 0) / ranks.length),
-      };
-    });
+  // Canonical role order, so the same team reads the same way every render.
+  return seats.sort((a, b) => LINEUP_ROLES.indexOf(a.role) - LINEUP_ROLES.indexOf(b.role));
 }
 
 /**
- * Which role the last balance gave each player, keyed by `workspace_player_id`.
+ * Every balance option the solver returned, richest-first as it stored them.
  *
- * `team_index` on the rows is the authoritative team membership; this only adds
- * the slot the solver picked, which lives solely in the raw result payload
- * under its canonical role names (`Tank`/`Damage`/`Support`). An unrecognised
- * shape yields an empty map rather than throwing, so a result written by an
- * older solver degrades to "team known, role unknown".
+ * `run_balance` wraps its output as `{variants: [...]}`, and each variant is a
+ * `teams_to_json` payload. An unrecognised shape yields an empty list rather
+ * than throwing, so a result written by an older solver degrades to "no teams
+ * to show" instead of blanking the screen.
  */
-export function parseAssignedRoles(resultJson: unknown): Record<string, RoleCode> {
-  const out: Record<string, RoleCode> = {};
-  if (resultJson == null || typeof resultJson !== "object") {
-    return out;
+export function parseVariants(resultJson: unknown): PickupVariant[] {
+  const root = asRecord(resultJson);
+  if (root == null) {
+    return [];
   }
-  const root = resultJson as Record<string, unknown>;
-  const variants = root.variants;
-  const payload = (
-    Array.isArray(variants) && variants.length > 0 ? variants[0] : root
-  ) as Record<string, unknown> | null;
-  const teams = payload?.teams;
-  if (!Array.isArray(teams)) {
-    return out;
-  }
-  for (const team of teams) {
-    const roster = (team as Record<string, unknown> | null)?.roster;
-    if (roster == null || typeof roster !== "object" || Array.isArray(roster)) {
+  const payloads = Array.isArray(root.variants) ? root.variants : [root];
+  const out: PickupVariant[] = [];
+  for (const payload of payloads) {
+    const variant = asRecord(payload);
+    const teams = variant == null ? null : variant.teams;
+    if (!Array.isArray(teams)) {
       continue;
     }
-    for (const [name, group] of Object.entries(roster as Record<string, unknown>)) {
-      const role = canonicalToRegistrationRole(name);
-      if (role == null || !Array.isArray(group)) {
-        continue;
-      }
-      for (const entry of group) {
-        const uuid = (entry as Record<string, unknown> | null)?.uuid;
-        if (uuid != null) {
-          out[String(uuid)] = role;
+    const statistics = asRecord(variant?.statistics) ?? {};
+    const benchedRows = Array.isArray(variant?.benched_players) ? variant.benched_players : [];
+    out.push({
+      teams: teams.flatMap((entry, index) => {
+        const team = asRecord(entry);
+        const roster = asRecord(team?.roster);
+        if (team == null || roster == null) {
+          return [];
         }
-      }
-    }
+        return [
+          {
+            id: asNumber(team.id) ?? index + 1,
+            averageRank: asNumber(team.average_mmr),
+            seats: parseSeats(roster),
+          },
+        ];
+      }),
+      stats: {
+        compositeScore: asNumber(statistics.composite_score),
+        mmrStdDev: asNumber(statistics.mmr_std_dev),
+        ratingGap: asNumber(statistics.max_total_rating_gap),
+        offRoleCount: asNumber(statistics.off_role_count),
+        benchedCount: benchedRows.length,
+      },
+      benched: benchedRows.flatMap((entry) => {
+        const player = asRecord(entry);
+        return player?.name == null ? [] : [String(player.name)];
+      }),
+    });
   }
   return out;
 }
