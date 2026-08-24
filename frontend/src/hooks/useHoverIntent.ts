@@ -7,6 +7,8 @@ export interface HoverIntentOptions {
   openDelay?: number;
   /** Grace period after the pointer leaves, so the cursor can cross the gap. */
   closeDelay?: number;
+  /** Opening this instance immediately closes any other exclusive instance. */
+  exclusive?: boolean;
 }
 
 export interface HoverIntent {
@@ -27,15 +29,49 @@ export interface HoverIntent {
  * be immediate — e.g. blur, which should close without the grace period a
  * pointer-leave needs.
  */
-export function useHoverIntent({ openDelay = 0, closeDelay = 120 }: HoverIntentOptions = {}): HoverIntent {
-  const [open, setOpen] = useState(false);
+type ExclusiveSlot = { close: () => void };
+let exclusiveSlot: ExclusiveSlot | null = null;
+
+export function useHoverIntent({
+  openDelay = 0,
+  closeDelay = 120,
+  exclusive = false
+}: HoverIntentOptions = {}): HoverIntent {
+  const [open, setOpenState] = useState(false);
   const timer = useRef<number | null>(null);
+  const self = useRef<ExclusiveSlot>({ close: () => {} });
 
   const cancel = useCallback(() => {
     if (timer.current === null) return;
     window.clearTimeout(timer.current);
     timer.current = null;
   }, []);
+
+  const setOpen = useCallback<Dispatch<SetStateAction<boolean>>>(
+    (update) => {
+      setOpenState((prev) => {
+        const next = typeof update === "function" ? update(prev) : update;
+        if (next === prev) return prev;
+        if (exclusive) {
+          if (next) {
+            const previous = exclusiveSlot;
+            exclusiveSlot = self.current;
+            if (previous && previous !== self.current) previous.close();
+          } else if (exclusiveSlot === self.current) {
+            exclusiveSlot = null;
+          }
+        }
+        return next;
+      });
+    },
+    [exclusive]
+  );
+
+  self.current.close = () => {
+    cancel();
+    setOpenState(false);
+    if (exclusiveSlot === self.current) exclusiveSlot = null;
+  };
 
   const schedule = useCallback(
     (next: boolean, delay: number) => {
@@ -49,18 +85,12 @@ export function useHoverIntent({ openDelay = 0, closeDelay = 120 }: HoverIntentO
         setOpen(next);
       }, delay);
     },
-    [cancel],
+    [cancel, setOpen]
   );
 
-  const scheduleOpen = useCallback(
-    (delay = openDelay) => schedule(true, delay),
-    [schedule, openDelay],
-  );
+  const scheduleOpen = useCallback((delay = openDelay) => schedule(true, delay), [schedule, openDelay]);
 
-  const scheduleClose = useCallback(
-    (delay = closeDelay) => schedule(false, delay),
-    [schedule, closeDelay],
-  );
+  const scheduleClose = useCallback((delay = closeDelay) => schedule(false, delay), [schedule, closeDelay]);
 
   useEffect(() => cancel, [cancel]);
 
