@@ -78,7 +78,7 @@ class AnalyticsReadService:
             .options(
                 sa.orm.joinedload(models.Team.tournament).joinedload(models.Tournament.division_grid_version),
                 sa.orm.joinedload(models.Team.standings),
-                sa.orm.joinedload(models.Team.standings).joinedload(models.Standing.group),
+                sa.orm.joinedload(models.Team.standings).joinedload(models.Standing.stage_item),
                 # PlayerRead.user_id (built by _player_to_pydantic) is resolved from
                 # workspace_member.player_id (contract step iwrefac07); eager-load it here
                 # since models.Player is selected as its own entity, not via a relationship.

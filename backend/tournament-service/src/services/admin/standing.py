@@ -27,7 +27,6 @@ class AdminStandingService:
             standing_id,
             options=(
                 selectinload(models.Standing.team),
-                selectinload(models.Standing.group),
                 selectinload(models.Standing.stage)
                 .selectinload(models.Stage.items)
                 .selectinload(models.StageItem.inputs),

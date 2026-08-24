@@ -346,7 +346,7 @@ class UserProfileQueries:
                 selectinload(models.Team.players).selectinload(models.Player.workspace_member),
                 selectinload(models.Team.tournament).selectinload(models.Tournament.standings),
                 selectinload(models.Team.tournament).selectinload(models.Tournament.division_grid_version),
-                selectinload(models.Team.standings).selectinload(models.Standing.group),
+                selectinload(models.Team.standings).selectinload(models.Standing.stage_item),
             )
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(

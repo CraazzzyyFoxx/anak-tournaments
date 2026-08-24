@@ -84,8 +84,6 @@ def standing_entities(in_entities: list[str]) -> list[_AbstractLoad]:
 
     if "tournament" in in_entities:
         entities.append(sa.orm.selectinload(models.Standing.tournament))
-    if "group" in in_entities:
-        entities.append(sa.orm.selectinload(models.Standing.group))
     if _entity_requested(in_entities, "team"):
         team_entity = sa.orm.selectinload(models.Standing.team)
         entities.append(team_entity)
