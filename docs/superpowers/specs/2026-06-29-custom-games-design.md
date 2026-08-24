@@ -1,5 +1,8 @@
 # Custom Games — Design (Phase 1)
 
+> **Superseded (2026-08-24) for rank book / player pool.** Approach B (`CustomGame` without `tournament_id`) still stands. The player pool is no longer a UNION of tournament registrations. Rank book is `workspace_player_rank` + `host_player_rank`, not a per-every-member rater layer. See `docs/plans/2026-08-24-workspace-players-and-custom-games.md`.
+
+
 - **Date:** 2026-06-29
 - **Status:** Approved (brainstorming) — pending implementation plan
 - **Scope:** Phase 1 only. Persistent rating, leaderboard, seasons, self-serve queue, realtime live-drag, and match-log→stats integration are explicitly deferred to later phases.
