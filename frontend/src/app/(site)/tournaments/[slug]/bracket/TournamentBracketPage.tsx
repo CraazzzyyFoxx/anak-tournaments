@@ -20,6 +20,7 @@ import encounterService from "@/services/encounter.service";
 import type { Encounter } from "@/types/encounter.types";
 import type { StreamEntry } from "@/types/stream.types";
 import type { Standings, Tournament, Stage, StageItem } from "@/types/tournament.types";
+import type { RealtimeConnectionState } from "@/types/realtime.types";
 
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -61,7 +62,8 @@ function GroupStagePanel({
   canEdit,
   canReport,
   bracketTabs,
-  liveTeamStreams
+  liveTeamStreams,
+  connectionState
 }: Readonly<{
   stage: Stage;
   stageItem?: StageItem;
@@ -79,6 +81,7 @@ function GroupStagePanel({
     isActive: boolean;
   }>;
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
+  connectionState?: RealtimeConnectionState;
 }>) {
   const t = useTranslations();
   const hasStandings = standings.length > 0;
@@ -135,22 +138,25 @@ function GroupStagePanel({
           </div>
         )}
 
-        <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
-          {hasStandings && (
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
+            {hasStandings && (
+              <TabsTrigger
+                value="standings"
+                className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+              >
+                {t("common.standings")}
+              </TabsTrigger>
+            )}
             <TabsTrigger
-              value="standings"
+              value="matches"
               className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
             >
-              {t("common.standings")}
+              {t("common.bracket")}
             </TabsTrigger>
-          )}
-          <TabsTrigger
-            value="matches"
-            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
-          >
-            {t("common.bracket")}
-          </TabsTrigger>
-        </TabsList>
+          </TabsList>
+          {connectionState ? <ConnectionIndicator connectionState={connectionState} /> : null}
+        </div>
       </div>
 
       {hasStandings && (
@@ -464,9 +470,6 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
 
   const content = (
     <div className={styles.publicDataPage} data-page-section="bracket">
-      <div className="flex items-center justify-end">
-        <ConnectionIndicator connectionState={connectionState} />
-      </div>
       {loadState.isUpdating && loadState.kind !== "refresh-error" ? <UpdatingBadge /> : null}
       {activeStages.length > 0 ? (
         <div className="space-y-6">
@@ -485,9 +488,10 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                   canReport={canReport}
                   bracketTabs={index === 0 ? bracketTabs : undefined}
                   liveTeamStreams={liveTeamStreams}
+                  connectionState={index === 0 ? connectionState : undefined}
                 />
               ))
-            : activeStages.map((stage) => {
+            : activeStages.map((stage, stageIndex) => {
                 const encounters = encountersByStage.get(stage.id) ?? [];
                 if (encounters.length === 0 && bracketTabs.length <= 1) {
                   return (
@@ -545,22 +549,27 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                         </div>
                       )}
 
-                      <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
-                        {hasPlayoffStandings && (
+                      <div className="flex flex-wrap items-center justify-end gap-3">
+                        <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
+                          {hasPlayoffStandings && (
+                            <TabsTrigger
+                              value="standings"
+                              className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+                            >
+                              {t("common.standings")}
+                            </TabsTrigger>
+                          )}
                           <TabsTrigger
-                            value="standings"
+                            value="bracket"
                             className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
                           >
-                            {t("common.standings")}
+                            {t("common.bracket")}
                           </TabsTrigger>
-                        )}
-                        <TabsTrigger
-                          value="bracket"
-                          className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
-                        >
-                          {t("common.bracket")}
-                        </TabsTrigger>
-                      </TabsList>
+                        </TabsList>
+                        {stageIndex === 0 ? (
+                          <ConnectionIndicator connectionState={connectionState} />
+                        ) : null}
+                      </div>
                     </div>
 
                     {hasPlayoffStandings && (
