@@ -158,6 +158,40 @@ class TestCreateAttachesAndDoesNotPin(IsolatedAsyncioTestCase):
         assert registration.balancer_profile_overridden_at is None
 
 
+    async def test_create_without_battle_tag_keeps_role_rank(self) -> None:
+        session = _Session()
+        set_ranks = mock.AsyncMock(return_value={})
+        with (
+            mock.patch.object(reg_lifecycle.lifecycle_service, "ensure_unique_battle_tag", _noop),
+            mock.patch.object(
+                reg_lifecycle.lifecycle_service.common, "get_registration_form", mock.AsyncMock(return_value=None)
+            ),
+            mock.patch.object(reg_lifecycle, "enqueue_registration_approved", _noop),
+            mock.patch.object(
+                reg_lifecycle.lifecycle_service,
+                "get_registration_by_id",
+                mock.AsyncMock(side_effect=lambda _s, _i: session.added[0]),
+            ),
+            mock.patch.object(workspace_players.workspace_player_service, "upsert", mock.AsyncMock()),
+            mock.patch.object(workspace_players.workspace_player_service, "set_ranks", set_ranks),
+            mock.patch.object(workspace_players, "resolved_value_map", mock.AsyncMock(return_value={"tank": 2500})),
+        ):
+            registration = await reg_lifecycle.lifecycle_service.create_manual_registration(
+                session,
+                tournament_id=7,
+                display_name="P",
+                battle_tag=None,
+                smurf_tags_json=None,
+                discord_nick=None,
+                twitch_nick=None,
+                notes=None,
+                admin_notes=None,
+                roles=[{"role": "tank", "rank_value": 2500, "is_active": True, "is_primary": True, "priority": 0}],
+            )
+        set_ranks.assert_not_awaited()
+        assert registration.workspace_player_id is None
+        assert registration.roles[0].rank_value == 2500
+
 class TestUpdatePinAndFollow(IsolatedAsyncioTestCase):
     def _registration(self) -> models.BalancerRegistration:
         registration = models.BalancerRegistration(
@@ -237,6 +271,18 @@ class TestUpdatePinAndFollow(IsolatedAsyncioTestCase):
         assert registration.balancer_profile_overridden_at is None
         assert registration.roles[0].rank_value is None
 
+    async def test_update_without_battle_tag_keeps_role_rank(self) -> None:
+        registration = self._registration()
+        registration.battle_tag = None
+        registration.workspace_player_id = None
+        set_ranks = await self._update(
+            registration,
+            roles=[{"role": "tank", "rank_value": 3000, "is_active": True, "is_primary": True, "priority": 0}],
+        )
+        set_ranks.assert_not_awaited()
+        assert registration.workspace_player_id is None
+        assert registration.roles[0].rank_value == 3000
+
 
 class TestAutofillApplyDoesNotPin(IsolatedAsyncioTestCase):
     async def test_apply_writes_canon_and_leaves_follow(self) -> None:
@@ -311,3 +357,16 @@ class TestSerializeFollowShowsCanon(IsolatedAsyncioTestCase):
         payload = serializers.serialize_registration_role(role, resolved=ResolvedRank(3200, "canon"))
         assert payload.rank_value == 3200
         assert payload.rank_source == "canon"
+
+
+class TestResolveKeepsRoleRankWithoutPlayer(IsolatedAsyncioTestCase):
+    async def test_no_workspace_player_keeps_role_rank(self) -> None:
+        registration = models.BalancerRegistration(id=1, tournament_id=7, battle_tag=None)
+        registration.roles = [models.BalancerRegistrationRole(role="tank", is_active=True, rank_value=2500)]
+        registration.workspace_player_id = None
+        with mock.patch.object(
+            workspace_players.workspace_player_service, "resolve_ranks", mock.AsyncMock(return_value={})
+        ):
+            by_id = await workspace_players.resolve_registration_ranks(_Session(), [registration])
+        assert by_id[1]["tank"].value == 2500
+        assert by_id[1]["tank"].source == "override"

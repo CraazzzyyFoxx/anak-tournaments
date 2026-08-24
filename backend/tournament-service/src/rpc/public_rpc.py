@@ -78,6 +78,7 @@ from src.schemas.registration_build import (
     _form_to_read,
     _reg_to_read,
     _resolve_tournament_workspace,
+    _resolved_public_ranks,
 )
 from src.schemas.registration_team import (
     RegistrationFreeAgentListResponse,
@@ -570,6 +571,7 @@ def register(broker: Any, logger: Any) -> None:
                     profiles_open=profiles_open,
                     subscription_outcome=own.outcome.value if own is not None else None,
                     subscription_verdicts=(serialize_verdicts(own.verdicts) if own is not None else None),
+                    resolved_ranks=(await _resolved_public_ranks(session, [reg], show_ranks=show_ranks)).get(reg.id),
                 )
             )
 
@@ -617,6 +619,9 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=form.workspace_id,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks,
+                    resolved_ranks=(
+                        await _resolved_public_ranks(session, [updated], show_ranks=form.show_ranks)
+                    ).get(updated.id),
                 )
             )
 
@@ -681,6 +686,11 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=workspace_id,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks if form else False,
+                    resolved_ranks=(
+                        await _resolved_public_ranks(
+                            session, [checked_in], show_ranks=form.show_ranks if form else False
+                        )
+                    ).get(checked_in.id),
                 )
             )
 

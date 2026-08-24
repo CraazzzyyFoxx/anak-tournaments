@@ -49,6 +49,7 @@ from src.schemas.registration_build import (
     _reg_to_read,
     _resolve_top_heroes_config,
     _resolve_tournament_workspace,
+    _resolved_public_ranks,
     registration_read_loaders,
 )
 from src.services.registration._common import FlexRoleMode, apply_all_roles, flex_role_mode
@@ -841,7 +842,8 @@ class RegistrationService:
             for entry in role_entries:
                 entry.registration_id = registration.id
             incoming = workspace_players.incoming_role_ranks(role_entries)
-            workspace_players.clear_role_rank_values(role_entries)
+            if registration.workspace_player_id:
+                workspace_players.clear_role_rank_values(role_entries)
             await self.role_repo.create_many(session, role_entries)
             if incoming:
                 await workspace_players.write_follow_ranks(session, registration, incoming, only_empty=True)
@@ -863,11 +865,13 @@ class RegistrationService:
             ],
         )
         status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
+        resolved_by_reg = await _resolved_public_ranks(session, [registration], show_ranks=form.show_ranks)
         return _reg_to_read(
             registration,
             workspace_id=workspace_id,
             status_meta_map=status_meta_map,
             show_ranks=form.show_ranks,
+            resolved_ranks=resolved_by_reg.get(registration.id),
         )
 
     async def resolve_admission_signals(
@@ -959,6 +963,7 @@ class RegistrationService:
             session, registrations, form=form
         )
         show_ranks = form.show_ranks if form is not None else False
+        resolved_by_reg = await _resolved_public_ranks(session, registrations, show_ranks=show_ranks)
 
         history_map, history_count_map, division_grids = await _build_tournament_history(
             session,
@@ -981,6 +986,7 @@ class RegistrationService:
                     subscription_verdicts=(
                         serialize_verdicts(subscription_reads[r.id].verdicts) if r.id in subscription_reads else None
                     ),
+                    resolved_ranks=resolved_by_reg.get(r.id),
                 ).model_dump(),
                 tournament_history=history_map.get(r.id, []),
                 tournament_history_count=history_count_map.get(r.id, 0),

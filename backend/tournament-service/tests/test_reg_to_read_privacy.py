@@ -30,6 +30,7 @@ for _key, _value in {
     os.environ.setdefault(_key, _value)
 
 from src.schemas.registration_build import _reg_to_read  # noqa: E402
+from shared.domain.workspace_player import ResolvedRank  # noqa: E402
 
 
 def _reg_stub() -> SimpleNamespace:
@@ -86,6 +87,22 @@ def test_ranks_stay_hidden_unless_the_form_publishes_them():
     assert hidden.roles[0].rank_value is None
     assert shown.roles[0].rank_value == 3200
 
+
+
+def test_follow_reg_uses_resolved_canon():
+    stub = _reg_stub()
+    stub.roles = [
+        SimpleNamespace(role="tank", subrole=None, is_primary=True, priority=0, rank_value=None, hero_entries=[])
+    ]
+
+    read = _reg_to_read(
+        stub,
+        workspace_id=1,
+        show_ranks=True,
+        resolved_ranks={"tank": ResolvedRank(3200, "canon")},
+    )
+
+    assert read.roles[0].rank_value == 3200
 
 def test_read_payload_includes_profile_visibility():
     read = _reg_to_read(_reg_stub(), workspace_id=1, profiles_open=True)

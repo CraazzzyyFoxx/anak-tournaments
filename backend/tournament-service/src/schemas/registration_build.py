@@ -8,6 +8,7 @@ envelope. This module must NOT import fastapi.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import sqlalchemy as sa
@@ -22,6 +23,7 @@ from shared.services.division_grid.access import (
     load_division_grid_snapshots,
     load_division_grid_version_read_payloads,
 )
+from shared.domain.workspace_player import ResolvedRank
 from src import models
 from src.schemas.division_grid import DivisionGridVersionRead
 from src.schemas.registration import (
@@ -151,6 +153,7 @@ def _reg_to_read(
     profiles_open: bool | None = None,
     subscription_outcome: str | None = None,
     subscription_verdicts: dict[str, Any] | None = None,
+    resolved_ranks: Mapping[str, ResolvedRank] | None = None,
 ) -> RegistrationRead:
     """Serialize a registration for public API responses.
 
@@ -172,7 +175,7 @@ def _reg_to_read(
                 subrole=r.subrole,
                 is_primary=r.is_primary,
                 priority=r.priority,
-                rank_value=r.rank_value if show_ranks else None,
+                rank_value=_public_rank_value(r, resolved_ranks) if show_ranks else None,
                 top_heroes=[he.hero.slug for he in sorted(r.hero_entries, key=lambda he: he.priority)],
             )
             for r in sorted(reg.roles, key=lambda r: (not r.is_primary, r.priority))
@@ -231,6 +234,26 @@ def _reg_to_read(
         submitted_at=reg.submitted_at,
         reviewed_at=reg.reviewed_at,
     )
+
+
+def _public_rank_value(role: Any, resolved_ranks: Mapping[str, ResolvedRank] | None) -> int | None:
+    hit = (resolved_ranks or {}).get(role.role)
+    if hit is not None and hit.value is not None:
+        return hit.value
+    return role.rank_value
+
+
+async def _resolved_public_ranks(
+    session: AsyncSession,
+    registrations: Sequence[Any],
+    *,
+    show_ranks: bool,
+) -> dict[int, dict[str, ResolvedRank]]:
+    if not show_ranks:
+        return {}
+    from src.services.registration.workspace_player import resolve_registration_ranks
+
+    return await resolve_registration_ranks(session, registrations)
 
 
 async def _build_tournament_history(

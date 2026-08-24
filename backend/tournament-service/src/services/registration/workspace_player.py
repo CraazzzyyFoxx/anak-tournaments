@@ -101,6 +101,8 @@ def _resolved_for_role(registration: Any, role: Any, batch: ResolvedRank | None)
         return ResolvedRank(role.rank_value, "override")
     if batch is not None:
         return batch
+    if getattr(role, "rank_value", None) is not None:
+        return ResolvedRank(role.rank_value, "override")
     return ResolvedRank(None, "none")
 
 

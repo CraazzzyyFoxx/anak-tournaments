@@ -276,7 +276,6 @@ class RegistrationLifecycleService:
             mode=flex_role_mode(form),
         )
         incoming = workspace_players.incoming_role_ranks(registration.roles)
-        workspace_players.clear_role_rank_values(registration.roles)
         if balancer_status_value is None or balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES:
             registration.balancer_status = (
                 included_balancer_status(registration) if resolved_status == "approved" else NOT_ADDED_BALANCER_STATUS
@@ -294,6 +293,8 @@ class RegistrationLifecycleService:
         )
         if incoming:
             await workspace_players.write_follow_ranks(session, registration, incoming, only_empty=True)
+        if registration.workspace_player_id:
+            workspace_players.clear_role_rank_values(registration.roles)
         if balancer_status_value is None or balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES:
             if resolved_status == "approved":
                 registration.balancer_status = included_balancer_status(
@@ -422,9 +423,6 @@ class RegistrationLifecycleService:
             registration.balancer_profile_overridden_at = datetime.now(UTC)
         elif unpin:
             registration.balancer_profile_overridden_at = None
-            workspace_players.clear_role_rank_values(registration.roles)
-        elif roles is not None:
-            workspace_players.clear_role_rank_values(registration.roles)
 
         player_id = None
         if auth_user_id is not None:
@@ -438,6 +436,8 @@ class RegistrationLifecycleService:
             workspace_id=getattr(tournament, "workspace_id", None),
             player_id=player_id,
         )
+        if not pin and (unpin or roles is not None) and registration.workspace_player_id:
+            workspace_players.clear_role_rank_values(registration.roles)
         if incoming and not pin:
             await workspace_players.write_follow_ranks(session, registration, incoming, only_empty=False)
         if roles is not None or incoming or unpin:
