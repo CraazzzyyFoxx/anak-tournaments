@@ -6,24 +6,27 @@ import { cn } from "@/lib/utils";
 import type { RealtimeConnectionState } from "@/types/realtime.types";
 
 /**
- * The realtime connection-status dot + label shared by every surface backed
- * by `useRealtimeStore` (draft, bracket, streams). Originally lived inline in
- * `DraftPageHero`; extracted so bracket/streams can show the same trust
- * signal instead of showing nothing while draft alone had it.
+ * Realtime status LED. The words live in `title` / a live region — a labelled
+ * pill next to page chrome reads as a third control. Show the label only when
+ * the socket is not healthy; connected is just the dot.
  */
 export function ConnectionIndicator({
-  connectionState
-}: Readonly<{ connectionState: RealtimeConnectionState }>) {
+  connectionState,
+  className
+}: Readonly<{ connectionState: RealtimeConnectionState; className?: string }>) {
   const t = useTranslations("common");
   const connected = connectionState === "connected";
+  const label = t(`connection.${connectionState}`);
 
   return (
     <span
       role="status"
       aria-live="polite"
+      title={label}
       className={cn(
         "inline-flex items-center gap-1.5 text-[11px]",
-        connected ? "text-[color:var(--aqt-support)]" : "text-[color:var(--aqt-warm)]"
+        connected ? "text-[color:var(--aqt-support)]" : "text-[color:var(--aqt-warm)]",
+        className
       )}
     >
       <span
@@ -35,7 +38,7 @@ export function ConnectionIndicator({
             : { background: "var(--aqt-warm)" }
         }
       />
-      {t(`connection.${connectionState}`)}
+      <span className={connected ? "sr-only" : undefined}>{label}</span>
     </span>
   );
 }

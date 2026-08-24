@@ -53,4 +53,9 @@ describe("ConnectionIndicator", () => {
     expect(render("connecting")).toContain("aqt-warm");
     expect(render("reconnecting")).toContain("aqt-warm");
   });
+
+  it("hides the connected label so the LED is not a third control", () => {
+    expect(render("connected")).toContain("sr-only");
+    expect(render("reconnecting")).not.toContain("sr-only");
+  });
 });
