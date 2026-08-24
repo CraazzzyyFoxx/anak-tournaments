@@ -248,6 +248,8 @@ func buildBalancerGuardedMux(t *testing.T) *http.ServeMux {
 	mux := http.NewServeMux()
 	d.Register(mux, balancer.PublicRoutes)
 	d.Register(mux, balancer.AdminRoutes)
+	d.Register(mux, balancer.WorkspacePlayerRoutes)
+
 	d.Register(mux, balancer.DraftReadRoutes)
 	d.Register(mux, balancer.DraftRoutes)
 	d.Register(mux, balancer.JobRoutes)

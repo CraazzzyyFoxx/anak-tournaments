@@ -359,6 +359,8 @@ func run() error {
 	balancerEdge := edge.New(rpcClient, logger, resolver.Resolve)
 	balancerEdge.Register(mux, balancer.PublicRoutes)
 	balancerEdge.Register(mux, balancer.AdminRoutes)
+	balancerEdge.Register(mux, balancer.WorkspacePlayerRoutes)
+
 	balancerEdge.Register(mux, balancer.DraftReadRoutes)
 	balancerEdge.Register(mux, balancer.DraftRoutes)
 	balancerEdge.Register(mux, balancer.JobRoutes)
