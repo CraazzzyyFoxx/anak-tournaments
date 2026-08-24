@@ -81,6 +81,15 @@ const STAGE_ITEM_TYPE_LABELS: Record<StageItemType, string> = {
   single_bracket: "Single bracket"
 };
 
+type SeedRanking = "slot" | "avg_sr" | "total_sr" | "random";
+
+const SEED_RANKING_LABELS: Record<SeedRanking, string> = {
+  slot: "Slot order (manual / standings)",
+  avg_sr: "Highest team avg SR first",
+  total_sr: "Highest team total SR first",
+  random: "Random (stable per stage)"
+};
+
 const DEFAULT_SWISS_TIEBREAKERS = [
   "points",
   "median_buchholz",
@@ -120,7 +129,6 @@ interface StageItemDraft {
   type: StageItemType;
 }
 
-/** Shape of `Stage.settings_json` as this screen reads and writes it. */
 interface StageSettings {
   ranking_preset?: string;
   tiebreak_order?: string[];
@@ -128,6 +136,7 @@ interface StageSettings {
   swiss_bye_points?: number;
   de_grand_final_type?: "no_reset" | "with_reset";
   best_of?: StageBestOfConfig;
+  seed_ranking?: SeedRanking;
   [key: string]: unknown;
 }
 
@@ -222,8 +231,7 @@ function projectedBracketSeedCounts(
 }
 
 function getDefaultStageItemType(stageType: StageType): StageItemType {
-  if (stageType === "single_elimination") return "single_bracket";
-  if (stageType === "double_elimination") return "bracket_upper";
+  if (stageType === "single_elimination" || stageType === "double_elimination") return "single_bracket";
   return "group";
 }
 
@@ -368,12 +376,16 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
   const [editingInputTeamDraft, setEditingInputTeamDraft] = useState("");
   const [stageSplitLbDrafts, setStageSplitLbDrafts] = useState<Record<number, boolean>>({});
   const [stageBestOfDrafts, setStageBestOfDrafts] = useState<Record<number, StageBestOfConfig>>({});
+  const [stageSeedRankingDrafts, setStageSeedRankingDrafts] = useState<Record<number, SeedRanking>>(
+    {}
+  );
 
   const fieldIdPrefix = useId();
   const stageTypeFieldId = `${fieldIdPrefix}-stage-type`;
   const swissRoundsFieldId = `${fieldIdPrefix}-swiss-rounds`;
   const grandFinalFieldId = `${fieldIdPrefix}-grand-final`;
   const groupSeedingFieldId = `${fieldIdPrefix}-group-seeding`;
+  const seedRankingFieldId = `${fieldIdPrefix}-seed-ranking`;
   const advanceCountFieldId = `${fieldIdPrefix}-advance-count`;
   const rankingPresetFieldId = `${fieldIdPrefix}-ranking-preset`;
   const swissByePointsFieldId = `${fieldIdPrefix}-swiss-bye-points`;
@@ -772,6 +784,15 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
     ? stageAdvanceCountDrafts[selectedStage.id] ?? currentAdvanceCount
     : "";
   const selectedStageSettings = (selectedStage?.settings_json ?? {}) as StageSettings;
+  const currentSeedRanking: SeedRanking =
+    selectedStageSettings.seed_ranking === "avg_sr" ||
+    selectedStageSettings.seed_ranking === "total_sr" ||
+    selectedStageSettings.seed_ranking === "random"
+      ? selectedStageSettings.seed_ranking
+      : "slot";
+  const selectedStageSeedRankingDraft = selectedStage
+    ? stageSeedRankingDrafts[selectedStage.id] ?? currentSeedRanking
+    : "slot";
   const selectedStageRankingPresetDraft = selectedStage
     ? stageRankingPresetDrafts[selectedStage.id] ?? (selectedStageSettings.ranking_preset || "default")
     : "default";
@@ -1669,6 +1690,37 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
                                     </span>
                                   </div>
                                 ) : null}
+
+                                {BRACKET_STAGE_TYPES.includes(selectedStageTypeDraft) ? (
+                                  <div>
+                                    <Label htmlFor={seedRankingFieldId} className="text-xs text-muted-foreground">
+                                      Bracket seeds
+                                    </Label>
+                                    <Select
+                                      value={selectedStageSeedRankingDraft}
+                                      onValueChange={(value) =>
+                                        setStageSeedRankingDrafts((current) => ({
+                                          ...current,
+                                          [selectedStage.id]: value as SeedRanking
+                                        }))
+                                      }
+                                    >
+                                      <SelectTrigger id={seedRankingFieldId} className="h-9 w-full sm:w-[260px]">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {(Object.keys(SEED_RANKING_LABELS) as SeedRanking[]).map((value) => (
+                                          <SelectItem key={value} value={value}>
+                                            {SEED_RANKING_LABELS[value]}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <span className="text-xs text-muted-foreground">
+                                      Who is seed 1 in the generated bracket. Slot order keeps standings wiring.
+                                    </span>
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
 
@@ -2049,6 +2101,14 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
                                     nextSettings.de_grand_final_type = selectedStageDeGfTypeDraft;
                                   } else {
                                     delete nextSettings.de_grand_final_type;
+                                  }
+                                  if (
+                                    BRACKET_STAGE_TYPES.includes(selectedStageTypeDraft) &&
+                                    selectedStageSeedRankingDraft !== "slot"
+                                  ) {
+                                    nextSettings.seed_ranking = selectedStageSeedRankingDraft;
+                                  } else {
+                                    delete nextSettings.seed_ranking;
                                   }
 
                                   const bestOfSettings = buildBestOfSettings(selectedBestOfDraft);

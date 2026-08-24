@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { BracketView } from "@/components/BracketView";
+import { ConnectionIndicator } from "@/components/realtime/ConnectionIndicator";
 import StandingsTable from "@/components/StandingsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
 import { notify } from "@/lib/notify";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useRealtimeStore } from "@/stores/realtime.store";
 import captainService from "@/services/captain.service";
 import encounterService from "@/services/encounter.service";
 import type { Encounter } from "@/types/encounter.types";
@@ -195,6 +197,7 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
       (authUser?.roles ?? []).some((r) => ADMIN_ROLES.has(r)));
 
   const t = useTranslations();
+  const connectionState = useRealtimeStore((s) => s.connectionState);
   const [editEncounter, setEditEncounter] = useState<Encounter | null>(null);
   const [reportEncounter, setReportEncounter] = useState<Encounter | null>(null);
 
@@ -461,6 +464,9 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
 
   const content = (
     <div className={styles.publicDataPage} data-page-section="bracket">
+      <div className="flex items-center justify-end">
+        <ConnectionIndicator connectionState={connectionState} />
+      </div>
       {loadState.isUpdating && loadState.kind !== "refresh-error" ? <UpdatingBadge /> : null}
       {activeStages.length > 0 ? (
         <div className="space-y-6">

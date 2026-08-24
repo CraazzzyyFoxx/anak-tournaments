@@ -8,6 +8,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useRealtimeCoalescedRefetch } from "@/hooks/useRealtimeCoalescedRefetch";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { useSyncActiveWorkspace } from "@/hooks/useSyncActiveWorkspace";
 import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
@@ -151,16 +152,20 @@ export function TournamentHubShell({
   // re-check changes this page with no local mutation to hang an invalidation on.
   // Workspace-scoped, not tournament-scoped: an entitlement is
   // (workspace, user, provider) and one change is visible in every tournament.
-  useRealtimeTopic(
+  useRealtimeCoalescedRefetch(
     isValidTournamentId && tournamentWorkspaceId != null
       ? `workspace:${tournamentWorkspaceId}:subscriptions`
       : null,
-    () => {
-      if (tournamentWorkspaceId == null) return;
-      void queryClient.invalidateQueries({
-        queryKey: tournamentQueryKeys.registrationsList(tournamentWorkspaceId, tournamentId)
-      });
-      scheduleReadinessInvalidate();
+    {
+      minDelayMs: 0,
+      onEvent: (_event, schedule) => schedule(),
+      onFlush: () => {
+        if (tournamentWorkspaceId == null) return;
+        void queryClient.invalidateQueries({
+          queryKey: tournamentQueryKeys.registrationsList(tournamentWorkspaceId, tournamentId)
+        });
+        scheduleReadinessInvalidate();
+      }
     }
   );
 

@@ -6,6 +6,7 @@ import { ArrowLeft, Eye, Pause, Radio, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 
+import { ConnectionIndicator } from "@/components/realtime/ConnectionIndicator";
 import { HeroFrame } from "@/components/site/PageHero";
 import { cn, formatDateRange } from "@/lib/utils";
 import type { DraftBoard, DraftPresenceState, DraftTeam } from "@/types/draft.types";
@@ -57,7 +58,6 @@ export function DraftPageHero({
     : session.status === "paused"
       ? Pause
       : Radio;
-  const connected = connectionState === "connected";
 
   return (
     <HeroFrame>
@@ -120,25 +120,7 @@ export function DraftPageHero({
 
             <span aria-hidden className="h-4 w-px bg-[color:var(--aqt-border-2)]" />
 
-            <span
-              role="status"
-              aria-live="polite"
-              className={cn(
-                "inline-flex items-center gap-1.5 text-[11px]",
-                connected ? "text-[color:var(--aqt-support)]" : "text-[color:var(--aqt-warm)]"
-              )}
-            >
-              <span
-                aria-hidden
-                className="h-1.5 w-1.5 rounded-full"
-                style={
-                  connected
-                    ? { background: "var(--aqt-support)", boxShadow: "0 0 6px var(--aqt-support)" }
-                    : { background: "var(--aqt-warm)" }
-                }
-              />
-              {t(`connection.${connectionState}`)}
-            </span>
+            <ConnectionIndicator connectionState={connectionState} />
           </div>
         </div>
 

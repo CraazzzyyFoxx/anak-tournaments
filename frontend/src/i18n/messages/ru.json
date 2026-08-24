@@ -267,7 +267,13 @@
       "add": "Добавить в избранное",
       "remove": "Убрать из избранного"
     },
-    "registration": "Регистрация командами"
+    "registration": "Регистрация командами",
+    "connection": {
+      "idle": "Соединение не запущено",
+      "connecting": "Подключение",
+      "connected": "Онлайн",
+      "reconnecting": "Переподключение"
+    }
   },
   "registration": {
     "wizard": {
@@ -4165,12 +4171,6 @@
     "progress": "Прогресс",
     "onClock": "Сейчас выбирает",
     "onClockLabel": "Ходит сейчас",
-    "connection": {
-      "idle": "Соединение не запущено",
-      "connecting": "Подключение",
-      "connected": "Онлайн",
-      "reconnecting": "Переподключение"
-    },
     "anonymousViewers": "Зрители: {count}",
     "onlineCount": "{n} из {total} онлайн",
     "you": "Вы",

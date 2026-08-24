@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
+import { useRealtimeCoalescedRefetch } from "@/hooks/useRealtimeCoalescedRefetch";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
@@ -203,13 +203,12 @@ export function TournamentLogsTab({
   };
 
   // Parser signals completions on the workspace topic, so the console stays live
-  // without polling. Debounced: a batch upload emits one signal per file.
-  const [scheduleRealtimeRefresh] = useDebounce(refreshAll, REALTIME_REFRESH_DEBOUNCE_MS);
-  useRealtimeTopic(
-    enabled && workspaceId != null ? `workspace:${workspaceId}:logs` : null,
-    () => scheduleRealtimeRefresh(),
-    [scheduleRealtimeRefresh]
-  );
+  // without polling. Coalesced: a batch upload emits one signal per file.
+  useRealtimeCoalescedRefetch(enabled && workspaceId != null ? `workspace:${workspaceId}:logs` : null, {
+    minDelayMs: REALTIME_REFRESH_DEBOUNCE_MS,
+    onEvent: (_event, schedule) => schedule(),
+    onFlush: refreshAll
+  });
 
   const retryLogMutation = useMutation({
     mutationFn: (recordId: number) => adminService.retryLogRecord(recordId),

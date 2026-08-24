@@ -267,7 +267,13 @@
       "add": "Add to favorites",
       "remove": "Remove from favorites"
     },
-    "registration": "Team registration"
+    "registration": "Team registration",
+    "connection": {
+      "idle": "Realtime idle",
+      "connecting": "Connecting",
+      "connected": "Live connection",
+      "reconnecting": "Reconnecting"
+    }
   },
   "registration": {
     "wizard": {
@@ -4165,12 +4171,6 @@
     "progress": "Progress",
     "onClock": "On the clock",
     "onClockLabel": "On the clock",
-    "connection": {
-      "idle": "Realtime idle",
-      "connecting": "Connecting",
-      "connected": "Live connection",
-      "reconnecting": "Reconnecting"
-    },
     "anonymousViewers": "Viewers: {count}",
     "onlineCount": "{n} of {total} online",
     "you": "You",

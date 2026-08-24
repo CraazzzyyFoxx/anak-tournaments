@@ -5,7 +5,7 @@ import type {
 } from "@/types/registration.types";
 
 /**
- * TypeScript port of `shared/subscriptions/requirement.py`.
+ * TypeScript port of `shared/services/subscriptions/requirement.py`.
  *
  * IMPORTANT: this is NOT the source of truth for admission. The server sends the
  * composed `subscription_outcome`, and `isAdmitted` uses that. This port exists

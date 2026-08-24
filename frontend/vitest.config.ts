@@ -97,6 +97,9 @@ export default defineConfig({
       // and covers the next test added without another edit to this allow-list.
       "src/components/stream/**/*.test.ts",
       "src/components/stream/**/*.test.tsx",
+      // `src/components/realtime` is vitest-only, so a directory glob is safe
+      // here and covers the next test added without another edit to this list.
+      "src/components/realtime/**/*.test.tsx",
       // File-level, not a directory glob: this folder holds BOTH runners'
       // tests. `RoleStep.behavior.test.tsx` is `.tsx` yet imports `bun:test`,
       // so a directory glob here drags it into vitest and it fails on the import.
@@ -163,7 +166,12 @@ export default defineConfig({
       "src/app/(site)/tournaments/[slug]/_components/TournamentLinkChips.behavior.test.tsx",
       // Same file-level rule as `src/components`: the bracket folder also holds a
       // `bun:test` file (`TournamentBracketPage.test.ts`).
-      "src/app/(site)/tournaments/[slug]/bracket/bracketLiveStreams.test.ts"
+      // File-level, not a directory glob: `src/hooks` also holds
+      // `tournamentRealtime.helpers.test.ts`, which imports `bun:test`.
+      "src/app/(site)/tournaments/[slug]/bracket/bracketLiveStreams.test.ts",
+      "src/hooks/useRealtimeCoalescedRefetch.test.ts",
+      "src/hooks/useTournamentRealtime.test.ts",
+      "src/hooks/useRealtimePatchedQuery.test.ts"
     ]
   }
 });

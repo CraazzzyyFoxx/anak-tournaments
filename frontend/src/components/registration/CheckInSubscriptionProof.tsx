@@ -26,7 +26,7 @@ interface CheckInSubscriptionProofProps {
  * This is the ONLY place that field exists. Signup shows the same verdicts but
  * never asks for the phrase: at signup nothing has been offered yet, so the
  * registration gate deliberately defers every code-satisfiable provider (see
- * `shared/subscriptions/requirement.py`), and asking for a secret before a
+ * `shared/services/subscriptions/requirement.py`), and asking for a secret before a
  * registration exists put the one manual step in the flow at the point where it
  * could not be enforced. Check-in is where the requirement is final, so it is
  * also where the last manual proof belongs.
