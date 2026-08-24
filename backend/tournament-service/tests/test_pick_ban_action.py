@@ -42,6 +42,7 @@ def make_entry(
     picked_by: MapPickSide | None = None,
     protected_by: MapPickSide | None = None,
     round: int | None = None,
+    team_id: int | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=item_id,
@@ -52,6 +53,7 @@ def make_entry(
         picked_by=picked_by,
         protected_by=protected_by,
         round=round,
+        team_id=team_id,
     )
 
 
@@ -679,3 +681,32 @@ class SerializePickBanSessionSlotReservesTests(TestCase):
         wire = serialize_pick_ban_session(pick_ban)
 
         self.assertIsNone(wire["slot_reserves"])
+
+
+class BuildPickBanStateTests(TestCase):
+    def test_a_token_without_separator_does_not_500_the_poll(self) -> None:
+        state = pick_ban_action.build_pick_ban_state(
+            ["ban"],
+            [make_entry(1)],
+            viewer_side="home",
+            pick_ban=None,
+            readiness={"home": True, "away": True},
+        )
+        self.assertEqual("ban", state["expected_action"])
+        self.assertEqual("home", state["turn_side"])
+
+
+class AttributeLookupTests(IsolatedAsyncioTestCase):
+    """``select(Hero.type)`` can yield a raw string, not a HeroClass member."""
+
+    async def test_it_accepts_a_stored_string_without_dot_value(self) -> None:
+        class _Rows:
+            def all(self):
+                return [(1, "tank"), (2, SimpleNamespace(value="support"))]
+
+        class _Session:
+            async def execute(self, _stmt):
+                return _Rows()
+
+        lookup = await pick_ban_action_service._attribute_lookup(_Session(), PickBanKind.HERO, [1, 2])
+        self.assertEqual({1: "tank", 2: "support"}, lookup)

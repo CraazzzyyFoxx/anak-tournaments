@@ -566,9 +566,11 @@ class PickBanActionService:
         if kind != PickBanKind.HERO or not item_ids:
             return {}
         # Two-column projection, not a row read: stays in the service rather than
-        # becoming a `HeroRepository` method.
+        # becoming a `HeroRepository` method. The Enum result processor usually
+        # returns a HeroClass member, but a bare column select can also yield the
+        # stored string — `.value` on a str 500s the timed-out state poll.
         result = await session.execute(select(Hero.id, Hero.type).where(Hero.id.in_(item_ids)))
-        return {row[0]: row[1].value for row in result.all()}
+        return {row[0]: getattr(row[1], "value", row[1]) for row in result.all() if row[1] is not None}
 
     async def _ledger_exclusions_for_side(
         self, session: AsyncSession, encounter_id: int, kind: PickBanKind, side: str
