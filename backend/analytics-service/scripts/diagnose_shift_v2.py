@@ -155,20 +155,20 @@ async def main() -> int:
                     )
             print()
 
-        print("=== labelled history availability (analytics.tournament, recent) ===")
+        print("=== labelled history availability (analytics.player_shift, recent) ===")
         labelled = await conn.fetch(
             """
             SELECT tournament_id,
-                   count(*) AS players,
+                   count(*) AS rows,
                    count(*) FILTER (WHERE shift_one IS NOT NULL) AS with_prev_move
-            FROM analytics.tournament
+            FROM analytics.player_shift
             GROUP BY tournament_id
             ORDER BY tournament_id DESC
             LIMIT 10
             """
         )
         for r in labelled:
-            print(f"  t#{r['tournament_id']:>4}  players={r['players']:>3}  with_prev_move={r['with_prev_move']:>3}")
+            print(f"  t#{r['tournament_id']:>4}  players={r['rows']:>3}  with_prev_move={r['with_prev_move']:>3}")
 
         return 0
     finally:

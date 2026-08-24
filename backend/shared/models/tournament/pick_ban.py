@@ -1,17 +1,5 @@
 """Generic pick-ban engine: config, session, pool entries, and the cross-round
 exclusion ledger shared by map veto and hero bans.
-
-Generalizes ``encounter_map.py``'s ``MapVetoConfig``/``EncounterVetoSession``/
-``EncounterMapPool`` to be pool-agnostic (``kind``: map or hero) and able to
-grow a running session's step sequence incrementally, round by round, instead
-of resolving it once at creation. See
-``docs/plans/2026-08-09-generic-pickban-engine.md`` for the full design and
-decision log.
-
-Table names are prefixed ``pick_ban_*`` and additive alongside the existing
-``map_veto_*``/``encounter_veto_session``/``encounter_map_pool`` tables during
-the migration window (Decision log #9 of the design doc: verify parity before
-dropping the old tables).
 """
 
 from datetime import datetime

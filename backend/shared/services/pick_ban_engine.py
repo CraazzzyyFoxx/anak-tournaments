@@ -79,15 +79,13 @@ def resolve_sequence_tokens(sequence: list[str], first_side: enums.MapPickSide |
 
 # ── entry-shaped protocol ────────────────────────────────────────────────────
 #
-# The engine works over any object exposing these attributes — both
-# `PickBanEntry` (new) and, during the migration window, `EncounterMapPool`
-# (legacy) satisfy it structurally, so the same functions serve both without a
-# DB-model import here (keeps this module DB-free).
+# The engine works over any object exposing these attributes. ``PickBanEntry``
+# satisfies it structurally, so the functions stay free of a DB-model import.
 
 
 class EntryLike:
     """Structural shape the engine reads/writes. Not instantiated directly —
-    documents the attributes `PickBanEntry`/`EncounterMapPool` must have."""
+    documents the attributes ``PickBanEntry`` must have."""
 
     id: int
     item_id: int

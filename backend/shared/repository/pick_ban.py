@@ -1,11 +1,4 @@
-"""Pick/ban and map-veto CRUD.
-
-Covers the generic pick/ban engine (``pick_ban_config``, ``pick_ban_session``,
-``pick_ban_entry``, ``encounter_pick_ban_ledger``, ``encounter_readiness``) and the
-legacy map-veto tables it superseded (``map_veto_config``, ``map_veto_config_slot``,
-``encounter_veto_session``, ``encounter_map_pool``), which are still read by
-``tournament-service``'s veto-session compatibility path.
-"""
+"""Pick/ban CRUD: config, session, entry, ledger, readiness."""
 
 from __future__ import annotations
 
@@ -266,54 +259,10 @@ class PickBanEntryRepository(BaseRepository[models.PickBanEntry]):
         )
 
 
-class MapVetoConfigRepository(BaseRepository[models.MapVetoConfig]):
-    def __init__(self) -> None:
-        super().__init__(models.MapVetoConfig)
-
-    async def list_by_tournament(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.MapVetoConfig]:
-        """Every veto config in a tournament, unranked.
-
-        The stage/round cascade that picks the winner among these is pure logic and
-        stays in the service — one query, ranked in Python, rather than a query per
-        cascade level.
-        """
-        query = self._apply_options(
-            self.select().where(models.MapVetoConfig.tournament_id == tournament_id),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
-
-
-class MapVetoConfigSlotRepository(BaseRepository[models.MapVetoConfigSlot]):
-    def __init__(self) -> None:
-        super().__init__(models.MapVetoConfigSlot)
-
-    async def list_for_config(
-        self,
-        session: AsyncSession,
-        config_id: int,
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.MapVetoConfigSlot]:
-        query = self._apply_options(
-            self.select()
-            .where(models.MapVetoConfigSlot.map_veto_config_id == config_id)
-            .order_by(models.MapVetoConfigSlot.position),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
 
 
 class EncounterPickBanLedgerRepository(BaseRepository[models.EncounterPickBanLedger]):
-    """``encounter_pick_ban_ledger`` — cross-round "already banned/picked" memory."""
+    """``encounter_pick_ban_ledger`` — cross-round already-banned memory."""
 
     def __init__(self) -> None:
         super().__init__(models.EncounterPickBanLedger)
@@ -391,61 +340,9 @@ class EncounterReadinessRepository(BaseRepository[models.EncounterReadiness]):
         )
 
 
-class EncounterVetoSessionRepository(BaseRepository[models.EncounterVetoSession]):
-    def __init__(self) -> None:
-        super().__init__(models.EncounterVetoSession)
-
-    async def get_for_encounter(
-        self,
-        session: AsyncSession,
-        encounter_id: int,
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-        for_update: bool = False,
-    ) -> models.EncounterVetoSession | None:
-        """The legacy map-veto session for one encounter.
-
-        ``for_update`` mirrors ``PickBanSessionRepository.get_for_encounter``: the veto
-        step lock, taken by anything that advances the sequence, with
-        ``populate_existing`` so the locked row is re-read rather than served from the
-        identity map at whatever version this session first loaded it.
-        """
-        query = self._apply_options(
-            self.select().where(models.EncounterVetoSession.encounter_id == encounter_id),
-            options,
-        )
-        if for_update:
-            query = query.with_for_update().execution_options(populate_existing=True)
-        result = await session.execute(query)
-        return result.unique().scalars().first()
-
-    async def delete_for_encounter(self, session: AsyncSession, encounter_id: int) -> None:
-        await session.execute(
-            sa.delete(models.EncounterVetoSession).where(
-                models.EncounterVetoSession.encounter_id == encounter_id
-            )
-        )
-
-
-class EncounterMapPoolRepository(BaseRepository[models.EncounterMapPool]):
-    def __init__(self) -> None:
-        super().__init__(models.EncounterMapPool)
-
-    async def delete_for_encounter(self, session: AsyncSession, encounter_id: int) -> None:
-        await session.execute(
-            sa.delete(models.EncounterMapPool).where(
-                models.EncounterMapPool.encounter_id == encounter_id
-            )
-        )
-
-
 __all__ = (
-    "EncounterMapPoolRepository",
     "EncounterPickBanLedgerRepository",
     "EncounterReadinessRepository",
-    "EncounterVetoSessionRepository",
-    "MapVetoConfigRepository",
-    "MapVetoConfigSlotRepository",
     "PickBanConfigItemRepository",
     "PickBanConfigRepository",
     "PickBanConfigSlotItemRepository",

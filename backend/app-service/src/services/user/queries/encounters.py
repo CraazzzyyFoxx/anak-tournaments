@@ -656,14 +656,13 @@ class UserEncounterQueries:
         )
 
     async def get_settled_map_ids(
-        self, session: AsyncSession, encounter_ids: typing.Sequence[int]
+        self,
+        session: AsyncSession,
+        ids: list[int],
     ) -> dict[int, list[int]]:
-        """Play-order map ids per encounter, from pick-ban then legacy map pool."""
-        from src.services.user import _mappers
-
-        if not encounter_ids:
+        """Play-order map ids per encounter, from pick-ban entries."""
+        if not ids:
             return {}
-        ids = tuple(dict.fromkeys(int(encounter_id) for encounter_id in encounter_ids))
         pick_ban_rows = (
             await session.execute(
                 sa.select(
@@ -675,7 +674,7 @@ class UserEncounterQueries:
                 )
                 .join(PickBanEntry, PickBanEntry.session_id == PickBanSession.id)
                 .where(
-                    PickBanSession.encounter_id.in_(ids),
+                    PickBanSession.encounter_id.in_(tuple(ids)),
                     PickBanSession.kind == PickBanKind.MAP,
                 )
             )
@@ -683,29 +682,7 @@ class UserEncounterQueries:
         grouped: dict[int, list[tuple[object, object, object, object]]] = {}
         for encounter_id, item_id, status, action_index, order in pick_ban_rows:
             grouped.setdefault(int(encounter_id), []).append((item_id, status, action_index, order))
-        result = {encounter_id: _mappers.settled_map_ids(rows) for encounter_id, rows in grouped.items() if rows}
-        missing = [encounter_id for encounter_id in ids if encounter_id not in result]
-        if not missing:
-            return result
-        legacy_rows = (
-            await session.execute(
-                sa.select(
-                    models.EncounterMapPool.encounter_id,
-                    models.EncounterMapPool.map_id,
-                    models.EncounterMapPool.status,
-                    models.EncounterMapPool.action_index,
-                    models.EncounterMapPool.order,
-                ).where(models.EncounterMapPool.encounter_id.in_(tuple(missing)))
-            )
-        ).all()
-        legacy: dict[int, list[tuple[object, object, object, object]]] = {}
-        for encounter_id, map_id, status, action_index, order in legacy_rows:
-            legacy.setdefault(int(encounter_id), []).append((map_id, status, action_index, order))
-        for encounter_id, rows in legacy.items():
-            settled = _mappers.settled_map_ids(rows)
-            if settled:
-                result[encounter_id] = settled
-        return result
+        return {encounter_id: _mappers.settled_map_ids(rows) for encounter_id, rows in grouped.items() if rows}
 
     async def get_user_opponents(
         self,

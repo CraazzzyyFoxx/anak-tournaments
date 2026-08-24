@@ -32,7 +32,7 @@ __all__ = (
 
 
 class AnalyticsPlayer(db.TimeStampIntegerMixin):
-    __tablename__ = "tournament"
+    __tablename__ = "player_shift"
     __table_args__ = ({"schema": "analytics"},)
 
     tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)

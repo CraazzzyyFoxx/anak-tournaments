@@ -52,8 +52,8 @@ REFERENCE_CONFIG: tuple[tuple[str, type, str], ...] = (
     ("matches.statistics.user_id", models.MatchStatistics, "user_id"),
     ("matches.kill_feed.killer_id", models.MatchKillFeed, "killer_id"),
     ("matches.kill_feed.victim_id", models.MatchKillFeed, "victim_id"),
-    ("matches.assists.user_id", models.MatchEvent, "user_id"),
-    ("matches.assists.related_user_id", models.MatchEvent, "related_user_id"),
+    ("matches.event.user_id", models.MatchEvent, "user_id"),
+    ("matches.event.related_user_id", models.MatchEvent, "related_user_id"),
     ("analytics.balance_player_snapshot.user_id", models.AnalyticsBalancePlayerSnapshot, "user_id"),
     ("log_processing.record.uploader_id", models.LogProcessingRecord, "uploader_id"),
 )

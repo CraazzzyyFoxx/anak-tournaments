@@ -62,10 +62,9 @@ from src.services.encounter.veto_session import (
     REASON_SLOT_UNDERFILLED,
     REASON_TEAMS_UNKNOWN,
     SLOT_CANDIDATE_FLOOR,
-    VetoSessionService,
     build_sequence_for_best_of,
     build_slot_sequence,
-    veto_session_service,
+    resolve_seeds,
 )
 
 # A config is only ever useful with its pool in hand (`items` in flat mode,
@@ -153,7 +152,6 @@ class PickBanSessionService:
         readiness_repo: EncounterReadinessRepository = EncounterReadinessRepository(),
         ledger_repo: EncounterPickBanLedgerRepository = EncounterPickBanLedgerRepository(),
         match_repo: MatchRepository = MatchRepository(),
-        veto: VetoSessionService = veto_session_service,
     ) -> None:
         self.session_repo = session_repo
         self.entry_repo = entry_repo
@@ -161,7 +159,6 @@ class PickBanSessionService:
         self.readiness_repo = readiness_repo
         self.ledger_repo = ledger_repo
         self.match_repo = match_repo
-        self.veto = veto
 
     async def current_round_of(self, session: AsyncSession, pick_ban: PickBanSession) -> int | None:
         """The round `pick_ban` is currently resolving (see
@@ -436,7 +433,7 @@ class PickBanSessionService:
             return None
 
         pool_size = sum(len(s) for s in slots) if slots is not None else len(config.items)
-        seeds = await self.veto.resolve_seeds(session, encounter)
+        seeds = await resolve_seeds(session, encounter)
         now = datetime.now(UTC)
         flat_item_ids = [item.item_id for item in sorted(config.items, key=lambda item: item.sort_order)]
         progressive = rounds_are_progressive(config, kind)
