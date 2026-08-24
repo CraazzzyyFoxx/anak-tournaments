@@ -152,7 +152,7 @@ from .workspace_player import (
     WorkspacePlayerRankRepository,
     WorkspacePlayerRepository,
 )
-
+from .custom_game import CustomGamePlayerRepository, CustomGameRepository
 
 __all__ = (
     "TOURNAMENT_SOURCE_TYPE",
@@ -274,6 +274,8 @@ __all__ = (
     "HostPlayerRepository",
     "WorkspacePlayerRankRepository",
     "WorkspacePlayerRepository",
+    "CustomGamePlayerRepository",
+    "CustomGameRepository",
     "WorkspaceRepository",
     "WorkspaceSubscriptionRequirementRepository",
     "get_or_create_workspace_member",
