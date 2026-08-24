@@ -74,24 +74,17 @@ def _load_rows(conn) -> list[RegistrationBackfillRow]:
     ]
 
 
-def _alloc_ids(conn, table: str, n: int) -> list[int]:
-    if n == 0:
-        return []
-    lo = conn.execute(sa.text(f"SELECT COALESCE(MAX(id), 0) FROM balancer.{table}")).scalar()
-    return list(range(lo + 1, lo + 1 + n))
-
-
 def _apply(conn, plan) -> None:
     if not plan.players:
         return
-    player_ids = _alloc_ids(conn, "workspace_player", len(plan.players))
+
     conn.execute(
         sa.text(
             """
             INSERT INTO balancer.workspace_player
-                (id, workspace_id, battle_tag, battle_tag_normalized, display_name, player_id)
+                (workspace_id, battle_tag, battle_tag_normalized, display_name, player_id)
             VALUES
-                (:id, :workspace_id, :battle_tag, :battle_tag_normalized, :display_name, :player_id)
+                (:workspace_id, :battle_tag, :battle_tag_normalized, :display_name, :player_id)
             ON CONFLICT (workspace_id, battle_tag_normalized)
                 WHERE battle_tag_normalized IS NOT NULL AND hidden_at IS NULL
             DO NOTHING
@@ -99,14 +92,13 @@ def _apply(conn, plan) -> None:
         ),
         [
             {
-                "id": pid,
                 "workspace_id": player.workspace_id,
                 "battle_tag": player.battle_tag,
                 "battle_tag_normalized": player.battle_tag_normalized,
                 "display_name": player.display_name,
                 "player_id": player.player_id,
             }
-            for pid, player in zip(player_ids, plan.players, strict=True)
+            for player in plan.players
         ],
     )
     lookup = {
@@ -129,22 +121,18 @@ def _apply(conn, plan) -> None:
             rank_rows.append({"workspace_player_id": wpid, "role": role, "rank_value": value})
         for rid in player.registration_ids:
             links.append({"id": rid, "workspace_player_id": wpid})
-    rank_ids = _alloc_ids(conn, "workspace_player_rank", len(rank_rows))
     if rank_rows:
         conn.execute(
             sa.text(
                 """
                 INSERT INTO balancer.workspace_player_rank
-                    (id, workspace_player_id, role, rank_value)
+                    (workspace_player_id, role, rank_value)
                 VALUES
-                    (:id, :workspace_player_id, :role, :rank_value)
+                    (:workspace_player_id, :role, :rank_value)
                 ON CONFLICT ON CONSTRAINT uq_workspace_player_rank DO NOTHING
                 """
             ),
-            [
-                {"id": rid, **row}
-                for rid, row in zip(rank_ids, rank_rows, strict=True)
-            ],
+            rank_rows,
         )
     if links:
         conn.execute(
