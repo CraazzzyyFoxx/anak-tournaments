@@ -20,10 +20,6 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
         entities.extend(
             tournament_service.tournament_entities(utils.prepare_entities(in_entities, "tournament"), tournament_entity)
         )
-    if "tournament_group" in in_entities:
-        entities.append(utils.join_entity(child, models.Encounter.tournament_group))
-    if "group" in in_entities:
-        entities.append(utils.join_entity(child, models.Encounter.tournament_group))
     if "teams" in in_entities:
         home_team_entity = utils.join_entity(child, models.Encounter.home_team)
         away_team_entity = utils.join_entity(child, models.Encounter.away_team)
