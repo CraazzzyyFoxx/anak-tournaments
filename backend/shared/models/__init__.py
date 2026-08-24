@@ -22,3 +22,4 @@ from .registration import *
 from .subscriptions import *
 from .tenancy import *
 from .tournament import *
+from .workspace_player import *
