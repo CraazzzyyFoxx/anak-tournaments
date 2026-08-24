@@ -170,6 +170,39 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         self.assertEqual(new_encounters, result)
         create.assert_awaited_once()
 
+    async def test_avg_sr_ranking_reorders_teams_before_the_engine(self) -> None:
+        item = _item(1, "Bracket")
+        stage = SimpleNamespace(
+            id=99,
+            tournament_id=1,
+            stage_type=enums.StageType.SINGLE_ELIMINATION,
+            items=[item],
+            split_lower_bracket=False,
+            settings_json={"seed_ranking": "avg_sr"},
+        )
+        session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([])), flush=AsyncMock())
+        teams = {
+            1: SimpleNamespace(id=1, avg_sr=2200.0, total_sr=0),
+            2: SimpleNamespace(id=2, avg_sr=1800.0, total_sr=0),
+            3: SimpleNamespace(id=3, avg_sr=3100.0, total_sr=0),
+            4: SimpleNamespace(id=4, avg_sr=2500.0, total_sr=0),
+        }
+
+        with (
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service, "_collect_item_team_ids", lambda item: [1, 2, 3, 4]),
+            patch.object(stage_service.stage_service, "_load_rankable_teams", AsyncMock(return_value=teams)),
+            patch.object(stage_service.stage_service, "_generate_stage_skeleton", AsyncMock(return_value="skeleton")) as gen,
+            patch.object(stage_service.stage_service, "_load_team_names", AsyncMock(return_value={})),
+            patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=[])),
+            patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
+            patch.object(stage_service.stage_service, "_publish_tournament_changed", AsyncMock()),
+        ):
+            await stage_service.stage_service.generate_encounters(session, 99, commit=False)
+
+        self.assertEqual([3, 4, 1, 2], gen.await_args.args[2])
+
+
     async def test_builds_a_tbd_bracket_from_the_group_stage_advance_count(self) -> None:
         """The playoff has no seeds yet -- 2 advance from each of 4 groups, so
         the 8-team bracket is generated now with every slot left TBD."""

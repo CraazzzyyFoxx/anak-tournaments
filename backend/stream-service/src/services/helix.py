@@ -20,7 +20,7 @@ Three properties of Helix shape every line below:
   everything.
 
 The credential path is deliberately separate from
-``shared/subscriptions/providers/twitch_helix.py``: that client runs on each
+``shared/services/subscriptions/providers/twitch_helix.py``: that client runs on each
 patron's **user** token against ``GET /subscriptions/user``. Nothing is reused
 but the shape of the error taxonomy — an app-token client that raised
 ``HelixMissingScope`` would put an operator's missing credential on a player's

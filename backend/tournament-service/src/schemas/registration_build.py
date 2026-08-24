@@ -17,7 +17,7 @@ from sqlalchemy.orm import selectinload
 from shared.balancer_registration_statuses import build_unknown_status_meta
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.hero_catalog import HeroCatalog, resolve_hero_catalog
-from shared.services.division_grid_access import (
+from shared.services.division_grid.access import (
     get_effective_division_grid_version_ids,
     load_division_grid_snapshots,
     load_division_grid_version_read_payloads,

@@ -26,7 +26,7 @@ os.environ["DEBUG"] = "true"
 
 from shared.schemas.events import BalanceExportedEvent, BalancePlayerSnapshotData  # noqa: E402
 from src import models  # noqa: E402
-from src.worker.balance_snapshot import write_balance_snapshot  # noqa: E402
+from src.worker.balance_snapshot import balance_snapshot_service  # noqa: E402
 
 
 class FakeSession:
@@ -97,7 +97,7 @@ class BalanceSnapshotConsumerTests(IsolatedAsyncioTestCase):
     async def test_writes_snapshot_and_player_rows(self) -> None:
         session = FakeSession()
 
-        await write_balance_snapshot(session, _event())
+        await balance_snapshot_service.write_balance_snapshot(session, _event())
 
         snapshots = [o for o in session.added if isinstance(o, models.AnalyticsBalanceSnapshot)]
         players = [o for o in session.added if isinstance(o, models.AnalyticsBalancePlayerSnapshot)]
@@ -125,8 +125,8 @@ class BalanceSnapshotConsumerTests(IsolatedAsyncioTestCase):
         session = FakeSession()
 
         # Two deliveries of the same balance (duplicate or re-export).
-        await write_balance_snapshot(session, _event())
-        await write_balance_snapshot(session, _event())
+        await balance_snapshot_service.write_balance_snapshot(session, _event())
+        await balance_snapshot_service.write_balance_snapshot(session, _event())
 
         # A delete-by-key precedes every insert, so re-delivery converges to one row.
         self.assertEqual(2, len(session.deletes))

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from shared.core.enums import SubscriptionCollectionSource
 from shared.core.social import SocialProvider
 from shared.repository import OAuthConnectionRepository, WorkspaceRepository
-from shared.services.subscription_wiring import build_resolver
+from shared.services.subscriptions.wiring import build_resolver
 from src.core.broker import optional_broker
 from src.core.config import Settings
 

@@ -61,7 +61,7 @@ class _LiveSignalAlwaysActive:
         self.calls = 0
 
     async def resolve_many(self, *, config, auth_user_ids):
-        from shared.subscriptions import SubscriptionSource, SubscriptionState, SubscriptionVerdict
+        from shared.services.subscriptions import SubscriptionSource, SubscriptionState, SubscriptionVerdict
 
         self.calls += 1
         now = datetime.now(UTC)
@@ -115,8 +115,8 @@ class TestVerificationMethodEndToEnd(IsolatedAsyncioTestCase):
         )
 
     def _resolver(self, strategy):
-        from shared.services.subscription_entitlements import SubscriptionResolver
-        from shared.services.subscription_store import SqlEntitlementStore
+        from shared.services.subscriptions.entitlements import SubscriptionResolver
+        from shared.services.subscriptions.store import SqlEntitlementStore
 
         return SubscriptionResolver(store=SqlEntitlementStore(self._session), strategies={"boosty": strategy})
 
@@ -127,7 +127,7 @@ class TestVerificationMethodEndToEnd(IsolatedAsyncioTestCase):
         return result[self.uid]["boosty"]
 
     async def _redeem(self):
-        from shared.services.subscription_store import SqlEntitlementStore
+        from shared.services.subscriptions.store import SqlEntitlementStore
         from src.services.registration.subscription_codes import redeem_challenge_code
 
         return await redeem_challenge_code(
@@ -159,7 +159,7 @@ class TestVerificationMethodEndToEnd(IsolatedAsyncioTestCase):
 
     async def test_code_only_refuses_an_unredeemed_patron_without_polling(self):
         """The regression: this used to be `unknown`, which fails open."""
-        from shared.subscriptions import SubscriptionState
+        from shared.services.subscriptions import SubscriptionState
 
         await self._configure("code", with_codes=True)
         strategy = _LiveSignalAlwaysActive()
@@ -171,7 +171,7 @@ class TestVerificationMethodEndToEnd(IsolatedAsyncioTestCase):
         assert strategy.calls == 0
 
     async def test_the_composed_gate_therefore_blocks(self):
-        from shared.subscriptions import parse_requirement
+        from shared.services.subscriptions import parse_requirement
 
         await self._configure("code", with_codes=True)
         requirement = parse_requirement({"mode": "any", "requirements": [{"provider": "boosty", "min_tier_rank": 1}]})
@@ -183,7 +183,7 @@ class TestVerificationMethodEndToEnd(IsolatedAsyncioTestCase):
         assert outcomes[self.uid][0].value == "refused"
 
     async def test_redeeming_satisfies_code_only(self):
-        from shared.subscriptions import SubscriptionSource, SubscriptionState
+        from shared.services.subscriptions import SubscriptionSource, SubscriptionState
 
         await self._configure("code", with_codes=True)
         assert (await self._redeem()).tier_rank == 2
@@ -195,7 +195,7 @@ class TestVerificationMethodEndToEnd(IsolatedAsyncioTestCase):
 
     async def test_switching_to_live_only_revokes_a_redeemed_code(self):
         """A code is never re-polled, so only source rejection can take it away."""
-        from shared.subscriptions import SubscriptionSource
+        from shared.services.subscriptions import SubscriptionSource
 
         await self._configure("code", with_codes=True)
         await self._redeem()
@@ -220,7 +220,7 @@ class TestVerificationMethodEndToEnd(IsolatedAsyncioTestCase):
         assert "не кодом" in str(caught.exception.detail)
 
     async def test_code_only_with_no_codes_fails_open(self):
-        from shared.subscriptions import SubscriptionState
+        from shared.services.subscriptions import SubscriptionState
 
         await self._configure("code", with_codes=False)
 
@@ -230,7 +230,7 @@ class TestVerificationMethodEndToEnd(IsolatedAsyncioTestCase):
         assert verdict.evidence["reason"] == "no_codes_configured"
 
     async def test_either_polls_and_still_accepts_a_code(self):
-        from shared.subscriptions import SubscriptionState
+        from shared.services.subscriptions import SubscriptionState
 
         await self._configure("any", with_codes=True)
         strategy = _LiveSignalAlwaysActive()

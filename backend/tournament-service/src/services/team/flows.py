@@ -2,9 +2,9 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DivisionGrid
-from shared.services.division_grid_resolution import resolve_tournament_division
+from shared.services.division_grid.resolution import resolve_tournament_division
 from src import models, schemas
-from src.core import config, errors, pagination, utils
+from src.core import config, enums, errors, pagination, utils
 from src.core.workspace import get_division_grid
 from src.services.tournament.flows import flows_service as tournament_flows_service
 from src.services.user.flows import flows_service as user_flows_service
@@ -74,13 +74,20 @@ class TeamFlowsService:
         if "placement" in entities:
             placement = resolve_team_placement(team)
         if "group" in entities:
-            groups = [
-                standing.group
-                for standing in team.standings
-                if standing.group is not None and standing.group.is_groups
-            ]
-            if groups:
-                group = await tournament_flows_service.to_pydantic_group(session, groups[0], [])
+            for standing in team.standings:
+                item = standing.stage_item
+                if item is not None and item.type == enums.StageItemType.GROUP:
+                    group = schemas.TournamentGroupRead(
+                        id=item.id,
+                        created_at=item.created_at,
+                        updated_at=item.updated_at,
+                        name=item.name,
+                        description=None,
+                        is_groups=True,
+                        challonge_id=None,
+                        challonge_slug=None,
+                    )
+                    break
 
         return schemas.TeamRead(
             id=team.id,

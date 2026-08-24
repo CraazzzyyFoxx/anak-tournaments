@@ -327,13 +327,3 @@ class ChallongeMappingRepository:
     logs = BaseRepository(models.ChallongeSyncLog)
 
 
-class AnalyticsStateRepository:
-    algorithms = BaseRepository(models.AnalyticsAlgorithm)
-    jobs = BaseRepository(models.AnalyticsJob)
-    model_artifacts = BaseRepository(models.MLModelArtifact)
-    feature_store = BaseRepository(models.MLFeatureStore)
-    performance = BaseRepository(models.AnalyticsPerformance)
-    standings_distribution = BaseRepository(models.AnalyticsStandingsDistribution)
-    match_quality = BaseRepository(models.AnalyticsMatchQuality)
-    player_anomaly = BaseRepository(models.AnalyticsPlayerAnomaly)
-    explanations = BaseRepository(models.AnalyticsExplanation)

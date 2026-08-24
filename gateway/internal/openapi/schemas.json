@@ -1,5 +1,29 @@
 {
   "operations": {
+    "rpc.analytics.artifacts": {
+      "description": "Returns ML model artifacts ordered by creation, optionally filtered by model_kind and active_only; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "model_kind",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "active_only",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "analytics.MLArtifactRow"
+      },
+      "summary": "ML artifacts"
+    },
     "rpc.analytics.balance_quality": {
       "description": "Returns the stored balance-quality snapshot (objective score, SR spread, discomfort, per-player rows) for a tournament, or null if none exists.",
       "query_params": [
@@ -37,6 +61,40 @@
         "ref": "analytics.AnalyticsJobRow"
       },
       "summary": "Create analytics job"
+    },
+    "rpc.analytics.explain": {
+      "description": "Returns the most recent explanation row for a player in a tournament (optionally by algorithm_id); 404 if none found; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "algorithm_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "analytics.ExplanationRow"
+      },
+      "summary": "Explain player"
+    },
+    "rpc.analytics.feedback_list": {
+      "description": "Returns all anomaly-feedback rows recorded for a tournament; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "analytics.AnomalyFeedbackRow"
+      },
+      "summary": "List anomaly feedback"
     },
     "rpc.analytics.feedback_submit": {
       "description": "Upserts a reviewer verdict/note for a player anomaly and returns the saved row; requires analytics.update.",
@@ -205,9 +263,88 @@
       },
       "summary": "List algorithms"
     },
+    "rpc.analytics.match_quality": {
+      "description": "Returns per-encounter match-quality rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "algorithm_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "analytics.MatchQualityRow"
+      },
+      "summary": "Match quality"
+    },
     "rpc.analytics.openskill": {
       "description": "Deprecated OpenSkill v1 endpoint; validates tournament/workspace then always returns 410 gone, directing callers to run the unified analytics job.",
       "summary": "OpenSkill (gone)"
+    },
+    "rpc.analytics.performance": {
+      "description": "Returns ML performance rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "algorithm_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "analytics.PerformanceRow"
+      },
+      "summary": "Performance rows"
+    },
+    "rpc.analytics.player_anomalies": {
+      "description": "Returns player-anomaly rows for a tournament, optionally filtered by player_id and kind; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "player_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "kind",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "analytics.PlayerAnomalyRow"
+      },
+      "summary": "Player anomalies"
     },
     "rpc.analytics.points": {
       "description": "Creates a 202 async compute job scoped to the Points algorithm for the required tournament_id.",
@@ -262,156 +399,7 @@
       },
       "summary": "Override player shift"
     },
-    "rpc.analytics.train": {
-      "description": "Dispatches a 202 ML training job to the worker queue; requires analytics.update and configured RabbitMQ (503 otherwise).",
-      "request": {
-        "array": false,
-        "ref": "analytics.TrainRequestBody"
-      },
-      "response": {
-        "array": false,
-        "ref": "analytics.JobAcceptedResponse"
-      },
-      "summary": "Train model"
-    },
-    "rpc.analytics.v2_artifacts": {
-      "description": "Returns ML model artifacts ordered by creation, optionally filtered by model_kind and active_only; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "model_kind",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "active_only",
-          "required": false,
-          "schema": {
-            "type": "boolean"
-          }
-        }
-      ],
-      "response": {
-        "array": true,
-        "ref": "analytics.MLArtifactRow"
-      },
-      "summary": "ML artifacts"
-    },
-    "rpc.analytics.v2_explain": {
-      "description": "Returns the most recent explanation row for a player in a tournament (optionally by algorithm_id); 404 if none found; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "algorithm_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
-          }
-        }
-      ],
-      "response": {
-        "array": false,
-        "ref": "analytics.ExplanationRow"
-      },
-      "summary": "Explain player"
-    },
-    "rpc.analytics.v2_feedback_list": {
-      "description": "Returns all anomaly-feedback rows recorded for a tournament; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "tournament_id",
-          "required": true,
-          "schema": {
-            "type": "integer"
-          }
-        }
-      ],
-      "response": {
-        "array": true,
-        "ref": "analytics.AnomalyFeedbackRow"
-      },
-      "summary": "List anomaly feedback"
-    },
-    "rpc.analytics.v2_match_quality": {
-      "description": "Returns per-encounter match-quality rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "tournament_id",
-          "required": true,
-          "schema": {
-            "type": "integer"
-          }
-        },
-        {
-          "name": "algorithm_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
-          }
-        }
-      ],
-      "response": {
-        "array": true,
-        "ref": "analytics.MatchQualityRow"
-      },
-      "summary": "Match quality"
-    },
-    "rpc.analytics.v2_performance": {
-      "description": "Returns ML performance rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "tournament_id",
-          "required": true,
-          "schema": {
-            "type": "integer"
-          }
-        },
-        {
-          "name": "algorithm_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
-          }
-        }
-      ],
-      "response": {
-        "array": true,
-        "ref": "analytics.PerformanceRow"
-      },
-      "summary": "Performance rows"
-    },
-    "rpc.analytics.v2_player_anomalies": {
-      "description": "Returns player-anomaly rows for a tournament, optionally filtered by player_id and kind; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "tournament_id",
-          "required": true,
-          "schema": {
-            "type": "integer"
-          }
-        },
-        {
-          "name": "player_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
-          }
-        },
-        {
-          "name": "kind",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "response": {
-        "array": true,
-        "ref": "analytics.PlayerAnomalyRow"
-      },
-      "summary": "Player anomalies"
-    },
-    "rpc.analytics.v2_standings": {
+    "rpc.analytics.standings": {
       "description": "Returns standings-distribution rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
       "query_params": [
         {
@@ -434,6 +422,18 @@
         "ref": "analytics.StandingsRow"
       },
       "summary": "Standings distribution"
+    },
+    "rpc.analytics.train": {
+      "description": "Dispatches a 202 ML training job to the worker queue; requires analytics.update and configured RabbitMQ (503 otherwise).",
+      "request": {
+        "array": false,
+        "ref": "analytics.TrainRequestBody"
+      },
+      "response": {
+        "array": false,
+        "ref": "analytics.JobAcceptedResponse"
+      },
+      "summary": "Train model"
     },
     "rpc.app.achievements.user": {
       "description": "Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace; rejects combining tournament_id with without_tournament=true (public).",

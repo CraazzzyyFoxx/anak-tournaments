@@ -40,7 +40,7 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ["DEBUG"] = "false"
 
-analytics_flows = importlib.import_module("src.services.analytics_read.flows")
+analytics_flows = importlib.import_module("src.services.analytics.reads")
 schemas = importlib.import_module("src.schemas")
 shared_models = importlib.import_module("shared.models")
 

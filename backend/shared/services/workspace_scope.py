@@ -27,12 +27,12 @@ from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid
 from shared.models.division_grid import DivisionGridVersion
-from shared.services.division_grid_access import (
+from shared.services.division_grid.access import (
     build_workspace_division_grid_normalizer,
     get_effective_division_grid,
     get_effective_division_grid_version,
 )
-from shared.services.division_grid_normalization import (
+from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
 )
@@ -182,9 +182,6 @@ def workspace_scope_filter(
 # that need to be applied in order to reach Tournament.
 _JOIN_PATHS: dict[type, list[tuple]] = {
     models.Tournament: [],
-    models.TournamentGroup: [
-        (models.Tournament, models.TournamentGroup.tournament_id == models.Tournament.id),
-    ],
     models.Team: [
         (models.Tournament, models.Team.tournament_id == models.Tournament.id),
     ],

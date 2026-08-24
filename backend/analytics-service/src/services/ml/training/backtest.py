@@ -1,7 +1,7 @@
 """Rolling-window backtest harness for v2 models.
 
 The CLI ``analytics.ml.cli backtest --window K`` calls
-:func:`run_rolling_backtest`. For each fold ``t`` in the window the harness:
+:meth:`BacktestService.run_rolling_backtest`. For each fold ``t`` in the window the harness:
 
 1. trains every model on tournaments ``[1..t-1]``
 2. infers on tournament ``t``
@@ -20,6 +20,7 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.repository import MLModelArtifactRepository
 from src import models
 from src.core.workspace import workspace_scope_filter
 from src.services.analytics.canonical_division import (
@@ -34,12 +35,12 @@ from .orchestrator import (
     STANDINGS_ALGORITHM_NAME,
     train_all_models,
 )
-from .registry import load_active_artifacts
+from .registry import registry_service
 from .splits import tournament_ids_up_to
 
 logger = logging.getLogger(__name__)
 
-__all__ = ("run_rolling_backtest", "persist_backtest_summary")
+__all__ = ("BacktestService", "backtest_service")
 
 
 async def _v1_shift_map(session: AsyncSession, tournament_id: int) -> dict[int, float]:
@@ -244,111 +245,6 @@ def _spearman_correlation(actual: dict[int, int], predicted: dict[int, float]) -
     return float(np.corrcoef(a_rank, p_rank)[0, 1])
 
 
-async def run_rolling_backtest(
-    session: AsyncSession,
-    *,
-    window: int,
-    cutoff_tournament_id: int | None = None,
-    workspace_id: int | None = None,
-) -> dict[str, typing.Any]:
-    """Train + infer + score for the latest ``window`` tournaments.
-
-    Returns ``{fold_tournament_id: {metric: value}}`` plus an aggregate
-    summary with mean MAE / Spearman / Brier across folds.
-    """
-    all_ids = await tournament_ids_up_to(
-        session,
-        cutoff_tournament_id if cutoff_tournament_id is not None else (await _latest_tournament_id(session)),
-        workspace_id=workspace_id,
-    )
-    if len(all_ids) < window + 1:
-        logger.warning("Not enough tournaments for backtest window=%d", window)
-        return {"folds": {}, "summary": {}, "n_tournaments": len(all_ids)}
-
-    folds_meta: dict[int, dict[str, typing.Any]] = {}
-    calibration_confidences: list[float] = []
-    calibration_errors: list[float] = []
-    last_tids = all_ids[-window:]
-    history_horizon = all_ids[-1]
-    for fold_tid in last_tids:
-        logger.info("Backtest fold cutoff=%d", fold_tid)
-        # Train on everything strictly before the fold.
-        await train_all_models(session, fold_tid - 1, workspace_id=workspace_id)
-        await session.commit()
-        await run_for_tournament(session, fold_tid, workspace_id=workspace_id)
-
-        v1 = await _v1_shift_map(session, fold_tid)
-        v2 = await _v2_shift_map(session, fold_tid)
-
-        # Ground-truth scoring: realised division move (drops the latest fold,
-        # whose next-tournament div is not observed yet).
-        realised = await _realised_shift_map(
-            session,
-            fold_tid,
-            history_through_tournament_id=history_horizon,
-            workspace_id=workspace_id,
-        )
-        v2_scores = _shift_scores(realised, v2)
-        v1_scores = _shift_scores(realised, v1)
-
-        # Accumulate (confidence, |error|) pairs for the calibration report.
-        v2_conf = await _v2_shift_confidence_map(session, fold_tid)
-        for player_id in realised.keys() & v2.keys() & v2_conf.keys():
-            calibration_confidences.append(v2_conf[player_id])
-            calibration_errors.append(abs(v2[player_id] - realised[player_id]))
-
-        # Agreement with the v1 heuristic (kept as a reference, not accuracy).
-        common = v1.keys() & v2.keys()
-        shift_mae_v1_vs_v2 = float(np.mean([abs(v1[k] - v2[k]) for k in common])) if common else None
-
-        actual = await _actual_standings(session, fold_tid)
-        predicted = await _predicted_standings(session, fold_tid)
-        spearman = _spearman_correlation(actual, predicted) if predicted else None
-        position_mae = _position_mae(actual, predicted) if predicted else None
-        standings_teams_scored = len(actual.keys() & predicted.keys())
-
-        folds_meta[int(fold_tid)] = {
-            # Accuracy against the realised division move (the real label).
-            "shift_mae_v2_vs_realised": v2_scores["shift_mae"],
-            "shift_sign_accuracy_v2": v2_scores["shift_sign_accuracy"],
-            "shift_mae_v1_vs_realised": v1_scores["shift_mae"],
-            "shift_sign_accuracy_v1": v1_scores["shift_sign_accuracy"],
-            "realised_players": v2_scores["n"],
-            # Reference: agreement between the two shift algorithms.
-            "shift_mae_v1_vs_v2": shift_mae_v1_vs_v2,
-            # Standings accuracy. ``standings_teams_scored`` exposes coverage so
-            # a fold that scored only a couple of teams is not mistaken for a
-            # full-field result.
-            "standings_spearman": spearman,
-            "standings_position_mae": position_mae,
-            "standings_teams_scored": standings_teams_scored,
-            "v1_players": len(v1),
-            "v2_players": len(v2),
-        }
-
-    def _mean(metric: str) -> float | None:
-        values = [m[metric] for m in folds_meta.values() if m.get(metric) is not None]
-        return float(np.mean(values)) if values else None
-
-    aggregate = {
-        "mean_shift_mae_v2_vs_realised": _mean("shift_mae_v2_vs_realised"),
-        "mean_shift_sign_accuracy_v2": _mean("shift_sign_accuracy_v2"),
-        "mean_shift_mae_v1_vs_realised": _mean("shift_mae_v1_vs_realised"),
-        "mean_shift_sign_accuracy_v1": _mean("shift_sign_accuracy_v1"),
-        "mean_shift_mae_v1_vs_v2": _mean("shift_mae_v1_vs_v2"),
-        "mean_standings_spearman": _mean("standings_spearman"),
-        "mean_standings_position_mae": _mean("standings_position_mae"),
-    }
-    # A prediction within half a division of the realised move counts as a hit.
-    calibration = compute_calibration_report(calibration_confidences, calibration_errors, accuracy_tolerance=0.5)
-    return {
-        "folds": folds_meta,
-        "summary": aggregate,
-        "calibration": calibration,
-        "n_tournaments": len(all_ids),
-    }
-
-
 async def _latest_tournament_id(session: AsyncSession) -> int:
     # Same exclusion as ``tournament_ids_up_to``: the per-workspace scrim
     # container (docs/plans/2026-08-12-scrim-rooms.md) is hidden and carries no
@@ -377,25 +273,141 @@ def _merge_backtest_metrics(
     return metrics
 
 
-async def persist_backtest_summary(
-    session: AsyncSession,
-    report: dict[str, typing.Any],
-    *,
-    model_kinds: typing.Sequence[str] = ("shift", "standings"),
-) -> int:
-    """Attach the walk-forward ``report`` to the active artifacts' ``metrics``.
+class BacktestService:
+    def __init__(self, *, artifacts: MLModelArtifactRepository = MLModelArtifactRepository()) -> None:
+        self.artifacts = artifacts
 
-    This surfaces the honest backtest aggregates (realised-shift MAE,
-    sign-accuracy, standings Spearman, ECE) through ``routes/v2.py::list_artifacts``
-    so the UI can show them next to the in-sample / val training metrics.
-    Returns the number of artifact rows updated.
-    """
-    updated = 0
-    for kind in model_kinds:
-        for artifact in await load_active_artifacts(session, model_kind=kind):
-            artifact.metrics = _merge_backtest_metrics(artifact.metrics, report)
-            session.add(artifact)
-            updated += 1
-    if updated:
-        await session.commit()
-    return updated
+    async def run_rolling_backtest(
+        self,
+        session: AsyncSession,
+        *,
+        window: int,
+        cutoff_tournament_id: int | None = None,
+        workspace_id: int | None = None,
+    ) -> dict[str, typing.Any]:
+        """Train + infer + score for the latest ``window`` tournaments.
+
+        Returns ``{fold_tournament_id: {metric: value}}`` plus an aggregate
+        summary with mean MAE / Spearman / Brier across folds.
+        """
+        all_ids = await tournament_ids_up_to(
+            session,
+            cutoff_tournament_id if cutoff_tournament_id is not None else (await _latest_tournament_id(session)),
+            workspace_id=workspace_id,
+        )
+        if len(all_ids) < window + 1:
+            logger.warning("Not enough tournaments for backtest window=%d", window)
+            return {"folds": {}, "summary": {}, "n_tournaments": len(all_ids)}
+
+        folds_meta: dict[int, dict[str, typing.Any]] = {}
+        calibration_confidences: list[float] = []
+        calibration_errors: list[float] = []
+        last_tids = all_ids[-window:]
+        history_horizon = all_ids[-1]
+        for fold_tid in last_tids:
+            logger.info("Backtest fold cutoff=%d", fold_tid)
+            # Train on everything strictly before the fold.
+            await train_all_models(session, fold_tid - 1, workspace_id=workspace_id)
+            await session.commit()
+            await run_for_tournament(session, fold_tid, workspace_id=workspace_id)
+
+            v1 = await _v1_shift_map(session, fold_tid)
+            v2 = await _v2_shift_map(session, fold_tid)
+
+            # Ground-truth scoring: realised division move (drops the latest fold,
+            # whose next-tournament div is not observed yet).
+            realised = await _realised_shift_map(
+                session,
+                fold_tid,
+                history_through_tournament_id=history_horizon,
+                workspace_id=workspace_id,
+            )
+            v2_scores = _shift_scores(realised, v2)
+            v1_scores = _shift_scores(realised, v1)
+
+            # Accumulate (confidence, |error|) pairs for the calibration report.
+            v2_conf = await _v2_shift_confidence_map(session, fold_tid)
+            for player_id in realised.keys() & v2.keys() & v2_conf.keys():
+                calibration_confidences.append(v2_conf[player_id])
+                calibration_errors.append(abs(v2[player_id] - realised[player_id]))
+
+            # Agreement with the v1 heuristic (kept as a reference, not accuracy).
+            common = v1.keys() & v2.keys()
+            shift_mae_v1_vs_v2 = float(np.mean([abs(v1[k] - v2[k]) for k in common])) if common else None
+
+            actual = await _actual_standings(session, fold_tid)
+            predicted = await _predicted_standings(session, fold_tid)
+            spearman = _spearman_correlation(actual, predicted) if predicted else None
+            position_mae = _position_mae(actual, predicted) if predicted else None
+            standings_teams_scored = len(actual.keys() & predicted.keys())
+
+            folds_meta[int(fold_tid)] = {
+                # Accuracy against the realised division move (the real label).
+                "shift_mae_v2_vs_realised": v2_scores["shift_mae"],
+                "shift_sign_accuracy_v2": v2_scores["shift_sign_accuracy"],
+                "shift_mae_v1_vs_realised": v1_scores["shift_mae"],
+                "shift_sign_accuracy_v1": v1_scores["shift_sign_accuracy"],
+                "realised_players": v2_scores["n"],
+                # Reference: agreement between the two shift algorithms.
+                "shift_mae_v1_vs_v2": shift_mae_v1_vs_v2,
+                # Standings accuracy. ``standings_teams_scored`` exposes coverage so
+                # a fold that scored only a couple of teams is not mistaken for a
+                # full-field result.
+                "standings_spearman": spearman,
+                "standings_position_mae": position_mae,
+                "standings_teams_scored": standings_teams_scored,
+                "v1_players": len(v1),
+                "v2_players": len(v2),
+            }
+
+        def _mean(metric: str) -> float | None:
+            values = [m[metric] for m in folds_meta.values() if m.get(metric) is not None]
+            return float(np.mean(values)) if values else None
+
+        aggregate = {
+            "mean_shift_mae_v2_vs_realised": _mean("shift_mae_v2_vs_realised"),
+            "mean_shift_sign_accuracy_v2": _mean("shift_sign_accuracy_v2"),
+            "mean_shift_mae_v1_vs_realised": _mean("shift_mae_v1_vs_realised"),
+            "mean_shift_sign_accuracy_v1": _mean("shift_sign_accuracy_v1"),
+            "mean_shift_mae_v1_vs_v2": _mean("shift_mae_v1_vs_v2"),
+            "mean_standings_spearman": _mean("standings_spearman"),
+            "mean_standings_position_mae": _mean("standings_position_mae"),
+        }
+        # A prediction within half a division of the realised move counts as a hit.
+        calibration = compute_calibration_report(calibration_confidences, calibration_errors, accuracy_tolerance=0.5)
+        return {
+            "folds": folds_meta,
+            "summary": aggregate,
+            "calibration": calibration,
+            "n_tournaments": len(all_ids),
+        }
+
+    async def persist_backtest_summary(
+        self,
+        session: AsyncSession,
+        report: dict[str, typing.Any],
+        *,
+        model_kinds: typing.Sequence[str] = ("shift", "standings"),
+    ) -> int:
+        """Attach the walk-forward ``report`` to the active artifacts' ``metrics``.
+
+        This surfaces the honest backtest aggregates (realised-shift MAE,
+        sign-accuracy, standings Spearman, ECE) through ``routes/v2.py::list_artifacts``
+        so the UI can show them next to the in-sample / val training metrics.
+        Returns the number of artifact rows updated.
+        """
+        updated = 0
+        for kind in model_kinds:
+            for artifact in await registry_service.load_active_artifacts(session, model_kind=kind):
+                await self.artifacts.update_fields(
+                    session,
+                    artifact,
+                    {"metrics": _merge_backtest_metrics(artifact.metrics, report)},
+                )
+                updated += 1
+        if updated:
+            await session.commit()
+        return updated
+
+
+backtest_service = BacktestService()

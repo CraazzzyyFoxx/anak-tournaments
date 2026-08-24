@@ -32,7 +32,7 @@ from shared.repository import (
 )
 from shared.services import social_identity
 from shared.services.profile_visibility import resolve_profiles_open
-from shared.services.subscription_wiring import build_resolver
+from shared.services.subscriptions.wiring import build_resolver
 from src import models
 from src.core.broker import optional_broker
 from src.core.config import settings

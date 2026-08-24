@@ -47,7 +47,7 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 models = importlib.import_module("src.models")
-analytics_service = importlib.import_module("src.services.analytics.service")
+analytics_service = importlib.import_module("src.services.analytics.service").analytics_service
 splits = importlib.import_module("src.services.ml.training.splits")
 backtest = importlib.import_module("src.services.ml.training.backtest")
 enums = importlib.import_module("shared.core.enums")

@@ -20,7 +20,7 @@ is no way to configure "refuse sign-up but admit at check-in".
 Both gates fail OPEN on an undetermined verdict, exactly like
 ``require_open_profile``: a provider outage must never un-admit a subscriber.
 
-Every composition subtlety lives in ``shared.subscriptions.requirement`` (Kleene
+Every composition subtlety lives in ``shared.services.subscriptions.requirement`` (Kleene
 three-valued logic). This module only decides *when* to ask and *what to say*.
 """
 
@@ -31,7 +31,7 @@ from typing import Any, Protocol
 from shared.core.enums import SubscriptionCollectionSource, SubscriptionEnforcementStage
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
-from shared.subscriptions import (
+from shared.services.subscriptions import (
     Outcome,
     SubscriptionRequirement,
     SubscriptionVerdict,

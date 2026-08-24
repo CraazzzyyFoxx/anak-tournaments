@@ -50,7 +50,7 @@ import sqlalchemy as sa  # noqa: E402
 
 from shared.rbac import assign_workspace_system_role, ensure_workspace_system_roles  # noqa: E402
 from shared.repository import get_or_create_workspace_member  # noqa: E402
-from shared.services.division_grid_access import get_default_division_grid_version_id  # noqa: E402
+from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from src import models, schemas  # noqa: E402
 from src.services.auth import auth  # noqa: E402
 from src.services.token_payload import TokenPayloadBuilder, token_payloads  # noqa: E402

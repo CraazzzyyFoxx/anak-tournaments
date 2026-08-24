@@ -47,7 +47,7 @@ from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament.preview_access import TournamentPreviewAccess  # noqa: E402
 from shared.models.tournament.scrim import ScrimRoom  # noqa: E402
 from shared.models.tournament.tournament import Tournament  # noqa: E402
-from shared.services.tournament_visibility import (  # noqa: E402
+from shared.services.tournament.visibility import (  # noqa: E402
     assert_tournament_viewable,
     visible_tournament_ids_subquery,
 )

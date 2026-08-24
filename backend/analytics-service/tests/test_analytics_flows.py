@@ -15,7 +15,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-analytics_flows = importlib.import_module("src.services.analytics_read.flows")
+analytics_flows = importlib.import_module("src.services.analytics.reads")
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -126,19 +126,19 @@ class AnalyticsFlowsTests(IsolatedAsyncioTestCase):
         shift = _shift(value=1.6, confidence=0.82)
 
         with (
-            patch.object(analytics_flows.service, "get_algorithm", AsyncMock(return_value=algorithm)),
+            patch.object(analytics_flows.analytics_read_service, "get_algorithm", AsyncMock(return_value=algorithm)),
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_read_service,
                 "get_analytics",
                 AsyncMock(return_value=[(team, player, shift, analytics)]),
             ),
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_read_service,
                 "get_predicted_places",
                 AsyncMock(return_value={team.id: 3}),
             ),
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_read_service,
                 "get_match_quality_anomalies",
                 AsyncMock(
                     return_value=[
@@ -158,7 +158,7 @@ class AnalyticsFlowsTests(IsolatedAsyncioTestCase):
             ),
             patch.object(analytics_flows, "get_division_grid", AsyncMock(return_value=None)),
         ):
-            result = await analytics_flows.get_analytics(session, tournament_id=7, algorithm_id=11)
+            result = await analytics_flows.flows_service.get_analytics(session, tournament_id=7, algorithm_id=11)
 
         serialized_team = result.teams[0]
         serialized_player = serialized_team.players[0]
@@ -196,21 +196,21 @@ class AnalyticsFlowsTests(IsolatedAsyncioTestCase):
         player = _player()
 
         with (
-            patch.object(analytics_flows.service, "get_algorithm", AsyncMock(return_value=algorithm)),
+            patch.object(analytics_flows.analytics_read_service, "get_algorithm", AsyncMock(return_value=algorithm)),
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_read_service,
                 "get_analytics",
                 AsyncMock(return_value=[(team, player, _shift(), _analytics())]),
             ),
-            patch.object(analytics_flows.service, "get_predicted_places", AsyncMock(return_value={})),
+            patch.object(analytics_flows.analytics_read_service, "get_predicted_places", AsyncMock(return_value={})),
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_read_service,
                 "get_match_quality_anomalies",
                 AsyncMock(return_value=[]),
             ),
             patch.object(analytics_flows, "get_division_grid", AsyncMock(return_value=None)),
         ):
-            result = await analytics_flows.get_analytics(session, tournament_id=7, algorithm_id=11)
+            result = await analytics_flows.flows_service.get_analytics(session, tournament_id=7, algorithm_id=11)
 
         self.assertEqual(2, result.teams[0].placement)
 
@@ -221,21 +221,21 @@ class AnalyticsFlowsTests(IsolatedAsyncioTestCase):
         player = _player(is_newcomer=True)
 
         with (
-            patch.object(analytics_flows.service, "get_algorithm", AsyncMock(return_value=algorithm)),
+            patch.object(analytics_flows.analytics_read_service, "get_algorithm", AsyncMock(return_value=algorithm)),
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_read_service,
                 "get_analytics",
                 AsyncMock(return_value=[(team, player, _shift(), _analytics())]),
             ),
-            patch.object(analytics_flows.service, "get_predicted_places", AsyncMock(return_value={})),
+            patch.object(analytics_flows.analytics_read_service, "get_predicted_places", AsyncMock(return_value={})),
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_read_service,
                 "get_match_quality_anomalies",
                 AsyncMock(return_value=[]),
             ),
             patch.object(analytics_flows, "get_division_grid", AsyncMock(return_value=None)),
         ):
-            result = await analytics_flows.get_analytics(session, tournament_id=7, algorithm_id=11)
+            result = await analytics_flows.flows_service.get_analytics(session, tournament_id=7, algorithm_id=11)
 
         self.assertIsNone(result.teams[0].predicted_place)
         self.assertIsNone(result.teams[0].placement_delta)
@@ -249,24 +249,24 @@ class AnalyticsFlowsTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_read_service,
                 "get_algorithm",
                 AsyncMock(return_value=algorithm),
             ),
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_read_service,
                 "get_analytics",
                 AsyncMock(return_value=[]),
             ) as get_analytics,
-            patch.object(analytics_flows.service, "get_predicted_places", AsyncMock(return_value={})),
+            patch.object(analytics_flows.analytics_read_service, "get_predicted_places", AsyncMock(return_value={})),
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_read_service,
                 "get_match_quality_anomalies",
                 AsyncMock(return_value=[]),
             ),
             patch.object(analytics_flows, "get_division_grid", AsyncMock(return_value=None)),
         ):
-            await analytics_flows.get_analytics(
+            await analytics_flows.flows_service.get_analytics(
                 session,
                 tournament_id=7,
                 algorithm_id=11,

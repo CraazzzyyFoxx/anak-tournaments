@@ -15,7 +15,6 @@ from shared.repository import (
     StageItemRepository,
     StageRepository,
     TeamRepository,
-    TournamentGroupRepository,
     TournamentRepository,
 )
 from src import models, schemas
@@ -67,7 +66,6 @@ class AdminEncounterService:
         stage_item_repo: StageItemRepository = StageItemRepository(),
         team_repo: TeamRepository = TeamRepository(),
         tournament_repo: TournamentRepository = TournamentRepository(),
-        tournament_group_repo: TournamentGroupRepository = TournamentGroupRepository(),
     ) -> None:
         self.encounter_repo = encounter_repo
         self.match_repo = match_repo
@@ -76,7 +74,6 @@ class AdminEncounterService:
         self.stage_item_repo = stage_item_repo
         self.team_repo = team_repo
         self.tournament_repo = tournament_repo
-        self.tournament_group_repo = tournament_group_repo
 
     async def _resolve_stage_refs(
         self,
@@ -85,22 +82,12 @@ class AdminEncounterService:
         tournament_id: int,
         stage_id: int | None,
         stage_item_id: int | None,
-        tournament_group_id: int | None,
-    ) -> tuple[int, int | None, int | None]:
-        resolved_group: models.TournamentGroup | None = None
-        resolved_stage_item: models.StageItem | None = None
-
-        if tournament_group_id is not None:
-            resolved_group = await self.tournament_group_repo.get_by(
-                session, id=tournament_group_id, tournament_id=tournament_id
+    ) -> tuple[int, int | None]:
+        if stage_id is None and stage_item_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Encounter must be linked to a stage",
             )
-            if not resolved_group:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Tournament group not found",
-                )
-            if stage_id is None and resolved_group.stage_id is not None:
-                stage_id = resolved_group.stage_id
 
         if stage_item_id is not None:
             resolved_stage_item = await self.stage_item_repo.get(
@@ -124,34 +111,11 @@ class AdminEncounterService:
                     detail="Stage item does not belong to the selected stage",
                 )
 
-        if stage_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Encounter must be linked to a stage",
-            )
-
         resolved_stage = await self.stage_repo.get_by(session, id=stage_id, tournament_id=tournament_id)
         if not resolved_stage:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
 
-        if resolved_group is None:
-            if resolved_stage_item is not None:
-                resolved_group = await self.tournament_group_repo.get_by_tournament_stage_and_name(
-                    session,
-                    tournament_id=tournament_id,
-                    stage_id=resolved_stage.id,
-                    name=resolved_stage_item.name,
-                )
-            if resolved_group is None:
-                groups = list(
-                    await self.tournament_group_repo.list_by_tournament_stage(
-                        session, tournament_id=tournament_id, stage_id=resolved_stage.id
-                    )
-                )
-                if len(groups) == 1:
-                    resolved_group = groups[0]
-
-        return stage_id, stage_item_id, resolved_group.id if resolved_group else None
+        return stage_id, stage_item_id
 
     async def _require_team_in_tournament(
         self, session: AsyncSession, *, team_id: int, tournament_id: int, label: str
@@ -193,12 +157,11 @@ class AdminEncounterService:
                 session, team_id=data.away_team_id, tournament_id=data.tournament_id, label="Away team"
             )
 
-        stage_id, stage_item_id, tournament_group_id = await self._resolve_stage_refs(
+        stage_id, stage_item_id = await self._resolve_stage_refs(
             session,
             tournament_id=data.tournament_id,
             stage_id=data.stage_id,
             stage_item_id=data.stage_item_id,
-            tournament_group_id=data.tournament_group_id,
         )
 
         # Parse status
@@ -211,7 +174,6 @@ class AdminEncounterService:
         encounter = models.Encounter(
             name=data.name,
             tournament_id=data.tournament_id,
-            tournament_group_id=tournament_group_id,
             stage_id=stage_id,
             stage_item_id=stage_item_id,
             home_team_id=data.home_team_id,
@@ -249,7 +211,6 @@ class AdminEncounterService:
             options=[
                 selectinload(models.Encounter.home_team),
                 selectinload(models.Encounter.away_team),
-                selectinload(models.Encounter.tournament_group),
                 selectinload(models.Encounter.stage),
                 selectinload(models.Encounter.stage_item),
             ],
@@ -277,19 +238,14 @@ class AdminEncounterService:
                 label="Away team",
             )
 
-        resolved_stage_id, resolved_stage_item_id, resolved_group_id = await self._resolve_stage_refs(
+        resolved_stage_id, resolved_stage_item_id = await self._resolve_stage_refs(
             session,
             tournament_id=encounter.tournament_id,
             stage_id=update_data.get("stage_id", encounter.stage_id),
             stage_item_id=update_data.get("stage_item_id", encounter.stage_item_id),
-            tournament_group_id=update_data.get(
-                "tournament_group_id",
-                encounter.tournament_group_id,
-            ),
         )
         update_data["stage_id"] = resolved_stage_id
         update_data["stage_item_id"] = resolved_stage_item_id
-        update_data["tournament_group_id"] = resolved_group_id
 
         # Handle status conversion
         if "status" in update_data:

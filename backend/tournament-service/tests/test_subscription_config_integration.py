@@ -136,7 +136,7 @@ class TestProviderConfigPersistence(IsolatedAsyncioTestCase):
 
     async def test_plaintext_code_never_reaches_the_database(self):
         read = await self._save(provider="boosty", codes=[{"code": "live-secret", "tier_rank": 3, "tier_label": "L3"}])
-        from shared.subscriptions.challenge_code import hash_code
+        from shared.services.subscriptions.challenge_code import hash_code
 
         raw = await self._raw_config("boosty")
         assert "live-secret" not in raw

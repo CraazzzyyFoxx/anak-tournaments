@@ -174,14 +174,14 @@ class StatisticsQueries:
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Standing, models.Standing.team_id == models.Team.id)
             .join(
-                models.TournamentGroup,
-                models.TournamentGroup.id == models.Standing.group_id,
+                models.StageItem,
+                models.StageItem.id == models.Standing.stage_item_id,
             )
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .where(
                 sa.and_(
                     models.Standing.overall_position == 1,
-                    models.TournamentGroup.is_groups.is_(False),
+                    models.StageItem.type != enums.StageItemType.GROUP,
                     models.Player.is_substitution.is_(False),
                     models.Tournament.is_league.is_(False),
                     models.Tournament.is_hidden.is_(False),

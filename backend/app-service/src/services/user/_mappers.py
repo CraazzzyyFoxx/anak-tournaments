@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 from shared.core.impact import BADGE_THRESHOLD
 from shared.division_grid import DivisionGrid
-from shared.services.division_grid_resolution import resolve_tournament_division
+from shared.services.division_grid.resolution import resolve_tournament_division
 from src import models, schemas
 from src.schemas.base import Score
 from src.schemas.division_grid import DivisionGridVersionRead

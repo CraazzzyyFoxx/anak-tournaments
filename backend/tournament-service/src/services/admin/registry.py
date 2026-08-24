@@ -22,12 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.crud import CrudDispatcher, EntityConfig
+from shared.services.player_sub_role import player_sub_role_entity
 from src import schemas
 from src.core import auth, db
 from src.core.workspace import get_division_grid
 from src.services.admin.encounter import encounter_service as enc_service
-from src.services.admin.player_sub_role import PlayerSubRoleService
-from src.services.admin.player_sub_role import player_sub_role_service as psr_service
 from src.services.admin.stage import AdminStageService, stage_service
 from src.services.admin.standing import standing_service
 from src.services.admin.team import team_service
@@ -84,7 +83,6 @@ class AdminRegistryService:
         encounter_flows: EncounterFlowsService = encounter_flows,
         standings_flows: StandingsFlowsService = standings_flows,
         stage: AdminStageService = stage_service,
-        player_sub_roles: PlayerSubRoleService = psr_service,
         tournament_links: TournamentLinkService = tlink_service,
     ) -> None:
         self.tournament_flows = tournament_flows
@@ -92,7 +90,6 @@ class AdminRegistryService:
         self.encounter_flows = encounter_flows
         self.standings_flows = standings_flows
         self.stage = stage
-        self.player_sub_roles = player_sub_roles
         self.tournament_links = tournament_links
 
     # --- workspace resolvers for create/list (must be awaitables) ---
@@ -126,8 +123,6 @@ class AdminRegistryService:
     async def _ws_via_stage_item_path(self, session: AsyncSession, data: dict[str, Any]) -> int:
         return await auth.get_stage_item_workspace_id(session, _int_or_400(data.get("stage_item_id"), "stage_item_id"))
 
-    async def _ws_query(self, session: AsyncSession, data: dict[str, Any]) -> int:
-        return _int_or_400(_query(data).get("workspace_id"), "workspace_id")
 
     # --- serializers (async (session, model) -> json-able dict) ---
 
@@ -171,8 +166,6 @@ class AdminRegistryService:
     async def _ser_standing(self, session: AsyncSession, m: Any) -> Any:
         return _dump(await self.standings_flows.to_pydantic(session, m, ["team", "stage", "stage_item", "tournament"]))
 
-    async def _ser_player_sub_role(self, session: AsyncSession, m: Any) -> Any:
-        return _dump(schemas.PlayerSubRoleRead.model_validate(m, from_attributes=True))
 
     async def _ser_tournament_link(self, session: AsyncSession, m: Any) -> Any:
         return _dump(schemas.TournamentLinkRead.model_validate(m, from_attributes=True))
@@ -184,18 +177,6 @@ class AdminRegistryService:
         stages = await self.stage.get_stages_by_tournament(session, tournament_id)
         return [_dump(schemas.StageRead.model_validate(s, from_attributes=True)) for s in stages]
 
-    async def _list_player_sub_roles(self, session: AsyncSession, data: dict[str, Any]) -> Any:
-        q = _query(data)
-        workspace_id = _int_or_400(q.get("workspace_id"), "workspace_id")
-        role_raw = q.get("role")
-        role = (role_raw[0] if isinstance(role_raw, list) else role_raw) or None
-        inc_raw = q.get("include_inactive")
-        inc = inc_raw[0] if isinstance(inc_raw, list) else inc_raw
-        include_inactive = str(inc).lower() in ("1", "true", "yes", "on") if inc is not None else False
-        rows = await self.player_sub_roles.list_sub_roles(
-            session, workspace_id=workspace_id, role=role, include_inactive=include_inactive
-        )
-        return [_dump(schemas.PlayerSubRoleRead.model_validate(r, from_attributes=True)) for r in rows]
 
     async def _list_tournament_links(self, session: AsyncSession, data: dict[str, Any]) -> Any:
         q = _query(data)
@@ -339,23 +320,7 @@ REGISTRY: dict[str, EntityConfig] = {
         not_found_detail="Standing not found",
         actions=frozenset({"update", "delete"}),
     ),
-    "player_sub_role": EntityConfig(
-        entity="player_sub_role",
-        model=None,
-        permission_resource="player",
-        serializer=registry_service._ser_player_sub_role,
-        create_schema=schemas.PlayerSubRoleCreate,
-        update_schema=schemas.PlayerSubRoleUpdate,
-        resolve_ws_from_id=auth.get_player_sub_role_workspace_id,
-        resolve_ws_for_create=lambda s, d: _ws_body(d),
-        resolve_ws_for_list=registry_service._ws_query,
-        service_create=lambda s, p, d: psr_service.create_sub_role(s, p),
-        service_update=lambda s, i, p, d: psr_service.update_sub_role(s, i, p),
-        service_delete=lambda s, i, d: psr_service.deactivate_sub_role(s, i),
-        list_fn=registry_service._list_player_sub_roles,
-        not_found_detail="Player sub-role not found",
-        actions=frozenset({"create", "update", "delete", "list"}),
-    ),
+    "player_sub_role": player_sub_role_entity(),
     "tournament_link": EntityConfig(
         entity="tournament_link",
         model=None,

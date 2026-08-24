@@ -50,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from shared.subscriptions import (  # noqa: E402
+from shared.services.subscriptions import (  # noqa: E402
     SubscriptionRequirement,
     SubscriptionState,
     SubscriptionVerdict,

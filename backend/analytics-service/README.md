@@ -34,13 +34,13 @@ APScheduler drift job would multi-fire).
 
 ## Scope
 
-- **v1:** OpenSkill / Plackett-Luce rating shifts, linear/points algorithms, and
-  predicted standings.
-- **v2:** a classical-ML pipeline — LightGBM/XGBoost gradient boosting + Bayesian layer +
-  Monte Carlo — for player performance, shifts, predicted standings, and match quality.
-  v2 is **implemented and wired** (`analytics_train` / `analytics_infer` queues,
-  `MLFeatureStore` / `MLModelArtifact`, and `AnalyticsStandingsDistribution` as the sole
-  predicted-place source), not merely planned.
+- **Ratings:** OpenSkill / Plackett-Luce rating shifts, linear/points algorithms.
+  Code lives in `src/domain/ratings.py` and `src/services/analytics/`.
+- **ML:** LightGBM/XGBoost + Bayesian layer + Monte Carlo — player performance,
+  shifts, predicted standings, match quality. Code lives in `src/services/ml/`
+  and `src/schemas/ml.py`. Wired via `analytics_train` / `analytics_infer`
+  queues, `MLFeatureStore` / `MLModelArtifact`, and
+  `AnalyticsStandingsDistribution` as the sole predicted-place source.
 
 ## GPU worker
 

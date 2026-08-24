@@ -23,7 +23,7 @@ from shared.repository import (
     DivisionGridVersionRepository,
     WorkspaceRepository,
 )
-from shared.services import division_grid_cache
+from shared.services.division_grid import cache as division_grid_cache
 from src import models, schemas
 from src.services.division_grid.service import DivisionGridService, division_grid_service
 

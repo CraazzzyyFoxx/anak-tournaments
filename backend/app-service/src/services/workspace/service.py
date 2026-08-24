@@ -25,7 +25,7 @@ from shared.repository import (
     get_or_create_workspace_member,
 )
 from shared.services.audit import record_audit
-from shared.services.division_grid_access import get_default_division_grid_version_id
+from shared.services.division_grid.access import get_default_division_grid_version_id
 from shared.tenancy.hostnames import normalize_custom_domain
 from src import models
 

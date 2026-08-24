@@ -19,8 +19,8 @@ from shared.repository import (
     TournamentRepository,
     WorkspaceRepository,
 )
-from shared.services import division_grid_cache
-from shared.services.division_grid_access import get_workspace_source_version_ids
+from shared.services.division_grid import cache as division_grid_cache
+from shared.services.division_grid.access import get_workspace_source_version_ids
 from src import models, schemas
 from src.domain.division_grid import automap
 

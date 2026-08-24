@@ -1,5 +1,5 @@
-from shared.subscriptions.types import SubscriptionSource
-from shared.subscriptions.verification import (
+from shared.services.subscriptions.types import SubscriptionSource
+from shared.services.subscriptions.verification import (
     VerificationMethod,
     accepts_code,
     accepts_live,

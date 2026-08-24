@@ -19,7 +19,7 @@ from .base import (
     TournamentMin,
     UserReadMin,
 )
-from .v2 import (
+from .ml import (
     AnalyticsJobCreate,
     AnalyticsJobRow,
     AnomalyFeedbackBody,

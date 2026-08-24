@@ -6,7 +6,7 @@ Create Date: 2026-08-23 00:00:00.000000
 
 The public tournament route (``/tournaments/{slug}``) stops exposing the bare
 numeric id. ``slug`` is generated once from ``name`` at creation and frozen
-afterward (see ``shared.services.tournament_slug``); an explicit admin rename
+afterward (see ``shared.services.tournament.slug``); an explicit admin rename
 writes the retired value into ``slug_redirect`` so links already shared keep
 resolving. Uniqueness is GLOBAL, not per-workspace: the public route carries no
 workspace segment, so two organizers' "season-1" would otherwise collide.
@@ -14,7 +14,7 @@ workspace segment, so two organizers' "season-1" would otherwise collide.
 The backfill below is a best-effort SQL transliteration (this community's
 tournament names are frequently Russian) run once for existing rows; every
 tournament created after this migration gets its slug from the same algorithm
-in ``shared.services.tournament_slug.slugify`` instead. Collisions within the
+in ``shared.services.tournament.slug.slugify`` instead. Collisions within the
 backfill are disambiguated with a ``-2``, ``-3``, ... suffix ordered by id.
 
 ``tournament.tournament`` is read by nearly every service in the system, so

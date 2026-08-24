@@ -1,7 +1,7 @@
 """The check-in subscription gate.
 
 The gate is the only place a subscription is *enforced*. All the composition
-subtlety lives in ``shared.subscriptions.requirement`` (unit-tested there); these
+subtlety lives in ``shared.services.subscriptions.requirement`` (unit-tested there); these
 tests pin the gate's own contract:
 
 - block IFF the composed outcome is REFUSED,
@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from shared.subscriptions import (  # noqa: E402
+from shared.services.subscriptions import (  # noqa: E402
     SubscriptionRequirement,
     SubscriptionState,
     SubscriptionVerdict,
@@ -109,7 +109,7 @@ class _Resolver:
         return self.requirement
 
     async def evaluate(self, *, workspace_id, auth_user_ids, requirement, force_refresh=False, source="scheduled"):
-        from shared.subscriptions import evaluate_requirement
+        from shared.services.subscriptions import evaluate_requirement
 
         self.calls.append(
             {
@@ -337,7 +337,7 @@ class TestRefusalMessage(IsolatedAsyncioTestCase):
 
 class TestDescribeRequirement:
     def test_single_provider_has_no_conjunction(self):
-        from shared.subscriptions import parse_requirement
+        from shared.services.subscriptions import parse_requirement
 
         text = describe_requirement(parse_requirement(BOOSTY_ONLY))
         assert " и " not in text
@@ -345,7 +345,7 @@ class TestDescribeRequirement:
 
     def test_threshold_of_one_is_not_spelled_out(self):
         """ "Boosty уровень 1" reads like a restriction that is not there."""
-        from shared.subscriptions import parse_requirement
+        from shared.services.subscriptions import parse_requirement
 
         text = describe_requirement(parse_requirement({"requirements": [{"provider": "boosty"}]}))
         assert "1" not in text

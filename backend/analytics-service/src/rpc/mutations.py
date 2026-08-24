@@ -15,34 +15,28 @@ from __future__ import annotations
 
 from typing import Any
 
-import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.core.errors import BaseAPIException as HTTPException
-from src import models, schemas
+from shared.services.workspace_scope import get_tournament_workspace_id
+from src import schemas
 from src.core import db
-from src.schemas.v2 import AnomalyFeedbackBody, AnomalyFeedbackRow
-from src.services.analytics_read import flows as analytics_flows
+from src.schemas.ml import AnomalyFeedbackBody, AnomalyFeedbackRow
+from src.services.analytics.reads import flows_service
 
 from . import _common as c
 
 
 async def _validate_tournament_workspace(session: Any, tournament_id: int, workspace_id: int | None) -> None:
-    """Workspace guard for the deprecated OpenSkill v1 endpoint.
-
-    Replicated locally (this was the old ``routes/analytics`` helper) so the
-    lightweight analytics-svc does not pull ``src.services.analytics.flows``
-    (pandas/numpy/openskill) into the read/mutation path.
-    """
+    """Workspace guard for the deprecated OpenSkill v1 endpoint."""
     if workspace_id is None:
         return
-    tournament_workspace_id = await session.scalar(
-        sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
-    )
+    tournament_workspace_id = await get_tournament_workspace_id(session, tournament_id)
     if tournament_workspace_id is None:
         raise HTTPException(status_code=404, detail="Tournament not found")
     if tournament_workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="workspace_id does not match tournament workspace")
+
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -53,8 +47,8 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_permission(c.actor(data), "analytics", "update")
             body = schemas.PlayerShiftUpdate.model_validate(c.payload(data))
-            # change_shift commits internally (service.change_shift).
-            return await analytics_flows.change_shift(session, body.player_id, body.shift)
+            # change_shift commits internally (AnalyticsReadService.change_shift).
+            return await flows_service.change_shift(session, body.player_id, body.shift)
 
         return await c.envelope(logger, "shift", op, session_factory=sf)
 
@@ -64,33 +58,17 @@ def register(broker: Any, logger: Any) -> None:
             user = c.actor(data)
             c.require_permission(user, "analytics", "update")
             body = AnomalyFeedbackBody.model_validate(c.payload(data))
-            existing = await session.scalar(
-                sa.select(models.AnalyticsAnomalyFeedback).where(
-                    models.AnalyticsAnomalyFeedback.tournament_id == body.tournament_id,
-                    models.AnalyticsAnomalyFeedback.player_id == body.player_id,
-                    models.AnalyticsAnomalyFeedback.kind == body.kind,
-                )
-            )
             reviewer_id = int(user.id) if getattr(user, "id", None) is not None else None
-            if existing is not None:
-                existing.verdict = body.verdict
-                existing.note = body.note
-                existing.reviewer_user_id = reviewer_id
-                row = existing
-            else:
-                row = models.AnalyticsAnomalyFeedback(
-                    tournament_id=body.tournament_id,
-                    player_id=body.player_id,
-                    kind=body.kind,
-                    verdict=body.verdict,
-                    reviewer_user_id=reviewer_id,
-                    note=body.note,
-                )
-                session.add(row)
-            await session.flush()
+            row = await flows_service.upsert_feedback(
+                session,
+                tournament_id=body.tournament_id,
+                player_id=body.player_id,
+                kind=body.kind,
+                verdict=body.verdict,
+                note=body.note,
+                reviewer_user_id=reviewer_id,
+            )
             await session.refresh(row)
-            # Build the response before commit so serialisation never triggers a
-            # lazy (out-of-greenlet) load on an expired attribute.
             response = AnomalyFeedbackRow(
                 id=int(row.id),
                 tournament_id=row.tournament_id,

@@ -29,7 +29,7 @@ rank_autofill = importlib.import_module("src.services.registration.rank_autofill
 rank_sources = importlib.import_module("src.services.registration.rank_sources")
 
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
-from shared.services.division_grid_normalization import DivisionGridNormalizer  # noqa: E402
+from shared.services.division_grid.normalization import DivisionGridNormalizer  # noqa: E402
 
 
 def test_rank_snapshot_model_is_available_from_service_models() -> None:

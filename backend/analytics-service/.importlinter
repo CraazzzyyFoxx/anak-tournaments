@@ -1,0 +1,35 @@
+[importlinter]
+# Flat service: no multi-level services hierarchy (see balancer/tournament
+# conversions). These three contracts are the ones that actually fail on
+# a regression — SQL in rpc, domain growing a session, services importing rpc.
+root_packages =
+    src
+include_external_packages = True
+
+[importlinter:contract:rpc-no-sql]
+name = RPC transport owns no SQLAlchemy
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    src.rpc
+forbidden_modules =
+    sqlalchemy
+
+[importlinter:contract:domain-is-pure]
+name = domain/ stays free of sessions and transport
+type = forbidden
+source_modules =
+    src.domain
+forbidden_modules =
+    src.services
+    src.rpc
+    src.core.db
+    sqlalchemy
+
+[importlinter:contract:services-dont-import-rpc]
+name = services never import rpc
+type = forbidden
+source_modules =
+    src.services
+forbidden_modules =
+    src.rpc

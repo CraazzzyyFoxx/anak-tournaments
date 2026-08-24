@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.enums import SubscriptionEnforcementStage  # noqa: E402
-from shared.subscriptions import Outcome, parse_requirement  # noqa: E402
+from shared.services.subscriptions import Outcome, parse_requirement  # noqa: E402
 from src.schemas.registration import (  # noqa: E402
     RegistrationFormRead,
     RegistrationFormUpsert,
@@ -214,7 +214,7 @@ class TestRoundTrip:
 
     def test_single_provider_requirement_is_mode_agnostic(self):
         one = {"requirements": [{"provider": "boosty", "min_tier_rank": 2}]}
-        from shared.subscriptions import SubscriptionVerdict
+        from shared.services.subscriptions import SubscriptionVerdict
 
         def _v(state, tier):
             from datetime import UTC, datetime
@@ -228,7 +228,7 @@ class TestRoundTrip:
                 expires_at=None,
             )
 
-        from shared.subscriptions import evaluate_requirement
+        from shared.services.subscriptions import evaluate_requirement
 
         for mode in ("any", "all"):
             requirement = parse_requirement({**one, "mode": mode})

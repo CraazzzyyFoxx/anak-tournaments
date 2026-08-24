@@ -16,7 +16,6 @@ if typing.TYPE_CHECKING:
 
 __all__ = (
     "Tournament",
-    "TournamentGroup",
     "TournamentPhaseSchedule",
     "TournamentSlugRedirect",
 )
@@ -40,7 +39,7 @@ class Tournament(db.TimeStampIntegerMixin):
     # Public-URL identity (``/tournaments/{slug}``), globally unique across every
     # workspace -- the public tournament route carries no workspace segment, so a
     # per-workspace-unique slug would collide across organizers. Generated once
-    # from ``name`` at creation (see ``shared.services.tournament_slug``) and
+    # from ``name`` at creation (see ``shared.services.tournament.slug``) and
     # frozen afterward; an explicit admin rename writes the old value to
     # ``TournamentSlugRedirect`` so links already shared keep resolving.
     slug: Mapped[str] = mapped_column(String(), unique=True, index=True)
@@ -97,7 +96,6 @@ class Tournament(db.TimeStampIntegerMixin):
         foreign_keys=[division_grid_version_id],
         lazy="selectin",
     )
-    groups: Mapped[list["TournamentGroup"]] = relationship(uselist=True, passive_deletes=True)
     stages: Mapped[list["Stage"]] = relationship(uselist=True, passive_deletes=True)
     standings: Mapped[list["Standing"]] = relationship(uselist=True)
     # Eagerly loaded (selectin): the schedule is tiny (<=4 rows) and gating
@@ -135,30 +133,6 @@ class TournamentPhaseSchedule(db.TimeStampIntegerMixin):
     status: Mapped[enums.TournamentStatus] = mapped_column(TOURNAMENT_STATUS_ENUM, nullable=False)
     starts_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False, index=True)
     ends_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
-
-
-class TournamentGroup(db.TimeStampIntegerMixin):
-    """Legacy model — being replaced by Stage + StageItem.
-
-    Kept during migration. New code should use Stage/StageItem instead.
-    The stage_id FK links this group to its corresponding Stage record.
-    """
-
-    __tablename__ = "group"
-    __table_args__ = ({"schema": "tournament"},)
-
-    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str] = mapped_column(String())
-    description: Mapped[str | None] = mapped_column(String(), nullable=True)
-    is_groups: Mapped[bool] = mapped_column(Boolean(), default=False)
-    # DEPRECATED (Challonge consolidation): superseded by tournament.challonge_source
-    # (source_type='group'/'playoff', scoped via stage_id). Kept until dbarch04b is applied.
-    challonge_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
-    challonge_slug: Mapped[str | None] = mapped_column(String(), nullable=True)
-    stage_id: Mapped[int | None] = mapped_column(ForeignKey("tournament.stage.id", ondelete="SET NULL"), nullable=True)
-
-    tournament: Mapped[Tournament] = relationship(back_populates="groups")
-    stage: Mapped["Stage | None"] = relationship(foreign_keys=[stage_id])
 
 
 class TournamentSlugRedirect(db.TimeStampIntegerMixin):

@@ -11,12 +11,12 @@ from shared.division_grid import DivisionGrid
 from shared.domain.roster_shape import resolve_roster_shape
 from shared.models.identity.auth_user import AuthUser
 from shared.services.challonge_refs import ChallongeRef, resolve_stage_challonge, resolve_tournament_challonge
-from shared.services.division_grid_normalization import DivisionGridNormalizationError, DivisionGridNormalizer
-from shared.services.division_grid_resolution import resolve_tournament_division
+from shared.services.division_grid.normalization import DivisionGridNormalizationError, DivisionGridNormalizer
+from shared.services.division_grid.resolution import resolve_tournament_division
 from shared.services.draft_guards import has_unfinished_draft_session
 from shared.services.registration_team_guards import has_registered_teams
 from shared.services.roster_shape_access import get_tournament_roster_slots, get_workspace_roster_slots
-from shared.services.tournament_visibility import visible_tournaments_predicate
+from shared.services.tournament.visibility import visible_tournaments_predicate
 from src import models, schemas
 from src.core import config, enums, errors, pagination
 from src.services.admin.tournament_link import tournament_link_service
@@ -192,37 +192,6 @@ class TournamentFlowsService:
             registrations_count=registrations_count,
             teams_count=teams_count,
             links=links,
-        )
-
-    async def to_pydantic_group(
-        self,
-        session: AsyncSession,
-        group: models.TournamentGroup,
-        entities: list[str],
-    ) -> schemas.TournamentGroupRead:
-        """
-        Converts a `TournamentGroup` model instance to a Pydantic `TournamentGroupRead` schema.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            group: The `TournamentGroup` model instance to convert.
-            entities: A list of strings representing the names of related entities to include.
-
-        Returns:
-            A `TournamentGroupRead` schema instance.
-        """
-        # group.challonge_id/slug is a KEPT column (dbarch04b does NOT drop it — it
-        # holds Challonge's per-group match-routing id, which has no challonge_source
-        # equivalent). Read it directly; do NOT derive it from challonge_source (the
-        # shared bracket is stored as a source_type='stage'/'tournament' row, so a
-        # 'group'-scoped lookup would wrongly return NULL for historical tournaments).
-        return schemas.TournamentGroupRead(
-            id=group.id,
-            name=group.name,
-            is_groups=group.is_groups,
-            challonge_id=group.challonge_id,
-            challonge_slug=group.challonge_slug,
-            description=group.description,
         )
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> models.Tournament:

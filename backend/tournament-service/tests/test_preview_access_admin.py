@@ -50,7 +50,7 @@ from shared.core import enums  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
-from shared.services.division_grid_access import get_default_division_grid_version_id  # noqa: E402
+from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from src.services.admin import preview_access as preview_access_service  # noqa: E402
 
 

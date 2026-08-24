@@ -112,7 +112,6 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
             tournament_id=1,
             stage_id=20,
             stage_item_id=None,
-            tournament_group_id=None,
             home_team_id=100,
             away_team_id=200,
             home_score=0,

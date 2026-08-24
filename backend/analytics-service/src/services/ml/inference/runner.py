@@ -40,7 +40,7 @@ from ..training.orchestrator import (
     STANDINGS_ALGORITHM_NAME,
     STANDINGS_MODEL_KIND,
 )
-from ..training.registry import load_active_artifact, load_active_artifacts
+from ..training.registry import registry_service
 from .player_anomaly_runner import run_player_anomalies_for_tournament
 
 logger = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ async def run_performance_for_tournament(
         logger.warning("No %s algorithm row found; run training first", PERFORMANCE_ALGORITHM_NAME)
         return 0
 
-    artifacts = await load_active_artifacts(session, model_kind=PERFORMANCE_MODEL_KIND)
+    artifacts = await registry_service.load_active_artifacts(session, model_kind=PERFORMANCE_MODEL_KIND)
     if not artifacts:
         logger.warning("No active Performance v2 artifacts; run training first")
         return 0
@@ -263,7 +263,7 @@ async def run_shift_for_tournament(
         logger.warning("No %s algorithm row; run training first", SHIFT_ALGORITHM_NAME)
         return 0
 
-    artifact = await load_active_artifact(
+    artifact = await registry_service.load_active_artifact(
         session,
         algorithm_id=algorithm_id,
         model_kind=SHIFT_MODEL_KIND,
@@ -362,7 +362,7 @@ async def run_standings_for_tournament(
     if algorithm_id is None:
         logger.warning("No %s algorithm row; run training first", STANDINGS_ALGORITHM_NAME)
         return 0
-    artifact = await load_active_artifact(
+    artifact = await registry_service.load_active_artifact(
         session,
         algorithm_id=algorithm_id,
         model_kind=STANDINGS_MODEL_KIND,

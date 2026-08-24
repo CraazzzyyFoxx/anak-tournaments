@@ -42,8 +42,8 @@ os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
-analytics_service = importlib.import_module("src.services.analytics.service")
-analytics_read_service = importlib.import_module("src.services.analytics_read.service")
+analytics_service = importlib.import_module("src.services.analytics.service").analytics_service
+analytics_read_service = importlib.import_module("src.services.analytics.read_queries").analytics_read_service
 player_profile = importlib.import_module("src.services.ml.features.player_profile")
 shift_features = importlib.import_module("src.services.ml.features.shift_features")
 mvp_dominance = importlib.import_module("src.services.ml.features.mvp_dominance")

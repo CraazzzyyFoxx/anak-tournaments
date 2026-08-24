@@ -132,9 +132,6 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
         "subject_cohort_tournament": _COMPARE_FIXTURE_IDS["subject_cohort_tournament"],
         "subject_other_tournament": _COMPARE_FIXTURE_IDS["subject_other_tournament"],
         "baseline_cohort_tournament": _COMPARE_FIXTURE_IDS["baseline_cohort_tournament"],
-        "subject_cohort_group": 9_100_000_201,
-        "subject_other_group": 9_100_000_202,
-        "baseline_cohort_group": 9_100_000_203,
         "subject_cohort_team": 9_100_000_301,
         "subject_other_team": 9_100_000_302,
         "baseline_cohort_team": 9_100_000_303,
@@ -187,24 +184,6 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 slug="compare-division-baseline-cohort",
                 is_finished=True,
                 is_league=False,
-            ),
-            models.TournamentGroup(
-                id=ids["subject_cohort_group"],
-                tournament_id=ids["subject_cohort_tournament"],
-                name="Main",
-                is_groups=False,
-            ),
-            models.TournamentGroup(
-                id=ids["subject_other_group"],
-                tournament_id=ids["subject_other_tournament"],
-                name="Main",
-                is_groups=False,
-            ),
-            models.TournamentGroup(
-                id=ids["baseline_cohort_group"],
-                tournament_id=ids["baseline_cohort_tournament"],
-                name="Main",
-                is_groups=False,
             ),
             models.Team(
                 id=ids["subject_cohort_team"],
@@ -284,7 +263,6 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
             models.Standing(
                 id=ids["subject_cohort_standing"],
                 tournament_id=ids["subject_cohort_tournament"],
-                group_id=ids["subject_cohort_group"],
                 team_id=ids["subject_cohort_team"],
                 position=1,
                 overall_position=1,
@@ -299,7 +277,6 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
             models.Standing(
                 id=ids["subject_other_standing"],
                 tournament_id=ids["subject_other_tournament"],
-                group_id=ids["subject_other_group"],
                 team_id=ids["subject_other_team"],
                 position=10,
                 overall_position=10,
@@ -314,7 +291,6 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
             models.Standing(
                 id=ids["baseline_cohort_standing"],
                 tournament_id=ids["baseline_cohort_tournament"],
-                group_id=ids["baseline_cohort_group"],
                 team_id=ids["baseline_cohort_team"],
                 position=4,
                 overall_position=4,
@@ -336,7 +312,6 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 round=1,
                 closeness=0.75,
                 tournament_id=ids["subject_cohort_tournament"],
-                tournament_group_id=ids["subject_cohort_group"],
             ),
             models.Encounter(
                 id=ids["subject_other_encounter"],
@@ -348,7 +323,6 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 round=1,
                 closeness=0.5,
                 tournament_id=ids["subject_other_tournament"],
-                tournament_group_id=ids["subject_other_group"],
             ),
             models.Encounter(
                 id=ids["baseline_cohort_encounter"],
@@ -360,7 +334,6 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 round=1,
                 closeness=0.65,
                 tournament_id=ids["baseline_cohort_tournament"],
-                tournament_group_id=ids["baseline_cohort_group"],
             ),
             models.Match(
                 id=ids["subject_cohort_match"],

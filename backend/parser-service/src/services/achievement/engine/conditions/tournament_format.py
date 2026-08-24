@@ -1,4 +1,4 @@
-"""tournament_format â€” checks the tournament structure via stages with legacy fallback."""
+"""tournament_format — checks the tournament structure via stages."""
 
 from __future__ import annotations
 
@@ -64,75 +64,22 @@ async def execute(
         .group_by(models.Stage.tournament_id)
     ).subquery("stage_double_tournaments")
 
-    legacy_has_lower = (
-        sa.select(models.Encounter.tournament_id)
-        .join(
-            models.TournamentGroup,
-            models.TournamentGroup.id == models.Encounter.tournament_group_id,
-        )
-        .where(
-            models.Encounter.round < 0,
-            models.TournamentGroup.is_groups.is_(False),
-            models.Encounter.status == "COMPLETED",
-        )
-        .group_by(models.Encounter.tournament_id)
-    ).subquery("legacy_has_lower")
-
-    legacy_has_bracket = (
-        sa.select(models.Encounter.tournament_id)
-        .join(
-            models.TournamentGroup,
-            models.TournamentGroup.id == models.Encounter.tournament_group_id,
-        )
-        .where(
-            models.TournamentGroup.is_groups.is_(False),
-            models.Encounter.status == "COMPLETED",
-        )
-        .group_by(models.Encounter.tournament_id)
-    ).subquery("legacy_has_bracket")
-
     has_stage_config = models.Tournament.id.in_(sa.select(stage_tournaments.c.tournament_id))
-    no_stage_config = ~has_stage_config
 
     if fmt == "double_elim":
-        tournament_filter = sa.or_(
-            models.Tournament.id.in_(sa.select(stage_double_tournaments.c.tournament_id)),
-            sa.and_(
-                no_stage_config,
-                models.Tournament.id.in_(sa.select(legacy_has_lower.c.tournament_id)),
-            ),
-        )
+        tournament_filter = models.Tournament.id.in_(sa.select(stage_double_tournaments.c.tournament_id))
     elif fmt == "single_elim":
-        tournament_filter = sa.or_(
-            sa.and_(
-                models.Tournament.id.in_(sa.select(stage_single_tournaments.c.tournament_id)),
-                ~models.Tournament.id.in_(sa.select(stage_double_tournaments.c.tournament_id)),
-            ),
-            sa.and_(
-                no_stage_config,
-                models.Tournament.id.in_(sa.select(legacy_has_bracket.c.tournament_id)),
-                ~models.Tournament.id.in_(sa.select(legacy_has_lower.c.tournament_id)),
-            ),
+        tournament_filter = sa.and_(
+            models.Tournament.id.in_(sa.select(stage_single_tournaments.c.tournament_id)),
+            ~models.Tournament.id.in_(sa.select(stage_double_tournaments.c.tournament_id)),
         )
     elif fmt == "round_robin":
-        tournament_filter = sa.or_(
-            sa.and_(
-                has_stage_config,
-                ~models.Tournament.id.in_(sa.select(stage_bracket_tournaments.c.tournament_id)),
-            ),
-            sa.and_(
-                no_stage_config,
-                ~models.Tournament.id.in_(sa.select(legacy_has_bracket.c.tournament_id)),
-            ),
+        tournament_filter = sa.and_(
+            has_stage_config,
+            ~models.Tournament.id.in_(sa.select(stage_bracket_tournaments.c.tournament_id)),
         )
     elif fmt == "has_bracket":
-        tournament_filter = sa.or_(
-            models.Tournament.id.in_(sa.select(stage_bracket_tournaments.c.tournament_id)),
-            sa.and_(
-                no_stage_config,
-                models.Tournament.id.in_(sa.select(legacy_has_bracket.c.tournament_id)),
-            ),
-        )
+        tournament_filter = models.Tournament.id.in_(sa.select(stage_bracket_tournaments.c.tournament_id))
     else:
         return set()
 

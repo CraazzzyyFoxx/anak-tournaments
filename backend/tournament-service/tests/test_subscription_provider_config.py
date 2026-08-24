@@ -42,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from shared.subscriptions.challenge_code import hash_code  # noqa: E402
+from shared.services.subscriptions.challenge_code import hash_code  # noqa: E402
 from src.schemas.registration import SubscriptionProviderConfigUpsert  # noqa: E402
 from src.services.registration.subscription_config import (  # noqa: E402
     build_config_json,

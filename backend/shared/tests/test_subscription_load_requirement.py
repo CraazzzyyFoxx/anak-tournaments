@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
 
-from shared.services.subscription_entitlements import SubscriptionResolver
+from shared.services.subscriptions.entitlements import SubscriptionResolver
 
 WS = 7
 

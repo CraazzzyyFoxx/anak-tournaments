@@ -74,10 +74,10 @@ class SnapshotDedupTests(IsolatedAsyncioTestCase):
         ratings = {f"{p.user_id}-{p.role}": pl.rating() for p in (p1, p2, p3)}
 
         with (
-            patch.object(opp, "get_data_frame", AsyncMock(return_value=pd.DataFrame({"x": [1]}))),
-            patch.object(opp.v1_service, "lookback_tournament_ids", AsyncMock(return_value=[1, 2, 3, 4])),
-            patch.object(opp.v1_service, "get_matches_for_tournaments", AsyncMock(return_value=[e_normal, e_self])),
-            patch.object(opp.v1_service, "get_teams_with_players", AsyncMock(return_value=[])),
+            patch.object(opp.flows_service, "get_data_frame", AsyncMock(return_value=pd.DataFrame({"x": [1]}))),
+            patch.object(opp.analytics_service, "lookback_tournament_ids", AsyncMock(return_value=[1, 2, 3, 4])),
+            patch.object(opp.analytics_service, "get_matches_for_tournaments", AsyncMock(return_value=[e_normal, e_self])),
+            patch.object(opp.analytics_service, "get_teams_with_players", AsyncMock(return_value=[])),
             patch.object(opp, "prepare_openskill_data", return_value=(None, ratings, None)),
             patch.object(opp, "get_id_role", lambda p: f"{p.user_id}-{p.role}"),
         ):

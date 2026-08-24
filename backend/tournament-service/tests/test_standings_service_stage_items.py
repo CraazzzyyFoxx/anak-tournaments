@@ -56,14 +56,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 99
-        group = models.TournamentGroup(
-            tournament_id=tournament.id,
-            name="Group A",
-            is_groups=True,
-            stage_id=7,
-        )
-        group.id = 55
-        tournament.groups = [group]
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -112,14 +104,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 200
-        group = models.TournamentGroup(
-            tournament_id=tournament.id,
-            name="Group A",
-            is_groups=True,
-            stage_id=7,
-        )
-        group.id = 55
-        tournament.groups = [group]
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -170,14 +154,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 201
-        group = models.TournamentGroup(
-            tournament_id=tournament.id,
-            name="Group A",
-            is_groups=True,
-            stage_id=8,
-        )
-        group.id = 56
-        tournament.groups = [group]
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -239,7 +215,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 104
-        tournament.groups = []
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -287,14 +262,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 101
-        group = models.TournamentGroup(
-            tournament_id=tournament.id,
-            name="Group A",
-            is_groups=True,
-            stage_id=8,
-        )
-        group.id = 56
-        tournament.groups = [group]
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -391,7 +358,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 102
-        tournament.groups = []
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -547,22 +513,6 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
 
         stage.items = [item_a, item_b]
         tournament.stages = [stage]
-        tournament.groups = [
-            models.TournamentGroup(
-                tournament_id=tournament.id,
-                name="Group A",
-                is_groups=True,
-                stage_id=stage.id,
-            ),
-            models.TournamentGroup(
-                tournament_id=tournament.id,
-                name="Group B",
-                is_groups=True,
-                stage_id=stage.id,
-            ),
-        ]
-        tournament.groups[0].id = 301
-        tournament.groups[1].id = 302
 
         encounters = [
             self._encounter(

@@ -15,7 +15,7 @@ from shared.repository import (
     MatchRepository,
     TeamRepository,
 )
-from shared.services.tournament_visibility import visible_tournament_ids_subquery
+from shared.services.tournament.visibility import visible_tournament_ids_subquery
 from src import models, schemas
 from src.core import enums, utils
 from src.core.workspace import workspace_filter
@@ -90,10 +90,6 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
     if "stage_item" in in_entities:
         stage_item_entity = utils.join_entity(child, models.Encounter.stage_item)
         entities.append(stage_item_entity)
-    if "tournament_group" in in_entities:
-        entities.append(utils.join_entity(child, models.Encounter.tournament_group))
-    if "group" in in_entities:
-        entities.append(utils.join_entity(child, models.Encounter.tournament_group))
     include_teams = "teams" in in_entities
     include_home_team = include_teams or "home_team" in in_entities
     include_away_team = include_teams or "away_team" in in_entities
@@ -184,18 +180,13 @@ def join_encounter_entities(query: sa.Select, in_entities: list[str]) -> sa.Sele
 
     Parameters:
         query (sa.Select): The SQLAlchemy select query.
-        in_entities (list[str]): A list of entity names to join (e.g., ["tournament", "group"]).
+        in_entities (list[str]): A list of entity names to join (e.g., ["tournament"]).
 
     Returns:
         sa.Select: The modified query with joins.
     """
     if "tournament" in in_entities:
         query = query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-    if "group" in in_entities:
-        query = query.join(
-            models.TournamentGroup,
-            models.Encounter.tournament_group_id == models.TournamentGroup.id,
-        )
     return query
 
 

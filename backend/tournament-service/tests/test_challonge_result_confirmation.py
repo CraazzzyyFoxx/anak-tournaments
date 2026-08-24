@@ -45,7 +45,6 @@ def _encounter(*, status, result_status, home=0, away=0) -> SimpleNamespace:
         tournament_id=1,
         stage_id=None,
         stage_item_id=None,
-        tournament_group_id=None,
         home_team_id=1,
         away_team_id=2,
         home_score=home,

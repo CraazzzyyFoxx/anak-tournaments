@@ -1,15 +1,16 @@
+from typing import Literal, get_args
+
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.core import db
 
-__all__ = ("TOURNAMENT_LINK_KINDS", "TournamentLink")
+__all__ = ("TOURNAMENT_LINK_KINDS", "TournamentLink", "TournamentLinkKind")
 
-
-#: The single source of truth for the ``TournamentLink.kind`` vocabulary. The
-#: admin Pydantic schema validates against this set, so a new kind is added
-#: here and nowhere else — the column itself is free text (see below).
-TOURNAMENT_LINK_KINDS: frozenset[str] = frozenset({"discord", "stream", "vod", "bracket", "rules", "other"})
+#: The write-schema ``Literal`` and the column check-set share this alias.
+#: The column itself stays free text so a new kind is a code change, not a migration.
+TournamentLinkKind = Literal["discord", "stream", "vod", "bracket", "rules", "other"]
+TOURNAMENT_LINK_KINDS: frozenset[str] = frozenset(get_args(TournamentLinkKind))
 
 
 class TournamentLink(db.TimeStampIntegerMixin):

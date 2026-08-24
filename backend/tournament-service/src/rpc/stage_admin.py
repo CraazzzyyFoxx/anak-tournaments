@@ -137,13 +137,11 @@ def register(broker: Any, logger: Any) -> None:
             # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
-            # Route loads the stage to obtain tournament_id, then requests a
-            # bracket job and commits explicitly (create_job does NOT commit).
-            stage = await stage_service.get_stage(session, stage_id)
+            tournament_id = await stage_service.get_tournament_id(session, stage_id)
             job = await computation_jobs.request_bracket_job(
                 session,
-                tournament_id=stage.tournament_id,
-                stage_id=stage.id,
+                tournament_id=tournament_id,
+                stage_id=stage_id,
                 operation="generate_stage",
                 requested_by_user_id=int(user.id),
             )
@@ -187,11 +185,11 @@ def register(broker: Any, logger: Any) -> None:
                 force_raw = force_vals
             force = str(force_raw).lower() in ("1", "true", "yes", "on") if force_raw is not None else False
 
-            stage = await stage_service.get_stage(session, stage_id)
+            tournament_id = await stage_service.get_tournament_id(session, stage_id)
             job = await computation_jobs.request_bracket_job(
                 session,
-                tournament_id=stage.tournament_id,
-                stage_id=stage.id,
+                tournament_id=tournament_id,
+                stage_id=stage_id,
                 operation="activate_and_generate",
                 payload={"force": force},
                 requested_by_user_id=int(user.id),

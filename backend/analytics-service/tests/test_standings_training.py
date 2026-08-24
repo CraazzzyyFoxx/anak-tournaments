@@ -147,7 +147,7 @@ class MatchQualityWinProbabilityTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                match_quality_runner,
+                match_quality_runner.registry_service,
                 "load_active_artifact",
                 AsyncMock(return_value=SimpleNamespace(storage_uri="s3://x")),
             ),
@@ -162,7 +162,7 @@ class MatchQualityWinProbabilityTests(IsolatedAsyncioTestCase):
     async def test_missing_artifact_file_stays_neutral(self) -> None:
         with (
             patch.object(
-                match_quality_runner,
+                match_quality_runner.registry_service,
                 "load_active_artifact",
                 AsyncMock(return_value=SimpleNamespace(storage_uri="s3://gone")),
             ),

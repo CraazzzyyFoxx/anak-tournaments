@@ -22,7 +22,7 @@ os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
-linear = importlib.import_module("src.services.analytics.linear")
+linear = importlib.import_module("src.domain.linear")
 
 
 class LinearAnalyticsTests(TestCase):

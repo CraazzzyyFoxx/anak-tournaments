@@ -5,12 +5,12 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DivisionGrid, load_runtime_grid
-from shared.services.division_grid_access import build_workspace_division_grid_normalizer
-from shared.services.division_grid_normalization import (
+from shared.services.division_grid.access import build_workspace_division_grid_normalizer
+from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
 )
-from shared.services.division_grid_resolution import (
+from shared.services.division_grid.resolution import (
     resolve_tournament_division,
     resolve_workspace_division,
 )

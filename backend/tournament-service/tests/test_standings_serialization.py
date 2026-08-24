@@ -35,7 +35,6 @@ def _standing() -> models.Standing:
         created_at=datetime.now(UTC),
         updated_at=None,
         tournament_id=64,
-        group_id=None,
         team_id=2019,
         stage_id=10,
         stage_item_id=20,
@@ -90,7 +89,6 @@ def _encounter(
         round=round,
         best_of=3,
         tournament_id=64,
-        tournament_group_id=None,
         stage_id=stage_id,
         stage_item_id=stage_item_id,
         closeness=None,
@@ -193,7 +191,7 @@ class StandingLoadOptionTests(TestCase):
 
         self.assertIn("Standing.team", paths)
         self.assertIn("Team.standings", paths)
-        self.assertIn("Standing.group", paths)
+        self.assertIn("Standing.stage_item", paths)
 
     def test_stage_load_options_stay_summary_only(self) -> None:
         paths = "\n".join(str(getattr(option, "path", "")) for option in service.standing_entities(["stage"]))
@@ -205,7 +203,7 @@ class StandingLoadOptionTests(TestCase):
 
 class MatchHistorySortingTests(TestCase):
     def test_sorts_swiss_matches_naturally(self) -> None:
-        from shared.services.tournament_utils import sort_bracket_matches
+        from shared.services.tournament.utils import sort_bracket_matches
 
         matches = [
             _encounter(id=1, home_team_id=1, away_team_id=2, stage_id=1, stage_item_id=1, round=3),
@@ -216,7 +214,7 @@ class MatchHistorySortingTests(TestCase):
         self.assertEqual([2, 3, 1], [m.id for m in sorted_matches])
 
     def test_sorts_double_elimination_chronologically(self) -> None:
-        from shared.services.tournament_utils import sort_bracket_matches
+        from shared.services.tournament.utils import sort_bracket_matches
 
         # UB R1 (1), LB R1 (-1), UB R2 (2), LB R2 (-2), UB Final (3), LB Final (-4), Grand Final (4), GF Reset (5)
         matches = [

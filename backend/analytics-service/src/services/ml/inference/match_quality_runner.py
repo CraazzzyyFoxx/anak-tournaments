@@ -24,7 +24,7 @@ from ..training.orchestrator import (
     STANDINGS_ALGORITHM_NAME,
     STANDINGS_MODEL_KIND,
 )
-from ..training.registry import ensure_algorithm, load_active_artifact
+from ..training.registry import registry_service
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ async def _standings_win_probability(
     )
     if algorithm_id is None:
         return None
-    artifact = await load_active_artifact(
+    artifact = await registry_service.load_active_artifact(
         session,
         algorithm_id=algorithm_id,
         model_kind=STANDINGS_MODEL_KIND,
@@ -145,7 +145,7 @@ async def run_match_quality_for_tournament(
     workspace_id: int | None = None,
 ) -> int:
     """Compute Match Quality rows and attach compatibility anomaly payloads."""
-    algorithm = await ensure_algorithm(session, MATCH_QUALITY_ALGORITHM_NAME)
+    algorithm = await registry_service.ensure_algorithm(session, MATCH_QUALITY_ALGORITHM_NAME)
 
     encounters = await _standings_p_home(
         session,

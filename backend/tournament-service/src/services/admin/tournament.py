@@ -12,13 +12,13 @@ from shared.core import tournament_state
 from shared.core.enums import StageType, TournamentStatus
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import ChallongeSourceRepository, StandingRepository, TournamentRepository
-from shared.services import division_grid_cache
-from shared.services.division_grid_access import get_workspace_division_grid_version_id
+from shared.services.division_grid import cache as division_grid_cache
+from shared.services.division_grid.access import get_workspace_division_grid_version_id
 from shared.services.draft_guards import assert_no_active_draft_session
 from shared.services.registration_team_guards import assert_no_registered_teams
 from shared.services.roster_shape_access import invalidate_roster_shape_cache
-from shared.services.tournament_computation import request_bracket_job
-from shared.services.tournament_slug import generate_unique_tournament_slug, slugify
+from shared.services.tournament.computation import request_bracket_job
+from shared.services.tournament.slug import generate_unique_tournament_slug, slugify
 from src import models, schemas
 from src.clients.challonge import challonge_client
 from src.services.admin.stage import stage_service

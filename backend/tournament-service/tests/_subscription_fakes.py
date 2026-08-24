@@ -4,7 +4,7 @@ Four suites -- the check-in gate, the registration gate, the participants list a
 patron's own status read -- each need a fake resolver that turns a raw rule blob into
 what the real resolver would hand back. Every one of them used to carry its own copy of
 that parse-and-fail-open logic, which meant the contract was defined FIVE times: once
-in ``shared.services.subscription_entitlements.SubscriptionResolver.load_requirement``
+in ``shared.services.subscriptions.entitlements.SubscriptionResolver.load_requirement``
 and once per suite. All four suites would therefore have stayed green if the real
 contract regressed, which is exactly backwards for a chokepoint the whole admission
 stack trusts.
@@ -30,7 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from shared.subscriptions import SubscriptionRequirement, parse_requirement  # noqa: E402
+from shared.services.subscriptions import SubscriptionRequirement, parse_requirement  # noqa: E402
 
 
 def resolver_rule(blob: dict | None) -> SubscriptionRequirement | None:

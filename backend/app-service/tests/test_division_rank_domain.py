@@ -3,8 +3,8 @@ from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
 division_grid = importlib.import_module("shared.division_grid")
-division_grid_access = importlib.import_module("shared.services.division_grid_access")
-division_grid_cache = importlib.import_module("shared.services.division_grid_cache")
+division_grid_access = importlib.import_module("shared.services.division_grid.access")
+division_grid_cache = importlib.import_module("shared.services.division_grid.cache")
 division_rank = importlib.import_module("shared.domain.division_rank")
 
 

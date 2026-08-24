@@ -25,8 +25,8 @@ os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
-job_runner = importlib.import_module("src.services.jobs.runner")
-job_service = importlib.import_module("src.services.jobs.service")
+job_runner = importlib.import_module("src.worker.job_runner")
+job_service = importlib.import_module("src.core.jobs")
 
 
 def _job() -> SimpleNamespace:
@@ -67,16 +67,16 @@ class _ExpiringJob:
 class AnalyticsJobRunnerFailureTests(IsolatedAsyncioTestCase):
     async def test_run_job_rolls_back_before_marking_job_failed(self) -> None:
         job = _job()
-        session = SimpleNamespace(rollback=AsyncMock())
+        session = SimpleNamespace(rollback=AsyncMock(), commit=AsyncMock())
 
         with (
-            patch.object(job_runner, "get_job", AsyncMock(side_effect=[job, job, job])),
-            patch.object(job_runner, "mark_job_running", AsyncMock()),
-            patch.object(job_runner, "_emit", AsyncMock()),
-            patch.object(job_runner, "_run_compute", AsyncMock(side_effect=RuntimeError("boom"))),
-            patch.object(job_runner, "mark_job_failed", AsyncMock()) as mark_failed,
+            patch.object(job_runner.runner_service.runtime, "get", AsyncMock(side_effect=[job, job, job])),
+            patch.object(job_runner.runner_service.runtime, "mark_running", AsyncMock()),
+            patch.object(job_runner.runner_service, "_emit", AsyncMock()),
+            patch.object(job_runner.runner_service, "_run_compute", AsyncMock(side_effect=RuntimeError("boom"))),
+            patch.object(job_runner.runner_service.runtime, "mark_failed", AsyncMock()) as mark_failed,
         ):
-            await job_runner.run_job(session, None, job.id)
+            await job_runner.runner_service.run_job(session, None, job.id)
 
         session.rollback.assert_awaited()
         mark_failed.assert_awaited_once()
@@ -84,20 +84,20 @@ class AnalyticsJobRunnerFailureTests(IsolatedAsyncioTestCase):
 
     async def test_run_job_uses_cached_job_id_after_inner_rollback_expires_orm_object(self) -> None:
         job = _ExpiringJob()
-        session = SimpleNamespace(rollback=AsyncMock())
+        session = SimpleNamespace(rollback=AsyncMock(), commit=AsyncMock())
 
         async def fail_train(*_args, **_kwargs) -> None:
             job.expire()
             raise RuntimeError("lightgbm exploded")
 
         with (
-            patch.object(job_runner, "get_job", AsyncMock(return_value=job)),
-            patch.object(job_runner, "mark_job_running", AsyncMock()),
-            patch.object(job_runner, "_emit", AsyncMock()),
-            patch.object(job_runner, "_run_train_ml", AsyncMock(side_effect=fail_train)),
-            patch.object(job_runner, "mark_job_failed", AsyncMock()) as mark_failed,
+            patch.object(job_runner.runner_service.runtime, "get", AsyncMock(return_value=job)),
+            patch.object(job_runner.runner_service.runtime, "mark_running", AsyncMock()),
+            patch.object(job_runner.runner_service, "_emit", AsyncMock()),
+            patch.object(job_runner.runner_service, "_run_train_ml", AsyncMock(side_effect=fail_train)),
+            patch.object(job_runner.runner_service.runtime, "mark_failed", AsyncMock()) as mark_failed,
         ):
-            await job_runner.run_job(session, None, 10)
+            await job_runner.runner_service.run_job(session, None, 10)
 
         mark_failed.assert_awaited_once()
         self.assertEqual(10, mark_failed.await_args.args[1])
@@ -109,21 +109,21 @@ class AnalyticsJobRunnerFailureTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(job_runner, "update_progress", AsyncMock()) as update_progress,
-            patch.object(job_runner, "get_job", AsyncMock(return_value=job)),
-            patch.object(job_runner, "_emit", AsyncMock()),
+            patch.object(job_runner.runner_service.runtime, "get", AsyncMock(return_value=job)),
+            patch.object(job_runner.runner_service, "_emit", AsyncMock()),
             patch.object(
-                job_runner.v1_flows,
+                job_runner.flows_service,
                 "recalculate_analytics",
-                AsyncMock(side_effect=RuntimeError("v1 exploded")),
+                AsyncMock(side_effect=RuntimeError("ratings exploded")),
             ),
         ):
             with self.assertRaises(RuntimeError):
-                await job_runner._run_compute(session, None, job)
+                await job_runner.runner_service._run_compute(session, None, job)
 
         session.rollback.assert_awaited()
         failed_updates = [call for call in update_progress.await_args_list if call.kwargs.get("state") == "failed"]
         self.assertEqual(1, len(failed_updates))
-        self.assertEqual("v1_recalc", failed_updates[0].kwargs["stage"])
+        self.assertEqual("ratings_recalc", failed_updates[0].kwargs["stage"])
 
     async def test_train_job_uses_training_workspace_ids_as_sample_scope(self) -> None:
         job = _job()
@@ -133,11 +133,11 @@ class AnalyticsJobRunnerFailureTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(job_runner, "update_progress", AsyncMock()),
-            patch.object(job_runner, "get_job", AsyncMock(return_value=job)),
-            patch.object(job_runner, "_emit", AsyncMock()),
+            patch.object(job_runner.runner_service.runtime, "get", AsyncMock(return_value=job)),
+            patch.object(job_runner.runner_service, "_emit", AsyncMock()),
             patch.object(job_runner, "train_all_models", AsyncMock(return_value={})) as train_all,
         ):
-            await job_runner._run_train_ml(session, None, job)
+            await job_runner.runner_service._run_train_ml(session, None, job)
 
         train_all.assert_awaited_once_with(
             session,
@@ -148,9 +148,10 @@ class AnalyticsJobRunnerFailureTests(IsolatedAsyncioTestCase):
         )
 
 
+
 class AnalyticsJobServiceTests(TestCase):
     def test_failed_progress_stage_marks_job_as_reconcilable(self) -> None:
         self.assertTrue(
-            job_service._progress_has_failed_stage({"v2_inference": {"state": "failed", "detail": {"error": "boom"}}})
+            job_service._progress_has_failed_stage({"ml_inference": {"state": "failed", "detail": {"error": "boom"}}})
         )
-        self.assertFalse(job_service._progress_has_failed_stage({"v2_inference": {"state": "running"}}))
+        self.assertFalse(job_service._progress_has_failed_stage({"ml_inference": {"state": "running"}}))

@@ -5,11 +5,12 @@ from typing import Any, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.jobs import JobService, Retry, Status, Unlimited
 from shared.repository import (
     TournamentComputationJobRepository,
     TournamentRecalculationStateRepository,
 )
-from shared.services.tournament_computation import (
+from shared.services.tournament.computation import (
     ACTIVE_STATUSES,
     create_job,
     dispatch_job,
@@ -24,6 +25,26 @@ TERMINAL_STATUSES = ("succeeded", "failed", "superseded")
 MAX_ATTEMPTS = 3
 
 
+class _ComputationJobStore:
+    def __init__(self, svc: ComputationJobsService) -> None:
+        self._svc = svc
+
+    def status_of(self, job: Any) -> str:
+        return str(job.status)
+
+    def attempts_of(self, job: Any) -> int:
+        return int(job.attempts)
+
+    async def get(self, session: Any, job_id: Any) -> Any:
+        return await self._svc.get_job(session, int(job_id), for_update=True)
+
+    async def set_fields(self, session: Any, job: Any, fields: dict[str, Any]) -> Any:
+        del session
+        for key, value in fields.items():
+            setattr(job, key, value)
+        return job
+
+
 class ComputationJobsService:
     def __init__(
         self,
@@ -33,6 +54,12 @@ class ComputationJobsService:
     ) -> None:
         self.job_repo = job_repo
         self.state_repo = state_repo
+        self.runtime = JobService(
+            store=_ComputationJobStore(self),
+            concurrency=Unlimited(),
+            retry=Retry(max_attempts=MAX_ATTEMPTS, extra_terminal=frozenset({"superseded"})),
+        )
+
 
     async def get_job(
         self,
@@ -158,17 +185,16 @@ class ComputationJobsService:
         job_id: int,
         error: str,
     ) -> FailureDisposition:
-        job = await self.get_job(session, job_id, for_update=True)
-        if job is None or job.status in TERMINAL_STATUSES:
+        job = await self.runtime.mark_failed(session, job_id, error=error[:4000])
+        if job is None or job.status in ("succeeded", "superseded"):
             return "ignored"
-        terminal = job.attempts >= MAX_ATTEMPTS
-        job.status = "failed" if terminal else "pending"
-        job.error = error[:4000]
-        job.finished_at = datetime.now(UTC) if terminal else None
-        if not terminal:
-            await dispatch_job(session, job)
+        if job.status == Status.FAILED:
+            await session.commit()
+            return "failed"
+        await dispatch_job(session, job)
         await session.commit()
-        return "failed" if terminal else "retry"
+        return "retry"
+
 
     async def complete_standings_generation(
         self,

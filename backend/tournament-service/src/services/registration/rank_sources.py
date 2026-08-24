@@ -28,7 +28,7 @@ from shared.repository import (
     SocialAccountRepository,
     TournamentRepository,
 )
-from shared.services.division_grid_normalization import (
+from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
     build_division_grid_normalizer,

@@ -25,7 +25,7 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 jobs = importlib.import_module("src.services.computation.jobs")
 bracket_worker = importlib.import_module("src.services.computation.bracket_worker")
 topology = importlib.import_module("shared.messaging.topology")
-computation = importlib.import_module("shared.services.tournament_computation")
+computation = importlib.import_module("shared.services.tournament.computation")
 
 
 class ComputationJobTests(IsolatedAsyncioTestCase):

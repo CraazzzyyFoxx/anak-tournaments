@@ -67,7 +67,7 @@ from shared.models.identity.rbac import user_roles  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
 from shared.rbac import get_workspace_system_role  # noqa: E402
-from shared.services.division_grid_access import get_default_division_grid_version_id  # noqa: E402
+from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 from src.services.registration import windows  # noqa: E402
 

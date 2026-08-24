@@ -37,12 +37,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from shared.services.subscription_entitlements import (  # noqa: E402
+from shared.services.subscriptions.entitlements import (  # noqa: E402
     ProviderConfigRow,
     StoredEntitlement,
 )
-from shared.subscriptions import SubscriptionSource, SubscriptionState, VerificationMethod  # noqa: E402
-from shared.subscriptions.challenge_code import hash_code  # noqa: E402
+from shared.services.subscriptions import SubscriptionSource, SubscriptionState, VerificationMethod  # noqa: E402
+from shared.services.subscriptions.challenge_code import hash_code  # noqa: E402
 from src.services.registration.subscription_codes import redeem_challenge_code  # noqa: E402
 
 NOW = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)

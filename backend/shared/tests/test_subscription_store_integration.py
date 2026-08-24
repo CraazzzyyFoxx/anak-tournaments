@@ -44,7 +44,7 @@ if sys.platform == "win32":
 
 
 def _verdict(state, tier, source, evidence):
-    from shared.subscriptions import SubscriptionVerdict
+    from shared.services.subscriptions import SubscriptionVerdict
 
     now = datetime.now(UTC)
     return SubscriptionVerdict(
@@ -63,7 +63,7 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-        from shared.services.subscription_store import SqlEntitlementStore
+        from shared.services.subscriptions.store import SqlEntitlementStore
 
         self._engine = create_async_engine(DSN)
         self._session = async_sessionmaker(self._engine, expire_on_commit=False)()

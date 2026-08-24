@@ -21,7 +21,7 @@ class TournamentCreate(BaseModel):
     workspace_id: int
     name: str
     # Public-URL slug. Slugified and uniqueness-checked server-side; left
-    # blank, one is generated from `name` (see shared.services.tournament_slug).
+    # blank, one is generated from `name` (see shared.services.tournament.slug).
     slug: str | None = None
     description: str | None = None
     is_league: bool = False

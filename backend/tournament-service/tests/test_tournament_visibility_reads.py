@@ -52,8 +52,8 @@ from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPreviewAccess  # noqa: E402
-from shared.services.division_grid_access import get_default_division_grid_version_id  # noqa: E402
-from shared.services.tournament_visibility import assert_tournament_viewable  # noqa: E402
+from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
+from shared.services.tournament.visibility import assert_tournament_viewable  # noqa: E402
 from src import schemas  # noqa: E402
 from src.services.tournament import flows as tournament_flows  # noqa: E402
 

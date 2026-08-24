@@ -21,10 +21,6 @@ def _encounter_query_with_stage_context() -> sa.Select:
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .outerjoin(models.Stage, models.Stage.id == models.Encounter.stage_id)
         .outerjoin(models.StageItem, models.StageItem.id == models.Encounter.stage_item_id)
-        .outerjoin(
-            models.TournamentGroup,
-            models.TournamentGroup.id == models.Encounter.tournament_group_id,
-        )
     )
 
 
@@ -73,7 +69,6 @@ async def execute_encounter_score(
             encounter=models.Encounter,
             stage=models.Stage,
             stage_item=models.StageItem,
-            tournament_group=models.TournamentGroup,
         )
         stage_order = sa.func.coalesce(models.Stage.order, 0)
 

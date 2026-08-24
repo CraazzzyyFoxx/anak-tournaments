@@ -2,6 +2,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from faststream import FastStream
 from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shared.messaging.config import (
     DIVISION_GRID_IMPORT_JOBS_DLQ,
@@ -129,6 +131,30 @@ async def auto_transition_tournaments() -> None:
             logger.info("Tournament auto-transitions applied", results=results)
 
 
+async def purge_stale_bracket_events(
+    session_factory: async_sessionmaker[AsyncSession] = db.async_session_maker,
+) -> None:
+    async with observe_scheduled_job("bracket_workspace_event_purge"), session_factory() as session:
+        # `LIKE 'tournament:%:bracket'` matches `realtime_topics.bracket(tournament_id)`'s
+        # exact format (`f"tournament:{id}:bracket"`) -- if that format ever
+        # changes this pattern must move with it. Bracket-only, not pregame/draft:
+        # those sessions have no upper bound on duration (design:
+        # docs/plans/2026-08-24-realtime-shared-library.md §4.2/D2/D10).
+        #
+        # The pattern is BOUND, not inlined into the SQL string: a literal `:`
+        # inside `text()` is parsed as a bind-parameter marker (here `:bracket`),
+        # not a plain character, and raises `InvalidRequestError` at execute time
+        # if left inline with no value supplied for it.
+        await session.execute(
+            text(
+                "DELETE FROM realtime.workspace_event "
+                "WHERE topic LIKE :bracket_pattern AND occurred_at < now() - interval '7 days'"
+            ),
+            {"bracket_pattern": "tournament:%:bracket"},
+        )
+        await session.commit()
+
+
 @app.on_startup
 async def start_worker() -> None:
     await broker.connect()
@@ -184,6 +210,12 @@ async def start_worker() -> None:
         "interval",
         seconds=30,
         id="auto_transition_tournaments",
+    )
+    scheduler.add_job(
+        purge_stale_bracket_events,
+        "interval",
+        days=1,
+        id="bracket_workspace_event_purge",
     )
     scheduler.start()
     logger.info("Tournament worker scheduler started")

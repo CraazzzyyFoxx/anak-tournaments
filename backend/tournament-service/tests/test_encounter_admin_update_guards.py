@@ -55,7 +55,6 @@ def _encounter() -> SimpleNamespace:
     return SimpleNamespace(
         id=10,
         tournament_id=1,
-        tournament_group_id=None,
         stage_id=5,
         stage_item_id=6,
         home_team_id=1,
@@ -132,7 +131,7 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
         with (
             patch.object(enc_service, "enqueue_tournament_recalculation", AsyncMock()) as recalc,
             patch.object(enc_service, "_invalidate_encounter_reads", AsyncMock()),
-            patch.object(enc_service.encounter_service, "_resolve_stage_refs", AsyncMock(return_value=(5, 6, None))),
+            patch.object(enc_service.encounter_service, "_resolve_stage_refs", AsyncMock(return_value=(5, 6))),
         ):
             await enc_service.encounter_service.update_encounter(
                 session, 10, schemas.EncounterUpdate(name="renamed")

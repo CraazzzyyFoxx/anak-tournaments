@@ -1,7 +1,7 @@
 [project]
 name = "analytics-service"
 version = "0.1.0"
-description = "Analytics service: v1 OpenSkill/linear shifts and predictions, v2 ML pipeline (planned)"
+description = "Analytics service: OpenSkill/linear ratings and ML pipeline"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -53,3 +53,8 @@ dependencies = [
 [tool.mypy]
 strict = true
 exclude = ["venv", ".venv", "alembic"]
+
+[tool.ty.environment]
+python = "../.venv"
+python-version = "3.14"
+root = ["..", "."]

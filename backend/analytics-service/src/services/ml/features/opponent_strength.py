@@ -1,9 +1,9 @@
 """Pre-encounter OpenSkill snapshot helpers.
 
-The v2 win-probability classifier (Phase 3) and the per-match Performance v2
-target (Phase 1d) both need an estimate of *each team's strength as it was
-before the encounter was played* — using the post-encounter rating would
-leak the outcome.
+The ML win-probability classifier and the per-match Performance target
+both need an estimate of *each team's strength as it was before the
+encounter was played* — using the post-encounter rating would leak the
+outcome.
 
 The current OpenSkill replay in
 :mod:`src.services.analytics.flows.compute_openskill_shift_map` produces
@@ -20,13 +20,9 @@ import pandas as pd
 from openskill.models import PlackettLuce, PlackettLuceRating
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.services.analytics import service as v1_service
-from src.services.analytics.flows import (
-    get_data_frame,
-    get_id_role,
-    get_plackett_luce,
-    prepare_openskill_data,
-)
+from src.domain.ratings import get_id_role, get_plackett_luce, prepare_openskill_data
+from src.services.analytics.flows import flows_service
+from src.services.analytics.service import analytics_service
 
 from .cache import get_or_build_dataframe, scope_cache_params
 
@@ -86,7 +82,7 @@ async def _snapshot_pre_encounter_team_mu_uncached(
     # ``get_data_frame`` loads every analytics-eligible tournament row in one
     # query — there is no range parameter; ``look_back`` is applied via the
     # chronological window resolved by ``lookback_start_tournament_id`` below.
-    df = await get_data_frame(
+    df = await flows_service.get_data_frame(
         session,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
@@ -94,20 +90,20 @@ async def _snapshot_pre_encounter_team_mu_uncached(
     if df.empty:
         return pd.DataFrame(columns=["encounter_id", "team_id", "avg_mu", "max_mu", "min_mu", "std_mu"])
 
-    window_ids = await v1_service.lookback_tournament_ids(
+    window_ids = await analytics_service.lookback_tournament_ids(
         session,
         tournament_id,
         look_back,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
-    matches = await v1_service.get_matches_for_tournaments(
+    matches = await analytics_service.get_matches_for_tournaments(
         session,
         window_ids,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
-    teams = await v1_service.get_teams_with_players(session, tournament_id)
+    teams = await analytics_service.get_teams_with_players(session, tournament_id)
 
     pl: PlackettLuce = get_plackett_luce()
     _, players_rating, _ = prepare_openskill_data(df, pl, teams, matches)
@@ -119,8 +115,8 @@ async def _snapshot_pre_encounter_team_mu_uncached(
     snapshots: list[dict[str, typing.Any]] = []
     seen_encounters: set[int] = set()
 
-    # NOTE: ``v1_service.get_matches`` returns ``Sequence[models.Encounter]``
-    # (the v1 naming is historical — the analytics flow conflates the two).
+    # NOTE: ``get_matches_for_tournaments`` returns ``Sequence[models.Encounter]``
+    # (the method name is historical — the analytics flow conflates the two).
     # Each row's own id is ``Encounter.id``; there is no ``encounter_id``
     # attribute on the ORM object itself.
     for encounter in matches:
@@ -229,11 +225,11 @@ async def snapshot_pre_tournament_team_mu(
     snapshot would forecast a field that no longer exists.
     """
     columns = ["team_id", "avg_mu", "max_mu", "min_mu", "std_mu", "tank_mu", "damage_mu", "support_mu"]
-    teams = await v1_service.get_teams_with_players(session, tournament_id)
+    teams = await analytics_service.get_teams_with_players(session, tournament_id)
     if not teams:
         return pd.DataFrame(columns=columns)
 
-    window_ids = await v1_service.lookback_tournament_ids(
+    window_ids = await analytics_service.lookback_tournament_ids(
         session,
         tournament_id,
         look_back,
@@ -242,7 +238,7 @@ async def snapshot_pre_tournament_team_mu(
     )
     history = [
         encounter
-        for encounter in await v1_service.get_matches_for_tournaments(
+        for encounter in await analytics_service.get_matches_for_tournaments(
             session,
             window_ids,
             workspace_id=workspace_id,

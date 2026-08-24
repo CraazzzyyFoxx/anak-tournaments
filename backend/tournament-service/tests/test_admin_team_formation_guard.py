@@ -50,7 +50,7 @@ from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.models.balancer.draft import DraftSession  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
-from shared.services.division_grid_access import get_default_division_grid_version_id  # noqa: E402
+from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from src import schemas  # noqa: E402
 from src.services.admin import tournament as admin_tournament  # noqa: E402
 

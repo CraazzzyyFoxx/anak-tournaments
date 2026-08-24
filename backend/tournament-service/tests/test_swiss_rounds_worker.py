@@ -23,7 +23,7 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 enums = importlib.import_module("shared.core.enums")
-swiss_rounds = importlib.import_module("src.services.admin.swiss_rounds")
+swiss_rounds = importlib.import_module("src.services.standings.swiss_auto_round")
 
 
 class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
@@ -114,3 +114,35 @@ class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
 
         self.assertEqual([], result)
         generate.assert_not_awaited()
+
+    async def test_generate_ready_rounds_does_not_enqueue_a_bracket_job(self) -> None:
+        item = SimpleNamespace(id=501)
+        stage = SimpleNamespace(id=77, is_active=True, items=[item], max_rounds=5, settings_json={})
+        generated = [SimpleNamespace(id=101)]
+
+        session = SimpleNamespace(
+            execute=AsyncMock(
+                side_effect=[
+                    SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [stage])),
+                    SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [])),
+                ]
+            )
+        )
+
+        with (
+            patch.object(swiss_rounds, "stage_item_ready_for_next_round", return_value=True),
+            patch.object(swiss_rounds, "next_round_number", return_value=2),
+            patch.object(
+                swiss_rounds.swiss_rounds_service,
+                "generate_next_swiss_round",
+                AsyncMock(return_value=generated),
+            ) as generate,
+        ):
+            result = await swiss_rounds.swiss_rounds_service.generate_ready_rounds(session, 999)
+
+        self.assertEqual(generated, result)
+        self.assertFalse(hasattr(swiss_rounds, "request_bracket_job"))
+        generate.assert_awaited_once()
+        self.assertEqual(77, generate.await_args.kwargs["stage_id"])
+        self.assertIs(stage, generate.await_args.kwargs["stage"])
+

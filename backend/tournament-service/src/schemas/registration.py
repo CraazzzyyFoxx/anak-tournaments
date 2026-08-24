@@ -8,7 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from shared.core.enums import SubscriptionEnforcementStage
-from shared.subscriptions import VERIFICATION_METHODS, VerificationMethod, parse_requirement
+from shared.services.subscriptions import VERIFICATION_METHODS, VerificationMethod, parse_requirement
 from src.schemas.division_grid import DivisionGridVersionRead
 
 # ---------------------------------------------------------------------------

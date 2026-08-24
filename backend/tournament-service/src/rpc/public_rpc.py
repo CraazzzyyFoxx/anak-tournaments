@@ -42,9 +42,9 @@ from shared.core.enums import PickBanKind, SubscriptionCollectionSource
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import rehydrate_user
 from shared.services.profile_visibility import resolve_profiles_open
-from shared.services.subscription_realtime import publish_subscriptions_updated
-from shared.services.subscription_wiring import build_resolver, build_store
-from shared.services.tournament_visibility import assert_tournament_viewable
+from shared.services.subscriptions.realtime import publish_subscriptions_updated
+from shared.services.subscriptions.wiring import build_resolver, build_store
+from shared.services.tournament.visibility import assert_tournament_viewable
 from src import models, schemas
 from src.core import db
 from src.core.broker import optional_broker

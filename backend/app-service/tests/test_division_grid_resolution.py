@@ -13,8 +13,8 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 division_grid = importlib.import_module("shared.division_grid")
-division_grid_normalization = importlib.import_module("shared.services.division_grid_normalization")
-division_grid_resolution = importlib.import_module("shared.services.division_grid_resolution")
+division_grid_normalization = importlib.import_module("shared.services.division_grid.normalization")
+division_grid_resolution = importlib.import_module("shared.services.division_grid.resolution")
 
 
 def make_grid(

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 
 from loguru import logger
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,12 +20,11 @@ from shared.repository import (
     StageRepository,
     StandingRepository,
     TeamRepository,
-    TournamentGroupRepository,
     TournamentRepository,
 )
 from shared.schemas.events import TournamentChangedReason
-from shared.services.bracket.advancement import persist_advancement_edges
 from shared.services.bracket.engine import generate_bracket, placeholder_bracket, placeholder_seeds
+from shared.services.bracket.persist import persist_skeleton
 from shared.services.bracket.swiss import SwissPairingImpossibleError, SwissStanding
 from shared.services.bracket.swiss_settings import (
     clear_swiss_byes,
@@ -38,176 +37,33 @@ from shared.services.bracket.types import BracketSkeleton, Pairing
 from shared.services.encounter_naming import build_encounter_name_from_ids
 from src import models, schemas
 from src.domain.admin.best_of import parse_best_of_config, resolve_best_of
-from src.services.standings import swiss_auto_round
+from src.domain.stage.lifecycle import stage_lifecycle
+from src.domain.stage.seeds import (
+    SeedRanking,
+    advance_split as _advance_split,
+    apply_seed_ranking,
+    bracket_seeds,
+    collect_item_team_ids as _collect_item_team_ids,
+    lower_bracket_item as _lower_bracket_item,
+    parse_seed_ranking,
+    rank_team_ids,
+    resolve_seeds as _resolve_seeds,
+)
+from src.domain.stage.wire import build_seeding as _build_seeding
 from src.services.tournament.events import (
     enqueue_tournament_changed,
     enqueue_tournament_recalculation,
 )
-
-GROUPED_GENERATION_STAGE_TYPES = {
-    enums.StageType.ROUND_ROBIN,
-    enums.StageType.SWISS,
-}
-
-BRACKET_STAGE_TYPES = {
-    enums.StageType.SINGLE_ELIMINATION,
-    enums.StageType.DOUBLE_ELIMINATION,
-}
+from src.services.admin.stage_common import (
+    BRACKET_STAGE_TYPES,
+    GROUPED_GENERATION_STAGE_TYPES,
+    _apply_seeding,
+    _pick_ban_config_signature,
+)
 
 
-def _lower_bracket_item(stage: models.Stage, sorted_items: list) -> models.StageItem | None:
-    """The stage item holding the separate Lower bracket, when the stage has one.
-
-    A "single bracket" double elimination keeps the whole UB+LB structure in one
-    item instead, and the engine builds its lower rounds internally.
-    """
-    if stage.stage_type != enums.StageType.DOUBLE_ELIMINATION:
-        return None
-    return next((item for item in sorted_items if item.type == enums.StageItemType.BRACKET_LOWER), None)
-
-
-def _bracket_seeds(
-    stage: models.Stage,
-    sorted_items: list,
-    lb_item: models.StageItem | None,
-) -> tuple[list[int], list[int]]:
-    """The teams wired into ``stage``, split into the ones that start in the
-    upper bracket and the ones that start in the lower one."""
-    if stage.stage_type == enums.StageType.DOUBLE_ELIMINATION and getattr(stage, "split_lower_bracket", False):
-        if lb_item is not None:
-            upper = [tid for item in sorted_items if item is not lb_item for tid in _collect_item_team_ids(item)]
-            return upper, _collect_item_team_ids(lb_item)
-        # One bracket item: seeds are ordered winners-first, so the first half
-        # start in the upper bracket and the second half in the lower.
-        all_ids = [tid for item in sorted_items for tid in _collect_item_team_ids(item)]
-        half = len(all_ids) // 2
-        return all_ids[:half], all_ids[half:]
-    return [tid for item in sorted_items for tid in _collect_item_team_ids(item)], []
-
-
-def _advance_split(stage: models.Stage, advance: int) -> tuple[int, int]:
-    """How many of EACH group's ``advance_count`` teams seed ``stage``'s upper
-    vs its lower bracket -- the ``top`` / ``top_lb`` pair ``wire_from_groups``
-    takes.
-
-    Only a stage with an actual BRACKET_LOWER item seeds a separate lower
-    bracket. A "single bracket" double elimination (one SINGLE_BRACKET item)
-    holds the whole UB+LB structure, so all advancing teams seed that one item
-    and the DE engine builds the rounds internally.
-    """
-    if (
-        stage.stage_type == enums.StageType.DOUBLE_ELIMINATION
-        and getattr(stage, "split_lower_bracket", False)
-        and any(item.type == enums.StageItemType.BRACKET_LOWER for item in stage.items)
-    ):
-        lower = advance // 2
-        return advance - lower, lower  # odd count → extra team to the Upper bracket
-    return advance, 0
-
-
-def _pick_ban_config_signature(
-    config: PickBanConfig,
-) -> tuple[tuple, tuple, enums.MapVetoMode, enums.FirstBanRotation | None, tuple]:
-    """Structural identity of ``config`` for stage-merge dedup. Generalizes
-    ``_map_veto_signature`` onto ``PickBanConfig`` -- ``map_id``/``map_pool``
-    become ``item_id``/``items``, everything else (including every ordering
-    and tie-breaking rule the legacy docstring explains) is unchanged."""
-    rotation = config.first_ban_rotation if config.mode == enums.MapVetoMode.SLOTS else None
-    return (
-        tuple(config.sequence_json or []),
-        tuple(entry.item_id for entry in config.items),
-        config.mode,
-        rotation,
-        tuple(
-            (
-                slot.position,
-                slot.reserve_item_id,
-                tuple(entry.item_id for entry in sorted(slot.items, key=lambda row: (row.sort_order, row.item_id))),
-            )
-            for slot in sorted(config.slots, key=lambda row: row.position)
-        ),
-    )
-
-
-def _collect_item_team_ids(item: models.StageItem) -> list[int]:
-    return [inp.team_id for inp in sorted(item.inputs, key=lambda value: value.slot) if inp.team_id is not None]
-
-
-def _resolve_seeds(skeleton: BracketSkeleton, teams: dict[int, int]) -> BracketSkeleton:
-    """Swap a placeholder bracket's negative seed ids for the teams they stand
-    for. An id with no team maps to ``None`` — a TBD slot."""
-
-    def team_for(seed: int | None) -> int | None:
-        if seed is None or seed >= 0:
-            return seed
-        return teams.get(seed)
-
-    return replace(
-        skeleton,
-        pairings=[
-            replace(pairing, home_team_id=team_for(pairing.home_team_id), away_team_id=team_for(pairing.away_team_id))
-            for pairing in skeleton.pairings
-        ],
-    )
-
-
-def _build_seeding(
-    source_items: list,
-    top: int,
-    mode: str,
-    position_offset: int = 0,
-) -> list[tuple[int, int]]:
-    """Build ordered (source_item_id, position) pairs for seeding.
-
-    ``position_offset`` shifts which positions are selected — used to pick
-    LB positions that follow UB ones (e.g. offset=2 yields positions 3, 4, ...).
-    """
-    seeding: list[tuple[int, int]] = []
-    if mode == "snake":
-        for col in range(top):
-            position = position_offset + col + 1
-            for item in source_items:
-                seeding.append((item.id, position))
-    else:  # "cross" — default
-        for col in range(top):
-            position = position_offset + col + 1
-            # Flip every odd column so group A's 1st doesn't meet A's 2nd.
-            ordered = list(source_items) if col % 2 == 0 else list(reversed(source_items))
-            for item in ordered:
-                seeding.append((item.id, position))
-    return seeding
-
-
-def _apply_seeding(
-    session,
-    seeding: list[tuple[int, int]],
-    target_item,
-) -> None:
-    """Write TENTATIVE inputs from ``seeding`` into ``target_item``.
-
-    Preserves existing FINAL inputs; overwrites existing TENTATIVE inputs.
-    """
-    existing_inputs = {inp.slot: inp for inp in target_item.inputs}
-    for idx, (source_item_id, source_position) in enumerate(seeding, start=1):
-        existing = existing_inputs.get(idx)
-        if existing is not None and existing.input_type == enums.StageItemInputType.FINAL:
-            continue
-        if existing is not None:
-            existing.input_type = enums.StageItemInputType.TENTATIVE
-            existing.source_stage_item_id = source_item_id
-            existing.source_position = source_position
-            existing.team_id = None
-        else:
-            session.add(
-                models.StageItemInput(
-                    stage_item_id=target_item.id,
-                    slot=idx,
-                    input_type=enums.StageItemInputType.TENTATIVE,
-                    source_stage_item_id=source_item_id,
-                    source_position=source_position,
-                    team_id=None,
-                )
-            )
+def _bracket_seeds(stage, sorted_items, lb_item):
+    return bracket_seeds(stage, sorted_items, lb_item, collect=_collect_item_team_ids)
 
 
 class AdminStageService:
@@ -221,7 +77,6 @@ class AdminStageService:
         standing_repo: StandingRepository = StandingRepository(),
         team_repo: TeamRepository = TeamRepository(),
         tournament_repo: TournamentRepository = TournamentRepository(),
-        group_repo: TournamentGroupRepository = TournamentGroupRepository(),
         pick_ban_config_repo: PickBanConfigRepository = PickBanConfigRepository(),
     ) -> None:
         self.stage_repo = stage_repo
@@ -231,7 +86,6 @@ class AdminStageService:
         self.standing_repo = standing_repo
         self.team_repo = team_repo
         self.tournament_repo = tournament_repo
-        self.group_repo = group_repo
         self.pick_ban_config_repo = pick_ban_config_repo
 
     async def _publish_tournament_changed(
@@ -248,6 +102,12 @@ class AdminStageService:
         if not stage:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
         return stage
+
+    async def get_tournament_id(self, session: AsyncSession, stage_id: int) -> int:
+        tournament_id = await self.stage_repo.get_tournament_id(session, stage_id)
+        if tournament_id is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
+        return tournament_id
 
     async def get_planned_rounds(self, session: AsyncSession, stage_id: int) -> list[int]:
         """The round numbers this stage's bracket has, or will have.
@@ -356,26 +216,23 @@ class AdminStageService:
             return []
 
         stage_ids = [s.id for s in stages_list]
-        # Column-only projection over three columns, aggregated in Python: a row
-        # load would pull whole encounters just to count them.
+        # GROUP BY in SQL: totals and completed counts, never encounter rows.
         counts = await session.execute(
             select(
                 models.Encounter.stage_id,
                 models.Encounter.stage_item_id,
-                models.Encounter.status,
-            ).where(models.Encounter.stage_id.in_(stage_ids))
+                func.count().label("total"),
+                func.coalesce(
+                    func.sum(case((models.Encounter.status == enums.EncounterStatus.COMPLETED, 1), else_=0)),
+                    0,
+                ).label("completed"),
+            )
+            .where(models.Encounter.stage_id.in_(stage_ids))
+            .group_by(models.Encounter.stage_id, models.Encounter.stage_item_id)
         )
-        rows = list(counts)
-
-        # Aggregate: (stage_id, stage_item_id | None) → (total, completed).
-        agg: dict[tuple[int, int | None], list[int]] = {}
-        for row in rows:
-            key = (row.stage_id, row.stage_item_id)
-            bucket = agg.setdefault(key, [0, 0])
-            bucket[0] += 1
-            if row.status == enums.EncounterStatus.COMPLETED:
-                bucket[1] += 1
-
+        agg = {
+            (row.stage_id, row.stage_item_id): (int(row.total), int(row.completed)) for row in counts
+        }
         output: list[dict] = []
         for stage in stages_list:
             stage_total = 0
@@ -405,6 +262,7 @@ class AdminStageService:
                     "stage_id": stage.id,
                     "name": stage.name,
                     "stage_type": stage.stage_type.value,
+                    "lifecycle": stage_lifecycle(stage, has_encounters=stage_total > 0).value,
                     "is_active": stage.is_active,
                     "is_completed": stage.is_completed,
                     "total": stage_total,
@@ -534,8 +392,8 @@ class AdminStageService:
         source_stage_ids: list[int],
         target_stage_id: int,
     ) -> None:
-        # Generic over four models (TournamentGroup/Encounter/Standing/
-        # ChallongeSource); no single repository can express it.
+        # Generic over Encounter/Standing/ChallongeSource; no single repository
+        # can express it.
         result = await session.execute(select(model).where(model.stage_id.in_(source_stage_ids)))
         for row in result.scalars().all():
             row.stage_id = target_stage_id
@@ -665,7 +523,6 @@ class AdminStageService:
             )
 
         for model in (
-            models.TournamentGroup,
             models.Encounter,
             models.Standing,
             models.ChallongeSource,
@@ -721,31 +578,6 @@ class AdminStageService:
         )
         return await self.get_stage(session, target_stage.id)
 
-    async def _ensure_stage_item_compat_group(
-        self,
-        session: AsyncSession,
-        stage: models.Stage,
-        item: models.StageItem,
-    ) -> None:
-        existing = await self.group_repo.get_by_tournament_stage_and_name(
-            session,
-            tournament_id=stage.tournament_id,
-            stage_id=stage.id,
-            name=item.name,
-        )
-        if existing is not None:
-            return
-
-        await self.group_repo.create(
-            session,
-            models.TournamentGroup(
-                tournament_id=stage.tournament_id,
-                name=item.name,
-                description=None,
-                is_groups=stage.stage_type in GROUPED_GENERATION_STAGE_TYPES,
-                stage_id=stage.id,
-            ),
-        )
 
     async def create_stage_item(
         self, session: AsyncSession, stage_id: int, data: schemas.StageItemCreate
@@ -754,7 +586,6 @@ class AdminStageService:
         tournament_id = stage.tournament_id
         item = models.StageItem(stage_id=stage_id, **data.model_dump())
         await self.stage_item_repo.create(session, item)
-        await self._ensure_stage_item_compat_group(session, stage, item)
         await enqueue_tournament_recalculation(session, tournament_id)
         await self._publish_tournament_changed(session, tournament_id, "structure_changed")
         await session.commit()
@@ -900,15 +731,16 @@ class AdminStageService:
         *,
         notify: bool = True,
         commit: bool = True,
+        stage: models.Stage | None = None,
     ) -> models.Stage:
         """Activate a stage, resolving tentative inputs from previous stages."""
-        stage = await self.get_stage(session, stage_id)
+        stage = stage or await self.get_stage(session, stage_id)
 
-        # Deactivate all other stages in this tournament
-        other_stages = await self.get_stages_by_tournament(session, stage.tournament_id)
-        for other in other_stages:
-            if other.id != stage_id:
-                other.is_active = False
+        await session.execute(
+            update(models.Stage)
+            .where(models.Stage.tournament_id == stage.tournament_id, models.Stage.id != stage_id)
+            .values(is_active=False)
+        )
 
         stage.is_active = True
         # Sticky: unlike ``is_active`` this never gets cleared by another
@@ -917,38 +749,39 @@ class AdminStageService:
         # bracket.usability.is_encounter_live``).
         stage.is_published = True
 
-        # Resolve tentative inputs
+        source_item_ids = {
+            inp.source_stage_item_id
+            for item in stage.items
+            for inp in item.inputs
+            if inp.input_type == enums.StageItemInputType.TENTATIVE
+            and inp.source_stage_item_id is not None
+            and inp.source_position is not None
+        }
+        standings_by_item: dict[int, list[models.Standing]] = {}
+        if source_item_ids:
+            standings_result = await session.execute(
+                self.standing_repo.select()
+                .where(models.Standing.stage_item_id.in_(source_item_ids))
+                .order_by(models.Standing.stage_item_id, models.Standing.position)
+            )
+            for standing in standings_result.scalars():
+                standings_by_item.setdefault(standing.stage_item_id, []).append(standing)
+
         for item in stage.items:
             for inp in item.inputs:
                 if inp.input_type != enums.StageItemInputType.TENTATIVE:
                     continue
                 if inp.source_stage_item_id is None or inp.source_position is None:
                     continue
-
-                # Look up standings for the source stage item
-                # No repository method covers standings ordered by position within
-                # one stage item; built from the repo's select() meanwhile.
-                standings_result = await session.execute(
-                    self.standing_repo.select()
-                    .where(
-                        models.Standing.stage_item_id == inp.source_stage_item_id,
-                    )
-                    .order_by(models.Standing.position)
-                )
-                standings = list(standings_result.scalars().all())
-
-                target_pos = inp.source_position
-                if target_pos <= len(standings):
-                    inp.team_id = standings[target_pos - 1].team_id
+                standings = standings_by_item.get(inp.source_stage_item_id, [])
+                if inp.source_position <= len(standings):
+                    inp.team_id = standings[inp.source_position - 1].team_id
                     inp.input_type = enums.StageItemInputType.FINAL
 
-        if notify:
-            await self._publish_tournament_changed(session, stage.tournament_id, "structure_changed")
-        if commit:
-            await session.commit()
-        else:
-            await session.flush()
-        return await self.get_stage(session, stage.id)
+        await self._finish_structure_write(
+            session, stage, notify=notify, commit=commit, schedule_standings=False
+        )
+        return stage
 
     async def deactivate_stage(
         self,
@@ -989,14 +822,28 @@ class AdminStageService:
 
         stage.is_active = False
         stage.is_published = False
+        await self._finish_structure_write(
+            session, stage, notify=notify, commit=commit, schedule_standings=False
+        )
+        return stage
 
+    async def _finish_structure_write(
+        self,
+        session: AsyncSession,
+        stage: models.Stage,
+        *,
+        notify: bool,
+        commit: bool,
+        schedule_standings: bool,
+    ) -> None:
+        if schedule_standings:
+            await enqueue_tournament_recalculation(session, stage.tournament_id)
         if notify:
             await self._publish_tournament_changed(session, stage.tournament_id, "structure_changed")
         if commit:
             await session.commit()
         else:
             await session.flush()
-        return await self.get_stage(session, stage.id)
 
     async def _load_team_names(
         self,
@@ -1014,6 +861,30 @@ class AdminStageService:
             select(models.Team.id, models.Team.name).where(models.Team.id.in_(unique_team_ids))
         )
         return dict(result.all())
+
+    async def _load_rankable_teams(
+        self,
+        session: AsyncSession,
+        team_ids: Sequence[int],
+    ) -> dict[int, models.Team]:
+        unique_team_ids = sorted({team_id for team_id in team_ids if team_id is not None and team_id > 0})
+        if not unique_team_ids:
+            return {}
+        teams = await self.team_repo.bulk_get(session, unique_team_ids)
+        return {team.id: team for team in teams}
+
+    async def _rank_seed_ids(
+        self,
+        session: AsyncSession,
+        stage: models.Stage,
+        team_ids: list[int],
+    ) -> list[int]:
+        ranking = parse_seed_ranking(getattr(stage, "settings_json", None))
+        if ranking is SeedRanking.SLOT or not team_ids:
+            return team_ids
+        teams = await self._load_rankable_teams(session, team_ids)
+        return apply_seed_ranking(team_ids, teams, ranking, rng_seed=stage.id)
+
 
     async def _get_swiss_generation_context(
         self,
@@ -1075,7 +946,9 @@ class AdminStageService:
             )
             if swiss_standings is None:
                 clear_swiss_byes(stage, stage_item_id)
-            if not swiss_auto_round.stage_allows_next_round(stage, swiss_round):
+            from src.services.standings.swiss_auto_round import stage_allows_next_round
+
+            if not stage_allows_next_round(stage, swiss_round):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Swiss stage reached max_rounds",
@@ -1123,59 +996,20 @@ class AdminStageService:
         team_names_by_id: dict[int, str],
         lb_stage_item_id: int | None = None,
     ) -> list[models.Encounter]:
-        """Persist bracket pairings as Encounter rows and wire up EncounterLink
-        records for advancement edges.
-
-        For double-elimination stages, ``lb_stage_item_id`` routes encounters with
-        negative round numbers (lower bracket) to a separate stage item.
-
-        Rows are inserted in ``skeleton.pairings`` order under a single flush, so
-        within a round the encounter ids ascend in pairing order --
-        ``_fill_bracket_seeds`` relies on that to re-identify a pairing later.
-        """
-        encounters: list[models.Encounter] = []
-        local_to_encounter: dict[int, models.Encounter] = {}
+        """Persist bracket pairings as Encounter rows and wire EncounterLink records."""
         best_of_cfg = parse_best_of_config(stage.settings_json)
-        is_elimination = stage.stage_type in BRACKET_STAGE_TYPES
-        max_round = max((pairing.round_number for pairing in skeleton.pairings), default=0)
-        for pairing in skeleton.pairings:
-            # LB rounds use negative round numbers; route to LB item when present.
-            item_id = lb_stage_item_id if lb_stage_item_id is not None and pairing.round_number < 0 else stage_item_id
-            encounter = models.Encounter(
-                name=build_encounter_name_from_ids(
-                    pairing.home_team_id,
-                    pairing.away_team_id,
-                    team_names_by_id,
-                ),
-                home_team_id=pairing.home_team_id,
-                away_team_id=pairing.away_team_id,
-                home_score=0,
-                away_score=0,
-                round=pairing.round_number,
-                best_of=resolve_best_of(
-                    best_of_cfg,
-                    pairing.round_number,
-                    is_final=is_elimination and pairing.round_number == max_round,
-                ),
-                tournament_id=stage.tournament_id,
-                stage_id=stage.id,
-                stage_item_id=item_id,
-                status=enums.EncounterStatus.OPEN,
-            )
-            session.add(encounter)
-            encounters.append(encounter)
-            local_to_encounter[pairing.local_id] = encounter
-
-        # Flush to obtain encounter.id values before persisting links.
-        await session.flush()
-
-        local_to_id = {local_id: encounter.id for local_id, encounter in local_to_encounter.items()}
-        await persist_advancement_edges(
+        return await persist_skeleton(
             session,
-            edges=skeleton.advancement_edges,
-            local_to_encounter_id=local_to_id,
+            stage=stage,
+            skeleton=skeleton,
+            stage_item_id=stage_item_id,
+            team_names_by_id=team_names_by_id,
+            lb_stage_item_id=lb_stage_item_id,
+            is_elimination=stage.stage_type in BRACKET_STAGE_TYPES,
+            best_of_for_round=lambda round_number, *, is_final: resolve_best_of(
+                best_of_cfg, round_number, is_final=is_final
+            ),
         )
-        return encounters
 
     async def _fill_bracket_seeds(
         self,
@@ -1257,13 +1091,13 @@ class AdminStageService:
 
         Modes:
 
-        - ``snake_sr`` (default): sort teams by ``Team.avg_sr`` descending, then
+        - ``snake_sr`` (default): rank by ``Team.avg_sr`` descending, then
           deal them out in a snake pattern across stage_items. For 4 groups the
           order becomes A, B, C, D, D, C, B, A, A, B, C, D, ... — this balances
           each group's strength regardless of team count per group.
-        - ``random``: deterministic shuffle based on ``Team.id``; distribute
-          round-robin across stage_items.
-        - ``by_total_sr``: same as ``snake_sr`` but sorts by ``total_sr`` (useful
+        - ``random``: ``random.Random(stage.id)`` shuffle, then round-robin
+          across stage_items. Stable across processes.
+        - ``by_total_sr``: same as ``snake_sr`` but ranks by ``total_sr`` (useful
           when ``avg_sr`` can be skewed by player count differences).
 
         Idempotent: any existing FINAL inputs in target stage_items are REMOVED
@@ -1301,21 +1135,19 @@ class AdminStageService:
                 detail=f"Teams {[t.id for t in foreign]} do not belong to this tournament",
             )
 
-        # Sort teams according to the requested mode.
-        if mode == "snake_sr":
-            teams_sorted = sorted(teams, key=lambda t: (t.avg_sr or 0.0, t.id), reverse=True)
-        elif mode == "by_total_sr":
-            teams_sorted = sorted(teams, key=lambda t: (t.total_sr or 0, t.id), reverse=True)
-        elif mode == "random":
-            # Deterministic shuffle based on team.id — two calls with the same
-            # inputs produce identical seeding, useful for reproducibility and
-            # tests. Uses a simple hash to scramble order.
-            teams_sorted = sorted(teams, key=lambda t: hash((t.id, stage.id)))
-        else:
+        ranking = {
+            "snake_sr": SeedRanking.AVG_SR,
+            "by_total_sr": SeedRanking.TOTAL_SR,
+            "random": SeedRanking.RANDOM,
+        }.get(mode)
+        if ranking is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unknown seeding mode: {mode!r}",
             )
+        ordered_ids = rank_team_ids(teams, ranking, rng_seed=stage.id)
+        by_id = {team.id: team for team in teams}
+        teams_sorted = [by_id[team_id] for team_id in ordered_ids]
 
         stage_items = sorted(stage.items, key=lambda item: (item.order, item.id))
         num_groups = len(stage_items)
@@ -1389,6 +1221,7 @@ class AdminStageService:
         top_lb: int = 0,
         mode: str = "cross",
         notify: bool = True,
+        commit: bool = True,
     ) -> models.Stage:
         """Wire TENTATIVE inputs in ``target_stage`` pointing to top-N of each group in
         ``source_stage``.
@@ -1476,7 +1309,10 @@ class AdminStageService:
 
         if notify:
             await self._publish_tournament_changed(session, target_stage.tournament_id, "structure_changed")
-        await session.commit()
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
 
         logger.info(
             "Wired TENTATIVE inputs from stage %s (%d groups × top %d, top_lb %d) into stage %s (%s)",
@@ -1487,7 +1323,7 @@ class AdminStageService:
             target_stage.id,
             mode,
         )
-        return await self.get_stage(session, target_stage_id)
+        return target_stage if not commit else await self.get_stage(session, target_stage_id)
 
     async def _check_upstream_stages_completed(self, session: AsyncSession, stage: models.Stage) -> list[int]:
         """Return ids of upstream stages that feed into ``stage`` via TENTATIVE
@@ -1495,16 +1331,19 @@ class AdminStageService:
         to activate. Used by /activate-and-generate to prevent admins from
         freezing playoff seeds before groups finish.
         """
-        source_stage_ids: set[int] = set()
-        for item in stage.items:
-            for inp in item.inputs:
-                if inp.input_type != enums.StageItemInputType.TENTATIVE:
-                    continue
-                if inp.source_stage_item_id is None:
-                    continue
-                source_item = await self.stage_item_repo.get(session, inp.source_stage_item_id)
-                if source_item is not None and source_item.stage_id is not None:
-                    source_stage_ids.add(source_item.stage_id)
+        source_item_ids = list(
+            {
+                inp.source_stage_item_id
+                for item in stage.items
+                for inp in item.inputs
+                if inp.input_type == enums.StageItemInputType.TENTATIVE and inp.source_stage_item_id is not None
+            }
+        )
+        if not source_item_ids:
+            return []
+
+        source_items = await self.stage_item_repo.bulk_get(session, source_item_ids)
+        source_stage_ids = {item.stage_id for item in source_items if item.stage_id is not None}
 
         if not source_stage_ids:
             return []
@@ -1559,6 +1398,7 @@ class AdminStageService:
             top_lb=top_lb,
             mode="snake",
             notify=False,
+            commit=False,
         )
 
     async def activate_and_generate(
@@ -1583,7 +1423,6 @@ class AdminStageService:
         # Automation block). Runs BEFORE the upstream-completion check so that check
         # sees the freshly created TENTATIVE inputs.
         await self._auto_wire_from_groups(session, stage)
-        stage = await self.get_stage(session, stage_id)
         if not force:
             pending = await self._check_upstream_stages_completed(session, stage)
             if pending:
@@ -1599,20 +1438,18 @@ class AdminStageService:
                     },
                 )
 
-        stage = await self.activate_stage(session, stage_id, notify=False, commit=False)
+        stage = await self.activate_stage(session, stage_id, notify=False, commit=False, stage=stage)
         encounters = await self.generate_encounters(
             session,
             stage_id,
             notify=False,
             commit=False,
             schedule_standings=schedule_standings,
+            stage=stage,
         )
-        if notify:
-            await self._publish_tournament_changed(session, stage.tournament_id, "structure_changed")
-        if commit:
-            await session.commit()
-        else:
-            await session.flush()
+        await self._finish_structure_write(
+            session, stage, notify=notify, commit=commit, schedule_standings=False
+        )
         return stage, encounters
 
     async def generate_encounters(
@@ -1623,6 +1460,7 @@ class AdminStageService:
         notify: bool = True,
         commit: bool = True,
         schedule_standings: bool = True,
+        stage: models.Stage | None = None,
     ) -> list[models.Encounter]:
         """Generate bracket encounters for a stage based on its type and team inputs.
 
@@ -1640,10 +1478,8 @@ class AdminStageService:
         laid out, scheduled and configured while the groups are still running;
         ``_fill_bracket_seeds`` writes the teams into it once they resolve.
         """
-        stage = await self.get_stage(session, stage_id)
+        stage = stage or await self.get_stage(session, stage_id)
 
-        # Grouped COUNT keyed by stage item: "which groups already generated",
-        # not a row load.
         existing_by_item_result = await session.execute(
             select(models.Encounter.stage_item_id, func.count())
             .where(models.Encounter.stage_id == stage_id)
@@ -1651,57 +1487,69 @@ class AdminStageService:
         )
         existing_by_item: dict[int | None, int] = dict(existing_by_item_result.all())
 
-        should_generate_by_item = stage.stage_type in GROUPED_GENERATION_STAGE_TYPES and len(stage.items) > 1
+        if stage.stage_type in GROUPED_GENERATION_STAGE_TYPES and len(stage.items) > 1:
+            encounters = await self._generate_grouped_encounters(session, stage, existing_by_item)
+        else:
+            encounters = await self._generate_bracket_encounters(session, stage, existing_by_item)
 
-        if should_generate_by_item:
-            encounters: list[models.Encounter] = []
-            eligible_items = [item for item in stage.items if existing_by_item.get(item.id, 0) == 0]
-            if not eligible_items:
+        await self._finish_structure_write(
+            session,
+            stage,
+            notify=notify,
+            commit=commit,
+            schedule_standings=schedule_standings,
+        )
+        return encounters
+
+    async def _generate_grouped_encounters(
+        self,
+        session: AsyncSession,
+        stage: models.Stage,
+        existing_by_item: dict[int | None, int],
+    ) -> list[models.Encounter]:
+        eligible_items = [item for item in stage.items if existing_by_item.get(item.id, 0) == 0]
+        if not eligible_items:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Every group already has generated matches. Delete a group's matches first to regenerate it.",
+            )
+        encounters: list[models.Encounter] = []
+        for item in eligible_items:
+            team_ids = _collect_item_team_ids(item)
+            if len(team_ids) < 2:
                 raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Every group already has generated matches. Delete a group's matches first to regenerate it.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Each group needs at least 2 teams to generate a bracket",
                 )
-            for item in eligible_items:
-                team_ids = _collect_item_team_ids(item)
-                if len(team_ids) < 2:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Each group needs at least 2 teams to generate a bracket",
-                    )
-
-                skeleton = await self._generate_stage_skeleton(session, stage, team_ids, item.id)
-                team_names_by_id = await self._load_team_names(session, team_ids)
-                encounters.extend(
-                    await self._create_encounters_from_skeleton(
-                        session,
-                        stage,
-                        skeleton,
-                        item.id,
-                        team_names_by_id=team_names_by_id,
-                    )
+            skeleton = await self._generate_stage_skeleton(session, stage, team_ids, item.id)
+            team_names_by_id = await self._load_team_names(session, team_ids)
+            encounters.extend(
+                await self._create_encounters_from_skeleton(
+                    session,
+                    stage,
+                    skeleton,
+                    item.id,
+                    team_names_by_id=team_names_by_id,
                 )
+            )
+        return encounters
 
-            if schedule_standings:
-                await enqueue_tournament_recalculation(session, stage.tournament_id)
-            if notify:
-                await self._publish_tournament_changed(session, stage.tournament_id, "structure_changed")
-            if commit:
-                await session.commit()
-            else:
-                await session.flush()
-            return encounters
-
+    async def _generate_bracket_encounters(
+        self,
+        session: AsyncSession,
+        stage: models.Stage,
+        existing_by_item: dict[int | None, int],
+    ) -> list[models.Encounter]:
         sorted_items = sorted(stage.items, key=lambda it: (it.order, it.id))
         primary_item_id = sorted_items[0].id if sorted_items else None
-
-        # For DE stages: route LB encounters (negative round numbers) to the
-        # BRACKET_LOWER stage item when one exists.
         lb_item = _lower_bracket_item(stage, sorted_items)
         lb_stage_item_id = lb_item.id if lb_item is not None else None
 
-        # Which advancing teams start in the upper vs the lower bracket.
         team_ids, lower_bracket_team_ids = _bracket_seeds(stage, sorted_items, lb_item)
         is_bracket = stage.stage_type in BRACKET_STAGE_TYPES
+        if is_bracket:
+            team_ids = await self._rank_seed_ids(session, stage, team_ids)
+            lower_bracket_team_ids = await self._rank_seed_ids(session, stage, lower_bracket_team_ids)
 
         seeds_are_placeholders = False
         if is_bracket and len(team_ids) + len(lower_bracket_team_ids) < 2:
@@ -1711,8 +1559,6 @@ class AdminStageService:
             seeds_are_placeholders = True
 
         if sum(existing_by_item.values()) > 0:
-            # The bracket exists. If it is still the all-TBD preview and the seeds
-            # are known by now, fill them in instead of demanding a regeneration.
             filled = (
                 None
                 if seeds_are_placeholders or not is_bracket
@@ -1723,16 +1569,7 @@ class AdminStageService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail="This stage already has generated matches. Delete them first to regenerate the bracket.",
                 )
-            encounters = filled
-            if schedule_standings:
-                await enqueue_tournament_recalculation(session, stage.tournament_id)
-            if notify:
-                await self._publish_tournament_changed(session, stage.tournament_id, "structure_changed")
-            if commit:
-                await session.commit()
-            else:
-                await session.flush()
-            return encounters
+            return filled
 
         if len(team_ids) < 2:
             raise HTTPException(
@@ -1748,10 +1585,9 @@ class AdminStageService:
             lower_bracket_team_ids=lower_bracket_team_ids,
         )
         if seeds_are_placeholders:
-            # Nothing to resolve them to yet: every slot becomes TBD.
             skeleton = _resolve_seeds(skeleton, {})
         team_names_by_id = await self._load_team_names(session, team_ids + lower_bracket_team_ids)
-        encounters = await self._create_encounters_from_skeleton(
+        return await self._create_encounters_from_skeleton(
             session,
             stage,
             skeleton,
@@ -1759,16 +1595,6 @@ class AdminStageService:
             team_names_by_id=team_names_by_id,
             lb_stage_item_id=lb_stage_item_id,
         )
-
-        if schedule_standings:
-            await enqueue_tournament_recalculation(session, stage.tournament_id)
-        if notify:
-            await self._publish_tournament_changed(session, stage.tournament_id, "structure_changed")
-        if commit:
-            await session.commit()
-        else:
-            await session.flush()
-        return encounters
 
     async def apply_best_of_to_existing(self, session: AsyncSession, stage_id: int) -> int:
         """Backfill ``best_of`` on a stage's existing encounters from its config.

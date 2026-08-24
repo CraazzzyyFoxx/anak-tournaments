@@ -37,7 +37,7 @@ for _key, _value in {
 
 from datetime import UTC, datetime  # noqa: E402
 
-from shared.subscriptions import (  # noqa: E402
+from shared.services.subscriptions import (  # noqa: E402
     Outcome,
     SubscriptionState,
     SubscriptionVerdict,

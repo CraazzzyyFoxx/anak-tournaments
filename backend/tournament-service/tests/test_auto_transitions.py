@@ -59,7 +59,7 @@ from sqlalchemy.pool import NullPool  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
-from shared.services.division_grid_access import get_default_division_grid_version_id  # noqa: E402
+from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from src.services.admin import tournament as admin_tournament_service  # noqa: E402
 from src.services.tournament import auto_transitions  # noqa: E402
 
