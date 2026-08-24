@@ -173,7 +173,7 @@ class StatisticsQueries:
             .join(models.User, models.User.id == models.WorkspaceMember.player_id)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Standing, models.Standing.team_id == models.Team.id)
-            .join(
+            .outerjoin(
                 models.StageItem,
                 models.StageItem.id == models.Standing.stage_item_id,
             )
@@ -181,7 +181,10 @@ class StatisticsQueries:
             .where(
                 sa.and_(
                     models.Standing.overall_position == 1,
-                    models.StageItem.type != enums.StageItemType.GROUP,
+                    sa.or_(
+                        models.Standing.stage_item_id.is_(None),
+                        models.StageItem.type != enums.StageItemType.GROUP,
+                    ),
                     models.Player.is_substitution.is_(False),
                     models.Tournament.is_league.is_(False),
                     models.Tournament.is_hidden.is_(False),

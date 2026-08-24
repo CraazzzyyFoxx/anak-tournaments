@@ -266,7 +266,7 @@ class TournamentService:
             .select_from(models.Player)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .join(models.Standing, models.Standing.team_id == models.Player.team_id)
-            .join(
+            .outerjoin(
                 models.StageItem,
                 models.StageItem.id == models.Standing.stage_item_id,
             )
@@ -274,7 +274,10 @@ class TournamentService:
             .where(
                 sa.and_(
                     models.Standing.overall_position == 1,
-                    models.StageItem.type != enums.StageItemType.GROUP,
+                    sa.or_(
+                        models.Standing.stage_item_id.is_(None),
+                        models.StageItem.type != enums.StageItemType.GROUP,
+                    ),
                     models.Player.is_substitution.is_(False),
                     models.Tournament.is_league.is_(False),
                     *ws_filters,
