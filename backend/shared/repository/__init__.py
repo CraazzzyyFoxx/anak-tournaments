@@ -147,6 +147,8 @@ from .workspace import (
     resolve_workspace_member_id,
 )
 from .workspace_player import (
+    HostPlayerRankRepository,
+    HostPlayerRepository,
     WorkspacePlayerRankRepository,
     WorkspacePlayerRepository,
 )
@@ -268,6 +270,8 @@ __all__ = (
     "VerifiedChannelRow",
     "WorkspaceBalancerConfigRepository",
     "WorkspaceMemberRepository",
+    "HostPlayerRankRepository",
+    "HostPlayerRepository",
     "WorkspacePlayerRankRepository",
     "WorkspacePlayerRepository",
     "WorkspaceRepository",

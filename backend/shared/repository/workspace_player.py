@@ -56,3 +56,58 @@ class WorkspacePlayerRankRepository(BaseRepository[models.WorkspacePlayerRank]):
             self.select().where(self.model.workspace_player_id.in_(workspace_player_ids))
         )
         return result.all()
+
+
+class HostPlayerRepository(BaseRepository[models.HostPlayer]):
+    def __init__(self) -> None:
+        super().__init__(models.HostPlayer)
+
+    async def list_for_player(self, session: AsyncSession, workspace_player_id: int) -> Sequence[models.HostPlayer]:
+        result = await session.scalars(self.select().where(self.model.workspace_player_id == workspace_player_id))
+        return result.all()
+
+    async def list_pool(
+        self, session: AsyncSession, workspace_id: int, host_user_id: int
+    ) -> Sequence[models.HostPlayer]:
+        result = await session.scalars(
+            self.select().where(
+                self.model.workspace_id == workspace_id,
+                self.model.host_user_id == host_user_id,
+            )
+        )
+        return result.all()
+
+
+class HostPlayerRankRepository(BaseRepository[models.HostPlayerRank]):
+    def __init__(self) -> None:
+        super().__init__(models.HostPlayerRank)
+
+    async def list_for_player(
+        self, session: AsyncSession, workspace_player_id: int
+    ) -> Sequence[models.HostPlayerRank]:
+        result = await session.scalars(self.select().where(self.model.workspace_player_id == workspace_player_id))
+        return result.all()
+
+    async def list_book(
+        self, session: AsyncSession, host_user_id: int, workspace_player_id: int
+    ) -> Sequence[models.HostPlayerRank]:
+        result = await session.scalars(
+            self.select().where(
+                self.model.host_user_id == host_user_id,
+                self.model.workspace_player_id == workspace_player_id,
+            )
+        )
+        return result.all()
+
+    async def list_for_host_players(
+        self, session: AsyncSession, host_user_id: int, workspace_player_ids: Sequence[int]
+    ) -> Sequence[models.HostPlayerRank]:
+        if not workspace_player_ids:
+            return []
+        result = await session.scalars(
+            self.select().where(
+                self.model.host_user_id == host_user_id,
+                self.model.workspace_player_id.in_(workspace_player_ids),
+            )
+        )
+        return result.all()

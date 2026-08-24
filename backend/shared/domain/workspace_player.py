@@ -96,7 +96,7 @@ def merge_ranks(survivor_ranks: Sequence[object], donor_ranks: Sequence[object])
     return MergeRanksResult(keep=keep, delete_ids=delete_ids, move=move)
 
 
-RankSource = Literal["override", "canon", "ow", "none"]
+RankSource = Literal["override", "host", "canon", "ow", "none"]
 
 
 @dataclass(frozen=True)
@@ -105,9 +105,17 @@ class ResolvedRank:
     source: RankSource
 
 
-def pick_rank(*, override: int | None, canon: int | None, ow: int | None) -> ResolvedRank:
+def pick_rank(
+    *,
+    override: int | None,
+    canon: int | None,
+    ow: int | None,
+    host: int | None = None,
+) -> ResolvedRank:
     if override is not None:
         return ResolvedRank(override, "override")
+    if host is not None:
+        return ResolvedRank(host, "host")
     if canon is not None:
         return ResolvedRank(canon, "canon")
     if ow is not None:

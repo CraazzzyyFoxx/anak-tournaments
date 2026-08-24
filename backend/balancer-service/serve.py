@@ -27,6 +27,7 @@ from src.rpc import admin as rpc_admin
 from src.rpc import binary as rpc_binary
 from src.rpc import config as rpc_config
 from src.rpc import draft as rpc_draft
+from src.rpc import hosts as rpc_hosts
 from src.rpc import jobs as rpc_jobs
 from src.services.balancer.jobs import execute_balance_job
 from src.services.draft.clock import draft_clock_service
@@ -56,6 +57,7 @@ rpc_draft.register(broker, logger)
 # Phase 3 — public job API (create + status + result; create publishes to the
 # job queue this same worker consumes). The SSE stream is not migrated.
 rpc_jobs.register(broker, logger)
+rpc_hosts.register(broker, logger)
 
 
 # Balance jobs run for minutes (MOO solver); isolate them from the RPC channel.

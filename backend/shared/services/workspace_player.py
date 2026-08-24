@@ -16,7 +16,12 @@ from shared.domain.workspace_player import (
     normalize_battle_tag_key,
     pick_rank,
 )
-from shared.repository import WorkspacePlayerRankRepository, WorkspacePlayerRepository
+from shared.repository import (
+    HostPlayerRankRepository,
+    HostPlayerRepository,
+    WorkspacePlayerRankRepository,
+    WorkspacePlayerRepository,
+)
 from shared.services.rank_snapshots import fetch_latest_ow_ranks_by_account, normalize_ow_ranks_to_grid
 
 __all__ = ("WorkspacePlayerService", "workspace_player_service")
@@ -28,9 +33,13 @@ class WorkspacePlayerService:
         *,
         players: WorkspacePlayerRepository = WorkspacePlayerRepository(),
         ranks: WorkspacePlayerRankRepository = WorkspacePlayerRankRepository(),
+        host_players: HostPlayerRepository = HostPlayerRepository(),
+        host_ranks: HostPlayerRankRepository = HostPlayerRankRepository(),
     ) -> None:
         self.players = players
         self.ranks = ranks
+        self.host_players = host_players
+        self.host_ranks = host_ranks
 
     async def upsert(
         self,
@@ -135,8 +144,51 @@ class WorkspacePlayerService:
             by_id[moved.id].workspace_player_id = survivor.id
         if plan.move:
             await session.flush()
+        await self._merge_host_layer(session, survivor=survivor, donor=donor)
         await self.players.delete(session, donor)
         return survivor
+
+    async def _merge_host_layer(
+        self,
+        session: AsyncSession,
+        *,
+        survivor: models.WorkspacePlayer,
+        donor: models.WorkspacePlayer,
+    ) -> None:
+        survivor_hosts = await self.host_players.list_for_player(session, survivor.id)
+        donor_hosts = await self.host_players.list_for_player(session, donor.id)
+        taken = {row.host_user_id for row in survivor_hosts}
+        moved_hosts = False
+        for row in donor_hosts:
+            if row.host_user_id in taken:
+                continue
+            row.workspace_player_id = survivor.id
+            taken.add(row.host_user_id)
+            moved_hosts = True
+        if moved_hosts:
+            await session.flush()
+
+        survivor_book = await self.host_ranks.list_for_player(session, survivor.id)
+        donor_book = await self.host_ranks.list_for_player(session, donor.id)
+        s_by: dict[int, list] = {}
+        d_by: dict[int, list] = {}
+        for row in survivor_book:
+            s_by.setdefault(row.host_user_id, []).append(row)
+        for row in donor_book:
+            d_by.setdefault(row.host_user_id, []).append(row)
+        book_by_id = {row.id: row for row in (*survivor_book, *donor_book) if row.id is not None}
+        moved_book = False
+        for host_id in set(s_by) | set(d_by):
+            host_plan = merge_ranks(s_by.get(host_id, []), d_by.get(host_id, []))
+            for rank_id in host_plan.delete_ids:
+                await self.host_ranks.delete(session, book_by_id[rank_id])
+            for moved in host_plan.move:
+                if moved.id is None:
+                    continue
+                book_by_id[moved.id].workspace_player_id = survivor.id
+                moved_book = True
+        if moved_book:
+            await session.flush()
 
     async def set_ranks(
         self,
@@ -181,12 +233,18 @@ class WorkspacePlayerService:
         roles: Sequence[str],
         overrides: Mapping[tuple[int, str], int] | None = None,
         grid: DivisionGrid | None = None,
+        host_user_id: int | None = None,
     ) -> dict[tuple[int, str], ResolvedRank]:
         if not players or not roles:
             return {}
         pins = overrides or {}
-        rows = await self.ranks.list_ranks_for_players(session, [player.id for player in players])
+        player_ids = [player.id for player in players]
+        rows = await self.ranks.list_ranks_for_players(session, player_ids)
         canon = {(row.workspace_player_id, row.role): row.rank_value for row in rows}
+        host: dict[tuple[int, str], int] = {}
+        if host_user_id is not None:
+            host_rows = await self.host_ranks.list_for_host_players(session, host_user_id, player_ids)
+            host = {(row.workspace_player_id, row.role): row.rank_value for row in host_rows}
 
         need_ow: list[int] = []
         seen: set[int] = set()
@@ -194,7 +252,12 @@ class WorkspacePlayerService:
             uid = player.player_id
             if uid is None or uid in seen:
                 continue
-            if any(pins.get((player.id, role)) is None and canon.get((player.id, role)) is None for role in roles):
+            if any(
+                pins.get((player.id, role)) is None
+                and host.get((player.id, role)) is None
+                and canon.get((player.id, role)) is None
+                for role in roles
+            ):
                 seen.add(uid)
                 need_ow.append(uid)
 
@@ -208,7 +271,12 @@ class WorkspacePlayerService:
             ow_roles = ow_by_user.get(player.player_id, {}) if player.player_id is not None else {}
             for role in roles:
                 key = (player.id, role)
-                out[key] = pick_rank(override=pins.get(key), canon=canon.get(key), ow=ow_roles.get(role))
+                out[key] = pick_rank(
+                    override=pins.get(key),
+                    host=host.get(key),
+                    canon=canon.get(key),
+                    ow=ow_roles.get(role),
+                )
         return out
 
     async def resolve_rank(
@@ -219,9 +287,15 @@ class WorkspacePlayerService:
         role: str,
         overrides: Mapping[tuple[int, str], int] | None = None,
         grid: DivisionGrid | None = None,
+        host_user_id: int | None = None,
     ) -> ResolvedRank:
         resolved = await self.resolve_ranks(
-            session, players=[player], roles=[role], overrides=overrides, grid=grid
+            session,
+            players=[player],
+            roles=[role],
+            overrides=overrides,
+            grid=grid,
+            host_user_id=host_user_id,
         )
         return resolved[(player.id, role)]
 

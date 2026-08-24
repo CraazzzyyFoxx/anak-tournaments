@@ -80,3 +80,11 @@ def test_pick_rank_ow():
 
 def test_pick_rank_none():
     assert pick_rank(override=None, canon=None, ow=None) == ResolvedRank(None, "none")
+
+
+def test_pick_rank_host_wins_over_canon():
+    assert pick_rank(override=None, canon=2, ow=3, host=4) == ResolvedRank(4, "host")
+
+
+def test_pick_rank_override_wins_over_host():
+    assert pick_rank(override=1, canon=2, ow=3, host=4) == ResolvedRank(1, "override")

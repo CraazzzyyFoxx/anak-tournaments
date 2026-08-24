@@ -39,8 +39,10 @@ class WorkspacePlayerResolveTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.players = MagicMock()
         self.ranks = MagicMock()
+        self.host_ranks = MagicMock()
         self.ranks.list_ranks_for_players = AsyncMock(return_value=[])
-        self.service = WorkspacePlayerService(players=self.players, ranks=self.ranks)
+        self.host_ranks.list_for_host_players = AsyncMock(return_value=[])
+        self.service = WorkspacePlayerService(players=self.players, ranks=self.ranks, host_ranks=self.host_ranks)
         self.session = MagicMock()
 
     async def test_override_skips_ow(self) -> None:
@@ -94,3 +96,47 @@ class WorkspacePlayerResolveTests(IsolatedAsyncioTestCase):
             result = await self.service.resolve_ranks(self.session, players=[player], roles=["tank"])
         fetch.assert_awaited_once()
         self.assertEqual(result[(1, "tank")], ResolvedRank(None, "none"))
+
+    async def test_host_wins_over_canon(self) -> None:
+        player = _row(id=1, player_id=10)
+        self.ranks.list_ranks_for_players.return_value = [
+            _row(workspace_player_id=1, role="tank", rank_value=2000),
+        ]
+        self.host_ranks.list_for_host_players.return_value = [
+            _row(workspace_player_id=1, role="tank", rank_value=3100),
+        ]
+        with patch(_FETCH, new=AsyncMock()) as fetch:
+            result = await self.service.resolve_ranks(
+                self.session, players=[player], roles=["tank"], host_user_id=99
+            )
+        fetch.assert_not_awaited()
+        self.host_ranks.list_for_host_players.assert_awaited_once()
+        self.assertEqual(self.host_ranks.list_for_host_players.await_args.args[1], 99)
+        self.assertEqual(result[(1, "tank")], ResolvedRank(3100, "host"))
+
+    async def test_override_wins_over_host(self) -> None:
+        player = _row(id=1, player_id=10)
+        self.host_ranks.list_for_host_players.return_value = [
+            _row(workspace_player_id=1, role="tank", rank_value=3100),
+        ]
+        with patch(_FETCH, new=AsyncMock()) as fetch:
+            result = await self.service.resolve_ranks(
+                self.session,
+                players=[player],
+                roles=["tank"],
+                overrides={(1, "tank"): 1500},
+                host_user_id=99,
+            )
+        fetch.assert_not_awaited()
+        self.assertEqual(result[(1, "tank")], ResolvedRank(1500, "override"))
+
+    async def test_host_user_id_none_skips_host_query(self) -> None:
+        player = _row(id=1, player_id=10)
+        self.ranks.list_ranks_for_players.return_value = [
+            _row(workspace_player_id=1, role="tank", rank_value=2000),
+        ]
+        with patch(_FETCH, new=AsyncMock()) as fetch:
+            result = await self.service.resolve_ranks(self.session, players=[player], roles=["tank"])
+        fetch.assert_not_awaited()
+        self.host_ranks.list_for_host_players.assert_not_awaited()
+        self.assertEqual(result[(1, "tank")], ResolvedRank(2000, "canon"))

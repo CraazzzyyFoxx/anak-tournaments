@@ -1,7 +1,12 @@
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import String, UniqueConstraint
 
-from shared.models.workspace_player.workspace_player import WorkspacePlayer, WorkspacePlayerRank
+from shared.models.workspace_player.workspace_player import (
+    HostPlayer,
+    HostPlayerRank,
+    WorkspacePlayer,
+    WorkspacePlayerRank,
+)
 from shared.models.registration.registration import BalancerRegistration
 
 
@@ -111,3 +116,87 @@ def test_registration_workspace_player_id_fk_set_null():
     assert fk.column.table.schema == "balancer"
     assert fk.ondelete == "SET NULL"
     assert any("workspace_player_id" in {c.name for c in idx.columns} for idx in BalancerRegistration.__table__.indexes)
+
+
+def test_host_player_table_name_and_schema():
+    assert HostPlayer.__tablename__ == "host_player"
+    assert HostPlayer.__table__.schema == "balancer"
+
+
+def test_host_player_rank_table_name_and_schema():
+    assert HostPlayerRank.__tablename__ == "host_player_rank"
+    assert HostPlayerRank.__table__.schema == "balancer"
+
+
+def test_host_player_required_columns_present():
+    cols = set(HostPlayer.__table__.columns.keys())
+    assert {"id", "created_at", "updated_at", "workspace_id", "host_user_id", "workspace_player_id"} <= cols
+
+
+def test_host_player_rank_required_columns_present():
+    cols = set(HostPlayerRank.__table__.columns.keys())
+    assert {"id", "created_at", "updated_at", "host_user_id", "workspace_player_id", "role", "rank_value"} <= cols
+
+
+def test_host_player_workspace_id_fk_cascade():
+    fk = _fk(HostPlayer.__table__.columns["workspace_id"])
+    assert fk.column.table.name == "workspace"
+    assert fk.ondelete == "CASCADE"
+
+
+def test_host_player_host_user_id_fk_cascade():
+    fk = _fk(HostPlayer.__table__.columns["host_user_id"])
+    assert fk.column.table.name == "user"
+    assert fk.column.table.schema == "auth"
+    assert fk.ondelete == "CASCADE"
+
+
+def test_host_player_workspace_player_id_fk_cascade():
+    fk = _fk(HostPlayer.__table__.columns["workspace_player_id"])
+    assert fk.column.table.name == "workspace_player"
+    assert fk.column.table.schema == "balancer"
+    assert fk.ondelete == "CASCADE"
+
+
+def test_host_player_rank_host_user_id_fk_cascade():
+    fk = _fk(HostPlayerRank.__table__.columns["host_user_id"])
+    assert fk.column.table.name == "user"
+    assert fk.column.table.schema == "auth"
+    assert fk.ondelete == "CASCADE"
+
+
+def test_host_player_rank_workspace_player_fk_cascade():
+    fk = _fk(HostPlayerRank.__table__.columns["workspace_player_id"])
+    assert fk.column.table.name == "workspace_player"
+    assert fk.column.table.schema == "balancer"
+    assert fk.ondelete == "CASCADE"
+
+
+def test_host_player_unique_workspace_host_player():
+    cons = next(
+        c
+        for c in HostPlayer.__table__.constraints
+        if isinstance(c, UniqueConstraint) and c.name == "uq_host_player"
+    )
+    assert [c.name for c in cons.columns] == ["workspace_id", "host_user_id", "workspace_player_id"]
+
+
+def test_host_player_rank_unique_host_player_role():
+    cons = next(
+        c
+        for c in HostPlayerRank.__table__.constraints
+        if isinstance(c, UniqueConstraint) and c.name == "uq_host_player_rank"
+    )
+    assert [c.name for c in cons.columns] == ["host_user_id", "workspace_player_id", "role"]
+
+
+def test_host_player_rank_role_is_string_not_enum():
+    col = HostPlayerRank.__table__.columns["role"]
+    assert isinstance(col.type, String)
+    assert not isinstance(col.type, SAEnum)
+    assert col.type.length == 16
+    assert col.nullable is False
+
+
+def test_host_player_rank_value_not_null():
+    assert HostPlayerRank.__table__.columns["rank_value"].nullable is False

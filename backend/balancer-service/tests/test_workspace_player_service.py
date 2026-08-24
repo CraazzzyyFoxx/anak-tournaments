@@ -55,6 +55,8 @@ class WorkspacePlayerServiceTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.players = MagicMock()
         self.ranks = MagicMock()
+        self.host_players = MagicMock()
+        self.host_ranks = MagicMock()
         self.players.get = AsyncMock()
         self.players.get_active_by_tag = AsyncMock()
         self.players.get_active_by_player_id = AsyncMock()
@@ -63,7 +65,15 @@ class WorkspacePlayerServiceTests(IsolatedAsyncioTestCase):
         self.ranks.list_ranks = AsyncMock(return_value=[])
         self.ranks.create = AsyncMock(side_effect=lambda _s, row: row)
         self.ranks.delete = AsyncMock()
-        self.service = WorkspacePlayerService(players=self.players, ranks=self.ranks)
+        self.host_players.list_for_player = AsyncMock(return_value=[])
+        self.host_ranks.list_for_player = AsyncMock(return_value=[])
+        self.host_ranks.delete = AsyncMock()
+        self.service = WorkspacePlayerService(
+            players=self.players,
+            ranks=self.ranks,
+            host_players=self.host_players,
+            host_ranks=self.host_ranks,
+        )
         self.session = _session()
 
     async def test_upsert_empty_tag_fails(self) -> None:
