@@ -1255,6 +1255,7 @@ class UserService:
                 matches_cache[encounter.id].append(
                     _mappers.to_match_with_user_stats(
                         match,
+                        encounter=encounter,
                         performance=performance,
                         heroes=heroes,
                         impact_rank=impact_rank,
@@ -1624,6 +1625,7 @@ class UserService:
                 matches_cache[encounter.id].append(
                     _mappers.to_match_with_user_stats(
                         match,
+                        encounter=encounter,
                         performance=performance,
                         heroes=heroes,
                         impact_rank=impact_rank,

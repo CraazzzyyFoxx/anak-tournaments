@@ -125,7 +125,7 @@ const EncounterRow = ({
           scoreKind === "draw" && "text-[color:var(--aqt-amber)]"
         )}
       >
-        {enc.score.home} – {enc.score.away}
+        {userScore} – {oppScore}
       </span>
 
       {/* Logs — click shield, not a control: the whole row is one link, so a

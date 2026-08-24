@@ -111,9 +111,25 @@ def to_user_tournament_player(
     )
 
 
+def encounter_oriented_score(match: models.Match, encounter: models.Encounter) -> Score:
+    """Map score in the encounter's home/away, not the log's.
+
+    Parsed logs often write ``Match.home_team_id`` as the uploader's side, which
+    is the opposite of ``Encounter.home_team_id``. The Run then paints the
+    winner's maps as losses.
+    """
+    if (
+        match.home_team_id == encounter.away_team_id
+        and match.away_team_id == encounter.home_team_id
+    ):
+        return Score(home=match.away_score, away=match.home_score)
+    return Score(home=match.home_score, away=match.away_score)
+
+
 def to_match_with_user_stats(
     match: models.Match,
     *,
+    encounter: models.Encounter,
     performance: int | None,
     heroes: list[dict] | None,
     impact_rank: int | float | None = None,
@@ -126,15 +142,15 @@ def to_match_with_user_stats(
     ``overperf_pos`` is the viewer's rank (1 = best) among all match
     participants by OverperformanceScore (match-wide window, not scoped to the
     viewer) — used only to compute ``overperformance_badge`` and not exposed
-    on the schema itself.
+    on the schema itself. ``score`` is always the encounter's home/away.
     """
     map_read = schemas.MapRead.model_validate(match.map, from_attributes=True) if match.map is not None else None
     hero_objs = [schemas.HeroRead.model_validate(h) for h in (heroes or [])]
     return schemas.MatchReadWithUserStats(
         id=match.id,
-        home_team_id=match.home_team_id,
-        away_team_id=match.away_team_id,
-        score=Score(home=match.home_score, away=match.away_score),
+        home_team_id=encounter.home_team_id,
+        away_team_id=encounter.away_team_id,
+        score=encounter_oriented_score(match, encounter),
         time=match.time,
         log_name=match.log_name,
         encounter_id=match.encounter_id,

@@ -3,7 +3,12 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from src.services.user._mappers import encounter_play_key, settled_map_ids, sort_user_matches
+from src.services.user._mappers import (
+    encounter_oriented_score,
+    encounter_play_key,
+    settled_map_ids,
+    sort_user_matches,
+)
 
 
 def _match(id_: int, map_id: int, map_index: int | None = None):
@@ -47,3 +52,29 @@ def test_settled_map_ids_ignores_bans_and_sorts_by_action_index():
         (44, "picked", 5, 1),
     ]
     assert settled_map_ids(rows) == [31, 44, 15]
+
+
+def test_encounter_oriented_score_flips_swapped_log():
+    encounter = SimpleNamespace(home_team_id=2155, away_team_id=2152)
+    match = SimpleNamespace(
+        home_team_id=2152,
+        away_team_id=2155,
+        home_score=0,
+        away_score=3,
+    )
+    score = encounter_oriented_score(match, encounter)
+    assert score.home == 3
+    assert score.away == 0
+
+
+def test_encounter_oriented_score_keeps_aligned_log():
+    encounter = SimpleNamespace(home_team_id=2155, away_team_id=2152)
+    match = SimpleNamespace(
+        home_team_id=2155,
+        away_team_id=2152,
+        home_score=2,
+        away_score=1,
+    )
+    score = encounter_oriented_score(match, encounter)
+    assert score.home == 2
+    assert score.away == 1
