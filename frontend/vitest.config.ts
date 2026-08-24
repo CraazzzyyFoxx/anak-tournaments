@@ -66,6 +66,11 @@ export default defineConfig({
       "src/app/balancer/components/BalancingPoolSidebar.behavior.test.tsx",
       "src/app/balancer/tool-context.test.ts",
       "src/app/balancer/redirect-map.test.ts",
+      // Both extensions: the pickup lineup rules are `.ts` and the panel's
+      // render contract is `.tsx`, and a single `.test.ts` entry would silently
+      // skip the second one.
+      "src/app/balancer/pickup/**/*.test.ts",
+      "src/app/balancer/pickup/**/*.test.tsx",
       "src/app/**/users/compare/**/*.test.ts",
       "src/app/(site)/tournaments/[slug]/_views/_components/participantsColumns.test.tsx",
       // Same allow-list trap: this folder also holds `bun:test` files, so the

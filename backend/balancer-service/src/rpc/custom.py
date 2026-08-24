@@ -1,6 +1,6 @@
 """Custom games over typed RPC.
 
-``rpc.balancer.custom.{create,list,get,update_roster,set_rank,balance,record_outcome,delete}``.
+``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,record_outcome,delete}``.
 Writes require ``actor == host``. Reads are any workspace member.
 """
 
@@ -12,9 +12,10 @@ from faststream.rabbit import RabbitMessage
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from src.core import db
 from src.rpc import _common as c
-from src.services.custom_game import custom_game_service
+from src.services.custom_game import custom_game_service, rank_overrides
 
 _SF = db.async_session_maker
 
@@ -66,7 +67,49 @@ def _player_ids(data: dict[str, Any]) -> list[int] | None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="player_ids is required") from None
 
 
-def _dump_game(game: Any, roster: list[Any] | None = None) -> dict[str, Any]:
+def _player_patch(data: dict[str, Any]) -> dict[str, Any]:
+    """Only the keys the caller actually sent, so absent fields stay untouched."""
+    body = c.payload(data)
+    patch: dict[str, Any] = {}
+    for key in ("rank_value", "is_active", "roles"):
+        if key in body:
+            patch[key] = body[key]
+        elif key in data:
+            patch[key] = data[key]
+    return patch
+
+
+def _dump_row(
+    row: Any,
+    player: Any | None,
+    resolved: dict[tuple[int, str], Any],
+) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "workspace_player_id": row.workspace_player_id,
+        "display_name": getattr(player, "display_name", None),
+        "battle_tag": getattr(player, "battle_tag", None),
+        "rank_value": row.rank_value,
+        "team_index": row.team_index,
+        "sort_order": row.sort_order,
+        "is_active": row.is_active,
+        "roles": row.roles_json,
+        # The ranks balance would actually use: override > host book > canon > OW.
+        "ranks": {
+            role: resolved[(row.workspace_player_id, role)].value
+            for role in REGISTRATION_ROLE_CODES
+            if resolved.get((row.workspace_player_id, role)) is not None
+            and resolved[(row.workspace_player_id, role)].value is not None
+        },
+    }
+
+
+def _dump_game(
+    game: Any,
+    roster: list[Any] | None = None,
+    players: dict[int, Any] | None = None,
+    resolved: dict[tuple[int, str], Any] | None = None,
+) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": game.id,
         "workspace_id": game.workspace_id,
@@ -78,22 +121,31 @@ def _dump_game(game: Any, roster: list[Any] | None = None) -> dict[str, Any]:
         "outcome_json": game.outcome_json,
     }
     if roster is not None:
-        out["players"] = [
-            {
-                "id": row.id,
-                "workspace_player_id": row.workspace_player_id,
-                "rank_value": row.rank_value,
-                "team_index": row.team_index,
-                "sort_order": row.sort_order,
-            }
-            for row in roster
-        ]
+        by_id = players or {}
+        out["players"] = [_dump_row(row, by_id.get(row.workspace_player_id), resolved or {}) for row in roster]
     return out
 
 
 async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
-    roster = await custom_game_service.roster.list_for_game(session, game.id)
-    return _dump_game(game, list(roster))
+    """Roster rows carry the player's name and effective ranks.
+
+    Without them a client only has workspace_player ids and has to guess names
+    from a separately paginated pool query, which is exactly how the lineup used
+    to render ``#123`` for anyone off the current page.
+    """
+    roster = list(await custom_game_service.roster.list_for_game(session, game.id))
+    if not roster:
+        return _dump_game(game, roster)
+    rows = await custom_game_service.players.bulk_get(session, [row.workspace_player_id for row in roster])
+    players = {player.id: player for player in rows}
+    resolved = await custom_game_service.ranks.resolve_ranks(
+        session,
+        players=list(players.values()),
+        roles=list(REGISTRATION_ROLE_CODES),
+        overrides=rank_overrides(roster),
+        host_user_id=game.host_user_id,
+    )
+    return _dump_game(game, roster, players, resolved)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -167,33 +219,24 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "custom.update_roster", op, session_factory=_SF)
 
-    @broker.subscriber("rpc.balancer.custom.set_rank")
-    async def _set_rank(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.balancer.custom.update_player")
+    async def _update_player(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_member(user, workspace_id)
-            body = c.payload(data)
-            raw_rank = body.get("rank_value", data.get("rank_value"))
-            rank_value = None if raw_rank is None else int(raw_rank)
-            row = await custom_game_service.set_rank(
+            game = await custom_game_service.update_player(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
                 workspace_player_id=_int(data, "workspace_player_id"),
-                rank_value=rank_value,
+                patch=_player_patch(data),
                 actor_user_id=user.id,
             )
             await session.commit()
-            return {
-                "id": row.id,
-                "workspace_player_id": row.workspace_player_id,
-                "rank_value": row.rank_value,
-                "team_index": row.team_index,
-                "sort_order": row.sort_order,
-            }
+            return await _with_roster(session, game)
 
-        return await c.envelope(logger, "custom.set_rank", op, session_factory=_SF)
+        return await c.envelope(logger, "custom.update_player", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.balance")
     async def _balance(data: dict, msg: RabbitMessage) -> dict:

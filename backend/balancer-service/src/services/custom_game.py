@@ -23,6 +23,7 @@ __all__ = ("CustomGameService", "custom_game_service")
 
 _TERMINAL = frozenset({"completed", "cancelled"})
 _CONFIG_ONLY = frozenset({"role_mask", "team_count"})
+_PLAYER_PATCH_FIELDS = frozenset({"rank_value", "is_active", "roles"})
 
 
 def _require_host(actor_user_id: int, host_user_id: int | None) -> None:
@@ -42,6 +43,46 @@ def _uniq(ids: Sequence[int]) -> list[int]:
             continue
         seen.add(item)
         out.append(item)
+    return out
+
+
+def _normalize_roles(raw: Any) -> list[str] | None:
+    """Ordered, de-duplicated registration role codes; ``None`` means "all ranked"."""
+    if raw is None:
+        return None
+    if not isinstance(raw, (list, tuple)):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="roles must be a list")
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in raw:
+        code = str(item).strip().lower()
+        if code not in REGISTRATION_ROLE_CODES:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown role {code}")
+        if code in seen:
+            continue
+        seen.add(code)
+        out.append(code)
+    return out
+
+
+def _invalidate_balance(game: models.CustomGame, roster: Sequence[models.CustomGamePlayer]) -> None:
+    """Any lineup edit makes a stored balance stale, so drop it and its team map."""
+    if game.status != "balanced":
+        return
+    game.status = "draft"
+    game.result_json = None
+    for row in roster:
+        row.team_index = None
+
+
+def rank_overrides(roster: Sequence[models.CustomGamePlayer]) -> dict[tuple[int, str], int]:
+    """Per-game rank pins: one ``rank_value`` shadows every role of that player."""
+    out: dict[tuple[int, str], int] = {}
+    for row in roster:
+        if row.rank_value is None:
+            continue
+        for role in REGISTRATION_ROLE_CODES:
+            out[(row.workspace_player_id, role)] = row.rank_value
     return out
 
 
@@ -173,45 +214,76 @@ class CustomGameService:
         player_ids: Sequence[int],
         actor_user_id: int,
     ) -> models.CustomGame:
+        """Set pool membership, keeping every surviving row's lineup state.
+
+        Adding or dropping one player must not reset the ranks, bench switches
+        and role orders the host already tuned for everybody else, so rows are
+        matched by ``workspace_player_id`` instead of rebuilt from scratch.
+        """
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
         ids = _uniq(player_ids)
         await self._load_players(session, workspace_id, ids)
-        if game.status == "balanced":
-            game.status = "draft"
-            game.result_json = None
-        await self.roster.delete_for_game(session, game.id)
-        rows = [
-            models.CustomGamePlayer(custom_game_id=game.id, workspace_player_id=item, sort_order=index)
-            for index, item in enumerate(ids)
-        ]
-        if rows:
-            await self.roster.create_many(session, rows)
+        existing = {row.workspace_player_id: row for row in await self.roster.list_for_game(session, game.id)}
+        _invalidate_balance(game, existing.values())
+        wanted = set(ids)
+        for player_id, row in existing.items():
+            if player_id not in wanted:
+                await self.roster.delete(session, row)
+        created: list[models.CustomGamePlayer] = []
+        for index, player_id in enumerate(ids):
+            row = existing.get(player_id)
+            if row is None:
+                created.append(
+                    models.CustomGamePlayer(
+                        custom_game_id=game.id, workspace_player_id=player_id, sort_order=index
+                    )
+                )
+            else:
+                row.sort_order = index
+        if created:
+            await self.roster.create_many(session, created)
         await session.flush()
         return game
 
-    async def set_rank(
+    async def update_player(
         self,
         session: AsyncSession,
         *,
         workspace_id: int,
         custom_game_id: int,
         workspace_player_id: int,
-        rank_value: int | None,
+        patch: Mapping[str, Any],
         actor_user_id: int,
-    ) -> models.CustomGamePlayer:
+    ) -> models.CustomGame:
+        """Patch one roster row: ``rank_value``, ``is_active`` and/or ``roles``.
+
+        A patch, not a replace: an absent key is left alone, so the bench switch
+        and the role order are independently settable from separate controls.
+        """
+        unknown = sorted(set(patch) - _PLAYER_PATCH_FIELDS)
+        if unknown:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown fields {unknown}"
+            )
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
-        row = await self.roster.get_by(
-            session, custom_game_id=game.id, workspace_player_id=workspace_player_id
-        )
+        roster = list(await self.roster.list_for_game(session, game.id))
+        row = next((item for item in roster if item.workspace_player_id == workspace_player_id), None)
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom game player not found")
-        row.rank_value = rank_value
+        if "rank_value" in patch:
+            raw = patch["rank_value"]
+            row.rank_value = None if raw is None else int(raw)
+        if "is_active" in patch:
+            row.is_active = bool(patch["is_active"])
+        if "roles" in patch:
+            row.roles_json = _normalize_roles(patch["roles"])
+        _invalidate_balance(game, roster)
         await session.flush()
-        return row
+        return game
 
     async def balance(
         self,
@@ -225,26 +297,24 @@ class CustomGameService:
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
         roster = list(await self.roster.list_for_game(session, game.id))
-        players = await self._load_players(session, workspace_id, [row.workspace_player_id for row in roster])
-        overrides: dict[tuple[int, str], int] = {}
-        for row in roster:
-            if row.rank_value is None:
-                continue
-            for role in REGISTRATION_ROLE_CODES:
-                overrides[(row.workspace_player_id, role)] = row.rank_value
+        lineup = [row for row in roster if row.is_active]
+        if not lineup:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="empty_lineup")
+        players = await self._load_players(session, workspace_id, [row.workspace_player_id for row in lineup])
         resolved = await self.ranks.resolve_ranks(
             session,
             players=players,
             roles=list(REGISTRATION_ROLE_CODES),
-            overrides=overrides,
+            overrides=rank_overrides(lineup),
             host_user_id=game.host_user_id,
         )
         by_id = {player.id: player for player in players}
         player_nodes: dict[str, Any] = {}
-        for row in roster:
+        for row in lineup:
             player = by_id[row.workspace_player_id]
             classes: dict[str, Any] = {}
-            for priority, role in enumerate(REGISTRATION_ROLE_CODES, start=1):
+            # Role order is the priority the host set; an unlisted role is not played.
+            for priority, role in enumerate(row.roles_json or REGISTRATION_ROLE_CODES, start=1):
                 ranked = resolved.get((player.id, role))
                 if ranked is None or ranked.value is None:
                     continue
