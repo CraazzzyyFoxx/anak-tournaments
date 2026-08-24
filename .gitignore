@@ -47,3 +47,4 @@ frontend-redesign/
 # belongs in the tree — a committed worktree pointer breaks every other checkout.
 .aislop/
 OWT Design System/
+.import_linter_cache/

@@ -1,0 +1,18 @@
+# VS Code multi-root treats each folder as its own ty project.
+# `shared` is an editable install via a setuptools finder hook that ty
+# does not execute, so `backend` must be a first-party root — extra-paths
+# alone do not resolve `shared.*`.
+[environment]
+python = "backend/.venv"
+python-version = "3.14"
+root = [
+    "backend",
+    "backend/app-service",
+    "backend/identity-service",
+    "backend/parser-service",
+    "backend/tournament-service",
+    "backend/balancer-service",
+    "backend/discord-service",
+    "backend/analytics-service",
+    "backend/stream-service",
+]
