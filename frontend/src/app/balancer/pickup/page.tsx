@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 
+import { PickupAddPlayersDialog } from "@/app/balancer/pickup/PickupAddPlayersDialog";
 import { PickupLobbyBoard } from "@/app/balancer/pickup/PickupLobbyBoard";
 import { PickupLobbyPanel } from "@/app/balancer/pickup/PickupLobbyPanel";
 import { PickupMixHeader } from "@/app/balancer/pickup/PickupMixHeader";
 import { PickupPlayerSheet } from "@/app/balancer/pickup/PickupPlayerSheet";
-import { PickupPoolDialog } from "@/app/balancer/pickup/PickupPoolDialog";
 import { PickupTeamsPanel } from "@/app/balancer/pickup/PickupTeamsPanel";
 import {
   PICKUP_TERMINAL_STATUSES,
@@ -27,7 +27,7 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
  * Those are the only two things on screen at once because they are the only two
  * a host reads together — "is this pool balanceable" and "is this balance fair".
  * The workspace roster is a third question asked twice a night, so it lives in
- * an overlay (`PickupPoolDialog`) instead of a permanent column, and per-player
+ * an overlay (`PickupAddPlayersDialog`) instead of a permanent column, and
  * detail lives in a sheet.
  *
  * The open balance option is page state, not panel state: the fullscreen board
@@ -67,7 +67,9 @@ export default function BalancerPickupPage() {
   // rather than let a click 409.
   const canWrite = canEdit && game != null && !PICKUP_TERMINAL_STATUSES[game.status];
   const openRow = rows.find((row) => row.workspace_member_id === openPlayerId) ?? null;
-  const savingPlayerId = patchPlayer.isPending ? (patchPlayer.variables?.workspaceMemberId ?? null) : null;
+  const savingPlayerId = patchPlayer.isPending
+    ? (patchPlayer.variables?.workspaceMemberId ?? null)
+    : null;
 
   const variants = parseVariants(game?.result_json);
   const boardIndex = Math.min(variantIndex, Math.max(0, variants.length - 1));
@@ -84,7 +86,9 @@ export default function BalancerPickupPage() {
   const togglePoolMember = (memberId: number) => {
     if (selectedGameId == null) return;
     setRoster.mutate(
-      rosterIds.includes(memberId) ? rosterIds.filter((id) => id !== memberId) : [...rosterIds, memberId],
+      rosterIds.includes(memberId)
+        ? rosterIds.filter((id) => id !== memberId)
+        : [...rosterIds, memberId],
     );
   };
 
@@ -104,7 +108,10 @@ export default function BalancerPickupPage() {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
+      {/* At `xl` the tool is a fixed viewport shell, so this column owns the
+          height and each panel scrolls inside it. Below that the page stacks and
+          scrolls as one document. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto xl:overflow-hidden">
         <PickupMixHeader
           canEdit={canEdit}
           games={games}
@@ -120,10 +127,12 @@ export default function BalancerPickupPage() {
         />
 
         {/* Fixed-width lineup, fluid matchup: the lineup's content is a known
-            set of columns (switch, name, three chips, rank) that stops improving
-            past ~570px, while the matchup absorbs every pixel it is given. */}
-        <div className="flex min-h-0 flex-col gap-5 xl:flex-row">
-          <div className="min-h-0 xl:w-[568px] xl:shrink-0">
+            set of columns (switch, name, three role glyphs, rank) that stops
+            improving past ~570px, while the matchup absorbs the width it is
+            given up to its own cap. Both columns run the full height so the
+            lineup no longer ends in dead space halfway down a 1440p screen. */}
+        <div className="flex min-h-0 flex-col gap-5 xl:min-h-0 xl:flex-1 xl:flex-row">
+          <div className="min-h-0 xl:h-full xl:w-[568px] xl:shrink-0">
             <PickupLobbyPanel
               canWrite={canWrite}
               hasMix={selectedGameId != null}
@@ -140,7 +149,7 @@ export default function BalancerPickupPage() {
             />
           </div>
 
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 xl:h-full xl:min-h-0">
             <PickupTeamsPanel
               canWrite={canWrite}
               gamesLoading={gamesQuery.isLoading}
@@ -163,13 +172,16 @@ export default function BalancerPickupPage() {
         </div>
       </div>
 
-      <PickupPoolDialog
+      <PickupAddPlayersDialog
         open={isPoolOpen}
         onOpenChange={setIsPoolOpen}
         workspaceId={workspaceId}
         canEdit={canEdit}
-        selectedIds={rosterIds}
-        onTogglePlayer={(member) => togglePoolMember(member.member_id)}
+        canWrite={canWrite}
+        rows={rows}
+        games={games}
+        currentGameId={selectedGameId}
+        onTogglePlayer={togglePoolMember}
       />
 
       <PickupPlayerSheet
@@ -180,7 +192,8 @@ export default function BalancerPickupPage() {
           if (!open) setOpenPlayerId(null);
         }}
         onPatch={(patch) => {
-          if (openRow) patchPlayer.mutate({ workspaceMemberId: openRow.workspace_member_id, patch });
+          if (openRow)
+            patchPlayer.mutate({ workspaceMemberId: openRow.workspace_member_id, patch });
         }}
         onSetAuthorRank={(role, rank) => {
           if (!openRow) return;
