@@ -1,19 +1,21 @@
 // @vitest-environment happy-dom
 //
-// The mix sheet edits ranks with no Save button, which makes three things
-// load-bearing:
+// The mix sheet stages every edit — bench, role priority, roles on/off, ranks —
+// and writes none of it until Save, which makes four things load-bearing:
 //
-//  1. the field shows the *effective* rank and the layer it came from, and typing
-//     stores the correction in this host's own book — a host who sees 2700 and
-//     types 3000 must not be silently editing a different number;
-//  2. one settled edit is one write. Wired straight to the mutation, a four-digit
-//     number was four PUTs and a slider drag was one per division;
-//  3. Clear only exists where there is an author entry to drop, and it does not
-//     wait for the debounce.
+//  1. nothing reaches the mutation layer before Save, however many keystrokes,
+//     toggles or clears happen first;
+//  2. one Save is one write per concern: a combined patch for bench/roles, and
+//     at most one rank-book write, however many fields changed;
+//  3. the rank field shows the *effective* rank and the layer it came from, and
+//     typing stores the correction in this host's own book — a host who sees
+//     2700 and types 3000 must not be silently editing a different number;
+//  4. role order is the host's stored order, never re-derived from a rank —
+//     turning a role on appends it, it does not jump to a rank-sorted slot.
 //
-// There is no fourth field: the per-mix rank pin is gone, so every rank the sheet
-// writes goes to the author's book and nowhere else.
-import { act, type ReactNode } from "react";
+// There is no fourth rank field: the per-mix rank pin is gone, so every rank
+// the sheet writes goes to the author's book and nowhere else.
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,17 +36,18 @@ globalThis.ResizeObserver ??= class {
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
 vi.mock("@/components/RankHistory", () => ({ default: () => null }));
-// Drag is not what this pins, and dnd-kit resolves its own React copy under
-// pnpm, so the sortable wrapper renders as a plain list here.
+// Drag itself is not what this pins, and dnd-kit resolves its own React copy
+// under pnpm, so the sortable wrapper and its hook render inertly here.
 vi.mock("@/app/balancer/components/SortableRows", () => ({
-  SortableRows: <T,>({
+  SortableRows: ({
     items,
     children,
   }: {
-    items: readonly T[];
-    children: (item: T, index: number) => ReactNode;
+    items: readonly unknown[];
+    children: (item: unknown, index: number) => unknown;
   }) => <div>{items.map((item, index) => children(item, index))}</div>,
-  SortableRow: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  useSortableRow: () => ({ ref: () => {}, style: {}, handleProps: {}, isDragging: false }),
+  SortableGrip: () => null,
 }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({
   useDivisionGrid: () => ({
@@ -56,8 +59,9 @@ vi.mock("@/hooks/useCurrentWorkspace", () => ({
   }),
 }));
 
-const onPatch = vi.fn();
-const onSetAuthorRank = vi.fn();
+const onSave = vi.fn();
+const onOpenChange = vi.fn();
+const onRemove = vi.fn();
 
 function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
   return {
@@ -82,13 +86,6 @@ function tick() {
   return promise;
 }
 
-/** Past the sheet's write delay, so a settled edit has had its chance to flush. */
-function settle() {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  setTimeout(resolve, 500);
-  return promise;
-}
-
 async function mount(value: CustomGamePlayer | null = row()) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -98,10 +95,9 @@ async function mount(value: CustomGamePlayer | null = row()) {
         row={value}
         canEdit
         saving={false}
-        onOpenChange={() => {}}
-        onPatch={onPatch}
-        onSetAuthorRank={onSetAuthorRank}
-        onRemove={() => {}}
+        onOpenChange={onOpenChange}
+        onSave={onSave}
+        onRemove={onRemove}
       />,
     );
   });
@@ -112,7 +108,7 @@ async function mount(value: CustomGamePlayer | null = row()) {
   return document.body;
 }
 
-/** Every rank field, in render order: tank, dps, support. */
+/** Every rank field, in render order. */
 function rankFields(scope: ParentNode) {
   return [...scope.querySelectorAll<HTMLInputElement>('input[inputmode="numeric"]')];
 }
@@ -133,10 +129,26 @@ function clearButtons(scope: ParentNode) {
   );
 }
 
+function findButton(scope: ParentNode, text: string) {
+  const button = [...scope.querySelectorAll("button")].find(
+    (node) => node.textContent?.trim() === text,
+  );
+  if (!button) throw new Error(`No button with text "${text}"`);
+  return button;
+}
+
+function click(node: Element) {
+  return act(async () => {
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await tick();
+  });
+}
+
 beforeEach(() => {
   document.body.innerHTML = "";
-  onPatch.mockReset();
-  onSetAuthorRank.mockReset();
+  onSave.mockReset();
+  onOpenChange.mockReset();
+  onRemove.mockReset();
 });
 
 describe("PickupPlayerSheet ranks", () => {
@@ -149,23 +161,23 @@ describe("PickupPlayerSheet ranks", () => {
     expect(scope.textContent).toContain("Overwatch");
   });
 
-  it("writes a typed rank into the host book once the edit settles", async () => {
+  it("stages a typed rank locally and writes it only once Save is pressed", async () => {
     const scope = await mount();
 
     await type(rankFields(scope)[1], "3");
     await type(rankFields(scope)[1], "30");
     await type(rankFields(scope)[1], "3000");
-    expect(onSetAuthorRank).not.toHaveBeenCalled();
+    expect(onSave).not.toHaveBeenCalled();
 
-    await act(async () => {
-      await settle();
-    });
+    await click(findButton(scope, "Save"));
 
-    expect(onSetAuthorRank.mock.calls).toEqual([["dps", 3000]]);
-    expect(onPatch).not.toHaveBeenCalled();
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const [patch, rankChange] = onSave.mock.calls[0];
+    expect(patch).toEqual({ is_active: true, roles: ["tank", "dps"] });
+    expect(rankChange).toEqual({ ranks: { dps: 3000 }, clear: [] });
   });
 
-  it("offers Clear only where the host has an entry of their own, and writes it at once", async () => {
+  it("offers Clear only where the host has an entry of their own, and stages it for Save", async () => {
     const scope = await mount();
 
     // Tank alone comes from the author's own book; dps/support are inherited, so
@@ -173,12 +185,22 @@ describe("PickupPlayerSheet ranks", () => {
     const buttons = clearButtons(scope);
     expect(buttons).toHaveLength(1);
 
-    await act(async () => {
-      buttons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await tick();
-    });
+    await click(buttons[0]);
+    expect(onSave).not.toHaveBeenCalled();
 
-    expect(onSetAuthorRank.mock.calls).toEqual([["tank", null]]);
+    await click(findButton(scope, "Save"));
+
+    const [, rankChange] = onSave.mock.calls[0];
+    expect(rankChange).toEqual({ ranks: {}, clear: ["tank"] });
+  });
+
+  it("sends no rank-book write at all when no rank field was touched", async () => {
+    const scope = await mount();
+
+    await click(findButton(scope, "Save"));
+
+    const [, rankChange] = onSave.mock.calls[0];
+    expect(rankChange).toBeNull();
   });
 
   it("has no per-mix rank pin left to edit", async () => {
@@ -188,14 +210,6 @@ describe("PickupPlayerSheet ranks", () => {
     // rank typed here can only ever land in the author's own book.
     expect(rankFields(scope)).toHaveLength(3);
     expect(scope.textContent).not.toContain("Rank for this mix");
-
-    await type(rankFields(scope)[0], "2500");
-    await act(async () => {
-      await settle();
-    });
-
-    expect(onPatch).not.toHaveBeenCalled();
-    expect(onSetAuthorRank.mock.calls).toEqual([["tank", 2500]]);
   });
 
   // balancer-service resolves a mix's ranks against the GLOBAL, OW-synced grid
@@ -210,5 +224,90 @@ describe("PickupPlayerSheet ranks", () => {
 
     expect(scope.textContent).toContain("Diamond 2");
     expect(scope.textContent).not.toContain("Gold");
+  });
+});
+
+describe("PickupPlayerSheet priority", () => {
+  it("keeps the host's stored role order instead of re-sorting by rank", async () => {
+    // Stored order says dps-then-tank; the ranks say the opposite (tank
+    // outranks dps). The order shown, and the order Save writes, must stay
+    // exactly what the host stored.
+    const scope = await mount(
+      row({ roles: ["dps", "tank"], ranks: { tank: 3300, dps: 2700, support: 2900 } }),
+    );
+
+    expect(rankFields(scope).map((node) => node.value)).toEqual(["2700", "3300", "2900"]);
+
+    await click(findButton(scope, "Save"));
+    const [patch] = onSave.mock.calls[0];
+    expect(patch.roles).toEqual(["dps", "tank"]);
+  });
+
+  it("appends a role turned on to the end of the order, not a rank-sorted slot", async () => {
+    // Support outranks both selected roles, but switching it on must not jump
+    // it to the front.
+    const scope = await mount(
+      row({ roles: ["tank", "dps"], ranks: { tank: 2000, dps: 2700, support: 4000 } }),
+    );
+
+    const supportSwitch = scope.querySelector<HTMLElement>('[aria-label="Support for Aria#1111"]');
+    if (!supportSwitch) throw new Error("Support switch not found");
+    await click(supportSwitch);
+
+    await click(findButton(scope, "Save"));
+    const [patch] = onSave.mock.calls[0];
+    expect(patch.roles).toEqual(["tank", "dps", "support"]);
+  });
+
+  it("drops a role turned off from the order without touching the rest", async () => {
+    const scope = await mount(row({ roles: ["tank", "dps"] }));
+
+    const tankSwitch = scope.querySelector<HTMLElement>('[aria-label="Tank for Aria#1111"]');
+    if (!tankSwitch) throw new Error("Tank switch not found");
+    await click(tankSwitch);
+
+    await click(findButton(scope, "Save"));
+    const [patch] = onSave.mock.calls[0];
+    expect(patch.roles).toEqual(["dps"]);
+  });
+});
+
+describe("PickupPlayerSheet bench", () => {
+  it("stages the bench switch and writes it with the same Save as everything else", async () => {
+    const scope = await mount();
+
+    const benchSwitch = scope.querySelector<HTMLElement>(
+      '[aria-label="Include Aria#1111 in the balance"]',
+    );
+    if (!benchSwitch) throw new Error("Bench switch not found");
+    await click(benchSwitch);
+    expect(onSave).not.toHaveBeenCalled();
+
+    await click(findButton(scope, "Save"));
+    const [patch] = onSave.mock.calls[0];
+    expect(patch.is_active).toBe(false);
+  });
+});
+
+describe("PickupPlayerSheet Cancel", () => {
+  it("discards every staged edit and never calls onSave", async () => {
+    const scope = await mount();
+
+    await type(rankFields(scope)[1], "3000");
+    await click(findButton(scope, "Cancel"));
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("PickupPlayerSheet remove", () => {
+  it("removes the player immediately, outside of Save", async () => {
+    const scope = await mount();
+
+    await click(findButton(scope, "Remove Aria#1111 from this mix"));
+
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

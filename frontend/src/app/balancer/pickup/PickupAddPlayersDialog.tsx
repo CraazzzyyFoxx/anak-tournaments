@@ -40,7 +40,7 @@ import {
   LOBBY_SIZE,
   averageRank,
   playerLabel,
-  roleOrderByStrength,
+  resolveRoleOrder,
   sortLineup,
   summarizeLineup,
   summarizeRoleSupply,
@@ -823,10 +823,10 @@ function RosterRowItem({
  * One seated player, as the right column shows them: who, what they can play in
  * what order, what they are worth, and the way out.
  *
- * The role glyphs carry no numbers and no controls. Priority here is the derived
- * one (`roleOrderByStrength`) so this list and the lineup panel behind the dialog
- * cannot disagree about what a player plays first, and editing belongs to the
- * lineup, which has the room for it.
+ * The role glyphs carry no numbers and no controls. Priority here is the
+ * host-set order (`resolveRoleOrder`) so this list and the lineup panel behind
+ * the dialog cannot disagree about what a player plays first, and editing
+ * belongs to the lineup sheet, which has the room for it.
  */
 function LineupChip({
   row,
@@ -835,7 +835,7 @@ function LineupChip({
 }: Readonly<{ row: CustomGamePlayer; canWrite: boolean; onRemove: () => void }>) {
   const label = playerLabel(row);
   const { name, suffix } = splitBattleTag(label);
-  const order = roleOrderByStrength(row);
+  const order = resolveRoleOrder(row);
   const rank = averageRank(row);
 
   return (

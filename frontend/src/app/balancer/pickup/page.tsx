@@ -70,6 +70,13 @@ export default function BalancerPickupPage() {
   const savingPlayerId = patchPlayer.isPending
     ? (patchPlayer.variables?.workspaceMemberId ?? null)
     : null;
+  // The sheet's Save can fire both mutations at once, so its own saving state
+  // watches both rather than reusing the lobby row's patch-only indicator.
+  const sheetSaving =
+    openRow != null &&
+    ((patchPlayer.isPending && patchPlayer.variables?.workspaceMemberId === openRow.workspace_member_id) ||
+      (setAuthorRanks.isPending &&
+        setAuthorRanks.variables?.workspaceMemberId === openRow.workspace_member_id));
 
   const variants = parseVariants(game?.result_json);
   const boardIndex = Math.min(variantIndex, Math.max(0, variants.length - 1));
@@ -187,21 +194,16 @@ export default function BalancerPickupPage() {
       <PickupPlayerSheet
         row={openRow}
         canEdit={canWrite}
-        saving={openRow != null && savingPlayerId === openRow.workspace_member_id}
+        saving={sheetSaving}
         onOpenChange={(open) => {
           if (!open) setOpenPlayerId(null);
         }}
-        onPatch={(patch) => {
-          if (openRow)
-            patchPlayer.mutate({ workspaceMemberId: openRow.workspace_member_id, patch });
-        }}
-        onSetAuthorRank={(role, rank) => {
+        onSave={(patch, rankChange) => {
           if (!openRow) return;
-          setAuthorRanks.mutate(
-            rank == null
-              ? { workspaceMemberId: openRow.workspace_member_id, ranks: {}, clear: [role] }
-              : { workspaceMemberId: openRow.workspace_member_id, ranks: { [role]: rank } },
-          );
+          patchPlayer.mutate({ workspaceMemberId: openRow.workspace_member_id, patch });
+          if (rankChange) {
+            setAuthorRanks.mutate({ workspaceMemberId: openRow.workspace_member_id, ...rankChange });
+          }
         }}
         onRemove={() => {
           if (openRow) {

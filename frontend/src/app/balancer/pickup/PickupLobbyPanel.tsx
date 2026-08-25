@@ -41,7 +41,7 @@ import {
   averageRank,
   getLineupIssue,
   playerLabel,
-  roleOrderByStrength,
+  resolveRoleOrder,
   sortLineup,
   summarizeLineup,
   summarizeRoleSupply,
@@ -283,7 +283,7 @@ export function PickupLobbyPanel({
 }
 
 /**
- * The roles a player can be seated in, strongest first.
+ * The roles a player can be seated in, in the order the host set them.
  *
  * Three facts in one 102px rail, none of them a number: **which** roles the
  * balancer may use (a tinted tile vs a flat dim glyph), **which one comes
@@ -291,17 +291,9 @@ export function PickupLobbyPanel({
  * selection will fail** (the amber ring — a role switched on with no rank
  * behind it, which rejects the whole run server-side).
  *
- * The corner priority badges this replaces were the densest thing on the row and
- * the least trustworthy: three two-digit-capable pills per player, printing an
- * order a host had to maintain by hand in a drag list one screen away. Priority
- * is now read off the ranks (see `roleOrderByStrength`), so the rail is a
- * consequence rather than a control, and a corrected rank re-sorts it on the
- * spot.
- *
- * Positions therefore move per row, which the numbered version deliberately
- * avoided so "who can tank" could be read straight down one column. That answer
- * moved to the role-supply gauges in the panel head, which count it the way the
- * solver does instead of asking a host to tally glyphs.
+ * The order is the balancer's stored priority (see `resolveRoleOrder`), so a
+ * click here only ever turns a role on or off — reordering belongs to the
+ * player sheet, which has room for a drag list.
  */
 function RolePriorityRail({
   row,
@@ -316,9 +308,9 @@ function RolePriorityRail({
   saving: boolean;
   onPatch: (patch: CustomGamePlayerPatch) => void;
 }>) {
-  const order = roleOrderByStrength(row);
-  // Off roles trail the selected ones in canonical order: they carry no
-  // priority, so sorting them by strength would imply one.
+  const order = resolveRoleOrder(row);
+  // Off roles trail the selected ones in canonical order: an unselected role
+  // has no priority, so placing them at all would imply one.
   const off = LINEUP_ROLES.filter((role) => !order.includes(role));
 
   return (
@@ -347,7 +339,7 @@ function RolePriorityRail({
                 ? `${ROLE_LABELS[role]}: no rank`
                 : `${ROLE_LABELS[role]}: ${roleRank} pts`
             }
-            onClick={() => onPatch({ roles: toggleRole(row, role) })}
+            onClick={() => onPatch({ roles: toggleRole(order, role) })}
             className={cn(
               "relative flex size-[30px] shrink-0 items-center justify-center rounded-lg transition-opacity",
               // Tint marks "playable"; the inset underline is reserved for the
@@ -506,7 +498,7 @@ function BenchedRow({
 }>) {
   const label = playerLabel(row);
   const { name, suffix } = splitBattleTag(label);
-  const order = roleOrderByStrength(row);
+  const order = resolveRoleOrder(row);
 
   return (
     <li className="flex items-center gap-2.5 rounded-lg px-1 py-1.5 opacity-65 transition-opacity hover:bg-white/[0.025] hover:opacity-90">

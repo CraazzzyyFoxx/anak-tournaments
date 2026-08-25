@@ -28,15 +28,18 @@ export const PICKUP_STATUS_LABELS: Record<string, string> = {
 export const PICKUP_TERMINAL_STATUSES: Record<string, true> = { completed: true, cancelled: true };
 
 /**
- * The roles the balancer may use for this row, as a set in stored order.
+ * The roles the balancer may use for this row, in the order the host set them.
  *
  * A stored `null` means "not configured yet", which the backend expands to
  * every role the player has a rank for — mirror that here so the UI shows the
- * same set the balance would use.
- *
- * Callers that ask *which* roles — supply, issues, mean rank — use this. Callers
- * that ask about priority use `roleOrderByStrength`, which is the only order the
- * UI ever shows or writes.
+ * same set the balance would use. Position is the balancer's priority: the
+ * first role in the array is the one the solver tries to seat the player in
+ * first (see `CustomGamePlayer.roles`), so this is also the only order the UI
+ * ever shows or writes. Reordering happens through an explicit drag in the
+ * player sheet, never by re-deriving it from a rank — a rank fix and a
+ * priority choice are two different decisions a host makes at two different
+ * times, and folding one into the other means neither survives a moment the
+ * host isn't actively looking at this row.
  */
 export function resolveRoleOrder(row: Pick<CustomGamePlayer, "roles" | "ranks">): RoleCode[] {
   if (row.roles == null) {
@@ -56,43 +59,14 @@ export function resolveRoleOrder(row: Pick<CustomGamePlayer, "roles" | "ranks">)
 }
 
 /**
- * Priority, derived: strongest effective rank first.
+ * Turn one role on or off within a stored priority order.
  *
- * Priority used to be host-authored — a drag list in the sheet, a corner number
- * on every lineup chip — which made it the most expensive fact on the row and
- * the least trustworthy: it only moved when somebody remembered to drag it, so a
- * corrected rank and a stale order routinely disagreed about what the player
- * actually plays first. Deriving it from the ranks removes both the control and
- * the disagreement, and a rank fix now retargets the player immediately.
- *
- * Ties fall back to the canonical tank/dps/support order, so the result is
- * stable across renders and across two hosts reading the same mix.
+ * The order *is* the balancer's priority, so a role that turns on lands at the
+ * end of it rather than being resorted — the host's existing order for the
+ * other roles is left exactly as they set it.
  */
-export function roleOrderByStrength(row: Pick<CustomGamePlayer, "roles" | "ranks">): RoleCode[] {
-  return [...resolveRoleOrder(row)].sort((a, b) => {
-    // An unranked selected role sorts last rather than as a zero: it is a role
-    // the host claimed without a number behind it, not the weakest one.
-    const gap = (row.ranks[b] ?? -1) - (row.ranks[a] ?? -1);
-    return gap !== 0 ? gap : LINEUP_ROLES.indexOf(a) - LINEUP_ROLES.indexOf(b);
-  });
-}
-
-/**
- * Turn one role on or off, and hand back the selection the server should store.
- *
- * Always re-sorted by strength. The stored array *is* the balancer's priority,
- * so writing it in click order would let a toggle sequence smuggle back the
- * hand-authored ordering this UI deliberately no longer offers.
- */
-export function toggleRole(
-  row: Pick<CustomGamePlayer, "roles" | "ranks">,
-  role: RoleCode,
-): RoleCode[] {
-  const selected = resolveRoleOrder(row);
-  const next = selected.includes(role)
-    ? selected.filter((item) => item !== role)
-    : [...selected, role];
-  return roleOrderByStrength({ roles: next, ranks: row.ranks });
+export function toggleRole(order: readonly RoleCode[], role: RoleCode): RoleCode[] {
+  return order.includes(role) ? order.filter((item) => item !== role) : [...order, role];
 }
 
 export type LineupIssue = "no_role" | "no_rank";

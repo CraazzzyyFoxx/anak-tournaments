@@ -9,7 +9,6 @@ import {
   parseVariants,
   playerLabel,
   resolveRoleOrder,
-  roleOrderByStrength,
   sortLineup,
   summarizeLineup,
   summarizeRoleSupply,
@@ -101,56 +100,20 @@ describe("resolveRoleOrder", () => {
   });
 });
 
-describe("roleOrderByStrength", () => {
-  it("orders the selected roles by effective rank, strongest first", () => {
-    // Stored order says support-then-tank; the ranks say otherwise, and the ranks
-    // are what the balancer will be handed.
-    expect(
-      roleOrderByStrength(
-        row({ roles: ["support", "tank", "dps"], ranks: { tank: 2400, dps: 2600, support: 2500 } }),
-      ),
-    ).toEqual(["dps", "support", "tank"]);
-  });
-
-  it("sinks a selected role with no rank below every ranked one", () => {
-    expect(roleOrderByStrength(row({ roles: ["tank", "dps"], ranks: { dps: 2600 } }))).toEqual([
-      "dps",
-      "tank",
-    ]);
-  });
-
-  it("breaks ties in canonical order, so two hosts read the same row the same way", () => {
-    expect(
-      roleOrderByStrength(
-        row({ roles: ["support", "dps", "tank"], ranks: { tank: 2500, dps: 2500, support: 2500 } }),
-      ),
-    ).toEqual(["tank", "dps", "support"]);
-  });
-});
-
 describe("toggleRole", () => {
-  it("adds a role and hands back the whole selection sorted by strength", () => {
-    expect(toggleRole(row({ roles: ["tank"] }), "support")).toEqual(["support", "tank"]);
+  it("appends a role that was off to the end of the order", () => {
+    expect(toggleRole(["tank"], "support")).toEqual(["tank", "support"]);
   });
 
-  it("removes a role that was on", () => {
-    expect(toggleRole(row({ roles: ["tank", "dps", "support"] }), "dps")).toEqual([
-      "support",
-      "tank",
-    ]);
+  it("removes a role that was on, leaving the rest of the order untouched", () => {
+    expect(toggleRole(["tank", "dps", "support"], "dps")).toEqual(["tank", "support"]);
   });
 
-  it("resolves an unset selection before toggling, so the write is explicit", () => {
-    // `roles: null` is "not configured"; a toggle must not leave the rest of the
-    // selection to a server-side default.
-    expect(toggleRole(row({ roles: null }), "tank")).toEqual(["dps", "support"]);
-  });
-
-  it("never lets click order become priority order", () => {
-    const afterTank = toggleRole(row({ roles: [] }), "tank");
-    const afterDps = toggleRole(row({ roles: afterTank }), "dps");
-    // Tank was picked first but is the weaker role, so it still sorts second.
-    expect(afterDps).toEqual(["dps", "tank"]);
+  it("never resorts the roles it did not touch", () => {
+    const afterTank = toggleRole([], "tank");
+    const afterDps = toggleRole(afterTank, "dps");
+    // Tank was picked first, so it stays first however the ranks compare.
+    expect(afterDps).toEqual(["tank", "dps"]);
   });
 });
 
