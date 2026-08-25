@@ -68,13 +68,13 @@ func TestDraftSessionHistoryRoutes(t *testing.T) {
 	}
 }
 
-func TestWorkspacePlayerRoutes(t *testing.T) {
+func TestRosterRoutes(t *testing.T) {
 	want := map[string]string{
 		"GET /api/balancer/workspaces/{workspace_id}/players":                   "rpc.balancer.players.list",
 		"POST /api/balancer/workspaces/{workspace_id}/players":                  "rpc.balancer.players.upsert",
-		"PUT /api/balancer/workspaces/{workspace_id}/players/{player_id}/ranks": "rpc.balancer.players.set_ranks",
+		"PUT /api/balancer/workspaces/{workspace_id}/players/{member_id}/ranks": "rpc.balancer.players.set_ranks",
 	}
-	for _, route := range WorkspacePlayerRoutes {
+	for _, route := range RosterRoutes {
 		key := route.Method + " " + route.Pattern
 		queue, ok := want[key]
 		if !ok {
@@ -86,7 +86,7 @@ func TestWorkspacePlayerRoutes(t *testing.T) {
 		delete(want, key)
 	}
 	if len(want) != 0 {
-		t.Fatalf("missing workspace player routes: %#v", want)
+		t.Fatalf("missing roster routes: %#v", want)
 	}
 }
 
@@ -99,7 +99,7 @@ func TestRoutesRegisterWithoutConflict(t *testing.T) {
 	mux := http.NewServeMux()
 	dummy := func(http.ResponseWriter, *http.Request) {}
 
-	for _, set := range [][]edge.RouteSpec{PublicRoutes, AdminRoutes, WorkspacePlayerRoutes, DraftReadRoutes, DraftRoutes, JobRoutes} {
+	for _, set := range [][]edge.RouteSpec{PublicRoutes, AdminRoutes, RosterRoutes, DraftReadRoutes, DraftRoutes, JobRoutes} {
 
 		for _, s := range set {
 			mux.HandleFunc(s.Method+" "+s.Pattern, dummy)

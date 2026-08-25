@@ -48,19 +48,19 @@ var AdminRoutes = []edge.RouteSpec{
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/config", Queue: "rpc.balancer.admin.workspace_config_upsert", IDParam: "workspace_id", Body: true, Auth: edge.AuthRequired},
 }
 
-// WorkspacePlayerRoutes are workspace pickup players, host book, and custom games.
-var WorkspacePlayerRoutes = []edge.RouteSpec{
+// RosterRoutes are the workspace roster, its rank layers, and custom games (mixes).
+var RosterRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/players", Queue: "rpc.balancer.players.list", Path: []string{"workspace_id"}, AllQuery: true, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/players", Queue: "rpc.balancer.players.upsert", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
-	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/players/{player_id}/ranks", Queue: "rpc.balancer.players.set_ranks", IDParam: "player_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
-	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/hosts", Queue: "rpc.balancer.hosts.list_pool", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
-	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/hosts", Queue: "rpc.balancer.hosts.add", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
-	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/hosts/{workspace_player_id}/ranks", Queue: "rpc.balancer.hosts.set_ranks", Path: []string{"workspace_id", "workspace_player_id"}, Body: true, Auth: edge.AuthRequired},
+	// One route for both rank layers: the body's `scope` picks workspace canon or
+	// the caller's own book. A foreign author is never writable, so it is not a
+	// path segment -- reading somebody else's book is a query param on the list.
+	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/players/{member_id}/ranks", Queue: "rpc.balancer.players.set_ranks", IDParam: "member_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games", Queue: "rpc.balancer.custom.list", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games", Queue: "rpc.balancer.custom.create", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}", Queue: "rpc.balancer.custom.get", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/roster", Queue: "rpc.balancer.custom.update_roster", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
-	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/players/{workspace_player_id}", Queue: "rpc.balancer.custom.update_player", IDParam: "game_id", Path: []string{"workspace_id", "workspace_player_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/players/{workspace_member_id}", Queue: "rpc.balancer.custom.update_player", IDParam: "game_id", Path: []string{"workspace_id", "workspace_member_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/balance", Queue: "rpc.balancer.custom.balance", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/outcome", Queue: "rpc.balancer.custom.record_outcome", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 }
