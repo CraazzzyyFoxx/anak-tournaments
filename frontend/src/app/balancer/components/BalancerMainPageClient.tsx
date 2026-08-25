@@ -772,6 +772,7 @@ export function BalancerMainPageClient() {
       <WorkspacePlayersSidebar
         key={workspaceId}
         workspaceId={workspaceId}
+        scope="workspace"
         canEdit={canAccessPermission("team.update", workspaceId)}
         collapsed={isWideLayout && isPlayersSidebarCollapsed}
         onToggleCollapsed={

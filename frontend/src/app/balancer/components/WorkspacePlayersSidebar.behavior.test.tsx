@@ -104,6 +104,7 @@ function tick() {
 
 async function mount(
   props: {
+    scope?: "workspace" | "author";
     canEdit?: boolean;
     collapsed?: boolean;
     selectedIds?: number[];
@@ -118,6 +119,7 @@ async function mount(
       <QueryClientProvider client={client}>
         <WorkspacePlayersSidebar
           workspaceId={WORKSPACE_ID}
+          scope={props.scope ?? "workspace"}
           canEdit={props.canEdit ?? true}
           collapsed={props.collapsed ?? false}
           selectedIds={props.selectedIds}
@@ -321,8 +323,8 @@ describe("WorkspacePlayersSidebar", () => {
     expect(scope.querySelector("button[title='Copy BattleTag']")).not.toBeNull();
   });
 
-  it("writes to the layer the switch names, and no longer claims ranks are the tournament rank", async () => {
-    const scope = await mount();
+  it("writes to the workspace layer when mounted with the workspace scope", async () => {
+    const scope = await mount({ scope: "workspace" });
 
     // The old caption promised the opposite of what the canon now does: it is a
     // fallback, not the rank a tournament balances on.
@@ -334,8 +336,16 @@ describe("WorkspacePlayersSidebar", () => {
       ranks: { tank: 1200 },
       clear: [],
     });
+  });
 
-    await click(button(scope, "Mine"));
+  it("writes to the author layer when mounted with the author scope, with no layer switch to find", async () => {
+    const scope = await mount({ scope: "author" });
+
+    // Fixed by the caller now, not a user choice: a mix mount never shows the
+    // workspace canon it does not read or write.
+    expect(button(scope, "Workspace")).toBeUndefined();
+    expect(button(scope, "Mine")).toBeUndefined();
+
     await click(scope.querySelector("button[aria-label='DPS rank for Aria#1111']"));
     expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
       scope: "author",
@@ -357,8 +367,7 @@ describe("WorkspacePlayersSidebar", () => {
       }),
     );
 
-    const scope = await mount();
-    await click(button(scope, "Mine"));
+    const scope = await mount({ scope: "author" });
 
     // Aria has no entry of her own. An empty slot here read as "unranked" and
     // hid the value the mix would actually use, so the picker shows the canon

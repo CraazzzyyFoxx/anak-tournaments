@@ -76,6 +76,13 @@ const NO_RANKS: Record<string, number> = {};
 
 type WorkspacePlayersSidebarProps = {
   workspaceId: number;
+  /**
+   * Which rank layer this mount reads and writes — fixed by the caller, not a
+   * user choice. The tournament balancer only ever cares about the shared
+   * workspace canon; a mix only ever cares about the host's own book. Neither
+   * page has a reason to see the other layer, so there is nothing to switch.
+   */
+  scope: RankScope;
   canEdit: boolean;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
@@ -283,6 +290,7 @@ const RosterMemberRow = memo(function RosterMemberRow({
 
 export function WorkspacePlayersSidebar({
   workspaceId,
+  scope,
   canEdit,
   collapsed = false,
   onToggleCollapsed,
@@ -295,9 +303,6 @@ export function WorkspacePlayersSidebar({
   const [battleTag, setBattleTag] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
-  // The shared canon by default: a member with nothing set anywhere is the
-  // common case, and the fallback is the value that helps everyone.
-  const [scope, setScope] = useState<RankScope>("workspace");
   const deferredSearch = useDeferredValue(search.trim());
   const searchRef = useRef<HTMLInputElement>(null);
   const battleTagRef = useRef<HTMLInputElement>(null);
@@ -552,37 +557,11 @@ export function WorkspacePlayersSidebar({
         ) : null}
       </div>
 
-      {/* Which layer the pickers below belong to. Two layers, so a segmented pair
-          rather than a select: the choice changes what every row means, and a
-          collapsed control would have hidden that. */}
-      <div className="mt-2 flex items-center gap-2">
-        <div
-          role="group"
-          aria-label="Rank layer to edit"
-          className="flex shrink-0 items-center gap-0.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-black/15 p-0.5"
-        >
-          {(["workspace", "author"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={scope === option}
-              title={SCOPE_CAPTIONS[option]}
-              onClick={() => setScope(option)}
-              className={cn(
-                "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
-                scope === option
-                  ? "bg-white/10 text-[color:var(--aqt-fg)]"
-                  : "text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg-muted)]",
-              )}
-            >
-              {SCOPE_LABELS[option]}
-            </button>
-          ))}
-        </div>
-        <p className="min-w-0 text-[11px] leading-tight text-[color:var(--aqt-fg-dim)]">
-          {SCOPE_CAPTIONS[scope]}
-        </p>
-      </div>
+      {/* Which layer the pickers below belong to — fixed by the caller (see
+          `scope` on the props), so this is a caption, not a control. */}
+      <p className="mt-2 text-[11px] leading-tight text-[color:var(--aqt-fg-dim)]">
+        {SCOPE_CAPTIONS[scope]}
+      </p>
 
       <p role="status" aria-live="polite" className="sr-only">
         {listStatus}

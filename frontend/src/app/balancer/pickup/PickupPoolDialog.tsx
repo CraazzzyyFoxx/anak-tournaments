@@ -61,6 +61,7 @@ export function PickupPoolDialog({
         <div className="min-h-0 flex-1 overflow-hidden p-3 pb-0 [&>div]:h-full [&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent">
           <WorkspacePlayersSidebar
             workspaceId={workspaceId}
+            scope="author"
             canEdit={canEdit}
             selectedIds={selectedIds}
             onTogglePlayer={onTogglePlayer}
