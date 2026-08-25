@@ -224,6 +224,38 @@ describe("Challonge team mapping picker", () => {
     });
     expect(dialog).toBeTruthy();
   });
+
+  it("keeps wheel and touch inside the list so it can scroll inside the dialog", async () => {
+    // The contract that makes scrolling work at all here: Radix Dialog's
+    // react-remove-scroll listens for `wheel`/`touchmove` on `document` and
+    // preventDefaults whatever it cannot attribute to the dialog's own subtree.
+    // This popover is portalled to `document.body`, so it is not in that subtree —
+    // if its events reach `document`, the list stays frozen despite overflowing.
+    const scope = await mount();
+    await openSyncDialog(scope);
+
+    await act(async () => {
+      click(picker());
+    });
+    await settle();
+
+    const list = document.querySelector("[cmdk-list]");
+    if (!list) throw new Error("option list not rendered");
+
+    const reachedDocument: string[] = [];
+    const record = (event: Event) => reachedDocument.push(event.type);
+    document.addEventListener("wheel", record);
+    document.addEventListener("touchmove", record);
+    try {
+      list.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true }));
+      list.dispatchEvent(new Event("touchmove", { bubbles: true, cancelable: true }));
+    } finally {
+      document.removeEventListener("wheel", record);
+      document.removeEventListener("touchmove", record);
+    }
+
+    expect(reachedDocument).toEqual([]);
+  });
 });
 
 describe("challongeSync deep link", () => {
