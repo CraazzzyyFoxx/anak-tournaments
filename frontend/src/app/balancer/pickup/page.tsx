@@ -129,10 +129,7 @@ export default function BalancerPickupPage() {
 
   return (
     <>
-      {/* At `xl` the tool is a fixed viewport shell, so this column owns the
-          height and each panel scrolls inside it. Below that the page stacks and
-          scrolls as one document. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto xl:overflow-hidden">
+      <div className="flex flex-1 flex-col gap-5">
         <PickupMixHeader
           canEdit={canEdit}
           games={games}
@@ -150,10 +147,9 @@ export default function BalancerPickupPage() {
         {/* Fixed-width lineup, fluid matchup: the lineup's content is a known
             set of columns (switch, name, three role glyphs, rank) that stops
             improving past ~570px, while the matchup absorbs the width it is
-            given up to its own cap. Both columns run the full height so the
-            lineup no longer ends in dead space halfway down a 1440p screen. */}
-        <div className="flex min-h-0 flex-col gap-5 xl:min-h-0 xl:flex-1 xl:flex-row">
-          <div className="min-h-0 xl:h-full xl:w-[568px] xl:shrink-0">
+            given up to its own cap. */}
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
+          <div className="xl:w-[568px] xl:shrink-0">
             <PickupLobbyPanel
               canWrite={canWrite}
               hasMix={selectedGameId != null}
@@ -170,7 +166,7 @@ export default function BalancerPickupPage() {
             />
           </div>
 
-          <div className="min-w-0 flex-1 xl:h-full xl:min-h-0">
+          <div className="min-w-0 flex-1">
             <PickupTeamsPanel
               canWrite={canWrite}
               gamesLoading={gamesQuery.isLoading}

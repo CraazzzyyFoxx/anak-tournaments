@@ -67,6 +67,7 @@ export default defineConfig({
       "src/app/balancer/components/WorkspacePlayersSidebar.behavior.test.tsx",
       "src/app/balancer/tool-context.test.ts",
       "src/app/balancer/redirect-map.test.ts",
+      "src/app/balancer/BalancerLayoutClient.behavior.test.tsx",
       // Both extensions: the pickup lineup rules are `.ts` and the panel's
       // render contract is `.tsx`, and a single `.test.ts` entry would silently
       // skip the second one.

@@ -110,7 +110,7 @@ export function PickupLobbyPanel({
   const supply = summarizeRoleSupply(rows);
 
   return (
-    <div className={cn(PANEL_CLASS, "flex h-full min-h-0 min-w-0 flex-col")}>
+    <div className={cn(PANEL_CLASS, "flex min-w-0 flex-col")}>
       <div className="flex items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-4 py-3.5">
         <h2 className={CARD_TITLE_CLASS}>Lineup</h2>
         <span className={CAPTION_CLASS}>
@@ -221,7 +221,7 @@ export function PickupLobbyPanel({
         </p>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+      <div>
         {!hasMix ? (
           <PageStateCard
             state="empty"

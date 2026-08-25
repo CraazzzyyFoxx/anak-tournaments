@@ -97,7 +97,7 @@ export function PickupTeamsPanel({
     // across an arm's length of desk, so reading "who is on my team" became a
     // head turn. The lineup beside it keeps its fixed track; this side gives the
     // leftover width back as margin.
-    <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-[1180px] flex-col gap-3.5 xl:h-full">
+    <div className="mx-auto flex w-full min-w-0 max-w-[1180px] flex-col gap-3.5">
       <div className="flex flex-wrap items-center gap-2.5">
         {canWrite ? (
           <Button
@@ -185,9 +185,10 @@ export function PickupTeamsPanel({
         ) : null}
       </div>
 
-      {/* The toolbar above stays put and the result scrolls under it, so a long
-          matchup never pushes Balance teams off the top of a full-height column. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3.5 xl:overflow-y-auto xl:pr-1">
+      {/* The toolbar above stays put and the result flows under it in normal
+          document order — the page scrolls as a whole rather than this column
+          scrolling on its own. */}
+      <div className="flex flex-col gap-3.5">
         {gamesError ? (
           <PageStateCard
             state="error"

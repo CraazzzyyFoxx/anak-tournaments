@@ -3,13 +3,12 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { ArrowLeft } from "lucide-react";
 
 import { BalancerToolTopBar } from "@/app/balancer/BalancerToolTopBar";
 import { BalancerShell } from "@/app/balancer/components/BalancerShell";
 import { useToolContext } from "@/app/balancer/useToolContext";
-import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
+import { Footer } from "@/components/Footer";
+import Header from "@/components/Header";
 import { Separator } from "@/components/ui/separator";
 import { adminEntryPermissions } from "@/lib/admin-permissions";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -75,33 +74,6 @@ function NoTournamentState() {
   );
 }
 
-function PickupToolTopBar() {
-  const t = useTranslations();
-
-  return (
-    <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:px-5">
-      {/* The way out. This shell replaces the site header entirely, so without
-          this link a mix is a dead end — and it points at the site root rather
-          than at `/admin/tournaments` because hosting a mix is now a
-          member-level grant: an admin route would 403 the very people the
-          permission was widened for. */}
-      <Link
-        href="/"
-        aria-label={t("common.homeLink")}
-        className="flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" aria-hidden="true" />
-        <span className="hidden sm:inline">Back to site</span>
-      </Link>
-      <Separator orientation="vertical" className="h-5" />
-      <span className="text-sm font-medium">Mixes</span>
-      <div className="ml-auto">
-        <WorkspaceSwitcher />
-      </div>
-    </header>
-  );
-}
-
 type BalancerLayoutClientProps = {
   children: ReactNode;
 };
@@ -124,11 +96,28 @@ export function BalancerLayoutClient({ children }: Readonly<BalancerLayoutClient
     if (!pickupAllowed) {
       return <UnauthorizedState />;
     }
+    // The tool used to replace the site shell entirely (its own top bar,
+    // `.admin-theme` palette, a fixed full-viewport frame). Hosting a mix is a
+    // member-level grant now, not an admin one — the page is read by the same
+    // audience as the rest of the site, so it renders as one: the real
+    // `Header`/`Footer` on the site's own `--aqt-*` tokens, document flow that
+    // scrolls like every other page instead of a viewport-locked frame with
+    // two internally-scrolling panels.
     return (
-      <div className="admin-theme flex min-h-svh flex-col bg-background/95 xl:fixed xl:inset-0 xl:h-svh xl:min-h-0 xl:overflow-hidden">
-        <PickupToolTopBar />
-        <div className="flex flex-1 flex-col gap-4 overflow-x-hidden p-3 xl:min-h-0 xl:overflow-hidden md:p-4">
-          <BalancerShell>{children}</BalancerShell>
+      <div className="site-theme min-h-screen w-full">
+        <div className="mx-auto h-full w-full max-w-screen-3xl px-4 pt-6 md:px-6 xl:px-10">
+          <Header />
+          <div className="flex w-full flex-col min-h-[95%]">
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8"
+            >
+              <BalancerShell>{children}</BalancerShell>
+            </main>
+          </div>
+          <Separator className="mt-8" />
+          <Footer />
         </div>
       </div>
     );
