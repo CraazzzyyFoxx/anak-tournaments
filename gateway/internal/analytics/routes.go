@@ -23,7 +23,6 @@ var ReadRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/analytics/algorithms/{id}", Queue: "rpc.analytics.get_algorithm", IDParam: "id", Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/analytics", Queue: "rpc.analytics.get_analytics", AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/analytics/streaks", Queue: "rpc.analytics.get_streaks", AllQuery: true, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/analytics/balance-quality", Queue: "rpc.analytics.balance_quality", AllQuery: true, Auth: edge.AuthNone},
 	// ML reads (require analytics.read)
 	{Method: "GET", Pattern: "/api/analytics/performance", Queue: "rpc.analytics.performance", AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/analytics/standings/distribution", Queue: "rpc.analytics.standings", AllQuery: true, Auth: edge.AuthRequired},

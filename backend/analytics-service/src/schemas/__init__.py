@@ -1,8 +1,6 @@
 from .analytics_read import (
     AnalyticsAlgorithmRead,
     AnalyticsAnomaly,
-    BalancePlayerSnapshotRead,
-    BalanceQualityRead,
     PlayerAnalytics,
     PlayerShiftUpdate,
     PlayerStreak,
@@ -42,8 +40,6 @@ __all__ = (
     "AnalyticsJobRow",
     "AnomalyFeedbackBody",
     "AnomalyFeedbackRow",
-    "BalancePlayerSnapshotRead",
-    "BalanceQualityRead",
     "BaseRead",
     "ExplanationRow",
     "InferRequestBody",

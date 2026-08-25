@@ -11,7 +11,7 @@ from __future__ import annotations
 from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
 from src import schemas
-from src.schemas.analytics_read import BalanceQualityRead, PlayerShiftUpdate
+from src.schemas.analytics_read import PlayerShiftUpdate
 from src.schemas.ml import (
     AnalyticsJobCreate,
     AnalyticsJobRow,
@@ -52,9 +52,6 @@ OPERATIONS: dict[str, Op] = {
         response=schemas.PlayerStreak,
         response_array=True,
         query_params=(QueryParam("tournament_id", "integer", required=True),),
-    ),
-    "rpc.analytics.balance_quality": Op(
-        response=BalanceQualityRead, query_params=(QueryParam("tournament_id", "integer", required=True),)
     ),
     # ── ML reads (require analytics.read) ──────────────────────────────────
     "rpc.analytics.performance": Op(

@@ -11,7 +11,6 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.repository.base import BaseRepository
@@ -171,26 +170,6 @@ class AnalyticsAnomalyFeedbackRepository(BaseRepository[models.AnalyticsAnomalyF
         return result.all()
 
 
-class AnalyticsBalanceSnapshotRepository(BaseRepository[models.AnalyticsBalanceSnapshot]):
-    def __init__(self) -> None:
-        super().__init__(models.AnalyticsBalanceSnapshot)
-
-    async def get_by_tournament(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> models.AnalyticsBalanceSnapshot | None:
-        query = self._apply_options(
-            sa.select(models.AnalyticsBalanceSnapshot).where(
-                models.AnalyticsBalanceSnapshot.tournament_id == tournament_id
-            ),
-            options,
-        )
-        result = await session.execute(query)
-        return result.scalar_one_or_none()
-
 
 class AnalyticsPerformanceRepository(BaseRepository[models.AnalyticsPerformance]):
     def __init__(self) -> None:
@@ -210,6 +189,24 @@ class AnalyticsPerformanceRepository(BaseRepository[models.AnalyticsPerformance]
             query = query.where(models.AnalyticsPerformance.algorithm_id == algorithm_id)
         result = await session.execute(query)
         return result.scalars().all()
+
+    async def get_for_player(
+        self,
+        session: AsyncSession,
+        *,
+        player_id: int,
+        tournament_id: int,
+        algorithm_id: int | None = None,
+    ) -> models.AnalyticsPerformance | None:
+        query = sa.select(models.AnalyticsPerformance).where(
+            models.AnalyticsPerformance.player_id == player_id,
+            models.AnalyticsPerformance.tournament_id == tournament_id,
+        )
+        if algorithm_id is not None:
+            query = query.where(models.AnalyticsPerformance.algorithm_id == algorithm_id)
+        query = query.order_by(models.AnalyticsPerformance.id.desc()).limit(1)
+        result = await session.execute(query)
+        return result.scalar_one_or_none()
 
 
 class AnalyticsStandingsDistributionRepository(BaseRepository[models.AnalyticsStandingsDistribution]):
@@ -276,29 +273,6 @@ class AnalyticsPlayerAnomalyRepository(BaseRepository[models.AnalyticsPlayerAnom
         result = await session.execute(query)
         return result.scalars().all()
 
-
-class AnalyticsExplanationRepository(BaseRepository[models.AnalyticsExplanation]):
-    def __init__(self) -> None:
-        super().__init__(models.AnalyticsExplanation)
-
-    async def latest_for_player(
-        self,
-        session: AsyncSession,
-        *,
-        player_id: int,
-        tournament_id: int,
-        algorithm_id: int | None = None,
-    ) -> models.AnalyticsExplanation | None:
-        query = sa.select(models.AnalyticsExplanation).where(
-            models.AnalyticsExplanation.entity_id == player_id,
-            models.AnalyticsExplanation.entity_kind == "player",
-            models.AnalyticsExplanation.tournament_id == tournament_id,
-        )
-        if algorithm_id is not None:
-            query = query.where(models.AnalyticsExplanation.algorithm_id == algorithm_id)
-        query = query.order_by(models.AnalyticsExplanation.created_at.desc()).limit(1)
-        result = await session.execute(query)
-        return result.scalar_one_or_none()
 
 
 class MLModelArtifactRepository(BaseRepository[models.MLModelArtifact]):
@@ -419,8 +393,6 @@ class AnalyticsShiftRepository(BaseRepository[models.AnalyticsShift]):
 __all__ = (
     "AnalyticsAlgorithmRepository",
     "AnalyticsAnomalyFeedbackRepository",
-    "AnalyticsBalanceSnapshotRepository",
-    "AnalyticsExplanationRepository",
     "AnalyticsJobRepository",
     "AnalyticsMatchQualityRepository",
     "AnalyticsPerformanceRepository",

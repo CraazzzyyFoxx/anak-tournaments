@@ -87,13 +87,6 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "get_streaks", op, session_factory=sf)
 
-    @broker.subscriber("rpc.analytics.balance_quality")
-    async def _balance_quality(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await flows_service.get_balance_quality(session, _req_int(data, "tournament_id"))
-
-        return await c.envelope(logger, "balance_quality", op, session_factory=sf)
-
     # ── ML reads (require analytics.read) ──────────────────────────────
 
     @broker.subscriber("rpc.analytics.performance")

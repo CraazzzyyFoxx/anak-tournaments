@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy import text as sa_text
@@ -9,14 +9,7 @@ from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.team import Player, Team
 from shared.models.tournament.tournament import Tournament
 
-if TYPE_CHECKING:
-    from shared.models.identity.user import User
-    from shared.models.tenancy.workspace import Workspace
-
 __all__ = (
-    "AnalyticsBalancePlayerSnapshot",
-    "AnalyticsBalanceSnapshot",
-    "AnalyticsExplanation",
     "AnalyticsJob",
     "AnalyticsAnomalyFeedback",
     "AnalyticsMatchQuality",
@@ -26,14 +19,16 @@ __all__ = (
     "AnalyticsAlgorithm",
     "AnalyticsShift",
     "AnalyticsStandingsDistribution",
-    "MLFeatureStore",
     "MLModelArtifact",
 )
 
 
 class AnalyticsPlayer(db.TimeStampIntegerMixin):
     __tablename__ = "player_shift"
-    __table_args__ = ({"schema": "analytics"},)
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "player_id", name="uq_analytics_player_shift"),
+        {"schema": "analytics"},
+    )
 
     tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
     player_id: Mapped[int] = mapped_column(ForeignKey(Player.id, ondelete="CASCADE"), index=True)
@@ -62,7 +57,10 @@ class AnalyticsAlgorithm(db.TimeStampIntegerMixin):
 
 class AnalyticsShift(db.TimeStampIntegerMixin):
     __tablename__ = "shifts"
-    __table_args__ = ({"schema": "analytics"},)
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "player_id", "algorithm_id", name="uq_analytics_shifts"),
+        {"schema": "analytics"},
+    )
 
     tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
     algorithm_id: Mapped[int] = mapped_column(ForeignKey(AnalyticsAlgorithm.id, ondelete="CASCADE"), index=True)
@@ -79,104 +77,8 @@ class AnalyticsShift(db.TimeStampIntegerMixin):
 
 
 # ---------------------------------------------------------------------------
-# Balance quality snapshots (written at balance export time)
+# ML v2 — model registry, predictions
 # ---------------------------------------------------------------------------
-
-
-class AnalyticsBalanceSnapshot(db.TimeStampIntegerMixin):
-    """Snapshot of a balance result, created when a balance is exported to a tournament."""
-
-    __tablename__ = "balance_snapshot"
-    __table_args__ = (
-        UniqueConstraint("tournament_id", "balance_id", name="uq_analytics_balance_snapshot"),
-        {"schema": "analytics"},
-    )
-
-    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
-    balance_id: Mapped[int] = mapped_column(ForeignKey("balancer.balance.id", ondelete="CASCADE"), index=True)
-    variant_id: Mapped[int | None] = mapped_column(
-        ForeignKey("balancer.balance_variant.id", ondelete="SET NULL"), nullable=True
-    )
-    workspace_id: Mapped[int | None] = mapped_column(ForeignKey("workspace.id", ondelete="SET NULL"), nullable=True)
-    algorithm: Mapped[str] = mapped_column(String(32), nullable=False)
-    division_scope: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    division_grid_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    team_count: Mapped[int] = mapped_column(Integer(), nullable=False)
-    player_count: Mapped[int] = mapped_column(Integer(), nullable=False)
-    avg_sr_overall: Mapped[float] = mapped_column(Float(), nullable=False)
-    sr_std_dev: Mapped[float] = mapped_column(Float(), nullable=False)
-    sr_range: Mapped[float] = mapped_column(Float(), nullable=False)
-    total_discomfort: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
-    off_role_count: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
-    objective_score: Mapped[float | None] = mapped_column(Float(), nullable=True)
-
-    tournament: Mapped[Tournament] = relationship()
-    workspace: Mapped["Workspace | None"] = relationship()
-    players: Mapped[list["AnalyticsBalancePlayerSnapshot"]] = relationship(back_populates="snapshot")
-
-
-class AnalyticsBalancePlayerSnapshot(db.TimeStampIntegerMixin):
-    """Per-player snapshot of their balance assignment at export time."""
-
-    __tablename__ = "balance_player_snapshot"
-    __table_args__ = (
-        # FK index created CONCURRENTLY by dbarch01.
-        Index("ix_balance_player_snapshot_team_id", "team_id"),
-        {"schema": "analytics"},
-    )
-
-    balance_snapshot_id: Mapped[int] = mapped_column(
-        ForeignKey("analytics.balance_snapshot.id", ondelete="CASCADE"), index=True
-    )
-    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
-    user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("players.user.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    team_id: Mapped[int | None] = mapped_column(ForeignKey(Team.id, ondelete="SET NULL"), nullable=True)
-    assigned_role: Mapped[str] = mapped_column(String(16), nullable=False)
-    preferred_role: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    assigned_rank: Mapped[int] = mapped_column(Integer(), nullable=False)
-    discomfort: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
-    division_number: Mapped[int | None] = mapped_column(Integer(), nullable=True)
-    is_captain: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
-    was_off_role: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
-
-    snapshot: Mapped[AnalyticsBalanceSnapshot] = relationship(back_populates="players")
-    tournament: Mapped[Tournament] = relationship()
-    user: Mapped["User | None"] = relationship()
-
-
-# ---------------------------------------------------------------------------
-# ML v2 — feature store, model registry, predictions, explanations
-# ---------------------------------------------------------------------------
-
-
-class MLFeatureStore(db.TimeStampIntegerMixin):
-    """Cached feature vectors per (tournament, granularity, entity, feature_version).
-
-    Granularity is one of ``'round' | 'match' | 'encounter' | 'tournament'``.
-    The actual feature dict is stored as JSON for cheap schema evolution; stable
-    columns can be promoted to typed columns once the schema stabilises.
-    """
-
-    __tablename__ = "ml_features"
-    __table_args__ = (
-        UniqueConstraint(
-            "tournament_id",
-            "granularity",
-            "entity_id",
-            "feature_version",
-            name="uq_analytics_ml_features",
-        ),
-        {"schema": "analytics"},
-    )
-
-    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
-    granularity: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
-    entity_id: Mapped[int] = mapped_column(Integer(), nullable=False, index=True)
-    feature_version: Mapped[str] = mapped_column(String(32), nullable=False)
-    features: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    log_coverage: Mapped[float] = mapped_column(Float(), nullable=False, server_default="0", default=0.0)
 
 
 class MLModelArtifact(db.TimeStampIntegerMixin):
@@ -221,6 +123,7 @@ class AnalyticsPerformance(db.TimeStampIntegerMixin):
     Replaces the primitive ``avg(MatchStatistics.PerformancePoints)``.
     ``impact_score`` is the 0-100 percentile within (tournament, role) cohort.
     ``raw_value`` is the predicted residual (observed_win - baseline_win_prob).
+    Full SHAP lives in ``contributions``; ``top_features`` is the UI top-5 slice.
     """
 
     __tablename__ = "performance"
@@ -249,10 +152,16 @@ class AnalyticsPerformance(db.TimeStampIntegerMixin):
     local_reference_n: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
     local_band_min_div: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     local_band_max_div: Mapped[int | None] = mapped_column(Integer(), nullable=True)
-    top_features: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
-
+    contributions: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    base_value: Mapped[float | None] = mapped_column(Float(), nullable=True)
     tournament: Mapped[Tournament] = relationship()
     player: Mapped[Player] = relationship()
+
+    @property
+    def top_features(self) -> list[dict[str, Any]] | None:
+        if not self.contributions:
+            return None
+        return self.contributions[:5]
 
 
 class AnalyticsStandingsDistribution(db.TimeStampIntegerMixin):
@@ -289,7 +198,10 @@ class AnalyticsStandingsDistribution(db.TimeStampIntegerMixin):
 
 
 class AnalyticsMatchQuality(db.TimeStampIntegerMixin):
-    """Post-hoc quality score for an encounter + anomaly flags."""
+    """Post-hoc quality score for an encounter.
+
+    Player anomalies live in ``analytics.player_anomaly`` and are attached on read.
+    """
 
     __tablename__ = "match_quality"
     __table_args__ = (
@@ -307,7 +219,6 @@ class AnalyticsMatchQuality(db.TimeStampIntegerMixin):
     predictability: Mapped[float] = mapped_column(Float(), nullable=False)
     skill_balance: Mapped[float] = mapped_column(Float(), nullable=False)
     quality_score: Mapped[float] = mapped_column(Float(), nullable=False)
-    anomaly_flags: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
 
 
 class AnalyticsPlayerAnomaly(db.TimeStampIntegerMixin):
@@ -376,25 +287,6 @@ class AnalyticsAnomalyFeedback(db.TimeStampIntegerMixin):
 
     tournament: Mapped[Tournament] = relationship()
     player: Mapped[Player] = relationship()
-
-
-class AnalyticsExplanation(db.TimeStampIntegerMixin):
-    """SHAP-style attribution rows: full list of feature contributions per prediction.
-
-    The top-K contributions are also denormalised into
-    ``AnalyticsPerformance.top_features`` for the UI hot path; this table is
-    the archive with full contribution detail.
-    """
-
-    __tablename__ = "explanation"
-    __table_args__ = ({"schema": "analytics"},)
-
-    algorithm_id: Mapped[int] = mapped_column(ForeignKey(AnalyticsAlgorithm.id, ondelete="CASCADE"), index=True)
-    entity_id: Mapped[int] = mapped_column(Integer(), nullable=False, index=True)
-    entity_kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
-    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
-    base_value: Mapped[float] = mapped_column(Float(), nullable=False)
-    contributions: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
 
 
 # ---------------------------------------------------------------------------

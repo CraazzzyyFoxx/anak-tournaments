@@ -43,7 +43,6 @@ APPROVED_DIRECT_WRITE_FILES = {
     "analytics-service/src/services/ml/inference/match_quality_runner.py",
     "analytics-service/src/services/ml/inference/player_anomaly_runner.py",
     "analytics-service/src/services/ml/inference/runner.py",
-    "analytics-service/src/worker/balance_snapshot.py",
     "parser-service/src/services/achievement/engine/runner.py",
     "shared/messaging/outbox.py",
     "shared/rbac/bootstrap.py",

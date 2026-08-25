@@ -13,14 +13,12 @@ import math
 import typing
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload
 
 from shared.core import enums, errors, pagination
 from shared.division_grid import DivisionGrid
 from shared.repository import (
     AnalyticsAnomalyFeedbackRepository,
-    AnalyticsBalanceSnapshotRepository,
-    AnalyticsExplanationRepository,
     AnalyticsMatchQualityRepository,
     AnalyticsPerformanceRepository,
     AnalyticsPlayerAnomalyRepository,
@@ -217,23 +215,19 @@ class AnalyticsReadFlowsService:
         self,
         *,
         players: PlayerRepository = PlayerRepository(),
-        balance: AnalyticsBalanceSnapshotRepository = AnalyticsBalanceSnapshotRepository(),
         performance: AnalyticsPerformanceRepository = AnalyticsPerformanceRepository(),
         standings: AnalyticsStandingsDistributionRepository = AnalyticsStandingsDistributionRepository(),
         match_quality: AnalyticsMatchQualityRepository = AnalyticsMatchQualityRepository(),
         player_anomalies: AnalyticsPlayerAnomalyRepository = AnalyticsPlayerAnomalyRepository(),
         feedback: AnalyticsAnomalyFeedbackRepository = AnalyticsAnomalyFeedbackRepository(),
-        explanations: AnalyticsExplanationRepository = AnalyticsExplanationRepository(),
         artifacts: MLModelArtifactRepository = MLModelArtifactRepository(),
     ) -> None:
         self.players = players
-        self.balance = balance
         self.performance = performance
         self.standings = standings
         self.match_quality = match_quality
         self.player_anomalies = player_anomalies
         self.feedback = feedback
-        self.explanations = explanations
         self.artifacts = artifacts
 
     async def to_pydantic(
@@ -471,43 +465,6 @@ class AnalyticsReadFlowsService:
 
         return sorted(output, key=lambda x: (x.sum_position, x.user.name or ""))
 
-    async def get_balance_quality(
-        self, session: AsyncSession, tournament_id: int
-    ) -> schemas.BalanceQualityRead | None:
-        snapshot = await self.balance.get_by_tournament(
-            session,
-            tournament_id,
-            options=[selectinload(models.AnalyticsBalanceSnapshot.players)],
-        )
-        if snapshot is None:
-            return None
-        return schemas.BalanceQualityRead(
-            tournament_id=snapshot.tournament_id,
-            algorithm=snapshot.algorithm,
-            division_scope=snapshot.division_scope,
-            team_count=snapshot.team_count,
-            player_count=snapshot.player_count,
-            avg_sr_overall=snapshot.avg_sr_overall,
-            sr_std_dev=snapshot.sr_std_dev,
-            sr_range=snapshot.sr_range,
-            total_discomfort=snapshot.total_discomfort,
-            off_role_count=snapshot.off_role_count,
-            objective_score=snapshot.objective_score,
-            players=[
-                schemas.BalancePlayerSnapshotRead(
-                    user_id=p.user_id,
-                    team_id=p.team_id,
-                    assigned_role=p.assigned_role,
-                    preferred_role=p.preferred_role,
-                    assigned_rank=p.assigned_rank,
-                    discomfort=p.discomfort,
-                    division_number=p.division_number,
-                    is_captain=p.is_captain,
-                    was_off_role=p.was_off_role,
-                )
-                for p in snapshot.players
-            ],
-        )
 
     async def list_performance(
         self,
@@ -533,8 +490,23 @@ class AnalyticsReadFlowsService:
         tournament_id: int,
         *,
         algorithm_id: int | None = None,
-    ) -> typing.Sequence[models.AnalyticsMatchQuality]:
-        return await self.match_quality.list_by_tournament(session, tournament_id, algorithm_id=algorithm_id)
+    ) -> list[schemas.MatchQualityRow]:
+        rows = await self.match_quality.list_by_tournament(session, tournament_id, algorithm_id=algorithm_id)
+        grouped = dict(
+            await analytics_read_service.get_match_quality_anomalies(session, tournament_id, algorithm_id or 0)
+        )
+        return [
+            schemas.MatchQualityRow(
+                encounter_id=row.encounter_id,
+                algorithm_id=row.algorithm_id,
+                competitiveness=row.competitiveness,
+                predictability=row.predictability,
+                skill_balance=row.skill_balance,
+                quality_score=row.quality_score,
+                anomaly_flags=grouped.get(row.encounter_id),
+            )
+            for row in rows
+        ]
 
     async def list_player_anomalies(
         self,
@@ -602,12 +574,22 @@ class AnalyticsReadFlowsService:
         tournament_id: int,
         *,
         algorithm_id: int | None = None,
-    ) -> models.AnalyticsExplanation | None:
-        return await self.explanations.latest_for_player(
+    ) -> schemas.ExplanationRow | None:
+        row = await self.performance.get_for_player(
             session,
             player_id=player_id,
             tournament_id=tournament_id,
             algorithm_id=algorithm_id,
+        )
+        if row is None or not row.contributions:
+            return None
+        return schemas.ExplanationRow(
+            algorithm_id=row.algorithm_id,
+            entity_id=row.player_id,
+            entity_kind="player",
+            tournament_id=row.tournament_id,
+            base_value=row.base_value or 0.0,
+            contributions=row.contributions,
         )
 
     async def list_artifacts(

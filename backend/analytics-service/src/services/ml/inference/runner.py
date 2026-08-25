@@ -58,29 +58,21 @@ async def _algorithm_id(session: AsyncSession, name: str) -> int | None:
     return await session.scalar(sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == name))
 
 
-def _explanation_rows(
+def _shap_by_player(
     per_player: pd.DataFrame,
     feature_frame: pd.DataFrame,
     models_by_role: dict[str, PerformanceModelV2],
-    algorithm_id: int,
-) -> tuple[list[dict[str, typing.Any]], dict[int, list[dict[str, typing.Any]]]]:
-    """Compute SHAP top-5 contributions per player using TreeExplainer.
-
-    Returns ``(explanation_rows, top_features_by_player)``. Lazy imports SHAP
-    to keep import time light when only computing without SHAP.
-    """
+) -> dict[int, tuple[float, list[dict[str, typing.Any]]]]:
+    """SHAP contributions per player. Lazy-imports shap."""
     if per_player.empty:
-        return [], {}
+        return {}
     try:
         import shap  # type: ignore[import-untyped]
     except Exception:  # pragma: no cover — SHAP missing
         logger.warning("shap not available; skipping explanation rows")
-        return [], {}
+        return {}
 
-    rows: list[dict[str, typing.Any]] = []
-    top_features_by_player: dict[int, list[dict[str, typing.Any]]] = {}
-
-    # Aggregate per-(player, role) feature means so SHAP has a single sample.
+    out: dict[int, tuple[float, list[dict[str, typing.Any]]]] = {}
     agg = feature_frame.groupby(["player_id", "role"], dropna=False).mean(numeric_only=True).reset_index()
 
     for role, model in models_by_role.items():
@@ -110,19 +102,8 @@ def _explanation_rows(
                 key=lambda c: abs(c["shap"]),
                 reverse=True,
             )
-            tournament_id = int(per_player.loc[per_player["player_id"] == player_id, "tournament_id"].iloc[0])
-            rows.append(
-                {
-                    "algorithm_id": algorithm_id,
-                    "entity_id": player_id,
-                    "entity_kind": "player",
-                    "tournament_id": tournament_id,
-                    "base_value": base_value,
-                    "contributions": contributions,
-                }
-            )
-            top_features_by_player[player_id] = contributions[:5]
-    return rows, top_features_by_player
+            out[player_id] = (base_value, contributions)
+    return out
 
 
 async def run_performance_for_tournament(
@@ -193,13 +174,7 @@ async def run_performance_for_tournament(
     # instead of a coarse, unstable empirical percentile.
     per_player = stabilize_small_cohort_impact(per_player)
 
-    # Optional: SHAP top-5 contributions denormalised into ``top_features``.
-    if include_shap:
-        rows, top_features_by_player = _explanation_rows(per_player, feature_frame, models_by_role, algorithm_id)
-        per_player["top_features"] = per_player["player_id"].map(lambda pid: top_features_by_player.get(int(pid)))
-    else:
-        rows = []
-        per_player["top_features"] = None
+    shap_by_player = _shap_by_player(per_player, feature_frame, models_by_role) if include_shap else {}
 
     # Idempotent upsert: delete existing rows for this tournament/algorithm, then insert.
     await session.execute(
@@ -225,23 +200,13 @@ async def run_performance_for_tournament(
             "local_reference_n": int(row["local_reference_n"]) if pd.notna(row["local_reference_n"]) else 0,
             "local_band_min_div": int(row["local_band_min_div"]) if pd.notna(row["local_band_min_div"]) else None,
             "local_band_max_div": int(row["local_band_max_div"]) if pd.notna(row["local_band_max_div"]) else None,
-            "top_features": row["top_features"],
+            "contributions": None if (shap := shap_by_player.get(int(row["player_id"]))) is None else shap[1],
+            "base_value": None if shap is None else shap[0],
         }
         for _, row in per_player.iterrows()
     ]
     if insert_rows:
         await session.execute(sa.insert(models.AnalyticsPerformance), insert_rows)
-
-    # Explanations table: archive full contribution list.
-    if rows:
-        await session.execute(
-            sa.delete(models.AnalyticsExplanation).where(
-                models.AnalyticsExplanation.algorithm_id == algorithm_id,
-                models.AnalyticsExplanation.tournament_id == tournament_id,
-                models.AnalyticsExplanation.entity_kind == "player",
-            )
-        )
-        await session.execute(sa.insert(models.AnalyticsExplanation), rows)
 
     await session.commit()
     return len(insert_rows)

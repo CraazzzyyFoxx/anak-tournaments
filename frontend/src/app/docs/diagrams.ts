@@ -1226,9 +1226,9 @@ export const domains: DiagramDomain[] = [
     title: "Аналитика и ML",
     schemaLabel: "analytics",
     schemas: ["analytics"],
-    tableCount: 14,
+    tableCount: 10,
     description:
-      "Сигналы поверх матч-логов: per-tournament статистика, shift-алгоритмы, снапшоты качества баланса, feature-store/ML-модели, performance (v2), распределения мест, аномалии. job — единый трекер пересчёта.",
+      "Сигналы поверх матч-логов: per-tournament статистика, shift-алгоритмы, ML-модели, performance (v2), распределения мест, аномалии. job — единый трекер пересчёта. SHAP лежит в performance.contributions.",
     mermaid: `erDiagram
     AN_ALGORITHM {
         int id PK
@@ -1274,7 +1274,6 @@ export const domains: DiagramDomain[] = [
         int encounter_id FK
         int algorithm_id FK "UK(encounter, algorithm)"
         float quality_score
-        json anomaly_flags
     }
     AN_PLAYER_ANOMALY {
         int id PK
@@ -1292,32 +1291,6 @@ export const domains: DiagramDomain[] = [
         string kind
         string verdict
     }
-    AN_BALANCE_SNAPSHOT {
-        int id PK
-        int tournament_id FK
-        int balance_id FK "→ balancer.balance"
-        int variant_id FK "nullable"
-        int workspace_id FK "nullable"
-        float avg_sr_overall
-        float sr_std_dev
-    }
-    AN_BALANCE_PLAYER_SNAPSHOT {
-        int id PK
-        int balance_snapshot_id FK
-        int tournament_id FK
-        int user_id FK "nullable → players.user"
-        int team_id FK "nullable"
-        string assigned_role
-        int assigned_rank
-    }
-    AN_ML_FEATURE {
-        int id PK
-        int tournament_id FK "UK(tournament, granularity, entity, feature_version)"
-        string granularity
-        int entity_id
-        string feature_version
-        json features
-    }
     AN_ML_MODEL_ARTIFACT {
         int id PK
         int algorithm_id FK "UK(algorithm, model_kind, role, version)"
@@ -1326,14 +1299,6 @@ export const domains: DiagramDomain[] = [
         string version
         string storage_uri
         bool is_active
-    }
-    AN_EXPLANATION {
-        int id PK
-        int algorithm_id FK
-        int tournament_id FK
-        int entity_id
-        string entity_kind
-        json contributions
     }
     AN_JOB {
         int id PK
@@ -1356,9 +1321,6 @@ export const domains: DiagramDomain[] = [
     ENCOUNTER {
         int id PK
     }
-    BAL_BALANCE {
-        int id PK
-    }
 
     TOURNAMENT ||--o{ AN_PLAYER : "статистика игрока"
     PLAYER ||--o{ AN_PLAYER : "игрок"
@@ -1374,10 +1336,7 @@ export const domains: DiagramDomain[] = [
     PLAYER ||--o{ AN_PLAYER_ANOMALY : "аномалия"
     ENCOUNTER |o--o{ AN_PLAYER_ANOMALY : "источник"
     PLAYER ||--o{ AN_ANOMALY_FEEDBACK : "вердикт"
-    BAL_BALANCE ||--o{ AN_BALANCE_SNAPSHOT : "снапшот баланса"
-    AN_BALANCE_SNAPSHOT ||--o{ AN_BALANCE_PLAYER_SNAPSHOT : "по игрокам"
     AN_ALGORITHM ||--o{ AN_ML_MODEL_ARTIFACT : "модель"
-    AN_ALGORITHM ||--o{ AN_EXPLANATION : "атрибуция"
     TOURNAMENT ||--o{ AN_JOB : "пересчёты"`
   },
   {
@@ -1576,7 +1535,7 @@ export const changeLog: DocEntry[] = [
   },
   {
     term: "Challonge-нормализация (dbarch04 + dbarch04b)",
-    body: "Удалены `tournament.tournament.challonge_id`/`challonge_slug`, `tournament.stage.challonge_id`/`challonge_slug`, `tournament.encounter.challonge_id` и таблица `tournament.challonge_team`. Источник правды — `challonge_source` + `challonge_participant_mapping` + `challonge_match_mapping` + `challonge_sync_log`. Оставлены `tournament.group.challonge_id`/`challonge_slug` (routing-значение `match.group_id` по группам)."
+    body: "Удалены `tournament.tournament.challonge_id`/`challonge_slug`, `tournament.stage.challonge_id`/`challonge_slug`, `tournament.encounter.challonge_id` и таблица `tournament.challonge_team`. Источник правды — `challonge_source` + `challonge_participant_mapping` + `challonge_match_mapping` + `challonge_sync_log`. Таблица `tournament.group` (вместе со своими `challonge_id`/`challonge_slug`) снесена миграцией `dropgrp01`; группа Challonge связывается со стадией только через `stage.settings_json.challonge_group_id`, по которому и роутится `match.group_id`. Одноимённые поля ответов API живы, но ВЫВОДЯТСЯ из `challonge_source`/`challonge_match_mapping` резолверами `shared/services/challonge_refs.py` — сериализатор, который их не прокинул, отдаёт тихий `null`."
   },
   {
     term: "JSON-нормализация (dbarch05)",

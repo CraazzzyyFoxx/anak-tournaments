@@ -1,8 +1,7 @@
 """Match Quality v1 inference writer.
 
-Match Quality remains an encounter-level score. Player anomalies are computed
-by the unified player-signal runner and copied onto ``analytics.match_quality``
-only as a compatibility surface for legacy consumers.
+Match Quality is an encounter-level score. Player anomalies live in
+``analytics.player_anomaly`` and are joined on read.
 """
 
 from __future__ import annotations
@@ -94,57 +93,13 @@ async def _standings_win_probability(
     return pd.Series(model.predict_proba(encounters), index=encounters.index, name="p_home_wins")
 
 
-async def _player_anomalies(
-    session: AsyncSession,
-    tournament_id: int,
-) -> list[models.AnalyticsPlayerAnomaly]:
-    result = await session.execute(
-        sa.select(models.AnalyticsPlayerAnomaly).where(models.AnalyticsPlayerAnomaly.tournament_id == tournament_id)
-    )
-    return list(result.scalars().all())
-
-
-async def _first_encounter_by_player(
-    session: AsyncSession,
-    tournament_id: int,
-) -> dict[int, int]:
-    home_query = (
-        sa.select(
-            models.Player.id.label("player_id"),
-            sa.func.min(models.Match.encounter_id).label("encounter_id"),
-        )
-        .join(models.Match, models.Match.home_team_id == models.Player.team_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .where(models.Encounter.tournament_id == tournament_id)
-        .group_by(models.Player.id)
-    )
-    away_query = (
-        sa.select(
-            models.Player.id.label("player_id"),
-            sa.func.min(models.Match.encounter_id).label("encounter_id"),
-        )
-        .join(models.Match, models.Match.away_team_id == models.Player.team_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .where(models.Encounter.tournament_id == tournament_id)
-        .group_by(models.Player.id)
-    )
-
-    encounter_for_player: dict[int, int] = {}
-    for pid, enc in (await session.execute(home_query)).all() + (await session.execute(away_query)).all():
-        if pid is None or enc is None:
-            continue
-        prev = encounter_for_player.get(int(pid))
-        encounter_for_player[int(pid)] = int(enc) if prev is None else min(prev, int(enc))
-    return encounter_for_player
-
-
 async def run_match_quality_for_tournament(
     session: AsyncSession,
     tournament_id: int,
     *,
     workspace_id: int | None = None,
 ) -> int:
-    """Compute Match Quality rows and attach compatibility anomaly payloads."""
+    """Compute Match Quality rows for one tournament."""
     algorithm = await registry_service.ensure_algorithm(session, MATCH_QUALITY_ALGORITHM_NAME)
 
     encounters = await _standings_p_home(
@@ -171,46 +126,17 @@ async def run_match_quality_for_tournament(
     if quality.empty:
         return 0
 
-    encounter_for_player = await _first_encounter_by_player(session, tournament_id)
-    fallback_encounter = int(encounters["encounter_id"].astype(int).iloc[0]) if not encounters.empty else None
-    by_encounter_anomalies: dict[int, list[dict]] = {}
-    seen: set[tuple[int, str, int | None]] = set()
-
-    for anomaly in await _player_anomalies(session, tournament_id):
-        source_encounter_id = int(anomaly.source_encounter_id) if anomaly.source_encounter_id is not None else None
-        key = (int(anomaly.player_id), str(anomaly.kind), source_encounter_id)
-        if key in seen:
-            continue
-        seen.add(key)
-        encounter_id = source_encounter_id or encounter_for_player.get(int(anomaly.player_id)) or fallback_encounter
-        if encounter_id is None:
-            continue
-        by_encounter_anomalies.setdefault(int(encounter_id), []).append(
-            {
-                "player_id": int(anomaly.player_id),
-                "kind": str(anomaly.kind),
-                "score": float(anomaly.score),
-                "confidence": float(anomaly.confidence),
-                "reasons": list(anomaly.reasons or []),
-                "evidence": anomaly.evidence or None,
-                "encounter_id": int(encounter_id),
-            }
-        )
-
-    rows = []
-    for _, row in quality.iterrows():
-        encounter_id = int(row["encounter_id"])
-        rows.append(
-            {
-                "encounter_id": encounter_id,
-                "algorithm_id": algorithm.id,
-                "competitiveness": float(row["competitiveness"]),
-                "predictability": float(row["predictability"]),
-                "skill_balance": float(row["skill_balance"]),
-                "quality_score": float(row["quality_score"]),
-                "anomaly_flags": by_encounter_anomalies.get(encounter_id) or None,
-            }
-        )
+    rows = [
+        {
+            "encounter_id": int(row["encounter_id"]),
+            "algorithm_id": algorithm.id,
+            "competitiveness": float(row["competitiveness"]),
+            "predictability": float(row["predictability"]),
+            "skill_balance": float(row["skill_balance"]),
+            "quality_score": float(row["quality_score"]),
+        }
+        for _, row in quality.iterrows()
+    ]
 
     # Idempotent upsert: clear every row for THIS tournament's encounters under
     # this algorithm before re-inserting. Scoping the delete by the tournament's

@@ -21,10 +21,6 @@ DOCS: dict[str, dict] = {
         "summary": "Player streaks",
         "description": "Returns players' placement streaks across recent tournaments for the given tournament_id.",
     },
-    "rpc.analytics.balance_quality": {
-        "summary": "Balance quality",
-        "description": "Returns the stored balance-quality snapshot (objective score, SR spread, discomfort, per-player rows) for a tournament, or null if none exists.",
-    },
     "rpc.analytics.performance": {
         "summary": "Performance rows",
         "description": "Returns ML performance rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
