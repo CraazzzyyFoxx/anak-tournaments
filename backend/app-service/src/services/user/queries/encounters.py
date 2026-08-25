@@ -18,6 +18,7 @@ from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
 from src import models
 from src.core import enums, pagination
 from src.core.workspace import workspace_filter
+from src.services.user import _mappers
 
 _LAST_MATCH_AT = (
     sa.select(sa.func.max(models.Match.created_at))
