@@ -24,7 +24,6 @@ import {
   SheetHeader,
   SheetTitle
 } from "@/components/ui/sheet";
-import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -45,10 +44,8 @@ import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import {
   getDivisionLabel,
-  resolveExactRankFromDivision as resolveExactRankFromDivisionInGrid,
   resolveDivisionFromRank as resolveDivisionFromRankInGrid,
   resolveRankFromDivision as resolveRankFromDivisionInGrid,
-  sortTiersAscending,
 } from "@/lib/division-grid";
 import { cn } from "@/lib/utils";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -68,6 +65,7 @@ import {
 import { getRegistrationBattleTags } from "./balancer-page-helpers";
 import { BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
 import RankHistory from "@/components/RankHistory";
+import { ROLE_RANK_ACCENTS, RoleRankControls } from "./RoleRankControls";
 
 const ROLE_OPTIONS: Array<{ value: BalancerRoleCode; label: string }> = [
   { value: "tank", label: "Tank" },
@@ -83,34 +81,6 @@ const ROLE_DISPLAY: Record<BalancerRoleCode, string> = {
   support: "Support"
 };
 
-const ROLE_ACCENTS: Record<
-  BalancerRoleCode,
-  { row: string; text: string; chip: string; line: string; sliderColor: string }
-> = {
-  // `sliderColor` lands in an inline `style` (accent-color + a linear-gradient
-  // stop), so a `var()` reference resolves like any other CSS value.
-  tank: {
-    row: "border-sky-400/40 bg-sky-500/[0.07] shadow-[0_0_0_1px_rgba(56,189,248,0.08)]",
-    text: "text-sky-200",
-    chip: "border-sky-300/30 bg-sky-500/12 text-sky-200",
-    line: "bg-sky-300",
-    sliderColor: "var(--aqt-tank)"
-  },
-  dps: {
-    row: "border-orange-400/40 bg-orange-500/[0.07] shadow-[0_0_0_1px_rgba(251,146,60,0.08)]",
-    text: "text-orange-200",
-    chip: "border-orange-300/30 bg-orange-500/12 text-orange-200",
-    line: "bg-orange-300",
-    sliderColor: "var(--aqt-damage)"
-  },
-  support: {
-    row: "border-emerald-400/40 bg-emerald-500/[0.07] shadow-[0_0_0_1px_rgba(52,211,153,0.08)]",
-    text: "text-emerald-200",
-    chip: "border-emerald-300/30 bg-emerald-500/12 text-emerald-200",
-    line: "bg-emerald-300",
-    sliderColor: "var(--aqt-support)"
-  }
-};
 
 function normalizeRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlayerRoleEntry[] {
   const seen = new Set<BalancerRoleCode>();
@@ -195,25 +165,6 @@ function applyHistoryPreviewToRoleEntries(
 
 // getSubtypeLabel has been inline-replaced using dynamic subtypeOptions
 
-function getDivisionGridBounds(grid: DivisionGrid): { min: number; max: number } {
-  if (!grid.tiers.length) {
-    return { min: 0, max: 5000 };
-  }
-
-  const mins = grid.tiers.map((tier) => tier.rank_min);
-  const maxes = grid.tiers
-    .map((tier) => tier.rank_max)
-    .filter((value): value is number => value !== null);
-
-  return {
-    min: Math.min(...mins),
-    max: Math.max(...maxes, ...mins)
-  };
-}
-
-function getSliderDivisionTiers(grid: DivisionGrid) {
-  return sortTiersAscending(grid);
-}
 
 function resolveRankFromDivisionHelper(
   divisionNumber: number | null,
@@ -222,33 +173,6 @@ function resolveRankFromDivisionHelper(
   return resolveRankFromDivisionInGrid(grid, divisionNumber);
 }
 
-function resolveExactRankFromDivisionHelper(
-  divisionNumber: number | null,
-  grid: DivisionGrid
-): number | null {
-  return resolveExactRankFromDivisionInGrid(grid, divisionNumber);
-}
-
-function getDivisionSliderIndex(
-  rankValue: number | null,
-  divisionTiers: DivisionGrid["tiers"],
-  resolveDivision: (rankValue: number | null) => number | null
-): number {
-  const divisionNumber = resolveDivision(rankValue);
-  const index = divisionTiers.findIndex((tier) => tier.number === divisionNumber);
-  return index >= 0 ? index : 0;
-}
-
-function getRankFillPercentFromDivisionIndex(
-  divisionIndex: number,
-  totalDivisions: number
-): number {
-  if (totalDivisions <= 1) {
-    return 100;
-  }
-
-  return (divisionIndex / (totalDivisions - 1)) * 100;
-}
 
 function buildHistoryChangeText(
   currentEntry: BalancerPlayerRoleEntry | undefined,
@@ -274,10 +198,7 @@ type SortableRoleEntryProps = {
   entry: BalancerPlayerRoleEntry;
   index: number;
   resolveDivision: (rankValue: number | null) => number | null;
-  resolveExactRankFromDivision: (divisionNumber: number | null) => number | null;
   getDivisionName: (divisionNumber: number | null) => string | null;
-  divisionTiers: DivisionGrid["tiers"];
-  sliderBounds: { min: number; max: number };
   onUpdate: (index: number, next: BalancerPlayerRoleEntry) => void;
   onRemove: (index: number) => void;
   subtypeOptions: Record<BalancerRoleCode, Array<{ value: string; label: string }>>;
@@ -288,34 +209,20 @@ function SortableRoleEntry({
   entry,
   index,
   resolveDivision,
-  resolveExactRankFromDivision,
   getDivisionName,
-  divisionTiers,
-  sliderBounds,
   onUpdate,
   onRemove,
   subtypeOptions
 }: Readonly<SortableRoleEntryProps>) {
   const { ref, style, handleProps } = useSortableRow(id);
 
-  const divisionNumber = resolveDivision(entry.rank_value);
-  const divisionName = getDivisionName(divisionNumber);
-  const accent = ROLE_ACCENTS[entry.role];
+  const accent = ROLE_RANK_ACCENTS[entry.role];
 
   const roleSubtypeOptions = subtypeOptions[entry.role] || [];
   const subtypeLabel = entry.subtype
     ? (roleSubtypeOptions.find((option) => option.value === entry.subtype)?.label ?? entry.subtype)
     : null;
   const hasSubtypeOptions = roleSubtypeOptions.length > 0;
-  const divisionSliderIndex = getDivisionSliderIndex(
-    entry.rank_value,
-    divisionTiers,
-    resolveDivision
-  );
-  const rankFillPercent = getRankFillPercentFromDivisionIndex(
-    divisionSliderIndex,
-    divisionTiers.length
-  );
 
   // Live OW rank (already mapped to the workspace grid) as a one-click suggestion.
   // Always shown for the role; actionable when an OW rank is available.
@@ -426,115 +333,22 @@ function SortableRoleEntry({
             </Select>
           </div>
 
-          <div className="space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
-                Skill rating
-              </span>
-              {entry.rank_value == null ? (
-                <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No rank</span>
-              ) : (
-                <span className="flex items-center gap-1">
-                  <span
-                    className={cn(
-                      "flex items-center gap-1 text-[11px] font-semibold",
-                      entry.is_active ? accent.text : "text-[color:var(--aqt-fg-dim)]"
-                    )}
-                  >
-                    {entry.rank_value}
-                    {entry.rank_source && entry.rank_source !== "none" ? (
-                      <Badge className={cn("h-4 border px-1.5 text-[11px] uppercase", accent.chip)}>
-                        {entry.rank_source}
-                      </Badge>
-                    ) : null}
-                  </span>
-                  {/* Emptying the number field also clears, but nothing said so: the
-                      slider under it reads as a required value, and the only visible
-                      way out was deleting the whole role. */}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onUpdate(index, { ...entry, rank_value: null, division_number: null })
-                    }
-                    title="Clear this role's rank"
-                    className="rounded px-1 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)] transition-colors hover:text-rose-200"
-                  >
-                    Clear
-                    <span className="sr-only">{` the ${entry.role} rank`}</span>
-                  </button>
-                </span>
-              )}
-            </div>
-            <NumberInput
-              integer
-              min={sliderBounds.min}
-              max={sliderBounds.max}
-              className={cn(
-                "h-7 border-[color:var(--aqt-border-2)] bg-black/15 px-2 text-xs text-[color:var(--aqt-fg)] shadow-none focus-visible:ring-1 focus-visible:ring-primary/40",
-                !entry.is_active && "text-[color:var(--aqt-fg-dim)]"
-              )}
-              value={entry.rank_value}
-              onValueChange={(rankValue) =>
-                onUpdate(index, {
-                  ...entry,
-                  rank_value: rankValue,
-                  division_number: resolveDivision(rankValue)
-                })
-              }
-            />
-            <input
-              type="range"
-              min={0}
-              max={Math.max(divisionTiers.length - 1, 0)}
-              step={1}
-              disabled={!entry.is_active}
-              value={divisionSliderIndex}
-              onChange={(event) => {
-                const nextIndex = Number(event.target.value);
-                const nextDivision = divisionTiers[nextIndex]?.number ?? null;
-                const rankValue = resolveExactRankFromDivision(nextDivision);
-                onUpdate(index, {
-                  ...entry,
-                  rank_value: rankValue,
-                  division_number: nextDivision
-                });
-              }}
-              className={cn(
-                "h-1 w-full cursor-pointer appearance-none rounded-full bg-white/8",
-                !entry.is_active && "cursor-not-allowed opacity-50"
-              )}
-              style={{
-                accentColor: accent.sliderColor,
-                background: `linear-gradient(90deg, ${accent.sliderColor} 0%, ${accent.sliderColor} ${rankFillPercent}%, rgba(255,255,255,0.08) ${rankFillPercent}%, rgba(255,255,255,0.08) 100%)`
-              }}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
-              Rank
-            </span>
-            <div
-              className={cn(
-                "flex min-h-[36px] items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-black/15 px-2 py-1",
-                !entry.is_active && "text-[color:var(--aqt-fg-dim)]"
-              )}
-              title={divisionName ?? undefined}
-            >
-              {divisionNumber != null ? (
-                <>
-                  <DivisionIcon division={divisionNumber} width={20} height={20} />
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] font-medium text-[color:var(--aqt-fg-muted)]">
-                      {divisionName ?? `Division ${divisionNumber}`}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No rank yet</span>
-              )}
-            </div>
-          </div>
+          <RoleRankControls
+            rankValue={entry.rank_value}
+            sourceLabel={
+              entry.rank_source && entry.rank_source !== "none" ? entry.rank_source : null
+            }
+            accent={accent}
+            active={entry.is_active}
+            onClear={
+              entry.rank_value == null
+                ? null
+                : () => onUpdate(index, { ...entry, rank_value: null, division_number: null })
+            }
+            onChange={(rankValue, divisionNumber) =>
+              onUpdate(index, { ...entry, rank_value: rankValue, division_number: divisionNumber })
+            }
+          />
         </div>
 
         {owRankValue != null ? (
@@ -596,7 +410,7 @@ function HistoryPreviewCard({
   getDivisionName,
   getOriginalDivisionName
 }: Readonly<HistoryPreviewCardProps>) {
-  const accent = ROLE_ACCENTS[entry.role];
+  const accent = ROLE_RANK_ACCENTS[entry.role];
   // Normalised name (target/workspace grid)
   const divisionName =
     getDivisionName(entry.division_number) ??
@@ -748,8 +562,6 @@ export function PlayerEditModal({
     resolveDivisionFromRankInGrid(divisionGrid, rankValue);
   const resolveRankFromDivision = (divisionNumber: number | null) =>
     resolveRankFromDivisionHelper(divisionNumber, divisionGrid);
-  const resolveExactRankFromDivision = (divisionNumber: number | null) =>
-    resolveExactRankFromDivisionHelper(divisionNumber, divisionGrid);
   const getDivisionName = (divisionNumber: number | null) =>
     getDivisionLabel(divisionGrid, divisionNumber);
 
@@ -771,8 +583,6 @@ export function PlayerEditModal({
     }
     return getDivisionLabel(divisionGrid, divisionNumber);
   };
-  const sliderBounds = useMemo(() => getDivisionGridBounds(divisionGrid), [divisionGrid]);
-  const divisionTiers = useMemo(() => getSliderDivisionTiers(divisionGrid), [divisionGrid]);
 
   const [roleEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
     normalizeRoleEntries(player.role_entries_json)
@@ -980,7 +790,7 @@ export function PlayerEditModal({
     });
   };
 
-  const hasOverride = roleEntries.some((entry) => entry.rank_source === "override");
+  const hasOverride = roleEntries.some((entry) => entry.rank_source === "registration");
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -1214,10 +1024,7 @@ export function PlayerEditModal({
                   entry={entry}
                   index={index}
                   resolveDivision={resolveDivision}
-                  resolveExactRankFromDivision={resolveExactRankFromDivision}
                   getDivisionName={getDivisionName}
-                  divisionTiers={divisionTiers}
-                  sliderBounds={sliderBounds}
                   onUpdate={updateEntry}
                   onRemove={removeEntry}
                   subtypeOptions={subtypeOptions}
