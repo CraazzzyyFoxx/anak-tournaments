@@ -114,8 +114,8 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   failures route to per-queue DLX/DLQ.
 - **Domain events + transactional outbox.** State changes write an `event_outbox` row in the
   same DB transaction; a sweeper (in `tournament-svc`) drains it `FOR UPDATE SKIP LOCKED` and
-  publishes with retry/backoff. For example, `balancer-svc` emits `balancer.balance.exported`
-  → `analytics-worker` writes `analytics.balance_snapshot`.
+  publishes with retry/backoff. For example, tournament mutations emit `tournament.changed`
+  for cache invalidation and downstream workers.
 - **Long jobs.** Durable queues decouple minutes-long compute: `balancer_jobs`,
   `analytics_job` / `analytics_train` / `analytics_infer`. Status/results live in Redis
   (balancer) or the `AnalyticsJob` table (analytics).
@@ -166,7 +166,7 @@ All services share **one PostgreSQL database** with **one SQLAlchemy metadata** 
   (unique per `workspace_id + player_id`).
 - **Dual identity.** `auth.user` (login account, owned by identity-svc) is distinct from
   `players.user` (domain player, owned by app-svc), linked 1:0..1 via `auth_user_id`. A
-  player can exist without a login ("shadow player").
+  player can exist without a login ("shadow player"). Full reference: [`docs/users-identity.md`](./users-identity.md).
 - **RBAC.** Grant-only permission catalog + workspace system roles, with a
   `user_permission_deny` overlay. Bootstrapped from `backend/shared/rbac/`.
 - **Migrations.** A single Alembic project under `backend/migrations/`. Run `make migrate`
