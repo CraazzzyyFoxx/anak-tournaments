@@ -1,14 +1,9 @@
 "use client";
 
 import { WorkspacePlayersSidebar } from "@/app/balancer/components/WorkspacePlayersSidebar";
-import { CAPTION_CLASS, EYEBROW_CLASS } from "@/app/balancer/pickup/pickup-chrome";
+import { CAPTION_CLASS } from "@/app/balancer/pickup/pickup-chrome";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { WorkspacePlayer } from "@/services/workspace-player.service";
 
@@ -33,7 +28,10 @@ type PickupPoolDialogProps = {
  *
  * It reuses the sidebar the tournament balancer renders in-place rather than
  * forking a second roster view: membership, ranks, search and paging are the
- * same behaviour here, and a fork would be the second place they drift.
+ * same behaviour here, and a fork would be the second place they drift. The
+ * sidebar owns the whole frame — its own "Players" heading, count and
+ * add-by-BattleTag control — so this shell contributes only the one fact it
+ * knows and the sidebar does not: how many of them are in *this* mix.
  */
 export function PickupPoolDialog({
   open,
@@ -51,13 +49,28 @@ export function PickupPoolDialog({
         // second line for every row.
         className="flex max-h-[calc(100svh-5rem)] w-[min(48rem,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
       >
-        <div className="flex items-start gap-3 border-b border-[color:var(--aqt-border)] px-5 pb-3.5 pt-4">
-          <div className="min-w-0">
-            <DialogTitle className={cn(EYEBROW_CLASS, "font-normal")}>Players</DialogTitle>
-            <DialogDescription className={cn(CAPTION_CLASS, "mt-1")}>
-              {`${selectedIds.length} in this mix \u00B7 ranks carry across every tournament in this workspace`}
-            </DialogDescription>
-          </div>
+        {/* Screen-reader only: the sidebar below renders the visible heading, and
+            two "Players" titles read as two lists. Radix still needs a title. */}
+        <DialogTitle className="sr-only">Workspace players</DialogTitle>
+        <DialogDescription className="sr-only">
+          Add players to this mix or edit the ranks the balancer uses for them.
+        </DialogDescription>
+
+        {/* `[&>div]:border-0` strips the sidebar's own card chrome: inside a
+            dialog its border and radius drew a second frame just inside this one. */}
+        <div className="min-h-0 flex-1 overflow-hidden p-3 pb-0 [&>div]:h-full [&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent">
+          <WorkspacePlayersSidebar
+            workspaceId={workspaceId}
+            canEdit={canEdit}
+            selectedIds={selectedIds}
+            onTogglePlayer={onTogglePlayer}
+          />
+        </div>
+
+        <div className="flex items-center gap-3 border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-5 py-3">
+          <span className={cn(CAPTION_CLASS, "min-w-0")}>
+            {`${selectedIds.length} in this mix \u00B7 ranks carry across every tournament in this workspace`}
+          </span>
           <Button
             type="button"
             className="ml-auto h-8 shrink-0"
@@ -65,17 +78,6 @@ export function PickupPoolDialog({
           >
             Done
           </Button>
-        </div>
-
-        {/* `[&>div]:border-0` strips the sidebar's own card chrome: inside a
-            dialog its border and radius drew a second frame just inside this one. */}
-        <div className="min-h-0 flex-1 overflow-hidden p-3 [&>div]:h-full [&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent">
-          <WorkspacePlayersSidebar
-            workspaceId={workspaceId}
-            canEdit={canEdit}
-            selectedIds={selectedIds}
-            onTogglePlayer={onTogglePlayer}
-          />
         </div>
       </DialogContent>
     </Dialog>
