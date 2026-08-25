@@ -26,8 +26,6 @@ import { ROLES, ROLE_LABELS, type RoleCode } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import {
   customGameKeys,
-  customGameService,
-  type CustomGame,
   type CustomGamePlayer,
 } from "@/services/custom-game.service";
 import {
@@ -50,47 +48,37 @@ import {
 const PER_PAGE = 24;
 
 /**
- * One roster row, however it was sourced.
- *
- * The workspace roster and a previous mix's lineup answer the same question in
- * two different shapes — `RosterMember` keeps the workspace canon and the host's
- * own book apart, while `CustomGamePlayer` has already resolved them into one
- * effective number. Normalising both into this before rendering is what lets the
- * "everyone" list and the "last mix" list be literally the same row component
- * instead of two that drift.
+ * One workspace roster row, normalised for display: `ranks` is what a balance
+ * would actually use (canon overridden by this host's own book, the same
+ * precedence the balancer applies), `authorRanks` is that book alone so a
+ * picker can tell "mine" from "inherited".
  */
 type RosterRow = {
   memberId: number;
   battleTag: string | null;
   displayName: string | null;
-  /** What a balance would use for each role, after all layers resolve. */
   ranks: Record<string, number>;
-  /** This host's own layer alone, so a picker can tell "mine" from "inherited". */
   authorRanks: Record<string, number>;
 };
-
-/** Case- and separator-insensitive, so `aria1111` finds `Aria#1111`. */
-function matchesNeedle(row: RosterRow, needle: string): boolean {
-  if (needle === "") return true;
-  const flat = needle.toLowerCase().replaceAll(/[\s#]/g, "");
-  return [row.displayName, row.battleTag].some(
-    (value) => value != null && value.toLowerCase().replaceAll(/[\s#]/g, "").includes(flat),
-  );
-}
 
 type PickupAddPlayersDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId: number;
-  /** Workspace right: whether the rank pickers write. */
+  /** Workspace right: whether a new BattleTag can be added to the roster. */
   canEdit: boolean;
+  /**
+   * Whether the rank pickers write. Only the host's book decides this mix, and
+   * the endpoint writes the caller's own, so anyone else editing here produced a
+   * 200 that changed nothing on screen.
+   */
+  canEditRanks: boolean;
   /** Mix right: whether membership can change at all (a closed mix is read-only). */
   canWrite: boolean;
+  /** Whose rank book this mix resolves against, so the list shows the numbers it will use. */
+  hostUserId: number | null;
   /** The mix lineup, so the right column can show supply without a second query. */
   rows: CustomGamePlayer[];
-  /** Mixes in this workspace, id-descending — the source of the "last mix" filter. */
-  games: CustomGame[];
-  currentGameId: number | null;
   onTogglePlayer: (memberId: number) => void;
 };
 
@@ -109,25 +97,27 @@ type PickupAddPlayersDialogProps = {
  * 320px rail. This is a picker for one mix, and the two had already started
  * paying for each other's constraints.
  *
- * The ranks it edits are the host's own book (`scope: "author"`), the layer that
- * actually decides the mixes they host. The workspace canon shows through dimmed
- * where they have not set their own.
+ * The ranks it shows and edits are the *host's* book (`scope: "author"`), the
+ * layer that decides this mix — read via `authorUserId` rather than defaulting
+ * to the caller's, which is what used to make a co-organiser's list disagree
+ * with the lineup beside it. The workspace canon shows through dimmed where the
+ * host has not set their own.
  */
 export function PickupAddPlayersDialog({
   open,
   onOpenChange,
   workspaceId,
   canEdit,
+  canEditRanks,
   canWrite,
+  hostUserId,
   rows,
-  games,
-  currentGameId,
   onTogglePlayer,
 }: Readonly<PickupAddPlayersDialogProps>) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<"all" | "last-mix">("all");
+  const [filter, setFilter] = useState<"all" | "mine">("all");
   const [cursor, setCursor] = useState(0);
   const [cursorKey, setCursorKey] = useState("all|1|");
   const [battleTag, setBattleTag] = useState("");
@@ -136,25 +126,14 @@ export function PickupAddPlayersDialog({
   const listRef = useRef<HTMLUListElement>(null);
   const deferredSearch = useDeferredValue(search.trim());
 
-  // The newest mix that is not the one being filled. Its lineup is the single
-  // most useful shortlist a host has — the same people show up every week — and
-  // it is one already-cached request rather than a new server-side filter.
-  const lastMix = useMemo(
-    () => games.find((game) => game.id !== currentGameId) ?? null,
-    [games, currentGameId],
-  );
-  const lastMixQuery = useQuery({
-    queryKey: customGameKeys.one(workspaceId, lastMix?.id ?? 0),
-    queryFn: () => customGameService.get(workspaceId, lastMix?.id ?? 0),
-    enabled: open && lastMix != null,
-  });
-
-  const usingLastMix = filter === "last-mix";
-  // The needle is withheld from the server while the last-mix filter is up: that
-  // list is already in memory and filters locally, so letting the search reach
-  // the query key would fire a workspace page request per keystroke and answer
-  // it with rows nobody is looking at.
-  const listParams = { page, perPage: PER_PAGE, query: usingLastMix ? "" : deferredSearch };
+  const usingMine = filter === "mine";
+  const listParams = {
+    page,
+    perPage: PER_PAGE,
+    query: deferredSearch,
+    authorUserId: hostUserId ?? undefined,
+    authorOnly: usingMine,
+  };
   const rosterQuery = useQuery({
     queryKey: workspacePlayerKeys.list(workspaceId, listParams),
     queryFn: () => workspacePlayerService.list(workspaceId, listParams),
@@ -163,6 +142,16 @@ export function PickupAddPlayersDialog({
     // replaced by skeletons mid-typing and the whole column flickers per
     // character.
     placeholderData: keepPreviousData,
+  });
+
+  // The workspace's total member count, independent of which filter is
+  // active: `rosterQuery`'s total means "matches under the current filter",
+  // the wrong number for the header and the "Everyone" chip once "My ranks"
+  // has narrowed it.
+  const workspaceCountQuery = useQuery({
+    queryKey: workspacePlayerKeys.list(workspaceId, { page: 1, perPage: 1, query: "" }),
+    queryFn: () => workspacePlayerService.list(workspaceId, { page: 1, perPage: 1 }),
+    enabled: open,
   });
 
   /**
@@ -210,44 +199,30 @@ export function PickupAddPlayersDialog({
     onError: (error) => notify.apiError(error),
   });
 
-  const lastMixRows = useMemo<RosterRow[]>(
-    () =>
-      (lastMixQuery.data?.players ?? []).map((player) => ({
-        memberId: player.workspace_member_id,
-        battleTag: player.battle_tag,
-        displayName: player.display_name,
-        ranks: player.ranks,
-        authorRanks: player.author_ranks,
-      })),
-    [lastMixQuery.data],
-  );
-
   const pageData = rosterQuery.data;
-  const workspaceTotal = pageData?.total ?? null;
+  const workspaceTotal = workspaceCountQuery.data?.total ?? null;
 
-  const visible = useMemo<RosterRow[]>(() => {
-    if (usingLastMix) {
-      return lastMixRows.filter((row) => matchesNeedle(row, deferredSearch));
-    }
-    return (pageData?.results ?? []).map((member: RosterMember) => ({
-      memberId: member.member_id,
-      battleTag: member.battle_tag,
-      displayName: member.display_name,
-      // Effective = canon overridden by this host's own book, the same
-      // precedence the balancer applies.
-      ranks: { ...member.ranks, ...member.author_ranks },
-      authorRanks: member.author_ranks,
-    }));
-  }, [usingLastMix, lastMixRows, deferredSearch, pageData]);
+  const visible = useMemo<RosterRow[]>(
+    () =>
+      (pageData?.results ?? []).map((member: RosterMember) => ({
+        memberId: member.member_id,
+        battleTag: member.battle_tag,
+        displayName: member.display_name,
+        // Effective = canon overridden by this host's own book, the same
+        // precedence the balancer applies.
+        ranks: { ...member.ranks, ...member.author_ranks },
+        authorRanks: member.author_ranks,
+      })),
+    [pageData],
+  );
 
   const inMix = useMemo(() => new Set(rows.map((row) => row.workspace_member_id)), [rows]);
 
   const summary = summarizeLineup(rows);
   const supply = summarizeRoleSupply(rows);
   const overflow = summary.active - LOBBY_SIZE;
-  const totalPages =
-    pageData && !usingLastMix ? Math.max(1, Math.ceil(pageData.total / pageData.per_page)) : 1;
-  const foundCount = usingLastMix ? visible.length : workspaceTotal;
+  const totalPages = pageData ? Math.max(1, Math.ceil(pageData.total / pageData.per_page)) : 1;
+  const foundCount = pageData?.total ?? null;
 
   // A new result set invalidates the cursor: leaving it at row 9 of a list that is
   // now three long would put the Enter key on nothing. Adjusted during render
@@ -318,7 +293,9 @@ export function PickupAddPlayersDialog({
           <DialogDescription className={cn(CAPTION_CLASS, "min-w-0 truncate")}>
             {workspaceTotal == null
               ? "Loading the workspace roster\u2026"
-              : `${workspaceTotal} in this workspace \u00B7 your ranks decide, workspace ranks fill the gaps`}
+              : `${workspaceTotal} in this workspace \u00B7 ${
+                  canEditRanks ? "your ranks decide" : "the host's ranks decide"
+                }, workspace ranks fill the gaps`}
           </DialogDescription>
         </header>
 
@@ -358,20 +335,21 @@ export function PickupAddPlayersDialog({
                 <FilterChip
                   label="Everyone"
                   count={workspaceTotal}
-                  active={!usingLastMix}
+                  active={!usingMine}
                   onClick={() => {
                     setFilter("all");
                     setPage(1);
                   }}
                 />
-                {lastMix == null ? null : (
-                  <FilterChip
-                    label={`${lastMix.name} #${lastMix.id}`}
-                    count={lastMixQuery.isLoading ? null : lastMixRows.length}
-                    active={usingLastMix}
-                    onClick={() => setFilter("last-mix")}
-                  />
-                )}
+                <FilterChip
+                  label="My ranks"
+                  count={usingMine ? foundCount : null}
+                  active={usingMine}
+                  onClick={() => {
+                    setFilter("mine");
+                    setPage(1);
+                  }}
+                />
                 {canEdit ? (
                   <Popover
                     open={isAddOpen}
@@ -465,7 +443,7 @@ export function PickupAddPlayersDialog({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-1.5">
-              {rosterQuery.isLoading || (usingLastMix && lastMixQuery.isLoading) ? (
+              {rosterQuery.isLoading ? (
                 <div className="space-y-1 p-1">
                   {[0, 1, 2, 3, 4, 5, 6, 7].map((row) => (
                     <Skeleton key={row} className="h-12 w-full rounded-lg" />
@@ -486,14 +464,16 @@ export function PickupAddPlayersDialog({
                   title={
                     deferredSearch
                       ? `Nobody matches \u201C${deferredSearch}\u201D`
-                      : usingLastMix
-                        ? "That mix had no players"
+                      : usingMine
+                        ? "You haven't ranked anyone yet"
                         : "No players in this workspace yet"
                   }
                   description={
                     deferredSearch
                       ? "Try a different name, or add the BattleTag above."
-                      : "Add a BattleTag above to start the roster this workspace balances from."
+                      : usingMine
+                        ? "Set a rank on a player in Everyone to add them here."
+                        : "Add a BattleTag above to start the roster this workspace balances from."
                   }
                   className="px-4 py-10"
                 />
@@ -505,15 +485,8 @@ export function PickupAddPlayersDialog({
                       row={row}
                       isInMix={inMix.has(row.memberId)}
                       isCursor={index === cursor}
-                      lastMixTag={
-                        !usingLastMix &&
-                        lastMix != null &&
-                        lastMixRows.some((r) => r.memberId === row.memberId)
-                          ? `${lastMix.name} #${lastMix.id}`
-                          : null
-                      }
                       canWrite={canWrite}
-                      canEdit={canEdit}
+                      canEdit={canEditRanks}
                       isSaving={saveRank.isPending && saveRank.variables?.memberId === row.memberId}
                       onToggle={() => onTogglePlayer(row.memberId)}
                       onSaveRank={(role, rank) =>
@@ -525,8 +498,7 @@ export function PickupAddPlayersDialog({
               )}
             </div>
 
-            {usingLastMix ? null : (
-              <div className="flex shrink-0 items-center gap-3 border-t border-[color:var(--aqt-border)] px-4 py-2">
+            <div className="flex shrink-0 items-center gap-3 border-t border-[color:var(--aqt-border)] px-4 py-2">
                 <DataPagination
                   page={page}
                   totalPages={totalPages}
@@ -542,8 +514,7 @@ export function PickupAddPlayersDialog({
                       : undefined
                   }
                 />
-              </div>
-            )}
+            </div>
           </div>
 
           {/* ── The lineup ───────────────────────────────────────────────── */}
@@ -698,7 +669,6 @@ function RosterRowItem({
   row,
   isInMix,
   isCursor,
-  lastMixTag,
   canWrite,
   canEdit,
   isSaving,
@@ -708,9 +678,8 @@ function RosterRowItem({
   row: RosterRow;
   isInMix: boolean;
   isCursor: boolean;
-  /** Names the recent mix this player was also in, or `null`. */
-  lastMixTag: string | null;
   canWrite: boolean;
+  /** Whether the rank pickers write — the host's right, not the workspace's. */
   canEdit: boolean;
   isSaving: boolean;
   onToggle: () => void;
@@ -764,14 +733,6 @@ function RosterRowItem({
         {suffix ? (
           <span className="shrink-0 font-mono text-[11.5px] text-[color:var(--aqt-fg-faint)]">
             {suffix}
-          </span>
-        ) : null}
-        {lastMixTag ? (
-          <span
-            title={`Also played in ${lastMixTag}`}
-            className="hidden shrink-0 rounded border border-[color:var(--aqt-border-2)] px-1 font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)] sm:inline"
-          >
-            {lastMixTag}
           </span>
         ) : null}
         {isCursor && canWrite ? (

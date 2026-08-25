@@ -145,6 +145,14 @@ def _author_to_read(data: dict[str, Any], actor_user_id: int) -> int:
         ) from None
 
 
+def _author_only(data: dict[str, Any]) -> bool:
+    """The "My ranks" shortcut: only members the read author has personally corrected."""
+    value = _first(data.get("query"), "author_only")
+    if value is None or value == "":
+        return False
+    return str(value).strip().lower() in ("1", "true", "yes")
+
+
 def _by_member(layer: dict[tuple[int, str], int]) -> dict[int, dict[str, int]]:
     out: dict[int, dict[str, int]] = {}
     for (member_id, role), value in layer.items():
@@ -172,15 +180,18 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = c.path_int(data, "workspace_id")
             _require_member(user, workspace_id)
             params = _list_params(data)
+            author_user_id = _author_to_read(data, user.id)
             rows, total = await workspace_roster.roster_page(
                 session,
                 workspace_id=workspace_id,
                 search=params.query or None,
                 page=params.page,
                 per_page=params.per_page,
+                author_user_id=author_user_id,
+                author_only=_author_only(data),
             )
             canon, author = await _layers(
-                session, workspace_id, [row.member_id for row in rows], _author_to_read(data, user.id)
+                session, workspace_id, [row.member_id for row in rows], author_user_id
             )
             return pagination.paginated_dict(
                 [

@@ -11,8 +11,8 @@
 //  3. the keyboard path works without the pointer: the search field keeps focus,
 //     the arrows move a cursor and Enter acts on it — the whole point of adding
 //     twelve people in twelve keystrokes;
-//  4. the "last mix" filter lists that mix's lineup, and searching inside it
-//     filters locally instead of re-querying the workspace;
+//  4. the "My ranks" filter narrows the server query to members this host has
+//     personally rank-corrected, rather than everybody in the workspace;
 //  5. rank pickers write the *author* layer (this host's own book) and show an
 //     inherited workspace value dimmed rather than as an empty slot;
 //  6. a read-only mix still reads: ranks stay editable, membership does not.
@@ -21,7 +21,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CustomGame, CustomGamePlayer } from "@/services/custom-game.service";
+import type { CustomGamePlayer } from "@/services/custom-game.service";
 import type { RosterMember } from "@/services/workspace-player.service";
 
 import { PickupAddPlayersDialog } from "./PickupAddPlayersDialog";
@@ -39,16 +39,27 @@ globalThis.ResizeObserver ??= class {
 const list = vi.fn();
 const upsert = vi.fn();
 const setRanks = vi.fn();
-const getGame = vi.fn();
 
 vi.mock("@/services/workspace-player.service", () => ({
   workspacePlayerKeys: {
     all: (workspaceId: number) => ["workspace-players", workspaceId],
-    list: (workspaceId: number, params: { page?: number; query?: string } = {}) => [
+    list: (
+      workspaceId: number,
+      params: {
+        page?: number;
+        perPage?: number;
+        query?: string;
+        authorUserId?: number;
+        authorOnly?: boolean;
+      } = {},
+    ) => [
       "workspace-players",
       workspaceId,
       params.page ?? 1,
+      params.perPage ?? 30,
       params.query ?? "",
+      params.authorUserId ?? 0,
+      params.authorOnly ?? false,
     ],
   },
   workspacePlayerService: {
@@ -61,9 +72,7 @@ vi.mock("@/services/workspace-player.service", () => ({
 vi.mock("@/services/custom-game.service", () => ({
   customGameKeys: {
     all: (workspaceId: number) => ["custom-games", workspaceId],
-    one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId],
   },
-  customGameService: { get: (...args: unknown[]) => getGame(...args) },
 }));
 
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
@@ -96,6 +105,8 @@ vi.mock("@/app/balancer/components/DivisionRankPicker", () => ({
 }));
 
 const WORKSPACE_ID = 7;
+/** Whose rank book this mix resolves against — the dialog must read that one. */
+const HOST_USER_ID = 42;
 
 function member(
   memberId: number,
@@ -130,29 +141,6 @@ function seated(memberId: number, battleTag: string, overrides: Partial<CustomGa
   };
 }
 
-const MIXES: CustomGame[] = [
-  {
-    id: 12,
-    workspace_id: WORKSPACE_ID,
-    host_user_id: 1,
-    name: "Tonight",
-    status: "draft",
-    config_json: null,
-    result_json: null,
-    outcome_json: null,
-  },
-  {
-    id: 11,
-    workspace_id: WORKSPACE_ID,
-    host_user_id: 1,
-    name: "Averet",
-    status: "completed",
-    config_json: null,
-    result_json: null,
-    outcome_json: null,
-  },
-];
-
 function tick() {
   const { promise, resolve } = Promise.withResolvers<void>();
   setTimeout(resolve, 0);
@@ -165,8 +153,9 @@ async function mount(
   props: {
     rows?: CustomGamePlayer[];
     canEdit?: boolean;
+    canEditRanks?: boolean;
     canWrite?: boolean;
-    games?: CustomGame[];
+    hostUserId?: number | null;
   } = {},
 ) {
   const container = document.createElement("div");
@@ -180,17 +169,17 @@ async function mount(
           onOpenChange={vi.fn()}
           workspaceId={WORKSPACE_ID}
           canEdit={props.canEdit ?? true}
+          canEditRanks={props.canEditRanks ?? true}
           canWrite={props.canWrite ?? true}
+          hostUserId={props.hostUserId ?? HOST_USER_ID}
           rows={props.rows ?? []}
-          games={props.games ?? MIXES}
-          currentGameId={12}
           onTogglePlayer={onTogglePlayer}
         />
       </QueryClientProvider>,
     );
   });
-  // Both queries resolve after the first commit; a second flush lets their state
-  // updates land inside `act`.
+  // The roster query and the workspace-count query resolve after the first
+  // commit; a second flush lets their state updates land inside `act`.
   await act(async () => {
     await tick();
   });
@@ -260,10 +249,6 @@ beforeEach(() => {
     page: 1,
     per_page: 24,
   });
-  getGame.mockResolvedValue({
-    ...MIXES[1],
-    players: [seated(2, "Borys#2222"), seated(9, "Dima#9999")],
-  });
 });
 
 describe("PickupAddPlayersDialog", () => {
@@ -319,24 +304,18 @@ describe("PickupAddPlayersDialog", () => {
     expect(onTogglePlayer).toHaveBeenCalledWith(3);
   });
 
-  it("swaps the roster for the last mix's lineup, and filters that locally", async () => {
+  it("asks the server for only this host's ranked players under My ranks", async () => {
     const scope = await mount();
 
-    await click(findChip(scope, "Averet #11"));
+    await click(findChip(scope, "My ranks"));
+    expect(list).toHaveBeenLastCalledWith(
+      WORKSPACE_ID,
+      expect.objectContaining({ authorOnly: true, authorUserId: HOST_USER_ID }),
+    );
 
-    // Dima is not on the workspace page above, so his row proves the list came
-    // from the mix rather than from a re-query.
-    expect(byLabel("Add Dima#9999 to this mix")).not.toBeNull();
-    expect(byLabel("Add Aria#1111 to this mix")).toBeNull();
+    await click(findChip(scope, "Everyone"));
 
-    const callsBefore = list.mock.calls.length;
-    await type("dima");
-    await settle();
-
-    expect(byLabel("Add Dima#9999 to this mix")).not.toBeNull();
-    expect(byLabel("Add Borys#2222 to this mix")).toBeNull();
-    // Local filtering only: the workspace query must not be asked again.
-    expect(list.mock.calls.length).toBe(callsBefore);
+    expect(list).toHaveBeenLastCalledWith(WORKSPACE_ID, expect.objectContaining({ authorOnly: false }));
   });
 
   it("writes a rank into this host's own book, one role at a time", async () => {
@@ -349,6 +328,31 @@ describe("PickupAddPlayersDialog", () => {
       ranks: { tank: 1200 },
       clear: [],
     });
+  });
+
+  it("reads the host's book, not the caller's", async () => {
+    await mount();
+
+    // `author_ranks` in the response has to be the layer this mix balances on.
+    // Defaulting to the caller's book is what used to make a co-organiser's
+    // roster column disagree with the lineup rendered beside it.
+    expect(list).toHaveBeenCalledWith(
+      WORKSPACE_ID,
+      expect.objectContaining({ authorUserId: HOST_USER_ID }),
+    );
+  });
+
+  it("shows a non-host the ranks read-only", async () => {
+    await mount({ canEditRanks: false });
+
+    // The endpoint writes the *caller's* book and the mix reads the *host's*,
+    // so a write from here answered 200 and changed nothing on screen. Membership
+    // is a separate right and stays live.
+    expect(byLabel("Tank rank for Aria#1111")?.hasAttribute("disabled")).toBe(true);
+    expect(byLabel("Add Aria#1111 to this mix")?.hasAttribute("disabled")).toBe(false);
+
+    await click(byLabel("Tank rank for Aria#1111"));
+    expect(setRanks).not.toHaveBeenCalled();
   });
 
   it("shows an inherited workspace rank rather than an empty slot", async () => {
@@ -390,11 +394,13 @@ describe("PickupAddPlayersDialog", () => {
     expect(scope.textContent).toContain("Nobody matches");
   });
 
-  it("offers no last-mix filter when this is the only mix", async () => {
-    const scope = await mount({ games: [MIXES[0]] });
+  it("shows a dedicated empty state under My ranks", async () => {
+    list.mockResolvedValue({ results: [], total: 0, page: 1, per_page: 24 });
+    const scope = await mount();
 
-    expect(findChip(scope, "Averet #11")).toBeUndefined();
-    expect(getGame).not.toHaveBeenCalled();
+    await click(findChip(scope, "My ranks"));
+
+    expect(scope.textContent).toContain("You haven't ranked anyone yet");
   });
 });
 

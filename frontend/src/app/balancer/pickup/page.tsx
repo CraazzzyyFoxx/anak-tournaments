@@ -18,6 +18,7 @@ import {
 import { usePickupMix } from "@/app/balancer/pickup/usePickupMix";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 /**
@@ -36,6 +37,7 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
  */
 export default function BalancerPickupPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const currentUserId = useAuthProfileStore((state) => state.user?.id ?? null);
   const { canAccessPermission } = usePermissions();
   // The mix-hosting grant, not a tournament permission: a workspace member can
   // run a pickup game without holding admin rights over teams.
@@ -63,9 +65,21 @@ export default function BalancerPickupPage() {
   const game = gameQuery.data;
   const rows = game?.players ?? [];
   const rosterIds = rows.map((row) => row.workspace_member_id);
+  // Everything that writes a mix -- roster, player patch, balance, outcome --
+  // goes through `_writable`, which 403s anyone but the host. A member who only
+  // holds `custom_game.create` used to see every control live and collect a 403
+  // per click, so hosting is part of the gate rather than a surprise at the end
+  // of one.
+  const isHost = game != null && currentUserId != null && game.host_user_id === currentUserId;
   // A completed or cancelled mix is read-only server-side; hide its controls
   // rather than let a click 409.
-  const canWrite = canEdit && game != null && !PICKUP_TERMINAL_STATUSES[game.status];
+  const canWrite = canEdit && isHost && game != null && !PICKUP_TERMINAL_STATUSES[game.status];
+  // Ranks are the host's book -- `author_user_id = game.host_user_id` is the
+  // layer this mix resolves against. Anyone else who typed here wrote their own
+  // book, got a 200, and watched the number stay put. Not gated on `canWrite`:
+  // a rank outlives the game it was typed in, so a closed mix can still be
+  // corrected by its host.
+  const canEditRanks = canEdit && isHost;
   const openRow = rows.find((row) => row.workspace_member_id === openPlayerId) ?? null;
   const savingPlayerId = patchPlayer.isPending
     ? (patchPlayer.variables?.workspaceMemberId ?? null)
@@ -184,10 +198,10 @@ export default function BalancerPickupPage() {
         onOpenChange={setIsPoolOpen}
         workspaceId={workspaceId}
         canEdit={canEdit}
+        canEditRanks={canEditRanks}
         canWrite={canWrite}
+        hostUserId={game?.host_user_id ?? null}
         rows={rows}
-        games={games}
-        currentGameId={selectedGameId}
         onTogglePlayer={togglePoolMember}
       />
 

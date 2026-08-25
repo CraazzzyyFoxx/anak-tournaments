@@ -28,6 +28,8 @@ export type WorkspacePlayerListParams = {
   query?: string;
   /** Whose book to return as `author_ranks`; omitted means the caller's. */
   authorUserId?: number;
+  /** The "My ranks" shortcut: only members that author has personally corrected. */
+  authorOnly?: boolean;
 };
 
 export const workspacePlayerKeys = {
@@ -39,6 +41,7 @@ export const workspacePlayerKeys = {
       params.perPage ?? 30,
       params.query ?? "",
       params.authorUserId ?? 0,
+      params.authorOnly ?? false,
     ] as const,
 };
 
@@ -50,6 +53,7 @@ export const workspacePlayerService = {
         per_page: params.perPage ?? 30,
         query: params.query ?? "",
         ...(params.authorUserId == null ? {} : { author_user_id: params.authorUserId }),
+        ...(params.authorOnly ? { author_only: 1 } : {}),
       },
     }).then((r) => r.json());
   },

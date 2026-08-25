@@ -60,8 +60,25 @@ def _main_battle_tag() -> sa.ScalarSelect[str]:
     )
 
 
-def _filters(workspace_id: int, search: str | None) -> list[sa.ColumnElement[bool]]:
+def _filters(
+    workspace_id: int,
+    search: str | None,
+    *,
+    author_user_id: int | None = None,
+    author_only: bool = False,
+) -> list[sa.ColumnElement[bool]]:
     filters: list[sa.ColumnElement[bool]] = [models.WorkspaceMember.workspace_id == workspace_id]
+    if author_only and author_user_id is not None:
+        # The "My ranks" shortcut: only members this author has personally
+        # corrected -- the book that outranks the canon when *their* mixes
+        # are balanced (see ``shared.models.member_rank.MemberRank``).
+        filters.append(
+            sa.exists().where(
+                models.MemberRank.workspace_id == workspace_id,
+                models.MemberRank.workspace_member_id == models.WorkspaceMember.id,
+                models.MemberRank.author_user_id == author_user_id,
+            )
+        )
     needle = (search or "").strip()
     if not needle:
         return filters
@@ -90,9 +107,11 @@ async def roster_page(
     search: str | None = None,
     page: int = 1,
     per_page: int = 30,
+    author_user_id: int | None = None,
+    author_only: bool = False,
 ) -> tuple[list[RosterMember], int]:
     """One page of the workspace roster, newest-agnostic (ordered by member id)."""
-    filters = _filters(workspace_id, search)
+    filters = _filters(workspace_id, search, author_user_id=author_user_id, author_only=author_only)
     joined = sa.select(models.WorkspaceMember.id).join(
         models.User, models.User.id == models.WorkspaceMember.player_id
     )
