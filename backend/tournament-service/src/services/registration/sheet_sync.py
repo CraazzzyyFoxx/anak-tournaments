@@ -26,6 +26,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
@@ -41,6 +42,7 @@ from src.domain.registration.mapping_catalog import (
     classify_row_disposition,
     target_spec_map,
     validate_mapping_config,
+    validate_value_mapping_subroles,
 )
 from src.domain.registration.sheet_parsing import (
     build_default_value_mapping,
@@ -114,6 +116,7 @@ def build_mapping_catalog(
     *,
     value_mapping: dict[str, Any] | None = None,
     header_keys: list[str] | None = None,
+    subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
 ) -> dict[str, Any]:
     """Assemble the frontend mapping catalog (targets, parsers, value maps)."""
     specs = build_target_specs(custom_fields)
@@ -156,6 +159,7 @@ def build_mapping_catalog(
         ],
         "custom_fields": [field_def.model_dump() for field_def in custom_fields],
         "header_keys": header_keys or [],
+        "subrole_catalog": subrole_catalog or {code: [] for code in ("tank", "dps", "support")},
     }
 
 
@@ -244,16 +248,26 @@ class SheetSyncService:
         *,
         source_url: str,
         existing_feed: models.BalancerRegistrationGoogleSheetFeed | None,
-        mapping_config_json: dict[str, Any],
+        mapping_config_json: dict[str, Any] | None,
+        value_mapping_json: dict[str, Any] | None = None,
     ) -> None:
+        tournament = await self.common.ensure_tournament_exists(session, tournament_id)
+        catalog = await resolve_subrole_catalog(session, tournament.workspace_id)
         custom_fields = await self.common.get_form_custom_field_defs(session, tournament_id)
         target_specs = target_spec_map(custom_fields)
         header_keys = await _resolve_header_keys(source_url, existing_feed)
-        issues = validate_mapping_config(
-            mapping_config_json,
-            target_specs=target_specs,
-            header_keys=header_keys,
-        )
+        issues = []
+        if mapping_config_json is not None:
+            issues.extend(
+                validate_mapping_config(
+                    mapping_config_json,
+                    target_specs=target_specs,
+                    header_keys=header_keys,
+                    subrole_catalog=catalog,
+                )
+            )
+        if value_mapping_json is not None:
+            issues.extend(validate_value_mapping_subroles(value_mapping_json, catalog))
         if issues:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -281,13 +295,14 @@ class SheetSyncService:
         tournament = await self.common.ensure_tournament_exists(session, tournament_id)
         sheet_id, gid = extract_sheet_source(source_url)
         feed = await self.get_google_sheet_feed(session, tournament_id)
-        if mapping_config_json is not None:
+        if mapping_config_json is not None or value_mapping_json is not None:
             await self._validate_feed_mapping(
                 session,
                 tournament_id,
                 source_url=source_url,
                 existing_feed=feed,
                 mapping_config_json=mapping_config_json,
+                value_mapping_json=value_mapping_json,
             )
         if feed is None:
             feed = models.BalancerRegistrationGoogleSheetFeed(
@@ -342,7 +357,7 @@ class SheetSyncService:
         *,
         include_headers: bool = False,
     ) -> dict[str, Any]:
-        await self.common.ensure_tournament_exists(session, tournament_id)
+        tournament = await self.common.ensure_tournament_exists(session, tournament_id)
         feed = await self.get_google_sheet_feed(session, tournament_id)
         custom_fields = await self.common.get_form_custom_field_defs(session, tournament_id)
         header_keys: list[str] | None = None
@@ -355,6 +370,7 @@ class SheetSyncService:
             custom_fields,
             value_mapping=feed.value_mapping_json if feed else None,
             header_keys=header_keys,
+            subrole_catalog=await resolve_subrole_catalog(session, tournament.workspace_id),
         )
 
     async def preview_google_sheet_mapping(
@@ -381,6 +397,9 @@ class SheetSyncService:
         custom_fields = await self.common.get_form_custom_field_defs(session, tournament_id)
         effective_mapping = mapping_config_json or (feed.mapping_config_json if feed else None)
         effective_value_mapping = value_mapping_json or (feed.value_mapping_json if feed else None)
+        tournament = await self.common.ensure_tournament_exists(session, tournament_id)
+        subrole_catalog = await resolve_subrole_catalog(session, tournament.workspace_id)
+
 
         known_source_keys, known_battle_tag_keys = await self._existing_match_keys(session, tournament_id, feed)
 
@@ -396,6 +415,7 @@ class SheetSyncService:
                 value_mapping=effective_value_mapping,
                 grid=grid,
                 custom_fields=custom_fields,
+                subrole_catalog=subrole_catalog,
             )
             fields = result.fields
             source_record_key = fields.get("source_record_key") if fields else None
@@ -490,6 +510,8 @@ class SheetSyncService:
                 headers, custom_fields=custom_fields
             )
             value_mapping = feed.value_mapping_json or build_default_value_mapping()
+            subrole_catalog = await resolve_subrole_catalog(session, tournament.workspace_id)
+
 
             parsed_rows: dict[str, tuple[dict[str, str], dict[str, Any]]] = {}
             skipped = 0
@@ -502,6 +524,7 @@ class SheetSyncService:
                     value_mapping=value_mapping,
                     grid=grid,
                     custom_fields=custom_fields,
+                    subrole_catalog=subrole_catalog,
                 )
                 for entry in result.errors:
                     if len(row_errors) < SYNC_ERROR_SAMPLE_LIMIT:

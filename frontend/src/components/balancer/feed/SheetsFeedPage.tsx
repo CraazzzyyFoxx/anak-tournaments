@@ -347,6 +347,7 @@ export default function SheetsFeedPage({
             <ValueMappingTab
               valueState={mapping.valueState}
               valueCategories={catalogQuery.data.value_categories}
+              subroleCatalog={catalogQuery.data.subrole_catalog ?? {}}
               onAdd={mapping.addValueRow}
               onUpdate={mapping.updateValueRow}
               onRemove={mapping.removeValueRow}

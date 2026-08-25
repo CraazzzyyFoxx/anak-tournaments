@@ -19,6 +19,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from shared.domain.player_sub_roles import catalog_slugs, normalize_sub_role
 from src.domain.registration.utils import (
     normalize_header,
     parse_boolean_value,
@@ -433,6 +434,7 @@ def validate_mapping_config(
     target_specs: dict[str, MappingTargetSpec],
     header_keys: list[str] | None,
     valid_parsers: frozenset[str] = VALID_PARSERS,
+    subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
 ) -> list[MappingValidationIssue]:
     """Validate a ``mapping_config_json`` payload.
 
@@ -540,6 +542,22 @@ def validate_mapping_config(
                         target=target_key,
                     )
                 )
+            elif spec.default_parser == PARSER_SUBROLE_TOKEN and subrole_catalog is not None:
+                parts = spec.key.split(".")
+                role = parts[1] if len(parts) >= 3 and parts[0] == "roles" else None
+                slug = normalize_sub_role(str(raw_config.get("value")))
+                allowed = catalog_slugs(subrole_catalog, role)
+                if slug and allowed is not None and slug not in allowed:
+                    issues.append(
+                        MappingValidationIssue(
+                            code="unknown_subrole",
+                            message=f"'{slug}' is not a workspace sub-role"
+                            + (f" for {role}" if role else "")
+                            + ".",
+                            target=target_key,
+                        )
+                    )
+
 
     if not any(_target_is_mapped(targets.get(key)) for key in IDENTITY_TARGETS):
         issues.append(
@@ -550,6 +568,58 @@ def validate_mapping_config(
         )
 
     return issues
+
+
+def validate_value_mapping_subroles(
+    value_mapping: dict[str, Any] | None,
+    subrole_catalog: dict[str, list[dict[str, str]]] | None,
+) -> list[MappingValidationIssue]:
+    """Reject value-map entries whose mapped slug is not in the workspace catalog."""
+    if subrole_catalog is None or not value_mapping:
+        return []
+    issues: list[MappingValidationIssue] = []
+    all_slugs = catalog_slugs(subrole_catalog)
+    for sheet_key, raw in (value_mapping.get("subroles") or {}).items():
+        slug = normalize_sub_role(str(raw) if raw is not None else None)
+        if slug and all_slugs is not None and slug not in all_slugs:
+            issues.append(
+                MappingValidationIssue(
+                    code="unknown_subrole",
+                    message=f"Mapped sub-role '{slug}' is not in the workspace catalog.",
+                    column=str(sheet_key),
+                )
+            )
+    for sheet_key, raw in (value_mapping.get("role_subroles") or {}).items():
+        entries = raw if isinstance(raw, list) else [raw]
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            role = entry.get("role")
+            slug = normalize_sub_role(entry.get("subrole") if isinstance(entry.get("subrole"), str) else None)
+            if not slug:
+                continue
+            if role == "flex":
+                issues.append(
+                    MappingValidationIssue(
+                        code="unknown_subrole",
+                        message="Flex cannot carry a sub-role.",
+                        column=str(sheet_key),
+                    )
+                )
+                continue
+            allowed = catalog_slugs(subrole_catalog, role if isinstance(role, str) else None)
+            if allowed is not None and slug not in allowed:
+                issues.append(
+                    MappingValidationIssue(
+                        code="unknown_subrole",
+                        message=f"Mapped sub-role '{slug}' is not in the workspace catalog"
+                        + (f" for {role}" if role else "")
+                        + ".",
+                        column=str(sheet_key),
+                    )
+                )
+    return issues
+
 
 
 # ---------------------------------------------------------------------------

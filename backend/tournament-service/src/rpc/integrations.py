@@ -105,7 +105,17 @@ async def _get_source_workspace_or_404(
         raise HTTPException(status_code=400, detail="Source and target workspace must be different")
 
     source_workspace = await _get_workspace_or_404(session, source_workspace_id)
-    if not user.is_superuser and source_workspace_id not in user.get_workspace_ids():
+    # Marketplace browsing is cross-tenant by design (see
+    # `MarketplaceService.list_marketplace_workspaces`): the caller already
+    # proved `division_grid.read` on the TARGET workspace, so any admin able
+    # to reach this workspace's grid page may read another workspace's grids
+    # too. `is_hidden` is the one thing still worth checking -- it gates
+    # discoverability, so a hidden source workspace stays members/superuser-only.
+    if (
+        source_workspace.is_hidden
+        and not user.is_superuser
+        and source_workspace_id not in user.get_workspace_ids()
+    ):
         raise HTTPException(status_code=403, detail="Source workspace is not accessible")
     return source_workspace
 
@@ -248,7 +258,11 @@ def register(broker: Any, logger: Any) -> None:
                 challonge_slug=_require_q1(data, "challonge_slug"),
                 division_grid_version_id=_q1(data, "division_grid_version_id", int),
             )
-            return _dump(await tournament_flows.flows_service.to_pydantic(session, tournament, ["stages"]))
+            # `tournament_read`, not `to_pydantic`: `create_tournament_from_challonge`
+            # just created the `challonge_source` row this response's
+            # `challonge_id`/`challonge_slug` are derived from, and `to_pydantic`
+            # emits them as None unless the refs are resolved and passed in.
+            return _dump(await tournament_flows.flows_service.tournament_read(session, tournament, ["stages"]))
 
         return await _run(logger, op)
 

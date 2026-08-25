@@ -475,6 +475,70 @@ def test_role_subrole_token_unknown_returns_none():
     assert result is None
 
 
+_SUBROLE_CATALOG = {
+    "tank": [],
+    "dps": [{"slug": "hitscan", "label": "Hitscan"}],
+    "support": [{"slug": "main_heal", "label": "Main Heal"}],
+}
+
+
+def test_map_subrole_token_accepts_catalog_slug_without_value_map():
+    assert sheet_parsing.map_subrole_token("hitscan", {}, _SUBROLE_CATALOG) == "hitscan"
+
+
+def test_map_subrole_token_rejects_unknown_when_catalog():
+    assert sheet_parsing.map_subrole_token("burst", {}, _SUBROLE_CATALOG) is None
+
+
+def test_map_subrole_token_mapped_value_must_be_in_catalog():
+    assert (
+        sheet_parsing.map_subrole_token("хит", {"subroles": {"хит": "hitscan"}}, _SUBROLE_CATALOG)
+        == "hitscan"
+    )
+    assert sheet_parsing.map_subrole_token("хит", {"subroles": {"хит": "burst"}}, _SUBROLE_CATALOG) is None
+
+
+def test_role_subrole_rejects_unknown_subrole_when_catalog():
+    result = sheet_parsing.parse_target_value(
+        parser="role_subrole_token",
+        values=["heal"],
+        value_mapping={"role_subroles": {"heal": {"role": "support", "subrole": "not_a_real"}}},
+        grid=_grid(),
+        subrole_catalog=_SUBROLE_CATALOG,
+    )
+    assert result is None
+
+
+def test_role_subrole_accepts_catalog_subrole():
+    result = sheet_parsing.parse_target_value(
+        parser="role_subrole_token",
+        values=["heal"],
+        value_mapping={"role_subroles": {"heal": {"role": "support", "subrole": "main_heal"}}},
+        grid=_grid(),
+        subrole_catalog=_SUBROLE_CATALOG,
+    )
+    assert result == {"role": "support", "subrole": "main_heal"}
+
+
+def test_validate_value_mapping_unknown_subrole():
+    issues = catalog.validate_value_mapping_subroles({"subroles": {"foo": "burst"}}, _SUBROLE_CATALOG)
+    assert any(issue.code == "unknown_subrole" for issue in issues)
+
+
+def test_mapping_catalog_includes_subrole_catalog():
+    built = sheet_sync.build_mapping_catalog([], subrole_catalog=_SUBROLE_CATALOG)
+    assert built["subrole_catalog"] == _SUBROLE_CATALOG
+
+
+def test_catalog_slugs_none_skips_enforcement():
+    from shared.domain.player_sub_roles import catalog_slugs
+
+    assert catalog_slugs(None) is None
+    assert catalog_slugs(_SUBROLE_CATALOG, "dps") == {"hitscan"}
+    assert catalog_slugs(_SUBROLE_CATALOG) == {"hitscan", "main_heal"}
+
+
+
 def test_sr_value_numeric_string():
     result = sheet_parsing.parse_target_value(
         parser="sr_value",

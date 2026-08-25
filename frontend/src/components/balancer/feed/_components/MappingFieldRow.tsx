@@ -16,6 +16,7 @@ import type {
   MappingTargetMode,
   MappingTargetState,
 } from "@/types/balancer-admin.types";
+import type { SubroleCatalog } from "@/types/registration.types";
 
 import { HeaderCombobox } from "./HeaderCombobox";
 import { HeaderMultiCombobox } from "./HeaderMultiCombobox";
@@ -23,6 +24,7 @@ import { ModeToggle } from "./ModeToggle";
 
 const AUTO_FIELD_MODES: MappingTargetMode[] = ["auto", "columns"];
 const STANDARD_FIELD_MODES: MappingTargetMode[] = ["columns", "constant", "disabled"];
+const NONE = "__none__";
 
 interface MappingFieldRowProps {
   target: MappingTargetDef;
@@ -34,11 +36,17 @@ interface MappingFieldRowProps {
   /** Inline per-field error message, if any. */
   error?: string | null;
   disabled?: boolean;
+  subroleCatalog?: SubroleCatalog;
   onModeChange: (mode: MappingTargetState["mode"]) => void;
   onColumnsChange: (columns: string[]) => void;
   onValueChange: (value: string) => void;
   onParserChange: (parser: string) => void;
   onIsListChange: (is_list: boolean) => void;
+}
+
+function subroleRoleFromTarget(key: string): string | null {
+  const match = /^roles\.(dps|support)\.subrole$/.exec(key);
+  return match?.[1] ?? null;
 }
 
 function parserLabel(parsers: MappingParserDef[], parser: string): string {
@@ -53,6 +61,7 @@ export function MappingFieldRow({
   previewValue,
   error,
   disabled,
+  subroleCatalog,
   onModeChange,
   onColumnsChange,
   onValueChange,
@@ -64,6 +73,8 @@ export function MappingFieldRow({
   const activeParser = state.parser ?? target.default_parser;
   const availableModes = target.default_mode === "auto" ? AUTO_FIELD_MODES : STANDARD_FIELD_MODES;
   const showIsListToggle = target.default_is_list && state.mode === "columns";
+  const subroleRole = target.default_parser === "subrole_token" ? subroleRoleFromTarget(target.key) : null;
+  const subroleOptions = subroleRole ? (subroleCatalog?.[subroleRole] ?? []) : [];
 
   return (
     <div className={cn("px-4 py-3", error && "bg-destructive/5")}>
@@ -116,13 +127,35 @@ export function MappingFieldRow({
           ) : null}
 
           {state.mode === "constant" ? (
-            <Input
-              value={state.value ?? ""}
-              onChange={(event) => onValueChange(event.target.value)}
-              placeholder="Constant value applied to every row"
-              disabled={disabled}
-              className="h-9"
-            />
+            subroleRole ? (
+              <Select
+                value={state.value ? state.value : NONE}
+                onValueChange={(value) => onValueChange(value === NONE ? "" : value)}
+                disabled={disabled || subroleOptions.length === 0}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue
+                    placeholder={subroleOptions.length === 0 ? "No workspace sub-roles" : "Workspace sub-role"}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>None</SelectItem>
+                  {subroleOptions.map((option) => (
+                    <SelectItem key={option.slug} value={option.slug}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                value={state.value ?? ""}
+                onChange={(event) => onValueChange(event.target.value)}
+                placeholder="Constant value applied to every row"
+                disabled={disabled}
+                className="h-9"
+              />
+            )
           ) : null}
 
           {state.mode === "disabled" ? (

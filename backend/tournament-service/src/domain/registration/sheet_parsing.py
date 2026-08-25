@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from shared.division_grid import DivisionGrid
-from shared.domain.player_sub_roles import normalize_sub_role
+from shared.domain.player_sub_roles import catalog_slugs, normalize_sub_role
 from src.domain.registration.mapping_catalog import (
     ParsedRowResult,
     build_target_specs,
@@ -73,7 +73,11 @@ def map_role_token(value: str | None, value_mapping: dict[str, Any]) -> str | No
     return None
 
 
-def map_subrole_token(value: str | None, value_mapping: dict[str, Any]) -> str | None:
+def map_subrole_token(
+    value: str | None,
+    value_mapping: dict[str, Any],
+    subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+) -> str | None:
     if value is None:
         return None
     normalized = normalize_header(value)
@@ -81,21 +85,54 @@ def map_subrole_token(value: str | None, value_mapping: dict[str, Any]) -> str |
         normalize_header(key): mapped_value for key, mapped_value in (value_mapping.get("subroles") or {}).items()
     }
     mapped = custom_map.get(normalized)
-    if mapped:
-        return normalize_sub_role(mapped)
-    return None
+    candidate = normalize_sub_role(str(mapped) if mapped else None) or normalize_sub_role(value)
+    if not candidate:
+        return None
+    allowed = catalog_slugs(subrole_catalog)
+    if allowed is not None and candidate not in allowed:
+        return None
+    return candidate
 
 
-def _valid_role_subrole_entry(entry: Any) -> RoleSubroleEntry | None:
+def _subrole_for_role(
+    value: Any,
+    role: str,
+    catalog: dict[str, list[dict[str, str]]] | None,
+) -> str | None:
+    slug = normalize_sub_role(value) if isinstance(value, str) else None
+    if not slug:
+        return None
+    allowed = catalog_slugs(catalog, role)
+    if allowed is not None and slug not in allowed:
+        return None
+    return slug
+
+
+
+def _valid_role_subrole_entry(
+    entry: Any,
+    subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+) -> RoleSubroleEntry | None:
     if not isinstance(entry, dict):
         return None
     role = entry.get("role")
-    if role == "flex" or role in VALID_ROLES:
-        return {"role": role, "subrole": entry.get("subrole")}
-    return None
+    if role != "flex" and role not in VALID_ROLES:
+        return None
+    raw_sub = entry.get("subrole")
+    subrole = normalize_sub_role(raw_sub if isinstance(raw_sub, str) else None)
+    if role == "flex":
+        return {"role": role, "subrole": None}
+    allowed = catalog_slugs(subrole_catalog, role if isinstance(role, str) else None)
+    if subrole and allowed is not None and subrole not in allowed:
+        return None
+    return {"role": role, "subrole": subrole}
 
 
-def map_role_subrole_tokens(value: str | None, value_mapping: dict[str, Any]) -> list[RoleSubroleEntry]:
+def map_role_subrole_tokens(
+    value: str | None,
+    value_mapping: dict[str, Any],
+    subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+) -> list[RoleSubroleEntry]:
     """Return all role+subrole entries for a single cell value.
 
     A value_mapping entry may be a single dict or a list of dicts (multi-role
@@ -108,13 +145,17 @@ def map_role_subrole_tokens(value: str | None, value_mapping: dict[str, Any]) ->
     custom_map = {normalize_header(k): v for k, v in (value_mapping.get("role_subroles") or {}).items()}
     raw = custom_map.get(normalized)
     if isinstance(raw, list):
-        return [e for e in (_valid_role_subrole_entry(item) for item in raw) if e is not None]
-    entry = _valid_role_subrole_entry(raw)
+        return [e for e in (_valid_role_subrole_entry(item, subrole_catalog) for item in raw) if e is not None]
+    entry = _valid_role_subrole_entry(raw, subrole_catalog)
     return [entry] if entry else []
 
 
-def map_role_subrole_token(value: str | None, value_mapping: dict[str, Any]) -> RoleSubroleEntry | None:
-    entries = map_role_subrole_tokens(value, value_mapping)
+def map_role_subrole_token(
+    value: str | None,
+    value_mapping: dict[str, Any],
+    subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+) -> RoleSubroleEntry | None:
+    entries = map_role_subrole_tokens(value, value_mapping, subrole_catalog)
     return entries[0] if entries else None
 
 
@@ -150,7 +191,11 @@ def parse_role_token_list(values: list[str], value_mapping: dict[str, Any]) -> l
     return unique_strings(roles)
 
 
-def parse_role_subrole_token_list(values: list[str], value_mapping: dict[str, Any]) -> list[RoleSubroleEntry]:
+def parse_role_subrole_token_list(
+    values: list[str],
+    value_mapping: dict[str, Any],
+    subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+) -> list[RoleSubroleEntry]:
     """Parse a list of role+subrole tokens, one per value (column).
 
     Each value is treated as a single complete token — no splitting by separators.
@@ -160,7 +205,7 @@ def parse_role_subrole_token_list(values: list[str], value_mapping: dict[str, An
     entries: list[RoleSubroleEntry] = []
     seen_roles: set[str] = set()
     for value in values:
-        for entry in map_role_subrole_tokens(value.strip() or None, value_mapping):
+        for entry in map_role_subrole_tokens(value.strip() or None, value_mapping, subrole_catalog):
             role = entry.get("role") or ""
             if role and role not in seen_roles:
                 seen_roles.add(role)
@@ -266,6 +311,7 @@ def parse_target_value(
     value_mapping: dict[str, Any],
     grid: DivisionGrid,
     is_list: bool = False,
+    subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
 ) -> Any:
     if parser == "string":
         return values[0].strip() if values else None
@@ -286,7 +332,7 @@ def parse_target_value(
     if parser == "role_token_list":  # backward compat — treated as role_token + is_list=True
         return parse_role_token_list(values, value_mapping)
     if parser == "subrole_token":
-        return map_subrole_token(values[0] if values else None, value_mapping)
+        return map_subrole_token(values[0] if values else None, value_mapping, subrole_catalog)
     if parser == "division_to_rank":
         raw_value = values[0] if values else None
         normalized = normalize_header(raw_value)
@@ -303,8 +349,8 @@ def parse_target_value(
         return "\n".join(value.strip() for value in values if value.strip()) or None
     if parser == "role_subrole_token":
         if is_list:
-            return parse_role_subrole_token_list(values, value_mapping)
-        return map_role_subrole_token(values[0] if values else None, value_mapping)
+            return parse_role_subrole_token_list(values, value_mapping, subrole_catalog)
+        return map_role_subrole_token(values[0] if values else None, value_mapping, subrole_catalog)
     if parser == "sr_value":
         return _parse_sr_value(values[0] if values else None, value_mapping)
     return values[0] if values else None
@@ -318,6 +364,7 @@ def parse_sheet_row_detailed(
     value_mapping: dict[str, Any] | None,
     grid: DivisionGrid,
     custom_fields: list[CustomFieldDefinition] | None = None,
+    subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
 ) -> ParsedRowResult:
     """Parse one sheet row into the structured registration payload.
 
@@ -351,6 +398,7 @@ def parse_sheet_row_detailed(
                 value_mapping=effective_value_mapping,
                 grid=grid,
                 is_list=is_list,
+                subrole_catalog=subrole_catalog,
             )
         except Exception as exc:  # noqa: BLE001 - surface per-field instead of failing the row
             flat_values[target_key] = None
@@ -388,14 +436,14 @@ def parse_sheet_row_detailed(
             },
             "dps": {
                 "rank_value": flat_values.get("roles.dps.rank_value") or flat_values.get("roles.dps.division_input"),
-                "subrole": flat_values.get("roles.dps.subrole"),
+                "subrole": _subrole_for_role(flat_values.get("roles.dps.subrole"), "dps", subrole_catalog),
                 "is_active": flat_values.get("roles.dps.is_active"),
                 "priority": flat_values.get("roles.dps.priority"),
             },
             "support": {
                 "rank_value": flat_values.get("roles.support.rank_value")
                 or flat_values.get("roles.support.division_input"),
-                "subrole": flat_values.get("roles.support.subrole"),
+                "subrole": _subrole_for_role(flat_values.get("roles.support.subrole"), "support", subrole_catalog),
                 "is_active": flat_values.get("roles.support.is_active"),
                 "priority": flat_values.get("roles.support.priority"),
             },
@@ -431,6 +479,7 @@ def parse_sheet_row(
     value_mapping: dict[str, Any] | None,
     grid: DivisionGrid,
     custom_fields: list[CustomFieldDefinition] | None = None,
+    subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
 ) -> dict[str, Any] | None:
     return parse_sheet_row_detailed(
         headers=headers,
@@ -439,6 +488,7 @@ def parse_sheet_row(
         value_mapping=value_mapping,
         grid=grid,
         custom_fields=custom_fields,
+        subrole_catalog=subrole_catalog,
     ).fields
 
 
