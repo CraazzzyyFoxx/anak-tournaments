@@ -2,7 +2,7 @@
 //
 // The workspace roster is the one panel on the balancer page that talks to the
 // network on its own, so the states around the happy path are what break in
-// production. Five things are pinned here:
+// production. Pinned here:
 //
 //  1. "nothing here" and "nothing matched your search" are different messages,
 //     and the second one offers the way back;
@@ -10,14 +10,16 @@
 //     empty state and telling an admin the workspace has no players;
 //  3. the add field validates on submit rather than sitting behind a disabled
 //     button, so the reason nothing happens is visible;
-//  4. saving one member's rank disables that member's pickers only — the whole
-//     list used to grey out on every single edit;
-//  5. the layer switch writes where it says it writes, and a picker on the
-//     author layer shows the inherited workspace value instead of an empty slot.
+//  4. ranks are edited in the sheet, not in the row: the row's own crest pickers
+//     could set a rank but never clear one, and cost every row three controls;
+//  5. the row indents for a lineup toggle only when there is one to indent for;
+//  6. the layer the panel was mounted with is the layer a write lands in, and an
+//     inherited workspace value is shown as inherited rather than as the
+//     author's own.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RosterMember } from "@/services/workspace-player.service";
 
@@ -27,6 +29,11 @@ declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
 
 const list = vi.fn();
 const upsert = vi.fn();
@@ -52,32 +59,20 @@ vi.mock("@/services/workspace-player.service", () => ({
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
-// The real picker needs the workspace division grid; the row only needs a
-// control that carries its accessible name and disabled state.
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
-vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => ({ tiers: [] }) }));
-// The picker's `rank` is what decides whether an inherited value is visible, so
-// the stub surfaces it as an attribute rather than swallowing it.
-vi.mock("@/app/balancer/components/DivisionRankPicker", () => ({
-  DivisionRankPicker: ({
-    rank,
-    label,
-    disabled,
-    onChange,
-  }: {
-    rank: number | null | undefined;
-    label: string;
-    disabled?: boolean;
-    onChange: (rank: number | null) => void;
-  }) => (
-    <button
-      type="button"
-      aria-label={label}
-      data-rank={rank ?? ""}
-      disabled={disabled}
-      onClick={() => onChange(1200)}
-    />
-  ),
+// The sheet's live-rank card is a network read of its own and not what any of
+// this pins.
+vi.mock("@/components/RankHistory", () => ({ default: () => null }));
+// The real rank controls are used as-is — the number field and Clear are the
+// two things the row lost — so they need a grid to resolve divisions against.
+vi.mock("@/hooks/useCurrentWorkspace", () => ({
+  useDivisionGrid: () => ({
+    tiers: [
+      { number: 1, name: "Bronze", rank_min: 1000, rank_max: 1999, icon_url: "" },
+      { number: 2, name: "Silver", rank_min: 2000, rank_max: 2999, icon_url: "" },
+      { number: 3, name: "Gold", rank_min: 3000, rank_max: 3999, icon_url: "" },
+    ],
+  }),
 }));
 
 const WORKSPACE_ID = 7;
@@ -102,6 +97,21 @@ function tick() {
   return promise;
 }
 
+/**
+ * Every root this file mounts, so a test can be torn down by unmounting rather
+ * than by wiping `document.body`. The sheet is portaled out of the panel, so
+ * clearing the body under a still-mounted root left React trying to remove a
+ * node that was no longer its child.
+ */
+const roots: Array<{ unmount: () => void }> = [];
+
+async function unmountAll() {
+  await act(async () => {
+    for (const root of roots.splice(0)) root.unmount();
+  });
+  document.body.innerHTML = "";
+}
+
 async function mount(
   props: {
     scope?: "workspace" | "author";
@@ -114,8 +124,10 @@ async function mount(
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const root = createRoot(container);
+  roots.push(root);
   await act(async () => {
-    createRoot(container).render(
+    root.render(
       <QueryClientProvider client={client}>
         <WorkspacePlayersSidebar
           workspaceId={WORKSPACE_ID}
@@ -172,6 +184,15 @@ function settle() {
   });
 }
 
+/** Past the sheet's write delay, so a settled rank edit has had its chance to flush. */
+function flushRankWrite() {
+  return act(async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 500);
+    await promise;
+  });
+}
+
 function button(scope: Element, text: string) {
   return [...scope.querySelectorAll("button")].find((node) => node.textContent?.includes(text));
 }
@@ -180,8 +201,27 @@ function field(scope: Element, label: string) {
   return scope.querySelector<HTMLInputElement>(`input[aria-label='${label}']`);
 }
 
+/** Radix portals the sheet, so its controls are a sibling of the panel. */
+function openSheet(scope: Element, label: string) {
+  return click(scope.querySelector(`button[title='Edit ${label}']`));
+}
+
+/** Every rank field in the open sheet, in render order: tank, dps, support. */
+function rankFields() {
+  return [...document.body.querySelectorAll<HTMLInputElement>('input[inputmode="numeric"]')];
+}
+
+function clearButtons() {
+  return [...document.body.querySelectorAll("button")].filter(
+    (node) => node.textContent?.trim() === "Clear",
+  );
+}
+
+afterEach(async () => {
+  await unmountAll();
+});
+
 beforeEach(() => {
-  document.body.innerHTML = "";
   list.mockReset();
   upsert.mockReset();
   setRanks.mockReset();
@@ -252,22 +292,32 @@ describe("WorkspacePlayersSidebar", () => {
     expect(upsert).toHaveBeenCalledWith(WORKSPACE_ID, "Cyrus#3333");
   });
 
-  it("disables the pickers of the row being saved, not the whole roster", async () => {
-    setRanks.mockReturnValue(Promise.withResolvers<{ ranks: Record<string, number> }>().promise);
-
+  it("edits ranks in the sheet rather than in the row", async () => {
     const scope = await mount();
-    const ariaTank = scope.querySelector<HTMLButtonElement>("button[aria-label='Tank rank for Aria#1111']");
-    const borysTank = scope.querySelector<HTMLButtonElement>("button[aria-label='Tank rank for Borys#2222']");
-    if (!ariaTank || !borysTank) throw new Error("Expected a rank picker per role per row");
 
-    await click(ariaTank);
+    // The row's three crest pickers are gone: they could set a rank and never
+    // clear one, on every row whether or not anyone was editing it.
+    expect(scope.querySelector("button[aria-label='Tank rank for Aria#1111']")).toBeNull();
+    expect(rankFields()).toHaveLength(0);
 
-    expect(
-      scope.querySelector<HTMLButtonElement>("button[aria-label='Tank rank for Aria#1111']")?.disabled,
-    ).toBe(true);
-    expect(
-      scope.querySelector<HTMLButtonElement>("button[aria-label='Tank rank for Borys#2222']")?.disabled,
-    ).toBe(false);
+    await openSheet(scope, "Aria#1111");
+
+    // One field per role, and only for the player that was opened.
+    expect(rankFields()).toHaveLength(3);
+    expect(document.body.textContent).toContain("Roles and ranks");
+  });
+
+  it("reserves the leading column only for a panel that owns a lineup", async () => {
+    const withoutLineup = await mount();
+    const row = withoutLineup.querySelector("li");
+    // The placeholder that held the toggle's place indented every row against
+    // nothing on the balancer page, which has no lineup to toggle into.
+    expect(row?.className).toContain("grid-cols-1");
+    expect(row?.querySelector("button[aria-label*='the lineup']")).toBeNull();
+
+    await unmountAll();
+    const withLineup = await mount({ onTogglePlayer: vi.fn() });
+    expect(withLineup.querySelector("li")?.className).toContain("grid-cols-[24px_minmax(0,1fr)]");
   });
 
   it("keeps the collapsed rail count honest while the first page is in flight", async () => {
@@ -280,7 +330,7 @@ describe("WorkspacePlayersSidebar", () => {
     expect(scope.querySelector(".animate-pulse")).not.toBeNull();
   });
 
-  it("toggles lineup membership from the row's own control, not from the name", async () => {
+  it("toggles lineup membership from the row's own control, and opens the sheet from the name", async () => {
     const onTogglePlayer = vi.fn();
     const scope = await mount({ onTogglePlayer });
 
@@ -291,11 +341,11 @@ describe("WorkspacePlayersSidebar", () => {
     expect(onTogglePlayer).toHaveBeenCalledTimes(1);
     expect(onTogglePlayer.mock.calls[0][0].member_id).toBe(1);
 
-    // The name used to be the toggle, so reading a row risked changing it.
-    const nameNodes = [...scope.querySelectorAll("button")].filter(
-      (node) => node.textContent?.trim() === "Aria#1111",
-    );
-    expect(nameNodes).toEqual([]);
+    // The name is the way into the sheet, the way the pool row opens the
+    // tournament one — never a second lineup toggle.
+    await openSheet(scope, "Aria#1111");
+    expect(onTogglePlayer).toHaveBeenCalledTimes(1);
+    expect(rankFields()).toHaveLength(3);
   });
 
   it("announces a row already in the lineup as the way back out", async () => {
@@ -330,7 +380,10 @@ describe("WorkspacePlayersSidebar", () => {
     // fallback, not the rank a tournament balances on.
     expect(scope.textContent).not.toContain("carry across every tournament");
 
-    await click(scope.querySelector("button[aria-label='Tank rank for Aria#1111']"));
+    await openSheet(scope, "Aria#1111");
+    await type(rankFields()[0], "1200");
+    await flushRankWrite();
+
     expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
       scope: "workspace",
       ranks: { tank: 1200 },
@@ -346,7 +399,10 @@ describe("WorkspacePlayersSidebar", () => {
     expect(button(scope, "Workspace")).toBeUndefined();
     expect(button(scope, "Mine")).toBeUndefined();
 
-    await click(scope.querySelector("button[aria-label='DPS rank for Aria#1111']"));
+    await openSheet(scope, "Aria#1111");
+    await type(rankFields()[1], "1200");
+    await flushRankWrite();
+
     expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
       scope: "author",
       ranks: { dps: 1200 },
@@ -354,7 +410,53 @@ describe("WorkspacePlayersSidebar", () => {
     });
   });
 
-  it("shows an inherited workspace rank on the author layer instead of an empty picker", async () => {
+  it("clears a rank off the layer instead of pinning a zero over it", async () => {
+    list.mockImplementation(() =>
+      Promise.resolve({
+        results: [member(1, "Aria#1111", { ranks: { tank: 2500 } })],
+        total: 1,
+        page: 1,
+        per_page: 30,
+      }),
+    );
+
+    const scope = await mount({ scope: "workspace" });
+    await openSheet(scope, "Aria#1111");
+
+    // Only the role that has a value on this layer has anything to drop.
+    const buttons = clearButtons();
+    expect(buttons).toHaveLength(1);
+
+    await click(buttons[0]);
+
+    expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
+      scope: "workspace",
+      ranks: {},
+      clear: ["tank"],
+    });
+  });
+
+  it("locks the sheet of the member being saved rather than the roster behind it", async () => {
+    setRanks.mockReturnValue(Promise.withResolvers<{ ranks: Record<string, number> }>().promise);
+    list.mockImplementation(() =>
+      Promise.resolve({
+        results: [member(1, "Aria#1111", { ranks: { tank: 2500 } }), member(2, "Borys#2222")],
+        total: 2,
+        page: 1,
+        per_page: 30,
+      }),
+    );
+
+    const scope = await mount();
+    await openSheet(scope, "Aria#1111");
+    await click(clearButtons()[0]);
+
+    expect(rankFields().every((node) => node.disabled)).toBe(true);
+    // The roster behind the sheet is still readable and still openable.
+    expect(scope.querySelector("button[title='Edit Borys#2222']")).not.toBeNull();
+  });
+
+  it("shows an inherited workspace rank on the author layer instead of an empty field", async () => {
     list.mockImplementation(() =>
       Promise.resolve({
         results: [
@@ -369,18 +471,13 @@ describe("WorkspacePlayersSidebar", () => {
 
     const scope = await mount({ scope: "author" });
 
-    // Aria has no entry of her own. An empty slot here read as "unranked" and
-    // hid the value the mix would actually use, so the picker shows the canon
-    // and its accessible name says where the number came from.
-    expect(
-      scope
-        .querySelector("button[aria-label='Tank rank for Aria#1111, inherited 2500 from the workspace']")
-        ?.getAttribute("data-rank"),
-    ).toBe("2500");
-
-    // Borys set his own, so the same slot is plain and carries his number.
-    expect(
-      scope.querySelector("button[aria-label='Tank rank for Borys#2222']")?.getAttribute("data-rank"),
-    ).toBe("3100");
+    // Aria has no entry of her own. An empty field here read as "unranked" and
+    // hid the value the mix would actually use, so the sheet shows the canon and
+    // badges where the number came from — with no Clear, since there is nothing
+    // of hers to drop.
+    await openSheet(scope, "Aria#1111");
+    expect(rankFields()[0].value).toBe("2500");
+    expect(document.body.textContent).toContain("Workspace");
+    expect(clearButtons()).toHaveLength(0);
   });
 });

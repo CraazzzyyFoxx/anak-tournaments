@@ -8,13 +8,13 @@ import {
   Loader2,
   PanelRightClose,
   PanelRightOpen,
+  Pencil,
   Search,
   UserPlus,
   Users,
   X,
 } from "lucide-react";
 
-import { DivisionRankPicker } from "@/app/balancer/components/DivisionRankPicker";
 import {
   ICON_BUTTON_CLASS,
   PANEL_CLASS,
@@ -25,6 +25,7 @@ import {
   BattleTagContextMenuItems,
   BattleTagCopyButton,
 } from "@/app/balancer/components/BattleTagCopyControls";
+import { WorkspacePlayerSheet } from "@/app/balancer/components/WorkspacePlayerSheet";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
@@ -53,9 +54,6 @@ import {
 
 const PER_PAGE = 30;
 
-/** Matches the three `size-8` rank pickers a row ends with, so the legend sits over its column. */
-const RANK_COLUMN_CLASS = "flex size-8 shrink-0 items-center justify-center";
-
 /**
  * What each layer actually means, said in the row's own terms.
  *
@@ -69,10 +67,6 @@ const SCOPE_CAPTIONS: Record<RankScope, string> = {
     "Shared fallback \u2014 used only where nobody set their own rank for a tournament or mix.",
   author: "Your own book \u2014 beats the workspace rank in the mixes you host. Only you see it.",
 };
-
-const SCOPE_LABELS: Record<RankScope, string> = { workspace: "Workspace", author: "Mine" };
-
-const NO_RANKS: Record<string, number> = {};
 
 type WorkspacePlayersSidebarProps = {
   workspaceId: number;
@@ -102,33 +96,32 @@ function rangeSummary(page: number, perPage: number, shown: number, total: numbe
 
 type RosterMemberRowProps = {
   member: RosterMember;
-  /** Which layer the pickers read and write. */
+  /** Which layer the ranks this row reads come from. */
   scope: RankScope;
-  canEdit: boolean;
   isSelected: boolean;
-  isSaving: boolean;
   onToggle?: (member: RosterMember) => void;
-  /** `null` drops the role from the layer rather than zeroing it. */
-  onSaveRank: (role: string, rank: number | null) => void;
+  /** Opens the rank sheet — the row shows ranks, it no longer edits them. */
+  onOpen: (member: RosterMember) => void;
 };
 
 /**
  * The tournament pool row, simplified.
  *
- * Same anatomy as `PoolPlayerCompactList`'s row — leading selection dot, the
- * ranked-role glyphs beside the name, the division icon and accent-coloured top
- * rank on the right, a BattleTag copy button, and a right-click menu — minus
- * everything that only exists for a tournament registration: the balancer status
- * menu, the pool include/exclude button, and the Flex / Ready / issue chips. A
- * workspace member has no registration to carry a status, and no pool to be
- * excluded from; what it does have, and the pool row does not, is directly
- * editable ranks, which is why the three pickers stay on the second line.
+ * Same anatomy as `PoolPlayerCompactList`'s row — a leading selection dot where
+ * the caller keeps a lineup, the ranked-role glyphs beside the name, the
+ * division icon and accent-coloured top rank on the right, a BattleTag copy
+ * button, and a right-click menu — minus everything that only exists for a
+ * tournament registration: the balancer status menu, the pool include/exclude
+ * button, and the Flex / Ready / issue chips.
  *
- * Those pickers edit *one* layer at a time, and a value the layer does not own
- * is shown dimmed with the inheritance spelled out in its accessible name. A
- * picker that rendered an inherited number as if it were the author's own made
- * "set" and "leave alone" look identical, which is exactly the mistake the
- * layered ranks exist to make visible.
+ * Editing opens `WorkspacePlayerSheet` the same three ways the pool row opens
+ * the tournament sheet: the name, a double-click, the context menu. The row used
+ * to end in three crest pickers instead, which charged every row for a control
+ * most rows never use and offered no way to clear a rank at all — that picker
+ * listed divisions and nothing else.
+ *
+ * With no lineup toggle there is no leading column either: the placeholder that
+ * held its place indented every row by 24px against nothing.
  *
  * Memoized for the same reason the pool row is: each row mounts a Radix context
  * menu root, and the search field is deferred, so an unmemoized list re-rendered
@@ -137,19 +130,15 @@ type RosterMemberRowProps = {
 const RosterMemberRow = memo(function RosterMemberRow({
   member,
   scope,
-  canEdit,
   isSelected,
-  isSaving,
   onToggle,
-  onSaveRank,
+  onOpen,
 }: RosterMemberRowProps) {
   const grid = getDefaultDivisionGrid();
   const label = memberLabel(member);
   const { name, suffix } = splitBattleTag(label);
   // Only the author layer inherits: the workspace canon has nothing above it
   // that a roster row can see (Overwatch resolution happens per mix).
-  const own = scope === "author" ? member.author_ranks : member.ranks;
-  const inherited = scope === "author" ? member.ranks : NO_RANKS;
   const effective = scope === "author" ? { ...member.ranks, ...member.author_ranks } : member.ranks;
 
   const rankedRoles = ROLES.filter((role) => typeof effective[role.code] === "number");
@@ -165,8 +154,15 @@ const RosterMemberRow = memo(function RosterMemberRow({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <li
+          onDoubleClick={(event) => {
+            if (event.target instanceof HTMLElement && event.target.closest("[data-card-action]")) {
+              return;
+            }
+            onOpen(member);
+          }}
           className={cn(
-            "group grid w-full grid-cols-[24px_minmax(0,1fr)] items-start gap-2 rounded-xl border px-2.5 py-2 transition-colors",
+            "group grid w-full items-start gap-2 rounded-xl border px-2.5 py-2 transition-colors",
+            onToggle ? "grid-cols-[24px_minmax(0,1fr)]" : "grid-cols-1",
             "border-[color:var(--aqt-border)] bg-white/[0.02]",
             "hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.04]",
             isSelected && "border-primary/45 bg-primary/[0.08]",
@@ -175,6 +171,7 @@ const RosterMemberRow = memo(function RosterMemberRow({
           {onToggle ? (
             <button
               type="button"
+              data-card-action
               aria-pressed={isSelected}
               aria-label={isSelected ? `Remove ${label} from the lineup` : `Add ${label} to the lineup`}
               onClick={() => onToggle(member)}
@@ -191,9 +188,7 @@ const RosterMemberRow = memo(function RosterMemberRow({
                 <Circle className="size-2.5 fill-current stroke-none" aria-hidden="true" />
               )}
             </button>
-          ) : (
-            <span aria-hidden="true" />
-          )}
+          ) : null}
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -212,16 +207,21 @@ const RosterMemberRow = memo(function RosterMemberRow({
                 {/* One truncating line, not a flex pair: with the discriminator as
                     its own `shrink-0` item, a narrow sidebar clipped the whole name
                     away and left a row identified only by `#1111`. */}
-                <span
-                  title={label}
-                  className="min-w-0 truncate text-[13px] font-medium text-[color:var(--aqt-fg)]"
+                <button
+                  type="button"
+                  data-card-action
+                  onClick={() => onOpen(member)}
+                  title={`Edit ${label}`}
+                  className="flex min-w-0 items-baseline rounded text-left"
                 >
-                  {name}
-                  {suffix ? <span className="text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
-                </span>
+                  <span className="min-w-0 truncate text-[13px] font-medium text-[color:var(--aqt-fg)]">
+                    {name}
+                    {suffix ? <span className="text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
+                  </span>
+                </button>
               </div>
 
-              <div className="flex shrink-0 items-center gap-1.5">
+              <div className="flex shrink-0 items-center gap-1.5" data-card-action>
                 {division == null ? null : (
                   <span title={`Division ${division}`}>
                     <DivisionIcon division={division} width={20} height={20} />
@@ -243,39 +243,15 @@ const RosterMemberRow = memo(function RosterMemberRow({
                 {member.battle_tag ? <BattleTagCopyButton battleTag={member.battle_tag} /> : null}
               </div>
             </div>
-
-            <div
-              role="group"
-              aria-label={`${SCOPE_LABELS[scope]} ranks for ${label}`}
-              className="mt-1.5 flex items-center justify-end gap-1.5"
-            >
-              {ROLES.map((role) => {
-                const ownRank = own[role.code] ?? null;
-                const inheritedRank = ownRank == null ? (inherited[role.code] ?? null) : null;
-                return (
-                  <span
-                    key={role.code}
-                    className={cn("inline-flex shrink-0", inheritedRank != null && "opacity-45")}
-                  >
-                    <DivisionRankPicker
-                      rank={ownRank ?? inheritedRank}
-                      disabled={!canEdit || isSaving}
-                      label={
-                        inheritedRank == null
-                          ? `${ROLE_LABELS[role.code]} rank for ${label}`
-                          : `${ROLE_LABELS[role.code]} rank for ${label}, inherited ${inheritedRank} from the workspace`
-                      }
-                      onChange={(nextRank) => onSaveRank(role.code, nextRank)}
-                    />
-                  </span>
-                );
-              })}
-            </div>
           </div>
         </li>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
         <ContextMenuLabel>Player actions</ContextMenuLabel>
+        <ContextMenuItem onClick={() => onOpen(member)}>
+          <Pencil className="h-4 w-4" />
+          Edit ranks
+        </ContextMenuItem>
         {onToggle ? (
           <ContextMenuItem onClick={() => onToggle(member)}>
             <Check className="h-4 w-4" />
@@ -303,6 +279,7 @@ export function WorkspacePlayersSidebar({
   const [battleTag, setBattleTag] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
   const deferredSearch = useDeferredValue(search.trim());
   const searchRef = useRef<HTMLInputElement>(null);
   const battleTagRef = useRef<HTMLInputElement>(null);
@@ -352,6 +329,9 @@ export function WorkspacePlayersSidebar({
   const total = pageData?.total ?? null;
   const members = pageData?.results ?? [];
   const totalPages = pageData ? Math.max(1, Math.ceil(pageData.total / pageData.per_page)) : 1;
+  // Read back out of the list rather than held as state, so a saved rank lands
+  // in the open sheet the way the server normalised it.
+  const editingMember = members.find((row) => row.member_id === editingMemberId) ?? null;
 
   if (collapsed) {
     return (
@@ -588,31 +568,9 @@ export function WorkspacePlayersSidebar({
         </div>
       ) : null}
 
-      {/* Same box model as a row — the scroller's `pr-2`, the row's transparent
-          border and its `24px` selection column are what put each glyph exactly
-          over its picker below. */}
-      <div className="mt-3 pr-2">
-        <div className="grid grid-cols-[24px_minmax(0,1fr)] items-center gap-2 border border-transparent px-2.5 pb-1.5">
-          <span aria-hidden="true" />
-          <div className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
-              Player
-            </span>
-            {/* Decorative: every picker below already announces its own role and player. */}
-            <div className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
-              {ROLES.map((role) => (
-                <span key={role.code} className={RANK_COLUMN_CLASS} title={ROLE_LABELS[role.code]}>
-                  <PlayerRoleIcon role={role.icon} size={14} decorative />
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Below `xl` the balancer shell drops its fixed height, so an uncapped scroller
           would grow to its content and push a scrollbar onto the document. */}
-      <div className="min-h-0 max-h-[calc(100svh-16rem)] flex-1 overflow-y-auto overflow-x-hidden pr-2">
+      <div className="mt-3 min-h-0 max-h-[calc(100svh-16rem)] flex-1 overflow-y-auto overflow-x-hidden pr-2">
         {membersQuery.isLoading ? (
           <div className="space-y-1.5">
             {[0, 1, 2, 3, 4, 5].map((row) => (
@@ -657,15 +615,9 @@ export function WorkspacePlayersSidebar({
                 key={member.member_id}
                 member={member}
                 scope={scope}
-                canEdit={canEdit}
                 isSelected={selected.has(member.member_id)}
-                // Scoped to the row being written: one save used to disable every
-                // picker in the list, so the whole panel greyed out per keystroke.
-                isSaving={saveRank.isPending && saveRank.variables?.memberId === member.member_id}
                 onToggle={onTogglePlayer}
-                onSaveRank={(role, rank) =>
-                  saveRank.mutate({ memberId: member.member_id, role, rank })
-                }
+                onOpen={(row) => setEditingMemberId(row.member_id)}
               />
             ))}
           </ul>
@@ -686,6 +638,21 @@ export function WorkspacePlayersSidebar({
           }
         />
       </div>
+
+      <WorkspacePlayerSheet
+        member={editingMember}
+        scope={scope}
+        canEdit={canEdit}
+        // Scoped to the member being written: the sheet is the only surface that
+        // edits, so a save anywhere else has no control to disable.
+        saving={saveRank.isPending && saveRank.variables?.memberId === editingMemberId}
+        onOpenChange={(open) => {
+          if (!open) setEditingMemberId(null);
+        }}
+        onSaveRank={(role, rank) => {
+          if (editingMemberId != null) saveRank.mutate({ memberId: editingMemberId, role, rank });
+        }}
+      />
     </div>
   );
 }
