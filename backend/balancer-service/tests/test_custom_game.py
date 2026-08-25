@@ -339,6 +339,23 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.detail, "empty_lineup")
         self.run_balance.assert_not_called()
 
+    async def test_balance_solver_value_error_is_422_not_internal(self) -> None:
+        """The solver raises plain ``ValueError`` for diagnosable input problems
+        (e.g. an 11th player breaks the 5-per-team default mask). Left uncaught
+        it reached the generic RPC handler and was reported as an opaque
+        "internal error" instead of the actual, actionable reason."""
+        self.games.get.return_value = _game()
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        self.ranks.resolve.return_value = _ranks(7)
+        self.run_balance.side_effect = ValueError(
+            "Player count must be divisible by team size. Got 11 players, team size is 5"
+        )
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.assertIn("divisible by team size", ctx.exception.detail)
+
     async def test_balance_unranked_player_422(self) -> None:
         self.games.get.return_value = _game()
         self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]

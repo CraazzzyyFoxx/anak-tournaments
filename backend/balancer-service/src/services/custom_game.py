@@ -360,12 +360,20 @@ class CustomGameService:
         config = game.config_json or {}
         role_mask = config.get("role_mask") or dict(DEFAULT_ROSTER_SLOTS)
         config_overrides = {key: value for key, value in config.items() if key not in _CONFIG_ONLY}
-        result = await self.run_balance(
-            {"players": player_nodes},
-            config_overrides or None,
-            _noop_progress,
-            role_mask,
-        )
+        try:
+            result = await self.run_balance(
+                {"players": player_nodes},
+                config_overrides or None,
+                _noop_progress,
+                role_mask,
+            )
+        except ValueError as exc:
+            # The solver raises plain ``ValueError`` for input problems it can
+            # diagnose (uneven player count, short role coverage, ...). Left
+            # uncaught it reaches the generic RPC handler, which cannot tell it
+            # apart from a real bug and reports "internal error" -- hiding the
+            # actual, actionable reason from the host.
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
         game.result_json = result
         _apply_team_index(roster, result)
         game.status = "balanced"

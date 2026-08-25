@@ -222,6 +222,7 @@ def register(broker: Any, logger: Any) -> None:
                 config_json=config_json,
             )
             await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="create", actor_user_id=user.id)
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.create", op, session_factory=_SF)
@@ -303,6 +304,7 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=user.id,
             )
             await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="balance", actor_user_id=user.id)
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.balance", op, session_factory=_SF)
@@ -325,6 +327,7 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=user.id,
             )
             await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="outcome", actor_user_id=user.id)
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.record_outcome", op, session_factory=_SF)
@@ -342,6 +345,7 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=user.id,
             )
             await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="delete", actor_user_id=user.id)
             return _dump_game(game)
 
         return await c.envelope(logger, "custom.delete", op, session_factory=_SF)
