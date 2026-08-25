@@ -1294,19 +1294,36 @@ class ChallongeMappingService:
             source, participant = rows_by_request_key[(mapping.participant_id, mapping.group_id)]
             if source.source_id is None:
                 continue
-            source_key = (source.source_id, participant.id)
-            existing = existing_mappings.get(source_key)
-            if existing is None:
-                row = models.ChallongeParticipantMapping(
-                    source_id=source.source_id,
-                    challonge_participant_id=participant.id,
-                    team_id=mapping.team_id,
-                )
-                new_rows.append(row)
-                existing_mappings[source_key] = row
+            # Challonge's group stages give each participant a separate
+            # ``group_player_id`` per group, and group-stage matches reference
+            # that id (not the top-level participant id) as player1_id/player2_id.
+            # Map every alias here too, or matches never resolve a team even
+            # though the admin explicitly picked one for this participant --
+            # mirrors `_auto_map_participants`, which already does this for
+            # name-matched rows.
+            primary_result = "unchanged"
+            for challonge_participant_id in (participant.id, *participant.group_player_ids):
+                source_key = (source.source_id, challonge_participant_id)
+                existing = existing_mappings.get(source_key)
+                if existing is None:
+                    row = models.ChallongeParticipantMapping(
+                        source_id=source.source_id,
+                        challonge_participant_id=challonge_participant_id,
+                        team_id=mapping.team_id,
+                    )
+                    new_rows.append(row)
+                    existing_mappings[source_key] = row
+                    result = "created"
+                elif existing.team_id != mapping.team_id:
+                    existing.team_id = mapping.team_id
+                    result = "updated"
+                else:
+                    result = "unchanged"
+                if challonge_participant_id == participant.id:
+                    primary_result = result
+            if primary_result == "created":
                 created += 1
-            elif existing.team_id != mapping.team_id:
-                existing.team_id = mapping.team_id
+            elif primary_result == "updated":
                 updated += 1
             else:
                 unchanged += 1

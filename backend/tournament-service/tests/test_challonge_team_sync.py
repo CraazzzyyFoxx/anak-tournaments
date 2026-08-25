@@ -37,8 +37,12 @@ challonge_sync = importlib.import_module("src.services.challonge.sync")
 schemas = importlib.import_module("src.schemas")
 
 
-def _participant(id_: int, name: str, active: bool = True) -> SimpleNamespace:
-    return SimpleNamespace(id=id_, name=name, active=active, group_player_ids=[])
+def _participant(
+    id_: int, name: str, active: bool = True, group_player_ids: list[int] | None = None
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=id_, name=name, active=active, group_player_ids=group_player_ids or []
+    )
 
 
 def _team(id_: int, name: str, balancer_name: str | None = None) -> SimpleNamespace:
@@ -160,6 +164,39 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
         self.assertEqual(0, result.updated)
         self.assertEqual(0, result.unchanged)
         self.assertEqual(1, len(session.added))
+
+    async def test_maps_group_player_id_aliases(self) -> None:
+        """Group-stage matches reference a participant's ``group_player_id``, not
+        their top-level id -- the mapping applied here must cover both, or a match
+        import still can't resolve a team the admin explicitly picked (see sync.py
+        ``apply_team_mapping``)."""
+        tournament = SimpleNamespace(id=1)
+        fetch = SimpleNamespace(
+            matches=[], participants=[_participant(10, "Alpha", group_player_ids=[101, 102])]
+        )
+        session = _FakeSession()
+
+        with (
+            patch.object(
+                challonge_sync.mapping_service,
+                "_fetch_team_sync_context",
+                AsyncMock(return_value=(tournament, [_team(5, "Alpha")], [(_source(), fetch)])),
+            ),
+            patch.object(
+                challonge_sync.mapping_service, "_existing_participant_mappings", AsyncMock(return_value={})
+            ),
+        ):
+            result = await challonge_sync.sync_service.apply_team_mapping(
+                session, 1, [schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)]
+            )
+
+        self.assertTrue(result.success)
+        # One admin-facing "created" count, even though 3 rows (id + 2 aliases) are written.
+        self.assertEqual(1, result.created)
+        self.assertEqual(3, len(session.added))
+        mapped_challonge_ids = {row.challonge_participant_id for row in session.added}
+        self.assertEqual({10, 101, 102}, mapped_challonge_ids)
+        self.assertTrue(all(row.team_id == 5 for row in session.added))
 
     async def test_updates_existing_mapping_when_team_changes(self) -> None:
         tournament = SimpleNamespace(id=1)
