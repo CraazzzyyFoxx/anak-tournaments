@@ -100,19 +100,19 @@ class _Savepoint:
         return False
 
 
-async def _fake_attach(session: Any, registration: Any, **_kwargs: Any) -> Any:
-    registration.workspace_player_id = 99
-    return SimpleNamespace(id=99, player_id=None)
-
-
 async def _fake_resolve(*_args: Any, **_kwargs: Any) -> dict:
     return {}
 
 
 def _wp_patches():
+    # Identity provisioning is patched out (it would hit the DB), and the rank
+    # resolver with it: this suite asserts which registration FIELDS a write path
+    # persists, not what the balancer status derives from them.
     return (
-        mock.patch("src.services.registration.workspace_player.attach_workspace_player", _fake_attach),
-        mock.patch("src.services.registration.workspace_player.resolved_value_map", _fake_resolve),
+        mock.patch.object(
+            reg_service.registration_service, "ensure_player_identity", mock.AsyncMock(return_value=None)
+        ),
+        mock.patch("src.services.registration.rank_resolution.resolved_value_map", _fake_resolve),
     )
 
 

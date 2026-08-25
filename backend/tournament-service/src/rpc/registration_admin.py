@@ -79,7 +79,7 @@ from src.services.registration.serializers import (
     serialize_registration_form,
     serialize_status,
 )
-from src.services.registration import workspace_player as workspace_players
+from src.services.registration import rank_resolution
 from src.services.registration.windows import windows_service
 
 # --- helpers -----------------------------------------------------------------
@@ -173,7 +173,9 @@ async def _registration_response(session: Any, ctx: _Ctx, registration: Any) -> 
         workspace_id=ctx.ws_id,
         actor_user_id=ctx.user.id,
     )
-    resolved = await workspace_players.resolve_registration_ranks(session, [registration])
+    resolved = await rank_resolution.resolve_registration_ranks(
+        session, [registration], workspace_id=ctx.ws_id
+    )
     return _dump(
         serialize_registration(
             registration,
@@ -424,8 +426,8 @@ def register(broker: Any, logger: Any) -> None:
                 if registration.workspace_member is not None
             }
             ow_ranks = normalize_ow_ranks_to_grid(raw_ow_ranks_by_registration, grid)
-            resolved_by_reg = await workspace_players.resolve_registration_ranks(
-                session, registrations, grid=grid
+            resolved_by_reg = await rank_resolution.resolve_registration_ranks(
+                session, registrations, workspace_id=ctx.ws_id, grid=grid
             )
             # Same resolution the public participants list uses, so the admin
             # Subscription / Profile columns agree with what the player sees.

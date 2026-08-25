@@ -53,7 +53,6 @@ from src.schemas.registration_build import (
     registration_read_loaders,
 )
 from src.services.registration._common import FlexRoleMode, apply_all_roles, flex_role_mode
-from src.services.registration import workspace_player as workspace_players
 from src.services.registration.subscription_reads import (
     RegistrationSubscription,
     build_subscription_reads,
@@ -627,9 +626,6 @@ class RegistrationService:
                 workspace_id=workspace_id,
                 auth_user_id=auth_user_id,
             )
-        await workspace_players.attach_workspace_player(
-            session, registration, workspace_id=workspace_id, player_id=player_id
-        )
         if auto_approve:
             await enqueue_registration_approved(session, registration)
         else:

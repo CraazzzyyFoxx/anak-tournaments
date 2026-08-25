@@ -48,7 +48,7 @@ from src.services.registration._common import (
     replace_registration_roles,
     sync_included_balancer_status,
 )
-from src.services.registration import workspace_player as workspace_players
+from src.services.registration import rank_resolution
 from src.services.registration.service import RegistrationService, registration_service
 from src.services.registration.windows import is_check_in_window_active
 from src.services.tournament.events import (
@@ -86,6 +86,21 @@ def _registration_read_options() -> list[Any]:
         selectinload(models.BalancerRegistration.tournament),
         *registration_read_loaders(),
     ]
+
+
+async def _workspace_id_for(session: AsyncSession, registration: Any) -> int | None:
+    """The registration's tenancy, which every inherited rank layer is scoped by.
+
+    Read as a scalar unless ``tournament`` is already in the instance dict:
+    several callers here load only ``roles``, and touching an unloaded
+    relationship on an async session raises instead of lazy-loading.
+    """
+    tournament = registration.__dict__.get("tournament")
+    if tournament is not None:
+        return tournament.workspace_id
+    return await session.scalar(
+        sa.select(models.Tournament.workspace_id).where(models.Tournament.id == registration.tournament_id)
+    )
 
 
 class RegistrationLifecycleService:
@@ -282,18 +297,20 @@ class RegistrationLifecycleService:
         else:
             registration.balancer_status = balancer_status_value
         await self.registration_repo.create(session, registration)
-        player_id = None
-        if auth_user_id is not None:
-            player_id = await self.registrations.ensure_player_identity(
-                session, registration, auth_user_id=auth_user_id
-            )
-        await workspace_players.attach_workspace_player(
-            session, registration, workspace_id=workspace_id, player_id=player_id
+        # Unconditional, and with the workspace: a manual registration has no auth
+        # account, but its BattleTag is still the identity every inherited rank
+        # layer is read through. Gating this on ``auth_user_id`` left admin-created
+        # rows with no ``workspace_member``, hence no canon to inherit.
+        await self.registrations.ensure_player_identity(
+            session, registration, auth_user_id=auth_user_id, workspace_id=workspace_id
         )
         if balancer_status_value is None or balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES:
             if resolved_status == "approved":
                 registration.balancer_status = included_balancer_status(
-                    registration, await workspace_players.resolved_value_map(session, registration)
+                    registration,
+                    await rank_resolution.resolved_value_map(
+                        session, registration, workspace_id=workspace_id
+                    ),
                 )
             else:
                 registration.balancer_status = NOT_ADDED_BALANCER_STATUS
@@ -369,7 +386,10 @@ class RegistrationLifecycleService:
         if balancer_status_value is not None:
             if balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES:
                 sync_included_balancer_status(
-                    registration, await workspace_players.resolved_value_map(session, registration)
+                    registration,
+                    await rank_resolution.resolved_value_map(
+                        session, registration, workspace_id=await _workspace_id_for(session, registration)
+                    ),
                 )
             else:
                 await self.validate_registration_status_value(
@@ -418,21 +438,16 @@ class RegistrationLifecycleService:
         elif unpin:
             registration.balancer_profile_overridden_at = None
 
-        player_id = None
-        if auth_user_id is not None:
-            player_id = await self.registrations.ensure_player_identity(
-                session, registration, auth_user_id=auth_user_id
-            )
-        tournament = getattr(registration, "tournament", None)
-        await workspace_players.attach_workspace_player(
-            session,
-            registration,
-            workspace_id=getattr(tournament, "workspace_id", None),
-            player_id=player_id,
+        workspace_id = await _workspace_id_for(session, registration)
+        # Same reason as create_manual_registration: the anchor must not depend on
+        # whoever is editing being signed in as the registrant.
+        await self.registrations.ensure_player_identity(
+            session, registration, auth_user_id=auth_user_id, workspace_id=workspace_id
         )
         if roles is not None or unpin:
             sync_included_balancer_status(
-                registration, await workspace_players.resolved_value_map(session, registration)
+                registration,
+                await rank_resolution.resolved_value_map(session, registration, workspace_id=workspace_id),
             )
 
         if status_value == "approved" and previous_status != "approved":
@@ -529,7 +544,10 @@ class RegistrationLifecycleService:
             )
         registration.exclude_reason = None
         registration.balancer_status = included_balancer_status(
-            registration, await workspace_players.resolved_value_map(session, registration)
+            registration,
+            await rank_resolution.resolved_value_map(
+                session, registration, workspace_id=await _workspace_id_for(session, registration)
+            ),
         )
         self.common._register_registration_changed(session, registration)
         await session.commit()
@@ -670,7 +688,12 @@ class RegistrationLifecycleService:
             .options(selectinload(models.BalancerRegistration.roles))
         )
         registrations = list(result.scalars().all())
-        resolved = await workspace_players.resolve_registration_ranks(session, registrations)
+        workspace_id = await session.scalar(
+            sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
+        )
+        resolved = await rank_resolution.resolve_registration_ranks(
+            session, registrations, workspace_id=workspace_id
+        )
         for registration in registrations:
             registration.exclude_reason = None
             registration.balancer_status = included_balancer_status(

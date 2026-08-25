@@ -23,7 +23,7 @@ from shared.services.division_grid.access import (
     load_division_grid_snapshots,
     load_division_grid_version_read_payloads,
 )
-from shared.domain.workspace_player import ResolvedRank
+from shared.domain.member_rank import ResolvedRank
 from src import models
 from src.schemas.division_grid import DivisionGridVersionRead
 from src.schemas.registration import (
@@ -249,11 +249,19 @@ async def _resolved_public_ranks(
     *,
     show_ranks: bool,
 ) -> dict[int, dict[str, ResolvedRank]]:
-    if not show_ranks:
-        return {}
-    from src.services.registration.workspace_player import resolve_registration_ranks
+    """Effective ranks for the public roster, or nothing when the form hides them.
 
-    return await resolve_registration_ranks(session, registrations)
+    The workspace is resolved here rather than pushed onto all five call sites:
+    every caller already has the registrations, and one tournament's worth of
+    them shares a tenancy. Imported locally because
+    ``services.registration.rank_resolution`` imports this module.
+    """
+    if not show_ranks or not registrations:
+        return {}
+    from src.services.registration.rank_resolution import resolve_registration_ranks
+
+    workspace_id = await _resolve_tournament_workspace(session, registrations[0].tournament_id)
+    return await resolve_registration_ranks(session, registrations, workspace_id=workspace_id)
 
 
 async def _build_tournament_history(

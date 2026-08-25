@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from shared.domain.roster_shape import RegistrationRoleCode
 from src.schemas.base import BaseRead
+from src.schemas.registration import SubroleOption
 
 BalancerRoleSubtype = str
 RegistrationStatus = str
@@ -200,6 +201,7 @@ class BalancerGoogleSheetMappingCatalogResponse(BaseModel):
     value_categories: list[MappingValueCategoryRead] = Field(default_factory=list)
     custom_fields: list[dict[str, Any]] = Field(default_factory=list)
     header_keys: list[str] = Field(default_factory=list)
+    subrole_catalog: dict[str, list[SubroleOption]] = Field(default_factory=dict)
 
 
 class BalancerRegistrationRoleRead(BaseModel):
@@ -208,7 +210,7 @@ class BalancerRegistrationRoleRead(BaseModel):
     priority: int = 0
     is_primary: bool = False
     rank_value: int | None = None
-    rank_source: Literal["override", "canon", "ow", "none"] = "none"
+    rank_source: Literal["registration", "workspace", "ow", "none"] = "none"
     is_active: bool = True
     top_heroes: list[str] = Field(default_factory=list)  # ordered hero slugs (read-only display)
     # Latest OW2 rank for this role, normalised to the workspace grid. Injected from

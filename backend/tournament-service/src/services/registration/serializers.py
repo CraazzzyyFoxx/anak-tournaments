@@ -11,7 +11,7 @@ from shared.balancer_registration_statuses import (
     build_status_meta_from_model,
     build_unknown_status_meta,
 )
-from shared.domain.workspace_player import ResolvedRank
+from shared.domain.member_rank import ResolvedRank
 from src import models, schemas
 from src.schemas.registration import RegistrationFormRead
 
@@ -40,7 +40,9 @@ def serialize_registration_role(
     resolved: ResolvedRank | None = None,
 ) -> schemas.BalancerRegistrationRoleRead:
     if resolved is None:
-        resolved = ResolvedRank(role.rank_value, "override" if role.rank_value is not None else "none")
+        # No resolver ran (single-object serialization): the role's own number is
+        # the registration layer. Inherited layers need a batch call to see.
+        resolved = ResolvedRank(role.rank_value, "registration" if role.rank_value is not None else "none")
     return schemas.BalancerRegistrationRoleRead(
         role=role.role,
         subrole=role.subrole,

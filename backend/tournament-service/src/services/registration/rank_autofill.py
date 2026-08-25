@@ -31,7 +31,7 @@ from src.services.registration._common import (
     included_balancer_status,
     sync_included_balancer_status,
 )
-from src.services.registration import workspace_player as workspace_players
+from src.services.registration import rank_resolution
 from src.services.registration.rank_sources import (
     OW_RANK_WEEK_WINDOW,
     RANK_ROLE_BY_REGISTRATION_ROLE,
@@ -350,6 +350,9 @@ class RankAutofillService:
         now = datetime.now(UTC)
         tournament = await self.rank_sources._load_tournament_for_autofill(session, tournament_id)
         grid = DivisionGrid.from_version(tournament.division_grid_version if tournament else None)
+        # Loop-invariant: one autofill run is scoped to one tournament, and every
+        # inherited rank layer below is read through its workspace.
+        workspace_id = getattr(tournament, "workspace_id", None)
 
         registrations = await self.rank_sources._load_rank_autofill_registrations(
             session, tournament_id, registration_ids
@@ -448,10 +451,9 @@ class RankAutofillService:
 
             changed = False
             if apply and updates:
-                workspace_id = getattr(tournament, "workspace_id", None) if tournament is not None else None
-                await workspace_players.attach_workspace_player(
-                    session, registration, workspace_id=workspace_id
-                )
+                # No identity is provisioned here on purpose: autofill writes the
+                # registration's own layer, and minting players as a side effect of
+                # a rank fill would make a preview-then-apply mutate identity.
                 for role_entry, rank_data in updates:
                     value = getattr(rank_data, "rank_value", None)
                     if value is None:
@@ -465,7 +467,9 @@ class RankAutofillService:
                 role_updates += len(updates)
 
             if apply and will_add_to_balancer:
-                values = await workspace_players.resolved_value_map(session, registration, grid=grid)
+                values = await rank_resolution.resolved_value_map(
+                    session, registration, workspace_id=workspace_id, grid=grid
+                )
                 for role_entry, rank_data in updates:
                     val = getattr(rank_data, "rank_value", None)
                     if val is not None:
@@ -479,7 +483,9 @@ class RankAutofillService:
 
             if apply and changed:
                 if not will_add_to_balancer:
-                    values = await workspace_players.resolved_value_map(session, registration, grid=grid)
+                    values = await rank_resolution.resolved_value_map(
+                        session, registration, workspace_id=workspace_id, grid=grid
+                    )
                     for role_entry, rank_data in updates:
                         val = getattr(rank_data, "rank_value", None)
                         if val is not None:
