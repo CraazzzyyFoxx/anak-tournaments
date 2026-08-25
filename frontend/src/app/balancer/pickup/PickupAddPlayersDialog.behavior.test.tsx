@@ -37,6 +37,7 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver;
 
 const list = vi.fn();
+const summary = vi.fn();
 const upsert = vi.fn();
 const setRanks = vi.fn();
 
@@ -61,9 +62,16 @@ vi.mock("@/services/workspace-player.service", () => ({
       params.authorUserId ?? 0,
       params.authorOnly ?? false,
     ],
+    summary: (workspaceId: number, authorUserId?: number) => [
+      "workspace-players",
+      workspaceId,
+      "summary",
+      authorUserId ?? 0,
+    ],
   },
   workspacePlayerService: {
     list: (...args: unknown[]) => list(...args),
+    summary: (...args: unknown[]) => summary(...args),
     upsert: (...args: unknown[]) => upsert(...args),
     setRanks: (...args: unknown[]) => setRanks(...args),
   },
@@ -178,7 +186,7 @@ async function mount(
       </QueryClientProvider>,
     );
   });
-  // The roster query and the workspace-count query resolve after the first
+  // The roster query and the chip-count summary query resolve after the first
   // commit; a second flush lets their state updates land inside `act`.
   await act(async () => {
     await tick();
@@ -249,6 +257,7 @@ beforeEach(() => {
     page: 1,
     per_page: 24,
   });
+  summary.mockResolvedValue({ total: 3, author_total: 1 });
 });
 
 describe("PickupAddPlayersDialog", () => {
@@ -316,6 +325,14 @@ describe("PickupAddPlayersDialog", () => {
     await click(findChip(scope, "Everyone"));
 
     expect(list).toHaveBeenLastCalledWith(WORKSPACE_ID, expect.objectContaining({ authorOnly: false }));
+  });
+
+  it("shows both chip counts before either filter is clicked", async () => {
+    const scope = await mount();
+
+    expect(findChip(scope, "Everyone")?.textContent).toContain("3");
+    expect(findChip(scope, "My ranks")?.textContent).toContain("1");
+    expect(summary).toHaveBeenCalledWith(WORKSPACE_ID, HOST_USER_ID);
   });
 
   it("writes a rank into this host's own book, one role at a time", async () => {

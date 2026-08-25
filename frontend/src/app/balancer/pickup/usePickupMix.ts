@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useRealtimeCoalescedRefetch } from "@/hooks/useRealtimeCoalescedRefetch";
 import { notify } from "@/lib/notify";
 import {
   customGameKeys,
@@ -61,6 +62,20 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     enabled: selectedGameId != null,
   });
 
+  // Another host editing this workspace's mixes (roster, ranks, bench, role
+  // order) in a different tab/session: this thin, non-durable signal (see
+  // `pickup_mix_realtime.py`) is the only way that becomes visible here
+  // without a manual reload. Debounced like the subscriptions signal: a
+  // burst of edits collapses into one refetch instead of one per event.
+  useRealtimeCoalescedRefetch(`workspace:${workspaceId}:pickup_mix`, {
+    minDelayMs: 500,
+    onEvent: (_event, schedule) => schedule(),
+    onFlush: () => {
+      void queryClient.invalidateQueries({ queryKey: customGameKeys.all(workspaceId) });
+      void queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(workspaceId) });
+    },
+  });
+
   const applyGame = (game: CustomGame) => {
     queryClient.setQueryData(customGameKeys.one(workspaceId, game.id), game);
     // The list carries name and status, both of which a write can change.
@@ -76,7 +91,13 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
   const setRoster = useMutation({
     mutationFn: (playerIds: number[]) =>
       customGameService.updateRoster(workspaceId, selectedGameId as number, playerIds),
-    onSuccess: applyGame,
+    onSuccess: async (game) => {
+      applyGame(game);
+      // Adding somebody new seeds their effective rank into this host's own
+      // book (server-side `_seed_host_ranks`), so the add-players dialog's
+      // "My ranks" list and chip count go stale without this.
+      await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(workspaceId) });
+    },
     onError: (error) => notify.apiError(error),
   });
 

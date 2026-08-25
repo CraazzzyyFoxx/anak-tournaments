@@ -1,10 +1,13 @@
-"""Integration test for the "My ranks" shortcut in ``workspace_roster.roster_page``.
+"""Integration tests for the "My ranks" shortcut in ``workspace_roster``.
+
+Covers both ``roster_page(author_only=True)`` and ``roster_summary`` -- the
+two chip-count/list surfaces the add-players dialog reads.
 
 Requires a reachable database via POSTGRES_* env vars (use a disposable DB such
 as anak_dev -- NEVER production). Skips cleanly if the DB is unreachable.
 
-``author_only`` is a SQL ``EXISTS`` filter, not something a mocked-session unit
-test can exercise honestly -- this proves it against a real engine instead.
+Both are SQL ``EXISTS``/aggregate queries, not something a mocked-session unit
+test can exercise honestly -- this proves them against a real engine instead.
 """
 
 from __future__ import annotations
@@ -164,3 +167,27 @@ class RosterPageAuthorOnlyTests(IsolatedAsyncioTestCase):
                 author_only=False,
             )
         self.assertEqual(total, 3)
+
+    async def test_summary_reports_workspace_total_and_this_authors_count(self) -> None:
+        async with self.Session() as session:
+            total, author_total = await workspace_roster.roster_summary(
+                session, workspace_id=self.workspace_id, author_user_id=self.host_id
+            )
+        self.assertEqual(total, 3)
+        self.assertEqual(author_total, 1)
+
+    async def test_summary_author_total_is_scoped_per_author(self) -> None:
+        async with self.Session() as session:
+            total, author_total = await workspace_roster.roster_summary(
+                session, workspace_id=self.workspace_id, author_user_id=self.other_host_id
+            )
+        self.assertEqual(total, 3)
+        self.assertEqual(author_total, 1)
+
+    async def test_summary_without_an_author_skips_the_authored_count(self) -> None:
+        async with self.Session() as session:
+            total, author_total = await workspace_roster.roster_summary(
+                session, workspace_id=self.workspace_id, author_user_id=None
+            )
+        self.assertEqual(total, 3)
+        self.assertEqual(author_total, 0)

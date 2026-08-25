@@ -71,6 +71,7 @@ func TestDraftSessionHistoryRoutes(t *testing.T) {
 func TestRosterRoutes(t *testing.T) {
 	want := map[string]string{
 		"GET /api/balancer/workspaces/{workspace_id}/players":                   "rpc.balancer.players.list",
+		"GET /api/balancer/workspaces/{workspace_id}/players/summary":           "rpc.balancer.players.summary",
 		"POST /api/balancer/workspaces/{workspace_id}/players":                  "rpc.balancer.players.upsert",
 		"PUT /api/balancer/workspaces/{workspace_id}/players/{member_id}/ranks": "rpc.balancer.players.set_ranks",
 	}
@@ -89,7 +90,6 @@ func TestRosterRoutes(t *testing.T) {
 		t.Fatalf("missing roster routes: %#v", want)
 	}
 }
-
 
 // TestRoutesRegisterWithoutConflict guards against ServeMux pattern conflicts,
 // which panic at registration time (runtime), not at build time. It registers

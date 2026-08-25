@@ -18,6 +18,7 @@ from shared.services.member_rank import MIX_ORDER
 from src.core import db
 from src.rpc import _common as c
 from src.services.custom_game import custom_game_service
+from src.services.pickup_mix_realtime import emit_pickup_mix_updated
 
 _SF = db.async_session_maker
 
@@ -264,6 +265,7 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=user.id,
             )
             await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="roster", actor_user_id=user.id)
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.update_roster", op, session_factory=_SF)
@@ -283,6 +285,7 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=user.id,
             )
             await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="roster", actor_user_id=user.id)
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.update_player", op, session_factory=_SF)

@@ -51,6 +51,7 @@ var AdminRoutes = []edge.RouteSpec{
 // RosterRoutes are the workspace roster, its rank layers, and custom games (mixes).
 var RosterRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/players", Queue: "rpc.balancer.players.list", Path: []string{"workspace_id"}, AllQuery: true, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
+	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/players/summary", Queue: "rpc.balancer.players.summary", Path: []string{"workspace_id"}, AllQuery: true, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/players", Queue: "rpc.balancer.players.upsert", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// One route for both rank layers: the body's `scope` picks workspace canon or
 	// the caller's own book. A foreign author is never writable, so it is not a
@@ -64,7 +65,6 @@ var RosterRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/balance", Queue: "rpc.balancer.custom.balance", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/outcome", Queue: "rpc.balancer.custom.record_outcome", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 }
-
 
 // JobRoutes are the authenticated public job API reads (status poll + result)
 // from src/routes/balancer.py. job_id is a uuid hex string (not int). Job

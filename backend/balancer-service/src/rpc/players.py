@@ -18,6 +18,7 @@ from shared.services import workspace_roster
 from shared.services.member_rank import member_rank_service
 from src.core import db
 from src.rpc import _common as c
+from src.services.pickup_mix_realtime import emit_pickup_mix_updated
 
 _SF = db.async_session_maker
 
@@ -204,6 +205,19 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "players.list", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.balancer.players.summary")
+    async def _summary(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = c.path_int(data, "workspace_id")
+            _require_member(user, workspace_id)
+            total, author_total = await workspace_roster.roster_summary(
+                session, workspace_id=workspace_id, author_user_id=_author_to_read(data, user.id)
+            )
+            return {"total": total, "author_total": author_total}
+
+        return await c.envelope(logger, "players.summary", op, session_factory=_SF)
+
     @broker.subscriber("rpc.balancer.players.upsert")
     async def _upsert(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -226,6 +240,7 @@ def register(broker: Any, logger: Any) -> None:
                 display_name=display_name,
             )
             await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="member", actor_user_id=user.id)
             # Re-read through the roster query so the answer carries the resolved
             # BattleTag and name, identically shaped to a ``players.list`` row.
             roster = await workspace_roster.list_roster(
@@ -259,6 +274,7 @@ def register(broker: Any, logger: Any) -> None:
                 author_user_id=author_user_id,
             )
             await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="rank", actor_user_id=user.id)
             return {"ranks": ranks}
 
         return await c.envelope(logger, "players.set_ranks", op, session_factory=_SF)

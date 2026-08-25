@@ -19,6 +19,12 @@ export type RosterMember = {
   author_ranks: Record<string, number>;
 };
 
+/** The two chip counts the add-players dialog needs before either is clicked. */
+export type RosterSummary = {
+  total: number;
+  author_total: number;
+};
+
 /** Which rank layer a write lands in. `author` is always the caller's own book. */
 export type RankScope = "workspace" | "author";
 
@@ -43,6 +49,8 @@ export const workspacePlayerKeys = {
       params.authorUserId ?? 0,
       params.authorOnly ?? false,
     ] as const,
+  summary: (workspaceId: number, authorUserId?: number) =>
+    [...workspacePlayerKeys.all(workspaceId), "summary", authorUserId ?? 0] as const,
 };
 
 export const workspacePlayerService = {
@@ -55,6 +63,12 @@ export const workspacePlayerService = {
         ...(params.authorUserId == null ? {} : { author_user_id: params.authorUserId }),
         ...(params.authorOnly ? { author_only: 1 } : {}),
       },
+    }).then((r) => r.json());
+  },
+
+  summary(workspaceId: number, authorUserId?: number): Promise<RosterSummary> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/players/summary`, {
+      query: authorUserId == null ? {} : { author_user_id: authorUserId },
     }).then((r) => r.json());
   },
 

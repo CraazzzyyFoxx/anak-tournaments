@@ -28,7 +28,7 @@ from shared.repository import UserRepository, get_or_create_workspace_member
 from shared.services import social_identity
 from shared.services.team_export.identity import find_users_by_battle_tags
 
-__all__ = ("RosterMember", "ensure_member_for_battle_tag", "list_roster", "roster_page")
+__all__ = ("RosterMember", "ensure_member_for_battle_tag", "list_roster", "roster_page", "roster_summary")
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +142,40 @@ async def roster_page(
         for member_id, player_id, display_name, player_name, battle_tag in result.all()
     ]
     return rows, int(total or 0)
+
+
+async def roster_summary(
+    session: AsyncSession, *, workspace_id: int, author_user_id: int | None = None
+) -> tuple[int, int]:
+    """(workspace total, count that author has personally rank-corrected) -- one round trip.
+
+    Backs the add-players dialog's chip counts, which both have to be visible
+    before either filter is touched -- a ``roster_page`` call per chip would be
+    two round trips (and a page of rows) for numbers that need neither.
+    """
+    joined = (
+        sa.select(models.WorkspaceMember.id)
+        .join(models.User, models.User.id == models.WorkspaceMember.player_id)
+        .where(models.WorkspaceMember.workspace_id == workspace_id)
+        .subquery()
+    )
+    if author_user_id is None:
+        total = await session.scalar(sa.select(sa.func.count()).select_from(joined))
+        return int(total or 0), 0
+    authored = sa.exists().where(
+        models.MemberRank.workspace_id == workspace_id,
+        models.MemberRank.workspace_member_id == joined.c.id,
+        models.MemberRank.author_user_id == author_user_id,
+    )
+    total, author_total = (
+        await session.execute(
+            sa.select(
+                sa.func.count(),
+                sa.func.count(sa.case((authored, 1), else_=None)),
+            ).select_from(joined)
+        )
+    ).one()
+    return int(total or 0), int(author_total or 0)
 
 
 async def list_roster(

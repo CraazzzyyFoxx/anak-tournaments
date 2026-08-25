@@ -144,13 +144,13 @@ export function PickupAddPlayersDialog({
     placeholderData: keepPreviousData,
   });
 
-  // The workspace's total member count, independent of which filter is
-  // active: `rosterQuery`'s total means "matches under the current filter",
-  // the wrong number for the header and the "Everyone" chip once "My ranks"
-  // has narrowed it.
-  const workspaceCountQuery = useQuery({
-    queryKey: workspacePlayerKeys.list(workspaceId, { page: 1, perPage: 1, query: "" }),
-    queryFn: () => workspacePlayerService.list(workspaceId, { page: 1, perPage: 1 }),
+  // Both chip counts, independent of which filter is active: `rosterQuery`'s
+  // total means "matches under the current filter", the wrong number for the
+  // header and the inactive chip, and neither chip's count should require
+  // clicking it first to appear.
+  const summaryQuery = useQuery({
+    queryKey: workspacePlayerKeys.summary(workspaceId, hostUserId ?? undefined),
+    queryFn: () => workspacePlayerService.summary(workspaceId, hostUserId ?? undefined),
     enabled: open,
   });
 
@@ -200,7 +200,8 @@ export function PickupAddPlayersDialog({
   });
 
   const pageData = rosterQuery.data;
-  const workspaceTotal = workspaceCountQuery.data?.total ?? null;
+  const workspaceTotal = summaryQuery.data?.total ?? null;
+  const mineTotal = summaryQuery.data?.author_total ?? null;
 
   const visible = useMemo<RosterRow[]>(
     () =>
@@ -343,7 +344,7 @@ export function PickupAddPlayersDialog({
                 />
                 <FilterChip
                   label="My ranks"
-                  count={usingMine ? foundCount : null}
+                  count={mineTotal}
                   active={usingMine}
                   onClick={() => {
                     setFilter("mine");

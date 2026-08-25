@@ -8,6 +8,7 @@ __all__ = (
     "logs",
     "map_veto",
     "pick_ban_hero",
+    "pickup_mix",
     "realtime_channel",
     "streams",
     "subscriptions",
@@ -83,6 +84,18 @@ def subscriptions(workspace_id: int) -> str:
     not spectator data.
     """
     return f"workspace:{int(workspace_id)}:subscriptions"
+
+
+def pickup_mix(workspace_id: int) -> str:
+    """Topic for pickup-mix roster/rank changes within a workspace.
+
+    Carries a thin ``pickup_mix.updated`` signal (no row data); the add-players
+    dialog and the mix panels refetch their custom-game and workspace-player
+    queries on receipt. Workspace scoped because a mix's roster and its ranks
+    both live at that level, not per-mix. Gated by workspace membership via the
+    existing ``workspace:*:*`` ACL rule.
+    """
+    return f"workspace:{int(workspace_id)}:pickup_mix"
 
 
 def streams(tournament_id: int) -> str:
