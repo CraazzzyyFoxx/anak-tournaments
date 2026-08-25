@@ -1,87 +1,90 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type { PaginatedResponse } from "@/types/pagination.types";
 
-export const WORKSPACE_PLAYER_ROLES = ["tank", "dps", "support"] as const;
-
-export type WorkspacePlayerRole = (typeof WORKSPACE_PLAYER_ROLES)[number];
-
-export type WorkspacePlayer = {
-  id: number;
-  workspace_id: number;
+/**
+ * One workspace member as the roster shows them.
+ *
+ * Two rank dictionaries, never merged: `ranks` is the workspace canon — the
+ * shared fallback — and `author_ranks` is one author's own book, the caller's
+ * unless a different `authorUserId` was asked for. Keeping them apart is what
+ * lets a row say whether a number is its own or inherited; a single merged dict
+ * cannot answer that.
+ */
+export type RosterMember = {
+  member_id: number;
+  player_id: number;
   battle_tag: string | null;
   display_name: string | null;
-  player_id: number | null;
   ranks: Record<string, number>;
+  author_ranks: Record<string, number>;
 };
+
+/** Which rank layer a write lands in. `author` is always the caller's own book. */
+export type RankScope = "workspace" | "author";
 
 export type WorkspacePlayerListParams = {
   page?: number;
   perPage?: number;
   query?: string;
+  /** Whose book to return as `author_ranks`; omitted means the caller's. */
+  authorUserId?: number;
 };
 
 export const workspacePlayerKeys = {
   all: (workspaceId: number) => ["workspace-players", workspaceId] as const,
   list: (workspaceId: number, params: WorkspacePlayerListParams = {}) =>
-    [...workspacePlayerKeys.all(workspaceId), params.page ?? 1, params.perPage ?? 30, params.query ?? ""] as const,
+    [
+      ...workspacePlayerKeys.all(workspaceId),
+      params.page ?? 1,
+      params.perPage ?? 30,
+      params.query ?? "",
+      params.authorUserId ?? 0,
+    ] as const,
 };
 
-export function parseRoleRanks(input: Record<string, string>): Record<string, number> {
-  const ranks: Record<string, number> = {};
-  for (const role of WORKSPACE_PLAYER_ROLES) {
-    const raw = input[role]?.trim();
-    if (!raw) continue;
-    const value = Number(raw);
-    if (!Number.isInteger(value)) {
-      throw new Error(`${role} rank must be an integer`);
-    }
-    ranks[role] = value;
-  }
-  return ranks;
-}
-
 export const workspacePlayerService = {
-  list(workspaceId: number, params: WorkspacePlayerListParams = {}): Promise<PaginatedResponse<WorkspacePlayer>> {
+  list(workspaceId: number, params: WorkspacePlayerListParams = {}): Promise<PaginatedResponse<RosterMember>> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/players`, {
       query: {
         page: params.page ?? 1,
         per_page: params.perPage ?? 30,
         query: params.query ?? "",
+        ...(params.authorUserId == null ? {} : { author_user_id: params.authorUserId }),
       },
     }).then((r) => r.json());
   },
 
-  upsert(workspaceId: number, battleTag: string, displayName?: string): Promise<WorkspacePlayer> {
+  upsert(workspaceId: number, battleTag: string, displayName?: string): Promise<RosterMember> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/players`, {
       method: "POST",
       body: { battle_tag: battleTag, display_name: displayName || undefined },
     }).then((r) => r.json());
   },
 
-  setRanks(workspaceId: number, playerId: number, ranks: Record<string, number>): Promise<Record<string, number>> {
-    return apiFetch(`/api/balancer/workspaces/${workspaceId}/players/${playerId}/ranks`, {
-      method: "PUT",
-      body: { ranks },
-    }).then((r) => r.json());
-  },
-
   /**
-   * The caller's *own* rank book for a player — the "user scope" dictionary that
-   * outranks the workspace canon when their mixes are balanced.
+   * Writes one rank layer for a member.
    *
-   * `clear` deletes those roles from the book so the value falls back to the
-   * workspace rank. Omitting a role leaves it alone, so saving one role never
-   * disturbs the other two.
+   * `scope: "author"` is the caller's own book and nobody else's — the endpoint
+   * takes no author id, so there is no way to edit another organiser's ranks
+   * even though any member may read them. `scope: "workspace"` writes the shared
+   * canon, which every author inherits until they set their own.
+   *
+   * `clear` deletes those roles from the layer instead of zeroing them, so an
+   * author rank falls back to canon. An omitted role is left alone, which is
+   * what lets one picker save without disturbing the other two.
    */
-  setHostRanks(
+  setRanks(
     workspaceId: number,
-    playerId: number,
-    ranks: Record<string, number>,
-    clear: string[] = [],
-  ): Promise<Record<string, number>> {
-    return apiFetch(`/api/balancer/workspaces/${workspaceId}/hosts/${playerId}/ranks`, {
+    memberId: number,
+    input: { scope?: RankScope; ranks: Record<string, number>; clear?: string[] },
+  ): Promise<{ ranks: Record<string, number> }> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/players/${memberId}/ranks`, {
       method: "PUT",
-      body: { ranks, clear },
+      body: {
+        scope: input.scope ?? "workspace",
+        ranks: input.ranks,
+        clear: input.clear ?? [],
+      },
     }).then((r) => r.json());
   },
 };

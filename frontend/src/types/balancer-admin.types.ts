@@ -1,4 +1,3 @@
-import type { PlayerRoleOption, PlayerRoleSlotCode } from "@/lib/player-role";
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
 import type {
   BuiltInFieldConfig,
@@ -26,7 +25,8 @@ export type BalancerRoleCode = Exclude<PlayerRoleSlotCode, "flex">;
 /** Capitalized roster key — the non-flex slice of `PlayerRoleOption`. */
 export type BalancerRosterKey = Exclude<PlayerRoleOption, "Flex">;
 export type BalancerRoleSubtype = string;
-export type RegistrationRankSource = "override" | "canon" | "ow" | "none";
+/** Layers a registration role's rank can resolve from, strongest first. */
+export type RegistrationRankSource = "registration" | "workspace" | "ow" | "none";
 
 
 export interface BalancerPlayerRecord {
@@ -598,6 +598,7 @@ export interface MappingCatalog {
   value_categories: MappingValueCategory[];
   custom_fields: AdminCustomFieldDef[];
   header_keys: string[];
+  subrole_catalog?: SubroleCatalog;
 }
 
 /** A per-target validation error returned by PUT (422) / preview / sync. */

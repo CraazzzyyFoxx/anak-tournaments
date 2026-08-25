@@ -5,16 +5,16 @@ import { CAPTION_CLASS } from "@/app/balancer/pickup/pickup-chrome";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { WorkspacePlayer } from "@/services/workspace-player.service";
+import type { RosterMember } from "@/services/workspace-player.service";
 
 type PickupPoolDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId: number;
   canEdit: boolean;
-  /** Workspace player ids already in this mix, so a row reads as in or out. */
+  /** Workspace member ids already in this mix, so a row reads as in or out. */
   selectedIds: number[];
-  onTogglePlayer: (player: WorkspacePlayer) => void;
+  onTogglePlayer: (member: RosterMember) => void;
 };
 
 /**
@@ -69,7 +69,10 @@ export function PickupPoolDialog({
 
         <div className="flex items-center gap-3 border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-5 py-3">
           <span className={cn(CAPTION_CLASS, "min-w-0")}>
-            {`${selectedIds.length} in this mix \u00B7 ranks carry across every tournament in this workspace`}
+            {/* Not "ranks carry across every tournament" any more: the workspace
+                value is the fallback, and the host's own book is what actually
+                decides this mix. */}
+            {`${selectedIds.length} in this mix \u00B7 your own ranks decide it, workspace ranks fill the gaps`}
           </span>
           <Button
             type="button"

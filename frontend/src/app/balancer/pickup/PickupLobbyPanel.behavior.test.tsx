@@ -51,17 +51,16 @@ const onOpenPool = vi.fn();
 function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
   return {
     id: 1,
-    workspace_player_id: 7,
+    workspace_member_id: 7,
     display_name: null,
     battle_tag: "Aria#1111",
-    rank_value: null,
     team_index: null,
     sort_order: 0,
     is_active: true,
     roles: null,
     ranks: { tank: 2400, dps: 2600, support: 2500 },
-    rank_sources: { tank: "canon", dps: "canon", support: "canon" },
-    host_ranks: {},
+    rank_sources: { tank: "workspace", dps: "workspace", support: "workspace" },
+    author_ranks: {},
     ...overrides,
   };
 }
@@ -153,7 +152,7 @@ describe("PickupLobbyPanel", () => {
   it("moves a benched player to its own section and keeps it switchable back", async () => {
     const scope = await mount([
       row(),
-      row({ id: 2, workspace_player_id: 8, battle_tag: "Borys#2222", is_active: false }),
+      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222", is_active: false }),
     ]);
 
     expect(scope.textContent).toContain("1 in the balance");
@@ -190,7 +189,7 @@ describe("PickupLobbyPanel", () => {
     // this lineup can seat none.
     const scope = await mount([
       row({ roles: ["tank", "dps"], ranks: { dps: 2600 } }),
-      row({ id: 2, workspace_player_id: 8, battle_tag: "Borys#2222", roles: ["dps"], ranks: { dps: 2500 } }),
+      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222", roles: ["dps"], ranks: { dps: 2500 } }),
     ]);
 
     expect(scope.textContent).toContain("0 of 2 · short 2");
@@ -232,7 +231,7 @@ describe("PickupLobbyPanel", () => {
   });
 
   it("confirms before emptying the lobby", async () => {
-    const scope = await mount([row(), row({ id: 2, workspace_player_id: 8, battle_tag: "Borys#2222" })]);
+    const scope = await mount([row(), row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222" })]);
 
     await click(byName(scope, "Empty the lobby"));
     expect(onClear).not.toHaveBeenCalled();

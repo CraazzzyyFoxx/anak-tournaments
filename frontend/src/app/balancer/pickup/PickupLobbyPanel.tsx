@@ -71,10 +71,10 @@ type PickupLobbyPanelProps = {
   rows: CustomGamePlayer[];
   savingPlayerId: number | null;
   clearing: boolean;
-  onPatchPlayer: (workspacePlayerId: number, patch: CustomGamePlayerPatch) => void;
+  onPatchPlayer: (workspaceMemberId: number, patch: CustomGamePlayerPatch) => void;
   onClear: () => void;
-  onRemovePlayer: (workspacePlayerId: number) => void;
-  onOpenPlayer: (workspacePlayerId: number) => void;
+  onRemovePlayer: (workspaceMemberId: number) => void;
+  onOpenPlayer: (workspaceMemberId: number) => void;
   onOpenPool: () => void;
 };
 
@@ -84,8 +84,8 @@ type PickupLobbyPanelProps = {
  *
  * Membership belongs to the player pool — adding or removing someone there
  * writes here. This column owns *participation*: the switch benches a player
- * server-side without touching their rank override or role order, so "he's
- * late, start without him" costs one click and no rework.
+ * server-side without touching their role order, so "he's late, start without
+ * him" costs one click and no rework.
  *
  * The role-supply strip sits above the rows on purpose. A host reads "short 1
  * tank" before pressing Balance, instead of reading a seated lineup afterwards
@@ -151,7 +151,7 @@ export function PickupLobbyPanel({
                 <AlertDialogHeader>
                   <AlertDialogTitle>Empty the lobby?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    {`This removes all ${rows.length} players from this mix, along with their per-mix rank overrides and role order. Workspace ranks are not affected.`}
+                    {`This removes all ${rows.length} players from this mix, along with their role order. Ranks are not affected \u2014 they live in your own book and the workspace roster.`}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -243,13 +243,13 @@ export function PickupLobbyPanel({
             <ul className="px-2.5 py-2" aria-label="Mix lineup">
               {active.map((row) => (
                 <LineupRow
-                  key={row.workspace_player_id}
+                  key={row.workspace_member_id}
                   row={row}
                   canWrite={canWrite}
-                  saving={savingPlayerId === row.workspace_player_id}
-                  onPatch={(patch) => onPatchPlayer(row.workspace_player_id, patch)}
-                  onOpen={() => onOpenPlayer(row.workspace_player_id)}
-                  onRemove={() => onRemovePlayer(row.workspace_player_id)}
+                  saving={savingPlayerId === row.workspace_member_id}
+                  onPatch={(patch) => onPatchPlayer(row.workspace_member_id, patch)}
+                  onOpen={() => onOpenPlayer(row.workspace_member_id)}
+                  onRemove={() => onRemovePlayer(row.workspace_member_id)}
                 />
               ))}
             </ul>
@@ -262,12 +262,12 @@ export function PickupLobbyPanel({
                 <ul className="mt-1">
                   {benched.map((row) => (
                     <BenchedRow
-                      key={row.workspace_player_id}
+                      key={row.workspace_member_id}
                       row={row}
                       canWrite={canWrite}
-                      saving={savingPlayerId === row.workspace_player_id}
-                      onPatch={(patch) => onPatchPlayer(row.workspace_player_id, patch)}
-                      onOpen={() => onOpenPlayer(row.workspace_player_id)}
+                      saving={savingPlayerId === row.workspace_member_id}
+                      onPatch={(patch) => onPatchPlayer(row.workspace_member_id, patch)}
+                      onOpen={() => onOpenPlayer(row.workspace_member_id)}
                     />
                   ))}
                 </ul>
@@ -386,7 +386,7 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
       // as a button that also contains buttons. The gear below is the keyboard
       // and screen-reader affordance; this handler is a pointer shortcut to the
       // same action, which is why the row stays a plain list item.
-      title={`${label} \u2014 roles, priority and mix rank`}
+      title={`${label} \u2014 roles, priority and ranks`}
       onClick={(event) => {
         if (event.target instanceof HTMLElement && event.target.closest("[data-card-action]")) {
           return;
@@ -424,19 +424,14 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
         {division == null ? null : (
           <DivisionIcon division={division} tournamentGrid={grid} width={22} height={22} />
         )}
+        {/* One number, one meaning: the mean of the effective ranks the balancer
+            will use. The `*` that used to mark a per-mix pin is gone with the pin
+            itself — which layer each role resolved from is named in the sheet. */}
         <span
-          title={row.rank_value == null ? "Workspace ranks" : "Mix rank override"}
+          title="Mean effective rank across this player's roles"
           className="font-mono text-[13.5px] font-semibold tabular-nums text-[color:var(--aqt-fg)]"
         >
           {rank ?? "\u2014"}
-          {row.rank_value == null ? null : (
-            <>
-              <span aria-hidden="true" className="text-[color:var(--aqt-teal)]">
-                *
-              </span>
-              <span className="sr-only"> (mix rank override)</span>
-            </>
-          )}
         </span>
       </div>
 

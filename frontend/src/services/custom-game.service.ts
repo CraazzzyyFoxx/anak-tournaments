@@ -1,12 +1,11 @@
 import { apiFetch } from "@/lib/api-fetch";
 
 /** Where an effective rank came from, strongest first. */
-export type RankSource = "override" | "host" | "canon" | "ow";
+export type RankSource = "author" | "workspace" | "ow";
 
 export const RANK_SOURCE_LABELS: Record<RankSource, string> = {
-  override: "This mix",
-  host: "Mine",
-  canon: "Workspace",
+  author: "Mine",
+  workspace: "Workspace",
   ow: "Overwatch",
 };
 
@@ -14,30 +13,30 @@ export const RANK_SOURCE_LABELS: Record<RankSource, string> = {
  * One row of a mix lineup, self-describing so the lineup never has to guess a
  * name from a separately paginated pool query.
  *
- * `is_active` is the bench switch: a benched row keeps its rank override and
- * role order but is skipped when the mix is balanced. `roles` is the ordered
- * role list — position is the balancer's role priority, and `null` means
- * "every role this player has a rank for".
+ * `is_active` is the bench switch: a benched row keeps its role order but is
+ * skipped when the mix is balanced. `roles` is the ordered role list — position
+ * is the balancer's role priority, and `null` means "every role this player has
+ * a rank for".
  *
- * Ranks come from three dictionaries and one snapshot, and the row carries
- * enough to tell them apart: `ranks` is what balance will actually use,
- * `rank_sources` says which layer won (`rank_value` here > this host's book >
- * the workspace canon > Overwatch), and `host_ranks` is this host's own book so
- * the sheet can edit it without confusing it with an inherited value.
+ * Ranks come from three layers and the row carries enough to tell them apart:
+ * `ranks` is what balance will actually use, `rank_sources` says which layer won
+ * (this host's own book > the workspace canon > Overwatch), and `author_ranks`
+ * is this host's book alone so the sheet can edit it without mistaking an
+ * inherited value for their own. There is deliberately no per-mix pin: a rank
+ * that only existed inside one mix was invisible everywhere else it mattered.
  */
 export type CustomGamePlayer = {
   id: number;
-  workspace_player_id: number;
+  workspace_member_id: number;
   display_name: string | null;
   battle_tag: string | null;
-  rank_value: number | null;
   team_index: number | null;
   sort_order: number;
   is_active: boolean;
   roles: string[] | null;
   ranks: Record<string, number>;
   rank_sources: Record<string, RankSource>;
-  host_ranks: Record<string, number>;
+  author_ranks: Record<string, number>;
 };
 
 export type CustomGameStatus = "draft" | "balanced" | "completed" | "cancelled";
@@ -65,7 +64,6 @@ export type CustomGame = {
 
 /** Patch semantics: an omitted key is left untouched on the server. */
 export type CustomGamePlayerPatch = {
-  rank_value?: number | null;
   is_active?: boolean;
   roles?: string[] | null;
 };
@@ -82,11 +80,11 @@ export const customGameService = {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games`).then((r) => r.json());
   },
 
-  /** Always starts empty: the lineup is built explicitly from the player pool. */
+  /** Always starts empty: the lineup is built explicitly from the workspace roster. */
   create(workspaceId: number, name: string): Promise<CustomGame> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games`, {
       method: "POST",
-      body: { name, player_ids: [] },
+      body: { name, member_ids: [] },
     }).then((r) => r.json());
   },
 
@@ -94,21 +92,21 @@ export const customGameService = {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}`).then((r) => r.json());
   },
 
-  updateRoster(workspaceId: number, gameId: number, playerIds: number[]): Promise<CustomGame> {
+  updateRoster(workspaceId: number, gameId: number, memberIds: number[]): Promise<CustomGame> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/roster`, {
       method: "POST",
-      body: { player_ids: playerIds },
+      body: { member_ids: memberIds },
     }).then((r) => r.json());
   },
 
   updatePlayer(
     workspaceId: number,
     gameId: number,
-    workspacePlayerId: number,
+    workspaceMemberId: number,
     patch: CustomGamePlayerPatch,
   ): Promise<CustomGame> {
     return apiFetch(
-      `/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/players/${workspacePlayerId}`,
+      `/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/players/${workspaceMemberId}`,
       { method: "PUT", body: patch },
     ).then((r) => r.json());
   },

@@ -56,18 +56,18 @@ export default function BalancerPickupPage() {
     patchPlayer,
     balance,
     recordOutcome,
-    setHostRanks,
+    setAuthorRanks,
   } = usePickupMix(workspaceId ?? 0, pickedGameId);
 
   const games = gamesQuery.data ?? [];
   const game = gameQuery.data;
   const rows = game?.players ?? [];
-  const rosterIds = rows.map((row) => row.workspace_player_id);
+  const rosterIds = rows.map((row) => row.workspace_member_id);
   // A completed or cancelled mix is read-only server-side; hide its controls
   // rather than let a click 409.
   const canWrite = canEdit && game != null && !PICKUP_TERMINAL_STATUSES[game.status];
-  const openRow = rows.find((row) => row.workspace_player_id === openPlayerId) ?? null;
-  const savingPlayerId = patchPlayer.isPending ? (patchPlayer.variables?.workspacePlayerId ?? null) : null;
+  const openRow = rows.find((row) => row.workspace_member_id === openPlayerId) ?? null;
+  const savingPlayerId = patchPlayer.isPending ? (patchPlayer.variables?.workspaceMemberId ?? null) : null;
 
   const variants = parseVariants(game?.result_json);
   const boardIndex = Math.min(variantIndex, Math.max(0, variants.length - 1));
@@ -81,10 +81,10 @@ export default function BalancerPickupPage() {
     );
   }
 
-  const togglePoolPlayer = (playerId: number) => {
+  const togglePoolMember = (memberId: number) => {
     if (selectedGameId == null) return;
     setRoster.mutate(
-      rosterIds.includes(playerId) ? rosterIds.filter((id) => id !== playerId) : [...rosterIds, playerId],
+      rosterIds.includes(memberId) ? rosterIds.filter((id) => id !== memberId) : [...rosterIds, memberId],
     );
   };
 
@@ -130,11 +130,11 @@ export default function BalancerPickupPage() {
               rows={rows}
               savingPlayerId={savingPlayerId}
               clearing={setRoster.isPending}
-              onPatchPlayer={(workspacePlayerId, patch) =>
-                patchPlayer.mutate({ workspacePlayerId, patch })
+              onPatchPlayer={(workspaceMemberId, patch) =>
+                patchPlayer.mutate({ workspaceMemberId, patch })
               }
               onClear={() => setRoster.mutate([])}
-              onRemovePlayer={togglePoolPlayer}
+              onRemovePlayer={togglePoolMember}
               onOpenPlayer={setOpenPlayerId}
               onOpenPool={() => setIsPoolOpen(true)}
             />
@@ -169,30 +169,30 @@ export default function BalancerPickupPage() {
         workspaceId={workspaceId}
         canEdit={canEdit}
         selectedIds={rosterIds}
-        onTogglePlayer={(player) => togglePoolPlayer(player.id)}
+        onTogglePlayer={(member) => togglePoolMember(member.member_id)}
       />
 
       <PickupPlayerSheet
         row={openRow}
         canEdit={canWrite}
-        saving={openRow != null && savingPlayerId === openRow.workspace_player_id}
+        saving={openRow != null && savingPlayerId === openRow.workspace_member_id}
         onOpenChange={(open) => {
           if (!open) setOpenPlayerId(null);
         }}
         onPatch={(patch) => {
-          if (openRow) patchPlayer.mutate({ workspacePlayerId: openRow.workspace_player_id, patch });
+          if (openRow) patchPlayer.mutate({ workspaceMemberId: openRow.workspace_member_id, patch });
         }}
-        onSetHostRank={(role, rank) => {
+        onSetAuthorRank={(role, rank) => {
           if (!openRow) return;
-          setHostRanks.mutate(
+          setAuthorRanks.mutate(
             rank == null
-              ? { workspacePlayerId: openRow.workspace_player_id, ranks: {}, clear: [role] }
-              : { workspacePlayerId: openRow.workspace_player_id, ranks: { [role]: rank } },
+              ? { workspaceMemberId: openRow.workspace_member_id, ranks: {}, clear: [role] }
+              : { workspaceMemberId: openRow.workspace_member_id, ranks: { [role]: rank } },
           );
         }}
         onRemove={() => {
           if (openRow) {
-            togglePoolPlayer(openRow.workspace_player_id);
+            togglePoolMember(openRow.workspace_member_id);
             setOpenPlayerId(null);
           }
         }}

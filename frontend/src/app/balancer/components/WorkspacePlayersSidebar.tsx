@@ -47,7 +47,8 @@ import { cn } from "@/lib/utils";
 import {
   workspacePlayerKeys,
   workspacePlayerService,
-  type WorkspacePlayer,
+  type RankScope,
+  type RosterMember,
 } from "@/services/workspace-player.service";
 
 const PER_PAGE = 30;
@@ -55,17 +56,35 @@ const PER_PAGE = 30;
 /** Matches the three `size-8` rank pickers a row ends with, so the legend sits over its column. */
 const RANK_COLUMN_CLASS = "flex size-8 shrink-0 items-center justify-center";
 
+/**
+ * What each layer actually means, said in the row's own terms.
+ *
+ * The panel used to claim "ranks here carry across every tournament in this
+ * workspace", which stopped being true once the workspace value became a
+ * fallback rather than the tournament rank: an organiser's own book, and a
+ * tournament's own registration rank, both outrank it.
+ */
+const SCOPE_CAPTIONS: Record<RankScope, string> = {
+  workspace:
+    "Shared fallback \u2014 used only where nobody set their own rank for a tournament or mix.",
+  author: "Your own book \u2014 beats the workspace rank in the mixes you host. Only you see it.",
+};
+
+const SCOPE_LABELS: Record<RankScope, string> = { workspace: "Workspace", author: "Mine" };
+
+const NO_RANKS: Record<string, number> = {};
+
 type WorkspacePlayersSidebarProps = {
   workspaceId: number;
   canEdit: boolean;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
   selectedIds?: number[];
-  onTogglePlayer?: (player: WorkspacePlayer) => void;
+  onTogglePlayer?: (member: RosterMember) => void;
 };
 
-function playerLabel(player: WorkspacePlayer): string {
-  return player.display_name || player.battle_tag || `#${player.id}`;
+function memberLabel(member: RosterMember): string {
+  return member.display_name || member.battle_tag || `#${member.member_id}`;
 }
 
 /** `1–30 of 224`, using the real page length so the last page is not overstated. */
@@ -74,13 +93,16 @@ function rangeSummary(page: number, perPage: number, shown: number, total: numbe
   return `${first}\u2013${first + shown - 1} of ${total}`;
 }
 
-type WorkspacePlayerRowProps = {
-  player: WorkspacePlayer;
+type RosterMemberRowProps = {
+  member: RosterMember;
+  /** Which layer the pickers read and write. */
+  scope: RankScope;
   canEdit: boolean;
   isSelected: boolean;
   isSaving: boolean;
-  onToggle?: (player: WorkspacePlayer) => void;
-  onSaveRanks: (ranks: Record<string, number>) => void;
+  onToggle?: (member: RosterMember) => void;
+  /** `null` drops the role from the layer rather than zeroing it. */
+  onSaveRank: (role: string, rank: number | null) => void;
 };
 
 /**
@@ -91,30 +113,43 @@ type WorkspacePlayerRowProps = {
  * rank on the right, a BattleTag copy button, and a right-click menu — minus
  * everything that only exists for a tournament registration: the balancer status
  * menu, the pool include/exclude button, and the Flex / Ready / issue chips. A
- * workspace player has no registration to carry a status, and no pool to be
+ * workspace member has no registration to carry a status, and no pool to be
  * excluded from; what it does have, and the pool row does not, is directly
- * editable canon ranks, which is why the three pickers stay on the second line.
+ * editable ranks, which is why the three pickers stay on the second line.
+ *
+ * Those pickers edit *one* layer at a time, and a value the layer does not own
+ * is shown dimmed with the inheritance spelled out in its accessible name. A
+ * picker that rendered an inherited number as if it were the author's own made
+ * "set" and "leave alone" look identical, which is exactly the mistake the
+ * layered ranks exist to make visible.
  *
  * Memoized for the same reason the pool row is: each row mounts a Radix context
  * menu root, and the search field is deferred, so an unmemoized list re-rendered
  * every row on every keystroke.
  */
-const WorkspacePlayerRow = memo(function WorkspacePlayerRow({
-  player,
+const RosterMemberRow = memo(function RosterMemberRow({
+  member,
+  scope,
   canEdit,
   isSelected,
   isSaving,
   onToggle,
-  onSaveRanks,
-}: WorkspacePlayerRowProps) {
+  onSaveRank,
+}: RosterMemberRowProps) {
   const grid = getDefaultDivisionGrid();
-  const label = playerLabel(player);
+  const label = memberLabel(member);
   const { name, suffix } = splitBattleTag(label);
-  const rankedRoles = ROLES.filter((role) => typeof player.ranks[role.code] === "number");
+  // Only the author layer inherits: the workspace canon has nothing above it
+  // that a roster row can see (Overwatch resolution happens per mix).
+  const own = scope === "author" ? member.author_ranks : member.ranks;
+  const inherited = scope === "author" ? member.ranks : NO_RANKS;
+  const effective = scope === "author" ? { ...member.ranks, ...member.author_ranks } : member.ranks;
+
+  const rankedRoles = ROLES.filter((role) => typeof effective[role.code] === "number");
   // The strongest role is what a pool decision is made on, and the glyph alone
   // hides the value — same reasoning as the pool row's primary entry.
   const topRank = rankedRoles.reduce<{ role: RoleCode; rank: number } | null>((best, role) => {
-    const rank = player.ranks[role.code] as number;
+    const rank = effective[role.code] as number;
     return best && best.rank >= rank ? best : { role: role.code, rank };
   }, null);
   const division = topRank ? resolveDivisionFromRank(grid, topRank.rank) : null;
@@ -135,7 +170,7 @@ const WorkspacePlayerRow = memo(function WorkspacePlayerRow({
               type="button"
               aria-pressed={isSelected}
               aria-label={isSelected ? `Remove ${label} from the lineup` : `Add ${label} to the lineup`}
-              onClick={() => onToggle(player)}
+              onClick={() => onToggle(member)}
               className={cn(
                 "mt-0.5 flex size-6 items-center justify-center rounded-md border transition-colors",
                 isSelected
@@ -198,29 +233,36 @@ const WorkspacePlayerRow = memo(function WorkspacePlayerRow({
                 ) : (
                   <span className="text-[12px] text-[color:var(--aqt-fg-dim)]">No ranks yet</span>
                 )}
-                {player.battle_tag ? <BattleTagCopyButton battleTag={player.battle_tag} /> : null}
+                {member.battle_tag ? <BattleTagCopyButton battleTag={member.battle_tag} /> : null}
               </div>
             </div>
 
             <div
               role="group"
-              aria-label={`Ranks for ${label}`}
+              aria-label={`${SCOPE_LABELS[scope]} ranks for ${label}`}
               className="mt-1.5 flex items-center justify-end gap-1.5"
             >
-              {ROLES.map((role) => (
-                <DivisionRankPicker
-                  key={role.code}
-                  rank={player.ranks[role.code] ?? null}
-                  disabled={!canEdit || isSaving}
-                  label={`${ROLE_LABELS[role.code]} rank for ${label}`}
-                  onChange={(nextRank) => {
-                    const ranks = { ...player.ranks };
-                    if (nextRank == null) delete ranks[role.code];
-                    else ranks[role.code] = nextRank;
-                    onSaveRanks(ranks);
-                  }}
-                />
-              ))}
+              {ROLES.map((role) => {
+                const ownRank = own[role.code] ?? null;
+                const inheritedRank = ownRank == null ? (inherited[role.code] ?? null) : null;
+                return (
+                  <span
+                    key={role.code}
+                    className={cn("inline-flex shrink-0", inheritedRank != null && "opacity-45")}
+                  >
+                    <DivisionRankPicker
+                      rank={ownRank ?? inheritedRank}
+                      disabled={!canEdit || isSaving}
+                      label={
+                        inheritedRank == null
+                          ? `${ROLE_LABELS[role.code]} rank for ${label}`
+                          : `${ROLE_LABELS[role.code]} rank for ${label}, inherited ${inheritedRank} from the workspace`
+                      }
+                      onChange={(nextRank) => onSaveRank(role.code, nextRank)}
+                    />
+                  </span>
+                );
+              })}
             </div>
           </div>
         </li>
@@ -228,12 +270,12 @@ const WorkspacePlayerRow = memo(function WorkspacePlayerRow({
       <ContextMenuContent className="w-56">
         <ContextMenuLabel>Player actions</ContextMenuLabel>
         {onToggle ? (
-          <ContextMenuItem onClick={() => onToggle(player)}>
+          <ContextMenuItem onClick={() => onToggle(member)}>
             <Check className="h-4 w-4" />
             {isSelected ? "Remove from the lineup" : "Add to the lineup"}
           </ContextMenuItem>
         ) : null}
-        {player.battle_tag ? <BattleTagContextMenuItems battleTags={[player.battle_tag]} /> : null}
+        {member.battle_tag ? <BattleTagContextMenuItems battleTags={[member.battle_tag]} /> : null}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -253,6 +295,9 @@ export function WorkspacePlayersSidebar({
   const [battleTag, setBattleTag] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  // The shared canon by default: a member with nothing set anywhere is the
+  // common case, and the fallback is the value that helps everyone.
+  const [scope, setScope] = useState<RankScope>("workspace");
   const deferredSearch = useDeferredValue(search.trim());
   const searchRef = useRef<HTMLInputElement>(null);
   const battleTagRef = useRef<HTMLInputElement>(null);
@@ -261,7 +306,7 @@ export function WorkspacePlayersSidebar({
   const selected = useMemo(() => new Set(selectedIds ?? []), [selectedIds]);
 
   const listParams = { page, perPage: PER_PAGE, query: deferredSearch };
-  const playersQuery = useQuery({
+  const membersQuery = useQuery({
     queryKey: workspacePlayerKeys.list(workspaceId, listParams),
     queryFn: () => workspacePlayerService.list(workspaceId, listParams),
     // Every keystroke and page click is a new key: without this the rows are
@@ -271,7 +316,7 @@ export function WorkspacePlayersSidebar({
 
   const addPlayer = useMutation({
     mutationFn: (tag: string) => workspacePlayerService.upsert(workspaceId, tag),
-    onSuccess: async (_player, tag) => {
+    onSuccess: async (_member, tag) => {
       setBattleTag("");
       setIsAddOpen(false);
       notify.success(`${tag} saved to the workspace`);
@@ -280,18 +325,27 @@ export function WorkspacePlayersSidebar({
     onError: (error) => notify.apiError(error),
   });
 
-  const saveRanks = useMutation({
-    mutationFn: ({ playerId, ranks }: { playerId: number; ranks: Record<string, number> }) =>
-      workspacePlayerService.setRanks(workspaceId, playerId, ranks),
+  /**
+   * One role per write, so saving Tank never rewrites Damage: the endpoint
+   * leaves an omitted role alone, and `clear` deletes the role from the layer
+   * instead of pinning a zero over the value it should fall back to.
+   */
+  const saveRank = useMutation({
+    mutationFn: ({ memberId, role, rank }: { memberId: number; role: string; rank: number | null }) =>
+      workspacePlayerService.setRanks(workspaceId, memberId, {
+        scope,
+        ranks: rank == null ? {} : { [role]: rank },
+        clear: rank == null ? [role] : [],
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(workspaceId) });
     },
     onError: (error) => notify.apiError(error),
   });
 
-  const pageData = playersQuery.data;
+  const pageData = membersQuery.data;
   const total = pageData?.total ?? null;
-  const players = pageData?.results ?? [];
+  const members = pageData?.results ?? [];
   const totalPages = pageData ? Math.max(1, Math.ceil(pageData.total / pageData.per_page)) : 1;
 
   if (collapsed) {
@@ -353,11 +407,11 @@ export function WorkspacePlayersSidebar({
   };
 
   const listStatus =
-    playersQuery.isLoading || total == null
+    membersQuery.isLoading || total == null
       ? ""
       : total === 0
         ? "No workspace players shown"
-        : `${rangeSummary(page, PER_PAGE, players.length, total)} workspace players shown`;
+        : `${rangeSummary(page, PER_PAGE, members.length, total)} workspace players shown`;
 
   return (
     // `min-w-0`: as a grid item this panel inherits `min-width: auto`, so below
@@ -442,7 +496,8 @@ export function WorkspacePlayersSidebar({
                       addError ? "text-rose-200" : "text-[color:var(--aqt-fg-dim)]",
                     )}
                   >
-                    {addError ?? "Ranks here carry across every tournament in this workspace."}
+                    {addError ??
+                      "Joins the workspace roster, so every tournament and mix here can pick them."}
                   </p>
                 </form>
               </PopoverContent>
@@ -497,6 +552,38 @@ export function WorkspacePlayersSidebar({
         ) : null}
       </div>
 
+      {/* Which layer the pickers below belong to. Two layers, so a segmented pair
+          rather than a select: the choice changes what every row means, and a
+          collapsed control would have hidden that. */}
+      <div className="mt-2 flex items-center gap-2">
+        <div
+          role="group"
+          aria-label="Rank layer to edit"
+          className="flex shrink-0 items-center gap-0.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-black/15 p-0.5"
+        >
+          {(["workspace", "author"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={scope === option}
+              title={SCOPE_CAPTIONS[option]}
+              onClick={() => setScope(option)}
+              className={cn(
+                "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+                scope === option
+                  ? "bg-white/10 text-[color:var(--aqt-fg)]"
+                  : "text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg-muted)]",
+              )}
+            >
+              {SCOPE_LABELS[option]}
+            </button>
+          ))}
+        </div>
+        <p className="min-w-0 text-[11px] leading-tight text-[color:var(--aqt-fg-dim)]">
+          {SCOPE_CAPTIONS[scope]}
+        </p>
+      </div>
+
       <p role="status" aria-live="polite" className="sr-only">
         {listStatus}
       </p>
@@ -504,7 +591,7 @@ export function WorkspacePlayersSidebar({
       {/* `keepPreviousData` keeps the last page on screen when the next one fails.
           Without this strip the panel would silently answer a new query with the
           old rows. */}
-      {playersQuery.isError && pageData ? (
+      {membersQuery.isError && pageData ? (
         <div
           role="alert"
           className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-100"
@@ -515,7 +602,7 @@ export function WorkspacePlayersSidebar({
             variant="ghost"
             size="sm"
             className="h-6 shrink-0 rounded border border-rose-300/30 px-1.5 text-[11px] text-rose-100 hover:bg-rose-500/15 hover:text-rose-50"
-            onClick={() => void playersQuery.refetch()}
+            onClick={() => void membersQuery.refetch()}
           >
             Retry
           </Button>
@@ -547,22 +634,22 @@ export function WorkspacePlayersSidebar({
       {/* Below `xl` the balancer shell drops its fixed height, so an uncapped scroller
           would grow to its content and push a scrollbar onto the document. */}
       <div className="min-h-0 max-h-[calc(100svh-16rem)] flex-1 overflow-y-auto overflow-x-hidden pr-2">
-        {playersQuery.isLoading ? (
+        {membersQuery.isLoading ? (
           <div className="space-y-1.5">
             {[0, 1, 2, 3, 4, 5].map((row) => (
               <Skeleton key={row} className="h-11 w-full rounded-xl" />
             ))}
           </div>
-        ) : playersQuery.isError && !pageData ? (
+        ) : membersQuery.isError && !pageData ? (
           <PageStateCard
             state="error"
             title="Unable to load workspace players"
             description="Check your connection and try again."
             actionLabel="Retry"
-            onAction={() => void playersQuery.refetch()}
+            onAction={() => void membersQuery.refetch()}
             className="px-4 py-8"
           />
-        ) : players.length === 0 ? (
+        ) : members.length === 0 ? (
           deferredSearch ? (
             <PageStateCard
               state="filtered-empty"
@@ -586,17 +673,20 @@ export function WorkspacePlayersSidebar({
           )
         ) : (
           <ul className="space-y-1.5" aria-label="Workspace players">
-            {players.map((player) => (
-              <WorkspacePlayerRow
-                key={player.id}
-                player={player}
+            {members.map((member) => (
+              <RosterMemberRow
+                key={member.member_id}
+                member={member}
+                scope={scope}
                 canEdit={canEdit}
-                isSelected={selected.has(player.id)}
+                isSelected={selected.has(member.member_id)}
                 // Scoped to the row being written: one save used to disable every
                 // picker in the list, so the whole panel greyed out per keystroke.
-                isSaving={saveRanks.isPending && saveRanks.variables?.playerId === player.id}
+                isSaving={saveRank.isPending && saveRank.variables?.memberId === member.member_id}
                 onToggle={onTogglePlayer}
-                onSaveRanks={(ranks) => saveRanks.mutate({ playerId: player.id, ranks })}
+                onSaveRank={(role, rank) =>
+                  saveRank.mutate({ memberId: member.member_id, role, rank })
+                }
               />
             ))}
           </ul>
@@ -612,7 +702,7 @@ export function WorkspacePlayersSidebar({
             pageData
               ? pageData.total === 0
                 ? "0 players"
-                : rangeSummary(page, pageData.per_page, players.length, pageData.total)
+                : rangeSummary(page, pageData.per_page, members.length, pageData.total)
               : undefined
           }
         />

@@ -2,7 +2,7 @@
 //
 // The workspace roster is the one panel on the balancer page that talks to the
 // network on its own, so the states around the happy path are what break in
-// production. Four things are pinned here:
+// production. Five things are pinned here:
 //
 //  1. "nothing here" and "nothing matched your search" are different messages,
 //     and the second one offers the way back;
@@ -10,14 +10,16 @@
 //     empty state and telling an admin the workspace has no players;
 //  3. the add field validates on submit rather than sitting behind a disabled
 //     button, so the reason nothing happens is visible;
-//  4. saving one player's rank disables that player's pickers only — the whole
-//     list used to grey out on every single edit.
+//  4. saving one member's rank disables that member's pickers only — the whole
+//     list used to grey out on every single edit;
+//  5. the layer switch writes where it says it writes, and a picker on the
+//     author layer shows the inherited workspace value instead of an empty slot.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { WorkspacePlayer } from "@/services/workspace-player.service";
+import type { RosterMember } from "@/services/workspace-player.service";
 
 import { WorkspacePlayersSidebar } from "./WorkspacePlayersSidebar";
 
@@ -54,34 +56,45 @@ vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 // control that carries its accessible name and disabled state.
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => ({ tiers: [] }) }));
+// The picker's `rank` is what decides whether an inherited value is visible, so
+// the stub surfaces it as an attribute rather than swallowing it.
 vi.mock("@/app/balancer/components/DivisionRankPicker", () => ({
   DivisionRankPicker: ({
+    rank,
     label,
     disabled,
     onChange,
   }: {
+    rank: number | null | undefined;
     label: string;
     disabled?: boolean;
     onChange: (rank: number | null) => void;
   }) => (
-    <button type="button" aria-label={label} disabled={disabled} onClick={() => onChange(1200)} />
+    <button
+      type="button"
+      aria-label={label}
+      data-rank={rank ?? ""}
+      disabled={disabled}
+      onClick={() => onChange(1200)}
+    />
   ),
 }));
 
 const WORKSPACE_ID = 7;
 
-function player(id: number, battleTag: string): WorkspacePlayer {
+function member(memberId: number, battleTag: string, overrides: Partial<RosterMember> = {}): RosterMember {
   return {
-    id,
-    workspace_id: WORKSPACE_ID,
+    member_id: memberId,
+    player_id: memberId * 10,
     battle_tag: battleTag,
     display_name: null,
-    player_id: null,
     ranks: {},
+    author_ranks: {},
+    ...overrides,
   };
 }
 
-const ROSTER = [player(1, "Aria#1111"), player(2, "Borys#2222")];
+const ROSTER = [member(1, "Aria#1111"), member(2, "Borys#2222")];
 
 function tick() {
   const { promise, resolve } = Promise.withResolvers<void>();
@@ -94,7 +107,7 @@ async function mount(
     canEdit?: boolean;
     collapsed?: boolean;
     selectedIds?: number[];
-    onTogglePlayer?: (player: WorkspacePlayer) => void;
+    onTogglePlayer?: (member: RosterMember) => void;
   } = {},
 ) {
   const container = document.createElement("div");
@@ -174,8 +187,8 @@ beforeEach(() => {
     const results = params.query ? [] : ROSTER;
     return Promise.resolve({ results, total: results.length, page: 1, per_page: 30 });
   });
-  upsert.mockResolvedValue(player(3, "Cyrus#3333"));
-  setRanks.mockResolvedValue({});
+  upsert.mockResolvedValue(member(3, "Cyrus#3333"));
+  setRanks.mockResolvedValue({ ranks: {} });
 });
 
 describe("WorkspacePlayersSidebar", () => {
@@ -238,7 +251,7 @@ describe("WorkspacePlayersSidebar", () => {
   });
 
   it("disables the pickers of the row being saved, not the whole roster", async () => {
-    setRanks.mockReturnValue(Promise.withResolvers<Record<string, number>>().promise);
+    setRanks.mockReturnValue(Promise.withResolvers<{ ranks: Record<string, number> }>().promise);
 
     const scope = await mount();
     const ariaTank = scope.querySelector<HTMLButtonElement>("button[aria-label='Tank rank for Aria#1111']");
@@ -274,7 +287,7 @@ describe("WorkspacePlayersSidebar", () => {
 
     await click(add);
     expect(onTogglePlayer).toHaveBeenCalledTimes(1);
-    expect(onTogglePlayer.mock.calls[0][0].id).toBe(1);
+    expect(onTogglePlayer.mock.calls[0][0].member_id).toBe(1);
 
     // The name used to be the toggle, so reading a row risked changing it.
     const nameNodes = [...scope.querySelectorAll("button")].filter(
@@ -292,7 +305,7 @@ describe("WorkspacePlayersSidebar", () => {
     expect(scope.querySelector("button[aria-label='Add Borys#2222 to the lineup']")).not.toBeNull();
 
     await click(remove);
-    expect(onTogglePlayer.mock.calls[0][0].id).toBe(1);
+    expect(onTogglePlayer.mock.calls[0][0].member_id).toBe(1);
   });
 
   it("stays the simplified pool row: no status, no exclude, no state chips", async () => {
@@ -306,5 +319,59 @@ describe("WorkspacePlayersSidebar", () => {
     // What the pool row does give it, and it keeps: role glyphs, the top rank
     // and a BattleTag copy control.
     expect(scope.querySelector("button[title='Copy BattleTag']")).not.toBeNull();
+  });
+
+  it("writes to the layer the switch names, and no longer claims ranks are the tournament rank", async () => {
+    const scope = await mount();
+
+    // The old caption promised the opposite of what the canon now does: it is a
+    // fallback, not the rank a tournament balances on.
+    expect(scope.textContent).not.toContain("carry across every tournament");
+
+    await click(scope.querySelector("button[aria-label='Tank rank for Aria#1111']"));
+    expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
+      scope: "workspace",
+      ranks: { tank: 1200 },
+      clear: [],
+    });
+
+    await click(button(scope, "Mine"));
+    await click(scope.querySelector("button[aria-label='DPS rank for Aria#1111']"));
+    expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
+      scope: "author",
+      ranks: { dps: 1200 },
+      clear: [],
+    });
+  });
+
+  it("shows an inherited workspace rank on the author layer instead of an empty picker", async () => {
+    list.mockImplementation(() =>
+      Promise.resolve({
+        results: [
+          member(1, "Aria#1111", { ranks: { tank: 2500 } }),
+          member(2, "Borys#2222", { ranks: { tank: 2500 }, author_ranks: { tank: 3100 } }),
+        ],
+        total: 2,
+        page: 1,
+        per_page: 30,
+      }),
+    );
+
+    const scope = await mount();
+    await click(button(scope, "Mine"));
+
+    // Aria has no entry of her own. An empty slot here read as "unranked" and
+    // hid the value the mix would actually use, so the picker shows the canon
+    // and its accessible name says where the number came from.
+    expect(
+      scope
+        .querySelector("button[aria-label='Tank rank for Aria#1111, inherited 2500 from the workspace']")
+        ?.getAttribute("data-rank"),
+    ).toBe("2500");
+
+    // Borys set his own, so the same slot is plain and carries his number.
+    expect(
+      scope.querySelector("button[aria-label='Tank rank for Borys#2222']")?.getAttribute("data-rank"),
+    ).toBe("3100");
   });
 });

@@ -19,17 +19,16 @@ import {
 function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
   return {
     id: 1,
-    workspace_player_id: 7,
+    workspace_member_id: 7,
     display_name: null,
     battle_tag: "Aria#1111",
-    rank_value: null,
     team_index: null,
     sort_order: 0,
     is_active: true,
     roles: null,
     ranks: { tank: 2400, dps: 2600, support: 2500 },
-    rank_sources: { tank: "canon", dps: "canon", support: "canon" },
-    host_ranks: {},
+    rank_sources: { tank: "workspace", dps: "workspace", support: "workspace" },
+    author_ranks: {},
     ...overrides,
   };
 }
@@ -38,8 +37,8 @@ describe("summarizeRoleSupply", () => {
   it("counts a player once per role they both picked and are ranked for", () => {
     expect(
       summarizeRoleSupply([
-        row({ workspace_player_id: 1, roles: ["tank", "dps"] }),
-        row({ workspace_player_id: 2, roles: ["support"] }),
+        row({ workspace_member_id: 1, roles: ["tank", "dps"] }),
+        row({ workspace_member_id: 2, roles: ["support"] }),
       ]),
     ).toEqual([
       { role: "tank", supply: 1, need: 2, short: 1 },
@@ -66,7 +65,7 @@ describe("summarizeRoleSupply", () => {
 
   it("never reports a negative shortfall once a role is oversupplied", () => {
     const rows = Array.from({ length: 5 }, (_unused, index) =>
-      row({ workspace_player_id: index + 1, roles: ["tank"] }),
+      row({ workspace_member_id: index + 1, roles: ["tank"] }),
     );
     expect(summarizeRoleSupply(rows)[0]).toEqual({ role: "tank", supply: 5, need: 2, short: 0 });
   });
@@ -157,9 +156,9 @@ describe("summarizeLineup", () => {
   it("counts participation and blockers separately from membership", () => {
     expect(
       summarizeLineup([
-        row({ workspace_player_id: 1 }),
-        row({ workspace_player_id: 2, is_active: false }),
-        row({ workspace_player_id: 3, roles: [] }),
+        row({ workspace_member_id: 1 }),
+        row({ workspace_member_id: 2, is_active: false }),
+        row({ workspace_member_id: 3, roles: [] }),
       ]),
     ).toEqual({ total: 3, active: 2, benched: 1, blocking: 1 });
   });
@@ -168,11 +167,11 @@ describe("summarizeLineup", () => {
 describe("sortLineup", () => {
   it("floats active players above benched ones, then keeps the host order", () => {
     const rows = [
-      row({ workspace_player_id: 1, sort_order: 2 }),
-      row({ workspace_player_id: 2, sort_order: 0, is_active: false }),
-      row({ workspace_player_id: 3, sort_order: 1 }),
+      row({ workspace_member_id: 1, sort_order: 2 }),
+      row({ workspace_member_id: 2, sort_order: 0, is_active: false }),
+      row({ workspace_member_id: 3, sort_order: 1 }),
     ];
-    expect(sortLineup(rows).map((item) => item.workspace_player_id)).toEqual([3, 1, 2]);
+    expect(sortLineup(rows).map((item) => item.workspace_member_id)).toEqual([3, 1, 2]);
   });
 });
 

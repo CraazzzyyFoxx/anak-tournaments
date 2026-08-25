@@ -533,14 +533,14 @@ describe("synthetic registration helpers", () => {
           priority: 0,
           rank_value: 900,
           is_active: true,
-          rank_source: "override",
+          rank_source: "registration",
         },
       ],
     });
 
     const player = createSyntheticPlayerFromRegistration(registration);
 
-    expect(player.role_entries_json[0]?.rank_source).toBe("override");
+    expect(player.role_entries_json[0]?.rank_source).toBe("registration");
   });
 });
 

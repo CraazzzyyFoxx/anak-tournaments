@@ -16,12 +16,12 @@ import {
 } from "@/services/workspace-player.service";
 
 export type PickupPlayerPatchInput = {
-  workspacePlayerId: number;
+  workspaceMemberId: number;
   patch: CustomGamePlayerPatch;
 };
 
-export type PickupHostRanksInput = {
-  workspacePlayerId: number;
+export type PickupAuthorRanksInput = {
+  workspaceMemberId: number;
   /** Roles to write into this host's own book. */
   ranks: Record<string, number>;
   /** Roles to drop from it, falling back to the workspace rank. */
@@ -82,7 +82,7 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
 
   const patchPlayer = useMutation({
     mutationFn: (input: PickupPlayerPatchInput) =>
-      customGameService.updatePlayer(workspaceId, selectedGameId as number, input.workspacePlayerId, input.patch),
+      customGameService.updatePlayer(workspaceId, selectedGameId as number, input.workspaceMemberId, input.patch),
     onSuccess: applyGame,
     onError: (error) => notify.apiError(error),
   });
@@ -107,22 +107,23 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
   });
 
   /**
-   * The host's own rank dictionary. Unlike every other write here it does not
-   * return the game, so the mix detail is refetched: the book feeds
-   * `resolve_ranks`, which decides the effective rank of every roster row.
+   * The host's own rank book. Unlike every other write here it does not return
+   * the game, so the mix detail is refetched: the book feeds rank resolution,
+   * which decides the effective rank of every roster row.
+   *
+   * `scope: "author"` is not a parameter the caller may vary — the endpoint
+   * takes no author id, so this can only ever write the caller's own book.
    */
-  const setHostRanks = useMutation({
-    mutationFn: (input: PickupHostRanksInput) =>
-      workspacePlayerService.setHostRanks(
-        workspaceId,
-        input.workspacePlayerId,
-        input.ranks,
-        input.clear ?? [],
-      ),
+  const setAuthorRanks = useMutation({
+    mutationFn: (input: PickupAuthorRanksInput) =>
+      workspacePlayerService.setRanks(workspaceId, input.workspaceMemberId, {
+        scope: "author",
+        ranks: input.ranks,
+        clear: input.clear ?? [],
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: customGameKeys.all(workspaceId) });
-      // The pool sidebar shows canon, which a host write never touches, but its
-      // rows sit beside the lineup's effective numbers.
+      // The roster sidebar shows the same two layers this write changes one of.
       await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(workspaceId) });
     },
     onError: (error) => notify.apiError(error),
@@ -137,6 +138,6 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     patchPlayer,
     balance,
     recordOutcome,
-    setHostRanks,
+    setAuthorRanks,
   };
 }

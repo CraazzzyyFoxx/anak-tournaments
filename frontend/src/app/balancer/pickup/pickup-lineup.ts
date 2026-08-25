@@ -94,9 +94,9 @@ export function getLineupIssue(row: CustomGamePlayer): LineupIssue | null {
 
 /** One label rule shared by the lineup, the teams and the sheet. */
 export function playerLabel(
-  row: Pick<CustomGamePlayer, "display_name" | "battle_tag" | "workspace_player_id">,
+  row: Pick<CustomGamePlayer, "display_name" | "battle_tag" | "workspace_member_id">,
 ): string {
-  return row.display_name || row.battle_tag || `#${row.workspace_player_id}`;
+  return row.display_name || row.battle_tag || `#${row.workspace_member_id}`;
 }
 
 /** Mean effective rank across the roles the player can actually be assigned. */
