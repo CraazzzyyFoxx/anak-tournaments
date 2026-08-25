@@ -27,7 +27,7 @@ from src import schemas
 from src.core import auth, db
 from src.core.workspace import get_division_grid
 from src.services.admin.encounter import encounter_service as enc_service
-from src.services.admin.stage import AdminStageService, stage_service
+from src.services.admin.stage import stage_service
 from src.services.admin.standing import standing_service
 from src.services.admin.team import team_service
 from src.services.admin.tournament import tournament_service
@@ -82,14 +82,12 @@ class AdminRegistryService:
         team_flows: TeamFlowsService = team_flows,
         encounter_flows: EncounterFlowsService = encounter_flows,
         standings_flows: StandingsFlowsService = standings_flows,
-        stage: AdminStageService = stage_service,
         tournament_links: TournamentLinkService = tlink_service,
     ) -> None:
         self.tournament_flows = tournament_flows
         self.team_flows = team_flows
         self.encounter_flows = encounter_flows
         self.standings_flows = standings_flows
-        self.stage = stage
         self.tournament_links = tournament_links
 
     # --- workspace resolvers for create/list (must be awaitables) ---
@@ -131,9 +129,15 @@ class AdminRegistryService:
         # form from it, so this read must ask for it explicitly. `division_grid_version`
         # is the same kind of opt-in: the hub's draft setup resolves player divisions
         # against the tournament's OWN grid, not the workspace default.
-        return _dump(
-            await self.tournament_flows.to_pydantic(session, m, ["stages", "roster_shape", "division_grid_version"])
-        )
+        #
+        # `tournament_read`, not `to_pydantic`: it resolves the `challonge_source`-derived
+        # ids/slugs, which `to_pydantic` serializes as None when a caller omits them (the
+        # columns behind those fields are gone). Omitting them here made the admin Settings
+        # tab read back `challonge_slug: null` right after linking a bracket -- the field
+        # looked blank, the badge read "Not linked" and every sync control stayed disabled
+        # even though the link was persisted.
+        entities = ["stages", "roster_shape", "division_grid_version"]
+        return _dump(await self.tournament_flows.tournament_read(session, m, entities))
 
     async def _ser_team(self, session: AsyncSession, m: Any) -> Any:
         return _dump(
@@ -149,7 +153,9 @@ class AdminRegistryService:
         return _dump(await self.team_flows.to_pydantic_player(session, m, ["user", "tournament"], grid=grid))
 
     async def _ser_stage(self, session: AsyncSession, m: Any) -> Any:
-        return _dump(schemas.StageRead.model_validate(m, from_attributes=True))
+        # `stage_read`, not `model_validate`: same derivation as `_list_stages`, else a
+        # stage create/update response blanks the hub's Challonge link.
+        return _dump(await self.tournament_flows.stage_read(session, m))
 
     async def _ser_stage_item(self, session: AsyncSession, m: Any) -> Any:
         return _dump(schemas.StageItemRead.model_validate(m, from_attributes=True))
@@ -173,9 +179,14 @@ class AdminRegistryService:
     # --- list functions ---
 
     async def _list_stages(self, session: AsyncSession, data: dict[str, Any]) -> Any:
+        # `get_stages_read` runs the same query (items+inputs eager, ordered by
+        # `order`) and additionally applies the `challonge_source`-derived
+        # ids/slugs. Validating the models directly, as this used to, left every
+        # `stage.challonge_slug` null — the columns behind them are gone — so the
+        # hub's Challonge-source detection and the stage header link both went dead.
         tournament_id = _int_or_400(data.get("tournament_id"), "tournament_id")
-        stages = await self.stage.get_stages_by_tournament(session, tournament_id)
-        return [_dump(schemas.StageRead.model_validate(s, from_attributes=True)) for s in stages]
+        stages = await self.tournament_flows.get_stages_read(session, tournament_id)
+        return [_dump(stage) for stage in stages]
 
 
     async def _list_tournament_links(self, session: AsyncSession, data: dict[str, Any]) -> Any:

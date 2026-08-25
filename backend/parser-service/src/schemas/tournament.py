@@ -7,15 +7,7 @@ from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead
 from src.schemas.stage import StageRead
 
-__all__ = ("TournamentRead", "TournamentGroupRead", "TournamentPhaseScheduleRead")
-
-
-class TournamentGroupRead(BaseRead):
-    name: str
-    description: str | None
-    is_groups: bool
-    challonge_id: int | None
-    challonge_slug: str | None
+__all__ = ("TournamentRead", "TournamentPhaseScheduleRead")
 
 
 class TournamentPhaseScheduleRead(BaseModel):

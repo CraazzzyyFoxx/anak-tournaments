@@ -37,11 +37,14 @@ def _loaded_relationship(model: typing.Any, name: str) -> typing.Any | None:
     return getattr(model, name)
 
 
+_StageReadT = typing.TypeVar("_StageReadT", schemas.StageSummaryRead, schemas.StageRead)
+
+
 def _apply_stage_challonge(
-    stage_read: schemas.StageSummaryRead,
+    stage_read: _StageReadT,
     stage_id: int,
     stage_challonge_refs: typing.Mapping[int, ChallongeRef] | None,
-) -> schemas.StageSummaryRead:
+) -> _StageReadT:
     """Override the KEPT ``challonge_id``/``challonge_slug`` fields with values
     DERIVED from ``challonge_source`` (never the legacy ``stage`` columns)."""
     challonge_id, challonge_slug = (
@@ -256,6 +259,39 @@ class TournamentFlowsService:
             stage_challonge_refs=stage_challonge_refs,
         )
 
+    async def tournament_read(
+        self, session: AsyncSession, tournament: models.Tournament, entities: list[str]
+    ) -> schemas.TournamentRead:
+        """Serialize a tournament ALREADY in hand, with its Challonge refs resolved.
+
+        The write paths need exactly what ``get_read`` produces but must not touch
+        its cache: they serialize the instance they just mutated, and ``get_read``
+        both re-fetches by id and is keyed without regard to that write. Resolving
+        the refs here rather than at each call site is what keeps the fields from
+        silently serializing as ``None`` -- ``to_pydantic`` has no way to tell a
+        caller that forgot them from one whose tournament really is unlinked.
+        """
+        stage_models = _loaded_relationship(tournament, "stages") or [] if "stages" in entities else []
+        return await self.to_pydantic(
+            session,
+            tournament,
+            entities,
+            challonge_ref=(await resolve_tournament_challonge(session, [tournament.id])).get(tournament.id),
+            stage_challonge_refs=await resolve_stage_challonge(session, [stage.id for stage in stage_models]),
+        )
+
+    async def stage_read(self, session: AsyncSession, stage: models.Stage) -> schemas.StageRead:
+        """Serialize one stage ALREADY in hand, with its Challonge refs resolved.
+
+        Single-stage counterpart of ``get_stages_read``; same reason it exists as a
+        method rather than a `model_validate` at each call site.
+        """
+        return _apply_stage_challonge(
+            schemas.StageRead.model_validate(stage, from_attributes=True),
+            stage.id,
+            await resolve_stage_challonge(session, [stage.id]),
+        )
+
     async def lookup(
         self,
         session: AsyncSession,
@@ -289,14 +325,12 @@ class TournamentFlowsService:
         )
         stages = list(result.scalars().all())
         stage_challonge_refs = await resolve_stage_challonge(session, [stage.id for stage in stages])
-        output: list[schemas.StageRead] = []
-        for stage in stages:
-            stage_read = schemas.StageRead.model_validate(stage, from_attributes=True)
-            challonge_id, challonge_slug = stage_challonge_refs.get(stage.id, (None, None))
-            output.append(
-                stage_read.model_copy(update={"challonge_id": challonge_id, "challonge_slug": challonge_slug})
+        return [
+            _apply_stage_challonge(
+                schemas.StageRead.model_validate(stage, from_attributes=True), stage.id, stage_challonge_refs
             )
-        return output
+            for stage in stages
+        ]
 
     async def get_all(
         self,

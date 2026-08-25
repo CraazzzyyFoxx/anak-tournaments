@@ -39,6 +39,7 @@ from src.core import auth
 from src.rpc._helpers import _dump, _identity, _path_int, _payload, _run
 from src.services.admin.stage import stage_service
 from src.services.computation import jobs as computation_jobs
+from src.services.tournament.flows import flows_service as tournament_flows
 
 # --- helpers -----------------------------------------------------------------
 
@@ -90,7 +91,7 @@ def register(broker: Any, logger: Any) -> None:
                 source_stage_ids=body.source_stage_ids,
                 target_name=body.target_name,
             )
-            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)
 
@@ -106,7 +107,7 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, ws_id, "stage", "update")
             # activate_stage commits internally (commit=True default).
             stage = await stage_service.activate_stage(session, stage_id)
-            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)
 
@@ -123,7 +124,7 @@ def register(broker: Any, logger: Any) -> None:
             # deactivate_stage commits internally (commit=True default); 409s
             # if any of the stage's encounters left OPEN.
             stage = await stage_service.deactivate_stage(session, stage_id)
-            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)
 
@@ -219,7 +220,7 @@ def register(broker: Any, logger: Any) -> None:
                 top_lb=body.top_lb,
                 mode=body.mode,
             )
-            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)
 
@@ -241,6 +242,6 @@ def register(broker: Any, logger: Any) -> None:
                 team_ids=body.team_ids,
                 mode=body.mode,
             )
-            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)

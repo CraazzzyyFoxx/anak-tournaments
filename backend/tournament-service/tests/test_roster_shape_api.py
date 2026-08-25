@@ -117,6 +117,7 @@ class _LockProbeSession:
         self.draft_status = draft_status
         self.team_status = team_status
         self.scalar_calls: list[Any] = []
+        self.execute_calls: list[Any] = []
 
     async def scalar(self, statement: Any) -> Any:
         self.scalar_calls.append(statement)
@@ -124,6 +125,21 @@ class _LockProbeSession:
         if "registration_team" in rendered:
             return self.team_status
         return self.draft_status
+
+    async def execute(self, statement: Any) -> Any:
+        """No ``challonge_source`` rows — this fake covers the roster-shape branch only.
+
+        The admin serializer also derives the Challonge ids/slugs (they come from
+        ``challonge_source``, not from a tournament column), so it reaches for
+        ``execute``; an unlinked tournament is the case these tests describe.
+        """
+        self.execute_calls.append(statement)
+
+        class _Empty:
+            def all(self) -> list[Any]:
+                return []
+
+        return _Empty()
 
 
 async def _read(

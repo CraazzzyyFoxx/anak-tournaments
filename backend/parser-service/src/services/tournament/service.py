@@ -1,18 +1,13 @@
 import typing
-from dataclasses import dataclass
 from datetime import date, datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.repository import (
-    StageItemRepository,
-    StageRepository,
-    TournamentRepository,
-)
+from shared.repository import TournamentRepository
 from shared.services.tournament.slug import generate_unique_tournament_slug
 from src import models
-from src.core import enums, utils
+from src.core import utils
 
 
 def tournament_entities(
@@ -28,28 +23,13 @@ def tournament_entities(
     return entities
 
 
-@dataclass(frozen=True)
-class GroupSpec:
-    """Plain-value description of one group to create (see ``create_groups``)."""
-
-    name: str
-    is_groups: bool
-    description: str | None = None
-    challonge_id: int | None = None
-    challonge_slug: str | None = None
-
-
 class TournamentService:
     def __init__(
         self,
         *,
         tournament_repo: TournamentRepository = TournamentRepository(),
-        stage_repo: StageRepository = StageRepository(),
-        stage_item_repo: StageItemRepository = StageItemRepository(),
     ) -> None:
         self.tournament_repo = tournament_repo
-        self.stage_repo = stage_repo
-        self.stage_item_repo = stage_item_repo
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> models.Tournament | None:
         return await self.tournament_repo.get(session, id, options=tournament_entities(entities))
@@ -110,54 +90,9 @@ class TournamentService:
         await session.commit()
         return tournament
 
-    async def create_groups(
-        self,
-        session: AsyncSession,
-        tournament: models.Tournament,
-        specs: list[GroupSpec],
-    ) -> list[models.Stage]:
-        """Create Stage + StageItem rows for each group spec. No TournamentGroup rows."""
-        if not specs:
-            return []
-
-        next_order = await self.stage_repo.get_next_order(session, tournament.id)
-
-        stages: list[models.Stage] = []
-        for offset, spec in enumerate(specs):
-            stage_type = enums.StageType.ROUND_ROBIN if spec.is_groups else enums.StageType.DOUBLE_ELIMINATION
-            settings = {"challonge_group_id": spec.challonge_id} if spec.challonge_id is not None else None
-            stages.append(
-                models.Stage(
-                    tournament_id=tournament.id,
-                    name=spec.name,
-                    description=spec.description,
-                    stage_type=stage_type,
-                    order=next_order + offset,
-                    settings_json=settings,
-                )
-            )
-        await self.stage_repo.create_many(session, stages)
-
-        stage_items: list[models.StageItem] = []
-        for spec, stage in zip(specs, stages, strict=True):
-            stage_item_type = enums.StageItemType.GROUP if spec.is_groups else enums.StageItemType.SINGLE_BRACKET
-            stage_items.append(
-                models.StageItem(
-                    stage_id=stage.id,
-                    name=spec.name,
-                    type=stage_item_type,
-                    order=0,
-                )
-            )
-        await self.stage_item_repo.create_many(session, stage_items)
-
-        await session.commit()
-        return stages
-
 
 tournament_service = TournamentService()
 get = tournament_service.get
 get_all = tournament_service.get_all
 get_by_name_and_league = tournament_service.get_by_name_and_league
 create = tournament_service.create
-create_groups = tournament_service.create_groups

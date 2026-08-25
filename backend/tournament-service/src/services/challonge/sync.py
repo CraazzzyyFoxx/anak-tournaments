@@ -308,12 +308,18 @@ def _group_names_for_challonge_ids(group_ids: set[int]) -> dict[int, str]:
 def _stage_for_challonge_group(
     tournament: models.Tournament, challonge_group_id: int
 ) -> models.Stage | None:
+    """Find the stage that owns a Challonge group, by its `settings_json` marker.
+
+    `settings_json["challonge_group_id"]` is the ONLY link: the `tournament.group`
+    table this used to fall back to (`tournament.groups`, matched on
+    `group.challonge_id`) was dropped with its ORM model, so that fallback raised
+    `AttributeError` instead of returning None -- and it ran on the very first
+    import of a grouped bracket, before any stage carries the marker, i.e. exactly
+    when the caller was about to create the missing group stage.
+    """
     for stage in tournament.stages or []:
         if (stage.settings_json or {}).get("challonge_group_id") == challonge_group_id:
             return stage
-    for group in tournament.groups or []:
-        if getattr(group, "challonge_id", None) == challonge_group_id:
-            return getattr(group, "stage", None)
     return None
 
 

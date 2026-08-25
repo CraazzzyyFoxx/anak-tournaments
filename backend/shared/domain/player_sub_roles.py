@@ -36,6 +36,29 @@ def normalize_sub_role(sub_role: str | None) -> str | None:
     return normalized or None
 
 
+def catalog_slugs(
+    catalog: dict[str, Iterable[Any]] | None,
+    role: str | None = None,
+) -> set[str] | None:
+    """Allowed sub-role slugs from a workspace catalog.
+
+    ``None`` catalog means the caller has nothing to enforce (skip). An empty
+    catalog means no slugs are allowed. ``role`` None/flex unions every role;
+    a registration code (tank/dps/support) returns that role only.
+    """
+    if catalog is None:
+        return None
+    codes: Iterable[str] = (role,) if role and role != "flex" else catalog.keys()
+    slugs: set[str] = set()
+    for code in codes:
+        for entry in catalog.get(code, []) or []:
+            raw = entry.get("slug") if isinstance(entry, dict) else getattr(entry, "slug", None)
+            slug = normalize_sub_role(raw if isinstance(raw, str) else None)
+            if slug:
+                slugs.add(slug)
+    return slugs
+
+
 def registration_to_canonical_role(role: Any) -> str | None:
     """Map a registration role code (tank/dps/support) to its canonical name."""
     return normalize_role(role)

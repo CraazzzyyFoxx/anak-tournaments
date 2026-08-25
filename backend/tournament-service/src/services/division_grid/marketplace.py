@@ -404,13 +404,18 @@ class MarketplaceService:
         target_workspace_id: int,
         user: models.AuthUser,
     ) -> list[schemas.DivisionGridMarketplaceWorkspaceRead]:
-        visible_workspace_ids = (
-            None
-            if user.is_superuser
-            else [workspace_id for workspace_id in user.get_workspace_ids() if workspace_id != target_workspace_id]
-        )
-        if visible_workspace_ids == []:
-            return []
+        """List other workspaces exposing an importable division grid.
+
+        The marketplace is cross-tenant by design: the caller already proved
+        ``division_grid.read`` on ``target_workspace_id`` (checked by the RPC
+        handler before this runs), so any admin able to open that workspace's
+        grid page may browse every OTHER workspace's grids to import from --
+        not only ones they personally also belong to. This mirrors
+        ``WorkspaceService.get_all``: ``is_hidden`` only gates discoverability,
+        so a hidden source workspace stays restricted to its own
+        members/superusers instead of the whole platform.
+        """
+        member_ids = set(user.get_workspace_ids())
 
         # Multi-join grid/version aggregation: a service-level analytical query,
         # deliberately not hidden behind a CRUD repository method.
@@ -429,8 +434,10 @@ class MarketplaceService:
             .having(sa.func.count(sa.distinct(models.DivisionGrid.id)) > 0)
             .order_by(models.Workspace.name.asc())
         )
-        if visible_workspace_ids is not None:
-            query = query.where(models.Workspace.id.in_(visible_workspace_ids))
+        if not user.is_superuser:
+            query = query.where(
+                sa.or_(models.Workspace.is_hidden.is_(False), models.Workspace.id.in_(member_ids))
+            )
 
         result = await session.execute(query)
         return [
