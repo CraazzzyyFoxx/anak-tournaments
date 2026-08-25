@@ -28,7 +28,14 @@ from shared.repository import UserRepository, get_or_create_workspace_member
 from shared.services import social_identity
 from shared.services.team_export.identity import find_users_by_battle_tags
 
-__all__ = ("RosterMember", "ensure_member_for_battle_tag", "list_roster", "roster_page", "roster_summary")
+__all__ = (
+    "RosterMember",
+    "ensure_member_for_battle_tag",
+    "hosts_by_user_id",
+    "list_roster",
+    "roster_page",
+    "roster_summary",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +214,33 @@ async def list_roster(
         )
         for member_id, player_id, display_name, player_name, battle_tag in result.all()
     }
+
+
+async def hosts_by_user_id(
+    session: AsyncSession, *, workspace_id: int, user_ids: Sequence[int]
+) -> dict[int, str | None]:
+    """Display name for a set of raw ``auth.user.id``s, resolved within one workspace.
+
+    The mixes list names each mix's host, but ``CustomGame.host_user_id`` is a
+    player id, not a ``workspace_member_id`` -- so this mirrors ``list_roster``'s
+    override-then-account-name fallback, keyed by player id instead of member id.
+    """
+    ids = {uid for uid in user_ids if uid is not None}
+    if not ids:
+        return {}
+    result = await session.execute(
+        sa.select(
+            models.WorkspaceMember.player_id,
+            models.WorkspaceMember.display_name,
+            models.User.name,
+        )
+        .join(models.User, models.User.id == models.WorkspaceMember.player_id)
+        .where(
+            models.WorkspaceMember.workspace_id == workspace_id,
+            models.WorkspaceMember.player_id.in_(ids),
+        )
+    )
+    return {player_id: (display_name or player_name) for player_id, display_name, player_name in result.all()}
 
 
 async def ensure_member_for_battle_tag(

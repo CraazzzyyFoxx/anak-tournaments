@@ -226,7 +226,7 @@ export function PickupLobbyPanel({
           <PageStateCard
             state="empty"
             title="No mix selected"
-            description="Pick or create a mix to start filling the lineup."
+            description="Open a mix from the list to start filling its lineup."
             className="px-4 py-8"
           />
         ) : lineup.length === 0 ? (

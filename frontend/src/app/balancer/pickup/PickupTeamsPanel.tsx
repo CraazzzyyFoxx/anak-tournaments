@@ -102,6 +102,50 @@ export function PickupTeamsPanel({
     // head turn. The lineup beside it keeps its fixed track; this side gives the
     // leftover width back as margin.
     <div className="mx-auto flex w-full min-w-0 max-w-[1180px] flex-col gap-3.5">
+      <div className="flex flex-col gap-3.5">
+        {gamesError ? (
+          <PageStateCard
+            state="error"
+            title="Unable to load mixes"
+            description="Check your connection and try again."
+            actionLabel="Retry"
+            onAction={onRetryGames}
+            className={cn(PANEL_CLASS, "px-4 py-16")}
+          />
+        ) : gamesLoading || gameLoading ? (
+          <Skeleton className="h-64 w-full rounded-xl" />
+        ) : !hasMix ? (
+          <PageStateCard
+            state="empty"
+            title="No mixes yet"
+            description={
+              canWrite
+                ? "Create a mix from the mixes list, then add players from the workspace pool."
+                : "A host has not created a mix in this workspace yet."
+            }
+            className={cn(PANEL_CLASS, "px-4 py-16")}
+          />
+        ) : variant == null ? (
+          <PageStateCard
+            state="empty"
+            title="No teams yet"
+            description={
+              canWrite
+                ? "Fill the lineup, then press Balance teams to see the matchup."
+                : "This mix has not been balanced yet."
+            }
+            className={cn(PANEL_CLASS, "px-4 py-16")}
+          />
+        ) : (
+          <div ref={captureRef} data-testid="teams-capture" className="flex flex-col gap-3.5">
+            <VariantMetrics variant={variant} />
+            <VariantView variant={variant} canWrite={canWrite} onRenameTeam={onRenameTeam} />
+          </div>
+        )}
+      </div>
+
+      {/* Controls live under the result, not above it -- generating a balance
+          reads as an action on what's on screen, not a header over it. */}
       <div className="flex flex-wrap items-center gap-2.5">
         {canWrite ? (
           <Button
@@ -153,8 +197,6 @@ export function PickupTeamsPanel({
           </div>
         ) : null}
 
-        {variant ? <VariantMetrics variant={variant} /> : null}
-
         {activeCount === 0 && canWrite ? (
           <p className="text-xs text-[color:var(--aqt-fg-dim)]">
             Check at least one player in the lobby.
@@ -189,70 +231,24 @@ export function PickupTeamsPanel({
         ) : null}
       </div>
 
-      {/* The toolbar above stays put and the result flows under it in normal
-          document order — the page scrolls as a whole rather than this column
-          scrolling on its own. */}
-      <div className="flex flex-col gap-3.5">
-        {gamesError ? (
-          <PageStateCard
-            state="error"
-            title="Unable to load mixes"
-            description="Check your connection and try again."
-            actionLabel="Retry"
-            onAction={onRetryGames}
-            className={cn(PANEL_CLASS, "px-4 py-16")}
+      {variant ? (
+        <div className={cn(PANEL_CLASS, "flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3")}>
+          <span className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>Record result</span>
+          <PickupResultControls
+            teamCount={variant.teams.length}
+            teamNames={variant.teams.map((team) => team.name)}
+            outcome={outcome}
+            canRecord={canWrite}
+            saving={recordingOutcome}
+            onRecord={onRecordOutcome}
           />
-        ) : gamesLoading || gameLoading ? (
-          <Skeleton className="h-64 w-full rounded-xl" />
-        ) : !hasMix ? (
-          <PageStateCard
-            state="empty"
-            title="No mixes yet"
-            description={
-              canWrite
-                ? "Create a mix above, then add players from the workspace pool."
-                : "A host has not created a mix in this workspace yet."
-            }
-            className={cn(PANEL_CLASS, "px-4 py-16")}
-          />
-        ) : variant == null ? (
-          <PageStateCard
-            state="empty"
-            title="No teams yet"
-            description={
-              canWrite
-                ? "Fill the lineup, then press Balance teams to see the matchup."
-                : "This mix has not been balanced yet."
-            }
-            className={cn(PANEL_CLASS, "px-4 py-16")}
-          />
-        ) : (
-          <>
-            <div ref={captureRef}>
-              <VariantView variant={variant} canWrite={canWrite} onRenameTeam={onRenameTeam} />
-            </div>
-
-            <div
-              className={cn(PANEL_CLASS, "flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3")}
-            >
-              <span className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>Record result</span>
-              <PickupResultControls
-                teamCount={variant.teams.length}
-                teamNames={variant.teams.map((team) => team.name)}
-                outcome={outcome}
-                canRecord={canWrite}
-                saving={recordingOutcome}
-                onRecord={onRecordOutcome}
-              />
-              <span className="text-[12.5px] text-[color:var(--aqt-fg-faint)]">
-                {outcome == null
-                  ? "Recording a result closes the mix \u2014 nothing is written until you do."
-                  : "Recorded. This mix is closed."}
-              </span>
-            </div>
-          </>
-        )}
-      </div>
+          <span className="text-[12.5px] text-[color:var(--aqt-fg-faint)]">
+            {outcome == null
+              ? "Recording a result closes the mix \u2014 nothing is written until you do."
+              : "Recorded. This mix is closed."}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

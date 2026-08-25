@@ -13,7 +13,7 @@ from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS
 from shared.repository import CustomGamePlayerRepository, CustomGameRepository
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER, MemberRankService, member_rank_service
-from shared.services.workspace_roster import RosterMember, list_roster
+from shared.services.workspace_roster import RosterMember, hosts_by_user_id, list_roster
 from src.services.balancer.solver import run_balance as _run_balance
 
 __all__ = ("CustomGameService", "custom_game_service")
@@ -148,12 +148,14 @@ class CustomGameService:
         roster: CustomGamePlayerRepository = CustomGamePlayerRepository(),
         ranks: MemberRankService | None = None,
         load_roster=list_roster,
+        load_hosts=hosts_by_user_id,
         run_balance=_run_balance,
     ) -> None:
         self.games = games
         self.roster = roster
         self.ranks = ranks if ranks is not None else member_rank_service
         self.load_roster = load_roster
+        self.load_hosts = load_hosts
         self.run_balance = run_balance
 
     async def members(
@@ -173,6 +175,20 @@ class CustomGameService:
         if len(found) != len(ids):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
         return found
+
+    async def hosts(
+        self, session: AsyncSession, workspace_id: int, host_user_ids: Sequence[int]
+    ) -> dict[int, str | None]:
+        """Display name for each mix's host, keyed by ``host_user_id``.
+
+        Unlike ``members`` this never 404s: a host who has left the workspace
+        has no label, and the list falls back to the raw id rather than hiding
+        the whole mix.
+        """
+        ids = _uniq(host_user_ids)
+        if not ids:
+            return {}
+        return await self.load_hosts(session, workspace_id=workspace_id, user_ids=ids)
 
     async def get(self, session: AsyncSession, *, workspace_id: int, custom_game_id: int) -> models.CustomGame:
         game = await self.games.get(session, custom_game_id)

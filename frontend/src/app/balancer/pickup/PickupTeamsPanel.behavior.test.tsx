@@ -13,7 +13,11 @@
 //     `empty_lineup` 422 the server would raise;
 //  5. recording a result is terminal, so it is a deliberate click and a recorded
 //     mix renders its scoreline instead of three live buttons;
-//  6. a read-only viewer and a terminal mix get no writes but still see teams.
+//  6. a read-only viewer and a terminal mix get no writes but still see teams;
+//  7. the verdict pills sit inside the captured block with the team card, so
+//     "Copy image" exports them together, while "Show lobby"/"Copy image"/
+//     "Copy battletags" stay outside it -- exporting its own toolbar would be
+//     a screenshot of a screenshot button.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -184,6 +188,18 @@ describe("PickupTeamsPanel", () => {
     expect(scope.textContent).toContain("0.87");
     expect(scope.textContent).toContain("12.3");
     expect(scope.textContent).toContain("Egor");
+  });
+
+  it("captures the verdict pills with the teams block, not the action buttons beside it", async () => {
+    const scope = await mount(game());
+
+    const captured = scope.querySelector('[data-testid="teams-capture"]');
+    expect(captured).not.toBeNull();
+    expect(captured?.textContent).toContain("0.87");
+    expect(captured?.textContent).toContain("karin");
+    expect(captured?.textContent).not.toContain("Show lobby");
+    expect(captured?.textContent).not.toContain("Copy image");
+    expect(captured?.textContent).not.toContain("Copy battletags");
   });
 
   it("reports a pager move to the page instead of keeping its own index", async () => {

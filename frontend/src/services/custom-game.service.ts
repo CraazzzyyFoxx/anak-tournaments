@@ -54,11 +54,13 @@ export type CustomGame = {
   id: number;
   workspace_id: number;
   host_user_id: number;
+  host_display_name: string | null;
   name: string;
   status: CustomGameStatus | string;
   config_json: Record<string, unknown> | null;
   result_json: unknown;
   outcome_json: unknown;
+  created_at: string | null;
   players?: CustomGamePlayer[];
 };
 

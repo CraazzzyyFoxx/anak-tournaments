@@ -147,16 +147,19 @@ def _dump_game(
     members: dict[int, Any] | None = None,
     resolved: dict[tuple[int, str], Any] | None = None,
     author_ranks: dict[tuple[int, str], int] | None = None,
+    host_display_name: str | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": game.id,
         "workspace_id": game.workspace_id,
         "host_user_id": game.host_user_id,
+        "host_display_name": host_display_name,
         "name": game.name,
         "status": game.status,
         "config_json": game.config_json,
         "result_json": game.result_json,
         "outcome_json": game.outcome_json,
+        "created_at": game.created_at.isoformat() if game.created_at else None,
     }
     if roster is not None:
         by_id = members or {}
@@ -178,8 +181,10 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     overwrite.
     """
     roster = list(await custom_game_service.roster.list_for_game(session, game.id))
+    host_names = await custom_game_service.hosts(session, game.workspace_id, [game.host_user_id])
+    host_display_name = host_names.get(game.host_user_id)
     if not roster:
-        return _dump_game(game, roster)
+        return _dump_game(game, roster, host_display_name=host_display_name)
     member_ids = [row.workspace_member_id for row in roster]
     members = await custom_game_service.members(session, game.workspace_id, member_ids)
     resolved = await custom_game_service.ranks.resolve(
@@ -201,7 +206,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
             author_user_id=game.host_user_id,
         )
     )
-    return _dump_game(game, roster, members, resolved, author_ranks)
+    return _dump_game(game, roster, members, resolved, author_ranks, host_display_name)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -242,7 +247,10 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "read")
             rows = await custom_game_service.list(session, workspace_id=workspace_id)
-            return [_dump_game(row) for row in rows]
+            host_names = await custom_game_service.hosts(
+                session, workspace_id, [row.host_user_id for row in rows]
+            )
+            return [_dump_game(row, host_display_name=host_names.get(row.host_user_id)) for row in rows]
 
         return await c.envelope(logger, "custom.list", op, session_factory=_SF)
 
