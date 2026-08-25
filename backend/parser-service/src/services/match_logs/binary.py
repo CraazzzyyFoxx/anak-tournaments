@@ -32,8 +32,6 @@ class BinaryMatchLogs:
 
     async def upload_log(self, s3: S3Client, tournament_id: int, filename: str, data: bytes) -> bool:
         key = f"logs/{tournament_id}/{filename}"
-        folder_key = f"logs/{tournament_id}/"
-        await s3.ensure_folder(folder_key)
         return await s3.put_object(key, data)
 
     async def delete_log(self, s3: S3Client, tournament_id: int, filename: str) -> bool:
