@@ -94,15 +94,3 @@ export async function waitForImages(node: HTMLElement): Promise<void> {
     ),
   );
 }
-
-/** Save a blob under `filename` through a synthetic anchor click. */
-export function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  // Revoking synchronously can beat the download in some browsers; one turn is
-  // enough for the click to have been dispatched.
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}

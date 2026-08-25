@@ -1,10 +1,18 @@
 "use client";
 
-import { Camera, ChevronLeft, ChevronRight, ClipboardCopy, Loader2, Maximize2, Shuffle } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCopy,
+  Copy,
+  Loader2,
+  Maximize2,
+  Shuffle,
+} from "lucide-react";
 
 import { PANEL_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import { PickupResultControls } from "@/app/balancer/pickup/PickupResultControls";
-import { slugifyFilename, useNodeCapture } from "@/app/balancer/components/useNodeCapture";
+import { useNodeCapture } from "@/app/balancer/components/useNodeCapture";
 import {
   CAPTION_CLASS,
   EYEBROW_CLASS,
@@ -79,14 +87,18 @@ export function PickupTeamsPanel({
   const index = Math.min(variantIndex, Math.max(0, variants.length - 1));
   const variant = variants[index];
   const outcome = parseOutcome(game?.outcome_json);
-  // The matchup card is a self-contained graphic, so "save as image" here needs
+  // The matchup card is a self-contained graphic, so "share the teams" here needs
   // no detour through the fullscreen board.
-  const { ref: captureRef, capturing, capture } = useNodeCapture(
-    `${slugifyFilename(game?.name ?? "", "mix")}-teams`,
-  );
+  const { ref: captureRef, capturing, capture } = useNodeCapture();
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
+    // Capped and centred rather than fluid. The matchup stops gaining anything
+    // past ~1180px — a seat row is a glyph, a crest, a name and a number — and on
+    // a 1440p-and-wider screen the uncapped column stretched two five-man rosters
+    // across an arm's length of desk, so reading "who is on my team" became a
+    // head turn. The lineup beside it keeps its fixed track; this side gives the
+    // leftover width back as margin.
+    <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-[1180px] flex-col gap-3.5 xl:h-full">
       <div className="flex flex-wrap items-center gap-2.5">
         {canWrite ? (
           <Button
@@ -156,15 +168,15 @@ export function PickupTeamsPanel({
               type="button"
               variant="ghost"
               className="h-9"
-              disabled={capturing != null}
-              onClick={() => void capture("download")}
+              disabled={capturing}
+              onClick={() => void capture()}
             >
-              {capturing === "download" ? (
+              {capturing ? (
                 <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
               ) : (
-                <Camera className="mr-1.5 size-3.5" aria-hidden="true" />
+                <Copy className="mr-1.5 size-3.5" aria-hidden="true" />
               )}
-              Save as image
+              Copy image
             </Button>
             <Button type="button" variant="ghost" className="h-9" onClick={onCopyBattleTags}>
               <ClipboardCopy className="mr-1.5 size-3.5" aria-hidden="true" />
@@ -174,67 +186,68 @@ export function PickupTeamsPanel({
         ) : null}
       </div>
 
-      {gamesError ? (
-        <PageStateCard
-          state="error"
-          title="Unable to load mixes"
-          description="Check your connection and try again."
-          actionLabel="Retry"
-          onAction={onRetryGames}
-          className={cn(PANEL_CLASS, "px-4 py-16")}
-        />
-      ) : gamesLoading || gameLoading ? (
-        <Skeleton className="h-64 w-full rounded-xl" />
-      ) : !hasMix ? (
-        <PageStateCard
-          state="empty"
-          title="No mixes yet"
-          description={
-            canWrite
-              ? "Create a mix above, then add players from the workspace pool."
-              : "A host has not created a mix in this workspace yet."
-          }
-          className={cn(PANEL_CLASS, "px-4 py-16")}
-        />
-      ) : variant == null ? (
-        <PageStateCard
-          state="empty"
-          title="No teams yet"
-          description={
-            canWrite
-              ? "Fill the lineup, then press Balance teams to see the matchup."
-              : "This mix has not been balanced yet."
-          }
-          className={cn(PANEL_CLASS, "px-4 py-16")}
-        />
-      ) : (
-        <>
-          <div ref={captureRef}>
-            <VariantView variant={variant} />
-          </div>
+      {/* The toolbar above stays put and the result scrolls under it, so a long
+          matchup never pushes Balance teams off the top of a full-height column. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3.5 xl:overflow-y-auto xl:pr-1">
+        {gamesError ? (
+          <PageStateCard
+            state="error"
+            title="Unable to load mixes"
+            description="Check your connection and try again."
+            actionLabel="Retry"
+            onAction={onRetryGames}
+            className={cn(PANEL_CLASS, "px-4 py-16")}
+          />
+        ) : gamesLoading || gameLoading ? (
+          <Skeleton className="h-64 w-full rounded-xl" />
+        ) : !hasMix ? (
+          <PageStateCard
+            state="empty"
+            title="No mixes yet"
+            description={
+              canWrite
+                ? "Create a mix above, then add players from the workspace pool."
+                : "A host has not created a mix in this workspace yet."
+            }
+            className={cn(PANEL_CLASS, "px-4 py-16")}
+          />
+        ) : variant == null ? (
+          <PageStateCard
+            state="empty"
+            title="No teams yet"
+            description={
+              canWrite
+                ? "Fill the lineup, then press Balance teams to see the matchup."
+                : "This mix has not been balanced yet."
+            }
+            className={cn(PANEL_CLASS, "px-4 py-16")}
+          />
+        ) : (
+          <>
+            <div ref={captureRef}>
+              <VariantView variant={variant} />
+            </div>
 
-          <div
-            className={cn(
-              PANEL_CLASS,
-              "flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3",
-            )}
-          >
-            <span className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>Record result</span>
-            <PickupResultControls
-              teamCount={variant.teams.length}
-              outcome={outcome}
-              canRecord={canWrite}
-              saving={recordingOutcome}
-              onRecord={onRecordOutcome}
-            />
-            <span className="text-[12.5px] text-[color:var(--aqt-fg-faint)]">
-              {outcome == null
-                ? "Recording a result closes the mix \u2014 nothing is written until you do."
-                : "Recorded. This mix is closed."}
-            </span>
-          </div>
-        </>
-      )}
+            <div
+              className={cn(PANEL_CLASS, "flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3")}
+            >
+              <span className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>Record result</span>
+              <PickupResultControls
+                teamCount={variant.teams.length}
+                outcome={outcome}
+                canRecord={canWrite}
+                saving={recordingOutcome}
+                onRecord={onRecordOutcome}
+              />
+              <span className="text-[12.5px] text-[color:var(--aqt-fg-faint)]">
+                {outcome == null
+                  ? "Recording a result closes the mix \u2014 nothing is written until you do."
+                  : "Recorded. This mix is closed."}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
-import { Camera, ChevronLeft, ChevronRight, Copy, Loader2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Loader2, X } from "lucide-react";
 
 import { PickupResultControls } from "@/app/balancer/pickup/PickupResultControls";
-import { slugifyFilename, useNodeCapture } from "@/app/balancer/components/useNodeCapture";
+import { useNodeCapture } from "@/app/balancer/components/useNodeCapture";
 import { teamAccent } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -76,7 +76,7 @@ export function PickupLobbyBoard({
   // Rasterise the board itself rather than build a separate export layout: this
   // screen already IS the shareable artifact, so the image a host sends is the
   // one they were just looking at.
-  const { ref: captureRef, capturing, capture } = useNodeCapture(slugifyFilename(mixName, "mix-board"));
+  const { ref: captureRef, capturing, capture } = useNodeCapture();
 
   return (
     <div
@@ -102,7 +102,7 @@ export function PickupLobbyBoard({
         ref={captureRef}
         className={cn(
           "relative px-6 pb-10 pt-6 md:px-12",
-          capturing != null && "[&_[data-export-hide]]:invisible",
+          capturing && "[&_[data-export-hide]]:invisible",
         )}
       >
         <div className="flex flex-wrap items-center gap-4">
@@ -125,30 +125,15 @@ export function PickupLobbyBoard({
                 variant="ghost"
                 size="sm"
                 className="h-8"
-                disabled={capturing != null}
-                onClick={() => void capture("copy")}
+                disabled={capturing}
+                onClick={() => void capture()}
               >
-                {capturing === "copy" ? (
+                {capturing ? (
                   <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
                 ) : (
                   <Copy className="mr-1.5 size-3.5" aria-hidden="true" />
                 )}
                 Copy image
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8"
-                disabled={capturing != null}
-                onClick={() => void capture("download")}
-              >
-                {capturing === "download" ? (
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Camera className="mr-1.5 size-3.5" aria-hidden="true" />
-                )}
-                Save as image
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-8" onClick={onClose}>
                 <X className="mr-1.5 size-3.5" aria-hidden="true" />
