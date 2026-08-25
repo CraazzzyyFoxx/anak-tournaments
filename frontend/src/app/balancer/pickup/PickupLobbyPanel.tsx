@@ -13,6 +13,7 @@ import {
   CARD_TITLE_CLASS,
   EYEBROW_CLASS,
   ROLE_TILE_CLASS,
+  ROLE_TINT_CLASS,
 } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -41,7 +42,7 @@ import {
   averageRank,
   getLineupIssue,
   playerLabel,
-  resolveRoleOrder,
+  roleOrderByStrength,
   sortLineup,
   summarizeLineup,
   summarizeRoleSupply,
@@ -110,7 +111,7 @@ export function PickupLobbyPanel({
   const supply = summarizeRoleSupply(rows);
 
   return (
-    <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col")}>
+    <div className={cn(PANEL_CLASS, "flex h-full min-h-0 min-w-0 flex-col")}>
       <div className="flex items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-4 py-3.5">
         <h2 className={CARD_TITLE_CLASS}>Lineup</h2>
         <span className={CAPTION_CLASS}>
@@ -199,7 +200,9 @@ export function PickupLobbyPanel({
                         ? "bg-[color:var(--aqt-amber)]"
                         : "bg-[color:var(--aqt-emerald)]",
                     )}
-                    style={{ width: `${Math.min(100, Math.round((entry.supply / entry.need) * 100))}%` }}
+                    style={{
+                      width: `${Math.min(100, Math.round((entry.supply / entry.need) * 100))}%`,
+                    }}
                   />
                 </div>
               </div>
@@ -281,17 +284,27 @@ export function PickupLobbyPanel({
 }
 
 /**
- * Role chips carry two facts in one 30px tile: whether the balancer may use the
- * role at all (lit vs dimmed) and, when it may, at what priority (the corner
- * number). The amber ring is the third: selected, but with no rank behind it,
- * which is the case that fails the whole run server-side.
+ * The roles a player can be seated in, strongest first.
  *
- * Positions are the canonical tank/dps/support order, NOT the host's priority
- * order. Priority is what the corner number is for; letting it move the tiles
- * as well made the column reshuffle per row, so "who can tank" stopped being
- * answerable by reading straight down one position.
+ * Three facts in one 102px rail, none of them a number: **which** roles the
+ * balancer may use (a tinted tile vs a flat dim glyph), **which one comes
+ * first** (the role-coloured underline, and leftmost position), and **which
+ * selection will fail** (the amber ring — a role switched on with no rank
+ * behind it, which rejects the whole run server-side).
+ *
+ * The corner priority badges this replaces were the densest thing on the row and
+ * the least trustworthy: three two-digit-capable pills per player, printing an
+ * order a host had to maintain by hand in a drag list one screen away. Priority
+ * is now read off the ranks (see `roleOrderByStrength`), so the rail is a
+ * consequence rather than a control, and a corrected rank re-sorts it on the
+ * spot.
+ *
+ * Positions therefore move per row, which the numbered version deliberately
+ * avoided so "who can tank" could be read straight down one column. That answer
+ * moved to the role-supply gauges in the panel head, which count it the way the
+ * solver does instead of asking a host to tally glyphs.
  */
-function RoleChips({
+function RolePriorityRail({
   row,
   label,
   canWrite,
@@ -304,7 +317,10 @@ function RoleChips({
   saving: boolean;
   onPatch: (patch: CustomGamePlayerPatch) => void;
 }>) {
-  const order = resolveRoleOrder(row);
+  const order = roleOrderByStrength(row);
+  // Off roles trail the selected ones in canonical order: they carry no
+  // priority, so sorting them by strength would imply one.
+  const off = LINEUP_ROLES.filter((role) => !order.includes(role));
 
   return (
     <div
@@ -312,9 +328,10 @@ function RoleChips({
       aria-label={`Roles for ${label}`}
       className="flex w-[102px] shrink-0 items-center justify-end gap-1.5"
     >
-      {LINEUP_ROLES.map((role) => {
+      {[...order, ...off].map((role) => {
         const position = order.indexOf(role);
         const isOn = position !== -1;
+        const isPrimary = position === 0;
         const roleRank = row.ranks[role];
         const icon = ROLES.find((item) => item.code === role)?.icon ?? "Support";
         return (
@@ -323,30 +340,26 @@ function RoleChips({
             type="button"
             disabled={!canWrite || saving}
             aria-pressed={isOn}
-            aria-label={
-              isOn
-                ? `${ROLE_LABELS[role]} for ${label}, priority ${position + 1}${roleRank == null ? ", no rank" : `, ${roleRank} points`}`
-                : `${ROLE_LABELS[role]} for ${label}, off`
+            aria-label={`${ROLE_LABELS[role]} for ${label}, ${
+              isOn ? (isPrimary ? "first choice" : "also plays") : "off"
+            }${roleRank == null ? ", no rank" : `, ${roleRank} points`}`}
+            title={
+              roleRank == null
+                ? `${ROLE_LABELS[role]}: no rank`
+                : `${ROLE_LABELS[role]}: ${roleRank} pts`
             }
-            title={roleRank == null ? `${ROLE_LABELS[role]}: no rank` : `${ROLE_LABELS[role]}: ${roleRank} pts`}
-            onClick={() => onPatch({ roles: toggleRole(order, role) })}
+            onClick={() => onPatch({ roles: toggleRole(row, role) })}
             className={cn(
               "relative flex size-[30px] shrink-0 items-center justify-center rounded-lg transition-opacity",
-              ROLE_TILE_CLASS[role],
+              // Tint marks "playable"; the inset underline is reserved for the
+              // first choice, so exactly one tile per row carries it.
+              isOn && (isPrimary ? ROLE_TILE_CLASS[role] : ROLE_TINT_CLASS[role]),
               isOn ? "opacity-100" : "opacity-30",
               isOn && roleRank == null && "ring-1 ring-amber-400/70",
               "disabled:cursor-default",
             )}
           >
             <PlayerRoleIcon role={icon} size={19} decorative />
-            {isOn ? (
-              <span
-                aria-hidden="true"
-                className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)] px-0.5 font-mono text-[11px] font-bold leading-none tabular-nums text-[color:var(--aqt-fg-muted)]"
-              >
-                {position + 1}
-              </span>
-            ) : null}
           </button>
         );
       })}
@@ -386,7 +399,7 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
       // as a button that also contains buttons. The gear below is the keyboard
       // and screen-reader affordance; this handler is a pointer shortcut to the
       // same action, which is why the row stays a plain list item.
-      title={`${label} \u2014 roles, priority and ranks`}
+      title={`${label} \u2014 roles and ranks`}
       onClick={(event) => {
         if (event.target instanceof HTMLElement && event.target.closest("[data-card-action]")) {
           return;
@@ -410,14 +423,24 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
       </RowAction>
 
       <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-        <span className="truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]">{name}</span>
+        <span className="truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]">
+          {name}
+        </span>
         {suffix ? (
-          <span className="shrink-0 font-mono text-xs text-[color:var(--aqt-fg-faint)]">{suffix}</span>
+          <span className="shrink-0 font-mono text-xs text-[color:var(--aqt-fg-faint)]">
+            {suffix}
+          </span>
         ) : null}
       </span>
 
       <RowAction>
-        <RoleChips row={row} label={label} canWrite={canWrite} saving={saving} onPatch={onPatch} />
+        <RolePriorityRail
+          row={row}
+          label={label}
+          canWrite={canWrite}
+          saving={saving}
+          onPatch={onPatch}
+        />
       </RowAction>
 
       <div className="flex w-[92px] shrink-0 items-center justify-end gap-1.5">
@@ -463,9 +486,11 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
 }
 
 /**
- * A benched row keeps its switch and its settings but drops the priority
- * numbers and the points column: nothing about it feeds the next balance, so
- * the only questions left are "who is sitting out" and "why".
+ * A benched row keeps its switch and its settings but drops the points column:
+ * nothing about it feeds the next balance, so the only questions left are "who is
+ * sitting out" and "why". Its rail is the same one the active rows carry, inert —
+ * a host still needs to see what they *would* get by switching this player back
+ * on, and a second glyph treatment for the same fact drifted from the first.
  */
 function BenchedRow({
   row,
@@ -482,7 +507,7 @@ function BenchedRow({
 }>) {
   const label = playerLabel(row);
   const { name, suffix } = splitBattleTag(label);
-  const order = resolveRoleOrder(row);
+  const order = roleOrderByStrength(row);
 
   return (
     <li className="flex items-center gap-2.5 rounded-lg px-1 py-1.5 opacity-65 transition-opacity hover:bg-white/[0.025] hover:opacity-90">
@@ -498,22 +523,23 @@ function BenchedRow({
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-baseline gap-1.5 rounded text-left"
       >
-        <span className="truncate text-[13.5px] font-medium text-[color:var(--aqt-fg)]">{name}</span>
+        <span className="truncate text-[13.5px] font-medium text-[color:var(--aqt-fg)]">
+          {name}
+        </span>
         {suffix ? (
-          <span className="shrink-0 font-mono text-xs text-[color:var(--aqt-fg-faint)]">{suffix}</span>
+          <span className="shrink-0 font-mono text-xs text-[color:var(--aqt-fg-faint)]">
+            {suffix}
+          </span>
         ) : null}
       </button>
-      <div aria-hidden="true" className="flex shrink-0 items-center gap-1.5">
-        {LINEUP_ROLES.map((role) => {
-          const icon = ROLES.find((item) => item.code === role)?.icon ?? "Support";
-          return (
-            <span key={role} className={cn(order.includes(role) ? "opacity-100" : "opacity-25")}>
-              <PlayerRoleIcon role={icon} size={15} decorative />
-            </span>
-          );
-        })}
-      </div>
-      <span className="w-[104px] shrink-0 text-right font-mono text-xs text-[color:var(--aqt-fg-faint)]">
+      <RolePriorityRail
+        row={row}
+        label={label}
+        canWrite={false}
+        saving={saving}
+        onPatch={onPatch}
+      />
+      <span className="w-[92px] shrink-0 text-right font-mono text-xs text-[color:var(--aqt-fg-faint)]">
         {order.length === 0 ? "no ranked role" : "benched"}
       </span>
     </li>

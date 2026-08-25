@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { UserMinus } from "lucide-react";
 
 import { BattleTagCopyButton } from "@/app/balancer/components/BattleTagCopyControls";
@@ -8,8 +7,8 @@ import {
   NEUTRAL_RANK_ACCENT,
   ROLE_RANK_ACCENTS,
   RoleRankControls,
+  useDebouncedRank
 } from "@/app/balancer/components/RoleRankControls";
-import { SortableRow, SortableRows } from "@/app/balancer/components/SortableRows";
 import { splitBattleTag } from "@/app/balancer/components/balancer-page-helpers";
 import { EYEBROW_CLASS } from "@/app/balancer/pickup/pickup-chrome";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -37,52 +36,9 @@ import {
   LINEUP_ROLES,
   getLineupIssue,
   playerLabel,
-  resolveRoleOrder,
+  roleOrderByStrength,
   toggleRole,
 } from "./pickup-lineup";
-
-/** Long enough that a slider drag or a four-digit number is one write, not twenty. */
-const RANK_WRITE_DELAY_MS = 400;
-
-/**
- * A rank field whose value is local while the host is still moving it.
- *
- * The mix sheet has no Save button — every control writes straight through — so
- * a number field wired directly to the mutation issued one PUT per keystroke and
- * one per slider step. The draft is what the field shows; the write lands once
- * the host stops. The server value wins again the moment it changes, which is
- * also how a normalised value or another host's edit corrects the field.
- */
-function useDebouncedRank(committed: number | null, commit: (rank: number | null) => void) {
-  const [committedSeen, setCommittedSeen] = useState<number | null>(committed);
-  const [draft, setDraft] = useState<number | null>(committed);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  // Adjusted during render rather than in an effect: the draft is derived from
-  // the server value, so a cascading second render is exactly what we want to
-  // avoid — the field must never paint a value the server has already replaced.
-  if (committedSeen !== committed) {
-    setCommittedSeen(committed);
-    setDraft(committed);
-  }
-
-  useEffect(() => () => clearTimeout(timer.current), []);
-
-  return {
-    value: draft,
-    set: (rank: number | null) => {
-      setDraft(rank);
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => commit(rank), RANK_WRITE_DELAY_MS);
-    },
-    /** Skips the delay: a Clear is a decision, not a drag. */
-    commitNow: (rank: number | null) => {
-      clearTimeout(timer.current);
-      setDraft(rank);
-      commit(rank);
-    },
-  };
-}
 
 type PickupPlayerSheetProps = {
   row: CustomGamePlayer | null;
@@ -110,11 +66,12 @@ type PickupPlayerSheetProps = {
  * here lands in the host's own book instead, which is the layer that actually
  * follows them.
  *
- * Priority is dragged, not stepped. Two arrow buttons per role meant reordering
- * three roles took up to four clicks and never showed the order as a shape; the
- * list is short enough that grabbing a row is both faster and self-explanatory,
- * and the shared `SortableRows` keeps the keyboard path the tournament sheet
- * already had.
+ * Priority is neither dragged nor stepped — it is not authored at all. It reads
+ * off the ranks below (strongest role first), so the only way to change what a
+ * player is seated in first is to correct what they are actually worth there.
+ * The drag list this replaces was a second, quieter source of truth: it went
+ * stale the moment a rank moved, and reconciling the two was work no host asked
+ * for.
  *
  * Ranks use `RoleRankControls`, the same number-field-over-division-slider the
  * tournament sheet uses. This sheet used to own a crest-only picker instead, so
@@ -132,11 +89,11 @@ export function PickupPlayerSheet({
 }: Readonly<PickupPlayerSheetProps>) {
   const label = row ? playerLabel(row) : "";
   const { name, suffix } = splitBattleTag(label);
-  const order = row ? resolveRoleOrder(row) : [];
+  const order = row ? roleOrderByStrength(row) : [];
   const issue = row ? getLineupIssue(row) : null;
   const disabled = !canEdit || saving;
-  // Off roles trail the selected ones as switched-off candidates, and they are
-  // not draggable: an unselected role has no priority to place.
+  // Off roles trail the selected ones as switched-off candidates, in canonical
+  // order: an unselected role has no priority, so ranking them would imply one.
   const offRoles = LINEUP_ROLES.filter((role) => !order.includes(role));
 
   return (
@@ -190,24 +147,16 @@ export function PickupPlayerSheet({
                   Roles and ranks
                 </h3>
                 <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
-                  Drag to reorder. The balancer fills the top role first and only uses roles that
-                  are on. A rank you type here goes into your own book — yours across every mix you
-                  host, and it beats the workspace rank until you clear it.
+                  The balancer fills the strongest role first and only uses roles that are on. A
+                  rank you type here goes into your own book — yours across every mix you host, and
+                  it beats the workspace rank until you clear it.
                 </p>
               </div>
 
-              <SortableRows
-                items={order}
-                getId={(role) => role}
-                onReorder={(next) => onPatch({ roles: next })}
-                className="space-y-2"
-              >
-                {(role, index) => (
-                  <SortableRow
+              <ul className="space-y-2">
+                {order.map((role) => (
+                  <li
                     key={role}
-                    id={role}
-                    disabled={disabled}
-                    handleLabel={`Reorder ${ROLE_LABELS[role]} for ${label}`}
                     className={cn(
                       "flex items-start gap-2.5 rounded-xl border bg-white/3 p-2.5 transition-colors",
                       "border-[color:var(--aqt-border-2)]",
@@ -218,15 +167,15 @@ export function PickupPlayerSheet({
                       row={row}
                       role={role}
                       label={label}
-                      position={index}
                       isOn
+                      isPrimary={role === order[0]}
                       disabled={disabled}
-                      onToggle={() => onPatch({ roles: toggleRole(order, role) })}
+                      onToggle={() => onPatch({ roles: toggleRole(row, role) })}
                       onSetAuthorRank={onSetAuthorRank}
                     />
-                  </SortableRow>
-                )}
-              </SortableRows>
+                  </li>
+                ))}
+              </ul>
 
               {offRoles.length === 0 ? null : (
                 <ul className="space-y-2 pt-0.5">
@@ -235,17 +184,14 @@ export function PickupPlayerSheet({
                       key={role}
                       className="flex items-start gap-2.5 rounded-xl border border-[color:var(--aqt-border)] bg-white/2 p-2.5 opacity-80"
                     >
-                      {/* Stands in for the grip the draggable rows carry, so both
-                          lists start their content at the same x. */}
-                      <span aria-hidden="true" className="size-6 shrink-0" />
                       <RoleCardBody
                         row={row}
                         role={role}
                         label={label}
-                        position={null}
                         isOn={false}
+                        isPrimary={false}
                         disabled={disabled}
-                        onToggle={() => onPatch({ roles: toggleRole(order, role) })}
+                        onToggle={() => onPatch({ roles: toggleRole(row, role) })}
                         onSetAuthorRank={onSetAuthorRank}
                       />
                     </li>
@@ -297,7 +243,7 @@ export function PickupPlayerSheet({
 }
 
 /**
- * One role's card: priority, name, on/off, and the shared rank controls.
+ * One role's card: name, first-choice mark, on/off, and the shared rank controls.
  *
  * The field edits the *effective* rank — what balance will actually use — rather
  * than only this host's own entry, because a host reads the number they see and
@@ -309,8 +255,8 @@ function RoleCardBody({
   row,
   role,
   label,
-  position,
   isOn,
+  isPrimary,
   disabled,
   onToggle,
   onSetAuthorRank,
@@ -318,9 +264,9 @@ function RoleCardBody({
   row: CustomGamePlayer;
   role: RoleCode;
   label: string;
-  /** 0-based priority, or `null` when the role is off. */
-  position: number | null;
   isOn: boolean;
+  /** The strongest selected role — where the balancer will try to seat them first. */
+  isPrimary: boolean;
   disabled: boolean;
   onToggle: () => void;
   onSetAuthorRank: (role: string, rank: number | null) => void;
@@ -334,15 +280,6 @@ function RoleCardBody({
     <div className="min-w-0 flex-1 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <span
-            aria-hidden="true"
-            className={cn(
-              "flex size-5 shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-bold tabular-nums",
-              isOn ? accent.chip : "bg-white/[0.04] text-[color:var(--aqt-fg-faint)]",
-            )}
-          >
-            {position == null ? "\u2013" : position + 1}
-          </span>
           <PlayerRoleIcon role={getRoleIconName(role)} size={15} decorative />
           <span
             className={cn(
@@ -352,6 +289,19 @@ function RoleCardBody({
           >
             {ROLE_LABELS[role]}
           </span>
+          {/* The cards are already ordered strongest-first, so this only names
+              what the top of the list means. A number here would re-assert an
+              order nobody can edit. */}
+          {isPrimary ? (
+            <span
+              className={cn(
+                "shrink-0 rounded px-1.5 py-px font-mono text-[11px] font-bold uppercase tracking-[0.12em]",
+                accent.chip,
+              )}
+            >
+              First
+            </span>
+          ) : null}
         </div>
 
         <div className="flex h-6 items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-black/15 px-2">

@@ -10,8 +10,8 @@
 //     "he's late" quietly deletes his rank override and role order;
 //  2. removing is a separate control that does rewrite membership;
 //  3. a benched player moves to its own section but stays switchable back;
-//  4. toggling a role on a player whose roles were never configured sends the
-//     resolved order explicitly, so priority stops depending on a server default;
+//  4. a role toggle writes the whole selection, re-sorted by rank, so click
+//     order can never become the balancer's priority order;
 //  5. the role-supply strip counts the way the solver does — a selected role with
 //     no rank is not supply — and says which role is short before Balance runs;
 //  6. Clear asks first, since it drops every per-mix override in the lobby;
@@ -71,7 +71,10 @@ function tick() {
   return promise;
 }
 
-async function mount(rows: CustomGamePlayer[], props: { canWrite?: boolean; hasMix?: boolean } = {}) {
+async function mount(
+  rows: CustomGamePlayer[],
+  props: { canWrite?: boolean; hasMix?: boolean } = {},
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   await act(async () => {
@@ -111,7 +114,9 @@ function byLabel(scope: ParentNode, label: string) {
 
 /** Icon-only controls carry their name in an `sr-only` span, not `aria-label`. */
 function byName(scope: ParentNode, name: string) {
-  return [...scope.querySelectorAll("button")].find((node) => node.textContent?.trim() === name) ?? null;
+  return (
+    [...scope.querySelectorAll("button")].find((node) => node.textContent?.trim() === name) ?? null
+  );
 }
 
 function patchOf(playerId: number): CustomGamePlayerPatch {
@@ -166,22 +171,34 @@ describe("PickupLobbyPanel", () => {
     expect(onPatchPlayer).toHaveBeenCalledWith(8, { is_active: true });
   });
 
-  it("writes an explicit role order the first time a role is toggled", async () => {
-    // `roles: null` is "not configured"; the panel must not leave priority to a
-    // server-side default once the host has touched it.
+  it("writes the whole selection, sorted by rank, the first time a role is toggled", async () => {
+    // `roles: null` is "not configured"; the panel must not leave the rest of the
+    // selection to a server-side default once the host has touched it.
     const scope = await mount([row({ roles: null })]);
 
-    await click(byLabel(scope, "Tank for Aria#1111, priority 1, 2400 points"));
+    await click(byLabel(scope, "Tank for Aria#1111, also plays, 2400 points"));
 
     expect(patchOf(7)).toEqual({ roles: ["dps", "support"] });
   });
 
-  it("appends a switched-off role as the lowest priority", async () => {
+  it("places a switched-on role by its rank, not by when it was clicked", async () => {
+    // Support (2500) outranks the already-selected tank (2400), so it lands in
+    // front of it however late the click came.
     const scope = await mount([row({ roles: ["tank"] })]);
 
-    await click(byLabel(scope, "Support for Aria#1111, off"));
+    await click(byLabel(scope, "Support for Aria#1111, off, 2500 points"));
 
-    expect(patchOf(7)).toEqual({ roles: ["tank", "support"] });
+    expect(patchOf(7)).toEqual({ roles: ["support", "tank"] });
+  });
+
+  it("names which role the balancer will seat first, with no number to maintain", async () => {
+    // Priority is read off the ranks, so the strongest role announces itself and
+    // the corner badges the row used to carry are gone.
+    const scope = await mount([row({ roles: ["tank", "dps", "support"] })]);
+
+    expect(byLabel(scope, "DPS for Aria#1111, first choice, 2600 points")).not.toBeNull();
+    expect(byLabel(scope, "Support for Aria#1111, also plays, 2500 points")).not.toBeNull();
+    expect(byLabel(scope, "Tank for Aria#1111, also plays, 2400 points")).not.toBeNull();
   });
 
   it("counts role supply the way the solver does, not the way the chips look", async () => {
@@ -189,7 +206,13 @@ describe("PickupLobbyPanel", () => {
     // this lineup can seat none.
     const scope = await mount([
       row({ roles: ["tank", "dps"], ranks: { dps: 2600 } }),
-      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222", roles: ["dps"], ranks: { dps: 2500 } }),
+      row({
+        id: 2,
+        workspace_member_id: 8,
+        battle_tag: "Borys#2222",
+        roles: ["dps"],
+        ranks: { dps: 2500 },
+      }),
     ]);
 
     expect(scope.textContent).toContain("0 of 2 · short 2");
@@ -210,7 +233,7 @@ describe("PickupLobbyPanel", () => {
     expect(onOpenPlayer).toHaveBeenCalledWith(7);
 
     onOpenPlayer.mockClear();
-    await click(byLabel(scope, "Tank for Aria#1111, priority 1, 2400 points"));
+    await click(byLabel(scope, "Tank for Aria#1111, also plays, 2400 points"));
     expect(onPatchPlayer).toHaveBeenCalled();
   });
 
@@ -231,12 +254,17 @@ describe("PickupLobbyPanel", () => {
   });
 
   it("confirms before emptying the lobby", async () => {
-    const scope = await mount([row(), row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222" })]);
+    const scope = await mount([
+      row(),
+      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222" }),
+    ]);
 
     await click(byName(scope, "Empty the lobby"));
     expect(onClear).not.toHaveBeenCalled();
 
-    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("removes all 2 players");
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(
+      "removes all 2 players",
+    );
 
     await click(byName(document, "Remove everyone"));
     expect(onClear).toHaveBeenCalledTimes(1);
@@ -259,7 +287,7 @@ describe("PickupLobbyPanel", () => {
     expect(byName(scope, "Remove Aria#1111 from this mix")).toBeNull();
     expect(byLabel(scope, "Include Aria#1111 in the balance")?.hasAttribute("disabled")).toBe(true);
     expect(
-      byLabel(scope, "Tank for Aria#1111, priority 1, 2400 points")?.hasAttribute("disabled"),
+      byLabel(scope, "Tank for Aria#1111, also plays, 2400 points")?.hasAttribute("disabled"),
     ).toBe(true);
   });
 
@@ -278,7 +306,7 @@ describe("PickupLobbyPanel", () => {
     const scope = await mount([row()]);
 
     await click(byLabel(scope, "Include Aria#1111 in the balance"));
-    await click(byLabel(scope, "Tank for Aria#1111, priority 1, 2400 points"));
+    await click(byLabel(scope, "Tank for Aria#1111, also plays, 2400 points"));
     await click(byName(scope, "Remove Aria#1111 from this mix"));
 
     expect(onPatchPlayer).toHaveBeenCalled();

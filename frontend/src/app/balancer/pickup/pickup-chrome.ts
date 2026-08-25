@@ -14,8 +14,7 @@ export const EYEBROW_CLASS =
   "font-mono text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-faint)]";
 
 /** Same voice one step tighter, for a caption that sits beside a label. */
-export const CAPTION_CLASS =
-  "font-mono text-xs tabular-nums text-[color:var(--aqt-fg-dim)]";
+export const CAPTION_CLASS = "font-mono text-xs tabular-nums text-[color:var(--aqt-fg-dim)]";
 
 /** Section title inside a card head — display face, uppercase, short tracking. */
 export const CARD_TITLE_CLASS =
@@ -60,18 +59,28 @@ export const MIX_STATUS_CLASS: Record<CustomGameStatus, string> = {
     "border-[color:color-mix(in_srgb,var(--aqt-teal)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]",
   completed:
     "border-[color:color-mix(in_srgb,var(--aqt-emerald)_32%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-emerald)_10%,transparent)] text-[color:var(--aqt-emerald)]",
-  cancelled:
-    "border-[color:var(--aqt-border-2)] bg-white/[0.02] text-[color:var(--aqt-fg-faint)]",
+  cancelled: "border-[color:var(--aqt-border-2)] bg-white/[0.02] text-[color:var(--aqt-fg-faint)]",
 };
 
 /**
  * Role tile tint: a low-alpha fill plus a 2px inset underline in the role
  * colour, so a lit chip states its role without a text label and a dimmed one
  * still reads as the same role.
+ *
+ * The underline is load-bearing in the lineup rail, where it marks the *first*
+ * role a player will be seated in — so a tile that is playable but not first
+ * takes `ROLE_TINT_CLASS` instead and leaves the underline unspent.
  */
 export const ROLE_TILE_CLASS: Record<string, string> = {
   tank: "bg-[color:color-mix(in_srgb,var(--aqt-tank)_12%,transparent)] shadow-[inset_0_-2px_0_var(--aqt-tank)]",
   dps: "bg-[color:color-mix(in_srgb,var(--aqt-damage)_12%,transparent)] shadow-[inset_0_-2px_0_var(--aqt-damage)]",
   support:
     "bg-[color:color-mix(in_srgb,var(--aqt-support)_12%,transparent)] shadow-[inset_0_-2px_0_var(--aqt-support)]",
+};
+
+/** Same fill, no underline: a role the balancer may use, but not first. */
+export const ROLE_TINT_CLASS: Record<string, string> = {
+  tank: "bg-[color:color-mix(in_srgb,var(--aqt-tank)_9%,transparent)]",
+  dps: "bg-[color:color-mix(in_srgb,var(--aqt-damage)_9%,transparent)]",
+  support: "bg-[color:color-mix(in_srgb,var(--aqt-support)_9%,transparent)]",
 };

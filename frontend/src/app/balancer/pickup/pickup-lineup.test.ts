@@ -5,11 +5,11 @@ import type { CustomGamePlayer } from "@/services/custom-game.service";
 import {
   averageRank,
   getLineupIssue,
-  moveRole,
   parseOutcome,
   parseVariants,
   playerLabel,
   resolveRoleOrder,
+  roleOrderByStrength,
   sortLineup,
   summarizeLineup,
   summarizeRoleSupply,
@@ -93,7 +93,7 @@ describe("resolveRoleOrder", () => {
     ]);
   });
 
-  it("keeps the host's stored order and drops codes the balancer cannot use", () => {
+  it("keeps the stored selection and drops codes the balancer cannot use", () => {
     expect(resolveRoleOrder(row({ roles: ["support", "flex", "tank", "support"] }))).toEqual([
       "support",
       "tank",
@@ -101,26 +101,56 @@ describe("resolveRoleOrder", () => {
   });
 });
 
-describe("toggleRole", () => {
-  it("appends a new role as the lowest priority", () => {
-    expect(toggleRole(["tank"], "support")).toEqual(["tank", "support"]);
+describe("roleOrderByStrength", () => {
+  it("orders the selected roles by effective rank, strongest first", () => {
+    // Stored order says support-then-tank; the ranks say otherwise, and the ranks
+    // are what the balancer will be handed.
+    expect(
+      roleOrderByStrength(
+        row({ roles: ["support", "tank", "dps"], ranks: { tank: 2400, dps: 2600, support: 2500 } }),
+      ),
+    ).toEqual(["dps", "support", "tank"]);
   });
 
-  it("removes a role that was on, leaving the rest in order", () => {
-    expect(toggleRole(["tank", "dps", "support"], "dps")).toEqual(["tank", "support"]);
+  it("sinks a selected role with no rank below every ranked one", () => {
+    expect(roleOrderByStrength(row({ roles: ["tank", "dps"], ranks: { dps: 2600 } }))).toEqual([
+      "dps",
+      "tank",
+    ]);
+  });
+
+  it("breaks ties in canonical order, so two hosts read the same row the same way", () => {
+    expect(
+      roleOrderByStrength(
+        row({ roles: ["support", "dps", "tank"], ranks: { tank: 2500, dps: 2500, support: 2500 } }),
+      ),
+    ).toEqual(["tank", "dps", "support"]);
   });
 });
 
-describe("moveRole", () => {
-  it("swaps a role with its neighbour", () => {
-    expect(moveRole(["tank", "dps", "support"], "support", -1)).toEqual(["tank", "support", "dps"]);
+describe("toggleRole", () => {
+  it("adds a role and hands back the whole selection sorted by strength", () => {
+    expect(toggleRole(row({ roles: ["tank"] }), "support")).toEqual(["support", "tank"]);
   });
 
-  it("is a no-op at the ends and for roles that are off", () => {
-    const order = ["tank", "dps"] as const;
-    expect(moveRole([...order], "tank", -1)).toEqual(["tank", "dps"]);
-    expect(moveRole([...order], "dps", 1)).toEqual(["tank", "dps"]);
-    expect(moveRole([...order], "support", -1)).toEqual(["tank", "dps"]);
+  it("removes a role that was on", () => {
+    expect(toggleRole(row({ roles: ["tank", "dps", "support"] }), "dps")).toEqual([
+      "support",
+      "tank",
+    ]);
+  });
+
+  it("resolves an unset selection before toggling, so the write is explicit", () => {
+    // `roles: null` is "not configured"; a toggle must not leave the rest of the
+    // selection to a server-side default.
+    expect(toggleRole(row({ roles: null }), "tank")).toEqual(["dps", "support"]);
+  });
+
+  it("never lets click order become priority order", () => {
+    const afterTank = toggleRole(row({ roles: [] }), "tank");
+    const afterDps = toggleRole(row({ roles: afterTank }), "dps");
+    // Tank was picked first but is the weaker role, so it still sorts second.
+    expect(afterDps).toEqual(["dps", "tank"]);
   });
 });
 
@@ -195,12 +225,24 @@ describe("parseVariants", () => {
                   role_preferences: ["Tank", "Damage"],
                 },
               ],
-              Tank: [{ uuid: "7", name: "karin", assigned_rating: 2900, role_preferences: ["Tank"] }],
+              Tank: [
+                { uuid: "7", name: "karin", assigned_rating: 2900, role_preferences: ["Tank"] },
+              ],
             },
           },
-          { id: 2, name: "Tolgrn", average_mmr: 2950, roster: { Support: [{ uuid: "9", name: "Tolgrn" }] } },
+          {
+            id: 2,
+            name: "Tolgrn",
+            average_mmr: 2950,
+            roster: { Support: [{ uuid: "9", name: "Tolgrn" }] },
+          },
         ],
-        statistics: { composite_score: 0.87, mmr_std_dev: 12.34, max_total_rating_gap: 150, off_role_count: 1 },
+        statistics: {
+          composite_score: 0.87,
+          mmr_std_dev: 12.34,
+          max_total_rating_gap: 150,
+          off_role_count: 1,
+        },
         benched_players: [{ uuid: "10", name: "Egor" }],
       },
       { teams: [] },
@@ -230,7 +272,13 @@ describe("parseVariants", () => {
 
   it("never marks a flex player off-role", () => {
     const [variant] = parseVariants({
-      teams: [{ roster: { Support: [{ uuid: "1", name: "Flexy", is_flex: true, role_preferences: ["Tank"] }] } }],
+      teams: [
+        {
+          roster: {
+            Support: [{ uuid: "1", name: "Flexy", is_flex: true, role_preferences: ["Tank"] }],
+          },
+        },
+      ],
     });
     expect(variant.teams[0].seats[0].offRole).toBe(false);
     expect(variant.teams[0].seats[0].isFlex).toBe(true);
@@ -249,7 +297,9 @@ describe("parseVariants", () => {
   });
 
   it("reads a payload stored without a variants wrapper", () => {
-    const variants = parseVariants({ teams: [{ roster: { tank: [{ uuid: "7", name: "karin" }] } }] });
+    const variants = parseVariants({
+      teams: [{ roster: { tank: [{ uuid: "7", name: "karin" }] } }],
+    });
     expect(variants).toHaveLength(1);
     expect(variants[0].teams[0].seats[0].role).toBe("tank");
   });
@@ -257,7 +307,9 @@ describe("parseVariants", () => {
   it("degrades to an empty list instead of throwing on an unknown shape", () => {
     expect(parseVariants(null)).toEqual([]);
     expect(parseVariants({ teams: "nope" })).toEqual([]);
-    expect(parseVariants({ variants: [{ teams: [{ roster: [{ uuid: "7" }] }] }] })[0].teams).toEqual([]);
+    expect(
+      parseVariants({ variants: [{ teams: [{ roster: [{ uuid: "7" }] }] }] })[0].teams,
+    ).toEqual([]);
   });
 });
 

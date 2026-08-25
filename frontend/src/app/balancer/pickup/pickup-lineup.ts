@@ -14,7 +14,7 @@ import type { CustomGameOutcome, CustomGamePlayer } from "@/services/custom-game
  * balancer and the registration form use.
  */
 
-/** Canonical role order, used wherever no host ordering exists yet. */
+/** Canonical role order — the order role columns and glyph rails are read in. */
 export const LINEUP_ROLES: readonly RoleCode[] = ROLES.map((role) => role.code);
 
 export const PICKUP_STATUS_LABELS: Record<string, string> = {
@@ -28,11 +28,15 @@ export const PICKUP_STATUS_LABELS: Record<string, string> = {
 export const PICKUP_TERMINAL_STATUSES: Record<string, true> = { completed: true, cancelled: true };
 
 /**
- * The role order the balancer will see, highest priority first.
+ * The roles the balancer may use for this row, as a set in stored order.
  *
  * A stored `null` means "not configured yet", which the backend expands to
  * every role the player has a rank for — mirror that here so the UI shows the
  * same set the balance would use.
+ *
+ * Callers that ask *which* roles — supply, issues, mean rank — use this. Callers
+ * that ask about priority use `roleOrderByStrength`, which is the only order the
+ * UI ever shows or writes.
  */
 export function resolveRoleOrder(row: Pick<CustomGamePlayer, "roles" | "ranks">): RoleCode[] {
   if (row.roles == null) {
@@ -51,22 +55,44 @@ export function resolveRoleOrder(row: Pick<CustomGamePlayer, "roles" | "ranks">)
   return out;
 }
 
-/** Toggle one role off, or append it as the lowest priority when it is off. */
-export function toggleRole(order: RoleCode[], role: RoleCode): RoleCode[] {
-  return order.includes(role) ? order.filter((item) => item !== role) : [...order, role];
+/**
+ * Priority, derived: strongest effective rank first.
+ *
+ * Priority used to be host-authored — a drag list in the sheet, a corner number
+ * on every lineup chip — which made it the most expensive fact on the row and
+ * the least trustworthy: it only moved when somebody remembered to drag it, so a
+ * corrected rank and a stale order routinely disagreed about what the player
+ * actually plays first. Deriving it from the ranks removes both the control and
+ * the disagreement, and a rank fix now retargets the player immediately.
+ *
+ * Ties fall back to the canonical tank/dps/support order, so the result is
+ * stable across renders and across two hosts reading the same mix.
+ */
+export function roleOrderByStrength(row: Pick<CustomGamePlayer, "roles" | "ranks">): RoleCode[] {
+  return [...resolveRoleOrder(row)].sort((a, b) => {
+    // An unranked selected role sorts last rather than as a zero: it is a role
+    // the host claimed without a number behind it, not the weakest one.
+    const gap = (row.ranks[b] ?? -1) - (row.ranks[a] ?? -1);
+    return gap !== 0 ? gap : LINEUP_ROLES.indexOf(a) - LINEUP_ROLES.indexOf(b);
+  });
 }
 
-/** Move a role one step up (`-1`) or down (`+1`) the priority order. */
-export function moveRole(order: RoleCode[], role: RoleCode, delta: -1 | 1): RoleCode[] {
-  const from = order.indexOf(role);
-  const to = from + delta;
-  if (from === -1 || to < 0 || to >= order.length) {
-    return order;
-  }
-  const next = [...order];
-  next.splice(from, 1);
-  next.splice(to, 0, role);
-  return next;
+/**
+ * Turn one role on or off, and hand back the selection the server should store.
+ *
+ * Always re-sorted by strength. The stored array *is* the balancer's priority,
+ * so writing it in click order would let a toggle sequence smuggle back the
+ * hand-authored ordering this UI deliberately no longer offers.
+ */
+export function toggleRole(
+  row: Pick<CustomGamePlayer, "roles" | "ranks">,
+  role: RoleCode,
+): RoleCode[] {
+  const selected = resolveRoleOrder(row);
+  const next = selected.includes(role)
+    ? selected.filter((item) => item !== role)
+    : [...selected, role];
+  return roleOrderByStrength({ roles: next, ranks: row.ranks });
 }
 
 export type LineupIssue = "no_role" | "no_rank";
@@ -138,6 +164,15 @@ export function summarizeLineup(rows: CustomGamePlayer[]): LineupSummary {
  * configurable role lock would come from `config_json`, which no mix sets yet.
  */
 const ROLE_DEMAND: Record<RoleCode, number> = { tank: 2, dps: 4, support: 4 };
+
+/**
+ * Seats a balance can actually fill — the sum of the demand above.
+ *
+ * The add-players dialog counts against this rather than against a literal 10 so
+ * the "you are two over a full lobby" line and the role gauges below it can
+ * never disagree about how big a lobby is.
+ */
+export const LOBBY_SIZE: number = Object.values(ROLE_DEMAND).reduce((sum, need) => sum + need, 0);
 
 export type RoleSupply = {
   role: RoleCode;
