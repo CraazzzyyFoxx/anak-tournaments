@@ -53,9 +53,9 @@ export function useNodeCapture(): NodeCapture {
       await waitForLayout();
       await waitForImages(node);
 
-      const { blob, degraded } = await capturePngBlob(node);
+      const blob = await capturePngBlob(node);
       await copyImageBlob(blob);
-      notify.success(`Copied to the clipboard${degraded ? " (without rank icons)" : ""}`);
+      notify.success("Copied to the clipboard");
     } catch {
       notify.error("Clipboard image copy unavailable");
     } finally {

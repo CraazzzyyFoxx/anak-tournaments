@@ -30,34 +30,28 @@ export const EXPORT_BACKGROUND = "#090a10";
 const TRANSPARENT_PIXEL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==";
 
-export interface CapturedPng {
-  blob: Blob;
-  /**
-   * The PNG is missing at least one image the screen shows. Say so rather than
-   * letting a host paste a card and notice the hole themselves.
-   */
-  degraded: boolean;
-}
-
 /**
  * Rasterise `node` to a PNG.
  *
  * `imagePlaceholder` is unconditional, and that is load-bearing rather than
  * defensive. `html-to-image` re-fetches every image to embed it as a data URL,
- * and the asset bucket serving division crests sends no
- * `Access-Control-Allow-Origin` — so that fetch always fails, and WITHOUT a
- * placeholder the failed resource becomes `src=""`, which makes the serialised
- * SVG itself fail to decode and throws away the whole capture. Measured against
- * the live bucket: no placeholder throws, placeholder yields the card minus the
- * crest. A crest beside a name and a rating is a decoration; the card is the
- * payload.
+ * and an image whose fetch fails becomes `src=""` — which makes the serialised
+ * SVG itself fail to decode and throws away the WHOLE capture. Measured against
+ * the live asset bucket while it still lacked CORS: no placeholder threw,
+ * placeholder yielded the card minus the crest. A crest beside a name and a
+ * rating is a decoration; the card is the payload.
  *
  * It is also why the placeholder must not be applied conditionally or as a
  * retry: `html-to-image` memoises each resource's outcome per URL with the query
  * string stripped, so one placeholder-less attempt poisons every later attempt
  * in the same page with the empty result.
+ *
+ * Whether a given image embedded is deliberately NOT reported. It used to be
+ * inferred from the image being cross-origin, which stopped being true the
+ * moment the bucket started sending `Access-Control-Allow-Origin` — a warning
+ * that fires on a host name rather than on an outcome is worse than silence.
  */
-export async function capturePngBlob(node: HTMLElement): Promise<CapturedPng> {
+export async function capturePngBlob(node: HTMLElement): Promise<Blob> {
   const blob = await toBlob(node, {
     cacheBust: true,
     backgroundColor: EXPORT_BACKGROUND,
@@ -69,25 +63,7 @@ export async function capturePngBlob(node: HTMLElement): Promise<CapturedPng> {
     throw new Error("Could not create PNG blob");
   }
 
-  return { blob, degraded: hasUnembeddableImage(node) };
-}
-
-/**
- * True when `node` shows an image the rasteriser provably cannot embed.
- *
- * A plain `<img>` renders cross-origin content without CORS; `fetch` does not,
- * and the rasteriser goes through `fetch`. So "cross-origin" really does mean
- * "will be missing from the PNG" here — but only as something to TELL the host.
- * The capture config itself must never branch on it: this used to gate the
- * placeholder, which made the outcome depend on a guess about a host.
- */
-function hasUnembeddableImage(node: HTMLElement): boolean {
-  return Array.from(node.querySelectorAll("img")).some(
-    (image) =>
-      image.src !== "" &&
-      !image.src.startsWith("data:") &&
-      !image.src.startsWith(`${window.location.origin}/`),
-  );
+  return blob;
 }
 
 export async function copyImageBlob(blob: Blob): Promise<void> {
