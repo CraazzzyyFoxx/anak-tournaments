@@ -1,8 +1,18 @@
 "use client";
 
-import { useDeferredValue, useId, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useId, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, PanelRightClose, PanelRightOpen, Search, UserPlus, Users, X } from "lucide-react";
+import {
+  Check,
+  Circle,
+  Loader2,
+  PanelRightClose,
+  PanelRightOpen,
+  Search,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
 
 import { DivisionRankPicker } from "@/app/balancer/components/DivisionRankPicker";
 import {
@@ -11,14 +21,28 @@ import {
   ROLE_TEXT_ACCENTS,
   splitBattleTag,
 } from "@/app/balancer/components/balancer-page-helpers";
+import {
+  BattleTagContextMenuItems,
+  BattleTagCopyButton,
+} from "@/app/balancer/components/BattleTagCopyControls";
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLE_LABELS, ROLES, type RoleCode } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import {
@@ -50,6 +74,171 @@ function rangeSummary(page: number, perPage: number, shown: number, total: numbe
   const first = (page - 1) * perPage + 1;
   return `${first}\u2013${first + shown - 1} of ${total}`;
 }
+
+type WorkspacePlayerRowProps = {
+  player: WorkspacePlayer;
+  canEdit: boolean;
+  isSelected: boolean;
+  isSaving: boolean;
+  onToggle?: (player: WorkspacePlayer) => void;
+  onSaveRanks: (ranks: Record<string, number>) => void;
+};
+
+/**
+ * The tournament pool row, simplified.
+ *
+ * Same anatomy as `PoolPlayerCompactList`'s row — leading selection dot, the
+ * ranked-role glyphs beside the name, the division icon and accent-coloured top
+ * rank on the right, a BattleTag copy button, and a right-click menu — minus
+ * everything that only exists for a tournament registration: the balancer status
+ * menu, the pool include/exclude button, and the Flex / Ready / issue chips. A
+ * workspace player has no registration to carry a status, and no pool to be
+ * excluded from; what it does have, and the pool row does not, is directly
+ * editable canon ranks, which is why the three pickers stay on the second line.
+ *
+ * Memoized for the same reason the pool row is: each row mounts a Radix context
+ * menu root, and the search field is deferred, so an unmemoized list re-rendered
+ * every row on every keystroke.
+ */
+const WorkspacePlayerRow = memo(function WorkspacePlayerRow({
+  player,
+  canEdit,
+  isSelected,
+  isSaving,
+  onToggle,
+  onSaveRanks,
+}: WorkspacePlayerRowProps) {
+  const grid = useDivisionGrid();
+  const label = playerLabel(player);
+  const { name, suffix } = splitBattleTag(label);
+  const rankedRoles = ROLES.filter((role) => typeof player.ranks[role.code] === "number");
+  // The strongest role is what a pool decision is made on, and the glyph alone
+  // hides the value — same reasoning as the pool row's primary entry.
+  const topRank = rankedRoles.reduce<{ role: RoleCode; rank: number } | null>((best, role) => {
+    const rank = player.ranks[role.code] as number;
+    return best && best.rank >= rank ? best : { role: role.code, rank };
+  }, null);
+  const division = topRank ? resolveDivisionFromRank(grid, topRank.rank) : null;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <li
+          className={cn(
+            "group grid w-full grid-cols-[24px_minmax(0,1fr)] items-start gap-2 rounded-xl border px-2.5 py-2 transition-colors",
+            "border-[color:var(--aqt-border)] bg-white/[0.02]",
+            "hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.04]",
+            isSelected && "border-primary/45 bg-primary/[0.08]",
+          )}
+        >
+          {onToggle ? (
+            <button
+              type="button"
+              aria-pressed={isSelected}
+              aria-label={isSelected ? `Remove ${label} from the lineup` : `Add ${label} to the lineup`}
+              onClick={() => onToggle(player)}
+              className={cn(
+                "mt-0.5 flex size-6 items-center justify-center rounded-md border transition-colors",
+                isSelected
+                  ? "border-primary/50 bg-primary/20 text-[color:var(--aqt-fg)]"
+                  : "border-[color:var(--aqt-border-2)] bg-black/15 text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg-muted)]",
+              )}
+            >
+              {isSelected ? (
+                <Check className="size-3" aria-hidden="true" />
+              ) : (
+                <Circle className="size-2.5 fill-current stroke-none" aria-hidden="true" />
+              )}
+            </button>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                {rankedRoles.length > 0 ? (
+                  <div className="flex shrink-0 items-center gap-1">
+                    {rankedRoles.map((role) => (
+                      <span key={role.code} title={ROLE_LABELS[role.code]}>
+                        <PlayerRoleIcon role={role.icon} size={15} label={ROLE_LABELS[role.code]} />
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="shrink-0 text-[11px] text-[color:var(--aqt-fg-dim)]">No roles</span>
+                )}
+                {/* One truncating line, not a flex pair: with the discriminator as
+                    its own `shrink-0` item, a narrow sidebar clipped the whole name
+                    away and left a row identified only by `#1111`. */}
+                <span
+                  title={label}
+                  className="min-w-0 truncate text-[13px] font-medium text-[color:var(--aqt-fg)]"
+                >
+                  {name}
+                  {suffix ? <span className="text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
+                </span>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1.5">
+                {division == null ? null : (
+                  <span title={`Division ${division}`}>
+                    <DivisionIcon division={division} width={20} height={20} />
+                  </span>
+                )}
+                {topRank ? (
+                  <span
+                    title={`Highest rank: ${ROLE_LABELS[topRank.role]} ${topRank.rank}`}
+                    className={cn(
+                      "min-w-10 text-right text-[13px] font-semibold tabular-nums",
+                      ROLE_TEXT_ACCENTS[topRank.role],
+                    )}
+                  >
+                    {topRank.rank}
+                  </span>
+                ) : (
+                  <span className="text-[12px] text-[color:var(--aqt-fg-dim)]">No ranks yet</span>
+                )}
+                {player.battle_tag ? <BattleTagCopyButton battleTag={player.battle_tag} /> : null}
+              </div>
+            </div>
+
+            <div
+              role="group"
+              aria-label={`Ranks for ${label}`}
+              className="mt-1.5 flex items-center justify-end gap-1.5"
+            >
+              {ROLES.map((role) => (
+                <DivisionRankPicker
+                  key={role.code}
+                  rank={player.ranks[role.code] ?? null}
+                  disabled={!canEdit || isSaving}
+                  label={`${ROLE_LABELS[role.code]} rank for ${label}`}
+                  onChange={(nextRank) => {
+                    const ranks = { ...player.ranks };
+                    if (nextRank == null) delete ranks[role.code];
+                    else ranks[role.code] = nextRank;
+                    onSaveRanks(ranks);
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </li>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-56">
+        <ContextMenuLabel>Player actions</ContextMenuLabel>
+        {onToggle ? (
+          <ContextMenuItem onClick={() => onToggle(player)}>
+            <Check className="h-4 w-4" />
+            {isSelected ? "Remove from the lineup" : "Add to the lineup"}
+          </ContextMenuItem>
+        ) : null}
+        {player.battle_tag ? <BattleTagContextMenuItems battleTags={[player.battle_tag]} /> : null}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+});
 
 export function WorkspacePlayersSidebar({
   workspaceId,
@@ -334,20 +523,24 @@ export function WorkspacePlayersSidebar({
         </div>
       ) : null}
 
-      {/* Same box model as a row — the scroller's `pr-2` plus a row's transparent
-          border is what puts each glyph exactly over its picker column. */}
+      {/* Same box model as a row — the scroller's `pr-2`, the row's transparent
+          border and its `24px` selection column are what put each glyph exactly
+          over its picker below. */}
       <div className="mt-3 pr-2">
-        <div className="flex items-center gap-2 border border-transparent px-2.5 pb-1.5">
-          <span className="min-w-0 flex-1 truncate text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
-            Player
-          </span>
-          {/* Decorative: every picker below already announces its own role and player. */}
-          <div className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
-            {ROLES.map((role) => (
-              <span key={role.code} className={RANK_COLUMN_CLASS} title={ROLE_LABELS[role.code]}>
-                <PlayerRoleIcon role={role.icon} size={14} decorative />
-              </span>
-            ))}
+        <div className="grid grid-cols-[24px_minmax(0,1fr)] items-center gap-2 border border-transparent px-2.5 pb-1.5">
+          <span aria-hidden="true" />
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
+              Player
+            </span>
+            {/* Decorative: every picker below already announces its own role and player. */}
+            <div className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
+              {ROLES.map((role) => (
+                <span key={role.code} className={RANK_COLUMN_CLASS} title={ROLE_LABELS[role.code]}>
+                  <PlayerRoleIcon role={role.icon} size={14} decorative />
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -394,100 +587,19 @@ export function WorkspacePlayersSidebar({
           )
         ) : (
           <ul className="space-y-1.5" aria-label="Workspace players">
-            {players.map((player) => {
-              const label = playerLabel(player);
-              const isSelected = selected.has(player.id);
-              // Scoped to the row being written: one save used to disable every
-              // picker in the list, so the whole panel greyed out per keystroke.
-              const isSaving =
-                saveRanks.isPending && saveRanks.variables?.playerId === player.id;
-              const { name, suffix } = splitBattleTag(label);
-              // One truncating line, not a flex pair: with the discriminator as its
-              // own `shrink-0` item, a narrow sidebar clipped the whole name away
-              // and left a row identified only by `#1111`.
-              const identity = (
-                <>
-                  {name}
-                  {suffix ? <span className="text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
-                </>
-              );
-              // Mirrors the pool row's accent-coloured rank: the strongest role is
-              // what a pool decision is made on, and the glyph alone hides the value.
-              const topRank = ROLES.reduce<{ role: RoleCode; rank: number } | null>((best, role) => {
-                const rank = player.ranks[role.code];
-                if (typeof rank !== "number") return best;
-                return best && best.rank >= rank ? best : { role: role.code, rank };
-              }, null);
-
-              return (
-                <li
-                  key={player.id}
-                  className={cn(
-                    "rounded-xl border px-2.5 py-2 transition-colors",
-                    "border-[color:var(--aqt-border)] bg-white/[0.02]",
-                    "hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.04]",
-                    isSelected && "border-primary/45 bg-primary/[0.08]",
-                  )}
-                >
-                  {/* Two lines, like a pool row: the identity owns the full width and
-                      the rank controls sit on their own line instead of squeezing it. */}
-                  {onTogglePlayer ? (
-                    <button
-                      type="button"
-                      aria-pressed={isSelected}
-                      title={label}
-                      onClick={() => onTogglePlayer(player)}
-                      className="block w-full truncate rounded text-left text-[13px] font-medium text-[color:var(--aqt-fg)] transition-colors hover:text-[color:var(--aqt-teal)]"
-                    >
-                      {identity}
-                    </button>
-                  ) : (
-                    <span
-                      title={label}
-                      className="block truncate text-[13px] font-medium text-[color:var(--aqt-fg)]"
-                    >
-                      {identity}
-                    </span>
-                  )}
-
-                  <div className="mt-1.5 flex items-center justify-between gap-2">
-                    {topRank ? (
-                      <span
-                        title={`Highest rank: ${ROLE_LABELS[topRank.role]} ${topRank.rank}`}
-                        className={cn(
-                          "text-[13px] font-semibold tabular-nums",
-                          ROLE_TEXT_ACCENTS[topRank.role],
-                        )}
-                      >
-                        {topRank.rank}
-                      </span>
-                    ) : (
-                      <span className="text-[12px] text-[color:var(--aqt-fg-dim)]">No ranks yet</span>
-                    )}
-                    <div
-                      role="group"
-                      aria-label={`Ranks for ${label}`}
-                      className="flex shrink-0 items-center gap-1.5"
-                    >
-                      {ROLES.map((role) => (
-                        <DivisionRankPicker
-                          key={role.code}
-                          rank={player.ranks[role.code] ?? null}
-                          disabled={!canEdit || isSaving}
-                          label={`${ROLE_LABELS[role.code]} rank for ${label}`}
-                          onChange={(nextRank) => {
-                            const ranks = { ...player.ranks };
-                            if (nextRank == null) delete ranks[role.code];
-                            else ranks[role.code] = nextRank;
-                            saveRanks.mutate({ playerId: player.id, ranks });
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
+            {players.map((player) => (
+              <WorkspacePlayerRow
+                key={player.id}
+                player={player}
+                canEdit={canEdit}
+                isSelected={selected.has(player.id)}
+                // Scoped to the row being written: one save used to disable every
+                // picker in the list, so the whole panel greyed out per keystroke.
+                isSaving={saveRanks.isPending && saveRanks.variables?.playerId === player.id}
+                onToggle={onTogglePlayer}
+                onSaveRanks={(ranks) => saveRanks.mutate({ playerId: player.id, ranks })}
+              />
+            ))}
           </ul>
         )}
       </div>

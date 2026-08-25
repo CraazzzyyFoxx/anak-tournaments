@@ -52,6 +52,8 @@ vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() }
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 // The real picker needs the workspace division grid; the row only needs a
 // control that carries its accessible name and disabled state.
+vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
+vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => ({ tiers: [] }) }));
 vi.mock("@/app/balancer/components/DivisionRankPicker", () => ({
   DivisionRankPicker: ({
     label,
@@ -87,7 +89,14 @@ function tick() {
   return promise;
 }
 
-async function mount(props: { canEdit?: boolean; collapsed?: boolean } = {}) {
+async function mount(
+  props: {
+    canEdit?: boolean;
+    collapsed?: boolean;
+    selectedIds?: number[];
+    onTogglePlayer?: (player: WorkspacePlayer) => void;
+  } = {},
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -98,6 +107,8 @@ async function mount(props: { canEdit?: boolean; collapsed?: boolean } = {}) {
           workspaceId={WORKSPACE_ID}
           canEdit={props.canEdit ?? true}
           collapsed={props.collapsed ?? false}
+          selectedIds={props.selectedIds}
+          onTogglePlayer={props.onTogglePlayer}
         />
       </QueryClientProvider>,
     );
@@ -252,5 +263,48 @@ describe("WorkspacePlayersSidebar", () => {
     // `?? 0` used to render a confident "0" for every workspace during load.
     expect(scope.textContent).not.toMatch(/\d/);
     expect(scope.querySelector(".animate-pulse")).not.toBeNull();
+  });
+
+  it("toggles lineup membership from the row's own control, not from the name", async () => {
+    const onTogglePlayer = vi.fn();
+    const scope = await mount({ onTogglePlayer });
+
+    const add = scope.querySelector("button[aria-label='Add Aria#1111 to the lineup']");
+    expect(add?.getAttribute("aria-pressed")).toBe("false");
+
+    await click(add);
+    expect(onTogglePlayer).toHaveBeenCalledTimes(1);
+    expect(onTogglePlayer.mock.calls[0][0].id).toBe(1);
+
+    // The name used to be the toggle, so reading a row risked changing it.
+    const nameNodes = [...scope.querySelectorAll("button")].filter(
+      (node) => node.textContent?.trim() === "Aria#1111",
+    );
+    expect(nameNodes).toEqual([]);
+  });
+
+  it("announces a row already in the lineup as the way back out", async () => {
+    const onTogglePlayer = vi.fn();
+    const scope = await mount({ selectedIds: [1], onTogglePlayer });
+
+    const remove = scope.querySelector("button[aria-label='Remove Aria#1111 from the lineup']");
+    expect(remove?.getAttribute("aria-pressed")).toBe("true");
+    expect(scope.querySelector("button[aria-label='Add Borys#2222 to the lineup']")).not.toBeNull();
+
+    await click(remove);
+    expect(onTogglePlayer.mock.calls[0][0].id).toBe(1);
+  });
+
+  it("stays the simplified pool row: no status, no exclude, no state chips", async () => {
+    // Statuses and pool exclusion belong to a tournament registration, which a
+    // workspace player does not have; both are already edited from the
+    // registrations table. Re-adding them here would be a third copy.
+    const scope = await mount({ selectedIds: [1], onTogglePlayer: vi.fn() });
+
+    expect(scope.textContent).not.toMatch(/Exclude|Include in balancer|Ready|Flex/);
+    expect(scope.querySelector("[data-slot='badge']")).toBeNull();
+    // What the pool row does give it, and it keeps: role glyphs, the top rank
+    // and a BattleTag copy control.
+    expect(scope.querySelector("button[title='Copy BattleTag']")).not.toBeNull();
   });
 });
