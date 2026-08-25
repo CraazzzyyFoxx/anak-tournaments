@@ -112,6 +112,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             side_effect=lambda _s, *, workspace_id, member_ids: _members(*member_ids)
         )
         self.ranks.resolve = AsyncMock(return_value={})
+        self.ranks.set_ranks = AsyncMock(return_value={})
         self.grid = object()
         self._grid_patch = patch(
             "src.services.custom_game.get_effective_division_grid",
@@ -292,7 +293,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             )
         self.assertEqual(ctx.exception.status_code, 422)
 
-    async def test_update_player_invalidates_stored_balance(self) -> None:
+    async def test_update_player_keeps_stored_balance(self) -> None:
+        """A lineup edit must not blow away the last balance -- only pressing
+        Balance teams again should replace it."""
         game = _game(status="balanced", result_json={"variants": []})
         row = _roster_row(1, 7, 0, team_index=0)
         self.games.get.return_value = game
@@ -306,9 +309,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             actor_user_id=9,
         )
         self.assertFalse(row.is_active)
-        self.assertEqual(game.status, "draft")
-        self.assertIsNone(game.result_json)
-        self.assertIsNone(row.team_index)
+        self.assertEqual(game.status, "balanced")
+        self.assertEqual(game.result_json, {"variants": []})
+        self.assertEqual(row.team_index, 0)
 
     async def test_balance_skips_benched_rows(self) -> None:
         game = _game()
@@ -380,6 +383,95 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertFalse(keep.is_active)
         self.assertEqual(keep.roles_json, ["dps"])
         self.assertEqual(keep.sort_order, 1)
+
+    async def test_update_roster_keeps_stored_balance(self) -> None:
+        """Adding or dropping a player must not blow away the last balance --
+        only pressing Balance teams again should replace it."""
+        game = _game(status="balanced", result_json={"variants": []})
+        keep = _roster_row(1, 7, 0, team_index=0)
+        self.games.get.return_value = game
+        self.roster.list_for_game.return_value = [keep]
+
+        await self.service.update_roster(
+            self.session, workspace_id=1, custom_game_id=11, member_ids=[7, 9], actor_user_id=9
+        )
+
+        self.assertEqual(game.status, "balanced")
+        self.assertEqual(game.result_json, {"variants": []})
+        self.assertEqual(keep.team_index, 0)
+
+    async def test_adding_players_materialises_the_hosts_own_ranks(self) -> None:
+        """Joining a mix copies the effective rank into the host's book.
+
+        Without this the number a lineup shows belongs to no layer the host can
+        edit: the sheet writes the author layer, so a correction reads as a
+        per-game edit while silently rewriting the host's book for every mix,
+        and Clear has nothing to clear.
+        """
+        self.ranks.resolve.return_value = _ranks(7, 8)
+
+        await self.service.create(
+            self.session,
+            workspace_id=1,
+            host_user_id=9,
+            name="Scrim",
+            actor_user_id=9,
+            member_ids=[7, 8],
+        )
+
+        seeded = {
+            call.kwargs["workspace_member_id"]: call.kwargs
+            for call in self.ranks.set_ranks.await_args_list
+        }
+        self.assertEqual(sorted(seeded), [7, 8])
+        self.assertEqual(seeded[7]["author_user_id"], 9)
+        self.assertEqual(seeded[7]["workspace_id"], 1)
+        self.assertEqual(seeded[7]["ranks"], {"tank": 2500, "dps": 2400, "support": 2300})
+        kwargs = self.ranks.resolve.await_args.kwargs
+        self.assertEqual(kwargs["order"], MIX_ORDER)
+        self.assertEqual(kwargs["author_user_id"], 9)
+        self.assertIs(kwargs["grid"], self.grid)
+
+    async def test_seeding_leaves_a_rank_the_host_already_owns_alone(self) -> None:
+        """Re-adding somebody must not undo a correction the host already made."""
+        self.ranks.resolve.return_value = {
+            (7, "tank"): ResolvedRank(3000, "author"),
+            (7, "dps"): ResolvedRank(2400, "workspace"),
+            (7, "support"): ResolvedRank(None, "none"),
+        }
+
+        await self.service.create(
+            self.session, workspace_id=1, host_user_id=9, name="Scrim", actor_user_id=9, member_ids=[7]
+        )
+
+        # Only the inherited role is copied; an unranked one stays unranked
+        # rather than being invented from nothing.
+        self.assertEqual(self.ranks.set_ranks.await_args.kwargs["ranks"], {"dps": 2400})
+
+    async def test_seeding_skips_a_player_with_no_rank_anywhere(self) -> None:
+        self.ranks.resolve.return_value = {}
+
+        await self.service.create(
+            self.session, workspace_id=1, host_user_id=9, name="Scrim", actor_user_id=9, member_ids=[7]
+        )
+
+        self.ranks.set_ranks.assert_not_awaited()
+
+    async def test_update_roster_seeds_only_the_rows_it_created(self) -> None:
+        self.games.get.return_value = _game()
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        self.ranks.resolve.return_value = _ranks(7, 8)
+
+        await self.service.update_roster(
+            self.session, workspace_id=1, custom_game_id=11, member_ids=[7, 8], actor_user_id=9
+        )
+
+        # 7 was already in the mix, so its book was seeded when it joined; only
+        # the newcomer is resolved and written.
+        self.assertEqual(self.ranks.resolve.await_args.kwargs["members"], {8: 80})
+        self.assertEqual(
+            [call.kwargs["workspace_member_id"] for call in self.ranks.set_ranks.await_args_list], [8]
+        )
 
     async def test_record_outcome_terminal_409(self) -> None:
         for status in ("completed", "cancelled"):

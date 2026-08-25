@@ -64,16 +64,6 @@ def _normalize_roles(raw: Any) -> list[str] | None:
     return out
 
 
-def _invalidate_balance(game: models.CustomGame, roster: Sequence[models.CustomGamePlayer]) -> None:
-    """Any lineup edit makes a stored balance stale, so drop it and its team map."""
-    if game.status != "balanced":
-        return
-    game.status = "draft"
-    game.result_json = None
-    for row in roster:
-        row.team_index = None
-
-
 def _apply_team_index(roster: Sequence[models.CustomGamePlayer], result: Any) -> None:
     by_uuid = {str(row.workspace_member_id): row for row in roster}
     for row in roster:
@@ -161,6 +151,52 @@ class CustomGameService:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Game is {game.status}")
         return game
 
+    async def _seed_host_ranks(
+        self, session: AsyncSession, game: models.CustomGame, members: Mapping[int, RosterMember]
+    ) -> None:
+        """Materialise the host's own rank for everyone just added to the mix.
+
+        A mix resolves against the host's book (``MIX_ORDER``), so an inherited
+        number is one nobody in this mix owns: correcting it read as a per-game
+        edit and was silently a workspace-wide one, and the sheet could offer no
+        Clear because there was nothing of the host's to clear. Copying in the
+        value the mix would have used anyway makes the layer explicit at the
+        moment of joining -- from then on every rank in a lineup is the host's,
+        editable and clearable, and the canon is a seed rather than a live
+        dependency.
+
+        Only holes are filled. An existing author rank is never overwritten, so
+        re-adding somebody cannot undo a correction, and a role nobody has a
+        number for anywhere stays unranked rather than being invented.
+        """
+        if game.host_user_id is None or not members:
+            return
+        resolved = await self.ranks.resolve(
+            session,
+            workspace_id=game.workspace_id,
+            members={member_id: member.player_id for member_id, member in members.items()},
+            roles=list(REGISTRATION_ROLE_CODES),
+            order=MIX_ORDER,
+            author_user_id=game.host_user_id,
+            grid=await get_effective_division_grid(session, None),
+        )
+        for member_id in members:
+            seed: dict[str, int] = {}
+            for role in REGISTRATION_ROLE_CODES:
+                rank = resolved.get((member_id, role))
+                if rank is None or rank.value is None or rank.source == "author":
+                    continue
+                seed[role] = rank.value
+            if not seed:
+                continue
+            await self.ranks.set_ranks(
+                session,
+                workspace_id=game.workspace_id,
+                workspace_member_id=member_id,
+                ranks=seed,
+                author_user_id=game.host_user_id,
+            )
+
     async def create(
         self,
         session: AsyncSession,
@@ -177,7 +213,7 @@ class CustomGameService:
         if not trimmed:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="name is required")
         ids = _uniq(member_ids)
-        await self.members(session, workspace_id, ids)
+        members = await self.members(session, workspace_id, ids)
         game = models.CustomGame(
             workspace_id=workspace_id,
             host_user_id=host_user_id,
@@ -192,6 +228,7 @@ class CustomGameService:
         ]
         if rows:
             await self.roster.create_many(session, rows)
+        await self._seed_host_ranks(session, game, members)
         return game
 
     async def update_roster(
@@ -213,9 +250,8 @@ class CustomGameService:
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
         ids = _uniq(member_ids)
-        await self.members(session, workspace_id, ids)
+        members = await self.members(session, workspace_id, ids)
         existing = {row.workspace_member_id: row for row in await self.roster.list_for_game(session, game.id)}
-        _invalidate_balance(game, existing.values())
         wanted = set(ids)
         for member_id, row in existing.items():
             if member_id not in wanted:
@@ -233,6 +269,11 @@ class CustomGameService:
                 row.sort_order = index
         if created:
             await self.roster.create_many(session, created)
+            await self._seed_host_ranks(
+                session,
+                game,
+                {row.workspace_member_id: members[row.workspace_member_id] for row in created},
+            )
         await session.flush()
         return game
 
@@ -267,7 +308,6 @@ class CustomGameService:
             row.is_active = bool(patch["is_active"])
         if "roles" in patch:
             row.roles_json = _normalize_roles(patch["roles"])
-        _invalidate_balance(game, roster)
         await session.flush()
         return game
 
