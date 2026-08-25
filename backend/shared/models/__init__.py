@@ -13,6 +13,7 @@ from .balancer import *
 from .custom_game import *
 from .catalog import *
 from .division_grid import *
+from .member_rank import *
 from .identity import *
 from .ingestion import *
 from .matches import *
@@ -23,4 +24,3 @@ from .registration import *
 from .subscriptions import *
 from .tenancy import *
 from .tournament import *
-from .workspace_player import *

@@ -29,12 +29,15 @@ class CustomGame(db.TimeStampIntegerMixin):
 
 
 class CustomGamePlayer(db.TimeStampIntegerMixin):
-    """Roster row. rank_value is a per-game override applied to every role.
+    """Roster row of a mix, anchored on the workspace member.
 
-    ``is_active`` is the bench switch: a benched row keeps its ranks, roles and
-    pool membership but is skipped by :meth:`CustomGameService.balance`, so a
-    host can drop a late player without losing their setup. ``roles_json`` is an
-    ordered list of registration role codes -- position is the balancer's role
+    Carries no rank of its own: a correction goes into the host's own layer of
+    ``member_rank``, so it survives the game instead of being forgotten with it.
+
+    ``is_active`` is the bench switch: a benched row keeps its roles and pool
+    membership but is skipped by :meth:`CustomGameService.balance`, so a host can
+    drop a late player without losing their setup. ``roles_json`` is an ordered
+    list of registration role codes -- position is the balancer's role
     ``priority``, absence means the player does not play that role at all.
     ``None`` means "every role this player has a rank for", the pre-lineup
     default.
@@ -42,15 +45,14 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
 
     __tablename__ = "custom_game_player"
     __table_args__ = (
-        UniqueConstraint("custom_game_id", "workspace_player_id", name="uq_custom_game_player"),
+        UniqueConstraint("custom_game_id", "workspace_member_id", name="uq_custom_game_player_member"),
         {"schema": "balancer"},
     )
 
     custom_game_id: Mapped[int] = mapped_column(ForeignKey("balancer.custom_game.id", ondelete="CASCADE"), index=True)
-    workspace_player_id: Mapped[int] = mapped_column(
-        ForeignKey("balancer.workspace_player.id", ondelete="CASCADE"), index=True
+    workspace_member_id: Mapped[int] = mapped_column(
+        ForeignKey("workspace_member.id", ondelete="CASCADE"), index=True
     )
-    rank_value: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     team_index: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True, server_default="true")

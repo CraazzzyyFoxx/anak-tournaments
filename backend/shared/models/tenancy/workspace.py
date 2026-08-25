@@ -104,6 +104,9 @@ class WorkspaceMember(db.TimeStampIntegerMixin):
 
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("players.user.id", ondelete="CASCADE"), index=True)
+    # Workspace-local nickname, when the workspace calls somebody by a name
+    # other than their global ``players.user.name``. Falls back to that name.
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     workspace: Mapped["Workspace"] = relationship(back_populates="members")
     player: Mapped["User"] = relationship()

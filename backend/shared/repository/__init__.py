@@ -98,8 +98,6 @@ from .subscription import (
 from .analytics import (
     AnalyticsAlgorithmRepository,
     AnalyticsAnomalyFeedbackRepository,
-    AnalyticsBalanceSnapshotRepository,
-    AnalyticsExplanationRepository,
     AnalyticsJobRepository,
     AnalyticsMatchQualityRepository,
     AnalyticsPerformanceRepository,
@@ -142,13 +140,8 @@ from .workspace import (
     get_or_create_workspace_member,
     resolve_workspace_member_id,
 )
-from .workspace_player import (
-    HostPlayerRankRepository,
-    HostPlayerRepository,
-    WorkspacePlayerRankRepository,
-    WorkspacePlayerRepository,
-)
 from .custom_game import CustomGamePlayerRepository, CustomGameRepository
+from .member_rank import MemberRankRepository
 
 __all__ = (
     "TOURNAMENT_SOURCE_TYPE",
@@ -156,8 +149,6 @@ __all__ = (
     "AchievementRuleRepository",
     "AnalyticsAlgorithmRepository",
     "AnalyticsAnomalyFeedbackRepository",
-    "AnalyticsBalanceSnapshotRepository",
-    "AnalyticsExplanationRepository",
     "AnalyticsJobRepository",
     "AnalyticsMatchQualityRepository",
     "AnalyticsPerformanceRepository",
@@ -217,6 +208,7 @@ __all__ = (
     "MatchKillFeedRepository",
     "MatchRepository",
     "MatchStatisticsRepository",
+    "MemberRankRepository",
     "MLModelArtifactRepository",
     "OAuthConnectionRepository",
     "PermissionRepository",
@@ -262,10 +254,6 @@ __all__ = (
     "VerifiedChannelRow",
     "WorkspaceBalancerConfigRepository",
     "WorkspaceMemberRepository",
-    "HostPlayerRankRepository",
-    "HostPlayerRepository",
-    "WorkspacePlayerRankRepository",
-    "WorkspacePlayerRepository",
     "CustomGamePlayerRepository",
     "CustomGameRepository",
     "WorkspaceRepository",

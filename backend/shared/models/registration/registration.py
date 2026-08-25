@@ -201,9 +201,6 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     deleted_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
     balancer_profile_overridden_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    workspace_player_id: Mapped[int | None] = mapped_column(
-        ForeignKey("balancer.workspace_player.id", ondelete="SET NULL"), nullable=True, index=True
-    )
 
     # ── Team registration (see docs/plans/2026-08-20-team-registration.md) ────
     # A registered team's roster IS a set of these rows; there is deliberately no
