@@ -134,3 +134,88 @@ class ConflictGuardProtectsLocalDecisions(IsolatedAsyncioTestCase):
         """Legacy rows completed before the state machine existed."""
         encounter = _encounter(status=enums.EncounterStatus.COMPLETED, result_status=enums.EncounterResultStatus.NONE)
         self.assertTrue(sync._has_local_decision(encounter))
+
+
+class CreatingAnAlreadyCompleteMatch(IsolatedAsyncioTestCase):
+    """A match can already be Challonge-``complete`` the first time the
+    importer sees it (importing a finished bracket). The row must be born
+    self-consistent: ``ck_encounter_result_status_matches_status`` forbids
+    ``status=COMPLETED`` with ``result_status`` still ``none``, so creation
+    must route through the same finalize+audit path as a live completion
+    rather than writing ``status`` alone."""
+
+    def _match(self, *, state: str) -> object:
+        return sync.schemas.ChallongeMatch(
+            id=1,
+            started_at=None,
+            created_at=sync.datetime.now(sync.UTC),
+            updated_at=None,
+            player1_id=None,
+            player2_id=None,
+            round=1,
+            identifier="A1",
+            state=state,
+            scores_csv="0-2",
+            tournament_id=1,
+            group_id=None,
+        )
+
+    async def _upsert(self, *, state: str):
+        tournament = SimpleNamespace(id=1)
+        source = sync._ImportSource(challonge_id=100, stage=SimpleNamespace())
+        match_lookup = sync._MatchLookup(by_source_key={}, by_challonge_id={}, mapped_keys=set())
+        team_lookup = sync._TeamLookup(by_source_key={}, by_key={}, teams_by_id={})
+
+        created: list = []
+
+        async def fake_create(_session, encounter):
+            encounter.id = 1
+            created.append(encounter)
+            return encounter
+
+        audits: list = []
+
+        with (
+            patch.object(
+                sync.sync_service.structure,
+                "_resolve_stage_refs_for_match",
+                AsyncMock(return_value=sync.StageRefs(stage_id=None, stage_item_id=None)),
+            ),
+            patch.object(sync.sync_service.mapping, "_ensure_match_mapping", AsyncMock()),
+            patch.object(sync.sync_service.encounter_repo, "create", AsyncMock(side_effect=fake_create)),
+            patch.object(sync.finalize_service, "finalize_encounter_score", AsyncMock()) as finalize,
+            patch.object(sync, "record_result_transition", side_effect=lambda *_a, **kw: audits.append(kw)),
+        ):
+            result = await sync.sync_service._upsert_encounter_from_challonge(
+                SimpleNamespace(),
+                tournament,
+                source,
+                self._match(state=state),
+                match_lookup=match_lookup,
+                team_lookup=team_lookup,
+            )
+        return result, created, finalize, audits
+
+    async def test_confirms_and_finalizes_on_creation(self) -> None:
+        result, created, finalize, audits = await self._upsert(state="complete")
+
+        self.assertEqual("created", result.action)
+        self.assertTrue(result.newly_completed)
+        # Born OPEN, not COMPLETED-without-a-result_status — finalize (mocked
+        # here) is what actually moves it to COMPLETED in the real path.
+        self.assertEqual(enums.EncounterStatus.OPEN, created[0].status)
+        finalize.assert_awaited_once()
+        self.assertEqual(enums.EncounterResultStatus.CONFIRMED, finalize.await_args.kwargs["result_status"])
+        self.assertIsNotNone(finalize.await_args.kwargs["confirmed_at"])
+        self.assertEqual(1, len(audits))
+        self.assertEqual(enums.EncounterResultAuditAction.IMPORT, audits[0]["action"])
+        self.assertIsNone(audits[0]["actor_user_id"])
+
+    async def test_leaves_an_unfinished_match_alone(self) -> None:
+        result, created, finalize, audits = await self._upsert(state="open")
+
+        self.assertEqual("created", result.action)
+        self.assertFalse(result.newly_completed)
+        self.assertEqual(enums.EncounterStatus.OPEN, created[0].status)
+        finalize.assert_not_awaited()
+        self.assertEqual([], audits)

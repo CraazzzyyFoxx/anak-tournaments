@@ -1442,6 +1442,9 @@ class ChallongeSyncService:
         status = _encounter_status_from_challonge(match.state)
         refs = await self.structure._resolve_stage_refs_for_match(session, tournament, source, stage, match)
         if encounter is None:
+            initial_status = (
+                enums.EncounterStatus.OPEN if status == enums.EncounterStatus.COMPLETED else status
+            )
             encounter = models.Encounter(
                 name=build_encounter_name(
                     home_team.name if home_team is not None else None,
@@ -1455,14 +1458,42 @@ class ChallongeSyncService:
                 tournament_id=tournament.id,
                 stage_id=refs.stage_id,
                 stage_item_id=refs.stage_item_id,
-                status=status,
+                status=initial_status,
             )
             await self.encounter_repo.create(session, encounter)
             match_lookup.set(source, match.id, encounter)
             # challonge_match_mapping is the sole persistence of the encounter↔match
             # link now (the legacy encounter.challonge_id column is no longer written).
             await self.mapping._ensure_match_mapping(session, source, match.id, encounter, match_lookup)
-            return _UpsertResult(action="created", encounter=encounter)
+
+            newly_completed = status == enums.EncounterStatus.COMPLETED
+            if newly_completed:
+                # A match can already be complete on the Challonge side the first
+                # time we see it (e.g. importing a finished tournament) — route it
+                # through the same finalize+audit path as a live completion so
+                # ``result_status``/``confirmed_at`` and bracket advancement stay in
+                # sync with ``status`` (ck_encounter_result_status_matches_status).
+                await finalize_service.finalize_encounter_score(
+                    session,
+                    encounter.id,
+                    encounter=encounter,
+                    home_score=home_score,
+                    away_score=away_score,
+                    source="challonge",
+                    result_status=enums.EncounterResultStatus.CONFIRMED,
+                    confirmed_at=datetime.now(UTC),
+                )
+                record_result_transition(
+                    session,
+                    encounter,
+                    action=enums.EncounterResultAuditAction.IMPORT,
+                    source="challonge",
+                    actor_user_id=None,
+                    from_result_status=enums.EncounterResultStatus.NONE,
+                    home_score_before=None,
+                    away_score_before=None,
+                )
+            return _UpsertResult(action="created", encounter=encounter, newly_completed=newly_completed)
 
         was_completed = encounter.status == enums.EncounterStatus.COMPLETED
         has_local_decision = _has_local_decision(encounter)
