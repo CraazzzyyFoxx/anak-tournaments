@@ -1,6 +1,7 @@
 "use client";
 
-import { UserPlus } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, UserPlus } from "lucide-react";
 
 import { EYEBROW_CLASS } from "@/app/balancer/pickup/pickup-chrome";
 import { Button } from "@/components/ui/button";
@@ -14,13 +15,16 @@ type PickupMixHeaderProps = {
 };
 
 /**
- * The mix this screen is open on: its name, its id, and the one write a host
- * does before touching a lineup -- pull more players in.
+ * The mix this screen is open on: the way back to the list, its name and id,
+ * and the one write a host does before touching a lineup -- pull more
+ * players in. One line instead of three: the back link, the identity and the
+ * write used to stack as separate rows and read as three unrelated pieces of
+ * chrome instead of one header.
  *
- * Which mix this is comes from the route now, not from state this header
- * owns -- switching to another one, or starting a new one, happens on the
- * list at `/balancer/pickup`. This is the only place the mix's name and
- * number sit together.
+ * Which mix this is comes from the route, not from state this header owns --
+ * switching to another one, or starting a new one, happens on the list at
+ * `/balancer/pickup`. This is the only place the mix's name and number sit
+ * together.
  */
 export function PickupMixHeader({
   canEdit,
@@ -29,34 +33,40 @@ export function PickupMixHeader({
   onOpenPool,
 }: Readonly<PickupMixHeaderProps>) {
   return (
-    <div className="flex flex-wrap items-end gap-x-5 gap-y-3 border-b border-[color:var(--aqt-border)] pb-4">
-      <div className="min-w-0">
-        <div className={EYEBROW_CLASS}>Mix</div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
-          <h1 className="truncate font-display text-[30px]/[1.1] font-bold tracking-[-0.01em] text-[color:var(--aqt-fg)]">
-            {game?.name ?? (gameLoading ? "\u2026" : "No mix yet")}
-          </h1>
-          {game ? (
-            <span className="font-mono text-[15px] font-semibold text-[color:var(--aqt-fg-dim)]">
-              {`#${game.id}`}
-            </span>
-          ) : null}
-        </div>
+    <div className="flex flex-wrap items-center gap-3 border-b border-[color:var(--aqt-border)] pb-4">
+      <Link
+        href="/balancer/pickup"
+        className="flex shrink-0 items-center gap-1.5 text-[13px] text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)]"
+      >
+        <ArrowLeft className="size-3.5" aria-hidden="true" />
+        Mixes
+      </Link>
+
+      <span aria-hidden="true" className="h-5 w-px shrink-0 bg-[color:var(--aqt-border)]" />
+
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <span className={EYEBROW_CLASS}>Mix</span>
+        <h1 className="min-w-0 truncate font-display text-xl font-bold tracking-[-0.01em] text-[color:var(--aqt-fg)]">
+          {game?.name ?? (gameLoading ? "\u2026" : "No mix yet")}
+        </h1>
+        {game ? (
+          <span className="shrink-0 font-mono text-[13px] font-semibold text-[color:var(--aqt-fg-dim)]">
+            {`#${game.id}`}
+          </span>
+        ) : null}
       </div>
 
       {canEdit ? (
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="h-9"
-            disabled={game == null}
-            onClick={onOpenPool}
-          >
-            <UserPlus className="mr-1.5 size-3.5" aria-hidden="true" />
-            Add players
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-9 shrink-0"
+          disabled={game == null}
+          onClick={onOpenPool}
+        >
+          <UserPlus className="mr-1.5 size-3.5" aria-hidden="true" />
+          Add players
+        </Button>
       ) : null}
     </div>
   );

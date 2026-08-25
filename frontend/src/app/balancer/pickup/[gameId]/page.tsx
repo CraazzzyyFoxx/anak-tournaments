@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft } from "lucide-react";
 
 import { PickupAddPlayersDialog } from "@/app/balancer/pickup/PickupAddPlayersDialog";
 import { PickupLobbyBoard } from "@/app/balancer/pickup/PickupLobbyBoard";
@@ -141,14 +139,6 @@ export default function BalancerPickupMixPage() {
   return (
     <>
       <div className="flex flex-1 flex-col gap-5">
-        <Link
-          href="/balancer/pickup"
-          className="flex w-fit items-center gap-1.5 text-[13px] text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)]"
-        >
-          <ArrowLeft className="size-3.5" aria-hidden="true" />
-          Mixes
-        </Link>
-
         <PickupMixHeader
           canEdit={canEdit}
           game={game}
