@@ -29,6 +29,12 @@ export type PickupAuthorRanksInput = {
   clear?: string[];
 };
 
+export type PickupTeamNameInput = {
+  /** 0-based, the same position `TeamColumn` renders by. */
+  teamIndex: number;
+  name: string;
+};
+
 /**
  * Every read and write for one workspace's mixes, in one place.
  *
@@ -108,6 +114,15 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     onError: (error) => notify.apiError(error),
   });
 
+  const setTeamNames = useMutation({
+    mutationFn: (input: PickupTeamNameInput) =>
+      customGameService.setTeamNames(workspaceId, selectedGameId as number, {
+        [String(input.teamIndex)]: input.name,
+      }),
+    onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
   const balance = useMutation({
     mutationFn: () => customGameService.balance(workspaceId, selectedGameId as number),
     onSuccess: (game) => {
@@ -160,5 +175,6 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     balance,
     recordOutcome,
     setAuthorRanks,
+    setTeamNames,
   };
 }

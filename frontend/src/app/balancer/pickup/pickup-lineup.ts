@@ -217,6 +217,8 @@ export type PickupSeat = {
 
 export type PickupTeam = {
   id: number;
+  /** The host's override, or the computed `Team N` default. */
+  name: string;
   averageRank: number | null;
   seats: PickupSeat[];
 };
@@ -243,6 +245,27 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * A host's team-name overrides, keyed by 0-based team index — the same
+ * position `parseVariants` below assigns names by. Stored in `config_json`
+ * (`custom.set_team_names`) rather than in the solver's own result, so a
+ * rename survives paging between balance options and re-running the solver.
+ */
+export function parseTeamNames(configJson: unknown): Record<number, string> {
+  const raw = asRecord(asRecord(configJson)?.team_names);
+  if (raw == null) {
+    return {};
+  }
+  const out: Record<number, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const index = Number(key);
+    if (Number.isInteger(index) && index >= 0 && typeof value === "string" && value.trim()) {
+      out[index] = value;
+    }
+  }
+  return out;
 }
 
 function parseSeats(roster: Record<string, unknown>): PickupSeat[] {
@@ -286,7 +309,7 @@ function parseSeats(roster: Record<string, unknown>): PickupSeat[] {
  * than throwing, so a result written by an older solver degrades to "no teams
  * to show" instead of blanking the screen.
  */
-export function parseVariants(resultJson: unknown): PickupVariant[] {
+export function parseVariants(resultJson: unknown, teamNames: Record<number, string> = {}): PickupVariant[] {
   const root = asRecord(resultJson);
   if (root == null) {
     return [];
@@ -302,20 +325,22 @@ export function parseVariants(resultJson: unknown): PickupVariant[] {
     const statistics = asRecord(variant?.statistics) ?? {};
     const benchedRows = Array.isArray(variant?.benched_players) ? variant.benched_players : [];
     out.push({
-      teams: teams.flatMap((entry, index) => {
-        const team = asRecord(entry);
-        const roster = asRecord(team?.roster);
-        if (team == null || roster == null) {
-          return [];
-        }
-        return [
-          {
-            id: asNumber(team.id) ?? index + 1,
-            averageRank: asNumber(team.average_mmr),
-            seats: parseSeats(roster),
-          },
-        ];
-      }),
+      teams: teams
+        .flatMap((entry) => {
+          const team = asRecord(entry);
+          const roster = asRecord(team?.roster);
+          if (team == null || roster == null) {
+            return [];
+          }
+          return [{ id: asNumber(team.id), averageRank: asNumber(team.average_mmr), seats: parseSeats(roster) }];
+        })
+        // Named by final render position, not the raw payload index: a
+        // malformed entry dropped above must not shift every name after it.
+        .map((team, index) => ({
+          ...team,
+          id: team.id ?? index + 1,
+          name: teamNames[index] ?? `Team ${index + 1}`,
+        })),
       stats: {
         compositeScore: asNumber(statistics.composite_score),
         mmrStdDev: asNumber(statistics.mmr_std_dev),

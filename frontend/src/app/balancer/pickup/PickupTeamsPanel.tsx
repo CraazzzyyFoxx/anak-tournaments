@@ -21,6 +21,7 @@ import {
 } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { InlineEditText } from "@/components/admin/InlineEditText";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,7 +31,7 @@ import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { CustomGame, CustomGameOutcome } from "@/services/custom-game.service";
 
-import { parseOutcome, parseVariants, type PickupTeam, type PickupVariant } from "./pickup-lineup";
+import { parseOutcome, parseTeamNames, parseVariants, type PickupTeam, type PickupVariant } from "./pickup-lineup";
 
 type PickupTeamsPanelProps = {
   canWrite: boolean;
@@ -48,6 +49,8 @@ type PickupTeamsPanelProps = {
   onVariantIndexChange: (index: number) => void;
   recordingOutcome: boolean;
   onRecordOutcome: (outcome: CustomGameOutcome) => void;
+  /** Omitted -- team headers render read-only, matching a `canWrite=false` viewer. */
+  onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
   onShowBoard: () => void;
   onCopyBattleTags: () => void;
 };
@@ -77,10 +80,11 @@ export function PickupTeamsPanel({
   onVariantIndexChange,
   recordingOutcome,
   onRecordOutcome,
+  onRenameTeam,
   onShowBoard,
   onCopyBattleTags,
 }: Readonly<PickupTeamsPanelProps>) {
-  const variants = parseVariants(game?.result_json);
+  const variants = parseVariants(game?.result_json, parseTeamNames(game?.config_json));
   // Clamped rather than reset in an effect: a shorter result must not leave the
   // pager pointing past the end.
   const index = Math.min(variantIndex, Math.max(0, variants.length - 1));
@@ -225,7 +229,7 @@ export function PickupTeamsPanel({
         ) : (
           <>
             <div ref={captureRef}>
-              <VariantView variant={variant} />
+              <VariantView variant={variant} canWrite={canWrite} onRenameTeam={onRenameTeam} />
             </div>
 
             <div
@@ -234,6 +238,7 @@ export function PickupTeamsPanel({
               <span className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>Record result</span>
               <PickupResultControls
                 teamCount={variant.teams.length}
+                teamNames={variant.teams.map((team) => team.name)}
                 outcome={outcome}
                 canRecord={canWrite}
                 saving={recordingOutcome}
@@ -310,7 +315,15 @@ function VariantMetrics({ variant }: Readonly<{ variant: PickupVariant }>) {
   );
 }
 
-function VariantView({ variant }: Readonly<{ variant: PickupVariant }>) {
+function VariantView({
+  variant,
+  canWrite,
+  onRenameTeam,
+}: Readonly<{
+  variant: PickupVariant;
+  canWrite: boolean;
+  onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
+}>) {
   const twoTeams = variant.teams.length === 2;
 
   return (
@@ -330,6 +343,8 @@ function VariantView({ variant }: Readonly<{ variant: PickupVariant }>) {
             team={team}
             teamIndex={teamIndex}
             showDivider={twoTeams && teamIndex === 0}
+            canWrite={canWrite}
+            onRenameTeam={onRenameTeam}
           />
         ))}
       </div>
@@ -347,10 +362,18 @@ function TeamColumnAndDivider({
   team,
   teamIndex,
   showDivider,
-}: Readonly<{ team: PickupTeam; teamIndex: number; showDivider: boolean }>) {
+  canWrite,
+  onRenameTeam,
+}: Readonly<{
+  team: PickupTeam;
+  teamIndex: number;
+  showDivider: boolean;
+  canWrite: boolean;
+  onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
+}>) {
   return (
     <>
-      <TeamColumn team={team} teamIndex={teamIndex} />
+      <TeamColumn team={team} teamIndex={teamIndex} canWrite={canWrite} onRenameTeam={onRenameTeam} />
       {showDivider ? (
         <div
           aria-hidden="true"
@@ -365,7 +388,17 @@ function TeamColumnAndDivider({
   );
 }
 
-function TeamColumn({ team, teamIndex }: Readonly<{ team: PickupTeam; teamIndex: number }>) {
+function TeamColumn({
+  team,
+  teamIndex,
+  canWrite,
+  onRenameTeam,
+}: Readonly<{
+  team: PickupTeam;
+  teamIndex: number;
+  canWrite: boolean;
+  onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
+}>) {
   // The global OW grid, not the workspace's: balancer-service resolves a mix's
   // ranks against the grid with `workspace_id=None`, so `seat.rating` is on the
   // OW scale. Labelling it with a workspace's tiers renames the same number.
@@ -376,9 +409,13 @@ function TeamColumn({ team, teamIndex }: Readonly<{ team: PickupTeam; teamIndex:
     <section className="min-w-0 flex-1 px-4 pb-4 pt-4">
       <header className="flex items-baseline gap-2.5 border-b border-[color:var(--aqt-border)] pb-3">
         <span aria-hidden="true" className={cn("h-4 w-[3px] shrink-0 rounded-sm", accent.bar)} />
-        <h3 className="truncate font-display text-xl font-bold tracking-[0.01em] text-[color:var(--aqt-fg)]">
-          {`Team ${teamIndex + 1}`}
-        </h3>
+        <InlineEditText
+          value={team.name}
+          label="team name"
+          canEdit={canWrite && onRenameTeam != null}
+          onSave={(next) => onRenameTeam?.(teamIndex, next)}
+          textClassName="truncate font-display text-xl font-bold tracking-[0.01em] text-[color:var(--aqt-fg)]"
+        />
         <span
           className={cn(
             "ml-auto shrink-0 font-mono text-[11px] uppercase tracking-[0.12em]",

@@ -19,7 +19,11 @@ from src.services.balancer.solver import run_balance as _run_balance
 __all__ = ("CustomGameService", "custom_game_service")
 
 _TERMINAL = frozenset({"completed", "cancelled"})
-_CONFIG_ONLY = frozenset({"role_mask", "team_count"})
+_CONFIG_ONLY = frozenset({"role_mask", "team_count", "team_names"})
+#: Plenty for any pickup mix (2-3 teams in practice); guards against a
+#: malformed payload turning into an unbounded dict.
+_MAX_TEAMS = 8
+_MAX_TEAM_NAME_LEN = 60
 #: A roster row owns only its lineup state. A rank correction goes into the
 #: host's own layer of ``member_rank``, so it outlives the game it was made in.
 _PLAYER_PATCH_FIELDS = frozenset({"is_active", "roles"})
@@ -61,6 +65,43 @@ def _normalize_roles(raw: Any) -> list[str] | None:
             continue
         seen.add(code)
         out.append(code)
+    return out
+
+
+def _normalize_team_names(raw: Mapping[str, Any]) -> dict[str, str | None]:
+    """Validate a host's team-name patch, keyed by 0-based team index.
+
+    Returns the index -> trimmed-name map to write, with ``None`` standing in
+    for "clear this team's override back to its computed default" -- an
+    explicit empty/whitespace value, distinct from an index the caller simply
+    did not mention (which ``set_team_names`` below leaves untouched).
+    """
+    out: dict[str, str | None] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or not key.isdigit():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"invalid team index: {key!r}"
+            )
+        index = int(key)
+        if index >= _MAX_TEAMS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"team index out of range: {index}"
+            )
+        if value is None:
+            out[str(index)] = None
+            continue
+        if not isinstance(value, str):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="team name must be a string")
+        trimmed = value.strip()
+        if not trimmed:
+            out[str(index)] = None
+            continue
+        if len(trimmed) > _MAX_TEAM_NAME_LEN:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"team name too long (max {_MAX_TEAM_NAME_LEN} chars)",
+            )
+        out[str(index)] = trimmed
     return out
 
 
@@ -377,6 +418,47 @@ class CustomGameService:
         game.result_json = result
         _apply_team_index(roster, result)
         game.status = "balanced"
+        await session.flush()
+        return game
+
+    async def set_team_names(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        team_names: Mapping[str, Any],
+        actor_user_id: int,
+    ) -> models.CustomGame:
+        """Patch the host's team-name overrides, one team at a time.
+
+        Keyed by 0-based team index (the same position ``TeamColumn``/
+        ``PickupResultControls`` render by) rather than by the solver's
+        per-run ``team.id`` or captain, so a rename survives paging between
+        balance options and re-running the solver -- both reshuffle rosters
+        and captains but never the on-screen column order.
+
+        Patch semantics, like ``update_player``: an index the caller does not
+        mention is left exactly as it was, so renaming one team's column does
+        not require resending every other team's current name. An index
+        mentioned with an empty value clears back to the computed default.
+        """
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
+        patch = _normalize_team_names(team_names)
+        config = dict(game.config_json or {})
+        merged = dict(config.get("team_names") or {})
+        for index, value in patch.items():
+            if value is None:
+                merged.pop(index, None)
+            else:
+                merged[index] = value
+        if merged:
+            config["team_names"] = merged
+        else:
+            config.pop("team_names", None)
+        game.config_json = config or None
         await session.flush()
         return game
 

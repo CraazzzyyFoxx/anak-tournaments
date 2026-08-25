@@ -174,6 +174,7 @@ export function PickupLobbyBoard({
         >
           <PickupResultControls
             teamCount={variant.teams.length}
+            teamNames={variant.teams.map((team) => team.name)}
             outcome={outcome}
             canRecord={canWrite}
             saving={recordingOutcome}
@@ -232,8 +233,8 @@ function BoardTeamTitle({
 
   return (
     <div className={cn("min-w-0 flex-1", mirrored && "lg:text-right")}>
-      <div className="font-display text-5xl font-extrabold leading-none tracking-[-0.02em] text-[color:var(--aqt-fg)] md:text-[76px]">
-        {`Team ${teamIndex + 1}`}
+      <div className="truncate font-display text-5xl font-extrabold leading-none tracking-[-0.02em] text-[color:var(--aqt-fg)] md:text-[76px]">
+        {team.name}
       </div>
       <div
         className={cn(

@@ -22,6 +22,8 @@ function toneKey(winner: number | null): keyof typeof SELECTED_TONE {
 type PickupResultControlsProps = {
   /** How many teams the open balance produced — one win button each. */
   teamCount: number;
+  /** Host overrides by position, falling back to `Team N` per button. */
+  teamNames?: readonly string[];
   outcome: CustomGameOutcome | null;
   /** False once the mix is terminal or the viewer cannot write: shows the record read-only. */
   canRecord: boolean;
@@ -41,6 +43,7 @@ type PickupResultControlsProps = {
  */
 export function PickupResultControls({
   teamCount,
+  teamNames,
   outcome,
   canRecord,
   saving,
@@ -50,7 +53,7 @@ export function PickupResultControls({
   const options: { key: string; label: string; winner: number | null }[] = [
     ...Array.from({ length: teamCount }, (_, index) => ({
       key: `team-${index + 1}`,
-      label: `Team ${index + 1} win`,
+      label: `${teamNames?.[index] ?? `Team ${index + 1}`} win`,
       winner: index + 1,
     })),
   ];

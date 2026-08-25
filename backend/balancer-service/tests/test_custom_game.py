@@ -507,3 +507,101 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                 self.assertEqual(ctx.exception.status_code, 409)
                 self.session.flush.assert_not_called()
                 self.session.flush.reset_mock()
+
+    async def test_set_team_names_stores_by_index(self) -> None:
+        self.games.get.return_value = _game()
+
+        game = await self.service.set_team_names(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            team_names={"0": "  Wolves  ", "1": "Bears"},
+            actor_user_id=9,
+        )
+
+        self.assertEqual(game.config_json, {"team_names": {"0": "Wolves", "1": "Bears"}})
+
+    async def test_set_team_names_preserves_other_config_keys(self) -> None:
+        self.games.get.return_value = _game(config_json={"role_mask": {"tank": 1}})
+
+        game = await self.service.set_team_names(
+            self.session, workspace_id=1, custom_game_id=11, team_names={"0": "Wolves"}, actor_user_id=9
+        )
+
+        self.assertEqual(game.config_json, {"role_mask": {"tank": 1}, "team_names": {"0": "Wolves"}})
+
+    async def test_set_team_names_blank_value_clears_the_override(self) -> None:
+        self.games.get.return_value = _game(config_json={"team_names": {"0": "Wolves", "1": "Bears"}})
+
+        game = await self.service.set_team_names(
+            self.session, workspace_id=1, custom_game_id=11, team_names={"0": "  "}, actor_user_id=9
+        )
+
+        # Only "1" survives; an empty override for "0" reverts it to the
+        # computed default rather than being rejected.
+        self.assertEqual(game.config_json, {"team_names": {"1": "Bears"}})
+
+    async def test_set_team_names_dropping_every_entry_clears_the_config_key(self) -> None:
+        self.games.get.return_value = _game(config_json={"team_names": {"0": "Wolves"}})
+
+        game = await self.service.set_team_names(
+            self.session, workspace_id=1, custom_game_id=11, team_names={"0": ""}, actor_user_id=9
+        )
+
+        self.assertIsNone(game.config_json)
+
+    async def test_set_team_names_rejects_a_non_numeric_index(self) -> None:
+        self.games.get.return_value = _game()
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_team_names(
+                self.session, workspace_id=1, custom_game_id=11, team_names={"first": "Wolves"}, actor_user_id=9
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    async def test_set_team_names_rejects_an_out_of_range_index(self) -> None:
+        self.games.get.return_value = _game()
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_team_names(
+                self.session, workspace_id=1, custom_game_id=11, team_names={"8": "Wolves"}, actor_user_id=9
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    async def test_set_team_names_rejects_a_name_over_the_length_cap(self) -> None:
+        self.games.get.return_value = _game()
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_team_names(
+                self.session, workspace_id=1, custom_game_id=11, team_names={"0": "x" * 61}, actor_user_id=9
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    async def test_set_team_names_terminal_409(self) -> None:
+        for status in ("completed", "cancelled"):
+            with self.subTest(status=status):
+                self.games.get.return_value = _row(
+                    id=11, workspace_id=1, host_user_id=9, name="Scrim", status=status, config_json=None
+                )
+                with self.assertRaises(HTTPException) as ctx:
+                    await self.service.set_team_names(
+                        self.session, workspace_id=1, custom_game_id=11, team_names={"0": "Wolves"}, actor_user_id=9
+                    )
+                self.assertEqual(ctx.exception.status_code, 409)
+
+    async def test_set_team_names_requires_the_host(self) -> None:
+        self.games.get.return_value = _game()
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_team_names(
+                self.session, workspace_id=1, custom_game_id=11, team_names={"0": "Wolves"}, actor_user_id=99
+            )
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_balance_excludes_team_names_from_solver_config_overrides(self) -> None:
+        game = _game(config_json={"team_names": {"0": "Wolves"}, "MMR_DIFF_WEIGHT": 5})
+        self.games.get.return_value = game
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        self.ranks.resolve.return_value = _ranks(7)
+        self.run_balance.return_value = {"teams": []}
+
+        await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+
+        config_overrides = self.run_balance.await_args.args[1]
+        self.assertEqual(config_overrides, {"MMR_DIFF_WEIGHT": 5})

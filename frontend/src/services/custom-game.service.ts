@@ -124,4 +124,16 @@ export const customGameService = {
       body: { outcome_json: outcome },
     }).then((r) => r.json());
   },
+
+  /**
+   * Patch semantics: an index left out of ``teamNames`` keeps its current
+   * name; an empty string clears that team's override back to the computed
+   * default (``Team N``).
+   */
+  setTeamNames(workspaceId: number, gameId: number, teamNames: Record<string, string>): Promise<CustomGame> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/team-names`, {
+      method: "PUT",
+      body: { team_names: teamNames },
+    }).then((r) => r.json());
+  },
 };

@@ -41,6 +41,7 @@ const onVariantIndexChange = vi.fn();
 const onRecordOutcome = vi.fn();
 const onShowBoard = vi.fn();
 const onCopyBattleTags = vi.fn();
+const onRenameTeam = vi.fn();
 
 function variant(offset: number) {
   return {
@@ -110,6 +111,7 @@ async function mount(
         onVariantIndexChange={onVariantIndexChange}
         recordingOutcome={false}
         onRecordOutcome={onRecordOutcome}
+        onRenameTeam={onRenameTeam}
         onShowBoard={onShowBoard}
         onCopyBattleTags={onCopyBattleTags}
       />,
@@ -134,6 +136,22 @@ function byName(scope: ParentNode, name: string) {
   return [...scope.querySelectorAll("button")].find((node) => node.textContent?.trim() === name) ?? null;
 }
 
+function inputByLabel(scope: ParentNode, label: string) {
+  return scope.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
+}
+
+// React overrides the input's own `value` setter to track changes; assigning
+// through it makes React think nothing changed, so write via the prototype
+// setter instead (mirrors InlineEditText.behavior.test.tsx).
+const nativeValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+
+async function typeInto(field: HTMLInputElement, value: string) {
+  await act(async () => {
+    nativeValueSetter?.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 function pagerLabel(scope: ParentNode) {
   return scope.querySelector('[role="status"]')?.textContent?.trim();
 }
@@ -145,6 +163,7 @@ beforeEach(() => {
   onRecordOutcome.mockReset();
   onShowBoard.mockReset();
   onCopyBattleTags.mockReset();
+  onRenameTeam.mockReset();
 });
 
 describe("PickupTeamsPanel", () => {
@@ -263,5 +282,36 @@ describe("PickupTeamsPanel", () => {
 
     expect(scope.textContent).toContain("No mixes yet");
     expect(scope.textContent).not.toContain("No teams yet");
+  });
+
+  it("lets the host rename a team through the pencil affordance", async () => {
+    const scope = await mount(game());
+
+    const pencils = [...scope.querySelectorAll('button[aria-label="Edit team name"]')];
+    expect(pencils).toHaveLength(2);
+
+    await click(pencils[0]);
+    const field = inputByLabel(scope, "team name");
+    expect(field?.value).toBe("Team 1");
+    await typeInto(field as HTMLInputElement, "Wolves");
+    await click(scope.querySelector('button[aria-label="Save team name"]'));
+
+    expect(onRenameTeam).toHaveBeenCalledWith(0, "Wolves");
+  });
+
+  it("hides the rename pencil for a read-only viewer", async () => {
+    const scope = await mount(game(), { canWrite: false });
+
+    expect(scope.querySelectorAll('button[aria-label="Edit team name"]')).toHaveLength(0);
+  });
+
+  it("shows a host's saved team name instead of the computed default", async () => {
+    const scope = await mount(game({ config_json: { team_names: { "0": "Wolves" } } }));
+
+    expect(scope.textContent).toContain("Wolves");
+    // The second team keeps its computed default; the win buttons pick up
+    // the same override so the scoreline reads the same name as the column.
+    expect(byName(scope, "Wolves win")).not.toBeNull();
+    expect(byName(scope, "Team 2 win")).not.toBeNull();
   });
 });

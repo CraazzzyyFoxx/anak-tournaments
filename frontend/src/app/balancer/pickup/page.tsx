@@ -11,6 +11,7 @@ import { PickupTeamsPanel } from "@/app/balancer/pickup/PickupTeamsPanel";
 import {
   PICKUP_TERMINAL_STATUSES,
   parseOutcome,
+  parseTeamNames,
   parseVariants,
   playerLabel,
   summarizeLineup,
@@ -59,6 +60,7 @@ export default function BalancerPickupPage() {
     balance,
     recordOutcome,
     setAuthorRanks,
+    setTeamNames,
   } = usePickupMix(workspaceId ?? 0, pickedGameId);
 
   const games = gamesQuery.data ?? [];
@@ -92,7 +94,7 @@ export default function BalancerPickupPage() {
       (setAuthorRanks.isPending &&
         setAuthorRanks.variables?.workspaceMemberId === openRow.workspace_member_id));
 
-  const variants = parseVariants(game?.result_json);
+  const variants = parseVariants(game?.result_json, parseTeamNames(game?.config_json));
   const boardIndex = Math.min(variantIndex, Math.max(0, variants.length - 1));
   const boardVariant = variants[boardIndex];
 
@@ -182,6 +184,7 @@ export default function BalancerPickupPage() {
               onVariantIndexChange={setVariantIndex}
               recordingOutcome={recordOutcome.isPending}
               onRecordOutcome={(outcome) => recordOutcome.mutate(outcome)}
+              onRenameTeam={(teamIndex, name) => setTeamNames.mutateAsync({ teamIndex, name })}
               onShowBoard={() => setIsBoardOpen(true)}
               onCopyBattleTags={copyBattleTags}
             />

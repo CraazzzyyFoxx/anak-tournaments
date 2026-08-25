@@ -85,6 +85,14 @@ def _member_ids(data: dict[str, Any]) -> list[int] | None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_ids is required") from None
 
 
+def _team_names(data: dict[str, Any]) -> dict[str, Any]:
+    body = c.payload(data)
+    raw = body.get("team_names", data.get("team_names"))
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="team_names is required")
+    return raw
+
+
 def _player_patch(data: dict[str, Any]) -> dict[str, Any]:
     """Only the keys the caller actually sent, so absent fields stay untouched."""
     body = c.payload(data)
@@ -308,6 +316,25 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.balance", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.set_team_names")
+    async def _set_team_names(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "update")
+            game = await custom_game_service.set_team_names(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                team_names=_team_names(data),
+                actor_user_id=user.id,
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="team_names", actor_user_id=user.id)
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.set_team_names", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.record_outcome")
     async def _record_outcome(data: dict, msg: RabbitMessage) -> dict:
