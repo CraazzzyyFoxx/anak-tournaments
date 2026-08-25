@@ -2,14 +2,13 @@
 
 import { useCallback, useRef, useState } from "react";
 
-import { notify } from "@/lib/notify";
-
 import {
   capturePngBlob,
   copyImageBlob,
   waitForImages,
   waitForLayout,
-} from "./balance-image-capture";
+} from "@/lib/image-capture";
+import { notify } from "@/lib/notify";
 
 export interface NodeCapture {
   /** Attach to the element to rasterise. */
@@ -54,21 +53,9 @@ export function useNodeCapture(): NodeCapture {
       await waitForLayout();
       await waitForImages(node);
 
-      // `html-to-image` re-fetches every image to embed it as a data URL, and
-      // a host that sends no `Access-Control-Allow-Origin` fails that fetch.
-      // Division crests come from the asset CDN, so this is the normal case,
-      // not an edge one: tolerate it and say so, rather than hand back nothing
-      // because a decoration could not be read.
-      const blockedImages = Array.from(node.querySelectorAll("img")).some(
-        (image) =>
-          image.src !== "" &&
-          !image.src.startsWith("data:") &&
-          !image.src.startsWith(`${window.location.origin}/`),
-      );
-
-      const blob = await capturePngBlob(node, { tolerateBlockedImages: blockedImages });
+      const { blob, degraded } = await capturePngBlob(node);
       await copyImageBlob(blob);
-      notify.success(`Copied to the clipboard${blockedImages ? " (without rank icons)" : ""}`);
+      notify.success(`Copied to the clipboard${degraded ? " (without rank icons)" : ""}`);
     } catch {
       notify.error("Clipboard image copy unavailable");
     } finally {

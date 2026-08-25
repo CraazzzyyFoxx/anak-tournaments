@@ -149,6 +149,7 @@ export default defineConfig({
       "src/lib/draft-visual.test.ts",
       "src/lib/draft-workspace-model.test.ts",
       "src/lib/stream-platform.test.ts",
+      "src/lib/image-capture.test.ts",
       "src/components/Header.mobile-layout.test.ts",
       "src/components/WorkspaceBootstrap.helpers.test.ts",
       // File-level: `src/components` holds both runners' tests, so a directory

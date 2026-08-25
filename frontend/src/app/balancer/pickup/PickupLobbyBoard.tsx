@@ -4,11 +4,11 @@ import { useEffect } from "react";
 import { ChevronLeft, ChevronRight, Copy, Loader2, X } from "lucide-react";
 
 import { PickupResultControls } from "@/app/balancer/pickup/PickupResultControls";
-import { useNodeCapture } from "@/app/balancer/components/useNodeCapture";
 import { teamAccent } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
+import { useNodeCapture } from "@/hooks/useNodeCapture";
 import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";

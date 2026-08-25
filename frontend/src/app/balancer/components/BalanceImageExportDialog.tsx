@@ -14,18 +14,17 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { resolveDivisionFromRank, getDivisionIconSrc, getDivisionLabel } from "@/lib/division-grid";
-import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
-import { formatSubRoleLabel } from "@/utils/player";
-import type { InternalBalancePayload, InternalBalanceTeam } from "@/types/balancer-admin.types";
-import type { DivisionGrid } from "@/types/workspace.types";
-
 import {
   capturePngBlob,
   copyImageBlob,
   waitForImages,
   waitForLayout
-} from "./balance-image-capture";
+} from "@/lib/image-capture";
+import { notify } from "@/lib/notify";
+import { cn } from "@/lib/utils";
+import { formatSubRoleLabel } from "@/utils/player";
+import type { InternalBalancePayload, InternalBalanceTeam } from "@/types/balancer-admin.types";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 import {
   BALANCE_ROSTER_KEYS,
@@ -137,7 +136,7 @@ export function BalanceImageExportDialog({
           }
 
           await waitForImages(node);
-          const blob = await capturePngBlob(node);
+          const { blob } = await capturePngBlob(node);
           const url = URL.createObjectURL(blob);
           objectUrls.push(url);
 
@@ -154,7 +153,7 @@ export function BalanceImageExportDialog({
         }
 
         await waitForImages(fullImageRef.current);
-        const nextFullImageBlob = await capturePngBlob(fullImageRef.current);
+        const { blob: nextFullImageBlob } = await capturePngBlob(fullImageRef.current);
 
         if (cancelled) {
           objectUrls.forEach((url) => URL.revokeObjectURL(url));

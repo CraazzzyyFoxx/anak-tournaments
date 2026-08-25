@@ -12,7 +12,6 @@ import {
 
 import { PANEL_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import { PickupResultControls } from "@/app/balancer/pickup/PickupResultControls";
-import { useNodeCapture } from "@/app/balancer/components/useNodeCapture";
 import {
   CAPTION_CLASS,
   EYEBROW_CLASS,
@@ -25,6 +24,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useNodeCapture } from "@/hooks/useNodeCapture";
 import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
