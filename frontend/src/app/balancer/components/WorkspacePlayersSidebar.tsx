@@ -8,6 +8,7 @@ import { DivisionRankPicker } from "@/app/balancer/components/DivisionRankPicker
 import {
   ICON_BUTTON_CLASS,
   PANEL_CLASS,
+  ROLE_TEXT_ACCENTS,
   splitBattleTag,
 } from "@/app/balancer/components/balancer-page-helpers";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -18,7 +19,7 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
-import { ROLE_LABELS, ROLES } from "@/lib/roles";
+import { ROLE_LABELS, ROLES, type RoleCode } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import {
   workspacePlayerKeys,
@@ -337,7 +338,7 @@ export function WorkspacePlayersSidebar({
           border is what puts each glyph exactly over its picker column. */}
       <div className="mt-3 pr-2">
         <div className="flex items-center gap-2 border border-transparent px-2.5 pb-1.5">
-          <span className="min-w-0 flex-1 text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
+          <span className="min-w-0 flex-1 truncate text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
             Player
           </span>
           {/* Decorative: every picker below already announces its own role and player. */}
@@ -410,53 +411,79 @@ export function WorkspacePlayersSidebar({
                   {suffix ? <span className="text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
                 </>
               );
+              // Mirrors the pool row's accent-coloured rank: the strongest role is
+              // what a pool decision is made on, and the glyph alone hides the value.
+              const topRank = ROLES.reduce<{ role: RoleCode; rank: number } | null>((best, role) => {
+                const rank = player.ranks[role.code];
+                if (typeof rank !== "number") return best;
+                return best && best.rank >= rank ? best : { role: role.code, rank };
+              }, null);
 
               return (
                 <li
                   key={player.id}
                   className={cn(
-                    "flex items-center gap-2 rounded-xl border px-2.5 py-1.5 transition-colors",
+                    "rounded-xl border px-2.5 py-2 transition-colors",
                     "border-[color:var(--aqt-border)] bg-white/[0.02]",
+                    "hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.04]",
                     isSelected && "border-primary/45 bg-primary/[0.08]",
                   )}
                 >
+                  {/* Two lines, like a pool row: the identity owns the full width and
+                      the rank controls sit on their own line instead of squeezing it. */}
                   {onTogglePlayer ? (
                     <button
                       type="button"
                       aria-pressed={isSelected}
                       title={label}
                       onClick={() => onTogglePlayer(player)}
-                      className="min-w-0 flex-1 truncate rounded text-left text-[13px] font-medium text-[color:var(--aqt-fg)] transition-colors hover:text-[color:var(--aqt-teal)]"
+                      className="block w-full truncate rounded text-left text-[13px] font-medium text-[color:var(--aqt-fg)] transition-colors hover:text-[color:var(--aqt-teal)]"
                     >
                       {identity}
                     </button>
                   ) : (
                     <span
                       title={label}
-                      className="min-w-0 flex-1 truncate text-[13px] font-medium text-[color:var(--aqt-fg)]"
+                      className="block truncate text-[13px] font-medium text-[color:var(--aqt-fg)]"
                     >
                       {identity}
                     </span>
                   )}
-                  <div
-                    role="group"
-                    aria-label={`Ranks for ${label}`}
-                    className="flex shrink-0 items-center gap-1.5"
-                  >
-                    {ROLES.map((role) => (
-                      <DivisionRankPicker
-                        key={role.code}
-                        rank={player.ranks[role.code] ?? null}
-                        disabled={!canEdit || isSaving}
-                        label={`${ROLE_LABELS[role.code]} rank for ${label}`}
-                        onChange={(nextRank) => {
-                          const ranks = { ...player.ranks };
-                          if (nextRank == null) delete ranks[role.code];
-                          else ranks[role.code] = nextRank;
-                          saveRanks.mutate({ playerId: player.id, ranks });
-                        }}
-                      />
-                    ))}
+
+                  <div className="mt-1.5 flex items-center justify-between gap-2">
+                    {topRank ? (
+                      <span
+                        title={`Highest rank: ${ROLE_LABELS[topRank.role]} ${topRank.rank}`}
+                        className={cn(
+                          "text-[13px] font-semibold tabular-nums",
+                          ROLE_TEXT_ACCENTS[topRank.role],
+                        )}
+                      >
+                        {topRank.rank}
+                      </span>
+                    ) : (
+                      <span className="text-[12px] text-[color:var(--aqt-fg-dim)]">No ranks yet</span>
+                    )}
+                    <div
+                      role="group"
+                      aria-label={`Ranks for ${label}`}
+                      className="flex shrink-0 items-center gap-1.5"
+                    >
+                      {ROLES.map((role) => (
+                        <DivisionRankPicker
+                          key={role.code}
+                          rank={player.ranks[role.code] ?? null}
+                          disabled={!canEdit || isSaving}
+                          label={`${ROLE_LABELS[role.code]} rank for ${label}`}
+                          onChange={(nextRank) => {
+                            const ranks = { ...player.ranks };
+                            if (nextRank == null) delete ranks[role.code];
+                            else ranks[role.code] = nextRank;
+                            saveRanks.mutate({ playerId: player.id, ranks });
+                          }}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </li>
               );

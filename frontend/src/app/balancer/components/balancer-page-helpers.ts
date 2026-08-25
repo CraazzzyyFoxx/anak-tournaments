@@ -129,6 +129,13 @@ export const MUTED_BUTTON_CLASS =
 export const ICON_BUTTON_CLASS =
   "h-8 w-8 rounded-lg border border-[color:var(--aqt-border)] bg-black/15 text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]";
 
+/** One accent per role, so a rank number carries its role without a second label. */
+export const ROLE_TEXT_ACCENTS: Record<string, string> = {
+  tank: "text-sky-300",
+  dps: "text-orange-300",
+  support: "text-emerald-300"
+};
+
 /**
  * `Name#1234` → a bright name plus a dim `#1234`, so a row reads as one
  * identity instead of one long string with the discriminator competing for

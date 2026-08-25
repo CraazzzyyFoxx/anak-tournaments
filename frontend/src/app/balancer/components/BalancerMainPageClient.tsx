@@ -136,26 +136,27 @@ function useIsWideBalancerLayout(): boolean {
 }
 
 /**
- * A collapsed sidebar is a 36px icon rail in 8px of padding, so it wants ~56px
- * — but `react-resizable-panels` only speaks percentages, and a flat
- * `collapsedSize={5}` grew with the viewport (78px at 1568px, wider still on a
- * 4K monitor). Measure the group and convert once, then keep it in sync while
- * the window resizes.
+ * `react-resizable-panels` only speaks percentages, so every fixed width on this
+ * page — the 56px collapsed rail, the width a sidebar row stops fitting at —
+ * has to be converted against the live group width. A flat `collapsedSize={5}`
+ * grew with the viewport: 78px at 1568px, wider still on a 4K monitor.
  */
 const RAIL_WIDTH_PX = 56;
+/** Below this a sidebar row clips its own controls (measured at 200px: 4px over). */
+const SIDEBAR_MIN_PX = 260;
 
-function useRailPercent(groupRef: RefObject<HTMLDivElement | null>): number {
-  const [percent, setPercent] = useState(4);
+function useGroupWidth(groupRef: RefObject<HTMLDivElement | null>): number {
+  // Desktop-first seed, matching `useIsWideBalancerLayout`'s optimism, so the
+  // first paint is close and the corrected value is a nudge rather than a jump.
+  const [width, setWidth] = useState(1280);
 
   useEffect(() => {
     const element = groupRef.current;
     if (!element) return;
 
     const sync = () => {
-      const width = element.getBoundingClientRect().width;
-      if (width <= 0) return;
-      // Clamped so a freak measurement can never hide the rail or eat the editor.
-      setPercent(Math.min(12, Math.max(2, (RAIL_WIDTH_PX / width) * 100)));
+      const next = element.getBoundingClientRect().width;
+      if (next > 0) setWidth(next);
     };
 
     sync();
@@ -164,7 +165,7 @@ function useRailPercent(groupRef: RefObject<HTMLDivElement | null>): number {
     return () => observer.disconnect();
   }, [groupRef]);
 
-  return percent;
+  return width;
 }
 
 export function BalancerMainPageClient() {
@@ -181,7 +182,9 @@ export function BalancerMainPageClient() {
   const playersPanelRef = useRef<ImperativePanelHandle>(null);
   const panelGroupRef = useRef<HTMLDivElement | null>(null);
   const isWideLayout = useIsWideBalancerLayout();
-  const railPercent = useRailPercent(panelGroupRef);
+  const groupWidth = useGroupWidth(panelGroupRef);
+  const railPercent = Math.min(12, Math.max(2, (RAIL_WIDTH_PX / groupWidth) * 100));
+  const sidebarMinPercent = Math.min(40, Math.max(12, (SIDEBAR_MIN_PX / groupWidth) * 100));
 
   const [selectedPreset, setSelectedPreset] = useState("DEFAULT");
   const [jobState, dispatchJob] = useBalancerJob();
@@ -941,7 +944,7 @@ export function BalancerMainPageClient() {
               ref={sidebarPanelRef}
               id="balancer-pool-sidebar-panel"
               defaultSize={27}
-              minSize={20}
+              minSize={sidebarMinPercent}
               maxSize={45}
               collapsible
               collapsedSize={railPercent}
@@ -966,7 +969,7 @@ export function BalancerMainPageClient() {
                   // instead re-collapsed it on every mount, so `autoSaveId` could never
                   // restore a sidebar the user had expanded.
                   defaultSize={railPercent}
-                  minSize={16}
+                  minSize={sidebarMinPercent}
                   maxSize={36}
                   collapsible
                   collapsedSize={railPercent}
