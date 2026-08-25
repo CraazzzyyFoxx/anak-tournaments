@@ -14,9 +14,10 @@ from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.services.division_grid.access import get_effective_division_grid
+from shared.services.member_rank import MIX_ORDER
 from src.core import db
 from src.rpc import _common as c
-from src.services.custom_game import custom_game_service, rank_overrides
+from src.services.custom_game import custom_game_service
 
 _SF = db.async_session_maker
 
@@ -67,24 +68,27 @@ def _require_mix(data: dict[str, Any], user: Any, workspace_id: int, action: str
     c.require_workspace_permission(data, user, workspace_id, "custom_game", action)
 
 
-def _player_ids(data: dict[str, Any]) -> list[int] | None:
+def _member_ids(data: dict[str, Any]) -> list[int] | None:
     body = c.payload(data)
-    raw = body.get("player_ids", data.get("player_ids", body.get("workspace_player_ids", data.get("workspace_player_ids"))))
+    raw = body.get(
+        "member_ids",
+        data.get("member_ids", body.get("workspace_member_ids", data.get("workspace_member_ids"))),
+    )
     if raw is None:
         return None
     if not isinstance(raw, list):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="player_ids is required")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_ids is required")
     try:
         return [int(item) for item in raw]
     except (TypeError, ValueError):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="player_ids is required") from None
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_ids is required") from None
 
 
 def _player_patch(data: dict[str, Any]) -> dict[str, Any]:
     """Only the keys the caller actually sent, so absent fields stay untouched."""
     body = c.payload(data)
     patch: dict[str, Any] = {}
-    for key in ("rank_value", "is_active", "roles"):
+    for key in ("is_active", "roles"):
         if key in body:
             patch[key] = body[key]
         elif key in data:
@@ -94,37 +98,36 @@ def _player_patch(data: dict[str, Any]) -> dict[str, Any]:
 
 def _dump_row(
     row: Any,
-    player: Any | None,
+    member: Any | None,
     resolved: dict[tuple[int, str], Any],
-    host_ranks: dict[tuple[int, str], int],
+    author_ranks: dict[tuple[int, str], int],
 ) -> dict[str, Any]:
     effective = {
-        role: resolved[(row.workspace_player_id, role)]
+        role: resolved[(row.workspace_member_id, role)]
         for role in REGISTRATION_ROLE_CODES
-        if resolved.get((row.workspace_player_id, role)) is not None
-        and resolved[(row.workspace_player_id, role)].value is not None
+        if resolved.get((row.workspace_member_id, role)) is not None
+        and resolved[(row.workspace_member_id, role)].value is not None
     }
     return {
         "id": row.id,
-        "workspace_player_id": row.workspace_player_id,
-        "display_name": getattr(player, "display_name", None),
-        "battle_tag": getattr(player, "battle_tag", None),
-        "rank_value": row.rank_value,
+        "workspace_member_id": row.workspace_member_id,
+        "display_name": getattr(member, "display_name", None),
+        "battle_tag": getattr(member, "battle_tag", None),
         "team_index": row.team_index,
         "sort_order": row.sort_order,
         "is_active": row.is_active,
         "roles": row.roles_json,
-        # The ranks balance would actually use: override > host book > canon > OW.
+        # The ranks balance would actually use: host book > workspace canon > OW.
         "ranks": {role: rank.value for role, rank in effective.items()},
-        # Which of those four a value came from, so the sheet can say whether it
+        # Which of those three a value came from, so the sheet can say whether it
         # is showing this host's own number or the workspace's.
         "rank_sources": {role: rank.source for role, rank in effective.items()},
-        # This host's own book, separately: the sheet edits it directly, and
+        # This host's own layer, separately: the sheet edits it directly, and
         # without it "my rank" would be indistinguishable from an inherited one.
-        "host_ranks": {
-            role: host_ranks[(row.workspace_player_id, role)]
+        "author_ranks": {
+            role: author_ranks[(row.workspace_member_id, role)]
             for role in REGISTRATION_ROLE_CODES
-            if (row.workspace_player_id, role) in host_ranks
+            if (row.workspace_member_id, role) in author_ranks
         },
     }
 
@@ -132,9 +135,9 @@ def _dump_row(
 def _dump_game(
     game: Any,
     roster: list[Any] | None = None,
-    players: dict[int, Any] | None = None,
+    members: dict[int, Any] | None = None,
     resolved: dict[tuple[int, str], Any] | None = None,
-    host_ranks: dict[tuple[int, str], int] | None = None,
+    author_ranks: dict[tuple[int, str], int] | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": game.id,
@@ -147,47 +150,49 @@ def _dump_game(
         "outcome_json": game.outcome_json,
     }
     if roster is not None:
-        by_id = players or {}
+        by_id = members or {}
         out["players"] = [
-            _dump_row(row, by_id.get(row.workspace_player_id), resolved or {}, host_ranks or {})
+            _dump_row(row, by_id.get(row.workspace_member_id), resolved or {}, author_ranks or {})
             for row in roster
         ]
     return out
 
 
 async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
-    """Roster rows carry the player's name, effective ranks and their source.
+    """Roster rows carry the member's name, effective ranks and their source.
 
-    Without the name a client only has workspace_player ids and has to guess
-    from a separately paginated pool query, which is how the lineup used to
-    render ``#123`` for anyone off the current page. Without the source and the
-    host's own book, "2600" could equally be this host's number, the workspace
-    canon or an Overwatch snapshot, and the sheet could not say which it is
-    about to overwrite.
+    Without the name a client only has member ids and has to guess from a
+    separately paginated roster query, which is how the lineup used to render
+    ``#123`` for anyone off the current page. Without the source and the host's
+    own layer, "2600" could equally be this host's number, the workspace canon or
+    an Overwatch snapshot, and the sheet could not say which it is about to
+    overwrite.
     """
     roster = list(await custom_game_service.roster.list_for_game(session, game.id))
     if not roster:
         return _dump_game(game, roster)
-    player_ids = [row.workspace_player_id for row in roster]
-    rows = await custom_game_service.players.bulk_get(session, player_ids)
-    players = {player.id: player for player in rows}
-    resolved = await custom_game_service.ranks.resolve_ranks(
+    member_ids = [row.workspace_member_id for row in roster]
+    members = await custom_game_service.members(session, game.workspace_id, member_ids)
+    resolved = await custom_game_service.ranks.resolve(
         session,
-        players=list(players.values()),
+        workspace_id=game.workspace_id,
+        members={member_id: member.player_id for member_id, member in members.items()},
         roles=list(REGISTRATION_ROLE_CODES),
-        overrides=rank_overrides(roster),
-        host_user_id=game.host_user_id,
+        order=MIX_ORDER,
+        author_user_id=game.host_user_id,
         grid=await get_effective_division_grid(session, None),
     )
-    host_rows = (
-        []
+    author_ranks = (
+        {}
         if game.host_user_id is None
-        else await custom_game_service.ranks.host_ranks.list_for_host_players(
-            session, game.host_user_id, player_ids
+        else await custom_game_service.ranks.list_layer(
+            session,
+            workspace_id=game.workspace_id,
+            member_ids=member_ids,
+            author_user_id=game.host_user_id,
         )
     )
-    host_ranks = {(row.workspace_player_id, row.role): row.rank_value for row in host_rows}
-    return _dump_game(game, roster, players, resolved, host_ranks)
+    return _dump_game(game, roster, members, resolved, author_ranks)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -210,7 +215,9 @@ def register(broker: Any, logger: Any) -> None:
                 host_user_id=_opt_int(data, "host_user_id") or user.id,
                 name=name,
                 actor_user_id=user.id,
-                player_ids=_player_ids(data),
+                # An omitted list opens an empty mix; the host fills it from the
+                # roster sheet afterwards. There is no pool to default to.
+                member_ids=_member_ids(data) or (),
                 config_json=config_json,
             )
             await session.commit()
@@ -246,14 +253,14 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
-            player_ids = _player_ids(data)
-            if player_ids is None:
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="player_ids is required")
+            member_ids = _member_ids(data)
+            if member_ids is None:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_ids is required")
             game = await custom_game_service.update_roster(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                player_ids=player_ids,
+                member_ids=member_ids,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -271,7 +278,7 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                workspace_player_id=_int(data, "workspace_player_id"),
+                workspace_member_id=_int(data, "workspace_member_id"),
                 patch=_player_patch(data),
                 actor_user_id=user.id,
             )

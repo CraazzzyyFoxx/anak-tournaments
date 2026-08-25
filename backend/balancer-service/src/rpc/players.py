@@ -1,7 +1,9 @@
-"""Workspace players over typed RPC.
+"""The workspace roster and its rank layers, over typed RPC.
 
 ``rpc.balancer.players.{list, upsert, set_ranks}``.
-Reads and writes require workspace membership. ``set_ranks`` writes CANON.
+Reads and writes require workspace membership. ``set_ranks`` picks the layer from
+the body's ``scope``; the *author* layer is always the caller's own, because a
+foreign book is readable by every member but writable by nobody else.
 """
 
 from __future__ import annotations
@@ -10,14 +12,16 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
-from shared import models
 from shared.core import http_status as status, pagination
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.services import workspace_roster
+from shared.services.member_rank import member_rank_service
 from src.core import db
 from src.rpc import _common as c
-from src.services.workspace_player import workspace_player_service
 
 _SF = db.async_session_maker
+
+_SCOPES = ("workspace", "author")
 
 
 def _require_member(user: Any, workspace_id: int) -> None:
@@ -36,31 +40,64 @@ def _ranks_payload(data: dict[str, Any]) -> dict[str, int]:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="ranks is required") from exc
 
 
-def _player_id(data: dict[str, Any]) -> int:
+def _clear_payload(data: dict[str, Any]) -> list[str]:
+    """Roles to *delete* from the layer -- which is how inheritance is restored."""
+    body = c.payload(data)
+    raw = body.get("clear", data.get("clear")) or []
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="clear must be a list")
+    return [str(role) for role in raw]
+
+
+def _scope(data: dict[str, Any]) -> str:
+    body = c.payload(data)
+    raw = body.get("scope", data.get("scope")) or "workspace"
+    if raw not in _SCOPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"scope must be one of {list(_SCOPES)}"
+        )
+    return str(raw)
+
+
+def _member_id(data: dict[str, Any]) -> int:
     body = c.payload(data)
     raw = body.get(
-        "workspace_player_id",
-        data.get("workspace_player_id", body.get("player_id", data.get("player_id", data.get("id")))),
+        "member_id",
+        data.get("member_id", body.get("workspace_member_id", data.get("workspace_member_id", data.get("id")))),
     )
     try:
         return int(raw)
     except (TypeError, ValueError):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="workspace_player_id is required"
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_id is required"
         ) from None
 
 
-def _dump(row: Any, ranks: dict[str, int]) -> dict[str, Any]:
+def _dump(member: Any, ranks: dict[str, int], author_ranks: dict[str, int]) -> dict[str, Any]:
     return {
-        "id": row.id,
-        "workspace_id": row.workspace_id,
-        "battle_tag": row.battle_tag,
-        "display_name": row.display_name,
-        "player_id": row.player_id,
+        "member_id": member.member_id,
+        "player_id": member.player_id,
+        "battle_tag": member.battle_tag,
+        "display_name": member.display_name,
+        # Two layers side by side: the workspace canon everyone sees, and the book
+        # being read (the caller's own unless ``author_user_id`` asked otherwise).
+        # Collapsing them into one map would hide whether a number is inherited.
         "ranks": ranks,
+        "author_ranks": author_ranks,
     }
 
-_SEARCH_FIELDS = ("battle_tag", "battle_tag_normalized", "display_name")
+
+#: What ``roster_page`` actually matches a search needle against. Reported on the
+#: params so a client can explain the result set; the query itself is server-side.
+_SEARCH_FIELDS = ("battle_tag", "display_name", "name")
+
+
+def _first(raw: Any, key: str) -> Any:
+    """One query value, unwrapping the gateway's ``?a=1&a=2`` list form."""
+    value = raw.get(key) if isinstance(raw, dict) else None
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
 
 
 def _list_params(data: dict[str, Any]) -> pagination.PaginationSortSearchParams:
@@ -69,10 +106,7 @@ def _list_params(data: dict[str, Any]) -> pagination.PaginationSortSearchParams:
         raw = {}
 
     def first(key: str) -> Any:
-        value = raw.get(key)
-        if isinstance(value, list):
-            return value[0] if value else None
-        return value
+        return _first(raw, key)
 
     try:
         page = max(int(first("page") or 1), 1)
@@ -93,18 +127,41 @@ def _list_params(data: dict[str, Any]) -> pagination.PaginationSortSearchParams:
     )
 
 
-async def _load_visible(session: Any, workspace_id: int, workspace_player_id: int) -> models.WorkspacePlayer:
-    player = await workspace_player_service.players.get(session, workspace_player_id)
-    if player is None or player.workspace_id != workspace_id or player.hidden_at is not None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace player not found")
-    return player
+def _author_to_read(data: dict[str, Any], actor_user_id: int) -> int:
+    """Whose book to *read*, defaulting to the caller's own.
+
+    Any member may look at another host's numbers -- that is how the sheet shows
+    "what the host thinks" next to the canon. Writing is a different matter: the
+    write path takes its author from the actor and never from the wire.
+    """
+    value = _first(data.get("query"), "author_user_id")
+    if value is None or value == "":
+        return actor_user_id
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="author_user_id must be an integer"
+        ) from None
 
 
-async def _ranks_for(session: Any, player_ids: list[int]) -> dict[int, dict[str, int]]:
-    out: dict[int, dict[str, int]] = {player_id: {} for player_id in player_ids}
-    for row in await workspace_player_service.ranks.list_ranks_for_players(session, player_ids):
-        out.setdefault(row.workspace_player_id, {})[row.role] = row.rank_value
+def _by_member(layer: dict[tuple[int, str], int]) -> dict[int, dict[str, int]]:
+    out: dict[int, dict[str, int]] = {}
+    for (member_id, role), value in layer.items():
+        out.setdefault(member_id, {})[role] = value
     return out
+
+
+async def _layers(
+    session: Any, workspace_id: int, member_ids: list[int], author_user_id: int
+) -> tuple[dict[int, dict[str, int]], dict[int, dict[str, int]]]:
+    canon = await member_rank_service.list_layer(
+        session, workspace_id=workspace_id, member_ids=member_ids
+    )
+    author = await member_rank_service.list_layer(
+        session, workspace_id=workspace_id, member_ids=member_ids, author_user_id=author_user_id
+    )
+    return _by_member(canon), _by_member(author)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -115,18 +172,21 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = c.path_int(data, "workspace_id")
             _require_member(user, workspace_id)
             params = _list_params(data)
-            rows, total = await workspace_player_service.players.list(
+            rows, total = await workspace_roster.roster_page(
                 session,
-                params,
-                filters=[
-                    models.WorkspacePlayer.workspace_id == workspace_id,
-                    models.WorkspacePlayer.hidden_at.is_(None),
-                ],
-                order_by=[models.WorkspacePlayer.id.asc()],
+                workspace_id=workspace_id,
+                search=params.query or None,
+                page=params.page,
+                per_page=params.per_page,
             )
-            ranks = await _ranks_for(session, [row.id for row in rows])
+            canon, author = await _layers(
+                session, workspace_id, [row.member_id for row in rows], _author_to_read(data, user.id)
+            )
             return pagination.paginated_dict(
-                [_dump(row, ranks.get(row.id, {})) for row in rows],
+                [
+                    _dump(row, canon.get(row.member_id, {}), author.get(row.member_id, {}))
+                    for row in rows
+                ],
                 total,
                 params,
             )
@@ -148,15 +208,23 @@ def register(broker: Any, logger: Any) -> None:
                 display_name = display_name.strip() or None
             elif display_name is not None:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="display_name is required")
-            row = await workspace_player_service.upsert(
+            member = await workspace_roster.ensure_member_for_battle_tag(
                 session,
                 workspace_id=workspace_id,
                 battle_tag=battle_tag,
                 display_name=display_name,
             )
             await session.commit()
-            ranks = await _ranks_for(session, [row.id])
-            return _dump(row, ranks.get(row.id, {}))
+            # Re-read through the roster query so the answer carries the resolved
+            # BattleTag and name, identically shaped to a ``players.list`` row.
+            roster = await workspace_roster.list_roster(
+                session, workspace_id=workspace_id, member_ids=[member.id]
+            )
+            row = roster.get(member.id)
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
+            canon, author = await _layers(session, workspace_id, [member.id], user.id)
+            return _dump(row, canon.get(member.id, {}), author.get(member.id, {}))
 
         return await c.envelope(logger, "players.upsert", op, session_factory=_SF)
 
@@ -166,13 +234,20 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
             _require_member(user, workspace_id)
-            player = await _load_visible(session, workspace_id, _player_id(data))
-            ranks = await workspace_player_service.set_ranks(
+            # ``author`` is the caller's own layer, full stop: accepting an
+            # author id here would let one member rewrite another's private book.
+            author_user_id = user.id if _scope(data) == "author" else None
+            # ``set_ranks`` runs ``member_in_workspace`` itself, so a member from
+            # another workspace 404s before any row is written.
+            ranks = await member_rank_service.set_ranks(
                 session,
-                workspace_player_id=player.id,
+                workspace_id=workspace_id,
+                workspace_member_id=_member_id(data),
                 ranks=_ranks_payload(data),
+                clear=_clear_payload(data),
+                author_user_id=author_user_id,
             )
             await session.commit()
-            return ranks
+            return {"ranks": ranks}
 
         return await c.envelope(logger, "players.set_ranks", op, session_factory=_SF)
