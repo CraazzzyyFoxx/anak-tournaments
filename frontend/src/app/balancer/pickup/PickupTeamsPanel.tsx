@@ -1,9 +1,10 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, ClipboardCopy, Loader2, Maximize2, Shuffle } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, ClipboardCopy, Loader2, Maximize2, Shuffle } from "lucide-react";
 
 import { PANEL_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import { PickupResultControls } from "@/app/balancer/pickup/PickupResultControls";
+import { slugifyFilename, useNodeCapture } from "@/app/balancer/components/useNodeCapture";
 import {
   CAPTION_CLASS,
   EYEBROW_CLASS,
@@ -16,7 +17,8 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getDefaultDivisionGrid, resolveDivisionFromRank } from "@/lib/division-grid";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { CustomGame, CustomGameOutcome } from "@/services/custom-game.service";
@@ -77,6 +79,11 @@ export function PickupTeamsPanel({
   const index = Math.min(variantIndex, Math.max(0, variants.length - 1));
   const variant = variants[index];
   const outcome = parseOutcome(game?.outcome_json);
+  // The matchup card is a self-contained graphic, so "save as image" here needs
+  // no detour through the fullscreen board.
+  const { ref: captureRef, capturing, capture } = useNodeCapture(
+    `${slugifyFilename(game?.name ?? "", "mix")}-teams`,
+  );
 
   return (
     <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
@@ -145,6 +152,20 @@ export function PickupTeamsPanel({
               <Maximize2 className="mr-1.5 size-3.5" aria-hidden="true" />
               Show lobby
             </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9"
+              disabled={capturing != null}
+              onClick={() => void capture("download")}
+            >
+              {capturing === "download" ? (
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <Camera className="mr-1.5 size-3.5" aria-hidden="true" />
+              )}
+              Save as image
+            </Button>
             <Button type="button" variant="ghost" className="h-9" onClick={onCopyBattleTags}>
               <ClipboardCopy className="mr-1.5 size-3.5" aria-hidden="true" />
               Copy battletags
@@ -188,7 +209,9 @@ export function PickupTeamsPanel({
         />
       ) : (
         <>
-          <VariantView variant={variant} />
+          <div ref={captureRef}>
+            <VariantView variant={variant} />
+          </div>
 
           <div
             className={cn(
@@ -330,7 +353,10 @@ function TeamColumnAndDivider({
 }
 
 function TeamColumn({ team, teamIndex }: Readonly<{ team: PickupTeam; teamIndex: number }>) {
-  const grid = getDefaultDivisionGrid();
+  // Workspace grid, not the default: `DivisionIcon` picks its image from the
+  // workspace grid, so resolving the number against a different one puts a
+  // crest next to a rating it does not match.
+  const grid = useDivisionGrid();
   const accent = teamAccent(teamIndex);
 
   return (
@@ -368,7 +394,13 @@ function TeamColumn({ team, teamIndex }: Readonly<{ team: PickupTeam; teamIndex:
                 <PlayerRoleIcon role={icon} size={24} label={ROLE_LABELS[seat.role]} />
               </span>
               {division == null ? null : (
-                <DivisionIcon division={division} width={32} height={32} className="shrink-0" />
+                <DivisionIcon
+                  division={division}
+                  tournamentGrid={grid}
+                  width={32}
+                  height={32}
+                  className="shrink-0"
+                />
               )}
               <span
                 className="min-w-0 flex-1 truncate text-[17px] font-semibold text-[color:var(--aqt-fg)]"

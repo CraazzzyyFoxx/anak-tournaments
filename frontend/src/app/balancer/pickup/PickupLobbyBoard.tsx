@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, Copy, Loader2, X } from "lucide-react";
 
 import { PickupResultControls } from "@/app/balancer/pickup/PickupResultControls";
+import { slugifyFilename, useNodeCapture } from "@/app/balancer/components/useNodeCapture";
 import { teamAccent } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
 import type { CustomGameOutcome } from "@/services/custom-game.service";
 
 import type { PickupTeam, PickupVariant } from "./pickup-lineup";
+
 
 type PickupLobbyBoardProps = {
   mixName: string;
@@ -71,6 +73,11 @@ export function PickupLobbyBoard({
 
   const { stats } = variant;
 
+  // Rasterise the board itself rather than build a separate export layout: this
+  // screen already IS the shareable artifact, so the image a host sends is the
+  // one they were just looking at.
+  const { ref: captureRef, capturing, capture } = useNodeCapture(slugifyFilename(mixName, "mix-board"));
+
   return (
     <div
       role="dialog"
@@ -91,11 +98,19 @@ export function PickupLobbyBoard({
       />
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[color:var(--aqt-teal)]" />
 
-      <div className="relative px-6 pb-10 pt-6 md:px-12">
+      <div
+        ref={captureRef}
+        className={cn(
+          "relative px-6 pb-10 pt-6 md:px-12",
+          capturing != null && "[&_[data-export-hide]]:invisible",
+        )}
+      >
         <div className="flex flex-wrap items-center gap-4">
           <span className="font-mono text-xs uppercase tracking-[0.16em] text-[color:var(--aqt-fg-dim)]">
             {mixName}
           </span>
+          {/* Stats stay in the image — they are the reason a lobby trusts the
+              teams. Only the controls are stripped. */}
           <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
             {stats.compositeScore == null ? null : (
               <BoardStat label="Quality" value={stats.compositeScore.toFixed(2)} />
@@ -104,10 +119,42 @@ export function PickupLobbyBoard({
               <BoardStat label="StdDev" value={stats.mmrStdDev.toFixed(1)} />
             )}
             <BoardStat label="Off-role" value={String(stats.offRoleCount ?? 0)} />
-            <Button type="button" variant="outline" size="sm" className="h-8" onClick={onClose}>
-              <X className="mr-1.5 size-3.5" aria-hidden="true" />
-              Exit &middot; Esc
-            </Button>
+            <span data-export-hide className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8"
+                disabled={capturing != null}
+                onClick={() => void capture("copy")}
+              >
+                {capturing === "copy" ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Copy className="mr-1.5 size-3.5" aria-hidden="true" />
+                )}
+                Copy image
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8"
+                disabled={capturing != null}
+                onClick={() => void capture("download")}
+              >
+                {capturing === "download" ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Camera className="mr-1.5 size-3.5" aria-hidden="true" />
+                )}
+                Save as image
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="h-8" onClick={onClose}>
+                <X className="mr-1.5 size-3.5" aria-hidden="true" />
+                Exit &middot; Esc
+              </Button>
+            </span>
           </div>
         </div>
 
@@ -137,7 +184,10 @@ export function PickupLobbyBoard({
           ))}
         </div>
 
-        <div className="mt-7 flex flex-wrap items-center gap-3 border-t border-[color:var(--aqt-border)] pt-4">
+        <div
+          data-export-hide
+          className="mt-7 flex flex-wrap items-center gap-3 border-t border-[color:var(--aqt-border)] pt-4"
+        >
           <PickupResultControls
             teamCount={variant.teams.length}
             outcome={outcome}
@@ -240,7 +290,9 @@ function BoardSeat({
         mirrored ? cn("border-l", accent.crestBorder) : cn("border-r", accent.crestBorder),
       )}
     >
-      {division == null ? null : <DivisionIcon division={division} width={52} height={52} />}
+      {division == null ? null : (
+        <DivisionIcon division={division} tournamentGrid={grid} width={52} height={52} />
+      )}
       <span className="font-mono text-[19px] font-bold tabular-nums text-[color:var(--aqt-fg)]">
         {seat.rating == null ? "\u2014" : Math.round(seat.rating)}
       </span>

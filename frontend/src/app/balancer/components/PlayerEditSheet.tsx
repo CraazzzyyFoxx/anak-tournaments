@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
-  GripVertical,
   History,
   Loader2,
   Plus,
@@ -13,23 +12,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { SortableGrip, SortableRows, useSortableRow } from "./SortableRows";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -313,17 +296,7 @@ function SortableRoleEntry({
   onRemove,
   subtypeOptions
 }: Readonly<SortableRoleEntryProps>) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id
-  });
-
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    zIndex: isDragging ? 50 : undefined,
-    position: isDragging ? ("relative" as const) : undefined,
-    boxShadow: isDragging ? "0 22px 56px rgba(0,0,0,0.34)" : undefined
-  };
+  const { ref, style, handleProps } = useSortableRow(id);
 
   const divisionNumber = resolveDivision(entry.rank_value);
   const divisionName = getDivisionName(divisionNumber);
@@ -354,7 +327,7 @@ function SortableRoleEntry({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={ref}
       style={style}
       className={cn(
         "grid gap-2 rounded-xl border p-2.5 transition-colors md:grid-cols-[32px_minmax(0,1fr)]",
@@ -364,14 +337,10 @@ function SortableRoleEntry({
       )}
     >
       <div className="flex items-center justify-between md:flex-col md:items-center md:justify-center md:gap-1">
-        <button
-          type="button"
-          className="flex h-6 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md border border-[color:var(--aqt-border-2)] bg-black/15 text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg)] active:cursor-grabbing"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-3 w-3" />
-        </button>
+        <SortableGrip
+          handleProps={handleProps}
+          label={`Reorder ${ROLE_DISPLAY[entry.role]}`}
+        />
         <span className="text-[11px] font-semibold text-[color:var(--aqt-fg-dim)]">#{index + 1}</span>
       </div>
 
@@ -458,25 +427,43 @@ function SortableRoleEntry({
           </div>
 
           <div className="space-y-1">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
                 Skill rating
               </span>
-              {entry.rank_value != null ? (
-                <span
-                  className={cn(
-                    "flex items-center gap-1 text-[11px] font-semibold",
-                    entry.is_active ? accent.text : "text-[color:var(--aqt-fg-dim)]"
-                  )}
-                >
-                  {entry.rank_value}
-                  {entry.rank_source && entry.rank_source !== "none" ? (
-                    <Badge className={cn("h-4 border px-1.5 text-[11px] uppercase", accent.chip)}>
-                      {entry.rank_source}
-                    </Badge>
-                  ) : null}
+              {entry.rank_value == null ? (
+                <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No rank</span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <span
+                    className={cn(
+                      "flex items-center gap-1 text-[11px] font-semibold",
+                      entry.is_active ? accent.text : "text-[color:var(--aqt-fg-dim)]"
+                    )}
+                  >
+                    {entry.rank_value}
+                    {entry.rank_source && entry.rank_source !== "none" ? (
+                      <Badge className={cn("h-4 border px-1.5 text-[11px] uppercase", accent.chip)}>
+                        {entry.rank_source}
+                      </Badge>
+                    ) : null}
+                  </span>
+                  {/* Emptying the number field also clears, but nothing said so: the
+                      slider under it reads as a required value, and the only visible
+                      way out was deleting the whole role. */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdate(index, { ...entry, rank_value: null, division_number: null })
+                    }
+                    title="Clear this role's rank"
+                    className="rounded px-1 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)] transition-colors hover:text-rose-200"
+                  >
+                    Clear
+                    <span className="sr-only">{` the ${entry.role} rank`}</span>
+                  </button>
                 </span>
-              ) : null}
+              )}
             </div>
             <NumberInput
               integer
@@ -906,27 +893,10 @@ export function PlayerEditModal({
     handleDismissHistoryPreview();
   };
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates
-    })
-  );
-
-  const sortableIds = roleEntries.map((entry, index) => `${entry.role}-${index}`);
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = sortableIds.indexOf(active.id as string);
-    const newIndex = sortableIds.indexOf(over.id as string);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    setRoleEntries((current) => {
-      const moved = arrayMove(current, oldIndex, newIndex);
-      return moved.map((entry, i) => ({ ...entry, priority: i + 1 }));
-    });
+  // Reordering IS the priority: the array position is what the balancer reads,
+  // so `priority` is renumbered from the new order rather than edited directly.
+  const handleReorderRoles = (next: BalancerPlayerRoleEntry[]) => {
+    setRoleEntries(next.map((entry, index) => ({ ...entry, priority: index + 1 })));
   };
 
   const addRole = () => {
@@ -1231,32 +1201,29 @@ export function PlayerEditModal({
               </div>
             </div>
 
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
+            <SortableRows
+              items={roleEntries}
+              getId={(entry, index) => `${entry.role}-${index}`}
+              onReorder={handleReorderRoles}
+              className="space-y-2"
             >
-              <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2">
-                  {roleEntries.map((entry, index) => (
-                    <SortableRoleEntry
-                      key={sortableIds[index]}
-                      id={sortableIds[index]}
-                      entry={entry}
-                      index={index}
-                      resolveDivision={resolveDivision}
-                      resolveExactRankFromDivision={resolveExactRankFromDivision}
-                      getDivisionName={getDivisionName}
-                      divisionTiers={divisionTiers}
-                      sliderBounds={sliderBounds}
-                      onUpdate={updateEntry}
-                      onRemove={removeEntry}
-                      subtypeOptions={subtypeOptions}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+              {(entry, index) => (
+                <SortableRoleEntry
+                  key={`${entry.role}-${index}`}
+                  id={`${entry.role}-${index}`}
+                  entry={entry}
+                  index={index}
+                  resolveDivision={resolveDivision}
+                  resolveExactRankFromDivision={resolveExactRankFromDivision}
+                  getDivisionName={getDivisionName}
+                  divisionTiers={divisionTiers}
+                  sliderBounds={sliderBounds}
+                  onUpdate={updateEntry}
+                  onRemove={removeEntry}
+                  subtypeOptions={subtypeOptions}
+                />
+              )}
+            </SortableRows>
           </div>
 
           <div className="space-y-2">

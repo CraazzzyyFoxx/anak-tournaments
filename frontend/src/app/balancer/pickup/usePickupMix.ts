@@ -10,10 +10,22 @@ import {
   type CustomGameOutcome,
   type CustomGamePlayerPatch,
 } from "@/services/custom-game.service";
+import {
+  workspacePlayerKeys,
+  workspacePlayerService,
+} from "@/services/workspace-player.service";
 
 export type PickupPlayerPatchInput = {
   workspacePlayerId: number;
   patch: CustomGamePlayerPatch;
+};
+
+export type PickupHostRanksInput = {
+  workspacePlayerId: number;
+  /** Roles to write into this host's own book. */
+  ranks: Record<string, number>;
+  /** Roles to drop from it, falling back to the workspace rank. */
+  clear?: string[];
 };
 
 /**
@@ -94,6 +106,28 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     onError: (error) => notify.apiError(error),
   });
 
+  /**
+   * The host's own rank dictionary. Unlike every other write here it does not
+   * return the game, so the mix detail is refetched: the book feeds
+   * `resolve_ranks`, which decides the effective rank of every roster row.
+   */
+  const setHostRanks = useMutation({
+    mutationFn: (input: PickupHostRanksInput) =>
+      workspacePlayerService.setHostRanks(
+        workspaceId,
+        input.workspacePlayerId,
+        input.ranks,
+        input.clear ?? [],
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: customGameKeys.all(workspaceId) });
+      // The pool sidebar shows canon, which a host write never touches, but its
+      // rows sit beside the lineup's effective numbers.
+      await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(workspaceId) });
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
   return {
     selectedGameId,
     gamesQuery,
@@ -103,5 +137,6 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     patchPlayer,
     balance,
     recordOutcome,
+    setHostRanks,
   };
 }

@@ -2,7 +2,8 @@
 
 import DivisionIcon from "@/components/DivisionIcon";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { getDefaultDivisionGrid, resolveDivisionFromRank, resolveRankFromDivision, sortTiersAscending } from "@/lib/division-grid";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { resolveDivisionFromRank, resolveRankFromDivision, sortTiersAscending } from "@/lib/division-grid";
 import { cn } from "@/lib/utils";
 
 type DivisionRankPickerProps = {
@@ -13,7 +14,9 @@ type DivisionRankPickerProps = {
 };
 
 export function DivisionRankPicker({ rank, disabled, label, onChange }: Readonly<DivisionRankPickerProps>) {
-  const grid = getDefaultDivisionGrid();
+  // A picker for the WORKSPACE's tiers. Reading the default grid here made it
+  // offer ranks the workspace does not use and label them with the wrong crest.
+  const grid = useDivisionGrid();
   const division = grid ? resolveDivisionFromRank(grid, rank ?? null) : null;
   const tiers = grid ? sortTiersAscending(grid) : [];
 

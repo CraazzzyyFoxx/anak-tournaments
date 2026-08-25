@@ -15,7 +15,10 @@
 //  5. the role-supply strip counts the way the solver does — a selected role with
 //     no rank is not supply — and says which role is short before Balance runs;
 //  6. Clear asks first, since it drops every per-mix override in the lobby;
-//  7. a read-only viewer gets no write controls but can still read the setup.
+//  7. the whole row opens the drawer, but a control inside it does NOT — that
+//     containment is the only thing keeping "bench him" from also opening a
+//     sheet over the lineup the host was reading;
+//  8. a read-only viewer gets no write controls but can still read the setup.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,6 +60,8 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     is_active: true,
     roles: null,
     ranks: { tank: 2400, dps: 2600, support: 2500 },
+    rank_sources: { tank: "canon", dps: "canon", support: "canon" },
+    host_ranks: {},
     ...overrides,
   };
 }
@@ -198,13 +203,24 @@ describe("PickupLobbyPanel", () => {
     expect(scope.textContent).toContain("1 player has no ranked role");
   });
 
-  it("opens the player sheet from the name, not from a role click", async () => {
+  it("opens the player sheet from the row, but not from a role click", async () => {
     const scope = await mount([row()]);
 
-    await click(byName(scope, "Aria#1111"));
-
+    // The whole row is the target; a role chip inside it must not ride along.
+    await click(scope.querySelector('[aria-label="Mix lineup"] li'));
     expect(onOpenPlayer).toHaveBeenCalledWith(7);
-    expect(onPatchPlayer).not.toHaveBeenCalled();
+
+    onOpenPlayer.mockClear();
+    await click(byLabel(scope, "Tank for Aria#1111, priority 1, 2400 points"));
+    expect(onPatchPlayer).toHaveBeenCalled();
+  });
+
+  it("keeps the settings control reachable without a pointer", async () => {
+    // The row's own click is a pointer affordance; the button is what a keyboard
+    // reaches, so it has to stay even when nothing else on the row is writable.
+    const scope = await mount([row()], { canWrite: false });
+
+    expect(byName(scope, "Advanced settings for Aria#1111")).not.toBeNull();
   });
 
   it("hands adding players back to the pool", async () => {
@@ -243,7 +259,31 @@ describe("PickupLobbyPanel", () => {
     expect(byName(scope, "Add players →")).toBeNull();
     expect(byName(scope, "Remove Aria#1111 from this mix")).toBeNull();
     expect(byLabel(scope, "Include Aria#1111 in the balance")?.hasAttribute("disabled")).toBe(true);
-    // Inspecting the setup is not a write.
-    expect(byName(scope, "Aria#1111")).not.toBeNull();
+    expect(
+      byLabel(scope, "Tank for Aria#1111, priority 1, 2400 points")?.hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("opens the drawer from anywhere on the card", async () => {
+    const scope = await mount([row()]);
+
+    await click(scope.querySelector('li[title*="Aria#1111"]'));
+
+    expect(onOpenPlayer).toHaveBeenCalledWith(7);
+    expect(onPatchPlayer).not.toHaveBeenCalled();
+  });
+
+  it("keeps the row's own controls from opening the drawer", async () => {
+    // The wrappers that stop propagation are the whole point: without them the
+    // sheet lands on top of the lineup every time a host benches someone.
+    const scope = await mount([row()]);
+
+    await click(byLabel(scope, "Include Aria#1111 in the balance"));
+    await click(byLabel(scope, "Tank for Aria#1111, priority 1, 2400 points"));
+    await click(byName(scope, "Remove Aria#1111 from this mix"));
+
+    expect(onPatchPlayer).toHaveBeenCalled();
+    expect(onRemovePlayer).toHaveBeenCalledWith(7);
+    expect(onOpenPlayer).not.toHaveBeenCalled();
   });
 });

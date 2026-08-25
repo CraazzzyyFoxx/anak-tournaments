@@ -67,7 +67,7 @@ describe("useVisibleNavGroups", () => {
   it("shows Mixes to a member holding only custom_game.create, without admin access", () => {
     const viewer = viewerWith(["custom_game.create"]);
 
-    expect(viewer.navKeys).toContain("tournaments/mixes");
+    expect(viewer.navKeys).toContain("mixes/mixes");
     // Hosting a mix is member-level: it must not imply the admin panel.
     expect(viewer.navKeys).not.toContain("organization/admin");
     expect(viewer.isWorkspaceAdmin).toBe(false);
@@ -82,13 +82,15 @@ describe("useVisibleNavGroups", () => {
     expect(viewer.navKeys).toContain("organization/admin");
     expect(viewer.isWorkspaceAdmin).toBe(true);
     expect(viewer.canManageAnyWorkspace).toBe(true);
-    expect(viewer.navKeys).not.toContain("tournaments/mixes");
+    expect(viewer.navKeys).not.toContain("mixes/mixes");
   });
 
-  it("hides Mixes without the grant and keeps the rest of its group", () => {
+  it("drops the whole Mixes group without the grant, leaving Tournaments intact", () => {
     const viewer = viewerWith(["custom_game.read"]);
 
-    expect(viewer.navKeys).not.toContain("tournaments/mixes");
+    // Group-level, not item-level: an empty group would still render a
+    // trigger, so a viewer who cannot host must not see the entry at all.
+    expect(viewer.navKeys.some((key) => key.startsWith("mixes/"))).toBe(false);
     expect(viewer.navKeys).toContain("tournaments/tournaments");
     expect(viewer.navKeys).toContain("tournaments/analytics");
   });

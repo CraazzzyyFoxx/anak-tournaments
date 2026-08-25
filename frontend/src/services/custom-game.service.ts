@@ -1,5 +1,15 @@
 import { apiFetch } from "@/lib/api-fetch";
 
+/** Where an effective rank came from, strongest first. */
+export type RankSource = "override" | "host" | "canon" | "ow";
+
+export const RANK_SOURCE_LABELS: Record<RankSource, string> = {
+  override: "This mix",
+  host: "Mine",
+  canon: "Workspace",
+  ow: "Overwatch",
+};
+
 /**
  * One row of a mix lineup, self-describing so the lineup never has to guess a
  * name from a separately paginated pool query.
@@ -7,8 +17,13 @@ import { apiFetch } from "@/lib/api-fetch";
  * `is_active` is the bench switch: a benched row keeps its rank override and
  * role order but is skipped when the mix is balanced. `roles` is the ordered
  * role list — position is the balancer's role priority, and `null` means
- * "every role this player has a rank for". `ranks` is what balance will
- * actually use per role (override > host book > canon > Overwatch).
+ * "every role this player has a rank for".
+ *
+ * Ranks come from three dictionaries and one snapshot, and the row carries
+ * enough to tell them apart: `ranks` is what balance will actually use,
+ * `rank_sources` says which layer won (`rank_value` here > this host's book >
+ * the workspace canon > Overwatch), and `host_ranks` is this host's own book so
+ * the sheet can edit it without confusing it with an inherited value.
  */
 export type CustomGamePlayer = {
   id: number;
@@ -21,6 +36,8 @@ export type CustomGamePlayer = {
   is_active: boolean;
   roles: string[] | null;
   ranks: Record<string, number>;
+  rank_sources: Record<string, RankSource>;
+  host_ranks: Record<string, number>;
 };
 
 export type CustomGameStatus = "draft" | "balanced" | "completed" | "cancelled";
@@ -54,6 +71,8 @@ export type CustomGamePlayerPatch = {
 };
 
 export const customGameKeys = {
+  /** Every mix query for a workspace — `list` is a prefix of `one`, so this covers both. */
+  all: (workspaceId: number) => ["custom-games", workspaceId] as const,
   list: (workspaceId: number) => ["custom-games", workspaceId] as const,
   one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId] as const,
 };

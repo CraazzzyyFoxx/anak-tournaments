@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,11 +104,24 @@ class HostBookService:
         host_user_id: int,
         workspace_player_id: int,
         ranks: Mapping[str, int],
+        clear: Sequence[str] = (),
         actor_user_id: int,
     ) -> dict[str, int]:
+        """Upsert the host's own ranks; ``clear`` deletes those roles outright.
+
+        Clearing is explicit rather than "a role missing from ``ranks`` is a
+        delete": the book is written one role at a time from the mix sheet, and
+        making omission destructive would let a single-role save wipe the other
+        two. Deleting a row falls back to the next source in ``pick_rank``
+        (workspace canon, then Overwatch), which is what "remove my rank" means.
+        """
         _require_host(actor_user_id, host_user_id)
         await self._player_in_workspace(session, workspace_id, workspace_player_id)
         existing = {row.role: row for row in await self.book.list_book(session, host_user_id, workspace_player_id)}
+        for role in clear:
+            row = existing.pop(role, None)
+            if row is not None:
+                await self.book.delete(session, row)
         for role, value in ranks.items():
             row = existing.get(role)
             if row is None:

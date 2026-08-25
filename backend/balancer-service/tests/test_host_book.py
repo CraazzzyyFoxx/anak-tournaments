@@ -111,6 +111,63 @@ class HostBookServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(pool, [pool_row])
         self.assertEqual(book, {"dps": 1900})
 
+    async def test_clear_deletes_only_the_named_roles(self) -> None:
+        # A one-role save must not wipe the other two, which is why `clear` is
+        # explicit instead of "a role missing from `ranks` is a delete".
+        tank = _row(role="tank", rank_value=2800)
+        dps = _row(role="dps", rank_value=2400)
+        self.players.get.return_value = _row(id=7, workspace_id=1)
+        self.book.list_book.return_value = [tank, dps]
+
+        out = await self.service.set_ranks(
+            self.session,
+            workspace_id=1,
+            host_user_id=9,
+            workspace_player_id=7,
+            ranks={},
+            clear=["tank"],
+            actor_user_id=9,
+        )
+
+        self.book.delete.assert_awaited_once()
+        self.assertIs(self.book.delete.await_args.args[1], tank)
+        self.assertEqual(out, {"dps": 2400})
+
+    async def test_clear_and_set_in_one_call(self) -> None:
+        tank = _row(role="tank", rank_value=2800)
+        self.players.get.return_value = _row(id=7, workspace_id=1)
+        self.book.list_book.return_value = [tank]
+
+        out = await self.service.set_ranks(
+            self.session,
+            workspace_id=1,
+            host_user_id=9,
+            workspace_player_id=7,
+            ranks={"support": 3100},
+            clear=["tank"],
+            actor_user_id=9,
+        )
+
+        self.book.delete.assert_awaited_once()
+        self.assertEqual(out, {"support": 3100})
+
+    async def test_clearing_an_absent_role_is_a_no_op(self) -> None:
+        self.players.get.return_value = _row(id=7, workspace_id=1)
+        self.book.list_book.return_value = []
+
+        out = await self.service.set_ranks(
+            self.session,
+            workspace_id=1,
+            host_user_id=9,
+            workspace_player_id=7,
+            ranks={},
+            clear=["tank", "dps", "support"],
+            actor_user_id=9,
+        )
+
+        self.book.delete.assert_not_called()
+        self.assertEqual(out, {})
+
 
     async def test_cross_workspace_player_404(self) -> None:
         self.players.get.return_value = _row(id=7, workspace_id=2)

@@ -3,11 +3,14 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { ArrowLeft } from "lucide-react";
 
 import { BalancerToolTopBar } from "@/app/balancer/BalancerToolTopBar";
 import { BalancerShell } from "@/app/balancer/components/BalancerShell";
 import { useToolContext } from "@/app/balancer/useToolContext";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
+import { Separator } from "@/components/ui/separator";
 import { adminEntryPermissions } from "@/lib/admin-permissions";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -73,11 +76,24 @@ function NoTournamentState() {
 }
 
 function PickupToolTopBar() {
+  const t = useTranslations();
+
   return (
     <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:px-5">
-      <Link href="/admin/tournaments" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-        Tournaments
+      {/* The way out. This shell replaces the site header entirely, so without
+          this link a mix is a dead end — and it points at the site root rather
+          than at `/admin/tournaments` because hosting a mix is now a
+          member-level grant: an admin route would 403 the very people the
+          permission was widened for. */}
+      <Link
+        href="/"
+        aria-label={t("common.homeLink")}
+        className="flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        <span className="hidden sm:inline">Back to site</span>
       </Link>
+      <Separator orientation="vertical" className="h-5" />
       <span className="text-sm font-medium">Mixes</span>
       <div className="ml-auto">
         <WorkspaceSwitcher />

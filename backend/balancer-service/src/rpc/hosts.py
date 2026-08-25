@@ -115,12 +115,16 @@ def register(broker: Any, logger: Any) -> None:
             ranks = body.get("ranks", data.get("ranks")) or {}
             if not isinstance(ranks, dict):
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="ranks is required")
+            clear = body.get("clear", data.get("clear")) or []
+            if not isinstance(clear, list):
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="clear must be a list")
             ranks_out = await host_book_service.set_ranks(
                 session,
                 workspace_id=workspace_id,
                 host_user_id=host_user_id,
                 workspace_player_id=_int(data, "workspace_player_id"),
                 ranks={str(role): int(value) for role, value in ranks.items()},
+                clear=[str(role) for role in clear],
                 actor_user_id=user.id,
             )
             await session.commit()

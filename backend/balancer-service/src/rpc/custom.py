@@ -96,7 +96,14 @@ def _dump_row(
     row: Any,
     player: Any | None,
     resolved: dict[tuple[int, str], Any],
+    host_ranks: dict[tuple[int, str], int],
 ) -> dict[str, Any]:
+    effective = {
+        role: resolved[(row.workspace_player_id, role)]
+        for role in REGISTRATION_ROLE_CODES
+        if resolved.get((row.workspace_player_id, role)) is not None
+        and resolved[(row.workspace_player_id, role)].value is not None
+    }
     return {
         "id": row.id,
         "workspace_player_id": row.workspace_player_id,
@@ -108,11 +115,16 @@ def _dump_row(
         "is_active": row.is_active,
         "roles": row.roles_json,
         # The ranks balance would actually use: override > host book > canon > OW.
-        "ranks": {
-            role: resolved[(row.workspace_player_id, role)].value
+        "ranks": {role: rank.value for role, rank in effective.items()},
+        # Which of those four a value came from, so the sheet can say whether it
+        # is showing this host's own number or the workspace's.
+        "rank_sources": {role: rank.source for role, rank in effective.items()},
+        # This host's own book, separately: the sheet edits it directly, and
+        # without it "my rank" would be indistinguishable from an inherited one.
+        "host_ranks": {
+            role: host_ranks[(row.workspace_player_id, role)]
             for role in REGISTRATION_ROLE_CODES
-            if resolved.get((row.workspace_player_id, role)) is not None
-            and resolved[(row.workspace_player_id, role)].value is not None
+            if (row.workspace_player_id, role) in host_ranks
         },
     }
 
@@ -122,6 +134,7 @@ def _dump_game(
     roster: list[Any] | None = None,
     players: dict[int, Any] | None = None,
     resolved: dict[tuple[int, str], Any] | None = None,
+    host_ranks: dict[tuple[int, str], int] | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": game.id,
@@ -135,21 +148,28 @@ def _dump_game(
     }
     if roster is not None:
         by_id = players or {}
-        out["players"] = [_dump_row(row, by_id.get(row.workspace_player_id), resolved or {}) for row in roster]
+        out["players"] = [
+            _dump_row(row, by_id.get(row.workspace_player_id), resolved or {}, host_ranks or {})
+            for row in roster
+        ]
     return out
 
 
 async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
-    """Roster rows carry the player's name and effective ranks.
+    """Roster rows carry the player's name, effective ranks and their source.
 
-    Without them a client only has workspace_player ids and has to guess names
-    from a separately paginated pool query, which is exactly how the lineup used
-    to render ``#123`` for anyone off the current page.
+    Without the name a client only has workspace_player ids and has to guess
+    from a separately paginated pool query, which is how the lineup used to
+    render ``#123`` for anyone off the current page. Without the source and the
+    host's own book, "2600" could equally be this host's number, the workspace
+    canon or an Overwatch snapshot, and the sheet could not say which it is
+    about to overwrite.
     """
     roster = list(await custom_game_service.roster.list_for_game(session, game.id))
     if not roster:
         return _dump_game(game, roster)
-    rows = await custom_game_service.players.bulk_get(session, [row.workspace_player_id for row in roster])
+    player_ids = [row.workspace_player_id for row in roster]
+    rows = await custom_game_service.players.bulk_get(session, player_ids)
     players = {player.id: player for player in rows}
     resolved = await custom_game_service.ranks.resolve_ranks(
         session,
@@ -159,7 +179,15 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         host_user_id=game.host_user_id,
         grid=await get_effective_division_grid(session, None),
     )
-    return _dump_game(game, roster, players, resolved)
+    host_rows = (
+        []
+        if game.host_user_id is None
+        else await custom_game_service.ranks.host_ranks.list_for_host_players(
+            session, game.host_user_id, player_ids
+        )
+    )
+    host_ranks = {(row.workspace_player_id, row.role): row.rank_value for row in host_rows}
+    return _dump_game(game, roster, players, resolved, host_ranks)
 
 
 def register(broker: Any, logger: Any) -> None:

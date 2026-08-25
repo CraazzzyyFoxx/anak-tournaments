@@ -65,14 +65,23 @@ export const workspacePlayerService = {
     }).then((r) => r.json());
   },
 
+  /**
+   * The caller's *own* rank book for a player — the "user scope" dictionary that
+   * outranks the workspace canon when their mixes are balanced.
+   *
+   * `clear` deletes those roles from the book so the value falls back to the
+   * workspace rank. Omitting a role leaves it alone, so saving one role never
+   * disturbs the other two.
+   */
   setHostRanks(
     workspaceId: number,
     playerId: number,
     ranks: Record<string, number>,
+    clear: string[] = [],
   ): Promise<Record<string, number>> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/hosts/${playerId}/ranks`, {
       method: "PUT",
-      body: { ranks },
+      body: { ranks, clear },
     }).then((r) => r.json());
   },
 };

@@ -56,6 +56,7 @@ export default function BalancerPickupPage() {
     patchPlayer,
     balance,
     recordOutcome,
+    setHostRanks,
   } = usePickupMix(workspaceId ?? 0, pickedGameId);
 
   const games = gamesQuery.data ?? [];
@@ -180,6 +181,14 @@ export default function BalancerPickupPage() {
         }}
         onPatch={(patch) => {
           if (openRow) patchPlayer.mutate({ workspacePlayerId: openRow.workspace_player_id, patch });
+        }}
+        onSetHostRank={(role, rank) => {
+          if (!openRow) return;
+          setHostRanks.mutate(
+            rank == null
+              ? { workspacePlayerId: openRow.workspace_player_id, ranks: {}, clear: [role] }
+              : { workspacePlayerId: openRow.workspace_player_id, ranks: { [role]: rank } },
+          );
         }}
         onRemove={() => {
           if (openRow) {

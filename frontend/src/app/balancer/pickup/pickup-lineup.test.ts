@@ -28,6 +28,8 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     is_active: true,
     roles: null,
     ranks: { tank: 2400, dps: 2600, support: 2500 },
+    rank_sources: { tank: "canon", dps: "canon", support: "canon" },
+    host_ranks: {},
     ...overrides,
   };
 }

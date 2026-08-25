@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { AlertTriangle, SlidersHorizontal, Trash2, X } from "lucide-react";
 
 import {
@@ -29,7 +30,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Switch } from "@/components/ui/switch";
-import { getDefaultDivisionGrid, resolveDivisionFromRank } from "@/lib/division-grid";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLE_LABELS, ROLES } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { CustomGamePlayer, CustomGamePlayerPatch } from "@/services/custom-game.service";
@@ -45,6 +47,23 @@ import {
   summarizeRoleSupply,
   toggleRole,
 } from "./pickup-lineup";
+
+/**
+ * Marks a subtree as owning its own clicks, so the clickable row skips it.
+ *
+ * A plain wrapper with no handler: putting `onClick` on a `<span>` to swallow
+ * the bubble made the row's own logic depend on a non-interactive element
+ * having a listener, which the design gate rightly rejects. The row filters by
+ * this attribute instead — the same `data-card-action` convention the
+ * tournament pool row uses.
+ */
+function RowAction({ children }: Readonly<{ children: ReactNode }>) {
+  return (
+    <span data-card-action className="flex shrink-0 items-center">
+      {children}
+    </span>
+  );
+}
 
 type PickupLobbyPanelProps = {
   canWrite: boolean;
@@ -345,7 +364,10 @@ type LineupRowProps = {
 };
 
 function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonly<LineupRowProps>) {
-  const grid = getDefaultDivisionGrid();
+  // The workspace grid, not the default one: `DivisionIcon` resolves its image
+  // from the workspace grid, so a division number derived from any other grid
+  // renders a crest that disagrees with the number beside it.
+  const grid = useDivisionGrid();
   const label = playerLabel(row);
   const { name, suffix } = splitBattleTag(label);
   const issue = getLineupIssue(row);
@@ -354,36 +376,54 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
 
   return (
     <li
+      // The whole card opens the drawer: at this density every row IS a
+      // settings row, and making the host aim at a 24px gear was the most-missed
+      // target on the screen. A click that started inside a `RowAction` belongs
+      // to that control, so a switch or a chip is still just itself.
+      //
+      // Deliberately NOT `role="button"` + `tabIndex`: that would put a second
+      // focus stop in front of every row's real controls and announce the row
+      // as a button that also contains buttons. The gear below is the keyboard
+      // and screen-reader affordance; this handler is a pointer shortcut to the
+      // same action, which is why the row stays a plain list item.
+      title={`${label} \u2014 roles, priority and mix rank`}
+      onClick={(event) => {
+        if (event.target instanceof HTMLElement && event.target.closest("[data-card-action]")) {
+          return;
+        }
+        onOpen();
+      }}
       className={cn(
-        "flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-2 transition-colors",
+        "flex cursor-pointer items-center gap-2.5 rounded-lg border border-transparent px-2 py-2 transition-colors",
         "hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.025]",
         issue && "border-amber-400/35",
       )}
     >
-      <Switch
-        checked={row.is_active}
-        disabled={!canWrite || saving}
-        aria-label={`Include ${label} in the balance`}
-        onCheckedChange={(checked) => onPatch({ is_active: checked === true })}
-        className="h-5 w-[34px] shrink-0 [&>span]:size-4 [&>span]:data-[state=checked]:translate-x-[15px]"
-      />
+      <RowAction>
+        <Switch
+          checked={row.is_active}
+          disabled={!canWrite || saving}
+          aria-label={`Include ${label} in the balance`}
+          onCheckedChange={(checked) => onPatch({ is_active: checked === true })}
+          className="h-5 w-[34px] shrink-0 [&>span]:size-4 [&>span]:data-[state=checked]:translate-x-[15px]"
+        />
+      </RowAction>
 
-      <button
-        type="button"
-        title={`${label} \u2014 roles, priority and mix rank`}
-        onClick={onOpen}
-        className="flex min-w-0 flex-1 items-baseline gap-1.5 rounded text-left"
-      >
+      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
         <span className="truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]">{name}</span>
         {suffix ? (
           <span className="shrink-0 font-mono text-xs text-[color:var(--aqt-fg-faint)]">{suffix}</span>
         ) : null}
-      </button>
+      </span>
 
-      <RoleChips row={row} label={label} canWrite={canWrite} saving={saving} onPatch={onPatch} />
+      <RowAction>
+        <RoleChips row={row} label={label} canWrite={canWrite} saving={saving} onPatch={onPatch} />
+      </RowAction>
 
       <div className="flex w-[92px] shrink-0 items-center justify-end gap-1.5">
-        {division == null ? null : <DivisionIcon division={division} width={22} height={22} />}
+        {division == null ? null : (
+          <DivisionIcon division={division} tournamentGrid={grid} width={22} height={22} />
+        )}
         <span
           title={row.rank_value == null ? "Workspace ranks" : "Mix rank override"}
           className="font-mono text-[13.5px] font-semibold tabular-nums text-[color:var(--aqt-fg)]"
@@ -411,15 +451,17 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
       </button>
 
       {canWrite ? (
-        <button
-          type="button"
-          onClick={onRemove}
-          title="Remove from this mix"
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-[color:var(--aqt-fg-faint)] transition-colors hover:bg-white/[0.05] hover:text-[color:var(--aqt-rose)]"
-        >
-          <X className="size-3.5" aria-hidden="true" />
-          <span className="sr-only">{`Remove ${label} from this mix`}</span>
-        </button>
+        <RowAction>
+          <button
+            type="button"
+            onClick={onRemove}
+            title="Remove from this mix"
+            className="flex size-6 shrink-0 items-center justify-center rounded-md text-[color:var(--aqt-fg-faint)] transition-colors hover:bg-white/[0.05] hover:text-[color:var(--aqt-rose)]"
+          >
+            <X className="size-3.5" aria-hidden="true" />
+            <span className="sr-only">{`Remove ${label} from this mix`}</span>
+          </button>
+        </RowAction>
       ) : null}
     </li>
   );

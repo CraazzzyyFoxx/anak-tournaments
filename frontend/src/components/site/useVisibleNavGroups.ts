@@ -39,7 +39,9 @@ export function useVisibleNavGroups(): VisibleNavGroup[] {
   return useMemo(
     () =>
       NAV_GROUPS.filter(
-        (group) => group.key !== "organization" || canAccessAdminEntry
+        (group) =>
+          (group.key !== "organization" || canAccessAdminEntry) &&
+          (group.key !== "mixes" || canHostMixes)
       ).map((group) => ({
         key: group.key,
         items: group.items.filter(
