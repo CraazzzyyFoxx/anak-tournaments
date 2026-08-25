@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import { NumberInput } from "@/components/ui/number-input";
@@ -56,6 +56,50 @@ export const NEUTRAL_RANK_ACCENT: RoleRankAccent = {
   chip: "border-[color:var(--aqt-border-2)] bg-white/[0.06] text-[color:var(--aqt-fg-muted)]",
   sliderColor: "var(--aqt-teal)",
 };
+
+/** Long enough that a slider drag or a four-digit number is one write, not twenty. */
+const RANK_WRITE_DELAY_MS = 400;
+
+/**
+ * A rank field whose value is local while the editor is still moving it.
+ *
+ * For the sheets that have no Save button — the mix sheet and the workspace
+ * roster sheet — every control writes straight through, so a number field wired
+ * directly to the mutation issued one write per keystroke and one per slider
+ * step. The draft is what the field shows; the write lands once the editor
+ * stops. The server value wins again the moment it changes, which is also how a
+ * normalised value or another editor's change corrects the field.
+ */
+export function useDebouncedRank(committed: number | null, commit: (rank: number | null) => void) {
+  const [committedSeen, setCommittedSeen] = useState<number | null>(committed);
+  const [draft, setDraft] = useState<number | null>(committed);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Adjusted during render rather than in an effect: the draft is derived from
+  // the server value, so a cascading second render is exactly what we want to
+  // avoid — the field must never paint a value the server has already replaced.
+  if (committedSeen !== committed) {
+    setCommittedSeen(committed);
+    setDraft(committed);
+  }
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  return {
+    value: draft,
+    set: (rank: number | null) => {
+      setDraft(rank);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => commit(rank), RANK_WRITE_DELAY_MS);
+    },
+    /** Skips the delay: a Clear is a decision, not a drag. */
+    commitNow: (rank: number | null) => {
+      clearTimeout(timer.current);
+      setDraft(rank);
+      commit(rank);
+    },
+  };
+}
 
 function gridBounds(grid: DivisionGrid): { min: number; max: number } {
   if (!grid.tiers.length) {
