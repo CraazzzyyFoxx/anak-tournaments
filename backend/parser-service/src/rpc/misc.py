@@ -13,7 +13,10 @@ from typing import Any
 from faststream.rabbit import RabbitMessage
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.messaging.config import DISCORD_COMMANDS_QUEUE
+from shared.observability import publish_message
 from shared.rpc.identity import ensure_workspace_permission
+from shared.schemas.events import DiscordCommandEvent
 from src import schemas
 from src.core import auth, db
 from src.services.admin.discord_channel import discord_channel_service
@@ -121,6 +124,28 @@ def register(broker: Any, logger: Any) -> None:
             return schemas.DiscordChannelRead.model_validate(channel, from_attributes=True)
 
         return await c.envelope(logger, "discord_channel.upsert", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.parser.discord_channel.backfill")
+    async def _discord_backfill(data: dict, msg: RabbitMessage) -> dict:
+        # Manual channel-history backfill: same "process_all" bot command the
+        # startup history rescan uses, triggered on demand for a workspace that
+        # just connected an existing Discord channel with prior match logs in it.
+        async def op(session: Any) -> Any:
+            user = c.actor(data)
+            c.require_active(user)
+            tournament_id = c.require_id(data)
+            workspace_id = await auth._get_tournament_workspace_id(session, tournament_id)
+            ensure_workspace_permission(user, workspace_id, "discord_channel", "update")
+
+            channel = await discord_channel_service.get(session, tournament_id)
+            if channel is None:
+                raise HTTPException(status_code=404, detail="Discord channel not configured")
+
+            event = DiscordCommandEvent(action="process_all", tournament_id=tournament_id)
+            await publish_message(broker, event.model_dump(), DISCORD_COMMANDS_QUEUE, logger=logger)
+            return {"message": "Backfill started: scanning channel history for match logs"}
+
+        return await c.envelope(logger, "discord_channel.backfill", op, session_factory=_SF)
 
     @broker.subscriber("rpc.parser.discord_channel.delete")
     async def _discord_delete(data: dict, msg: RabbitMessage) -> dict:

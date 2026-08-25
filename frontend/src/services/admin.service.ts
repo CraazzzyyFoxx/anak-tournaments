@@ -1305,6 +1305,13 @@ class AdminService {
     return response.json();
   }
 
+  async backfillDiscordChannel(tournamentId: number): Promise<Record<string, unknown>> {
+    const response = await apiFetch(`/api/v1/admin/tournaments/${tournamentId}/discord-channel/backfill`, {
+      method: "POST"
+    });
+    return response.json();
+  }
+
   async deleteDiscordChannel(tournamentId: number): Promise<void> {
     await apiFetch(`/api/v1/admin/tournaments/${tournamentId}/discord-channel`, {
       method: "DELETE"

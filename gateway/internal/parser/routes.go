@@ -64,6 +64,7 @@ var Routes = []edge.RouteSpec{
 	// Per-tournament Discord channel (src/routes/admin/discord_channel.py); discord_channel perm.
 	{Method: "GET", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel", Queue: "rpc.parser.discord_channel.get", IDParam: "id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel", Queue: "rpc.parser.discord_channel.upsert", IDParam: "id", Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel/backfill", Queue: "rpc.parser.discord_channel.backfill", IDParam: "id", Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel", Queue: "rpc.parser.discord_channel.delete", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
 }
 
