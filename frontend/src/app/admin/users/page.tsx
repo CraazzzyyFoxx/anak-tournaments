@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import Link from "next/link";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Plus, Pencil, Trash2, Upload, ArrowRightLeft, UserCog } from "lucide-react";
+import { MoreHorizontal, Plus, Pencil, Trash2, ArrowRightLeft, UserCog } from "lucide-react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -26,256 +26,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 import adminService from "@/services/admin.service";
 import { rbacService } from "@/services/rbac.service";
 import type { User } from "@/types/user.types";
-import type { CsvUserImportParams } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-
-const defaultImportParams: CsvUserImportParams = {
-  battle_tag_row: 1,
-  discord_row: 2,
-  twitch_row: 3,
-  smurf_row: 4,
-  start_row: 1,
-  delimiter: ",",
-  sheet_url: ""
-};
-
-interface ColumnFieldProps {
-  id: string;
-  label: string;
-  value: number | null;
-  /** `null` means the column is absent from the sheet and will not be imported. */
-  onChange: (value: number | null) => void;
-  /** Marks the field with `*`; a required column cannot be left out. */
-  required?: boolean;
-  min?: number;
-  hint?: string;
-}
-
-/**
- * One column index of the CSV mapping. A compact number field rather than a
- * card-with-stepper: an empty value is how an optional column is skipped, so the
- * on/off switch and the +/- pair are both redundant.
- */
-function ColumnField({ id, label, value, onChange, required, min = 1, hint }: Readonly<ColumnFieldProps>) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id} className="text-xs">
-        {label}
-        {required ? " *" : ""}
-      </Label>
-      <Input
-        id={id}
-        type="number"
-        inputMode="numeric"
-        min={min}
-        value={value ?? ""}
-        placeholder={required ? undefined : "Skip"}
-        onChange={(event) => {
-          const raw = event.target.value;
-          if (raw === "") {
-            onChange(null);
-            return;
-          }
-          const parsed = Number.parseInt(raw, 10);
-          onChange(Number.isNaN(parsed) ? null : Math.max(min, parsed));
-        }}
-        className="h-9 tabular-nums"
-      />
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
-  );
-}
-
-interface CsvImportDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
-
-function CsvImportDialog({ open, onOpenChange }: Readonly<CsvImportDialogProps>) {
-  const queryClient = useQueryClient();
-  const fieldId = useId();
-  const [tab, setTab] = useState<string>("file");
-  const [file, setFile] = useState<File | null>(null);
-  const [params, setParams] = useState<CsvUserImportParams>({ ...defaultImportParams });
-  const [validationError, setValidationError] = useState<string | null>(null);
-
-  const importMutation = useMutation({
-    mutationFn: () => {
-      const submitParams = { ...params };
-      if (tab === "file") {
-        delete submitParams.sheet_url;
-      }
-      return adminService.bulkCreateUsersFromCsv(
-        submitParams,
-        tab === "file" ? (file ?? undefined) : undefined
-      );
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      onOpenChange(false);
-      setFile(null);
-      setParams({ ...defaultImportParams });
-      setValidationError(null);
-    }
-  });
-
-  // Validate on submit rather than disabling the button, so the reason a click
-  // does nothing is always stated instead of implied.
-  const handleImport = () => {
-    if (tab === "file" && !file) {
-      setValidationError("Choose a CSV file to import.");
-      return;
-    }
-    if (tab === "sheet" && !params.sheet_url) {
-      setValidationError("Paste a Google Sheets link to import from.");
-      return;
-    }
-    setValidationError(null);
-    importMutation.mutate();
-  };
-
-  const errorMessage =
-    validationError ??
-    (importMutation.error instanceof Error
-      ? `Could not import the file. ${importMutation.error.message}`
-      : null);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Import player identities from CSV</DialogTitle>
-          <DialogDescription>
-            Upload a CSV file or provide a Google Sheets link to bulk-create player identities.
-          </DialogDescription>
-        </DialogHeader>
-
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="file">CSV file</TabsTrigger>
-            <TabsTrigger value="sheet">Google Sheets</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="file" className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label htmlFor={`${fieldId}-file`}>CSV file *</Label>
-              <Input
-                id={`${fieldId}-file`}
-                type="file"
-                accept=".csv,.txt"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="sheet" className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label htmlFor={`${fieldId}-sheet-url`}>Google Sheets URL *</Label>
-              <Input
-                id={`${fieldId}-sheet-url`}
-                placeholder="https://docs.google.com/spreadsheets/d/…"
-                value={params.sheet_url ?? ""}
-                onChange={(e) => setParams({ ...params, sheet_url: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Sheet must be publicly accessible (or shared via link).
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
-
-        <div className="space-y-3 pt-2">
-          <p className="text-sm font-medium">Column mapping</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <ColumnField
-              id={`${fieldId}-battle-tag-row`}
-              label="BattleTag"
-              value={params.battle_tag_row}
-              onChange={(v) => setParams({ ...params, battle_tag_row: v ?? 1 })}
-              required
-            />
-            <ColumnField
-              id={`${fieldId}-discord-row`}
-              label="Discord"
-              value={params.discord_row}
-              onChange={(v) => setParams({ ...params, discord_row: v })}
-            />
-            <ColumnField
-              id={`${fieldId}-twitch-row`}
-              label="Twitch"
-              value={params.twitch_row}
-              onChange={(v) => setParams({ ...params, twitch_row: v })}
-            />
-            <ColumnField
-              id={`${fieldId}-smurf-row`}
-              label="Smurf"
-              value={params.smurf_row}
-              onChange={(v) => setParams({ ...params, smurf_row: v })}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Column numbers start at 1. Leave an optional column empty to skip it.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <ColumnField
-            id={`${fieldId}-start-row`}
-            label="Start row"
-            value={params.start_row ?? 0}
-            onChange={(v) => setParams({ ...params, start_row: v ?? 0 })}
-            required
-            min={0}
-            hint="Header rows to skip (0 = none)"
-          />
-          <div className="space-y-1.5">
-            <Label htmlFor={`${fieldId}-delimiter`} className="text-xs">
-              Delimiter *
-            </Label>
-            <Input
-              id={`${fieldId}-delimiter`}
-              value={params.delimiter ?? ","}
-              onChange={(e) => setParams({ ...params, delimiter: e.target.value })}
-              className="h-9"
-            />
-          </div>
-        </div>
-
-        {errorMessage && (
-          <p role="alert" className="text-sm text-danger">
-            {errorMessage}
-          </p>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleImport} disabled={importMutation.isPending}>
-            {importMutation.isPending ? "Importing…" : "Import identities"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 export default function UsersAdminPage() {
   const queryClient = useQueryClient();
@@ -284,7 +43,6 @@ export default function UsersAdminPage() {
   const formId = useId();
   const nameFieldId = `${formId}-name`;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [mergeUser, setMergeUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
@@ -473,22 +231,16 @@ export default function UsersAdminPage() {
         description="Manage tournament identity records and linked Discord, BattleTag, and Twitch handles."
         actions={
           canCreate ? (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-                <Upload aria-hidden className="mr-2 h-4 w-4" />
-                Import from CSV
-              </Button>
-              <Button
-                onClick={() => {
-                  createMutation.reset();
-                  resetCreateForm();
-                  setCreateDialogOpen(true);
-                }}
-              >
-                <Plus aria-hidden className="mr-2 h-4 w-4" />
-                Create player identity
-              </Button>
-            </div>
+            <Button
+              onClick={() => {
+                createMutation.reset();
+                resetCreateForm();
+                setCreateDialogOpen(true);
+              }}
+            >
+              <Plus aria-hidden className="mr-2 h-4 w-4" />
+              Create player identity
+            </Button>
           ) : null
         }
       />
@@ -622,8 +374,6 @@ export default function UsersAdminPage() {
         />
       )}
 
-      {/* CSV Import Dialog */}
-      <CsvImportDialog open={importDialogOpen} onOpenChange={setImportDialogOpen} />
     </div>
   );
 }

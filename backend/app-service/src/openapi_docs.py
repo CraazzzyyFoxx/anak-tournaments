@@ -437,9 +437,4 @@ DOCS: dict[str, dict] = {
         "summary": "Delete user avatar",
         "description": "Removes a player's avatar from S3 and clears its URL; requires the global user.update permission.",
     },
-    # ── user bulk import (binary CSV / Google Sheets) ──────────────────────────────────────────────────
-    "rpc.app.users.csv_import": {
-        "summary": "Bulk import users",
-        "description": "Bulk-creates players from an uploaded CSV file or a Google Sheets URL using the given row/delimiter/flag params; requires the global user.create permission.",
-    },
 }

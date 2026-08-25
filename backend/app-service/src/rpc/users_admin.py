@@ -32,10 +32,8 @@ of the caller's own to exist and survives that player being re-linked/merged.
 from __future__ import annotations
 
 import base64
-import re
 from typing import Any
 
-import httpx
 from faststream.rabbit import RabbitMessage
 
 from shared.clients.s3 import upload_avatar
@@ -47,7 +45,6 @@ from src.core import clients, db
 from src.services import user_cache
 from src.services.admin.favorites import favorites as favorites_service
 from src.services.admin.user import users as admin_users
-from src.services.admin.user_csv import csv_import as csv_service
 from src.services.admin.user_merge import merges as merge_service
 from src.services.user.service import users as user_service
 
@@ -55,9 +52,6 @@ from . import _common as c
 
 _SF = db.async_session_maker
 _ENTITIES = ["discord", "battle_tag", "twitch"]
-
-_SHEETS_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
-_GID_RE = re.compile(r"[?&#]gid=(\d+)")
 
 
 def _gate(data: dict, action: str) -> Any:
@@ -76,16 +70,6 @@ def _account_gate(data: dict) -> Any:
     if user.is_denied("account", "social"):
         raise HTTPException(status_code=403, detail="You are not allowed to manage your accounts")
     return user
-
-
-def _sheets_to_csv_url(url: str) -> str:
-    match = _SHEETS_ID_RE.search(url)
-    if not match:
-        raise HTTPException(status_code=400, detail="Could not extract spreadsheet ID from the provided URL.")
-    spreadsheet_id = match.group(1)
-    gid_match = _GID_RE.search(url)
-    gid = gid_match.group(1) if gid_match else "0"
-    return f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
 
 
 async def _envelope_and_invalidate(logger: Any, label: str, op: Any, data: dict) -> dict:
@@ -406,44 +390,3 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _envelope_and_invalidate(logger, "users.avatar_delete", op, data)
 
-    # ── CSV / Google-Sheets bulk import (user.create) ─────────────────────────
-    @broker.subscriber("rpc.app.users.csv_import")
-    async def _csv_import(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            _gate(data, "create")
-
-            content_b64 = data.get("content_b64")
-            sheet_url = c.q1(data, "sheet_url") or data.get("sheet_url")
-            if content_b64:
-                lines = base64.b64decode(content_b64).decode("utf-8").split("\n")
-                filename = data.get("filename") or "upload.csv"
-            elif sheet_url:
-                csv_url = _sheets_to_csv_url(sheet_url)
-                async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-                    resp = await client.get(csv_url)
-                if resp.status_code != 200:
-                    raise HTTPException(
-                        status_code=400, detail=f"Failed to fetch Google Sheet (HTTP {resp.status_code})."
-                    )
-                lines = resp.text.split("\n")
-                filename = sheet_url
-            else:
-                raise HTTPException(status_code=400, detail="Provide either a CSV file upload or a Google Sheets URL.")
-
-            await csv_service.bulk_create_users_from_csv(
-                session,
-                filename,
-                lines,
-                c.q1(data, "start_row", int, 0),
-                battle_tag_row=c.require_query_int(data, "battle_tag_row"),
-                discord_row=c.require_query_int(data, "discord_row"),
-                twitch_row=c.require_query_int(data, "twitch_row"),
-                smurf_row=c.require_query_int(data, "smurf_row"),
-                delimiter=c.q1(data, "delimiter", str, ","),
-                has_discord=c.q1(data, "has_discord", c.qbool, True),
-                has_smurf=c.q1(data, "has_smurf", c.qbool, True),
-                has_twitch=c.q1(data, "has_twitch", c.qbool, True),
-            )
-            return {"success": True}
-
-        return await c.envelope(logger, "users.csv_import", op, session_factory=_SF)

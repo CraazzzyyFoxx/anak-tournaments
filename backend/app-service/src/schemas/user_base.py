@@ -3,18 +3,10 @@ from pydantic import BaseModel, Field
 from src.schemas import BaseRead
 
 __all__ = (
-    "UserCSV",
     "UserRead",
     "SocialAccountRead",
     "UserUpdate",
 )
-
-
-class UserCSV(BaseModel):
-    battle_tag: str
-    discord: str | None
-    twitch: str
-    smurfs: list[str]
 
 
 class SocialAccountRead(BaseRead):

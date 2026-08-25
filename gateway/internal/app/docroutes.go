@@ -14,5 +14,4 @@ var BinaryDocRoutes = []edge.RouteSpec{
 	{Method: "DELETE", Pattern: "/api/v1/assets/{asset_type}/{slug}", Queue: "rpc.app.assets.delete", Auth: edge.AuthRequired},    // remove asset
 	{Method: "GET", Pattern: "/api/v1/matches/{match_id}/log", Queue: "rpc.app.matches.log", Auth: edge.AuthRequired},             // match-log download (raw bytes)
 	{Method: "POST", Pattern: "/api/v1/admin/users/{id}/avatar", Queue: "rpc.app.users.avatar_upload", Auth: edge.AuthRequired},   // multipart upload
-	{Method: "POST", Pattern: "/api/v1/user/create/csv", Queue: "rpc.app.users.csv_import", Auth: edge.AuthRequired},              // CSV/Sheets user import
 }

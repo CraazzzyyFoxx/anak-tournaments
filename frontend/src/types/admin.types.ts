@@ -1292,18 +1292,6 @@ export interface TournamentComputationJob {
   finished_at: string | null;
 }
 
-export interface CsvUserImportParams {
-  battle_tag_row: number;
-  discord_row: number | null;
-  twitch_row: number | null;
-  smurf_row: number | null;
-  start_row?: number;
-  delimiter?: string;
-  has_discord?: boolean;
-  has_smurf?: boolean;
-  has_twitch?: boolean;
-  sheet_url?: string;
-}
 
 // ─── Platform audit log ──────────────────────────────────────────────────────
 
