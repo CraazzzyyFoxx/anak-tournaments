@@ -1,18 +1,13 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AssetPreview } from "@/components/admin/AssetPreview";
 import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
-import {
-  CatalogToolbarActions,
-  entityFormError,
-  onEntityDialogClose
-} from "@/components/admin/CatalogToolbarActions";
+import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { createAliasesColumn, createEntityActionsColumn } from "@/components/admin/catalog-table-columns";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
@@ -31,7 +26,7 @@ import adminService from "@/services/admin.service";
 import type { Hero } from "@/types/hero.types";
 import type { HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
-import { hasUnsavedChanges } from "@/lib/form-change";
+import { useCatalogEntityCrud } from "@/hooks/useCatalogEntityCrud";
 
 const HERO_ROLES = ["Tank", "Damage", "Support"];
 /**
@@ -71,7 +66,6 @@ function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
 }
 
 export default function HeroesAdminPage() {
-  const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
   const formId = useId();
   const nameFieldId = `${formId}-name`;
@@ -80,62 +74,34 @@ export default function HeroesAdminPage() {
   const colorFieldId = `${formId}-color`;
   const colorPickerId = `${formId}-color-picker`;
   const aliasesFieldId = `${formId}-aliases`;
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editingHero, setEditingHero] = useState<Hero | null>(null);
-  const [deletingHero, setDeletingHero] = useState<Hero | null>(null);
-  const [formData, setFormData] = useState<HeroCreateInput | HeroUpdateInput>({
-    ...emptyHeroForm,
-  });
 
-  const closeForm = () => {
-    setCreateDialogOpen(false);
-    setEditingHero(null);
-    setFormData({ ...emptyHeroForm });
-  };
-
-  const createMutation = useMutation({
-    mutationFn: (data: HeroCreateInput) => adminService.createHero(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "heroes"] });
-      closeForm();
+  const {
+    formData,
+    setFormData,
+    editingEntity: editingHero,
+    deletingEntity: deletingHero,
+    setDeletingEntity: setDeletingHero,
+    isDialogOpen,
+    closeForm,
+    openCreate,
+    openEdit,
+    handleSubmit,
+    isFormDirty,
+    createMutation,
+    updateMutation,
+    deleteMutation,
+    syncMutation,
+  } = useCatalogEntityCrud<Hero, HeroCreateInput, HeroUpdateInput>({
+    queryKey: ["admin", "heroes"],
+    emptyForm: emptyHeroForm,
+    getForm: getHeroForm,
+    service: {
+      create: (data) => adminService.createHero(data),
+      update: (id, data) => adminService.updateHero(id, data),
+      delete: (id) => adminService.deleteHero(id),
+      sync: () => adminService.syncHeroes(),
     },
   });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: HeroUpdateInput }) =>
-      adminService.updateHero(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "heroes"] });
-      closeForm();
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => adminService.deleteHero(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "heroes"] });
-      setDeletingHero(null);
-    },
-  });
-
-  const syncMutation = useMutation({
-    mutationFn: () => adminService.syncHeroes(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "heroes"] });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingHero) {
-      updateMutation.mutate({ id: editingHero.id, data: formData as HeroUpdateInput });
-    } else {
-      createMutation.mutate(formData as HeroCreateInput);
-    }
-  };
-
-  const formInitial = getHeroForm(editingHero);
-  const isFormDirty = (createDialogOpen || !!editingHero) && hasUnsavedChanges(formData, formInitial);
 
   const columns: ColumnDef<Hero>[] = [
     {
@@ -206,11 +172,7 @@ export default function HeroesAdminPage() {
       entityLabel: "hero",
       getName: (hero) => hero.name,
       isSuperuser,
-      onEdit: (hero) => {
-        updateMutation.reset();
-        setEditingHero(hero);
-        setFormData(getHeroForm(hero));
-      },
+      onEdit: openEdit,
       onDelete: (hero) => setDeletingHero(hero),
     }),
   ];
@@ -226,12 +188,7 @@ export default function HeroesAdminPage() {
             isSyncing={syncMutation.isPending}
             onSync={() => syncMutation.mutate()}
             syncLabel="Sync heroes from game"
-            onCreate={() => {
-              createMutation.reset();
-              updateMutation.reset();
-              setFormData({ ...emptyHeroForm });
-              setCreateDialogOpen(true);
-            }}
+            onCreate={openCreate}
             createLabel="Create hero"
           />
         }
@@ -245,21 +202,12 @@ export default function HeroesAdminPage() {
         columns={columns}
         searchPlaceholder="Search heroes…"
         emptyMessage="No heroes yet. Use “Create hero” to add the first one."
-        onRowDoubleClick={
-          isSuperuser
-            ? (row) => {
-                const hero = row.original;
-                updateMutation.reset();
-                setEditingHero(hero);
-                setFormData(getHeroForm(hero));
-              }
-            : undefined
-        }
+        onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
       />
 
       {/* Create/Edit Dialog */}
       <EntityFormDialog
-        open={createDialogOpen || !!editingHero}
+        open={isDialogOpen}
         onOpenChange={onEntityDialogClose(closeForm)}
         title={editingHero ? "Edit hero" : "Create hero"}
         description={editingHero ? "Update hero information" : "Create a new hero in the game"}
