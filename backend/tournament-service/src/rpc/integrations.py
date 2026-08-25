@@ -232,6 +232,10 @@ def register(broker: Any, logger: Any) -> None:
                     "challonge_id": log.challonge_id,
                     "status": log.status,
                     "conflict_type": log.conflict_type,
+                    # Structured detail the admin UI groups on — e.g. an import
+                    # failure's `missing_participant_ids`, which it would
+                    # otherwise have to parse back out of `error_message`.
+                    "payload_json": log.payload_json,
                     "before_json": log.before_json,
                     "after_json": log.after_json,
                     "error_message": log.error_message,

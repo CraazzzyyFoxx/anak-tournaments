@@ -448,7 +448,7 @@ export interface ChallongeTeamSyncRequest {
   mappings: ChallongeTeamMapping[];
 }
 
-interface ChallongeTeamPreviewTeam {
+export interface ChallongeTeamPreviewTeam {
   id: number;
   name: string;
   balancer_name: string;
@@ -1181,6 +1181,12 @@ export interface ChallongeSyncLogEntry {
   challonge_id: number | null;
   status: "success" | "failed" | "conflict";
   conflict_type: string | null;
+  /**
+   * Structured detail for the row. An import failure caused by unmapped teams
+   * carries `missing_participant_ids`, which the integrations card groups on
+   * rather than parsing `error_message`.
+   */
+  payload_json?: Record<string, unknown> | null;
   before_json?: Record<string, unknown> | null;
   after_json?: Record<string, unknown> | null;
   error_message: string | null;

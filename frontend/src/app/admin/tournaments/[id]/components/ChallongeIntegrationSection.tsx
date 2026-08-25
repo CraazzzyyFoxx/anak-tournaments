@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, ArrowUpFromLine, ExternalLink, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowDownToLine, ArrowUpFromLine, ExternalLink, Loader2, Users } from "lucide-react";
 import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,28 @@ function getLogTone(status: ChallongeSyncLogEntry["status"]) {
   if (status === "success") return TONE_CLASS.success;
   if (status === "conflict") return TONE_CLASS.warning;
   return TONE_CLASS.danger;
+}
+
+/**
+ * The distinct Challonge participants that blocked an import, newest run first.
+ *
+ * An import refuses to create an encounter whose participants have no local team
+ * mapped, and logs that per MATCH — so eight unmapped participants fill the whole
+ * log with rows that all say the same thing. The ids come from the row's
+ * `payload_json`, not from `error_message`: the message is prose written for a
+ * human, and grouping on a parse of it would break the moment its wording moves.
+ */
+function getUnmappedParticipantIds(logs: ChallongeSyncLogEntry[]): number[] {
+  const ids = new Set<number>();
+  for (const log of logs) {
+    if (log.status === "success") continue;
+    const raw = log.payload_json?.["missing_participant_ids"];
+    if (!Array.isArray(raw)) continue;
+    for (const value of raw) {
+      if (typeof value === "number") ids.add(value);
+    }
+  }
+  return [...ids];
 }
 
 /**
@@ -90,17 +113,38 @@ export function ChallongeIntegrationSection({
   const lastLog = logs[0];
   const failedLogCount = logs.filter((log) => log.status !== "success").length;
   const syncPending = importMutation.isPending || exportMutation.isPending;
+  const unmappedParticipantIds = getUnmappedParticipantIds(logs);
+  // The slug is the settings form's live value, so this tracks an unsaved edit
+  // too — which is the honest thing to link: it is the bracket about to be used.
+  const bracketUrl = slug.trim() ? `https://challonge.com/${slug.trim()}` : null;
+  const teamMappingHref = `/admin/tournaments/${tournamentId}/teams?challongeSync=1`;
 
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className={EYEBROW_CLASS}>Challonge</h3>
-        <Badge
-          variant="outline"
-          className={cn("shrink-0", TONE_CLASS[hasChallongeSource ? "accent" : "neutral"])}
-        >
-          {hasChallongeSource ? "Connected" : "Not linked"}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* The only genuinely linkable Challonge target on this card. Sync-log
+              rows carry match/participant ids, which have no public URL — they
+              used to render this same icon beside them and go nowhere. */}
+          {hasChallongeSource && bracketUrl ? (
+            <a
+              href={bracketUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+            >
+              <ExternalLink className="size-3" aria-hidden />
+              Open bracket
+            </a>
+          ) : null}
+          <Badge
+            variant="outline"
+            className={cn(TONE_CLASS[hasChallongeSource ? "accent" : "neutral"])}
+          >
+            {hasChallongeSource ? "Connected" : "Not linked"}
+          </Badge>
+        </div>
       </div>
 
       <div>
@@ -189,6 +233,28 @@ export function ChallongeIntegrationSection({
         </div>
       ) : null}
 
+      {/* The one failure an admin can actually clear from here, lifted out of the
+          log: an unmapped participant fails every match it appears in, so the log
+          shows the same problem N times with no hint that the fix is a mapping on
+          another tab. */}
+      {hasChallongeSource && unmappedParticipantIds.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 p-3">
+          <p className="min-w-0 text-xs text-muted-foreground">
+            <span className={cn("font-medium", TONE_TEXT.warning)}>
+              <span className="tabular-nums">{unmappedParticipantIds.length}</span> Challonge
+              participant{unmappedParticipantIds.length === 1 ? "" : "s"} not mapped to a team.
+            </span>{" "}
+            Import cannot create their matches until each one points at an internal team.
+          </p>
+          <Button asChild type="button" size="sm" variant="outline" className="shrink-0">
+            <Link href={teamMappingHref}>
+              <Users className="size-4" aria-hidden />
+              Map teams
+            </Link>
+          </Button>
+        </div>
+      ) : null}
+
       {hasChallongeSource ? (
         <div>
           <div className="mb-2 flex items-center justify-between gap-3">
@@ -225,10 +291,13 @@ export function ChallongeIntegrationSection({
                     {log.entity_id ? ` #${log.entity_id}` : ""}
                     {log.error_message ? ` · ${log.error_message}` : ""}
                   </span>
+                  {/* Plain text, not a link: this is a Challonge match/participant
+                      id, and neither has a public URL. It used to carry an
+                      ExternalLink icon inside a span — a link affordance that led
+                      nowhere. The bracket link lives in the header instead. */}
                   {log.challonge_id ? (
-                    <span className="hidden items-center gap-1 text-muted-foreground lg:inline-flex">
-                      <ExternalLink className="size-3" aria-hidden />
-                      <span className="tabular-nums">{log.challonge_id}</span>
+                    <span className="hidden shrink-0 text-muted-foreground lg:inline">
+                      Challonge <span className="tabular-nums">#{log.challonge_id}</span>
                     </span>
                   ) : null}
                   <span className="shrink-0 tabular-nums text-muted-foreground">

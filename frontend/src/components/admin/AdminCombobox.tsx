@@ -37,6 +37,13 @@ export interface AdminComboboxProps {
    * `label` is not a string, since a `ReactNode` cannot be a tooltip.
    */
   labelTitle?: string;
+  /**
+   * Accessible name for the trigger, when `label` alone cannot identify it.
+   * A table of per-row comboboxes renders the same placeholder in every row, so
+   * the visible label is not a usable name there; prefer `id` + a visible
+   * `<Label htmlFor>` wherever one exists.
+   */
+  triggerAriaLabel?: string;
   /** Merged after the trigger's own classes, so height and width can be overridden. */
   triggerClassName?: string;
   disabled?: boolean;
@@ -69,6 +76,7 @@ export function AdminCombobox({
   onOpenChange,
   label,
   labelTitle,
+  triggerAriaLabel,
   triggerClassName,
   disabled = false,
   searchValue,
@@ -91,6 +99,7 @@ export function AdminCombobox({
           type="button"
           variant="outline"
           role="combobox"
+          aria-label={triggerAriaLabel}
           aria-haspopup="listbox"
           aria-expanded={open}
           disabled={disabled}

@@ -140,6 +140,11 @@ class _UpsertResult:
     before: dict | None = None
     after: dict | None = None
     error: str | None = None
+    # The Challonge participant ids that have no local team mapped, when
+    # ``action == "error"`` for that reason. Recorded structurally alongside the
+    # human message so the admin UI can group "these N participants need mapping"
+    # out of one failed row per match, instead of parsing the message back apart.
+    missing_participant_ids: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1382,18 +1387,22 @@ class ChallongeSyncService:
         stage = _resolve_group_for_match(tournament, source, match)
         home_team_id = team_lookup.resolve(source, None, match.player1_id)
         away_team_id = team_lookup.resolve(source, None, match.player2_id)
-        missing_team_mapping = [
-            str(challonge_id)
+        missing_team_mapping = tuple(
+            challonge_id
             for challonge_id, team_id in (
                 (match.player1_id, home_team_id),
                 (match.player2_id, away_team_id),
             )
             if challonge_id is not None and team_id is None
-        ]
+        )
         if encounter is None and missing_team_mapping:
             return _UpsertResult(
                 action="error",
-                error=("Missing Challonge team mapping for participant(s): " + ", ".join(missing_team_mapping)),
+                error=(
+                    "Missing Challonge team mapping for participant(s): "
+                    + ", ".join(str(challonge_id) for challonge_id in missing_team_mapping)
+                ),
+                missing_participant_ids=missing_team_mapping,
             )
 
         home_team = team_lookup.teams_by_id.get(home_team_id) if home_team_id is not None else None
@@ -1790,6 +1799,11 @@ class ChallongeSyncService:
                                 "failed",
                                 source_id=source.source_id,
                                 operation="apply_import",
+                                payload=(
+                                    {"missing_participant_ids": list(upsert_result.missing_participant_ids)}
+                                    if upsert_result.missing_participant_ids
+                                    else None
+                                ),
                                 error_message=upsert_result.error,
                             )
                             continue
