@@ -20,28 +20,36 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
-import { usePermissions } from "@/hooks/usePermissions";
 import { getAuthProfileHref } from "@/lib/auth-profile-links";
 import { logout } from "@/lib/logout";
 import { WorkspaceAvatar } from "@/components/WorkspaceSwitcher";
 import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
 
+// Role names come from two RBAC scopes: global roles ("admin",
+// "tournament_organizer", "moderator" — see AppRole in usePermissions) and
+// workspace-scoped roles ("owner", "admin", "member", "player" — see
+// WORKSPACE_SYSTEM_ROLE_NAMES). A workspace admin never holds the *global*
+// "admin" role, so checking only global roles left every workspace-scoped
+// staff member (the common case) falling through to the "Operator"
+// fallback. Check both scopes, global first.
 function getRoleLabel({
   isSuperuser,
-  isAdmin,
-  isOrganizer,
-  isModerator
+  globalRoles,
+  workspaceRoles
 }: {
   isSuperuser: boolean;
-  isAdmin: boolean;
-  isOrganizer: boolean;
-  isModerator: boolean;
+  globalRoles: string[];
+  workspaceRoles: string[];
 }) {
   if (isSuperuser) return "Superuser";
-  if (isAdmin) return "Admin";
-  if (isOrganizer) return "Organizer";
-  if (isModerator) return "Moderator";
+  if (globalRoles.includes("admin")) return "Admin";
+  if (globalRoles.includes("tournament_organizer")) return "Organizer";
+  if (globalRoles.includes("moderator")) return "Moderator";
+  if (workspaceRoles.includes("owner")) return "Owner";
+  if (workspaceRoles.includes("admin")) return "Admin";
+  if (workspaceRoles.includes("member")) return "Member";
+  if (workspaceRoles.includes("player")) return "Player";
   return "Operator";
 }
 
@@ -122,7 +130,6 @@ export function SidebarBackToSite() {
 
 export function SidebarUserDropdown() {
   const { user, status } = useAuthProfile();
-  const { isSuperuser, isAdmin, isOrganizer, isModerator } = usePermissions();
   const {
     workspaces: allWorkspaces,
     currentWorkspaceId,
@@ -132,7 +139,11 @@ export function SidebarUserDropdown() {
 
   const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
-  const roleLabel = getRoleLabel({ isSuperuser, isAdmin, isOrganizer, isModerator });
+  const roleLabel = getRoleLabel({
+    isSuperuser: user?.isSuperuser ?? false,
+    globalRoles: user?.roles ?? [],
+    workspaceRoles: user?.workspaces.flatMap((ws) => ws.roles) ?? []
+  });
   const profileHref = getAuthProfileHref(user);
 
   // Same contract as the public UserMenu: drop the cached profile, then POST to
