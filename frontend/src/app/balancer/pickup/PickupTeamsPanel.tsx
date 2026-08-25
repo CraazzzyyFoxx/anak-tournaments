@@ -25,8 +25,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { resolveDivisionFromRank } from "@/lib/division-grid";
+import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { CustomGame, CustomGameOutcome } from "@/services/custom-game.service";
@@ -366,10 +365,10 @@ function TeamColumnAndDivider({
 }
 
 function TeamColumn({ team, teamIndex }: Readonly<{ team: PickupTeam; teamIndex: number }>) {
-  // Workspace grid, not the default: `DivisionIcon` picks its image from the
-  // workspace grid, so resolving the number against a different one puts a
-  // crest next to a rating it does not match.
-  const grid = useDivisionGrid();
+  // The global OW grid, not the workspace's: balancer-service resolves a mix's
+  // ranks against the grid with `workspace_id=None`, so `seat.rating` is on the
+  // OW scale. Labelling it with a workspace's tiers renames the same number.
+  const grid = OW_REFERENCE_GRID;
   const accent = teamAccent(teamIndex);
 
   return (

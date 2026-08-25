@@ -197,4 +197,18 @@ describe("PickupPlayerSheet ranks", () => {
     expect(onPatch).not.toHaveBeenCalled();
     expect(onSetAuthorRank.mock.calls).toEqual([["tank", 2500]]);
   });
+
+  // balancer-service resolves a mix's ranks against the GLOBAL, OW-synced grid
+  // (`get_effective_division_grid(session, None)` -> the grid with
+  // `workspace_id IS NULL`), never the host workspace's. The mocked workspace
+  // grid above deliberately disagrees: it calls 3300 "Gold" where the OW ladder
+  // calls it "Diamond 2". Reading the workspace grid here renamed a number the
+  // backend had already fixed, so the crest and label disagreed with the mix
+  // the solver actually balanced.
+  it("labels ranks with the global OW ladder, not the workspace's grid", async () => {
+    const scope = await mount();
+
+    expect(scope.textContent).toContain("Diamond 2");
+    expect(scope.textContent).not.toContain("Gold");
+  });
 });

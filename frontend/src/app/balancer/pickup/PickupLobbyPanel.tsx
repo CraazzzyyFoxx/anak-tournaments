@@ -31,8 +31,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Switch } from "@/components/ui/switch";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { resolveDivisionFromRank } from "@/lib/division-grid";
+import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLE_LABELS, ROLES } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { CustomGamePlayer, CustomGamePlayerPatch } from "@/services/custom-game.service";
@@ -377,10 +376,10 @@ type LineupRowProps = {
 };
 
 function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonly<LineupRowProps>) {
-  // The workspace grid, not the default one: `DivisionIcon` resolves its image
-  // from the workspace grid, so a division number derived from any other grid
-  // renders a crest that disagrees with the number beside it.
-  const grid = useDivisionGrid();
+  // The global OW grid, not the workspace's: balancer-service resolves a mix's
+  // ranks against the grid with `workspace_id=None`, so these ranks are on the
+  // OW scale. Labelling them with a workspace's tiers renames the same number.
+  const grid = OW_REFERENCE_GRID;
   const label = playerLabel(row);
   const { name, suffix } = splitBattleTag(label);
   const issue = getLineupIssue(row);

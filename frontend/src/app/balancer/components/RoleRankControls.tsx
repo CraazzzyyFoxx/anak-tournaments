@@ -129,6 +129,15 @@ type RoleRankControlsProps = {
   /** Only rendered when there is something to clear. */
   onClear?: (() => void) | null;
   onChange: (rankValue: number | null, divisionNumber: number | null) => void;
+  /**
+   * The grid these controls label and slide against. Omitted = the workspace
+   * grid, which is right for the tournament and workspace sheets.
+   *
+   * A mix MUST pass `OW_REFERENCE_GRID`: balancer-service resolves a mix's
+   * ranks against the global, OW-synced grid (`workspace_id=None`), so reading
+   * them through a workspace's tiers renames the same number.
+   */
+  grid?: DivisionGrid;
 };
 
 /**
@@ -141,9 +150,8 @@ type RoleRankControlsProps = {
  * edit "what rank does this player have on this role", and two copies of that
  * had already produced two different ways to clear it.
  *
- * The grid is read here rather than threaded in: every caller resolves the same
- * workspace grid, and passing five derived callbacks down was the only reason
- * those helpers were public.
+ * The grid defaults to the workspace's rather than being required of every
+ * caller; only the mix surfaces, which live on the global OW grid, pass one.
  */
 export function RoleRankControls({
   rankValue,
@@ -153,8 +161,10 @@ export function RoleRankControls({
   disabled = false,
   onClear,
   onChange,
+  grid: gridOverride,
 }: Readonly<RoleRankControlsProps>) {
-  const grid = useDivisionGrid();
+  const workspaceGrid = useDivisionGrid();
+  const grid = gridOverride ?? workspaceGrid;
   const bounds = useMemo(() => gridBounds(grid), [grid]);
   const tiers = useMemo(() => sortTiersAscending(grid), [grid]);
 

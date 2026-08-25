@@ -70,9 +70,9 @@ vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
-vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => ({ tiers: [] }) }));
-// The real picker needs the workspace division grid; the row only needs a
-// control that carries its accessible name, its value and its disabled state.
+// The row only needs a control that carries its accessible name, its value and
+// its disabled state; which grid the real picker offers is pinned where that
+// grid is chosen, not here.
 vi.mock("@/app/balancer/components/DivisionRankPicker", () => ({
   DivisionRankPicker: ({
     rank,

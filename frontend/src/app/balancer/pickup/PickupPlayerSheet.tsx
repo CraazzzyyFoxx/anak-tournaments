@@ -23,6 +23,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import { OW_REFERENCE_GRID } from "@/lib/division-grid";
 import { ROLE_LABELS, getRoleIconName, type RoleCode } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import {
@@ -332,6 +333,10 @@ function RoleCardBody({
           disabled={disabled}
           onClear={mine == null ? null : () => rank.commitNow(null)}
           onChange={(next) => rank.set(next)}
+          // The global OW grid: balancer-service resolves a mix's ranks against
+          // the grid with `workspace_id=None`, so the value edited here is on
+          // the OW scale and a workspace's tiers would mislabel it.
+          grid={OW_REFERENCE_GRID}
         />
       </div>
     </div>

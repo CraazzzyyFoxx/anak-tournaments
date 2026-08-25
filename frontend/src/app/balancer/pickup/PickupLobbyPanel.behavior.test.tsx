@@ -40,7 +40,6 @@ globalThis.ResizeObserver ??= class {
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
-vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => ({ tiers: [] }) }));
 
 const onPatchPlayer = vi.fn();
 const onClear = vi.fn();

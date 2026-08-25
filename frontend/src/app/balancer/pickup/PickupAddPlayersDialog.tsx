@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OW_REFERENCE_GRID } from "@/lib/division-grid";
 import { notify } from "@/lib/notify";
 import { ROLES, ROLE_LABELS, type RoleCode } from "@/lib/roles";
 import { cn } from "@/lib/utils";
@@ -805,6 +806,10 @@ function RosterRowItem({
                     : `${ROLE_LABELS[role.code]} rank for ${label}, inherited ${inherited} from the workspace`
                 }
                 onChange={(next) => onSaveRank(role.code, next)}
+                // The global OW grid: balancer-service resolves a mix's ranks
+                // against the grid with `workspace_id=None`, so the value set
+                // here is on the OW scale, not this workspace's.
+                grid={OW_REFERENCE_GRID}
               />
             </span>
           );

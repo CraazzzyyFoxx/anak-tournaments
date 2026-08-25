@@ -5,18 +5,34 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { resolveDivisionFromRank, resolveRankFromDivision, sortTiersAscending } from "@/lib/division-grid";
 import { cn } from "@/lib/utils";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 type DivisionRankPickerProps = {
   rank: number | null | undefined;
   disabled?: boolean;
   label: string;
   onChange: (rank: number | null) => void;
+  /**
+   * The tiers this picker offers. Omitted = the workspace's.
+   *
+   * A mix MUST pass `OW_REFERENCE_GRID`: balancer-service resolves a mix's
+   * ranks against the global, OW-synced grid (`workspace_id=None`), so a
+   * workspace's tiers here write a rating that means something else.
+   */
+  grid?: DivisionGrid;
 };
 
-export function DivisionRankPicker({ rank, disabled, label, onChange }: Readonly<DivisionRankPickerProps>) {
-  // A picker for the WORKSPACE's tiers. Reading the default grid here made it
+export function DivisionRankPicker({
+  rank,
+  disabled,
+  label,
+  onChange,
+  grid: gridOverride,
+}: Readonly<DivisionRankPickerProps>) {
+  // The workspace's tiers by default. Reading the default grid here made it
   // offer ranks the workspace does not use and label them with the wrong crest.
-  const grid = useDivisionGrid();
+  const workspaceGrid = useDivisionGrid();
+  const grid = gridOverride ?? workspaceGrid;
   const division = grid ? resolveDivisionFromRank(grid, rank ?? null) : null;
   const tiers = grid ? sortTiersAscending(grid) : [];
 
@@ -36,7 +52,7 @@ export function DivisionRankPicker({ rank, disabled, label, onChange }: Readonly
             division == null && "text-[11px] text-muted-foreground",
           )}
         >
-          {division == null ? "—" : <DivisionIcon division={division} width={22} height={22} />}
+          {division == null ? "—" : <DivisionIcon division={division} tournamentGrid={grid} width={22} height={22} />}
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
@@ -60,7 +76,7 @@ export function DivisionRankPicker({ rank, disabled, label, onChange }: Readonly
                 )}
                 onClick={() => onChange(resolveRankFromDivision(grid, tier.number))}
               >
-                <DivisionIcon division={tier.number} width={24} height={24} />
+                <DivisionIcon division={tier.number} tournamentGrid={grid} width={24} height={24} />
               </button>
             );
           })}

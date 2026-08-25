@@ -9,8 +9,7 @@ import { teamAccent } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { resolveDivisionFromRank } from "@/lib/division-grid";
+import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { CustomGameOutcome } from "@/services/custom-game.service";
@@ -259,10 +258,10 @@ function BoardSeat({
   teamIndex,
   mirrored,
 }: Readonly<{ seat: PickupTeam["seats"][number]; teamIndex: number; mirrored: boolean }>) {
-  // The workspace grid, not the default one: `DivisionIcon` resolves its image
-  // from the workspace grid, so a division number derived from any other grid
-  // renders the wrong crest here while the inline matchup renders the right one.
-  const grid = useDivisionGrid();
+  // The global OW grid, not the workspace's: balancer-service resolves a mix's
+  // ranks against the grid with `workspace_id=None`, so `seat.rating` is on the
+  // OW scale. Labelling it with a workspace's tiers renames the same number.
+  const grid = OW_REFERENCE_GRID;
   const accent = teamAccent(teamIndex);
   const division = resolveDivisionFromRank(grid, seat.rating);
   const icon = ROLES.find((item) => item.code === seat.role)?.icon ?? "Support";
