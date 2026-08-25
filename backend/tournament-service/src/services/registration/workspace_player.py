@@ -1,9 +1,8 @@
-"""Attach registrations to workspace_player and resolve ranks for reads."""
+"""Attach registrations to workspace_player. Tournament ranks stay on the role."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from types import SimpleNamespace
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,30 +14,9 @@ from src import models
 
 __all__ = (
     "attach_workspace_player",
-    "clear_role_rank_values",
-    "incoming_role_ranks",
     "resolve_registration_ranks",
     "resolved_value_map",
-    "write_follow_ranks",
 )
-
-
-def incoming_role_ranks(roles: Sequence[Any] | None) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for role in roles or []:
-        if isinstance(role, Mapping):
-            code, value = role.get("role"), role.get("rank_value")
-        else:
-            code, value = getattr(role, "role", None), getattr(role, "rank_value", None)
-        if code and value is not None:
-            out[str(code)] = int(value)
-    return out
-
-
-def clear_role_rank_values(roles: Sequence[Any] | None) -> None:
-    for role in roles or []:
-        if hasattr(role, "rank_value"):
-            role.rank_value = None
 
 
 def _player_id_for(registration: Any) -> int | None:
@@ -77,34 +55,11 @@ async def attach_workspace_player(
     return wp
 
 
-async def write_follow_ranks(
-    session: AsyncSession,
-    registration: models.BalancerRegistration,
-    ranks: Mapping[str, int],
-    *,
-    only_empty: bool = False,
-) -> dict[str, int]:
-    if not ranks or not registration.workspace_player_id:
-        return {}
-    return await workspace_player_service.set_ranks(
-        session,
-        workspace_player_id=registration.workspace_player_id,
-        ranks=ranks,
-        only_empty=only_empty,
-    )
-
-
-def _resolved_for_role(registration: Any, role: Any, batch: ResolvedRank | None) -> ResolvedRank:
-    if getattr(registration, "balancer_profile_overridden_at", None) is not None and getattr(
-        role, "rank_value", None
-    ) is not None:
-        return ResolvedRank(role.rank_value, "override")
-    if batch is not None:
-        return batch
-    if getattr(role, "rank_value", None) is not None:
-        return ResolvedRank(role.rank_value, "override")
-    return ResolvedRank(None, "none")
-
+def _resolved_for_role(role: Any) -> ResolvedRank:
+    value = getattr(role, "rank_value", None)
+    if value is None:
+        return ResolvedRank(None, "none")
+    return ResolvedRank(value, "override")
 
 async def resolve_registration_ranks(
     session: AsyncSession,
@@ -112,41 +67,18 @@ async def resolve_registration_ranks(
     *,
     grid: DivisionGrid | None = None,
 ) -> dict[int, dict[str, ResolvedRank]]:
-    by_wp: dict[int, Any] = {}
-    for reg in registrations:
-        wpid = getattr(reg, "workspace_player_id", None)
-        if wpid is None:
-            continue
-        player_id = _player_id_for(reg)
-        existing = by_wp.get(wpid)
-        if existing is None:
-            by_wp[wpid] = SimpleNamespace(id=wpid, player_id=player_id)
-        elif existing.player_id is None and player_id is not None:
-            existing.player_id = player_id
-    roles = sorted(
-        {
-            getattr(role, "role")
-            for reg in registrations
-            for role in (getattr(reg, "roles", None) or [])
-            if getattr(role, "role", None)
-        }
-    )
-    batch = await workspace_player_service.resolve_ranks(
-        session, players=list(by_wp.values()), roles=roles, grid=grid
-    )
+    del session, grid
     out: dict[int, dict[str, ResolvedRank]] = {}
     for reg in registrations:
         rid = getattr(reg, "id", None)
         if rid is None:
             continue
-        wpid = getattr(reg, "workspace_player_id", None)
         per_role: dict[str, ResolvedRank] = {}
         for role in getattr(reg, "roles", None) or []:
             code = getattr(role, "role", None)
             if not code:
                 continue
-            hit = batch.get((wpid, code)) if wpid is not None else None
-            per_role[code] = _resolved_for_role(reg, role, hit)
+            per_role[code] = _resolved_for_role(role)
         out[rid] = per_role
     return out
 

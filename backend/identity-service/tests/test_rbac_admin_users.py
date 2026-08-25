@@ -333,6 +333,40 @@ def test_auth_user_admin_panel_access_allows_scoped_non_read_permission() -> Non
     assert current_user.has_admin_panel_access(9) is False
 
 
+def test_auth_user_admin_panel_access_rejects_custom_game_grants() -> None:
+    """Hosting a mix is a member-level capability, not an admin-panel key."""
+    current_user = models.AuthUser(
+        email="host@example.com",
+        username="host",
+        is_active=True,
+        is_superuser=False,
+        is_verified=True,
+    )
+    current_user.set_rbac_cache(
+        role_names=[],
+        permissions=[],
+        workspace_rbac={
+            10: {
+                "roles": ["member"],
+                "permissions": [
+                    {"resource": "custom_game", "action": "read"},
+                    {"resource": "custom_game", "action": "create"},
+                    {"resource": "custom_game", "action": "update"},
+                    {"resource": "custom_game", "action": "delete"},
+                ],
+            },
+            11: {
+                "roles": ["member"],
+                "permissions": [{"resource": "team", "action": "update"}],
+            },
+        },
+    )
+
+    assert current_user.has_admin_panel_access(10) is False
+    # The exclusion is per-resource, not a blanket kill of the non-read shortcut.
+    assert current_user.has_admin_panel_access(11) is True
+
+
 def test_auth_user_admin_panel_access_allows_panel_roles() -> None:
     current_user = models.AuthUser(
         email="organizer@example.com",

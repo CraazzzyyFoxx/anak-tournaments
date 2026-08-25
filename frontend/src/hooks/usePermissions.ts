@@ -21,6 +21,7 @@ const resourcesWithCrud = [
   "registration",
   "registration_status",
   "balancer",
+  "custom_game",
   "analytics",
   "achievement",
   "division_grid",
@@ -93,7 +94,16 @@ function workspaceHasPermission(
   );
 }
 
+// Resources whose grants are member-level capabilities, not administration.
+// Hosting a mix is something a plain workspace member is trusted with, so the
+// grant must not hand out admin-panel entry: the "any non-read permission means
+// management" shortcut below is only sound for genuinely administrative
+// resources.
+const NON_ADMIN_PANEL_RESOURCES: Record<string, true> = { custom_game: true };
+
 function permissionGrantsAdminPanelAccess(permission: string): boolean {
+  const [resource] = permission.split(".");
+  if (NON_ADMIN_PANEL_RESOURCES[resource]) return false;
   return permission === "admin.*" || !permission.endsWith(".read");
 }
 

@@ -275,7 +275,6 @@ class RegistrationLifecycleService:
             max_heroes=max_heroes,
             mode=flex_role_mode(form),
         )
-        incoming = workspace_players.incoming_role_ranks(registration.roles)
         if balancer_status_value is None or balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES:
             registration.balancer_status = (
                 included_balancer_status(registration) if resolved_status == "approved" else NOT_ADDED_BALANCER_STATUS
@@ -291,10 +290,6 @@ class RegistrationLifecycleService:
         await workspace_players.attach_workspace_player(
             session, registration, workspace_id=workspace_id, player_id=player_id
         )
-        if incoming:
-            await workspace_players.write_follow_ranks(session, registration, incoming, only_empty=True)
-        if registration.workspace_player_id:
-            workspace_players.clear_role_rank_values(registration.roles)
         if balancer_status_value is None or balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES:
             if resolved_status == "approved":
                 registration.balancer_status = included_balancer_status(
@@ -393,8 +388,7 @@ class RegistrationLifecycleService:
                     exclude_reason if balancer_status_value == EXCLUDED_BALANCER_STATUS else None
                 )
 
-        incoming = workspace_players.incoming_role_ranks(roles) if roles is not None else {}
-        unpin = clear_pin or (pin is False and not incoming)
+        unpin = clear_pin or (pin is False and roles is None)
         if roles is not None:
             for r_obj in registration.roles:
                 r_obj.hero_entries.clear()
@@ -436,11 +430,7 @@ class RegistrationLifecycleService:
             workspace_id=getattr(tournament, "workspace_id", None),
             player_id=player_id,
         )
-        if not pin and (unpin or roles is not None) and registration.workspace_player_id:
-            workspace_players.clear_role_rank_values(registration.roles)
-        if incoming and not pin:
-            await workspace_players.write_follow_ranks(session, registration, incoming, only_empty=False)
-        if roles is not None or incoming or unpin:
+        if roles is not None or unpin:
             sync_included_balancer_status(
                 registration, await workspace_players.resolved_value_map(session, registration)
             )

@@ -13,6 +13,7 @@ export interface NavItem {
   key: string;
   href: string;
   requiresAdminAccess?: boolean;
+  requiresMixAccess?: boolean;
 }
 
 export interface NavGroup {
@@ -21,15 +22,16 @@ export interface NavGroup {
 }
 
 // Annotated rather than `as const satisfies`: `as const` narrows each item to a
-// literal shape, so items without `requiresAdminAccess` lose the property and
-// consumers cannot read it off the union.
+// literal shape, so items without `requiresAdminAccess`/`requiresMixAccess` lose
+// the property and consumers cannot read it off the union.
 export const NAV_GROUPS: readonly NavGroup[] = [
   {
     key: "tournaments",
     items: [
       { key: "tournaments", href: "/tournaments" },
       { key: "teams", href: "/teams" },
-      { key: "analytics", href: "/tournaments/analytics" }
+      { key: "analytics", href: "/tournaments/analytics" },
+      { key: "mixes", href: "/balancer/pickup", requiresMixAccess: true }
     ]
   },
   {

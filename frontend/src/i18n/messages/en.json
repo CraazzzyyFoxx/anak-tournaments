@@ -3757,6 +3757,10 @@
         "title": "Balancer",
         "desc": "Balance teams by player roles and ratings"
       },
+      "mixes": {
+        "title": "Mixes",
+        "desc": "Pickup lobbies balanced from your workspace roster"
+      },
       "admin": {
         "title": "Admin",
         "desc": "Manage tournaments, access and operations"

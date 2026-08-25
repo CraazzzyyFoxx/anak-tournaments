@@ -841,12 +841,7 @@ class RegistrationService:
             # Write normalized roles
             for entry in role_entries:
                 entry.registration_id = registration.id
-            incoming = workspace_players.incoming_role_ranks(role_entries)
-            if registration.workspace_player_id:
-                workspace_players.clear_role_rank_values(role_entries)
             await self.role_repo.create_many(session, role_entries)
-            if incoming:
-                await workspace_players.write_follow_ranks(session, registration, incoming, only_empty=True)
             if commit:
                 await session.commit()
             else:

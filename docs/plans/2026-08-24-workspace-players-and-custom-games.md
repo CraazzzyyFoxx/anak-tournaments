@@ -15,9 +15,9 @@
 ## Understanding
 
 - Справочник игроков workspace не зависит от заявки. Ghost = battle tag без `players.user`, потом линк/мерж.
-- Канон — SoT ранга. Пул держим актуальным: ingest и обычная правка в турнире пишут канон.
-- Pin «только этот турнир» = `balancer_profile_overridden_at` + `registration_role.rank_value`.
-- Кастомка: пул хоста + книга хоста поверх канона. Чужие кастомки/книги видны внутри workspace, между workspace — нет.
+- Канон микса (`workspace_player_rank`) не связан с турнирными рангами. Заявка хранит свой `registration_role.rank_value`.
+- Кастомка: game override → host book → mix canon → OW на глобальной DivisionGrid.
+- Чужие кастомки/книги видны внутри workspace, между workspace — нет.
 - UI — новая вкладка вне турниров (не balancer tab).
 - Пул турнира по-прежнему заявки `in_pool`. Справочник не заменяет чек-ин / ready / team-registration.
 
@@ -27,9 +27,9 @@
 |---|---|---|
 | Approach 1: `WorkspacePlayer` + слои рангов | Универсальный scope; только rank book поверх регистраций | Identity одна, регистрацию не переписываем в presence |
 | Ghost по battle tag | Только `WorkspaceMember` | `WorkspaceMember.player_id` NOT NULL; «не регнулся» включает нет аккаунта |
-| Канон SoT, заявка = override | Регистрация SoT; один ранг без override | Турнир должен уметь pin, пул — нет |
-| Правка турнира → канон по умолчанию + кнопка pin | Только override; всегда канон без pin | Пул не протухает; изоляция турнира остаётся явной |
-| Autofill/первая заявка пишет канон, если пусто | Autofill только на заявку | Иначе справочник пустой до ручной правки Players |
+| Ранги миксов и турниров не связаны | Канон SoT, заявка follow/pin | Правка турнира не должна менять микс и наоборот |
+| Миксы читают глобальную DivisionGrid | Workspace default grid | У миксов нет tournament/workspace scale |
+| Autofill/заявка пишут только `registration_role` | Autofill пишет канон | Иначе справочник миксов и турнир делят одни числа |
 | Хост: свой пул + своя книга | Общая книга всех мемберов; пул = весь workspace | Несколько хостов в одном workspace |
 | Виртуальный игрок → общий справочник | Приватный список хоста | Одна identity |
 | `CustomGame` без `tournament_id` | Турнир-обёртка | Июньский Approach B, без загрязнения турнирного пайплайна |
@@ -224,23 +224,18 @@ Schema: `balancer`. Models: `backend/shared/models/workspace_player.py` (или 
 - `custom_game`: `workspace_id`, `host_user_id`, `name`, `status`, `config_json`, `result_json`, `outcome_json`.
 - `custom_game_player`: `custom_game_id`, `workspace_player_id`, optional `rank_value` (клетка игры), `team_index`, `sort_order`. Unique `(custom_game_id, workspace_player_id)`.
 
----
-
 ## Rank write matrix
 
-| Событие | Канон | Заявка |
+| Событие | Канон микса | Заявка |
 |---|---|---|
-| Players tab PATCH | пишет | follow видят |
-| Регистрация / autofill, канон пуст | пишет | follow |
-| Регистрация, канон есть | не трогаем | follow |
-| Турнирная клетка без pin | пишет | follow |
-| Турнирная клетка + pin | не трогаем | `rank_value` + `overridden_at` |
-| Сброс pin | не трогаем | `overridden_at = null` |
-| Книга хоста | не трогаем | — |
-| Клетка кастомки | не трогаем | game override |
+| Players tab PATCH | пишет | не трогает |
+| Регистрация / autofill | не трогает | `registration_role.rank_value` |
+| Турнирная клетка | не трогает | `rank_value` |
+| Книга хоста | не трогает | — |
+| Клетка кастомки | не трогает | game override |
 
-Чтение турнира: pin → `registration_role.rank_value`; иначе `resolve(canon → OW)`.  
-Чтение кастомки: game override → host → canon → OW.
+Чтение турнира: `registration_role.rank_value` (+ отдельно OW display).  
+Чтение кастомки: game override → host → canon → OW на **глобальной** DivisionGrid.
 
 `createSyntheticPlayerFromRegistration` (`frontend/src/app/balancer/components/workspace-helpers.ts`) уезжает: wire несёт уже резолвнутые `rank_value` + `rank_source: override | host | canon | ow | none`.
 

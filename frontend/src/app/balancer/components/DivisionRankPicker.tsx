@@ -2,8 +2,7 @@
 
 import DivisionIcon from "@/components/DivisionIcon";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { resolveDivisionFromRank, resolveRankFromDivision, sortTiersAscending } from "@/lib/division-grid";
+import { getDefaultDivisionGrid, resolveDivisionFromRank, resolveRankFromDivision, sortTiersAscending } from "@/lib/division-grid";
 import { cn } from "@/lib/utils";
 
 type DivisionRankPickerProps = {
@@ -14,7 +13,7 @@ type DivisionRankPickerProps = {
 };
 
 export function DivisionRankPicker({ rank, disabled, label, onChange }: Readonly<DivisionRankPickerProps>) {
-  const grid = useDivisionGrid();
+  const grid = getDefaultDivisionGrid();
   const division = grid ? resolveDivisionFromRank(grid, rank ?? null) : null;
   const tiers = grid ? sortTiersAscending(grid) : [];
 

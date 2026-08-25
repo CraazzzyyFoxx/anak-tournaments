@@ -1,5 +1,5 @@
 import { ROLES, canonicalToRegistrationRole, type RoleCode } from "@/lib/roles";
-import type { CustomGamePlayer } from "@/services/custom-game.service";
+import type { CustomGameOutcome, CustomGamePlayer } from "@/services/custom-game.service";
 
 /**
  * Lineup rules for a pickup mix, kept pure so the panels stay presentational.
@@ -129,6 +129,58 @@ export function summarizeLineup(rows: CustomGamePlayer[]): LineupSummary {
     }
   }
   return { total: rows.length, active, benched: rows.length - active, blocking };
+}
+
+/**
+ * A 5v5 mix needs one tank and two of each damage/support per team, so the
+ * lineup needs twice that before a balance can seat everyone. Hard-coded
+ * because the pickup solver runs the same 1-2-2 shape for every mix; a
+ * configurable role lock would come from `config_json`, which no mix sets yet.
+ */
+const ROLE_DEMAND: Record<RoleCode, number> = { tank: 2, dps: 4, support: 4 };
+
+export type RoleSupply = {
+  role: RoleCode;
+  /** Active players who both selected this role and carry a rank for it. */
+  supply: number;
+  need: number;
+  /** How many more the solver would want; 0 once the role is covered. */
+  short: number;
+};
+
+/**
+ * Who can actually fill each role, counted the way the solver counts.
+ *
+ * A selected role with no rank is not supply — the balance refuses to seat it —
+ * so this deliberately does not match "how many chips are lit".
+ */
+export function summarizeRoleSupply(rows: CustomGamePlayer[]): RoleSupply[] {
+  return LINEUP_ROLES.map((role) => {
+    const supply = rows.filter(
+      (row) => row.is_active && resolveRoleOrder(row).includes(role) && row.ranks[role] != null,
+    ).length;
+    const need = ROLE_DEMAND[role];
+    return { role, supply, need, short: Math.max(0, need - supply) };
+  });
+}
+
+/**
+ * The recorded result, or `null` while the mix is still open.
+ *
+ * `outcome_json` is a free-form dict server-side, so an unrecognised payload
+ * reads as "no result" rather than throwing — a mix written by another client
+ * degrades to an unrecorded scoreline instead of blanking the page.
+ */
+export function parseOutcome(outcomeJson: unknown): CustomGameOutcome | null {
+  const record = asRecord(outcomeJson);
+  if (record == null) {
+    return null;
+  }
+  if (record.winner === null) {
+    return { winner: null };
+  }
+  const winner = asNumber(record.winner);
+  return winner == null ? null : { winner };
 }
 
 /** Active players first, then the host's own ordering. */

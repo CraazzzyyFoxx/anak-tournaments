@@ -36,3 +36,6 @@ export const adminEntryPermissions: AppPermission[] = [
   ...accessAdminPermissions,
   "achievement.read",
 ];
+
+/** Hosting pickup mixes — the gate on the header's Mixes entry and /balancer/pickup. */
+export const mixEntryPermissions: AppPermission[] = ["custom_game.create"];

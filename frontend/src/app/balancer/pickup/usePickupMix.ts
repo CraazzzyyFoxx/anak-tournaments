@@ -7,6 +7,7 @@ import {
   customGameKeys,
   customGameService,
   type CustomGame,
+  type CustomGameOutcome,
   type CustomGamePlayerPatch,
 } from "@/services/custom-game.service";
 
@@ -83,5 +84,24 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     onError: (error) => notify.apiError(error),
   });
 
-  return { selectedGameId, gamesQuery, gameQuery, createGame, setRoster, patchPlayer, balance };
+  const recordOutcome = useMutation({
+    mutationFn: (outcome: CustomGameOutcome) =>
+      customGameService.recordOutcome(workspaceId, selectedGameId as number, outcome),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success("Result saved — this mix is now closed");
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
+  return {
+    selectedGameId,
+    gamesQuery,
+    gameQuery,
+    createGame,
+    setRoster,
+    patchPlayer,
+    balance,
+    recordOutcome,
+  };
 }

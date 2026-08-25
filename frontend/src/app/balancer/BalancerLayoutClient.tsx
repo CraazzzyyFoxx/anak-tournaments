@@ -101,8 +101,10 @@ export function BalancerLayoutClient({ children }: Readonly<BalancerLayoutClient
     if (!isLoaded) {
       return <LoadingState />;
     }
+    // Reading a mix is its own grant now, so a workspace member who hosts
+    // pickups reaches the tool without any tournament-admin permission.
     const pickupAllowed =
-      isOrganizer || workspaceId == null || canAccessPermission("team.read", workspaceId);
+      isOrganizer || workspaceId == null || canAccessPermission("custom_game.read", workspaceId);
     if (!pickupAllowed) {
       return <UnauthorizedState />;
     }

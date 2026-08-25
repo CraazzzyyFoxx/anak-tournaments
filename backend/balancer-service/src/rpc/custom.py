@@ -13,6 +13,7 @@ from faststream.rabbit import RabbitMessage
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from shared.services.division_grid.access import get_effective_division_grid
 from src.core import db
 from src.rpc import _common as c
 from src.services.custom_game import custom_game_service, rank_overrides
@@ -52,6 +53,18 @@ def _game_id(data: dict[str, Any]) -> int:
 def _require_member(user: Any, workspace_id: int) -> None:
     if not user.is_workspace_member(workspace_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a workspace member")
+
+
+def _require_mix(data: dict[str, Any], user: Any, workspace_id: int, action: str) -> None:
+    """Membership alone no longer opens mixes; hosting a mix is its own grant.
+
+    Membership stays in front of the permission check because
+    ``has_workspace_permission`` also answers True for a *global* admin role or
+    a global (``workspace_id IS NULL``) grant, neither of which puts the caller
+    inside this workspace -- and mixes are workspace-scoped data.
+    """
+    _require_member(user, workspace_id)
+    c.require_workspace_permission(data, user, workspace_id, "custom_game", action)
 
 
 def _player_ids(data: dict[str, Any]) -> list[int] | None:
@@ -144,6 +157,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         roles=list(REGISTRATION_ROLE_CODES),
         overrides=rank_overrides(roster),
         host_user_id=game.host_user_id,
+        grid=await get_effective_division_grid(session, None),
     )
     return _dump_game(game, roster, players, resolved)
 
@@ -154,7 +168,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            _require_mix(data, user, workspace_id, "create")
             body = c.payload(data)
             name = body.get("name", data.get("name"))
             if not isinstance(name, str):
@@ -181,7 +195,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            _require_mix(data, user, workspace_id, "read")
             rows = await custom_game_service.list(session, workspace_id=workspace_id)
             return [_dump_game(row) for row in rows]
 
@@ -192,7 +206,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            _require_mix(data, user, workspace_id, "read")
             game = await custom_game_service.get(session, workspace_id=workspace_id, custom_game_id=_game_id(data))
             return await _with_roster(session, game)
 
@@ -203,7 +217,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            _require_mix(data, user, workspace_id, "update")
             player_ids = _player_ids(data)
             if player_ids is None:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="player_ids is required")
@@ -224,7 +238,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            _require_mix(data, user, workspace_id, "update")
             game = await custom_game_service.update_player(
                 session,
                 workspace_id=workspace_id,
@@ -243,7 +257,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            _require_mix(data, user, workspace_id, "update")
             game = await custom_game_service.balance(
                 session,
                 workspace_id=workspace_id,
@@ -260,7 +274,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            _require_mix(data, user, workspace_id, "update")
             body = c.payload(data)
             outcome = body.get("outcome_json", data.get("outcome_json", body.get("outcome", data.get("outcome"))))
             if not isinstance(outcome, dict):
@@ -282,7 +296,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            _require_mix(data, user, workspace_id, "delete")
             game = await custom_game_service.cancel(
                 session,
                 workspace_id=workspace_id,

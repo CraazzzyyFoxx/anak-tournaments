@@ -16,6 +16,7 @@ from shared.repository import (
     HostPlayerRepository,
     WorkspacePlayerRepository,
 )
+from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.workspace_player import WorkspacePlayerService
 from src.services.balancer.solver import run_balance as _run_balance
 
@@ -307,6 +308,7 @@ class CustomGameService:
             roles=list(REGISTRATION_ROLE_CODES),
             overrides=rank_overrides(lineup),
             host_user_id=game.host_user_id,
+            grid=await get_effective_division_grid(session, None),
         )
         by_id = {player.id: player for player in players}
         player_nodes: dict[str, Any] = {}

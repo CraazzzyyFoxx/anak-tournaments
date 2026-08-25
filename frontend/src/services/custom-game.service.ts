@@ -25,6 +25,15 @@ export type CustomGamePlayer = {
 
 export type CustomGameStatus = "draft" | "balanced" | "completed" | "cancelled";
 
+/**
+ * How a mix ended. `winner` is a 1-based team number, `null` a draw — the same
+ * free-form dict `record_outcome` stores, narrowed to the only shape this app
+ * writes so a reader never has to guess between `winner: 0` and "no winner".
+ */
+export type CustomGameOutcome = {
+  winner: number | null;
+};
+
 export type CustomGame = {
   id: number;
   workspace_id: number;
@@ -33,6 +42,7 @@ export type CustomGame = {
   status: CustomGameStatus | string;
   config_json: Record<string, unknown> | null;
   result_json: unknown;
+  outcome_json: unknown;
   players?: CustomGamePlayer[];
 };
 
@@ -87,6 +97,14 @@ export const customGameService = {
   balance(workspaceId: number, gameId: number): Promise<CustomGame> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/balance`, {
       method: "POST",
+    }).then((r) => r.json());
+  },
+
+  /** Terminal: the server flips the mix to `completed` and stops accepting writes. */
+  recordOutcome(workspaceId: number, gameId: number, outcome: CustomGameOutcome): Promise<CustomGame> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/outcome`, {
+      method: "POST",
+      body: { outcome_json: outcome },
     }).then((r) => r.json());
   },
 };

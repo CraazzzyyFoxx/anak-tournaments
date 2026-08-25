@@ -452,14 +452,12 @@ class RankAutofillService:
                 await workspace_players.attach_workspace_player(
                     session, registration, workspace_id=workspace_id
                 )
-                ranks = {
-                    getattr(role_entry, "role"): getattr(rank_data, "rank_value", None)
-                    for role_entry, rank_data in updates
-                    if getattr(rank_data, "rank_value", None) is not None
-                }
-                await workspace_players.write_follow_ranks(
-                    session, registration, ranks, only_empty=not overwrite_existing
-                )
+                for role_entry, rank_data in updates:
+                    value = getattr(rank_data, "rank_value", None)
+                    if value is None:
+                        continue
+                    if overwrite_existing or getattr(role_entry, "rank_value", None) is None:
+                        role_entry.rank_value = value
                 role_updates += len(updates)
                 applied_registrations += 1
                 changed = True

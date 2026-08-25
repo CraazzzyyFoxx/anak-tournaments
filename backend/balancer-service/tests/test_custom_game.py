@@ -102,6 +102,13 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.players.bulk_get = AsyncMock(return_value=[])
         self.host_players.list_pool = AsyncMock(return_value=[])
         self.ranks.resolve_ranks = AsyncMock(return_value={})
+        self.grid = object()
+        self._grid_patch = patch(
+            "src.services.custom_game.get_effective_division_grid",
+            new=AsyncMock(return_value=self.grid),
+        )
+        self._grid_patch.start()
+        self.addCleanup(self._grid_patch.stop)
         self.service = CustomGameService(
             games=self.games,
             roster=self.roster,
@@ -207,6 +214,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
         kwargs = self.ranks.resolve_ranks.await_args.kwargs
         self.assertEqual(kwargs["host_user_id"], 9)
+        self.assertIs(kwargs["grid"], self.grid)
         self.assertEqual(kwargs["overrides"][(7, "tank")], 1500)
         self.assertEqual(kwargs["overrides"][(7, "dps")], 1500)
         self.assertEqual(kwargs["overrides"][(7, "support")], 1500)

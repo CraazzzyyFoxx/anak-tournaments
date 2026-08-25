@@ -6,11 +6,13 @@ import {
   averageRank,
   getLineupIssue,
   moveRole,
+  parseOutcome,
   parseVariants,
   playerLabel,
   resolveRoleOrder,
   sortLineup,
   summarizeLineup,
+  summarizeRoleSupply,
   toggleRole,
 } from "./pickup-lineup";
 
@@ -29,6 +31,58 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     ...overrides,
   };
 }
+
+describe("summarizeRoleSupply", () => {
+  it("counts a player once per role they both picked and are ranked for", () => {
+    expect(
+      summarizeRoleSupply([
+        row({ workspace_player_id: 1, roles: ["tank", "dps"] }),
+        row({ workspace_player_id: 2, roles: ["support"] }),
+      ]),
+    ).toEqual([
+      { role: "tank", supply: 1, need: 2, short: 1 },
+      { role: "dps", supply: 1, need: 4, short: 3 },
+      { role: "support", supply: 1, need: 4, short: 3 },
+    ]);
+  });
+
+  it("does not count a selected role the player has no rank for", () => {
+    // The balance refuses to seat it, so it is not supply however lit the chip is.
+    const supply = summarizeRoleSupply([row({ roles: ["tank"], ranks: { dps: 2600 } })]);
+    expect(supply.find((entry) => entry.role === "tank")).toEqual({
+      role: "tank",
+      supply: 0,
+      need: 2,
+      short: 2,
+    });
+  });
+
+  it("ignores benched players entirely", () => {
+    const supply = summarizeRoleSupply([row({ is_active: false, roles: ["tank"] })]);
+    expect(supply.every((entry) => entry.supply === 0)).toBe(true);
+  });
+
+  it("never reports a negative shortfall once a role is oversupplied", () => {
+    const rows = Array.from({ length: 5 }, (_unused, index) =>
+      row({ workspace_player_id: index + 1, roles: ["tank"] }),
+    );
+    expect(summarizeRoleSupply(rows)[0]).toEqual({ role: "tank", supply: 5, need: 2, short: 0 });
+  });
+});
+
+describe("parseOutcome", () => {
+  it("reads a recorded winner and a recorded draw apart from an open mix", () => {
+    expect(parseOutcome({ winner: 2 })).toEqual({ winner: 2 });
+    expect(parseOutcome({ winner: null })).toEqual({ winner: null });
+    expect(parseOutcome(null)).toBeNull();
+  });
+
+  it("treats an unrecognised payload as no result rather than throwing", () => {
+    expect(parseOutcome({})).toBeNull();
+    expect(parseOutcome({ winner: "team one" })).toBeNull();
+    expect(parseOutcome("draw")).toBeNull();
+  });
+});
 
 describe("resolveRoleOrder", () => {
   it("expands an unset role list to the ranked roles the balancer would use", () => {

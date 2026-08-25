@@ -41,8 +41,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { resolveDivisionFromRank } from "@/lib/division-grid";
+import { getDefaultDivisionGrid, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLE_LABELS, ROLES, type RoleCode } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import {
@@ -108,7 +107,7 @@ const WorkspacePlayerRow = memo(function WorkspacePlayerRow({
   onToggle,
   onSaveRanks,
 }: WorkspacePlayerRowProps) {
-  const grid = useDivisionGrid();
+  const grid = getDefaultDivisionGrid();
   const label = playerLabel(player);
   const { name, suffix } = splitBattleTag(label);
   const rankedRoles = ROLES.filter((role) => typeof player.ranks[role.code] === "number");

@@ -112,7 +112,6 @@ async def _fake_resolve(*_args: Any, **_kwargs: Any) -> dict:
 def _wp_patches():
     return (
         mock.patch("src.services.registration.workspace_player.attach_workspace_player", _fake_attach),
-        mock.patch("src.services.registration.workspace_player.write_follow_ranks", mock.AsyncMock(return_value={})),
         mock.patch("src.services.registration.workspace_player.resolved_value_map", _fake_resolve),
     )
 
@@ -145,7 +144,6 @@ class TestPublicCreatePersistsEveryHandle(IsolatedAsyncioTestCase):
             mock.patch.object(reg_service, "enqueue_registration_approved", _noop),
             patches[0],
             patches[1],
-            patches[2],
         ):
             return await reg_service.registration_service.create_registration(session, **payload)
 
@@ -255,7 +253,6 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
             ),
             patches[0],
             patches[1],
-            patches[2],
         ):
             registration = await reg_lifecycle.lifecycle_service.create_manual_registration(session, **payload)
         return registration, events
