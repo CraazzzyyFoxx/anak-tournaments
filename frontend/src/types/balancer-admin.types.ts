@@ -1,3 +1,4 @@
+import type { PlayerRoleOption, PlayerRoleSlotCode } from "@/lib/player-role";
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
 import type {
   BuiltInFieldConfig,
