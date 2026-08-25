@@ -2,7 +2,7 @@
 
 Канонический справочник идентичности OWT: кто такой «пользователь», чем `auth.user` отличается от `players.user`, что такое virtual player и auth-player, как человек попадает в workspace, и как аккаунт привязывается к игровому профилю.
 
-Состояние — текущий код после identity/workspace-рефактора (фазы A–C) и справочника `workspace_player`. Исторические ТЗ (`docs/tz_identity_workspace_refactor.md`, `docs/superpowers/specs/2026-07-01-identity-workspace-refactor-design.md`) описывают *почему*; этот документ описывает *как есть*.
+Состояние — текущий код после identity/workspace-рефактора и переработки рангов (`balancer.member_rank`). Исторические ТЗ (`docs/tz_identity_workspace_refactor.md`, `docs/superpowers/specs/2026-07-01-identity-workspace-refactor-design.md`) описывают *почему* identity; этот документ описывает *как есть*.
 
 **Смежные документы**
 
@@ -18,8 +18,8 @@
 | Новый разработчик | §1 → §2 → §3 → §8 |
 | Архитектор / ревьюер | §1 → §2 → §4 → §7 |
 | Трогает логин / OAuth / link | §5 → §6 → §10 |
-| Трогает регистрацию / ростер / достижения | §3.2 → §8.3 → §9 |
-| Трогает балансер / кастомки | §3.3 → §8.4 |
+| Трогает регистрацию / ростер / достижения | §3.3 → §8.3 → §9 |
+| Трогает балансер / кастомки / ранги | §3.4 → §3.5 → §8.3 |
 | Операции / саппорт | §10 → §11 → глоссарий |
 
 ---
@@ -32,8 +32,8 @@
 |---|---|---|
 | Логин | `auth.user` | Кто может войти и какие права у сессии? |
 | Игровая личность | `players.user` | Кто этот человек в турнирах, логах, статистике? |
-| Членство в арендаторе | `public.workspace_member` | Этот игрок существует *в этом* workspace? |
-| Справочник миксов | `balancer.workspace_player` | Кого организатор видит в пуле без заявки? |
+| Членство в арендаторе | `public.workspace_member` | Этот игрок существует *в этом* workspace? Справочник миксов — те же строки. |
+| Ранги | `balancer.member_rank` + `registration_role.rank_value` | Какой SR у члена в роли: книга автора, канон workspace, заявка, снимок OW. |
 
 Инвариант, ради которого всё это разведено:
 
@@ -52,7 +52,7 @@ auth.user  1 ────── 0..1  players.user
 
 `workspace_member` якорится на `player_id`, не на `auth_user_id`. Поэтому virtual-игрок может стоять в ростере, иметь регистрации и достижения — без логина. RBAC (`user_roles`) остаётся на `auth.user`: права появляются только после линка.
 
-`workspace_player` — не отдельная личность. Это строка справочника workspace, которая **всегда** указывает на `players.user` (virtual, если аккаунта ещё нет). `player_id IS NULL` бывает только после удаления того `players.user` (`ON DELETE SET NULL`).
+Справочник миксов — не отдельная таблица. Организатор добавляет BattleTag через `workspace_roster.ensure_member_for_battle_tag`: virtual `players.user` + `workspace_member`. RBAC не выдаётся (нет `auth_user_id`).
 
 ---
 
@@ -80,30 +80,29 @@ flowchart TB
     WM["workspace_member\nworkspace_id + player_id"]
   end
 
-  subgraph mix["Слой 3 — справочник миксов"]
-    WP["workspace_player\nbattle_tag + player_id"]
-    WPR["workspace_player_rank\nканон микса"]
-    HP["host_player / host_player_rank"]
-    WP --> WPR
-    WP --> HP
+  subgraph mix["Слой 3 — пул и ранги"]
+    MR["member_rank\ncanon: author IS NULL\nbook: author_user_id"]
+    CG["custom_game_player\nбез своего ранга"]
   end
 
   subgraph domain["Слой 4 — домен"]
-    REG["balancer.registration"]
+    REG["balancer.registration\nregistration_role.rank_value"]
     TP["tournament.player"]
     ACH["achievements.*"]
     DRAFT["balancer.draft_*"]
+    OW["overwatch_rank.rank_snapshot"]
   end
 
   AU -.->|"1:0..1 auth_user_id"| PU
   PU --> WM
+  WM --> MR
+  WM --> CG
   WM --> REG
   WM --> TP
   WM --> ACH
   WM --> DRAFT
-  WP --> PU
-  WP -.->|"после заявки / add_member"| WM
-  REG --> WP
+  PU --> OW
+  REG --> WM
 ```
 
 **Границы владения**
@@ -112,15 +111,15 @@ flowchart TB
 |---|---|
 | `identity-service` | `auth.user`, OAuth, RBAC, self-service / admin player-link, signup-провижининг `players.user` |
 | `app-service` | CRUD `players.user` и social accounts, CSV-импорт, user-merge, `workspace.add_member` |
-| `tournament-service` | `ensure_player_identity`, `get_or_create_workspace_member` на регистрации, `attach_workspace_player` |
+| `tournament-service` | `ensure_player_identity`, `get_or_create_workspace_member` на регистрации, резолв турнирных рангов |
 | `parser-service` | Создание / реюз `players.user` из матч-логов, якорение ростера через `workspace_member` |
-| `balancer-service` | `workspace_player`, ранги микса, host book, custom games |
+| `balancer-service` | Ростер workspace, `member_rank`, custom games |
 
 Один PostgreSQL, одна SQLAlchemy metadata. Схемы: `auth`, `players`, `public` (`workspace` / `workspace_member`), `balancer`.
 
 ---
 
-## 3. Ментальная модель: четыре вида «игрока»
+## 3. Ментальная модель
 
 Слова «virtual player» и «auth_player» в коде не являются именами классов. Это разговорные ярлыки поверх колонок. Ниже — канонический словарь.
 
@@ -180,6 +179,7 @@ JWT / `/validate` кладёт в инстанс кэш RBAC (`set_rbac_cache`):
 id
 workspace_id   FK workspace.id CASCADE
 player_id      FK players.user.id CASCADE
+display_name   NULL = взять players.user.name
 UNIQUE (workspace_id, player_id)
 UNIQUE (id, workspace_id)          — для составных FK из домена
 ```
@@ -191,6 +191,8 @@ UNIQUE (id, workspace_id)          — для составных FK из дом�
 | Таблица | NULL? | Смысл |
 |---|---|---|
 | `balancer.registration.workspace_member_id` | да | NULL = sheet/CSV без личности / коллизия main+smurf |
+| `balancer.member_rank.workspace_member_id` | нет | Канон workspace и личная книга хоста |
+| `balancer.custom_game_player.workspace_member_id` | нет | Состав микса; своего ранга нет |
 | `tournament.player.workspace_member_id` | нет | Ростерный слот всегда принадлежит члену |
 | `draft_team` / `draft_player` / `draft_pick` | — | Драфт |
 | `achievements.evaluation_result` / `override` | нет | Достижения скоуплены членом, не глобальным игроком |
@@ -201,39 +203,86 @@ UNIQUE (id, workspace_id)          — для составных FK из дом�
 
 Админский список членов (`list_by_workspace`) фильтрует `auth_user_id IS NOT NULL`. Virtual-`workspace_member` существует, но **не виден** как RBAC-member и не управляется через auth-keyed `get_member`.
 
-### 3.4. `workspace_player` — строка справочника, не личность
+### 3.4. Справочник миксов = те же `workspace_member`
 
-Модель: `backend/shared/models/workspace_player/workspace_player.py`. Таблица `balancer.workspace_player`.
+Отдельной таблицы `workspace_player` больше нет. Пул, который видит балансер, — `workspace_roster`: член + BattleTag + `display_name`.
 
-Это **не** второй вид человека. Личность — всегда `players.user`. Справочник миксов — `(workspace, battle_tag)` поверх неё: ранги канона, пул хоста, видимость без заявки.
+`ensure_member_for_battle_tag` (`backend/shared/services/workspace_roster.py:159`):
+
+1. Найти `players.user` по battlenet handle.
+2. Иначе создать virtual `players.user(name=tag)` и unverified battlenet social.
+3. `get_or_create_workspace_member`. RBAC `member` не выдаётся — у нового игрока нет `auth_user_id`.
+
+`display_name` на `workspace_member` — локальный ник workspace; иначе берётся `players.user.name`.
+
+### 3.5. Ранги
+
+Одна таблица `balancer.member_rank` заменила `workspace_player_rank`, `host_player_rank` и пин на `custom_game_player`. Субъект — `workspace_member`, не отдельная «строка каталога».
+
+Модель: `backend/shared/models/member_rank/member_rank.py`.
 
 ```
 workspace_id
-battle_tag / battle_tag_normalized
-display_name
-player_id              FK players.user; NULL только после удаления user
-workspace_member_id    NULL пока нет членства (заявка / add_member)
-hidden_at              soft-hide
+workspace_member_id     FK workspace_member CASCADE
+author_user_id          NULL = канон workspace; иначе личная книга auth.user
+role                    tank / dps / support
+rank_value              NOT NULL
 ```
 
-`WorkspacePlayerService.upsert` резолвит backbone так же, как CSV/заявка:
+Два частичных unique index (Postgres считает NULL в unique различными, обычный constraint допустил бы два канона):
 
-1. `find_player_id_by_handle(battlenet, tag)` — уже есть игрок (virtual или auth).
-2. Иначе `players.user` с тем же `name`, если строка уже существует.
-3. Иначе создать virtual `players.user(name=tag)` и повесить unverified battlenet social.
-4. Записать `workspace_player.player_id`. Если в этом workspace уже есть активная строка на того же player — merge, не вторая личность.
+- `uq_member_rank_canon` — `(workspace, member, role) WHERE author_user_id IS NULL`
+- `uq_member_rank_author` — `(workspace, author, member, role) WHERE author_user_id IS NOT NULL`
 
-| Состояние user | Каталог | Смысл |
+Колонки `scope` нет: дискриминатор — nullable `author_user_id`. Второй источник правды запрещён.
+
+Четвёртый слой **не** в этой таблице:
+
+| Слой (`RankScope`) | Где лежит | Кто видит |
 |---|---|---|
-| `auth_user_id IS NULL` | `player_id` стоит | Virtual в пуле миксов. Организатор добавил тег, человек не логинился. |
-| `auth_user_id` задан | `player_id` стоит | Тот же человек после signup / OAuth / player-link. |
-| user удалён | `player_id IS NULL` | Обломок `ON DELETE SET NULL`. Следующий upsert создаст/привяжет нового virtual. |
+| `author` | `member_rank.author_user_id = этот аккаунт` | Только миксы этого хоста |
+| `workspace` | `member_rank.author_user_id IS NULL` | Все в workspace |
+| `registration` | `registration_role.rank_value` | Этот турнир |
+| `ow` | `overwatch_rank.rank_snapshot` на `players.user` | Фолбэк, нормализуется в DivisionGrid |
 
-Почему это не `workspace_member`: member = «есть в арендаторе для ростера/заявки/RBAC». Справочник миксов живёт раньше и без роли. Virtual `players.user` для этого достаточно; member появится на заявке / `add_member`.
+Резолвер: `pick_rank(layers)` (`backend/shared/domain/member_rank.py`). Первый слой с **числом** побеждает. `None` / нет строки = провал на следующий слой. Поэтому «следовать канону» — **отсутствие** строки, не копия значения. `clear` на записи **удаляет** роль, не пишет 0.
 
-Ранги микса (`workspace_player_rank`) **не связаны** с турнирными `registration_role.rank_value`. Хост кастомки держит свой поднабор (`host_player`) и книгу (`host_player_rank`); канон не трогает.
+Порядок задаёт вызывающий — два контекста не согласны:
 
----
+| Контекст | Порядок | Почему |
+|---|---|---|
+| Микс (`MIX_ORDER`) | `author → workspace → ow` | Баланс на *чтении хоста*, не на официальном каноне |
+| Турнир (`TOURNAMENT_ORDER`) | `registration → workspace → ow` | Число, которое поставил организатор на заявке |
+
+
+```mermaid
+flowchart TD
+  START["resolve(member, role, ctx)"] --> S1{"контекст"}
+  S1 -->|микс| M1{"есть author book?"}
+  M1 -->|да| R1["author"]
+  M1 -->|нет| W1{"есть workspace canon?"}
+  W1 -->|да| R2["workspace"]
+  W1 -->|нет| O1{"есть OW snapshot?"}
+  O1 -->|да| R3["ow"]
+  O1 -->|нет| N1["none"]
+  S1 -->|турнир| T1{"есть registration_role.rank_value?"}
+  T1 -->|да| R4["registration"]
+  T1 -->|нет| W2{"есть workspace canon?"}
+  W2 -->|да| R5["workspace"]
+  W2 -->|нет| O2{"есть OW snapshot?"}
+  O2 -->|да| R6["ow"]
+  O2 -->|нет| N2["none"]
+```
+Пустой `registration_role.rank_value` **наследует** канон/OW. Раньше пустая клетка читалась как unranked и выкидывала игрока из пула балансера.
+
+`custom_game_player` ранга не хранит. Поправка хоста идёт в его слой `member_rank` и переживает игру.
+
+Запись: `MemberRankService.set_ranks(..., author_user_id=)`. `author_user_id=None` пишет канон; иначе — книгу этого аккаунта. RPC `players.set_ranks` берёт автора **только** из актёра: с провода переписать чужую книгу нельзя. Читать чужую книгу можно (`author_user_id` в query) — колонка «что думает хост».
+
+Турнирный вход: `resolve_registration_ranks` (`backend/tournament-service/src/services/registration/rank_resolution.py`). Без `workspace_member_id` или без `workspace_id` отвечает только слой заявки — угадывать арендатора хуже, чем не наследовать.
+
+OW подтягивается только там, где более дешёвые слои оставили дыру. Снимки схлопываются в лучший ранг на роль на `players.user`, затем (если передана сетка) нормализуются в DivisionGrid.
+
 
 ## 4. Design decisions
 
@@ -246,7 +295,8 @@ hidden_at              soft-hide
 | OAuth-reuse только по `provider_user_id` | Match по email | Email не доказательство владения → account takeover. |
 | Handle-match только на **unowned** virtual | Автолинк любого игрока по battletag/discord | Handle атакуемый. Чужой auth-linked игрок — конфликт для merge, не для молчаливого overwrite. |
 | Identity-collapse на регистрации ≠ full merge | Автоматический `user_merge` при коллизии тега | Статы/достижения virtual остаются на старом id. Полный перенос — сознательное действие админа. |
-| Каталог наследует virtual `players.user` | Строка каталога без `players.user` | Иначе микс и турнир — две личности на один battletag |
+| Пул = `workspace_member`, ранги в `member_rank` | `workspace_player` + host book + пин на игру | Один якорь с регистрацией; микс и турнир задают разный порядок слоёв |
+| Пустая `registration_role.rank_value` наследует | Пустая клетка = unranked | Иначе канон-ранговые игроки выпадали из пула балансера |
 | Unlink блокируется ролями `member+`, не `player` | Блокировать любое членство | Роль `player` = участник турнира, не операционный член. Иначе нельзя отвязать профиль, пока висит старая заявка. |
 
 ---
@@ -327,7 +377,7 @@ JWT несёт denies. Старый токен без `workspace_id` в запи
 - `favorite_player` — `(auth_user_id, player_id)`: аккаунт отмечает чужой игровой профиль
 - `encounter_saved_view`
 
-`overwatch_rank.rank_snapshot` остаётся на `players.user.id` (факт про battletag, не про членство).
+`overwatch_rank.rank_snapshot` остаётся на `players.user.id` (факт про battletag, не про членство). Это слой `ow` резолвера, не канон workspace.
 
 ---
 
@@ -406,7 +456,7 @@ RPC: пользователь уже залогинен, выбирает сущ
 
 - Не мержит статистику, достижения, прошлые регистрации. Это `UserMergeService` (`backend/app-service/src/services/admin/user_merge.py`).
 - Не создаёт `workspace_member`. Членство появляется из регистрации / `add_member` / импорта ростера.
-- Не пишет канон микса. Каталог трогает `WorkspacePlayerService.upsert` / `link`.
+- Не пишет `member_rank`. Канон и книга хоста — отдельный RPC `players.set_ranks`.
 
 ---
 
@@ -454,7 +504,7 @@ flowchart LR
    - `get_or_create_workspace_member`;
    - пишет `registration.workspace_member_id`.
 4. `assign_workspace_system_role(..., "player")` — идемпотентно.
-5. `attach_workspace_player` — upsert каталога по battle tag (virtual `players.user` + `player_id`), затем `link(..., workspace_member_id)`.
+5. Заявка якорится на `workspace_member`. Ранги заявки — `registration_role.rank_value` (пустое = inherit канона/OW).
 6. Commit. Коллизия «этот member уже имеет живую заявку в турнире» → unique index → 409.
 
 Без battle_tag `ensure_player_identity` может вернуть `None` (кроме случая «якорим owned player»). Тогда auto-enroll роли `player` пропускается.
@@ -506,19 +556,7 @@ flowchart LR
 
 ### 7.5. Регистрация и справочник миксов
 
-`attach_workspace_player` (`backend/tournament-service/src/services/registration/workspace_player.py`):
-
-```
-нет workspace_id или нет battle_tag → no-op
-upsert workspace_player по (workspace, tag)
-  → find-or-create virtual players.user + player_id
-registration.workspace_player_id = wp.id
-если есть player_id заявки:
-  WorkspacePlayerService.link(...)
-    если активная строка с этим player_id уже есть → merge в неё
-```
-
-Merge двух строк каталога: ранги по `latest updated_at` на роль; `host_player` — OR по хостам; donor удаляется; FK регистрации на survivor.
+Регистрация больше не создаёт отдельную строку каталога. Identity уже на `workspace_member`. Эффективный ранг клетки — `resolve_registration_ranks` под `TOURNAMENT_ORDER`.
 
 ---
 
@@ -535,7 +573,6 @@ sequenceDiagram
   participant TS as tournament-svc
   participant WM as workspace_member
   participant REG as registration
-  participant WP as workspace_player
 
   H->>ID: register(email, username, password)
   ID->>AU: INSERT
@@ -547,12 +584,12 @@ sequenceDiagram
   TS->>WM: get_or_create(ws, player)
   TS->>REG: workspace_member_id
   TS->>ID: role player
-  TS->>WP: upsert (virtual или тот же player) + link member
+  Note over REG: rank_value пустой → inherit workspace/OW
 ```
 
-Итог: один `auth.user`, один `players.user`, один `workspace_member`, роль `player`, linked `workspace_player`, заявка якорится на member.
+Итог: один `auth.user`, один `players.user`, один `workspace_member`, роль `player`, заявка якорится на member.
 
-### 8.2. Теневой игрок из логов потом логинится Battle.net
+### 8.2. Virtual-игрок из логов потом логинится Battle.net
 
 ```mermaid
 sequenceDiagram
@@ -575,28 +612,29 @@ sequenceDiagram
 
 Если virtual уже кто-то залинковал другим аккаунтом — новый OAuth **не** крадёт игрока: создаётся второй `auth.user` + голый `ensure_player`. Дальше админский merge.
 
-### 8.3. Организатор добавляет игрока в справочник, тот потом подаёт заявку
+### 8.3. Организатор добавляет игрока в пул, тот потом подаёт заявку
 
 ```mermaid
 sequenceDiagram
   actor Org as Организатор
-  participant WP as workspace_player
+  participant Roster as workspace_roster
   participant PU as players.user virtual
+  participant WM as workspace_member
+  participant MR as member_rank
   actor P as Игрок
   participant REG as registration
-  participant WM as workspace_member
 
-  Org->>WP: upsert Name#1234
-  WP->>PU: find-or-create virtual + battlenet social
-  WP->>WP: player_id = PU.id, ranks tank=3200
+  Org->>Roster: ensure Name#1234
+  Roster->>PU: find-or-create virtual + battlenet social
+  Roster->>WM: get_or_create
+  Org->>MR: set_ranks canon tank=3200 author=NULL
   P->>REG: заявка Name#1234
   REG->>PU: тот же handle / owned player
-  REG->>WM: get_or_create
-  REG->>WP: upsert тот же tag → link(member_id)
-  Note over WP: канон рангов жив; member появился
+  REG->>WM: тот же member
+  Note over REG: rank_value пустой → 3200 из workspace
 ```
 
-Если в справочнике уже есть другая строка на тот же `player_id` — merge (`WorkspacePlayerService.merge`).
+Две заявки / два тега на одного `player_id` в одном workspace сходятся в один `workspace_member` (`UNIQUE(workspace_id, player_id)`). Отдельного merge каталога нет.
 
 ### 8.4. Админ мержит двух `players.user`
 
@@ -646,9 +684,9 @@ Access token по-прежнему отдаёт `linked_players` как масс
 | Custom-domain OAuth link привязывает apex-сессию | Ticket несёт только provider identity; redeem на домене из его cookie. |
 | Бан на регистрацию | `user_permission_deny` + `can_capability`; deny побеждает грант. |
 | Unlink оставляет «призрачного» RBAC-member | 409, пока висят роли `member+`. Сначала leave. |
+| Переписать чужую книгу рангов | `players.set_ranks` берёт `author_user_id` только из актёра, не с провода |
 | Superuser обходит deny avatar/social/self_register | Нет: `is_denied` проверяется первым. |
 
-Секреты OAuth-токенов лежат в `auth.oauth_connections`, не в `social_account`.
 
 ---
 
@@ -661,7 +699,8 @@ Access token по-прежнему отдаёт `linked_players` как масс
 | `Cannot unlink … member of workspace(s): X` | Сначала снять `member`/`admin`/`owner` / выйти из X. Роль `player` не мешает. |
 | OAuth «account linked», на профиле пусто | Stale verified subject на другом player. Явный link теперь делает `release_foreign_subject`; старые логины без `claim_subject` могут проглотить конфликт (`SocialHandleConflict` → rollback, логин жив). |
 | Sheet-строка без `workspace_member_id` | Скорее всего main+smurf: два тега резолвятся в одного player, вторая живая заявка в том же турнире. Смотри warning в логе `ensure_player_identity`. |
-| Две строки каталога на один тег | Не должно: unique `(workspace, battle_tag_normalized)` среди активных. Если тег сменили на заявке — либо UPDATE, либо новая строка, либо merge (см. план 2026-08-24). |
+| Игрок с каноном выпал из пула турнира | Пустой `rank_value` должен наследовать. Смотри `resolve_registration_ranks` / `TOURNAMENT_ORDER`, не сырой `registration_role`. |
+| Хост видит не тот ранг, что канон | Микс читает `author` выше `workspace`. Книга пишется только своим `set_ranks(scope=author)`. |
 | 500 `workspace_member N has no linked auth user` | Админ дергает RBAC-операцию на virtual-member. Сначала link player↔auth, потом роли. |
 | Signup 409 «OAuth email already belongs…» | `auth.user.email` unique, синтетический `id@provider.oauth` или реальный email занят. Войти в существующий аккаунт и link провайдера. |
 | Два `players.user` с одним визуальным тегом | Разный `username_normalized` или один тег как smurf. Дедуп ищет нормализованный battlenet handle, не `user.name`. |
@@ -680,10 +719,10 @@ SELECT COUNT(*) FROM workspace_member WHERE player_id IS NULL;  -- 0
 -- Ростер без якоря
 SELECT COUNT(*) FROM tournament.player WHERE workspace_member_id IS NULL;  -- 0
 
--- Живой каталог без backbone (обломки SET NULL / легаси)
-SELECT id, workspace_id, battle_tag
-FROM balancer.workspace_player
-WHERE hidden_at IS NULL AND player_id IS NULL;
+-- Два канона на одного члена+роль
+SELECT workspace_member_id, role, COUNT(*) FROM balancer.member_rank
+WHERE author_user_id IS NULL
+GROUP BY workspace_member_id, role HAVING COUNT(*) > 1;          -- 0 rows
 ```
 
 ---
@@ -694,7 +733,8 @@ WHERE hidden_at IS NULL AND player_id IS NULL;
 2. **Фаза A.** Колонка `players.user.auth_user_id`, signup-провижининг, workspace-scoped deny. Не-primary линки стали virtual.
 3. **Фаза B.** `workspace_member` переехал на `player_id`, колонка `role` умерла, появилась системная роль `player` и capability `self_register`.
 4. **Фаза C / dbarch02+.** `balancer.registration` и `tournament.player` (и достижения/драфт) якорятся на `workspace_member_id`.
-5. **Workspace players (2026-08-24).** Справочник миксов отделён от заявки. Строка каталога наследует `players.user` (virtual, если нет аккаунта). Канон рангов ≠ турнирная клетка.
+5. **Workspace roster.** Пул миксов = `workspace_member` + `workspace_roster`. Таблица `workspace_player` снята.
+6. **Ранги (`member_rank`).** Одна таблица вместо `workspace_player_rank` / `host_player_rank` / пина на игру. Резолвер с порядком слоёв: микс `author → workspace → ow`, турнир `registration → workspace → ow`. Пустая клетка заявки наследует.
 
 Старые имена в коде, которые нельзя принимать за модель:
 
@@ -706,6 +746,8 @@ WHERE hidden_at IS NULL AND player_id IS NULL;
 | `AuthUserPlayer` / `user_player` | Удалены |
 | `registration.auth_user_id` / `registration.workspace_id` | Удалены |
 | `tournament.player.user_id` | Удалён, читать `workspace_member.player_id` |
+| `workspace_player` / `workspace_player_rank` / `host_player_rank` | Сняты; пул = member, ранги = `member_rank` |
+| `pick_rank(override, host, canon, ow)` | Снято; `pick_rank([(scope, value), …])` |
 
 ---
 
@@ -717,8 +759,9 @@ WHERE hidden_at IS NULL AND player_id IS NULL;
 | **Player / `players.user`** | Глобальная игровая личность. Может не иметь аккаунта. |
 | **Auth-player** | `players.user` с заполненным `auth_user_id`. |
 | **Virtual player** | `players.user` без `auth_user_id`. Логи, CSV, импорт, добавление в справочник миксов. |
-| **Workspace player** | Строка `workspace_player`: `(workspace, battle_tag)` поверх `players.user`. Не отдельная личность. |
-| **Workspace member** | Строка `(workspace_id, player_id)`. Факт присутствия игрока в арендаторе, не роль. |
+| **Workspace member** | Строка `(workspace_id, player_id)`. Пул миксов и якорь рангов/заявок/ростера. |
+| **Канон / workspace rank** | `member_rank` с `author_user_id IS NULL`. Виден всем. |
+| **Книга автора / author rank** | `member_rank` с конкретным `author_user_id`. Только миксы этого хоста. |
 | **Роль `player`** | Системная RBAC-роль «участник турниров». Пустые permissions. Не делает человека видимым операционным членом. |
 | **Роль `member`** | Базовый операционный член. Autofill при INSERT auth-linked member и при player-link на уже существующие якоря. |
 | **Social account** | Handle на `players.user`. Verified = доказан OAuth-субъектом. |
@@ -741,14 +784,15 @@ WHERE hidden_at IS NULL AND player_id IS NULL;
 | OAuth connection | `backend/shared/models/identity/oauth.py` |
 | `workspace_member` | `backend/shared/models/tenancy/workspace.py` |
 | `get_or_create_workspace_member` | `backend/shared/repository/workspace.py:425` |
-| Mix catalog | `backend/shared/models/workspace_player/workspace_player.py` |
-| Mix service | `backend/shared/services/workspace_player.py` |
+| Ростер workspace | `backend/shared/services/workspace_roster.py` |
+| Ранги (модель) | `backend/shared/models/member_rank/member_rank.py` |
+| Ранги (резолвер) | `backend/shared/domain/member_rank.py`, `backend/shared/services/member_rank.py` |
+| Турнирные ранги | `backend/tournament-service/src/services/registration/rank_resolution.py` |
 | Player link | `backend/identity-service/src/services/players.py` |
 | Signup + `ensure_player` | `backend/identity-service/src/services/auth_users.py` |
 | OAuth match / link | `backend/identity-service/src/services/oauth_accounts.py` |
 | OAuth HTTP/state/tickets | `backend/identity-service/src/services/oauth.py` |
 | Регистрация + identity | `backend/tournament-service/src/services/registration/service.py` |
-| Заявка → workspace_player | `backend/tournament-service/src/services/registration/workspace_player.py` |
 | `add_member` | `backend/app-service/src/services/workspace/service.py` |
 | User merge | `backend/app-service/src/services/admin/user_merge.py` |
 | RBAC catalog / autofill / unlink guard | `backend/shared/rbac/catalog.py`, `backend/shared/rbac/bootstrap.py` |
@@ -756,7 +800,7 @@ WHERE hidden_at IS NULL AND player_id IS NULL;
 | Тесты OAuth-match | `backend/identity-service/tests/test_oauth_account_matching.py` |
 | Тесты реконсиляции заявки | `backend/tournament-service/tests/test_ensure_player_identity_reconciliation.py` |
 | Тесты якоря member | `backend/shared/tests/test_workspace_member_player_anchor.py` |
-| Тесты модели mix | `backend/shared/tests/test_workspace_player_model.py` |
+| Тесты резолва рангов | `backend/balancer-service/tests/test_member_rank_resolve.py`, `backend/tournament-service/tests/test_registration_rank_resolution.py` |
 
 ---
 
@@ -766,5 +810,5 @@ WHERE hidden_at IS NULL AND player_id IS NULL;
 2. **Member на player, RBAC на auth.** Любой код, который пишет `workspace_member.auth_user_id` или читает `member.role`, смотрит в удалённую схему.
 3. **Не матчить логин по email и не автолинковать owned player по handle.** Оба пути — takeover.
 4. **Не подменять identity-collapse полным merge** на горячем пути заявки. Молчальный перенос статов необратим и ломает чужие турнирные страницы.
-5. **Не якорить регистрацию на `players.user.id` напрямую.** Единственная identity-колонка заявки — `workspace_member_id` (+ `workspace_player_id` для микса).
-6. **Каталог не личность.** `workspace_player` без `players.user` — баг/обломок. Virtual player = `players.user` без аккаунта, не строка каталога.
+5. **Не якорить регистрацию на `players.user.id` напрямую.** Единственная identity-колонка заявки — `workspace_member_id`.
+6. **Ранг без строки = inherit.** Не писать 0 «чтобы очистить». `clear` удаляет слой. Не хардкодить `override > host > canon > ow`.
