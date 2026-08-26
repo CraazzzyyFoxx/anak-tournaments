@@ -139,17 +139,14 @@ export default function BalancerPickupMixPage() {
   return (
     <>
       <div className="flex flex-1 flex-col gap-5">
-        <PickupMixHeader
-          canEdit={canEdit}
-          game={game}
-          gameLoading={gameQuery.isLoading}
-          onOpenPool={() => setIsPoolOpen(true)}
-        />
-
         {/* Fixed-width lineup, fluid matchup: the lineup's content is a known
             set of columns (switch, name, three role glyphs, rank) that stops
             improving past ~570px, while the matchup absorbs the width it is
-            given up to its own cap. */}
+            given up to its own cap. The mix header sits only above the teams
+            block now, not over the whole space -- the lineup needs no
+            identity row of its own, it already lives under it (Pregame
+            Room's pick-ban grid takes the same header, merged above the grid
+            it belongs to rather than spanning the timeline beside it too). */}
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
           <div className="xl:w-[568px] xl:shrink-0">
             <PickupLobbyPanel
@@ -168,7 +165,13 @@ export default function BalancerPickupMixPage() {
             />
           </div>
 
-          <div className="min-w-0 flex-1">
+          <div className="mx-auto flex w-full min-w-0 max-w-[1180px] flex-1 flex-col gap-5">
+            <PickupMixHeader
+              canEdit={canEdit}
+              game={game}
+              gameLoading={gameQuery.isLoading}
+              onOpenPool={() => setIsPoolOpen(true)}
+            />
             <PickupTeamsPanel
               canWrite={canWrite}
               gamesLoading={gamesQuery.isLoading}

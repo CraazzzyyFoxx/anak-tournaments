@@ -95,13 +95,13 @@ export function PickupTeamsPanel({
   const { ref: captureRef, capturing, capture } = useNodeCapture();
 
   return (
-    // Capped and centred rather than fluid. The matchup stops gaining anything
-    // past ~1180px — a seat row is a glyph, a crest, a name and a number — and on
-    // a 1440p-and-wider screen the uncapped column stretched two five-man rosters
-    // across an arm's length of desk, so reading "who is on my team" became a
-    // head turn. The lineup beside it keeps its fixed track; this side gives the
-    // leftover width back as margin.
-    <div className="mx-auto flex w-full min-w-0 max-w-[1180px] flex-col gap-3.5">
+    // Width-capped by the caller now, alongside the mix header that sits
+    // above this block: the matchup stops gaining anything past ~1180px -- a
+    // seat row is a glyph, a crest, a name and a number -- and on a
+    // 1440p-and-wider screen an uncapped column stretched two five-man
+    // rosters across an arm's length of desk, so reading "who is on my team"
+    // became a head turn.
+    <div className="flex w-full min-w-0 flex-col gap-3.5">
       <div className="flex flex-col gap-3.5">
         {gamesError ? (
           <PageStateCard
