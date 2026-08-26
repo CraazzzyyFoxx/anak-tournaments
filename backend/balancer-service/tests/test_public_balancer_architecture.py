@@ -626,3 +626,71 @@ class MooDeterminismTests(TestCase):
             observed_player_orders[0],
             [f"player-{index}" for index in range(1, 7)],
         )
+
+    def test_balance_teams_moo_benches_players_left_over_after_full_teams(self) -> None:
+        """A player count that isn't an exact multiple of the team size no
+        longer blocks the run: the leftover players are benched automatically
+        instead of the solver raising a "must be divisible" error."""
+        input_data = {
+            "players": {
+                f"player-{index}": {
+                    "identity": {
+                        "name": f"Player {index}",
+                        "isFullFlex": False,
+                    },
+                    "stats": {
+                        "classes": {
+                            "tank": {
+                                "isActive": True,
+                                "rank": 2500,
+                                "priority": 0,
+                            }
+                        }
+                    },
+                }
+                for index in range(1, 6)  # 5 players, team size 2 -> 1 sits out
+            }
+        }
+        role_mask = {"tank": 2}
+        config_overrides = {
+            "algorithm": "moo",
+            "population_size": 10,
+            "generation_count": 10,
+            "mutation_strength": 1,
+            "max_result_variants": 1,
+            "use_captains": False,
+        }
+
+        def fake_run_moo_optimizer(request_payload: str) -> str:
+            payload = json.loads(request_payload)
+            players = sorted(payload["players"], key=lambda entry: entry["uuid"])
+            team_size = sum(payload["mask"].values())
+            # The native backend must only ever see a player count that
+            # divides evenly into full teams -- the leftover was trimmed
+            # before this request was built.
+            self.assertEqual(len(players) % team_size, 0)
+            teams = [
+                {
+                    "id": team_index + 1,
+                    "roster": {
+                        "tank": [
+                            player["uuid"]
+                            for player in players[team_index * team_size : (team_index + 1) * team_size]
+                        ]
+                    },
+                }
+                for team_index in range(len(players) // team_size)
+            ]
+            return json.dumps({"variants": [{"teams": teams}]})
+
+        native_module = SimpleNamespace(run_moo_optimizer=fake_run_moo_optimizer)
+
+        with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
+            with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
+                result = balance_teams_moo(input_data, config_overrides, None, role_mask)[0]
+
+        self.assertEqual(len(result["teams"]), 2)
+        self.assertEqual(sum(len(team["roster"].get("tank", [])) for team in result["teams"]), 4)
+        benched = result["benched_players"]
+        self.assertEqual(len(benched), 1)
+        self.assertEqual(benched[0]["uuid"], "player-5")

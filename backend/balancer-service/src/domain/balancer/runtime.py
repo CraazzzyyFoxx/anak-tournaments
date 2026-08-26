@@ -42,7 +42,7 @@ def _prepare_balance_context(
     config_overrides: dict[str, typing.Any] | None,
     progress_callback: ProgressCallback | None,
     role_mask: dict[str, int] | None = None,
-) -> tuple[AlgorithmConfig, list, int, bool, dict[str, str], int]:
+) -> tuple[AlgorithmConfig, list, int, bool, dict[str, str], int, list]:
     """Prepare config, players and role assignment for balancer flows.
 
     ``role_mask`` is the tournament's resolved roster shape. It is not a config
@@ -112,20 +112,25 @@ def _prepare_balance_context(
     if players_per_team <= 0:
         raise ValueError("Role mask defines zero players per team")
 
-    if len(valid_players) % players_per_team != 0:
-        raise ValueError(
-            f"Player count must be divisible by team size. "
-            f"Got {len(valid_players)} players, team size is {players_per_team} "
-            f"(mask {mask}). Remove {len(valid_players) % players_per_team} "
-            f"players or add {players_per_team - len(valid_players) % players_per_team} "
-            f"to form complete teams."
-        )
-
     num_teams = len(valid_players) // players_per_team
     if num_teams == 0:
         raise ValueError(
             f"Not enough players to form even one team. "
             f"Need at least {players_per_team} players, got {len(valid_players)}."
+        )
+
+    # A player count that isn't an exact multiple of the team size no longer
+    # blocks the run: the leftover players just sit out, exactly like a host
+    # manually benching someone. Trimmed off the tail of the loaded
+    # (uuid-sorted) list, deterministically, so the same roster always
+    # benches the same names.
+    usable_count = num_teams * players_per_team
+    valid_players, overflow_benched = valid_players[:usable_count], valid_players[usable_count:]
+    if overflow_benched:
+        valid_players, role_capable_counts = _filter_valid_players_and_role_counts(valid_players, needed_roles)
+        logger.info(
+            f"{len(overflow_benched)} player(s) sit out: {len(valid_players)} "
+            f"players do not divide evenly into teams of {players_per_team}."
         )
 
     base_seed = build_balancer_seed(valid_players, num_teams, config)
@@ -185,6 +190,7 @@ def _prepare_balance_context(
             base_seed,
             "moo_optimizer",
         ),
+        overflow_benched,
     )
 
 
@@ -195,11 +201,13 @@ def balance_teams_moo(
     role_mask: dict[str, int] | None = None,
 ) -> list[dict[str, typing.Any]]:
     """Return a Pareto front of balance solutions for the same payload format."""
-    config, valid_players, num_teams, has_applied_overrides, role_assignment, optimizer_seed = _prepare_balance_context(
-        input_data,
-        config_overrides,
-        progress_callback,
-        role_mask,
+    config, valid_players, num_teams, has_applied_overrides, role_assignment, optimizer_seed, overflow_benched = (
+        _prepare_balance_context(
+            input_data,
+            config_overrides,
+            progress_callback,
+            role_mask,
+        )
     )
     mask = config.role_mask
 
@@ -249,7 +257,7 @@ def balance_teams_moo(
     payloads = [
         _build_response_payload(
             result,
-            valid_players,
+            valid_players + overflow_benched,
             mask,
             config,
             has_applied_overrides,

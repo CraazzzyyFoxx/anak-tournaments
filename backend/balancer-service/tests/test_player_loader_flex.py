@@ -349,7 +349,7 @@ def test_balance_run_takes_the_mask_from_the_resolved_roster_shape() -> None:
 
     # Captains stay on: role assignment and captain pinning must also survive a
     # roster with no role slots, since that is what the whole run depends on.
-    config, valid_players, num_teams, _, role_assignment, _ = _prepare_balance_context(
+    config, valid_players, num_teams, _, role_assignment, _, _ = _prepare_balance_context(
         payload,
         # A stale saved config must not win over the tournament's shape.
         {"role_mask": ROLE_MASK},

@@ -48,10 +48,12 @@ def _run_single(payload: dict[str, Any], config_overrides: dict[str, Any] | None
     total_started_at = perf_counter()
 
     prepare_started_at = perf_counter()
-    config, valid_players, num_teams, has_applied_overrides, role_assignment, optimizer_seed = _prepare_balance_context(
-        payload,
-        config_overrides,
-        None,
+    config, valid_players, num_teams, has_applied_overrides, role_assignment, optimizer_seed, overflow_benched = (
+        _prepare_balance_context(
+            payload,
+            config_overrides,
+            None,
+        )
     )
     prepare_ms = (perf_counter() - prepare_started_at) * 1000.0
 
@@ -70,7 +72,7 @@ def _run_single(payload: dict[str, Any], config_overrides: dict[str, Any] | None
     payloads = [
         _build_response_payload(
             result,
-            valid_players,
+            valid_players + overflow_benched,
             config.role_mask,
             config,
             has_applied_overrides,
