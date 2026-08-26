@@ -238,6 +238,7 @@ export function PickupPlayerSheet({
                       id={role}
                       role={role}
                       label={label}
+                      priority={index + 1}
                       isPrimary={index === 0}
                       disabled={disabled}
                       onToggle={() => toggle(role)}
@@ -407,6 +408,7 @@ function SortableRoleCard({
   id,
   role,
   label,
+  priority,
   isPrimary,
   disabled,
   onToggle,
@@ -419,6 +421,8 @@ function SortableRoleCard({
   id: string;
   role: RoleCode;
   label: string;
+  /** The row's position in the drag list, 1-based — what the balancer reads as priority. */
+  priority: number;
   isPrimary: boolean;
   disabled: boolean;
   onToggle: () => void;
@@ -440,12 +444,14 @@ function SortableRoleCard({
         ROLE_RANK_ACCENTS[role]?.row,
       )}
     >
-      <SortableGrip
-        handleProps={handleProps}
-        label={`Reorder ${ROLE_LABELS[role]} for ${label}`}
-        disabled={disabled}
-        className="mt-0.5"
-      />
+      <div className="flex flex-col items-center gap-1">
+        <SortableGrip
+          handleProps={handleProps}
+          label={`Reorder ${ROLE_LABELS[role]} for ${label}`}
+          disabled={disabled}
+        />
+        <span className="text-[11px] font-semibold text-[color:var(--aqt-fg-dim)]">{`#${priority}`}</span>
+      </div>
       <RoleCardBody
         role={role}
         label={label}
