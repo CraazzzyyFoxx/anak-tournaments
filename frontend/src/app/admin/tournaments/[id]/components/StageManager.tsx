@@ -19,6 +19,7 @@ import {
   Trash2,
   Undo2,
   Wand2,
+  Workflow,
   X,
   Zap
 } from "lucide-react";
@@ -719,6 +720,16 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
     }
   });
 
+  const autoWireMutation = useMutation({
+    mutationFn: (stageId: number) => adminService.autoWireStage(stageId),
+    onSuccess: () => {
+      invalidateStageData();
+      notify.success("Auto-wired playoff seeds from the group stage");
+    },
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not auto-wire this stage from groups" })
+  });
+
   const seedTeamsMutation = useMutation({
     mutationFn: ({
       stageId,
@@ -1138,6 +1149,27 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
                           deactivateMutation.variables === selectedStage.id
                             ? "Reverting…"
                             : "Revert to draft"}
+                        </Button>
+                      ) : null}
+
+                      {BRACKET_STAGE_TYPES.includes(selectedStage.stage_type) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={autoWireMutation.isPending}
+                          onClick={() => autoWireMutation.mutate(selectedStage.id)}
+                          title="Wires this stage's slots from the preceding group stage's &quot;Teams advancing to playoff&quot; count, without activating or generating anything — use to debug or refresh the wiring."
+                        >
+                          {autoWireMutation.isPending &&
+                          autoWireMutation.variables === selectedStage.id ? (
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
+                          ) : (
+                            <Workflow className="size-4" aria-hidden />
+                          )}
+                          {autoWireMutation.isPending &&
+                          autoWireMutation.variables === selectedStage.id
+                            ? "Wiring…"
+                            : "Auto-wire from groups"}
                         </Button>
                       ) : null}
 

@@ -1385,20 +1385,39 @@ class AdminStageService:
         )
         return result.scalars().first()
 
-    async def _auto_wire_from_groups(self, session: AsyncSession, stage: models.Stage) -> None:
+    async def _auto_wire_from_groups(
+        self, session: AsyncSession, stage: models.Stage, *, strict: bool = False
+    ) -> bool:
         """Derive playoff seeding from the preceding group stage's ``advance_count``
         and this stage's ``split_lower_bracket`` flag, then wire TENTATIVE inputs
         (cross seeding). Replaces the manual Automation block.
 
         No-op when the stage is not a bracket, has no preceding group stage, or the
         source group stage has no ``advance_count`` configured — keeping manually
-        wired playoffs working unchanged.
+        wired playoffs working unchanged. Set ``strict=True`` (the standalone
+        "Auto-wire" action) to raise a descriptive 400 for those cases instead of
+        silently skipping, so an admin can see WHY nothing got wired.
+
+        Returns whether wiring happened.
         """
         if stage.stage_type not in BRACKET_STAGE_TYPES:
-            return
+            if strict:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Only single/double elimination stages can be auto-wired from groups",
+                )
+            return False
         source = await self._preceding_group_stage(session, stage)
         if source is None or not source.advance_count or source.advance_count <= 0:
-            return
+            if strict:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "No earlier round-robin/Swiss stage with \"Teams advancing to "
+                        "playoff\" configured to auto-wire from"
+                    ),
+                )
+            return False
 
         top, top_lb = _advance_split(stage, source.advance_count)
 
@@ -1417,6 +1436,25 @@ class AdminStageService:
             notify=False,
             commit=False,
         )
+        return True
+
+    async def auto_wire_stage(
+        self, session: AsyncSession, stage_id: int, *, notify: bool = True, commit: bool = True
+    ) -> models.Stage:
+        """Standalone trigger for the same group->bracket auto-wiring that
+        "Activate & generate" runs automatically. Lets an admin preview/debug the
+        wiring, or refresh it after changing the source stage's "Teams advancing
+        to playoff" count, without activating or generating anything.
+        """
+        stage = await self.get_stage(session, stage_id)
+        await self._auto_wire_from_groups(session, stage, strict=True)
+        if notify:
+            await self._publish_tournament_changed(session, stage.tournament_id, "structure_changed")
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
+        return await self.get_stage(session, stage_id)
 
     async def activate_and_generate(
         self,

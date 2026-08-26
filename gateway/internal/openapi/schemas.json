@@ -5465,6 +5465,10 @@
       "description": "Deletes a stage by id (204 no body); requires stage-delete permission on its workspace.",
       "summary": "Delete stage"
     },
+    "rpc.tournament.admin.delete#stage_item": {
+      "description": "Deletes a stage item (group/bracket lane) by id, along with its own encounters and standings (204 no body); requires stage-delete permission on its workspace.",
+      "summary": "Delete stage item"
+    },
     "rpc.tournament.admin.delete#standing": {
       "description": "Deletes a standing by id (204 no body); requires standing-delete permission on its workspace.",
       "summary": "Delete standing"
@@ -8126,6 +8130,14 @@
     "rpc.tournament.stage_apply_best_of": {
       "description": "Rewrites best_of on the stage's existing encounters from its settings_json best-of config (in place, preserving scores); requires stage-update permission on its workspace.",
       "summary": "Apply best-of to existing matches"
+    },
+    "rpc.tournament.stage_auto_wire": {
+      "description": "Wires the stage's TENTATIVE inputs from the preceding round-robin/Swiss stage's \"Teams advancing to playoff\" count \u2014 the same auto-wire Activate & generate runs automatically, exposed standalone for preview/debugging; requires stage-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.StageRead"
+      },
+      "summary": "Auto-wire stage from groups"
     },
     "rpc.tournament.stage_deactivate": {
       "description": "Reverts an accidentally-activated stage back to Draft/preview; refuses (409) once any of its matches has been reported or started; requires stage-update permission on its workspace.",
@@ -26053,6 +26065,16 @@
           },
           "title": "Parsers",
           "type": "array"
+        },
+        "subrole_catalog": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/components/schemas/tournament.SubroleOption"
+            },
+            "type": "array"
+          },
+          "title": "Subrole Catalog",
+          "type": "object"
         },
         "targets": {
           "items": {

@@ -1537,6 +1537,13 @@ class AdminService {
     return response.json();
   }
 
+  async autoWireStage(stageId: number): Promise<Stage> {
+    const response = await apiFetch(`/api/v1/admin/stages/${stageId}/auto-wire`, {
+      method: "POST"
+    });
+    return response.json();
+  }
+
   async wireFromGroups(
     stageId: number,
     data: {

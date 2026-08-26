@@ -141,6 +141,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.stage_deactivate": Op(response=schemas.StageRead),
     "rpc.tournament.stage_generate": Op(response=schemas.TournamentComputationJobRead),
     "rpc.tournament.stage_activate_and_generate": Op(response=schemas.TournamentComputationJobRead),
+    "rpc.tournament.stage_auto_wire": Op(response=schemas.StageRead),
     "rpc.tournament.stage_wire": Op(request=schemas.WireFromGroupsRequest, response=schemas.StageRead),
     "rpc.tournament.stage_seed": Op(request=schemas.SeedTeamsRequest, response=schemas.StageRead),
     # ── integrations: division grids ───────────────────────────────────────

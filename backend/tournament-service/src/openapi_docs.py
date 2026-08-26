@@ -446,6 +446,10 @@ DOCS: dict[str, dict] = {
         "summary": "Activate and generate stage",
         "description": "Enqueues a combined activate-and-generate bracket job (202 Accepted), honoring an optional force flag; requires stage-update permission on its workspace.",
     },
+    "rpc.tournament.stage_auto_wire": {
+        "summary": "Auto-wire stage from groups",
+        "description": "Wires the stage's TENTATIVE inputs from the preceding round-robin/Swiss stage's \"Teams advancing to playoff\" count — the same auto-wire Activate & generate runs automatically, exposed standalone for preview/debugging; requires stage-update permission on its workspace.",
+    },
     "rpc.tournament.stage_wire": {
         "summary": "Wire stage from groups",
         "description": "Wires a target stage's slots from a source group stage's top placements; requires stage-update permission on its workspace.",

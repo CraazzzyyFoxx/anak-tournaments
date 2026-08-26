@@ -9,9 +9,9 @@ returned (admin routes do NOT use ``response_model_exclude_none`` -> plain
 job-returning routes return their payloads as the route did).
 
 Scope: ONLY the stage workflow endpoints (progress, merge-group-stages, activate,
-generate, activate-and-generate, wire-from-groups, seed-teams). Stage / stage_item
-/ stage_item_input CRUD creates & updates go through the generic CRUD engine and
-are handled separately.
+generate, activate-and-generate, auto-wire, wire-from-groups, seed-teams). Stage /
+stage_item / stage_item_input CRUD creates & updates go through the generic CRUD
+engine and are handled separately.
 
 The gateway passes path params as ``data["<name>"]`` (and the primary id as
 ``data["id"]`` when the RouteSpec sets IDParam), query params as
@@ -197,6 +197,22 @@ def register(broker: Any, logger: Any) -> None:
             )
             await session.commit()
             return _dump(schemas.TournamentComputationJobRead.model_validate(job, from_attributes=True))
+
+        return await _run(logger, op)
+
+    # ── auto-wire (standalone trigger for the Activate & generate auto-wire) ──
+
+    @broker.subscriber("rpc.tournament.stage_auto_wire")
+    async def _stage_auto_wire(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            stage_id = _path_int(data, "stage_id")
+            # Route: require_stage_permission("stage", "update").
+            ws_id = await auth.get_stage_workspace_id(session, stage_id)
+            ensure_workspace_permission(user, ws_id, "stage", "update")
+            # auto_wire_stage commits internally; returns a Stage.
+            stage = await stage_service.auto_wire_stage(session, stage_id)
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)
 
