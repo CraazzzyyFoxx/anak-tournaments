@@ -17,7 +17,11 @@
 //  7. the verdict pills sit inside the captured block with the team card, so
 //     "Copy image" exports them together, while "Show lobby"/"Copy image"/
 //     "Copy battletags" stay outside it -- exporting its own toolbar would be
-//     a screenshot of a screenshot button.
+//     a screenshot of a screenshot button;
+//  8. every seat is a drag source and drop target, gated on both write access
+//     and the page actually offering a swap handler -- a read-only viewer or
+//     a page with nothing to call must not present drag affordance for a
+//     write that cannot happen.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,6 +43,28 @@ globalThis.ResizeObserver ??= class {
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
+// Drag itself is not what this pins, and dnd-kit resolves its own React copy
+// under pnpm (see PickupPlayerSheet.behavior.test.tsx), so it renders inertly
+// here: children mount as plain DOM, no real drag/drop wiring.
+const dndSpies = vi.hoisted(() => ({
+  useDraggable: vi.fn(() => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: () => {},
+    transform: null,
+    isDragging: false,
+  })),
+  useDroppable: vi.fn(() => ({ setNodeRef: () => {}, isOver: false })),
+}));
+vi.mock("@dnd-kit/core", () => ({
+  DndContext: ({ children }: { children: React.ReactNode }) => children,
+  DragOverlay: () => null,
+  PointerSensor: class {},
+  useSensor: () => null,
+  useSensors: () => [],
+  useDraggable: dndSpies.useDraggable,
+  useDroppable: dndSpies.useDroppable,
+}));
 
 const onBalance = vi.fn();
 const onVariantIndexChange = vi.fn();
@@ -46,6 +72,7 @@ const onRecordOutcome = vi.fn();
 const onShowBoard = vi.fn();
 const onCopyBattleTags = vi.fn();
 const onRenameTeam = vi.fn();
+const onSwapSeats = vi.fn();
 
 function variant(offset: number) {
   return {
@@ -94,7 +121,13 @@ function tick() {
 
 async function mount(
   current: CustomGame | undefined,
-  props: { canWrite?: boolean; activeCount?: number; variantIndex?: number; hasMix?: boolean } = {},
+  props: {
+    canWrite?: boolean;
+    activeCount?: number;
+    variantIndex?: number;
+    hasMix?: boolean;
+    omitSwapSeats?: boolean;
+  } = {},
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -116,6 +149,7 @@ async function mount(
         recordingOutcome={false}
         onRecordOutcome={onRecordOutcome}
         onRenameTeam={onRenameTeam}
+        onSwapSeats={props.omitSwapSeats ? undefined : onSwapSeats}
         onShowBoard={onShowBoard}
         onCopyBattleTags={onCopyBattleTags}
       />,
@@ -168,6 +202,9 @@ beforeEach(() => {
   onShowBoard.mockReset();
   onCopyBattleTags.mockReset();
   onRenameTeam.mockReset();
+  onSwapSeats.mockReset();
+  dndSpies.useDraggable.mockClear();
+  dndSpies.useDroppable.mockClear();
 });
 
 describe("PickupTeamsPanel", () => {
@@ -329,5 +366,36 @@ describe("PickupTeamsPanel", () => {
     // the same override so the scoreline reads the same name as the column.
     expect(byName(scope, "Wolves win")).not.toBeNull();
     expect(byName(scope, "Team 2 win")).not.toBeNull();
+  });
+
+  it("wires every seat as a drag source and drop target for a host who can rebalance manually", async () => {
+    await mount(game());
+
+    // Every seat across both teams (3 in the fixture) is both draggable and
+    // droppable, and none of them are disabled for a host with a swap handler.
+    expect(dndSpies.useDraggable).toHaveBeenCalledTimes(3);
+    expect(dndSpies.useDroppable).toHaveBeenCalledTimes(3);
+    for (const call of dndSpies.useDraggable.mock.calls) {
+      expect(call[0]).toMatchObject({ disabled: false });
+    }
+    for (const call of dndSpies.useDroppable.mock.calls) {
+      expect(call[0]).toMatchObject({ disabled: false });
+    }
+  });
+
+  it("disables seat dragging for a read-only viewer", async () => {
+    await mount(game(), { canWrite: false });
+
+    for (const call of dndSpies.useDraggable.mock.calls) {
+      expect(call[0]).toMatchObject({ disabled: true });
+    }
+  });
+
+  it("disables seat dragging when the page offers no swap handler", async () => {
+    await mount(game(), { omitSwapSeats: true });
+
+    for (const call of dndSpies.useDraggable.mock.calls) {
+      expect(call[0]).toMatchObject({ disabled: true });
+    }
   });
 });

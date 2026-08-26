@@ -69,6 +69,7 @@ export default function BalancerPickupMixPage() {
     recordOutcome,
     setAuthorRanks,
     setTeamNames,
+    swapSeats,
   } = usePickupMix(workspaceId ?? 0, pickedGameId);
 
   const game = gameQuery.data;
@@ -188,6 +189,9 @@ export default function BalancerPickupMixPage() {
               recordingOutcome={recordOutcome.isPending}
               onRecordOutcome={(outcome) => recordOutcome.mutate(outcome)}
               onRenameTeam={(teamIndex, name) => setTeamNames.mutateAsync({ teamIndex, name })}
+              onSwapSeats={(idx, firstUuid, secondUuid) =>
+                swapSeats.mutateAsync({ variantIndex: idx, firstUuid, secondUuid })
+              }
               onShowBoard={() => setIsBoardOpen(true)}
               onCopyBattleTags={copyBattleTags}
             />

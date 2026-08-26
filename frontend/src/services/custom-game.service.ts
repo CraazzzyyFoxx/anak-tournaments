@@ -138,4 +138,23 @@ export const customGameService = {
       body: { team_names: teamNames },
     }).then((r) => r.json());
   },
+
+  /**
+   * Swap two seated players between teams, same role only -- a same-role swap
+   * can never break a team's role quota, so it needs no eligibility check
+   * beyond "both exist and share a role". `variantIndex` edits whichever
+   * balance option is on screen, not always the first.
+   */
+  swapSeats(
+    workspaceId: number,
+    gameId: number,
+    variantIndex: number,
+    firstUuid: string,
+    secondUuid: string,
+  ): Promise<CustomGame> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/teams/swap`, {
+      method: "POST",
+      body: { variant_index: variantIndex, first_uuid: firstUuid, second_uuid: secondUuid },
+    }).then((r) => r.json());
+  },
 };

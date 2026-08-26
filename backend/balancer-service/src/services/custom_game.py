@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -138,6 +139,81 @@ def _apply_team_index(roster: Sequence[models.CustomGamePlayer], result: Any) ->
                 row = by_uuid.get(str(uuid)) if uuid is not None else None
                 if row is not None:
                     row.team_index = index
+
+
+def _locate_seat(teams: Sequence[Mapping[str, Any]], uuid: str) -> tuple[int, str, int] | None:
+    """Team index, role bucket and position of a seat by its player uuid."""
+    for team_index, team in enumerate(teams):
+        roster = team.get("roster") if isinstance(team, Mapping) else None
+        if not isinstance(roster, Mapping):
+            continue
+        for role, entries in roster.items():
+            if not isinstance(entries, list):
+                continue
+            for position, entry in enumerate(entries):
+                if isinstance(entry, Mapping) and str(entry.get("uuid")) == uuid:
+                    return team_index, role, position
+    return None
+
+
+def _recompute_variant_stats(variant: dict[str, Any]) -> None:
+    """Re-derive the read-only verdict from a manually edited roster.
+
+    Mirrors the solver's own arithmetic for the three metrics that are pure
+    functions of the roster (``calculate_team_stats`` / ``calculate_objective_breakdown``
+    in ``moo_core``): a team's average is the mean of its seats' ratings, the
+    spread is the gap between the strongest and weakest team's *total* rating,
+    and the standard deviation is the sample stdev of the teams' averages.
+
+    ``composite_score`` is deliberately NOT one of these: it is a knee-score
+    normalised against the whole Pareto archive the solver searched for that
+    run, meaningless for a single hand-edited arrangement with no archive to
+    normalise against -- so it is cleared rather than faked.
+    """
+    teams = variant.get("teams")
+    if not isinstance(teams, list):
+        return
+    team_totals: list[float] = []
+    team_means: list[float] = []
+    off_role_count = 0
+    for team in teams:
+        if not isinstance(team, dict):
+            continue
+        roster = team.get("roster")
+        ratings: list[float] = []
+        if isinstance(roster, Mapping):
+            for role, entries in roster.items():
+                if not isinstance(entries, list):
+                    continue
+                for entry in entries:
+                    if not isinstance(entry, Mapping):
+                        continue
+                    rating = entry.get("assigned_rating")
+                    if isinstance(rating, int | float):
+                        ratings.append(float(rating))
+                    preferences = entry.get("role_preferences") or []
+                    is_flex = entry.get("is_flex") is True
+                    if not is_flex and preferences and preferences[0] != role:
+                        off_role_count += 1
+        total = sum(ratings)
+        team["average_mmr"] = (total / len(ratings)) if ratings else None
+        team_totals.append(total)
+        if ratings:
+            team_means.append(total / len(ratings))
+
+    statistics = dict(variant.get("statistics") or {})
+    statistics["composite_score"] = None
+    if len(team_means) >= 2:
+        mean = sum(team_means) / len(team_means)
+        variance = sum((value - mean) ** 2 for value in team_means) / (len(team_means) - 1)
+        statistics["mmr_std_dev"] = variance**0.5
+    else:
+        statistics["mmr_std_dev"] = 0.0
+    statistics["max_total_rating_gap"] = (
+        (max(team_totals) - min(team_totals)) if len(team_totals) >= 2 else 0.0
+    )
+    statistics["off_role_count"] = off_role_count
+    variant["statistics"] = statistics
 
 
 class CustomGameService:
@@ -475,6 +551,67 @@ class CustomGameService:
         else:
             config.pop("team_names", None)
         game.config_json = config or None
+        await session.flush()
+        return game
+
+    async def swap_seats(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        variant_index: int,
+        first_uuid: str,
+        second_uuid: str,
+        actor_user_id: int,
+    ) -> models.CustomGame:
+        """Swap two seated players between teams, same role only.
+
+        A same-role swap can never break a team's role quota (1 tank / 2 dps /
+        2 support stays exactly that on both sides), so it needs no eligibility
+        check beyond "both seats exist and share a role" -- unlike a free move,
+        which would need to know every role a player is *ranked* for, not just
+        the one this balance happened to seat them in.
+
+        Edits whichever balance option is on screen (``variant_index``), not
+        only the first: a host who paged to option 2 and likes it otherwise is
+        adjusting that one, not silently rewriting option 1.
+        """
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
+        result = copy.deepcopy(game.result_json) if isinstance(game.result_json, dict) else None
+        variants = result.get("variants") if isinstance(result, dict) else None
+        if not isinstance(variants, list) or not (0 <= variant_index < len(variants)):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance option not found")
+        variant = variants[variant_index]
+        teams = variant.get("teams") if isinstance(variant, dict) else None
+        if not isinstance(teams, list):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance option not found")
+
+        first = _locate_seat(teams, first_uuid)
+        second = _locate_seat(teams, second_uuid)
+        if first is None or second is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player not seated in this option")
+        first_team, first_role, first_pos = first
+        second_team, second_role, second_pos = second
+        if first_role != second_role:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Can only swap two seats in the same role",
+            )
+        if first_team == second_team:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Both seats are already on the same team",
+            )
+
+        first_bucket = teams[first_team]["roster"][first_role]
+        second_bucket = teams[second_team]["roster"][second_role]
+        first_bucket[first_pos], second_bucket[second_pos] = second_bucket[second_pos], first_bucket[first_pos]
+        _recompute_variant_stats(variant)
+
+        game.result_json = result
         await session.flush()
         return game
 

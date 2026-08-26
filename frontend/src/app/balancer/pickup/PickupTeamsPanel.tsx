@@ -1,5 +1,18 @@
 "use client";
 
+import { useState } from "react";
+
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import {
   ChevronLeft,
   ChevronRight,
@@ -31,7 +44,14 @@ import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { CustomGame, CustomGameOutcome } from "@/services/custom-game.service";
 
-import { parseOutcome, parseTeamNames, parseVariants, type PickupTeam, type PickupVariant } from "./pickup-lineup";
+import {
+  parseOutcome,
+  parseTeamNames,
+  parseVariants,
+  type PickupSeat,
+  type PickupTeam,
+  type PickupVariant,
+} from "./pickup-lineup";
 
 type PickupTeamsPanelProps = {
   canWrite: boolean;
@@ -51,6 +71,8 @@ type PickupTeamsPanelProps = {
   onRecordOutcome: (outcome: CustomGameOutcome) => void;
   /** Omitted -- team headers render read-only, matching a `canWrite=false` viewer. */
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
+  /** Omitted -- seats render without drag handles, matching a `canWrite=false` viewer. */
+  onSwapSeats?: (variantIndex: number, firstUuid: string, secondUuid: string) => void | Promise<unknown>;
   onShowBoard: () => void;
   onCopyBattleTags: () => void;
 };
@@ -81,6 +103,7 @@ export function PickupTeamsPanel({
   recordingOutcome,
   onRecordOutcome,
   onRenameTeam,
+  onSwapSeats,
   onShowBoard,
   onCopyBattleTags,
 }: Readonly<PickupTeamsPanelProps>) {
@@ -138,7 +161,14 @@ export function PickupTeamsPanel({
           />
         ) : (
           <div ref={captureRef} data-testid="teams-capture">
-            <VariantView variant={variant} canWrite={canWrite} onRenameTeam={onRenameTeam} />
+            <VariantView
+              variant={variant}
+              canWrite={canWrite}
+              onRenameTeam={onRenameTeam}
+              onSwapSeats={
+                onSwapSeats && ((firstUuid, secondUuid) => onSwapSeats(index, firstUuid, secondUuid))
+              }
+            />
           </div>
         )}
       </div>
@@ -314,12 +344,34 @@ function VariantView({
   variant,
   canWrite,
   onRenameTeam,
+  onSwapSeats,
 }: Readonly<{
   variant: PickupVariant;
   canWrite: boolean;
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
+  /** Omitted -- seats render without drag handles, matching a `canWrite=false` viewer. */
+  onSwapSeats?: (firstUuid: string, secondUuid: string) => void | Promise<unknown>;
 }>) {
   const twoTeams = variant.teams.length === 2;
+  const canDrag = canWrite && onSwapSeats != null;
+  const [activeDrag, setActiveDrag] = useState<ActiveSeatDrag | null>(null);
+  // 6px before a drag starts: without it, a plain click on a seat (there is
+  // nothing to click yet, but there will be) reads as a zero-distance drag
+  // and dnd-kit swallows the event.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const data = event.active.data.current as ActiveSeatDrag | undefined;
+    if (data) setActiveDrag(data);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDrag(null);
+    const firstUuid = String(event.active.id);
+    const secondUuid = event.over ? String(event.over.id) : null;
+    if (!secondUuid || secondUuid === firstUuid || !onSwapSeats) return;
+    void onSwapSeats(firstUuid, secondUuid);
+  };
 
   return (
     <div className="space-y-3">
@@ -332,20 +384,31 @@ function VariantView({
         <div className="flex flex-wrap items-center justify-center gap-1.5 border-b border-[color:var(--aqt-border)] px-4 py-2.5">
           <VariantMetrics variant={variant} />
         </div>
-        <div
-          className={cn("flex items-stretch", twoTeams ? "flex-col lg:flex-row" : "flex-col")}
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setActiveDrag(null)}
         >
-          {variant.teams.map((team, teamIndex) => (
-            <TeamColumnAndDivider
-              key={team.id}
-              team={team}
-              teamIndex={teamIndex}
-              showDivider={twoTeams && teamIndex === 0}
-              canWrite={canWrite}
-              onRenameTeam={onRenameTeam}
-            />
-          ))}
-        </div>
+          <div className={cn("flex items-stretch", twoTeams ? "flex-col lg:flex-row" : "flex-col")}>
+            {variant.teams.map((team, teamIndex) => (
+              <TeamColumnAndDivider
+                key={team.id}
+                team={team}
+                teamIndex={teamIndex}
+                showDivider={twoTeams && teamIndex === 0}
+                canWrite={canWrite}
+                onRenameTeam={onRenameTeam}
+                canDrag={canDrag}
+                activeDrag={activeDrag}
+              />
+            ))}
+          </div>
+          {/* Follows the pointer instead of the seat teleporting under it --
+              without this dnd-kit still swaps correctly, it just looks broken
+              mid-drag (the dragged row snaps back until drop). */}
+          <DragOverlay>{activeDrag ? <SeatDragPreview seat={activeDrag.seat} /> : null}</DragOverlay>
+        </DndContext>
       </div>
 
       {variant.benched.length === 0 ? null : (
@@ -363,16 +426,27 @@ function TeamColumnAndDivider({
   showDivider,
   canWrite,
   onRenameTeam,
+  canDrag,
+  activeDrag,
 }: Readonly<{
   team: PickupTeam;
   teamIndex: number;
   showDivider: boolean;
   canWrite: boolean;
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
+  canDrag: boolean;
+  activeDrag: ActiveSeatDrag | null;
 }>) {
   return (
     <>
-      <TeamColumn team={team} teamIndex={teamIndex} canWrite={canWrite} onRenameTeam={onRenameTeam} />
+      <TeamColumn
+        team={team}
+        teamIndex={teamIndex}
+        canWrite={canWrite}
+        onRenameTeam={onRenameTeam}
+        canDrag={canDrag}
+        activeDrag={activeDrag}
+      />
       {showDivider ? (
         <div
           aria-hidden="true"
@@ -392,16 +466,16 @@ function TeamColumn({
   teamIndex,
   canWrite,
   onRenameTeam,
+  canDrag,
+  activeDrag,
 }: Readonly<{
   team: PickupTeam;
   teamIndex: number;
   canWrite: boolean;
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
+  canDrag: boolean;
+  activeDrag: ActiveSeatDrag | null;
 }>) {
-  // The global OW grid, not the workspace's: balancer-service resolves a mix's
-  // ranks against the grid with `workspace_id=None`, so `seat.rating` is on the
-  // OW scale. Labelling it with a workspace's tiers renames the same number.
-  const grid = OW_REFERENCE_GRID;
   const accent = teamAccent(teamIndex);
 
   return (
@@ -428,50 +502,118 @@ function TeamColumn({
         </span>
       </header>
       <ul className="mt-2.5 space-y-1">
-        {team.seats.map((seat) => {
-          const division = resolveDivisionFromRank(grid, seat.rating);
-          const icon = ROLES.find((item) => item.code === seat.role)?.icon ?? "Support";
-          return (
-            <li
-              key={`${seat.uuid}:${seat.role}`}
-              className="flex items-center gap-3 rounded-lg border border-[color:var(--aqt-border)] bg-white/[0.015] px-3.5 py-3 transition-colors hover:bg-white/[0.045]"
-            >
-              <span
-                className="flex size-6 shrink-0 items-center justify-center opacity-90"
-                title={`${ROLE_LABELS[seat.role]}${seat.subRole ? ` \u00B7 ${seat.subRole}` : ""}`}
-              >
-                <PlayerRoleIcon role={icon} size={24} label={ROLE_LABELS[seat.role]} />
-              </span>
-              {division == null ? null : (
-                <DivisionIcon
-                  division={division}
-                  tournamentGrid={grid}
-                  width={32}
-                  height={32}
-                  className="shrink-0"
-                />
-              )}
-              <span
-                className="min-w-0 flex-1 truncate text-[17px] font-semibold text-[color:var(--aqt-fg)]"
-                title={seat.name}
-              >
-                {seat.name}
-              </span>
-              {seat.offRole ? (
-                <span
-                  title="Assigned off their first-preference role"
-                  className="shrink-0 rounded border border-[color:color-mix(in_srgb,var(--aqt-amber)_30%,transparent)] px-1.5 py-px font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-amber)]"
-                >
-                  Off-role
-                </span>
-              ) : null}
-              <span className="shrink-0 font-mono text-lg font-bold tabular-nums text-[color:var(--aqt-fg)]">
-                {seat.rating == null ? "\u2014" : Math.round(seat.rating)}
-              </span>
-            </li>
-          );
-        })}
+        {team.seats.map((seat) => (
+          <SeatRow
+            key={`${seat.uuid}:${seat.role}`}
+            seat={seat}
+            teamIndex={teamIndex}
+            canDrag={canDrag}
+            activeDrag={activeDrag}
+          />
+        ))}
       </ul>
     </section>
+  );
+}
+
+type ActiveSeatDrag = { uuid: string; role: string; teamIndex: number; seat: PickupSeat };
+
+/**
+ * One seat, wired as both drag source and drop target under the same id
+ * (dnd-kit tracks the two registries independently, so this is safe): drag it
+ * onto another team's seat of the same role to swap them. Cross-role or
+ * same-team drops are still accepted here and left to the server's 422 --
+ * this only dims a target that obviously cannot work, it does not duplicate
+ * that validation.
+ */
+function SeatRow({
+  seat,
+  teamIndex,
+  canDrag,
+  activeDrag,
+}: Readonly<{
+  seat: PickupSeat;
+  teamIndex: number;
+  canDrag: boolean;
+  activeDrag: ActiveSeatDrag | null;
+}>) {
+  const dragData: ActiveSeatDrag = { uuid: seat.uuid, role: seat.role, teamIndex, seat };
+  const draggable = useDraggable({ id: seat.uuid, data: dragData, disabled: !canDrag });
+  const droppable = useDroppable({ id: seat.uuid, data: dragData, disabled: !canDrag });
+  const grid = OW_REFERENCE_GRID;
+  const division = resolveDivisionFromRank(grid, seat.rating);
+  const icon = ROLES.find((item) => item.code === seat.role)?.icon ?? "Support";
+  const isValidTarget =
+    activeDrag != null &&
+    activeDrag.uuid !== seat.uuid &&
+    activeDrag.role === seat.role &&
+    activeDrag.teamIndex !== teamIndex;
+  const isDropReady = droppable.isOver && isValidTarget;
+
+  return (
+    <li
+      ref={(node) => {
+        draggable.setNodeRef(node);
+        droppable.setNodeRef(node);
+      }}
+      {...draggable.attributes}
+      {...draggable.listeners}
+      className={cn(
+        "flex items-center gap-3 rounded-lg border px-3.5 py-3 transition-colors",
+        canDrag && "touch-none active:cursor-grabbing",
+        draggable.isDragging
+          ? "opacity-40"
+          : isDropReady
+            ? "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)]"
+            : "border-[color:var(--aqt-border)] bg-white/[0.015] hover:bg-white/[0.045]",
+      )}
+    >
+      <span
+        className="flex size-6 shrink-0 items-center justify-center opacity-90"
+        title={`${ROLE_LABELS[seat.role]}${seat.subRole ? ` \u00B7 ${seat.subRole}` : ""}`}
+      >
+        <PlayerRoleIcon role={icon} size={24} label={ROLE_LABELS[seat.role]} />
+      </span>
+      {division == null ? null : (
+        <DivisionIcon division={division} tournamentGrid={grid} width={32} height={32} className="shrink-0" />
+      )}
+      <span className="min-w-0 flex-1 truncate text-[17px] font-semibold text-[color:var(--aqt-fg)]" title={seat.name}>
+        {seat.name}
+      </span>
+      {seat.offRole ? (
+        <span
+          title="Assigned off their first-preference role"
+          className="shrink-0 rounded border border-[color:color-mix(in_srgb,var(--aqt-amber)_30%,transparent)] px-1.5 py-px font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-amber)]"
+        >
+          Off-role
+        </span>
+      ) : null}
+      <span className="shrink-0 font-mono text-lg font-bold tabular-nums text-[color:var(--aqt-fg)]">
+        {seat.rating == null ? "\u2014" : Math.round(seat.rating)}
+      </span>
+    </li>
+  );
+}
+
+/** The dragged seat's own row, detached from the list, following the pointer. */
+function SeatDragPreview({ seat }: Readonly<{ seat: PickupSeat }>) {
+  const icon = ROLES.find((item) => item.code === seat.role)?.icon ?? "Support";
+  return (
+    <div
+      className={cn(
+        PANEL_CLASS,
+        "flex cursor-grabbing items-center gap-3 rounded-lg border-[color:var(--aqt-teal)] px-3.5 py-3 shadow-lg",
+      )}
+    >
+      <span className="flex size-6 shrink-0 items-center justify-center opacity-90">
+        <PlayerRoleIcon role={icon} size={24} label={ROLE_LABELS[seat.role]} decorative />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[17px] font-semibold text-[color:var(--aqt-fg)]">
+        {seat.name}
+      </span>
+      <span className="shrink-0 font-mono text-lg font-bold tabular-nums text-[color:var(--aqt-fg)]">
+        {seat.rating == null ? "\u2014" : Math.round(seat.rating)}
+      </span>
+    </div>
   );
 }

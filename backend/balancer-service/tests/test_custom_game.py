@@ -605,3 +605,195 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         config_overrides = self.run_balance.await_args.args[1]
         self.assertEqual(config_overrides, {"MMR_DIFF_WEIGHT": 5})
+
+    def _seat(
+        self, uuid: str, name: str, rating: float, role: str, **overrides: object
+    ) -> dict[str, object]:
+        seat = {
+            "uuid": uuid,
+            "name": name,
+            "assigned_rating": rating,
+            "role_preferences": [role],
+            "is_flex": False,
+            "is_captain": False,
+            "sub_role": None,
+        }
+        seat.update(overrides)
+        return seat
+
+    def _two_team_result(self) -> dict[str, object]:
+        return {
+            "variants": [
+                {
+                    "teams": [
+                        {
+                            "id": 1,
+                            "average_mmr": 3050,
+                            "roster": {
+                                "tank": [self._seat("p1", "Alpha", 3200, "tank")],
+                                "dps": [self._seat("p2", "Bravo", 2900, "dps")],
+                            },
+                        },
+                        {
+                            "id": 2,
+                            "average_mmr": 2800,
+                            "roster": {
+                                "tank": [self._seat("p3", "Charlie", 2600, "tank")],
+                                "dps": [self._seat("p4", "Delta", 3000, "dps")],
+                            },
+                        },
+                    ],
+                    "statistics": {
+                        "composite_score": 0.87,
+                        "mmr_std_dev": 10.0,
+                        "max_total_rating_gap": 50,
+                        "off_role_count": 0,
+                    },
+                    "benched_players": [],
+                }
+            ]
+        }
+
+    async def test_swap_seats_swaps_players_and_recomputes_stats(self) -> None:
+        self.games.get.return_value = _game(result_json=self._two_team_result())
+
+        game = await self.service.swap_seats(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            variant_index=0,
+            first_uuid="p1",
+            second_uuid="p3",
+            actor_user_id=9,
+        )
+
+        teams = game.result_json["variants"][0]["teams"]
+        self.assertEqual(teams[0]["roster"]["tank"][0]["uuid"], "p3")
+        self.assertEqual(teams[1]["roster"]["tank"][0]["uuid"], "p1")
+        # Team 1 is now Charlie(2600)+Bravo(2900) = 5500/2 = 2750; team 2 is
+        # now Alpha(3200)+Delta(3000) = 6200/2 = 3100.
+        self.assertEqual(teams[0]["average_mmr"], 2750.0)
+        self.assertEqual(teams[1]["average_mmr"], 3100.0)
+        statistics = game.result_json["variants"][0]["statistics"]
+        self.assertEqual(statistics["max_total_rating_gap"], 700.0)
+        self.assertAlmostEqual(statistics["mmr_std_dev"], 247.487, places=2)
+        self.assertEqual(statistics["off_role_count"], 0)
+        # The knee-score is population-relative to the solver's Pareto archive
+        # for that run -- meaningless for a single hand-edited arrangement, so
+        # a manual swap clears it rather than leaving a now-fabricated number.
+        self.assertIsNone(statistics["composite_score"])
+
+    async def test_swap_seats_counts_off_role_after_the_move(self) -> None:
+        result = self._two_team_result()
+        # Bravo actually prefers tank but was seated at dps -- already off-role
+        # before the swap, and moving them must not silently "fix" that count.
+        result["variants"][0]["teams"][0]["roster"]["dps"][0]["role_preferences"] = ["tank", "dps"]
+        self.games.get.return_value = _game(result_json=result)
+
+        game = await self.service.swap_seats(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            variant_index=0,
+            first_uuid="p2",
+            second_uuid="p4",
+            actor_user_id=9,
+        )
+
+        statistics = game.result_json["variants"][0]["statistics"]
+        self.assertEqual(statistics["off_role_count"], 1)
+
+    async def test_swap_seats_rejects_different_roles(self) -> None:
+        self.games.get.return_value = _game(result_json=self._two_team_result())
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.swap_seats(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                variant_index=0,
+                first_uuid="p1",
+                second_uuid="p4",
+                actor_user_id=9,
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    async def test_swap_seats_rejects_the_same_team(self) -> None:
+        result = self._two_team_result()
+        result["variants"][0]["teams"][0]["roster"]["tank"].append(self._seat("p5", "Echo", 3100, "tank"))
+        self.games.get.return_value = _game(result_json=result)
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.swap_seats(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                variant_index=0,
+                first_uuid="p1",
+                second_uuid="p5",
+                actor_user_id=9,
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    async def test_swap_seats_rejects_an_unknown_player(self) -> None:
+        self.games.get.return_value = _game(result_json=self._two_team_result())
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.swap_seats(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                variant_index=0,
+                first_uuid="p1",
+                second_uuid="ghost",
+                actor_user_id=9,
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_swap_seats_rejects_an_out_of_range_variant(self) -> None:
+        self.games.get.return_value = _game(result_json=self._two_team_result())
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.swap_seats(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                variant_index=3,
+                first_uuid="p1",
+                second_uuid="p3",
+                actor_user_id=9,
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_swap_seats_terminal_409(self) -> None:
+        for status in ("completed", "cancelled"):
+            with self.subTest(status=status):
+                self.games.get.return_value = _row(
+                    id=11,
+                    workspace_id=1,
+                    host_user_id=9,
+                    name="Scrim",
+                    status=status,
+                    result_json=self._two_team_result(),
+                )
+                with self.assertRaises(HTTPException) as ctx:
+                    await self.service.swap_seats(
+                        self.session,
+                        workspace_id=1,
+                        custom_game_id=11,
+                        variant_index=0,
+                        first_uuid="p1",
+                        second_uuid="p3",
+                        actor_user_id=9,
+                    )
+                self.assertEqual(ctx.exception.status_code, 409)
+
+    async def test_swap_seats_requires_the_host(self) -> None:
+        self.games.get.return_value = _game(result_json=self._two_team_result())
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.swap_seats(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                variant_index=0,
+                first_uuid="p1",
+                second_uuid="p3",
+                actor_user_id=99,
+            )
+        self.assertEqual(ctx.exception.status_code, 403)

@@ -35,6 +35,12 @@ export type PickupTeamNameInput = {
   name: string;
 };
 
+export type PickupSwapSeatsInput = {
+  variantIndex: number;
+  firstUuid: string;
+  secondUuid: string;
+};
+
 /**
  * Every read and write for one workspace's mixes, in one place.
  *
@@ -123,6 +129,19 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     onError: (error) => notify.apiError(error),
   });
 
+  const swapSeats = useMutation({
+    mutationFn: (input: PickupSwapSeatsInput) =>
+      customGameService.swapSeats(
+        workspaceId,
+        selectedGameId as number,
+        input.variantIndex,
+        input.firstUuid,
+        input.secondUuid,
+      ),
+    onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
   const balance = useMutation({
     mutationFn: () => customGameService.balance(workspaceId, selectedGameId as number),
     onSuccess: (game) => {
@@ -176,5 +195,6 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     recordOutcome,
     setAuthorRanks,
     setTeamNames,
+    swapSeats,
   };
 }

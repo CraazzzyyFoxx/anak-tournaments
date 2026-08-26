@@ -93,6 +93,20 @@ def _team_names(data: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
+def _swap_seats_body(data: dict[str, Any]) -> tuple[int, str, str]:
+    body = c.payload(data)
+    variant_index = body.get("variant_index", data.get("variant_index"))
+    first_uuid = body.get("first_uuid", data.get("first_uuid"))
+    second_uuid = body.get("second_uuid", data.get("second_uuid"))
+    if not isinstance(variant_index, int) or isinstance(variant_index, bool):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="variant_index is required")
+    if not isinstance(first_uuid, str) or not first_uuid or not isinstance(second_uuid, str) or not second_uuid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="first_uuid and second_uuid are required"
+        )
+    return variant_index, first_uuid, second_uuid
+
+
 def _player_patch(data: dict[str, Any]) -> dict[str, Any]:
     """Only the keys the caller actually sent, so absent fields stay untouched."""
     body = c.payload(data)
@@ -343,6 +357,28 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.set_team_names", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.swap_seats")
+    async def _swap_seats(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "update")
+            variant_index, first_uuid, second_uuid = _swap_seats_body(data)
+            game = await custom_game_service.swap_seats(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                variant_index=variant_index,
+                first_uuid=first_uuid,
+                second_uuid=second_uuid,
+                actor_user_id=user.id,
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="teams", actor_user_id=user.id)
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.swap_seats", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.record_outcome")
     async def _record_outcome(data: dict, msg: RabbitMessage) -> dict:
