@@ -173,111 +173,115 @@ export function PickupTeamsPanel({
         )}
       </div>
 
-      {/* Controls live under the result, not above it -- generating a balance
-          reads as an action on what's on screen, not a header over it. */}
-      <div className="flex flex-wrap items-center gap-2.5">
-        {canWrite ? (
-          <Button
-            type="button"
-            className="h-[38px]"
-            disabled={balancing || activeCount === 0}
-            onClick={onBalance}
-          >
-            {balancing ? (
-              <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
-            ) : (
-              <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
-            )}
-            Balance teams
-          </Button>
-        ) : null}
-
-        {variants.length > 1 ? (
-          <div className="flex h-[38px] items-center gap-0.5 rounded-lg border border-[color:var(--aqt-border)] bg-white/[0.015] px-1">
+      {/* One card, not a bare row over a bordered box below it -- balancing,
+          paging, sharing and recording a result are all controls on the same
+          matchup, and the divider between the two rows says so instead of
+          leaving the top row looking unowned. */}
+      <div className={cn(PANEL_CLASS, "flex flex-col gap-3 px-4 py-3")}>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {canWrite ? (
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              disabled={index === 0}
-              onClick={() => onVariantIndexChange(index - 1)}
+              className="h-[38px]"
+              disabled={balancing || activeCount === 0}
+              onClick={onBalance}
             >
-              <ChevronLeft className="size-4" aria-hidden="true" />
-              <span className="sr-only">Previous balance option</span>
-            </Button>
-            <span
-              role="status"
-              aria-live="polite"
-              className="min-w-14 px-1 text-center font-mono text-[12.5px] font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]"
-            >
-              {`${index + 1} / ${variants.length}`}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              disabled={index >= variants.length - 1}
-              onClick={() => onVariantIndexChange(index + 1)}
-            >
-              <ChevronRight className="size-4" aria-hidden="true" />
-              <span className="sr-only">Next balance option</span>
-            </Button>
-          </div>
-        ) : null}
-
-        {activeCount === 0 && canWrite ? (
-          <p className="text-xs text-[color:var(--aqt-fg-dim)]">
-            Check at least one player in the lobby.
-          </p>
-        ) : null}
-
-        {variant ? (
-          <div className="ml-auto flex items-center gap-2">
-            <Button type="button" variant="outline" className="h-9" onClick={onShowBoard}>
-              <Maximize2 className="mr-1.5 size-3.5" aria-hidden="true" />
-              Show lobby
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-9"
-              disabled={capturing}
-              onClick={() => void capture()}
-            >
-              {capturing ? (
+              {balancing ? (
                 <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
               ) : (
-                <Copy className="mr-1.5 size-3.5" aria-hidden="true" />
+                <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
               )}
-              Copy image
+              Balance teams
             </Button>
-            <Button type="button" variant="ghost" className="h-9" onClick={onCopyBattleTags}>
-              <ClipboardCopy className="mr-1.5 size-3.5" aria-hidden="true" />
-              Copy battletags
-            </Button>
+          ) : null}
+
+          {variants.length > 1 ? (
+            <div className="flex h-[38px] items-center gap-0.5 rounded-lg border border-[color:var(--aqt-border)] bg-white/[0.015] px-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                disabled={index === 0}
+                onClick={() => onVariantIndexChange(index - 1)}
+              >
+                <ChevronLeft className="size-4" aria-hidden="true" />
+                <span className="sr-only">Previous balance option</span>
+              </Button>
+              <span
+                role="status"
+                aria-live="polite"
+                className="min-w-14 px-1 text-center font-mono text-[12.5px] font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]"
+              >
+                {`${index + 1} / ${variants.length}`}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                disabled={index >= variants.length - 1}
+                onClick={() => onVariantIndexChange(index + 1)}
+              >
+                <ChevronRight className="size-4" aria-hidden="true" />
+                <span className="sr-only">Next balance option</span>
+              </Button>
+            </div>
+          ) : null}
+
+          {activeCount === 0 && canWrite ? (
+            <p className="text-xs text-[color:var(--aqt-fg-dim)]">
+              Check at least one player in the lobby.
+            </p>
+          ) : null}
+
+          {variant ? (
+            <div className="ml-auto flex items-center gap-2">
+              <Button type="button" variant="outline" className="h-9" onClick={onShowBoard}>
+                <Maximize2 className="mr-1.5 size-3.5" aria-hidden="true" />
+                Show lobby
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-9"
+                disabled={capturing}
+                onClick={() => void capture()}
+              >
+                {capturing ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Copy className="mr-1.5 size-3.5" aria-hidden="true" />
+                )}
+                Copy image
+              </Button>
+              <Button type="button" variant="ghost" className="h-9" onClick={onCopyBattleTags}>
+                <ClipboardCopy className="mr-1.5 size-3.5" aria-hidden="true" />
+                Copy battletags
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        {variant ? (
+          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 border-t border-[color:var(--aqt-border)] pt-3">
+            <span className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>Record result</span>
+            <PickupResultControls
+              teamCount={variant.teams.length}
+              teamNames={variant.teams.map((team) => team.name)}
+              outcome={outcome}
+              canRecord={canWrite}
+              saving={recordingOutcome}
+              onRecord={onRecordOutcome}
+            />
+            <span className="text-[12.5px] text-[color:var(--aqt-fg-faint)]">
+              {outcome == null
+                ? "Recording a result closes the mix \u2014 nothing is written until you do."
+                : "Recorded. This mix is closed."}
+            </span>
           </div>
         ) : null}
       </div>
-
-      {variant ? (
-        <div className={cn(PANEL_CLASS, "flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3")}>
-          <span className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>Record result</span>
-          <PickupResultControls
-            teamCount={variant.teams.length}
-            teamNames={variant.teams.map((team) => team.name)}
-            outcome={outcome}
-            canRecord={canWrite}
-            saving={recordingOutcome}
-            onRecord={onRecordOutcome}
-          />
-          <span className="text-[12.5px] text-[color:var(--aqt-fg-faint)]">
-            {outcome == null
-              ? "Recording a result closes the mix \u2014 nothing is written until you do."
-              : "Recorded. This mix is closed."}
-          </span>
-        </div>
-      ) : null}
     </div>
   );
 }
