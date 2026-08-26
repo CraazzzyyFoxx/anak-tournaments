@@ -48,7 +48,9 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("team_id", sa.BigInteger(), nullable=False),
         sa.Column("workspace_member_id", sa.BigInteger(), nullable=False),
-        sa.Column("role", sa.Enum("tank", "damage", "support", "flex", name="heroclass"), nullable=True),
+        sa.Column(
+            "role", sa.Enum("tank", "damage", "support", "flex", name="heroclass", create_type=False), nullable=True
+        ),
         sa.Column("rank", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["team_id"], ["casual.team.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["workspace_member_id"], ["workspace_member.id"], ondelete="CASCADE"),
