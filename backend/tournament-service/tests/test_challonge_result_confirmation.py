@@ -163,7 +163,9 @@ class CreatingAnAlreadyCompleteMatch(IsolatedAsyncioTestCase):
     async def _upsert(self, *, state: str):
         tournament = SimpleNamespace(id=1)
         source = sync._ImportSource(challonge_id=100, stage=SimpleNamespace())
-        match_lookup = sync._MatchLookup(by_source_key={}, by_challonge_id={}, mapped_keys=set())
+        match_lookup = sync._MatchLookup(
+            by_source_key={}, by_challonge_id={}, mapped_keys=set(), unlinked_by_slot={}
+        )
         team_lookup = sync._TeamLookup(by_source_key={}, by_key={}, teams_by_id={})
 
         created: list = []
@@ -219,3 +221,83 @@ class CreatingAnAlreadyCompleteMatch(IsolatedAsyncioTestCase):
         self.assertEqual(enums.EncounterStatus.OPEN, created[0].status)
         finalize.assert_not_awaited()
         self.assertEqual([], audits)
+
+
+class AdoptingAnUnlinkedLocalEncounter(IsolatedAsyncioTestCase):
+    """A bracket generated locally (StageService.generate_encounters) before its
+    Challonge source was ever imported already has real Encounter rows sitting in
+    the bracket's slots, with no challonge_match_mapping yet. Importing the same
+    slot must adopt that row instead of creating a duplicate sibling next to it —
+    the bug behind a double-elimination bracket's later rounds (and the Grand
+    Final in particular) rendering twice after a Challonge import."""
+
+    def _match(self) -> object:
+        return sync.schemas.ChallongeMatch(
+            id=1,
+            started_at=None,
+            created_at=sync.datetime.now(sync.UTC),
+            updated_at=None,
+            player1_id=101,
+            player2_id=102,
+            round=1,
+            identifier="A1",
+            state="complete",
+            scores_csv="2-0",
+            tournament_id=1,
+            group_id=None,
+        )
+
+    async def test_reuses_the_existing_slot_instead_of_creating_a_duplicate(self) -> None:
+        tournament = SimpleNamespace(id=1)
+        source = sync._ImportSource(challonge_id=100, stage=SimpleNamespace())
+        local_encounter = _encounter(
+            status=enums.EncounterStatus.OPEN, result_status=enums.EncounterResultStatus.NONE
+        )
+        match_lookup = sync._MatchLookup(
+            by_source_key={},
+            by_challonge_id={},
+            mapped_keys=set(),
+            unlinked_by_slot={(None, 1, frozenset({1, 2})): local_encounter},
+        )
+        team_lookup = sync._TeamLookup(
+            by_source_key={},
+            by_key={(None, 101): 1, (None, 102): 2},
+            teams_by_id={
+                1: SimpleNamespace(id=1, name="Home"),
+                2: SimpleNamespace(id=2, name="Away"),
+            },
+        )
+        created: list = []
+
+        async def fake_create(_session, encounter):
+            created.append(encounter)
+            return encounter
+
+        session = SimpleNamespace(flush=AsyncMock())
+
+        with (
+            patch.object(
+                sync.sync_service.structure,
+                "_resolve_stage_refs_for_match",
+                AsyncMock(return_value=sync.StageRefs(stage_id=None, stage_item_id=None)),
+            ),
+            patch.object(sync.sync_service.mapping, "_ensure_match_mapping", AsyncMock()),
+            patch.object(sync.sync_service.encounter_repo, "create", AsyncMock(side_effect=fake_create)),
+            patch.object(sync.finalize_service, "finalize_encounter_score", AsyncMock()),
+            patch.object(sync, "record_result_transition"),
+        ):
+            result = await sync.sync_service._upsert_encounter_from_challonge(
+                session,
+                tournament,
+                source,
+                self._match(),
+                match_lookup=match_lookup,
+                team_lookup=team_lookup,
+            )
+
+        self.assertEqual([], created, "must not create a second row for the same slot")
+        self.assertEqual("updated", result.action)
+        self.assertIs(local_encounter, result.encounter)
+        self.assertEqual(2, local_encounter.home_score)
+        self.assertEqual(0, local_encounter.away_score)
+        self.assertEqual({}, match_lookup.unlinked_by_slot, "the slot is claimed, not reusable twice")

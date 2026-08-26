@@ -112,11 +112,24 @@ class _MatchLookup:
     by_source_key: dict[tuple[int, int], models.Encounter]
     by_challonge_id: dict[int, models.Encounter]
     mapped_keys: set[tuple[int, int]]
+    # Encounters that already occupy a bracket slot (same stage + round + team
+    # pair) but carry no ``challonge_match_mapping`` yet -- a bracket generated
+    # locally (``StageService.generate_encounters``) before this Challonge
+    # source was ever imported. Keyed by (stage_id, round, {home, away}); claimed
+    # (popped) the first time a Challonge match resolves to that same slot, so
+    # import adopts and links the existing row instead of creating a duplicate
+    # sibling next to it.
+    unlinked_by_slot: dict[tuple[int | None, int, frozenset[int]], models.Encounter]
 
     def get(self, source: _ImportSource, challonge_match_id: int) -> models.Encounter | None:
         if (encounter := self.by_source_key.get((_source_lookup_key(source), challonge_match_id))) is not None:
             return encounter
         return self.by_challonge_id.get(challonge_match_id)
+
+    def claim_unlinked(
+        self, stage_id: int | None, round_number: int, team_ids: frozenset[int]
+    ) -> models.Encounter | None:
+        return self.unlinked_by_slot.pop((stage_id, round_number, team_ids), None)
 
     def set(
         self,
@@ -1133,6 +1146,8 @@ class ChallongeMappingService:
         self,
         session: AsyncSession,
         sources: list[_ImportSource],
+        *,
+        tournament_id: int,
     ) -> _MatchLookup:
         source_keys_by_source_id = {
             source.source_id: _source_lookup_key(source) for source in sources if source.source_id is not None
@@ -1147,12 +1162,40 @@ class ChallongeMappingService:
         mappings = list(mapping_result.scalars().all())
         by_source_key: dict[tuple[int, int], models.Encounter] = {}
         mapped_keys: set[tuple[int, int]] = set()
+        mapped_encounter_ids: set[int] = set()
         for mapping in mappings:
             mapped_keys.add((mapping.source_id, mapping.challonge_match_id))
             if mapping.encounter is None:
                 continue
+            mapped_encounter_ids.add(mapping.encounter.id)
             source_key = source_keys_by_source_id.get(mapping.source_id, mapping.source_id)
             by_source_key[(source_key, mapping.challonge_match_id)] = mapping.encounter
+
+        # A bracket generated locally (StageService.generate_encounters) before this
+        # source was ever imported already has real Encounter rows occupying the
+        # bracket's slots -- with no challonge_match_mapping, since nothing has
+        # linked them to a Challonge match yet. Without this index the create-path
+        # below cannot see them and lays a second, competing Encounter over the
+        # same slot every run. Matched by (stage, round, team pair) once both teams
+        # are known; TBD slots are left for the create-path, there is nothing to
+        # match yet.
+        unlinked_by_slot: dict[tuple[int | None, int, frozenset[int]], models.Encounter] = {}
+        encounters_result = await session.execute(
+            sa.select(models.Encounter).where(
+                models.Encounter.tournament_id == tournament_id,
+                models.Encounter.home_team_id.is_not(None),
+                models.Encounter.away_team_id.is_not(None),
+            )
+        )
+        for encounter in encounters_result.scalars().all():
+            if encounter.id in mapped_encounter_ids:
+                continue
+            key = (
+                encounter.stage_id,
+                encounter.round,
+                frozenset({encounter.home_team_id, encounter.away_team_id}),
+            )
+            unlinked_by_slot.setdefault(key, encounter)
 
         # Existing encounters are located via challonge_match_mapping (by_source_key)
         # only — the deprecated encounter.challonge_id column is no longer consulted.
@@ -1162,6 +1205,7 @@ class ChallongeMappingService:
             by_source_key=by_source_key,
             by_challonge_id={},
             mapped_keys=mapped_keys,
+            unlinked_by_slot=unlinked_by_slot,
         )
 
     async def _ensure_match_mapping(
@@ -1441,6 +1485,13 @@ class ChallongeSyncService:
         home_score, away_score = _parse_scores(match.scores_csv)
         status = _encounter_status_from_challonge(match.state)
         refs = await self.structure._resolve_stage_refs_for_match(session, tournament, source, stage, match)
+        if encounter is None and home_team_id is not None and away_team_id is not None:
+            # A locally generated bracket may already have an Encounter sitting in
+            # this exact slot (same stage, round, team pair) with no Challonge
+            # mapping yet — adopt it instead of creating a sibling next to it.
+            encounter = match_lookup.claim_unlinked(
+                refs.stage_id, match.round, frozenset({home_team_id, away_team_id})
+            )
         if encounter is None:
             initial_status = (
                 enums.EncounterStatus.OPEN if status == enums.EncounterStatus.COMPLETED else status
@@ -1800,7 +1851,7 @@ class ChallongeSyncService:
             team_lookup = await self.mapping._build_team_lookup(
                 session, tournament, fetches, source_ids=source_ids, dry_run=dry_run
             )
-            match_lookup = await self.mapping._build_match_lookup(session, sources)
+            match_lookup = await self.mapping._build_match_lookup(session, sources, tournament_id=tournament.id)
 
             processed_match_keys: set[tuple[int, int]] = set()
             processed_matches: list[tuple[_ImportSource, schemas.ChallongeMatch]] = []
