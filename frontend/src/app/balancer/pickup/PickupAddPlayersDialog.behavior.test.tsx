@@ -13,9 +13,9 @@
 //     twelve people in twelve keystrokes;
 //  4. the "My ranks" filter narrows the server query to members this host has
 //     personally rank-corrected, rather than everybody in the workspace;
-//  5. rank pickers write the *author* layer (this host's own book) and show an
-//     inherited workspace value dimmed rather than as an empty slot;
-//  6. a read-only mix still reads: ranks stay editable, membership does not.
+//  5. ranks render read-only, dimmed when inherited from the workspace rather
+//     than the host's own book -- editing them belongs to the roster sheet;
+//  6. a read-only mix still reads the roster, membership does not change.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -87,30 +87,6 @@ vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
-// The row only needs a control that carries its accessible name, its value and
-// its disabled state; which grid the real picker offers is pinned where that
-// grid is chosen, not here.
-vi.mock("@/app/balancer/components/DivisionRankPicker", () => ({
-  DivisionRankPicker: ({
-    rank,
-    label,
-    disabled,
-    onChange,
-  }: {
-    rank: number | null | undefined;
-    label: string;
-    disabled?: boolean;
-    onChange: (rank: number | null) => void;
-  }) => (
-    <button
-      type="button"
-      aria-label={label}
-      data-rank={rank ?? ""}
-      disabled={disabled}
-      onClick={() => onChange(1200)}
-    />
-  ),
-}));
 
 const WORKSPACE_ID = 7;
 /** Whose rank book this mix resolves against — the dialog must read that one. */
@@ -335,18 +311,6 @@ describe("PickupAddPlayersDialog", () => {
     expect(summary).toHaveBeenCalledWith(WORKSPACE_ID, HOST_USER_ID);
   });
 
-  it("writes a rank into this host's own book, one role at a time", async () => {
-    await mount();
-
-    await click(byLabel("Tank rank for Aria#1111"));
-
-    expect(setRanks).toHaveBeenCalledWith(WORKSPACE_ID, 1, {
-      scope: "author",
-      ranks: { tank: 1200 },
-      clear: [],
-    });
-  });
-
   it("reads the host's book, not the caller's", async () => {
     await mount();
 
@@ -359,20 +323,28 @@ describe("PickupAddPlayersDialog", () => {
     );
   });
 
-  it("shows a non-host the ranks read-only", async () => {
-    await mount({ canEditRanks: false });
+  it("renders ranks read-only -- there is no control to write them from here", async () => {
+    await mount();
 
-    // The endpoint writes the *caller's* book and the mix reads the *host's*,
-    // so a write from here answered 200 and changed nothing on screen. Membership
-    // is a separate right and stays live.
-    expect(byLabel("Tank rank for Aria#1111")?.hasAttribute("disabled")).toBe(true);
+    // No picker, no button: the crest is a plain span with a title, and the
+    // dialog's only writes are `setRanks` (none) versus membership (still live).
+    expect(byLabel("Tank rank for Aria#1111")).toBeNull();
+    expect(document.body.querySelector('[title="Tank rank for Aria#1111"]')).not.toBeNull();
     expect(byLabel("Add Aria#1111 to this mix")?.hasAttribute("disabled")).toBe(false);
-
-    await click(byLabel("Tank rank for Aria#1111"));
     expect(setRanks).not.toHaveBeenCalled();
   });
 
-  it("shows an inherited workspace rank rather than an empty slot", async () => {
+  it("clicking anywhere on the row adds or removes the player, not only the checkbox", async () => {
+    const scope = await mount();
+
+    // The name text sits well outside the small checkbox glyph -- the whole
+    // row is the button now, so a click here still bubbles to it.
+    await click(scope.querySelector('[title="Aria#1111"]'));
+
+    expect(onTogglePlayer).toHaveBeenCalledWith(1);
+  });
+
+  it("shows an inherited workspace rank dimmed, rather than as an empty slot", async () => {
     list.mockResolvedValue({
       results: [member(1, "Aria#1111", { ranks: { tank: 2400 }, author_ranks: { dps: 2600 } })],
       total: 1,
@@ -381,20 +353,23 @@ describe("PickupAddPlayersDialog", () => {
     });
     await mount();
 
-    // Inherited: the value shows, and the label says where it came from.
-    expect(
-      byLabel("Tank rank for Aria#1111, inherited 2400 from the workspace")?.dataset.rank,
-    ).toBe("2400");
-    // The host's own entry keeps the plain label.
-    expect(byLabel("DPS rank for Aria#1111")?.dataset.rank).toBe("2600");
+    // Inherited: the title says where the value came from, and it renders dimmed.
+    const inherited = document.body.querySelector(
+      '[title="Tank rank for Aria#1111, inherited 2400 from the workspace"]',
+    );
+    expect(inherited).not.toBeNull();
+    expect(inherited?.className).toContain("opacity-45");
+    // The host's own entry keeps the plain title and full opacity.
+    const own = document.body.querySelector('[title="DPS rank for Aria#1111"]');
+    expect(own).not.toBeNull();
+    expect(own?.className).not.toContain("opacity-45");
   });
 
-  it("locks membership on a closed mix but still lets ranks be corrected", async () => {
+  it("locks membership on a closed mix", async () => {
     await mount({ canWrite: false, rows: [seated(2, "Borys#2222")] });
 
     expect(byLabel("Add Aria#1111 to this mix")?.hasAttribute("disabled")).toBe(true);
     expect(byLabel("Remove Borys#2222 from this mix")?.hasAttribute("disabled")).toBe(true);
-    expect(byLabel("Tank rank for Aria#1111")?.hasAttribute("disabled")).toBe(false);
 
     // Enter must not smuggle a write past the lock either.
     await key(search(), "Enter");

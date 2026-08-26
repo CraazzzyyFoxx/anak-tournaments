@@ -4,7 +4,6 @@ import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, CornerDownLeft, Loader2, Plus, Search, UserPlus, X } from "lucide-react";
 
-import { DivisionRankPicker } from "@/app/balancer/components/DivisionRankPicker";
 import { splitBattleTag } from "@/app/balancer/components/balancer-page-helpers";
 import {
   CAPTION_CLASS,
@@ -12,6 +11,7 @@ import {
   EYEBROW_CLASS,
   ROLE_TILE_CLASS,
 } from "@/app/balancer/pickup/pickup-chrome";
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { DataPagination } from "@/components/ui/data-pagination";
@@ -20,14 +20,11 @@ import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { OW_REFERENCE_GRID } from "@/lib/division-grid";
+import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { notify } from "@/lib/notify";
-import { ROLES, ROLE_LABELS, type RoleCode } from "@/lib/roles";
+import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
-import {
-  customGameKeys,
-  type CustomGamePlayer,
-} from "@/services/custom-game.service";
+import type { CustomGamePlayer } from "@/services/custom-game.service";
 import {
   workspacePlayerKeys,
   workspacePlayerService,
@@ -152,37 +149,6 @@ export function PickupAddPlayersDialog({
     queryKey: workspacePlayerKeys.summary(workspaceId, hostUserId ?? undefined),
     queryFn: () => workspacePlayerService.summary(workspaceId, hostUserId ?? undefined),
     enabled: open,
-  });
-
-  /**
-   * One role per write, so saving Tank never rewrites Damage: the endpoint
-   * leaves an omitted role alone, and `clear` deletes the role from the layer
-   * instead of pinning a zero over the value it should fall back to.
-   */
-  const saveRank = useMutation({
-    mutationFn: ({
-      memberId,
-      role,
-      rank,
-    }: {
-      memberId: number;
-      role: string;
-      rank: number | null;
-    }) =>
-      workspacePlayerService.setRanks(workspaceId, memberId, {
-        scope: "author",
-        ranks: rank == null ? {} : { [role]: rank },
-        clear: rank == null ? [role] : [],
-      }),
-    onSuccess: async () => {
-      // Both caches: the roster shows the layer that was written, and the mix
-      // shows the effective rank that just changed under it.
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(workspaceId) }),
-        queryClient.invalidateQueries({ queryKey: customGameKeys.all(workspaceId) }),
-      ]);
-    },
-    onError: (error) => notify.apiError(error),
   });
 
   const addByTag = useMutation({
@@ -487,12 +453,7 @@ export function PickupAddPlayersDialog({
                       isInMix={inMix.has(row.memberId)}
                       isCursor={index === cursor}
                       canWrite={canWrite}
-                      canEdit={canEditRanks}
-                      isSaving={saveRank.isPending && saveRank.variables?.memberId === row.memberId}
                       onToggle={() => onTogglePlayer(row.memberId)}
-                      onSaveRank={(role, rank) =>
-                        saveRank.mutate({ memberId: row.memberId, role, rank })
-                      }
                     />
                   ))}
                 </ul>
@@ -657,52 +618,33 @@ function FilterChip({
 }
 
 /**
- * One roster row: membership on the left, identity in the middle, this host's
- * three ranks on the right.
+ * One roster row: membership indicator on the left, identity in the middle,
+ * this host's three effective ranks read-only on the right.
  *
- * Membership is a 24px target rather than a whole-row click, because the row also
- * carries three popovers — a host correcting a rank must not join somebody to the
- * mix by missing a picker by four pixels. The keyboard path is the opposite
- * trade: the search field never loses focus, and Enter acts on the cursor row,
- * so adding twelve people is twelve keystrokes without a single pointer move.
+ * The whole row is the membership toggle -- there is no picker on it to miss
+ * by four pixels anymore, ranks here are read-only. The keyboard path is
+ * unchanged: the search field never loses focus, and Enter acts on the
+ * cursor row, so adding twelve people is still twelve keystrokes without a
+ * single pointer move.
  */
 function RosterRowItem({
   row,
   isInMix,
   isCursor,
   canWrite,
-  canEdit,
-  isSaving,
   onToggle,
-  onSaveRank,
 }: Readonly<{
   row: RosterRow;
   isInMix: boolean;
   isCursor: boolean;
   canWrite: boolean;
-  /** Whether the rank pickers write — the host's right, not the workspace's. */
-  canEdit: boolean;
-  isSaving: boolean;
   onToggle: () => void;
-  onSaveRank: (role: RoleCode, rank: number | null) => void;
 }>) {
   const label = row.displayName || row.battleTag || `#${row.memberId}`;
   const { name, suffix } = splitBattleTag(label);
 
   return (
-    <li
-      data-roster-row
-      className={cn(
-        "relative flex items-center gap-2.5 rounded-lg border px-2 py-1.5 transition-colors",
-        // A left rail rather than a filled row: at 24 rows a wash of teal
-        // fought the rank crests for attention, and "already in" is a state, not
-        // an emphasis.
-        isInMix
-          ? "border-[color:var(--aqt-border)] bg-white/[0.02] before:absolute before:inset-y-1.5 before:left-0 before:w-[2px] before:rounded-full before:bg-[color:var(--aqt-teal)]"
-          : "border-transparent hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.025]",
-        isCursor && "ring-1 ring-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)]",
-      )}
-    >
+    <li data-roster-row>
       <button
         type="button"
         disabled={!canWrite}
@@ -710,73 +652,91 @@ function RosterRowItem({
         aria-label={isInMix ? `Remove ${label} from this mix` : `Add ${label} to this mix`}
         onClick={onToggle}
         className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-md border transition-colors",
+          "relative flex w-full items-center gap-2.5 rounded-lg border px-2 py-1.5 text-left transition-colors",
+          // A left rail rather than a filled row: at 24 rows a wash of teal
+          // fought the rank crests for attention, and "already in" is a state, not
+          // an emphasis.
           isInMix
-            ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_18%,transparent)] text-[color:var(--aqt-teal)]"
-            : "border-[color:var(--aqt-border-2)] bg-black/20 text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg)]",
-          "disabled:cursor-default disabled:opacity-40",
+            ? "border-[color:var(--aqt-border)] bg-white/[0.02] before:absolute before:inset-y-1.5 before:left-0 before:w-[2px] before:rounded-full before:bg-[color:var(--aqt-teal)]"
+            : "border-transparent hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.025]",
+          isCursor && "ring-1 ring-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)]",
+          "disabled:cursor-default",
         )}
       >
-        {isInMix ? (
-          <Check className="size-3.5" aria-hidden="true" />
-        ) : (
-          <Plus className="size-3.5" aria-hidden="true" />
-        )}
-      </button>
-
-      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
         <span
-          className="truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]"
-          title={label}
+          aria-hidden="true"
+          className={cn(
+            "flex size-6 shrink-0 items-center justify-center rounded-md border transition-colors",
+            isInMix
+              ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_18%,transparent)] text-[color:var(--aqt-teal)]"
+              : "border-[color:var(--aqt-border-2)] bg-black/20 text-[color:var(--aqt-fg-dim)]",
+          )}
         >
-          {name}
+          {isInMix ? <Check className="size-3.5" /> : <Plus className="size-3.5" />}
         </span>
-        {suffix ? (
-          <span className="shrink-0 font-mono text-[11.5px] text-[color:var(--aqt-fg-faint)]">
-            {suffix}
-          </span>
-        ) : null}
-        {isCursor && canWrite ? (
-          <span
-            aria-hidden="true"
-            className="ml-auto shrink-0 text-[color:color-mix(in_srgb,var(--aqt-teal)_75%,transparent)]"
-          >
-            <CornerDownLeft className="size-3.5" />
-          </span>
-        ) : null}
-      </span>
 
-      <div className="flex shrink-0 items-center gap-1.5">
-        {ROLES.map((role) => {
-          const own = row.authorRanks[role.code] ?? null;
-          const inherited = own == null ? (row.ranks[role.code] ?? null) : null;
-          return (
+        <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+          <span
+            className="truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]"
+            title={label}
+          >
+            {name}
+          </span>
+          {suffix ? (
+            <span className="shrink-0 font-mono text-[11.5px] text-[color:var(--aqt-fg-faint)]">
+              {suffix}
+            </span>
+          ) : null}
+          {isCursor && canWrite ? (
             <span
-              key={role.code}
-              // Dimmed means "not yours": a picker that painted an inherited
-              // number as if it were the host's own made "set" and "leave alone"
-              // look identical, which is the exact mistake layered ranks exist
-              // to make visible.
-              className={cn("inline-flex", inherited != null && "opacity-45")}
+              aria-hidden="true"
+              className="ml-auto shrink-0 text-[color:color-mix(in_srgb,var(--aqt-teal)_75%,transparent)]"
             >
-              <DivisionRankPicker
-                rank={own ?? inherited}
-                disabled={!canEdit || isSaving}
-                label={
+              <CornerDownLeft className="size-3.5" />
+            </span>
+          ) : null}
+        </span>
+
+        <span className="flex shrink-0 items-center gap-1.5">
+          {ROLES.map((role) => {
+            const own = row.authorRanks[role.code] ?? null;
+            const inherited = own == null ? (row.ranks[role.code] ?? null) : null;
+            // The global OW grid: a mix's ranks resolve against it
+            // (`workspace_id=None`), so a workspace's tiers here would show
+            // the wrong crest for the same number.
+            const division = resolveDivisionFromRank(OW_REFERENCE_GRID, own ?? inherited);
+            return (
+              <span
+                key={role.code}
+                title={
                   inherited == null
                     ? `${ROLE_LABELS[role.code]} rank for ${label}`
                     : `${ROLE_LABELS[role.code]} rank for ${label}, inherited ${inherited} from the workspace`
                 }
-                onChange={(next) => onSaveRank(role.code, next)}
-                // The global OW grid: balancer-service resolves a mix's ranks
-                // against the grid with `workspace_id=None`, so the value set
-                // here is on the OW scale, not this workspace's.
-                grid={OW_REFERENCE_GRID}
-              />
-            </span>
-          );
-        })}
-      </div>
+                // Dimmed means "not yours": painting an inherited number the
+                // same as the host's own made "set" and "leave alone" look
+                // identical, which is the exact mistake layered ranks exist
+                // to make visible.
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-md border border-[color:var(--aqt-border)] bg-black/20",
+                  inherited != null && "opacity-45",
+                )}
+              >
+                {division == null ? (
+                  <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">{"\u2014"}</span>
+                ) : (
+                  <DivisionIcon
+                    division={division}
+                    tournamentGrid={OW_REFERENCE_GRID}
+                    width={22}
+                    height={22}
+                  />
+                )}
+              </span>
+            );
+          })}
+        </span>
+      </button>
     </li>
   );
 }
