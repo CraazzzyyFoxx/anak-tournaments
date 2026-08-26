@@ -11,7 +11,6 @@ in-memory SQLite database triggers them exactly as production's
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,12 +25,6 @@ from sqlalchemy.pool import StaticPool
 
 backend_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(backend_root))
-
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
 from shared.services import realtime_transaction  # noqa: E402

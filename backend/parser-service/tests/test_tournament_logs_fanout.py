@@ -24,23 +24,6 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "parser-service"))
 
 os.environ["DEBUG"] = "true"
-for _key, _value in {
-    "PROJECT_URL": "http://localhost",
-    "REDIS_URL": "redis://localhost:6379/0",
-    "RABBITMQ_URL": "amqp://guest:guest@localhost:5672",
-    "POSTGRES_USER": "postgres",
-    "POSTGRES_PASSWORD": "postgres",
-    "POSTGRES_DB": "postgres",
-    "POSTGRES_HOST": "localhost",
-    "POSTGRES_PORT": "5432",
-    "S3_ACCESS_KEY": "test",
-    "S3_SECRET_KEY": "test",
-    "S3_ENDPOINT_URL": "http://localhost",
-    "S3_BUCKET_NAME": "test",
-    "CHALLONGE_USERNAME": "test",
-    "CHALLONGE_API_KEY": "test",
-}.items():
-    os.environ.setdefault(_key, _value)
 
 serve = importlib.import_module("serve")
 messaging_config = importlib.import_module("shared.messaging.config")

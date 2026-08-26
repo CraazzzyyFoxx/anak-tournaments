@@ -24,8 +24,6 @@ for path in (str(SERVICE_ROOT), str(BACKEND_ROOT)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402

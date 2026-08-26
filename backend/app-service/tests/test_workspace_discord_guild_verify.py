@@ -20,7 +20,6 @@ transport wiring (permission gate, 404, body validation, delegation).
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,14 +28,6 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.exc import IntegrityError
-
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

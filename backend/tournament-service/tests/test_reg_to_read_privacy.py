@@ -12,22 +12,12 @@ which left every custom column on the roster permanently empty under a header
 that advertised it. The flag is gone -- one read model, one visibility rule.
 """
 
-import os
 from datetime import datetime
 from types import SimpleNamespace
 
 # Importing the read model instantiates the service Settings(); this file used
 # to rely on whichever sibling test module happened to be collected first.
-for _key, _value in {
-    "POSTGRES_HOST": "localhost",
-    "POSTGRES_PORT": "5432",
-    "POSTGRES_DB": "tournament_test",
-    "POSTGRES_USER": "postgres",
-    "POSTGRES_PASSWORD": "postgres",
-    "JWT_SECRET_KEY": "test-secret",
-    "REDIS_URL": "redis://localhost:6379",
-}.items():
-    os.environ.setdefault(_key, _value)
+
 
 from src.schemas.registration_build import _reg_to_read  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402

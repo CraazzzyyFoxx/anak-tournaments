@@ -42,14 +42,6 @@ if sys.platform == "win32":
 def _ensure_test_env() -> None:
     env = {
         "DEBUG": "true",
-        "PROJECT_URL": "http://localhost",
-        "RABBITMQ_URL": "amqp://guest:guest@localhost:5672",
-        "REDIS_URL": "redis://localhost:6379/0",
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "anak_dev",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
     }
     for key, value in env.items():
         os.environ.setdefault(key, value)

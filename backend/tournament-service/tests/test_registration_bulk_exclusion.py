@@ -12,9 +12,6 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ.setdefault("DEBUG", "true")
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 from shared.core.errors import BaseAPIException as HTTPException
 from src.services.registration.lifecycle import lifecycle_service  # noqa: E402

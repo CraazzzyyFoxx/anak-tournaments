@@ -14,7 +14,6 @@ entered at all, so no standings guard and no transaction happen for a no-op.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,8 +25,6 @@ for path in (str(SERVICE_ROOT), str(BACKEND_ROOT)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 from shared.services.team_export import ExportOutcome, ExportPlan  # noqa: E402
 from shared.services.team_export.materialization import MaterializationTeam  # noqa: E402

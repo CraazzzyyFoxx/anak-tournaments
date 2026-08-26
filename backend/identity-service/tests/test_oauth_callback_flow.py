@@ -22,7 +22,6 @@ fail-closed ticket-issuance gate and its redemption-side counterpart.
 
 import asyncio
 import hashlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,34 +31,11 @@ import pytest
 
 from shared.core.errors import BaseAPIException as HTTPException
 
-
-def _ensure_test_env() -> None:
-    env = {
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "auth_test",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
-        "JWT_SECRET_KEY": "test-secret",
-        "DISCORD_CLIENT_ID": "discord-client",
-        "DISCORD_CLIENT_SECRET": "discord-secret",
-        "TWITCH_CLIENT_ID": "twitch-client",
-        "TWITCH_CLIENT_SECRET": "twitch-secret",
-        "BATTLENET_CLIENT_ID": "battlenet-client",
-        "BATTLENET_CLIENT_SECRET": "battlenet-secret",
-        "OAUTH_REDIRECT": "http://localhost:3000/auth/callback",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from _fakes import DownRedisClient as _DownRedisClient  # noqa: E402
-from _fakes import FakeRedisClient as _FakeRedisClient  # noqa: E402
+from tests._fakes import DownRedisClient as _DownRedisClient  # noqa: E402
+from tests._fakes import FakeRedisClient as _FakeRedisClient  # noqa: E402
 
 from src.services.oauth import oauth  # noqa: E402
 from src.services.oauth_accounts import oauth_accounts  # noqa: E402

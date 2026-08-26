@@ -26,28 +26,12 @@ Runs under stdlib unittest -- no pytest-asyncio in this repo.
 from __future__ import annotations
 
 import inspect
-import os
 import sys
 from pathlib import Path
 from typing import Any
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, mock
 
-
-def _ensure_test_env() -> None:
-    for key, value in {
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "tournament_test",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
-        "JWT_SECRET_KEY": "test-secret",
-        "REDIS_URL": "redis://localhost:6379",
-    }.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))

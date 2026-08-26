@@ -1,33 +1,9 @@
 import asyncio
 import json
-import os
 import sys
 from pathlib import Path
 
 from redis.exceptions import ConnectionError as RedisConnectionError
-
-
-def _ensure_test_env() -> None:
-    env = {
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "auth_test",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
-        "JWT_SECRET_KEY": "test-secret",
-        "DISCORD_CLIENT_ID": "discord-client",
-        "DISCORD_CLIENT_SECRET": "discord-secret",
-        "TWITCH_CLIENT_ID": "twitch-client",
-        "TWITCH_CLIENT_SECRET": "twitch-secret",
-        "BATTLENET_CLIENT_ID": "battlenet-client",
-        "BATTLENET_CLIENT_SECRET": "battlenet-secret",
-        "OAUTH_REDIRECT": "http://localhost:3000/auth/callback",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))

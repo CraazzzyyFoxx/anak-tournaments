@@ -22,14 +22,6 @@ from shared.domain.member_rank import ResolvedRank
 def _ensure_test_env() -> None:
     for key, value in {
         "DEBUG": "true",
-        "PROJECT_URL": "http://localhost",
-        "RABBITMQ_URL": "amqp://guest:guest@localhost:5672",
-        "REDIS_URL": "redis://localhost:6379/0",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
-        "POSTGRES_DB": "postgres",
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
     }.items():
         os.environ.setdefault(key, value)
 

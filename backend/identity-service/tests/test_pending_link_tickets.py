@@ -19,41 +19,17 @@ an unreachable Redis (no fallback exists for a ticket nobody could redeem) and
 
 import asyncio
 import hashlib
-import os
 import sys
 from pathlib import Path
 
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-
-def _ensure_test_env() -> None:
-    env = {
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "auth_test",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
-        "JWT_SECRET_KEY": "test-secret",
-        "DISCORD_CLIENT_ID": "discord-client",
-        "DISCORD_CLIENT_SECRET": "discord-secret",
-        "TWITCH_CLIENT_ID": "twitch-client",
-        "TWITCH_CLIENT_SECRET": "twitch-secret",
-        "BATTLENET_CLIENT_ID": "battlenet-client",
-        "BATTLENET_CLIENT_SECRET": "battlenet-secret",
-        "OAUTH_REDIRECT": "http://localhost:3000/auth/callback",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from _fakes import DownRedisClient as _DownRedisClient  # noqa: E402
-from _fakes import FakeRedisClient as _FakeRedisClient  # noqa: E402
+from tests._fakes import DownRedisClient as _DownRedisClient  # noqa: E402
+from tests._fakes import FakeRedisClient as _FakeRedisClient  # noqa: E402
 
 from src.schemas.oauth import OAuthUserInfo  # noqa: E402
 from src.services.tickets import LINK_TICKETS, guard_digest  # noqa: E402

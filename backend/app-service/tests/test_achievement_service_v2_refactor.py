@@ -1,21 +1,8 @@
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
-
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("S3_ACCESS_KEY", "test")
-os.environ.setdefault("S3_SECRET_KEY", "test")
-os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
-os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 from src.services.achievements.queries import queries  # noqa: E402
 

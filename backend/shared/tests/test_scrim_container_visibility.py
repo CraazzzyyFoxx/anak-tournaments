@@ -18,7 +18,6 @@ prove that this module can call a stub.
 
 from __future__ import annotations
 
-import os
 import sys
 import warnings
 from datetime import UTC, datetime
@@ -32,12 +31,6 @@ from sqlalchemy.pool import StaticPool
 
 backend_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(backend_root))
-
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 

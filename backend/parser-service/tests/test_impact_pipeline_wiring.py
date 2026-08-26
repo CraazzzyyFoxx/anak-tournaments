@@ -19,14 +19,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
 # ``src.services.match_logs.flows`` imports ``src.core.config.settings`` at
 # module load, which reads these from the environment (see test_match_log_parser).
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from shared.core.impact import IMPACT_WEIGHTS  # noqa: E402
 from src.core import enums  # noqa: E402

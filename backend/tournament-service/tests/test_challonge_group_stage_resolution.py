@@ -21,16 +21,6 @@ from datetime import UTC, datetime
 from unittest import TestCase
 
 os.environ.setdefault("DEBUG", "true")
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 from src import models  # noqa: E402
 from src.core import enums  # noqa: E402
