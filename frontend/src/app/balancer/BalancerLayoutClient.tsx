@@ -111,7 +111,7 @@ export function BalancerLayoutClient({ children }: Readonly<BalancerLayoutClient
             <main
               id="main-content"
               tabIndex={-1}
-              className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8"
+              className="flex flex-1 flex-col gap-4 md:gap-8"
             >
               <BalancerShell>{children}</BalancerShell>
             </main>

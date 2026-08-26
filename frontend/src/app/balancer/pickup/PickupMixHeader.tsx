@@ -33,7 +33,7 @@ export function PickupMixHeader({
   onOpenPool,
 }: Readonly<PickupMixHeaderProps>) {
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-[color:var(--aqt-border)] pb-4">
+    <div className="flex flex-wrap items-center gap-3 pb-4">
       <Link
         href="/balancer/pickup"
         className="flex shrink-0 items-center gap-1.5 text-[13px] text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)]"
