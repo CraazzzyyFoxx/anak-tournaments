@@ -40,6 +40,7 @@ ticket (:meth:`_require_guard_hash_for_ticket`).
 from __future__ import annotations
 
 import hmac
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -55,7 +56,7 @@ from src.core.cache import RedisStore
 from src.core.config import Settings, settings
 from src.services.auth import AuthenticationService, auth
 from src.services.oauth_accounts import OAuthAccountService, oauth_accounts
-from src.services.oauth_providers import OAuthProviderRegistry, oauth_providers
+from src.services.oauth_providers import OAuthProviderRegistry, has_manage_guild, oauth_providers
 from src.services.oauth_state import OAuthStateCodec, StatePayload, oauth_state
 from src.services.tickets import LINK_TICKETS, SSO_TICKETS, TicketStore, guard_digest
 
@@ -328,6 +329,39 @@ class OAuthFlowService:
             for conn in conns
         ]
 
+    async def discord_guilds(self, session: AsyncSession, *, auth_user_id: int) -> list[dict[str, Any]]:
+        """Guilds ``auth_user_id`` administers on Discord, live and uncached
+        (workspace self-service design, §4.1). No DB write. Used by
+        ``rpc.app.workspaces.discord_guild_verify`` to prove ownership before a
+        workspace can claim a Discord guild id.
+
+        A missing connection, a missing access token, or an expired one all
+        degrade to an empty list rather than an error -- no refresh-token
+        exchange exists for any provider in this codebase yet, so a stale
+        token cannot be silently revived, and surfacing Discord's raw 401
+        would tell the caller nothing actionable a re-link doesn't already say.
+        """
+        conns = await self.connections.list_by_user_providers(session, auth_user_id=auth_user_id, providers=["discord"])
+        if not conns:
+            return []
+        conn = conns[0]
+        if not conn.access_token:
+            return []
+        if conn.token_expires_at is not None and conn.token_expires_at <= datetime.now(UTC):
+            return []
+
+        provider = self.providers.get("discord")
+        raw_guilds = await provider.get_user_guilds(conn.access_token)
+        return [
+            {
+                "guild_id": str(g["id"]),
+                "name": g.get("name"),
+                "owner": bool(g.get("owner", False)),
+                "can_manage": bool(g.get("owner", False)) or has_manage_guild(str(g.get("permissions", "0"))),
+            }
+            for g in raw_guilds
+        ]
+
     async def unlink(
         self,
         session: AsyncSession,
@@ -377,9 +411,7 @@ class OAuthFlowService:
                 )
 
         if not targeted and not unverified:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"{provider.title()} account not linked"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{provider.title()} account not linked")
 
         await session.commit()
 

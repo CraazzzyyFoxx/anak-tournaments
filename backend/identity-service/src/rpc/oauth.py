@@ -181,3 +181,25 @@ def register(broker: Any, logger: Any) -> None:
             await oauth.unlink(session, user, provider, provider_user_id=provider_user_id)
 
         return await c.with_active_user(logger, data.get("access_token"), op)
+
+    @broker.subscriber("rpc.identity.oauth_discord_guilds")
+    async def _oauth_discord_guilds(data: dict, msg: RabbitMessage) -> dict:
+        """Guilds the given ``auth_user_id`` administers on Discord.
+
+        Internal, service-to-service only (no gateway route) -- called by
+        ``rpc.app.workspaces.discord_guild_verify`` to prove ownership before a
+        workspace can claim a guild id (workspace self-service design, §4.1).
+        Trusted broker traffic, so the caller passes ``auth_user_id`` directly
+        rather than a bearer token, same trust boundary as every other
+        internal-only subject in this stack.
+        """
+        data = data or {}
+        auth_user_id = data.get("auth_user_id")
+
+        async def op(session: AsyncSession) -> dict:
+            if not auth_user_id:
+                raise HTTPException(status_code=422, detail="auth_user_id is required")
+            guilds = await oauth.discord_guilds(session, auth_user_id=int(auth_user_id))
+            return {"guilds": guilds}
+
+        return await c.envelope_session(logger, "oauth_discord_guilds", op)
