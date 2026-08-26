@@ -34,11 +34,11 @@ from typing import Any
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.tournament.computation import request_bracket_job
 from src import schemas
 from src.core import auth
 from src.rpc._helpers import _dump, _identity, _path_int, _payload, _run
 from src.services.admin.stage import stage_service
-from src.services.computation import jobs as computation_jobs
 from src.services.tournament.flows import flows_service as tournament_flows
 
 # --- helpers -----------------------------------------------------------------
@@ -139,7 +139,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
             tournament_id = await stage_service.get_tournament_id(session, stage_id)
-            job = await computation_jobs.request_bracket_job(
+            job = await request_bracket_job(
                 session,
                 tournament_id=tournament_id,
                 stage_id=stage_id,
@@ -187,7 +187,7 @@ def register(broker: Any, logger: Any) -> None:
             force = str(force_raw).lower() in ("1", "true", "yes", "on") if force_raw is not None else False
 
             tournament_id = await stage_service.get_tournament_id(session, stage_id)
-            job = await computation_jobs.request_bracket_job(
+            job = await request_bracket_job(
                 session,
                 tournament_id=tournament_id,
                 stage_id=stage_id,
