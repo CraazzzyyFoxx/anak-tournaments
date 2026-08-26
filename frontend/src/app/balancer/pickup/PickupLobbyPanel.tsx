@@ -1,7 +1,20 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AlertTriangle, Pin, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { useState } from "react";
+
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { AlertTriangle, GripVertical, Pin, SlidersHorizontal, Trash2, X } from "lucide-react";
 
 import {
   ICON_BUTTON_CLASS,
@@ -30,7 +43,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { Switch } from "@/components/ui/switch";
 import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLE_LABELS, ROLES } from "@/lib/roles";
 import { cn } from "@/lib/utils";
@@ -39,13 +51,16 @@ import type { CustomGamePlayer, CustomGamePlayerPatch } from "@/services/custom-
 import {
   LINEUP_ROLES,
   averageRank,
+  bucketPatch,
   getLineupIssue,
+  lineupBucket,
   playerLabel,
   resolveRoleOrder,
   sortLineup,
   summarizeLineup,
   summarizeRoleSupply,
   toggleRole,
+  type LineupBucket,
 } from "./pickup-lineup";
 
 /**
@@ -78,18 +93,45 @@ type PickupLobbyPanelProps = {
   onOpenPool: () => void;
 };
 
+/** One drag-and-drop column per `LineupBucket`, in the order a host reads commitment. */
+const COLUMNS: readonly { bucket: LineupBucket; title: string; hint: string; emptyHint: string }[] = [
+  {
+    bucket: "must_play",
+    title: "Must play",
+    hint: "Guaranteed a seat",
+    emptyHint: "Drag a player here to guarantee their seat",
+  },
+  {
+    bucket: "pool",
+    title: "In the pool",
+    hint: "In the balance",
+    emptyHint: "Drag a player here to put them in the balance",
+  },
+  {
+    bucket: "benched",
+    title: "Benched",
+    hint: "Sitting out, settings kept",
+    emptyHint: "Drag a player here to bench them",
+  },
+];
+
 /**
  * The lineup: who is in this mix, who the next balance will use, and whether the
  * roles they picked can actually fill two teams.
  *
  * Membership belongs to the player pool — adding or removing someone there
- * writes here. This column owns *participation*: the switch benches a player
- * server-side without touching their role order, so "he's late, start without
- * him" costs one click and no rework.
+ * writes here. This column owns *participation and commitment*, split into
+ * three columns a host drags a player between: guaranteed a seat
+ * (`must_play`), optional in the balance (`pool`), or sitting out
+ * (`benched` — `is_active === false`, settings kept). A drop writes both
+ * `is_active` and `must_play` in one patch (`bucketPatch`) without touching
+ * role order or ranks, so "he's late, start without him" costs one drag and
+ * no rework.
  *
- * The role-supply strip sits above the rows on purpose. A host reads "short 1
- * tank" before pressing Balance, instead of reading a seated lineup afterwards
- * and guessing which player the solver had to move off their first choice.
+ * The role-supply strip sits above the columns on purpose. A host reads "short
+ * 1 tank" before pressing Balance, instead of reading a seated lineup
+ * afterwards and guessing which player the solver had to move off their first
+ * choice.
  */
 export function PickupLobbyPanel({
   canWrite,
@@ -104,10 +146,37 @@ export function PickupLobbyPanel({
   onOpenPool,
 }: Readonly<PickupLobbyPanelProps>) {
   const lineup = sortLineup(rows);
-  const active = lineup.filter((row) => row.is_active);
-  const benched = lineup.filter((row) => !row.is_active);
   const summary = summarizeLineup(rows);
   const supply = summarizeRoleSupply(rows);
+  const columns = COLUMNS.map((def) => ({
+    ...def,
+    rows: lineup.filter((row) => lineupBucket(row) === def.bucket),
+  }));
+
+  const [draggingRow, setDraggingRow] = useState<CustomGamePlayer | null>(null);
+  // 6px before a drag starts: without it, a plain click on a row (opening the
+  // sheet, toggling a role, removing) reads as a zero-distance drag and
+  // dnd-kit swallows the event.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const data = event.active.data.current as { row: CustomGamePlayer } | undefined;
+    if (data) setDraggingRow(data.row);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setDraggingRow(null);
+    const target = event.over?.id;
+    if (target !== "must_play" && target !== "pool" && target !== "benched") {
+      return;
+    }
+    const memberId = Number(event.active.id);
+    const row = lineup.find((item) => item.workspace_member_id === memberId);
+    if (!row || lineupBucket(row) === target) {
+      return;
+    }
+    onPatchPlayer(memberId, bucketPatch(target));
+  };
 
   return (
     <div className={cn(PANEL_CLASS, "flex min-w-0 flex-col")}>
@@ -221,7 +290,7 @@ export function PickupLobbyPanel({
         </p>
       ) : null}
 
-      <div>
+      <div className="p-2.5">
         {!hasMix ? (
           <PageStateCard
             state="empty"
@@ -241,44 +310,131 @@ export function PickupLobbyPanel({
             className="px-4 py-8"
           />
         ) : (
-          <>
-            <ul className="px-2.5 py-2" aria-label="Mix lineup">
-              {active.map((row) => (
-                <LineupRow
-                  key={row.workspace_member_id}
-                  row={row}
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={() => setDraggingRow(null)}
+          >
+            <div className="flex flex-col gap-2.5" aria-label="Mix lineup">
+              {columns.map((column) => (
+                <LineupColumn
+                  key={column.bucket}
+                  bucket={column.bucket}
+                  title={column.title}
+                  hint={column.hint}
+                  emptyHint={column.emptyHint}
+                  rows={column.rows}
                   canWrite={canWrite}
-                  saving={savingPlayerId === row.workspace_member_id}
-                  onPatch={(patch) => onPatchPlayer(row.workspace_member_id, patch)}
-                  onOpen={() => onOpenPlayer(row.workspace_member_id)}
-                  onRemove={() => onRemovePlayer(row.workspace_member_id)}
+                  savingPlayerId={savingPlayerId}
+                  onPatchPlayer={onPatchPlayer}
+                  onOpenPlayer={onOpenPlayer}
+                  onRemovePlayer={onRemovePlayer}
                 />
               ))}
-            </ul>
-
-            {benched.length > 0 ? (
-              <div className="border-t border-[color:var(--aqt-border)] px-4 pb-2 pt-2.5">
-                <div className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>
-                  {`Benched \u00B7 ${benched.length}`}
-                </div>
-                <ul className="mt-1">
-                  {benched.map((row) => (
-                    <BenchedRow
-                      key={row.workspace_member_id}
-                      row={row}
-                      canWrite={canWrite}
-                      saving={savingPlayerId === row.workspace_member_id}
-                      onPatch={(patch) => onPatchPlayer(row.workspace_member_id, patch)}
-                      onOpen={() => onOpenPlayer(row.workspace_member_id)}
-                    />
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </>
+            </div>
+            {/* Follows the pointer instead of the row teleporting under it --
+                without this dnd-kit still moves it correctly, it just looks
+                broken mid-drag (the dragged row snaps back until drop). */}
+            <DragOverlay>{draggingRow ? <LineupDragPreview row={draggingRow} /> : null}</DragOverlay>
+          </DndContext>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * One `LineupBucket`'s drop zone: a titled card that highlights while a
+ * dragged row hovers over it, and holds that bucket's rows or an empty hint.
+ */
+function LineupColumn({
+  bucket,
+  title,
+  hint,
+  emptyHint,
+  rows,
+  canWrite,
+  savingPlayerId,
+  onPatchPlayer,
+  onOpenPlayer,
+  onRemovePlayer,
+}: Readonly<{
+  bucket: LineupBucket;
+  title: string;
+  hint: string;
+  emptyHint: string;
+  rows: CustomGamePlayer[];
+  canWrite: boolean;
+  savingPlayerId: number | null;
+  onPatchPlayer: (workspaceMemberId: number, patch: CustomGamePlayerPatch) => void;
+  onOpenPlayer: (workspaceMemberId: number) => void;
+  onRemovePlayer: (workspaceMemberId: number) => void;
+}>) {
+  const droppable = useDroppable({ id: bucket, disabled: !canWrite });
+  const dimmed = bucket === "benched";
+
+  return (
+    <section
+      ref={(node) => droppable.setNodeRef(node)}
+      aria-label={title}
+      className={cn(
+        "flex flex-col gap-1.5 rounded-xl border px-2.5 py-2.5 transition-colors",
+        droppable.isOver
+          ? "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_7%,transparent)]"
+          : "border-[color:var(--aqt-border-2)] bg-white/[0.012]",
+      )}
+    >
+      <div className="flex items-baseline gap-1.5 px-0.5">
+        {bucket === "must_play" ? (
+          <Pin
+            className="size-3 shrink-0 text-[color:var(--aqt-amber)]"
+            aria-hidden="true"
+            fill="currentColor"
+          />
+        ) : null}
+        <span
+          className={cn(
+            EYEBROW_CLASS,
+            "tracking-[0.14em]",
+            bucket === "must_play" && "text-[color:var(--aqt-amber)]",
+          )}
+        >
+          {title}
+        </span>
+        <span className="font-mono text-[11px] text-[color:var(--aqt-fg-dim)]">{rows.length}</span>
+        <span className="ml-auto hidden truncate text-[11px] text-[color:var(--aqt-fg-faint)] sm:block">
+          {hint}
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <p
+          className={cn(
+            "rounded-lg border border-dashed px-2.5 py-3 text-center text-[12px] transition-colors",
+            droppable.isOver
+              ? "border-[color:var(--aqt-teal)] text-[color:var(--aqt-teal)]"
+              : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-faint)]",
+          )}
+        >
+          {emptyHint}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-0.5">
+          {rows.map((row) => (
+            <LineupRow
+              key={row.workspace_member_id}
+              row={row}
+              canWrite={canWrite}
+              saving={savingPlayerId === row.workspace_member_id}
+              dimmed={dimmed}
+              onPatch={(patch) => onPatchPlayer(row.workspace_member_id, patch)}
+              onOpen={() => onOpenPlayer(row.workspace_member_id)}
+              onRemove={() => onRemovePlayer(row.workspace_member_id)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -362,12 +518,23 @@ type LineupRowProps = {
   row: CustomGamePlayer;
   canWrite: boolean;
   saving: boolean;
+  /** Benched rows read de-emphasised and freeze their role rail. */
+  dimmed: boolean;
   onPatch: (patch: CustomGamePlayerPatch) => void;
   onOpen: () => void;
   onRemove: () => void;
 };
 
-function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonly<LineupRowProps>) {
+/**
+ * One lineup row, draggable between the three `LineupColumn`s.
+ *
+ * The whole row is both the click target that opens the drawer and the drag
+ * source that moves it between columns — a `PointerSensor` activation
+ * distance (see `PickupLobbyPanel`) tells the two apart, the same pattern the
+ * matchup board's seat rows already use. A click that started inside a
+ * `RowAction` still belongs to that control, never the row's own onOpen.
+ */
+function LineupRow({ row, canWrite, saving, dimmed, onPatch, onOpen, onRemove }: Readonly<LineupRowProps>) {
   // The global OW grid, not the workspace's: balancer-service resolves a mix's
   // ranks against the grid with `workspace_id=None`, so these ranks are on the
   // OW scale. Labelling them with a workspace's tiers renames the same number.
@@ -377,19 +544,18 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
   const issue = getLineupIssue(row);
   const rank = averageRank(row);
   const division = resolveDivisionFromRank(grid, rank);
+  const canDrag = canWrite && !saving;
+  const draggable = useDraggable({
+    id: String(row.workspace_member_id),
+    data: { row },
+    disabled: !canDrag,
+  });
 
   return (
     <li
-      // The whole card opens the drawer: at this density every row IS a
-      // settings row, and making the host aim at a 24px gear was the most-missed
-      // target on the screen. A click that started inside a `RowAction` belongs
-      // to that control, so a switch or a chip is still just itself.
-      //
-      // Deliberately NOT `role="button"` + `tabIndex`: that would put a second
-      // focus stop in front of every row's real controls and announce the row
-      // as a button that also contains buttons. The gear below is the keyboard
-      // and screen-reader affordance; this handler is a pointer shortcut to the
-      // same action, which is why the row stays a plain list item.
+      ref={(node) => draggable.setNodeRef(node)}
+      {...draggable.listeners}
+      {...draggable.attributes}
       title={`${label} \u2014 roles and ranks`}
       onClick={(event) => {
         if (event.target instanceof HTMLElement && event.target.closest("[data-card-action]")) {
@@ -398,48 +564,17 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
         onOpen();
       }}
       className={cn(
-        "flex cursor-pointer items-center gap-2.5 rounded-lg border border-transparent px-2 py-2 transition-colors",
+        "flex items-center gap-2 rounded-lg border border-transparent px-2 py-2 transition-colors",
         "hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.025]",
+        canDrag && "touch-none active:cursor-grabbing",
         issue && "border-amber-400/35",
+        draggable.isDragging ? "opacity-30" : dimmed && "opacity-60",
       )}
     >
-      <RowAction>
-        <Switch
-          checked={row.is_active}
-          disabled={!canWrite || saving}
-          aria-label={`Include ${label} in the balance`}
-          onCheckedChange={(checked) => onPatch({ is_active: checked === true })}
-          className="h-5 w-[34px] shrink-0 [&>span]:size-4 [&>span]:data-[state=checked]:translate-x-[15px]"
-        />
-      </RowAction>
-
-      <RowAction>
-        <button
-          type="button"
-          disabled={!canWrite || saving}
-          onClick={() => onPatch({ must_play: !row.must_play })}
-          title={
-            row.must_play
-              ? `${label} is guaranteed a seat in the balance`
-              : `Guarantee ${label} a seat in the balance`
-          }
-          className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
-            row.must_play
-              ? "text-[color:var(--aqt-amber)] hover:text-[color:color-mix(in_srgb,var(--aqt-amber)_80%,white)]"
-              : "text-[color:var(--aqt-fg-faint)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg-muted)]",
-          )}
-        >
-          <Pin
-            className="size-[15px]"
-            aria-hidden="true"
-            fill={row.must_play ? "currentColor" : "none"}
-          />
-          <span className="sr-only">
-            {`${row.must_play ? "Stop guaranteeing" : "Guarantee"} ${label} a seat in the balance`}
-          </span>
-        </button>
-      </RowAction>
+      <GripVertical
+        className={cn("size-3.5 shrink-0", canDrag ? "text-[color:var(--aqt-fg-faint)]" : "text-transparent")}
+        aria-hidden="true"
+      />
 
       <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
         <span className="truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]">
@@ -456,7 +591,7 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
         <RolePriorityRail
           row={row}
           label={label}
-          canWrite={canWrite}
+          canWrite={canWrite && !dimmed}
           saving={saving}
           onPatch={onPatch}
         />
@@ -504,84 +639,29 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
   );
 }
 
-/**
- * A benched row keeps its switch and its settings but drops the points column:
- * nothing about it feeds the next balance, so the only questions left are "who is
- * sitting out" and "why". Its rail is the same one the active rows carry, inert —
- * a host still needs to see what they *would* get by switching this player back
- * on, and a second glyph treatment for the same fact drifted from the first.
- */
-function BenchedRow({
-  row,
-  canWrite,
-  saving,
-  onPatch,
-  onOpen,
-}: Readonly<{
-  row: CustomGamePlayer;
-  canWrite: boolean;
-  saving: boolean;
-  onPatch: (patch: CustomGamePlayerPatch) => void;
-  onOpen: () => void;
-}>) {
+/** The dragged row's own card, detached from its column, following the pointer. */
+function LineupDragPreview({ row }: Readonly<{ row: CustomGamePlayer }>) {
   const label = playerLabel(row);
   const { name, suffix } = splitBattleTag(label);
-  const order = resolveRoleOrder(row);
+  const rank = averageRank(row);
 
   return (
-    <li className="flex items-center gap-2.5 rounded-lg px-1 py-1.5 opacity-65 transition-opacity hover:bg-white/[0.025] hover:opacity-90">
-      <Switch
-        checked={row.is_active}
-        disabled={!canWrite || saving}
-        aria-label={`Include ${label} in the balance`}
-        onCheckedChange={(checked) => onPatch({ is_active: checked === true })}
-        className="h-5 w-[34px] shrink-0 [&>span]:size-4 [&>span]:data-[state=checked]:translate-x-[15px]"
-      />
-      <button
-        type="button"
-        disabled={!canWrite || saving}
-        onClick={() => onPatch({ must_play: !row.must_play })}
-        title={
-          row.must_play
-            ? `${label} is guaranteed a seat in the balance`
-            : `Guarantee ${label} a seat in the balance`
-        }
-        className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
-          row.must_play
-            ? "text-[color:var(--aqt-amber)] hover:text-[color:color-mix(in_srgb,var(--aqt-amber)_80%,white)]"
-            : "text-[color:var(--aqt-fg-faint)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg-muted)]",
-        )}
-      >
-        <Pin className="size-[15px]" aria-hidden="true" fill={row.must_play ? "currentColor" : "none"} />
-        <span className="sr-only">
-          {`${row.must_play ? "Stop guaranteeing" : "Guarantee"} ${label} a seat in the balance`}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex min-w-0 flex-1 items-baseline gap-1.5 rounded text-left"
-      >
-        <span className="truncate text-[13.5px] font-medium text-[color:var(--aqt-fg)]">
-          {name}
-        </span>
+    <div
+      className={cn(
+        PANEL_CLASS,
+        "flex w-[280px] cursor-grabbing items-center gap-2 rounded-lg border-[color:var(--aqt-teal)] px-2.5 py-2 shadow-lg",
+      )}
+    >
+      <GripVertical className="size-3.5 shrink-0 text-[color:var(--aqt-fg-faint)]" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]">
+        {name}
         {suffix ? (
-          <span className="shrink-0 font-mono text-xs text-[color:var(--aqt-fg-faint)]">
-            {suffix}
-          </span>
+          <span className="ml-1 font-mono text-xs text-[color:var(--aqt-fg-faint)]">{suffix}</span>
         ) : null}
-      </button>
-      <RolePriorityRail
-        row={row}
-        label={label}
-        canWrite={false}
-        saving={saving}
-        onPatch={onPatch}
-      />
-      <span className="w-[92px] shrink-0 text-right font-mono text-xs text-[color:var(--aqt-fg-faint)]">
-        {order.length === 0 ? "no ranked role" : "benched"}
       </span>
-    </li>
+      <span className="shrink-0 font-mono text-[13.5px] font-semibold tabular-nums text-[color:var(--aqt-fg)]">
+        {rank ?? "\u2014"}
+      </span>
+    </div>
   );
 }

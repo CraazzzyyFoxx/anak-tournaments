@@ -174,7 +174,7 @@ describe("PickupPlayerSheet ranks", () => {
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const [patch, rankChange] = onSave.mock.calls[0];
-    expect(patch).toEqual({ is_active: true, roles: ["tank", "dps"] });
+    expect(patch).toEqual({ is_active: true, must_play: false, roles: ["tank", "dps"] });
     expect(rankChange).toEqual({ ranks: { dps: 3000 }, clear: [] });
   });
 
@@ -274,19 +274,37 @@ describe("PickupPlayerSheet priority", () => {
 });
 
 describe("PickupPlayerSheet bench", () => {
-  it("stages the bench switch and writes it with the same Save as everything else", async () => {
+  it("stages a status change and writes both fields with the same Save as everything else", async () => {
     const scope = await mount();
 
-    const benchSwitch = scope.querySelector<HTMLElement>(
-      '[aria-label="Include Aria#1111 in the balance"]',
-    );
-    if (!benchSwitch) throw new Error("Bench switch not found");
-    await click(benchSwitch);
+    const benchedOption = scope.querySelector<HTMLElement>('[aria-label="Benched for Aria#1111"]');
+    if (!benchedOption) throw new Error("Benched option not found");
+    await click(benchedOption);
     expect(onSave).not.toHaveBeenCalled();
 
     await click(findButton(scope, "Save"));
     const [patch] = onSave.mock.calls[0];
-    expect(patch.is_active).toBe(false);
+    expect(patch).toMatchObject({ is_active: false, must_play: false });
+  });
+
+  it("guarantees a seat when Must play is picked", async () => {
+    const scope = await mount();
+
+    const mustPlayOption = scope.querySelector<HTMLElement>('[aria-label="Must play for Aria#1111"]');
+    if (!mustPlayOption) throw new Error("Must play option not found");
+    await click(mustPlayOption);
+
+    await click(findButton(scope, "Save"));
+    const [patch] = onSave.mock.calls[0];
+    expect(patch).toMatchObject({ is_active: true, must_play: true });
+  });
+
+  it("starts on the player's current status", async () => {
+    const scope = await mount(row({ is_active: false, must_play: false }));
+
+    expect(
+      scope.querySelector('[aria-label="Benched for Aria#1111"]')?.getAttribute("aria-checked"),
+    ).toBe("true");
   });
 });
 

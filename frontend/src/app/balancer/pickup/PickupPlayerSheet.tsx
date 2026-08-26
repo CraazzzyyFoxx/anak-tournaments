@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Save, UserMinus } from "lucide-react";
+import { useState } from "react";
+import { Pin, Save, UserMinus } from "lucide-react";
 
 import { BattleTagCopyButton } from "@/app/balancer/components/BattleTagCopyControls";
 import {
@@ -37,10 +37,13 @@ import {
 import {
   LINEUP_ISSUE_MESSAGES,
   LINEUP_ROLES,
+  bucketPatch,
   getLineupIssue,
+  lineupBucket,
   playerLabel,
   resolveRoleOrder,
   toggleRole,
+  type LineupBucket,
 } from "./pickup-lineup";
 
 /** What Save writes into the host's own rank book: `clear` falls the role back to the workspace. */
@@ -57,7 +60,7 @@ type PickupPlayerSheetProps = {
 
 /** Everything the sheet edits before Save, kept apart from the server row. */
 type RoleDraft = {
-  isActive: boolean;
+  bucket: LineupBucket;
   /** Priority order of the roles that are on — position is what the balancer reads. */
   order: RoleCode[];
   /** Staged writes to the host's own book. A `null` value is a staged Clear. */
@@ -66,11 +69,18 @@ type RoleDraft = {
 
 function buildDraft(row: CustomGamePlayer | null): RoleDraft {
   return {
-    isActive: row?.is_active ?? true,
+    bucket: row ? lineupBucket(row) : "pool",
     order: row ? resolveRoleOrder(row) : [],
     rankEdits: {},
   };
 }
+
+/** The three-way status picker's options, in the same order the lineup columns read left to right. */
+const STATUS_OPTIONS: readonly { bucket: LineupBucket; label: string; description: string }[] = [
+  { bucket: "must_play", label: "Must play", description: "Guaranteed a seat" },
+  { bucket: "pool", label: "In the pool", description: "In the balance" },
+  { bucket: "benched", label: "Benched", description: "Sitting out" },
+];
 
 /**
  * Per-player mix settings: who plays, which roles, in what priority, at what
@@ -111,13 +121,16 @@ export function PickupPlayerSheet({
   const label = row ? playerLabel(row) : "";
   const { name, suffix } = splitBattleTag(label);
   const [draft, setDraft] = useState<RoleDraft>(() => buildDraft(row));
-
   // Keyed on the member id rather than the whole row: a background refetch of
   // this same player (another host's edit landing mid-session) must not wipe
-  // out an edit still in progress.
-  useEffect(() => {
+  // out an edit still in progress. Resetting during render (not an effect) on
+  // an id change is React's own pattern for "state derived from a prop that
+  // should reset when the prop's identity changes".
+  const [draftedMemberId, setDraftedMemberId] = useState(row?.workspace_member_id);
+  if (row?.workspace_member_id !== draftedMemberId) {
+    setDraftedMemberId(row?.workspace_member_id);
     setDraft(buildDraft(row));
-  }, [row?.workspace_member_id]);
+  }
 
   // Reads the draft, not the server row: a role turned on (or a rank typed
   // for one) must clear this warning immediately, not once Save round-trips.
@@ -149,7 +162,7 @@ export function PickupPlayerSheet({
       }
     }
     onSave(
-      { is_active: draft.isActive, roles: draft.order },
+      { ...bucketPatch(draft.bucket), roles: draft.order },
       Object.keys(draft.rankEdits).length > 0 ? { ranks, clear } : null,
     );
   };
@@ -194,22 +207,55 @@ export function PickupPlayerSheet({
 
         {row == null ? null : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <section className="flex items-center gap-3 border-b border-[color:var(--aqt-border)] px-5 py-4">
-              <div className="min-w-0">
-                <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">
-                  In the balance
-                </h3>
+            <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
+              <div>
+                <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">Status</h3>
                 <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
-                  Turn off to bench without losing these settings.
+                  Or drag the row between columns in the lineup. Benching keeps these settings without
+                  playing.
                 </p>
               </div>
-              <Switch
-                checked={draft.isActive}
-                disabled={disabled}
-                aria-label={`Include ${label} in the balance`}
-                onCheckedChange={(checked) => setDraft((current) => ({ ...current, isActive: checked }))}
-                className="ml-auto h-5 w-[34px] shrink-0 [&>span]:size-4 [&>span]:data-[state=checked]:translate-x-[15px]"
-              />
+              <div
+                role="radiogroup"
+                aria-label={`Lineup status for ${label}`}
+                className="grid grid-cols-3 gap-1.5"
+              >
+                {STATUS_OPTIONS.map((option) => {
+                  const selected = draft.bucket === option.bucket;
+                  return (
+                    <button
+                      key={option.bucket}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={`${option.label} for ${label}`}
+                      disabled={disabled}
+                      onClick={() => setDraft((current) => ({ ...current, bucket: option.bucket }))}
+                      className={cn(
+                        "flex flex-col items-center gap-0.5 rounded-lg border px-2 py-2 text-center transition-colors",
+                        selected
+                          ? option.bucket === "must_play"
+                            ? "border-[color:var(--aqt-amber)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_12%,transparent)] text-[color:var(--aqt-amber)]"
+                            : "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[color:var(--aqt-teal)]"
+                          : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-3)]",
+                        "disabled:cursor-default disabled:opacity-60",
+                      )}
+                    >
+                      {option.bucket === "must_play" ? (
+                        <Pin
+                          className="size-3.5"
+                          aria-hidden="true"
+                          fill={selected ? "currentColor" : "none"}
+                        />
+                      ) : null}
+                      <span className="text-[12.5px] font-semibold">{option.label}</span>
+                      <span className="text-[10.5px] text-[color:var(--aqt-fg-dim)]">
+                        {option.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </section>
 
             <section className="space-y-2 border-b border-[color:var(--aqt-border)] px-5 py-4">
@@ -331,8 +377,8 @@ export function PickupPlayerSheet({
                   {`Remove ${label} from this mix`}
                 </Button>
                 <p className="mt-2 text-xs text-[color:var(--aqt-fg-dim)]">
-                  Drops these settings too, right away. To sit them out for one game, switch off
-                  &ldquo;In the balance&rdquo; and press Save instead.
+                  Drops these settings too, right away. To sit them out for one game, set its status
+                  to Benched and press Save instead.
                 </p>
               </section>
             ) : null}
@@ -378,7 +424,7 @@ function draftRow(row: CustomGamePlayer, draft: RoleDraft): CustomGamePlayer {
       ranks[role] = value;
     }
   }
-  return { ...row, is_active: draft.isActive, roles: draft.order, ranks };
+  return { ...row, is_active: draft.bucket !== "benched", roles: draft.order, ranks };
 }
 
 /** The rank field's value, source badge and clearability, from the server row plus any staged edit. */

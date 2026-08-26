@@ -1,6 +1,6 @@
 import { ROLES, canonicalToRegistrationRole, type RoleCode } from "@/lib/roles";
 import { isRosterSlotCode, type RosterSlotMap } from "@/lib/roster-shape";
-import type { CustomGameOutcome, CustomGamePlayer } from "@/services/custom-game.service";
+import type { CustomGameOutcome, CustomGamePlayer, CustomGamePlayerPatch } from "@/services/custom-game.service";
 
 /** What recording a match needs: the click, and which balance option it was played from. */
 export type PickupRecordOutcomeInput = {
@@ -189,6 +189,38 @@ export function sortLineup(rows: CustomGamePlayer[]): CustomGamePlayer[] {
     }
     return a.sort_order - b.sort_order || a.id - b.id;
   });
+}
+
+/**
+ * The three columns the lineup panel drags players between. `must_play`
+ * guarantees a seat (see `CustomGamePlayer.must_play`), `pool` is active but
+ * optional, `benched` is `is_active === false`. A row's bucket is a pure
+ * function of those two server fields -- there is no fourth state to drift
+ * out of sync with them.
+ */
+export type LineupBucket = "must_play" | "pool" | "benched";
+
+export function lineupBucket(row: Pick<CustomGamePlayer, "is_active" | "must_play">): LineupBucket {
+  if (!row.is_active) {
+    return "benched";
+  }
+  return row.must_play ? "must_play" : "pool";
+}
+
+/**
+ * The `is_active`/`must_play` pair a drop onto one of the three lineup
+ * columns writes. Benching always clears `must_play` too -- a player sitting
+ * out cannot simultaneously be guaranteed a seat.
+ */
+export function bucketPatch(bucket: LineupBucket): CustomGamePlayerPatch {
+  switch (bucket) {
+    case "must_play":
+      return { is_active: true, must_play: true };
+    case "pool":
+      return { is_active: true, must_play: false };
+    case "benched":
+      return { is_active: false, must_play: false };
+  }
 }
 
 /** One assigned seat in a balanced team, flattened out of the role buckets. */
