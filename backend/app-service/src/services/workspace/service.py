@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.messaging.rpc import request_dict
 from shared.models.identity.auth_user import AuthUser
 from shared.rbac import (
     assign_workspace_system_role,
@@ -37,6 +38,15 @@ __all__ = ["MEMBERS_SORT_FIELDS", "WorkspaceService", "workspaces"]
 _CUSTOM_DOMAIN_TOKEN_PREFIX = "owt-verify-"
 
 _DOMAIN_CONFLICT_MESSAGE = "This custom domain is already claimed by another workspace"
+_GUILD_CONFLICT_MESSAGE = "This Discord guild is already claimed by another workspace"
+# Internal, service-to-service subject -- no gateway route, no shared
+# RabbitQueue constant (workspace self-service design §4.1/§4.6): every other
+# rpc.identity.* subject is called the same way, by its bare subject string,
+# because the caller has always been the Go gateway until now. This is the
+# first Python-to-Python call to it; the bare string still routes correctly
+# because @broker.subscriber("rpc.identity.oauth_discord_guilds") declares a
+# same-named queue on the default exchange.
+_DISCORD_GUILDS_SUBJECT = "rpc.identity.oauth_discord_guilds"
 
 MEMBERS_SORT_FIELDS = ("username", "role")
 
@@ -658,6 +668,85 @@ class WorkspaceService:
             workspace_id=workspace_id,
             before={"custom_domain": domain_before, "custom_domain_verified_at": _iso(verified_before)},
             after={"custom_domain": None, "custom_domain_verified_at": None},
+        )
+        await session.commit()
+        return workspace
+
+    # --- Discord guild verification (self-service design §4.1) -------------
+
+    async def verify_discord_guild(
+        self,
+        session: AsyncSession,
+        workspace: models.Workspace,
+        guild_id: str,
+        *,
+        actor: typing.Any,
+        broker: typing.Any,
+    ) -> models.Workspace:
+        """Bind ``guild_id`` to ``workspace`` after proving ``actor`` administers
+        it on Discord.
+
+        Fails **closed**: an identity-service outage or an unusable reply
+        rejects the bind with 503, it never silently skips the ownership check.
+        This is the opposite direction from the Boosty subscription resolver
+        (which fails open on a missing/unreachable guild config) -- there, a
+        missing answer only widens who can register for a tournament; here, it
+        would let an unproven claim permanently attach to a workspace's
+        identity. See the design's Risks section.
+
+        Raises ``HTTPException(403)`` if ``actor`` does not administer
+        ``guild_id`` on Discord (owner or ``MANAGE_GUILD``, per
+        ``rpc.identity.oauth_discord_guilds``).
+
+        Raises ``HTTPException(409)`` if another workspace already claims this
+        guild -- the ``uq_workspace_discord_guild_id`` unique constraint is the
+        authoritative check (no separate pre-check like the custom-domain flow
+        has: a guild-id collision is rare enough that a TOCTOU-safe
+        ``IntegrityError`` catch alone is proportionate).
+        """
+        try:
+            res = await request_dict(broker, {"auth_user_id": actor.id}, _DISCORD_GUILDS_SUBJECT, timeout=5.0)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Could not reach Discord for guild verification") from exc
+        if not res or not res.get("ok"):
+            raise HTTPException(status_code=503, detail="Could not reach Discord for guild verification")
+
+        guilds = (res.get("data") or {}).get("guilds") or []
+        administered = {g["guild_id"] for g in guilds if g.get("can_manage")}
+        if guild_id not in administered:
+            raise HTTPException(status_code=403, detail="You do not administer this Discord guild")
+
+        guild_id_before = workspace.discord_guild_id
+        verified_at_before = workspace.discord_guild_verified_at
+        try:
+            await self.workspace_repo.update_fields(
+                session,
+                workspace,
+                {
+                    "discord_guild_id": guild_id,
+                    "discord_guild_verified_at": datetime.now(UTC),
+                    "discord_guild_verified_by_auth_user_id": actor.id,
+                },
+            )
+        except IntegrityError as exc:
+            await session.rollback()
+            raise HTTPException(status_code=409, detail=_GUILD_CONFLICT_MESSAGE) from exc
+
+        await record_audit(
+            session,
+            action="workspace.discord_guild_verified",
+            source="admin",
+            actor=actor,
+            actor_label=actor.username,
+            workspace_id=workspace.id,
+            entity_type="workspace",
+            entity_id=workspace.id,
+            entity_label=workspace.slug,
+            before={"discord_guild_id": guild_id_before, "discord_guild_verified_at": _iso(verified_at_before)},
+            after={
+                "discord_guild_id": workspace.discord_guild_id,
+                "discord_guild_verified_at": _iso(workspace.discord_guild_verified_at),
+            },
         )
         await session.commit()
         return workspace
