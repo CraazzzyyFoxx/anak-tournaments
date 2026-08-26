@@ -16,6 +16,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "casual01"
 down_revision: str | Sequence[str] | None = "anlcln02"
@@ -49,7 +50,9 @@ def upgrade() -> None:
         sa.Column("team_id", sa.BigInteger(), nullable=False),
         sa.Column("workspace_member_id", sa.BigInteger(), nullable=False),
         sa.Column(
-            "role", sa.Enum("tank", "damage", "support", "flex", name="heroclass", create_type=False), nullable=True
+            "role",
+            postgresql.ENUM("tank", "damage", "support", "flex", name="heroclass", create_type=False),
+            nullable=True,
         ),
         sa.Column("rank", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["team_id"], ["casual.team.id"], ondelete="CASCADE"),
