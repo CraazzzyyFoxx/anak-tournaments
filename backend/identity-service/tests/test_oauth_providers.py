@@ -1,6 +1,8 @@
+import asyncio
 import os
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -34,7 +36,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.schemas.oauth import OAuthProvider  # noqa: E402
 from src.services.oauth import oauth  # noqa: E402
-from src.services.oauth_providers import OAuthProviderRegistry, oauth_providers  # noqa: E402
+from src.services.oauth_providers import (  # noqa: E402  # noqa: E402
+    DiscordOAuthProvider,
+    OAuthProviderRegistry,
+    has_manage_guild,
+    oauth_providers,
+)
 
 
 def test_get_available_providers_returns_only_enabled_and_configured(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,3 +134,81 @@ def test_twitch_authorize_url_keeps_the_email_scope() -> None:
     url = oauth_providers.providers["twitch"].get_authorization_url("state-123")
 
     assert "user%3Aread%3Aemail" in url
+
+
+def test_discord_authorize_url_requests_guilds_scope() -> None:
+    """Workspace self-service Discord-guild verification (``rpc.identity.oauth.discord_guilds``)
+    needs to know which guilds the user administers, which requires the
+    ``guilds`` OAuth scope. Dropping it makes ``/users/@me/guilds`` return 401.
+    """
+    url = oauth_providers.providers["discord"].get_authorization_url("state-123")
+    scope = parse_qs(urlparse(url).query)["scope"][0]
+
+    assert scope.split() == ["identify", "email", "guilds"]
+
+
+class _FakeGuildsResponse:
+    def __init__(self, status_code: int, payload: object) -> None:
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> object:
+        return self._payload
+
+
+class _FakeHttpClient:
+    """Stand-in for ``OAuthHttpClient`` — ``self.client()`` returns an object
+    with an async ``get`` recording the call, mirroring the shape
+    ``DiscordOAuthProvider`` actually calls (``self.http.client().get(...)``).
+    """
+
+    def __init__(self, response: _FakeGuildsResponse) -> None:
+        self._response = response
+        self.calls: list[tuple[str, dict]] = []
+
+    def client(self) -> _FakeHttpClient:
+        return self
+
+    async def get(self, url: str, headers: dict | None = None) -> _FakeGuildsResponse:
+        self.calls.append((url, headers or {}))
+        return self._response
+
+
+def test_discord_get_user_guilds_returns_the_raw_list() -> None:
+    payload = [
+        {"id": "111", "owner": True, "permissions": "2147483647"},
+        {"id": "222", "owner": False, "permissions": "16"},
+    ]
+    fake_http = _FakeHttpClient(_FakeGuildsResponse(200, payload))
+    provider = DiscordOAuthProvider(fake_http)  # type: ignore[arg-type]
+
+    guilds = asyncio.run(provider.get_user_guilds("token-abc"))
+
+    assert guilds == payload
+    url, headers = fake_http.calls[0]
+    assert url.endswith("/users/@me/guilds")
+    assert headers["Authorization"] == "Bearer token-abc"
+
+
+def test_discord_get_user_guilds_raises_on_non_200() -> None:
+    fake_http = _FakeHttpClient(_FakeGuildsResponse(401, {"message": "401: Unauthorized"}))
+    provider = DiscordOAuthProvider(fake_http)  # type: ignore[arg-type]
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(provider.get_user_guilds("stale-token"))
+
+    assert exc_info.value.status_code == 400
+
+
+def test_has_manage_guild_true_when_bit_is_set() -> None:
+    # 32 = 0b100000, bit 5 = MANAGE_GUILD alone.
+    assert has_manage_guild("32") is True
+
+
+def test_has_manage_guild_false_when_bit_is_absent() -> None:
+    # 16 = 0b010000, MANAGE_CHANNELS only, not MANAGE_GUILD.
+    assert has_manage_guild("16") is False
+
+
+def test_has_manage_guild_true_when_combined_with_other_bits() -> None:
+    assert has_manage_guild("2147483647") is True
