@@ -11,6 +11,7 @@ import {
   type CustomGamePlayerPatch,
 } from "@/services/custom-game.service";
 import type { RosterSlotMap } from "@/lib/roster-shape";
+import type { BalancerConfig } from "@/types/balancer.types";
 import type { PickupRecordOutcomeInput } from "@/app/balancer/pickup/pickup-lineup";
 import {
   workspacePlayerKeys,
@@ -151,6 +152,13 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     onError: (error) => notify.apiError(error),
   });
 
+  const setBalancerConfig = useMutation({
+    mutationFn: (balancerConfig: BalancerConfig | null) =>
+      customGameService.setBalancerConfig(workspaceId, selectedGameId as number, balancerConfig),
+    onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
   const swapSeats = useMutation({
     mutationFn: (input: PickupSwapSeatsInput) =>
       customGameService.swapSeats(
@@ -236,6 +244,7 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     setTeamNames,
     setRoleMask,
     setPointsPerWin,
+    setBalancerConfig,
     swapSeats,
   };
 }

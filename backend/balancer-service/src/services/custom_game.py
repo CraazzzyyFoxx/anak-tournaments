@@ -25,6 +25,7 @@ from shared.services.member_rank import MIX_ORDER, MemberRankService, member_ran
 from shared.services.roster_shape_access import get_workspace_roster_slots
 from shared.services.workspace_roster import RosterMember, hosts_by_user_id, list_roster
 from src.domain.mix_rotation import PlayerHistory, RotationRecommendation, recommend_rotation
+from src.services.balancer.config.public_contract import normalize_config_overrides
 from src.services.balancer.role_naming import role_slot_code
 from src.services.balancer.solver import run_balance as _run_balance
 
@@ -683,6 +684,37 @@ class CustomGameService:
             config.pop("points_per_win", None)
         else:
             config["points_per_win"] = points_per_win
+        game.config_json = config or None
+        await session.flush()
+        return game
+
+    async def set_balancer_config(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        balancer_config: Mapping[str, Any] | None,
+        actor_user_id: int,
+    ) -> models.CustomGame:
+        """Patch the mix's own balancer algorithm overrides, or clear them back to the solver defaults.
+
+        ``None``/``{}`` clears every override, the same "own value or inherit"
+        split ``set_role_mask``/``set_points_per_win`` already use. A provided
+        mapping goes through the same ``ConfigOverrides`` schema a saved
+        tournament config is validated against (``normalize_config_overrides``),
+        so an unknown or malformed key is dropped rather than reaching the
+        solver. The result replaces every non-reserved key of ``config_json``
+        wholesale: ``_CONFIG_ONLY`` (this mix's own knobs, not the solver's) is
+        preserved untouched, and everything else is exactly what ``balance``
+        forwards to ``run_balance`` as ``config_overrides``.
+        """
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
+        normalized = normalize_config_overrides(balancer_config) if balancer_config else {}
+        config = {key: value for key, value in (game.config_json or {}).items() if key in _CONFIG_ONLY}
+        config.update(normalized)
         game.config_json = config or None
         await session.flush()
         return game

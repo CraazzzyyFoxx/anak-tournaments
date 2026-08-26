@@ -20,6 +20,7 @@ import {
   summarizeLineup,
 } from "@/app/balancer/pickup/pickup-lineup";
 import { usePickupMix } from "@/app/balancer/pickup/usePickupMix";
+import balancerService from "@/services/balancer.service";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import mapService from "@/services/map.service";
@@ -70,6 +71,13 @@ export default function BalancerPickupMixPage() {
     queryFn: () => mapService.lookup(),
     staleTime: 5 * 60 * 1000,
   });
+  // Field metadata + presets for the mix's "Balancer algorithm" section --
+  // the same public config the tournament balancer page reads.
+  const balancerConfigQuery = useQuery({
+    queryKey: ["balancer-public", "config"],
+    queryFn: () => balancerService.getConfig(),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
 
   const {
     selectedGameId,
@@ -85,6 +93,7 @@ export default function BalancerPickupMixPage() {
     setTeamNames,
     setRoleMask,
     setPointsPerWin,
+    setBalancerConfig,
     swapSeats,
   } = usePickupMix(workspaceId ?? 0, pickedGameId);
 
@@ -248,6 +257,9 @@ export default function BalancerPickupMixPage() {
             setPointsPerWin.mutate(input.pointsPerWin);
           }
         }}
+        balancerConfigData={balancerConfigQuery.data}
+        balancerConfigSaving={setBalancerConfig.isPending}
+        onSaveBalancerConfig={(balancerConfig) => setBalancerConfig.mutate(balancerConfig)}
       />
 
       <PickupPlayerSheet

@@ -896,6 +896,79 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             )
         self.assertEqual(ctx.exception.status_code, 422)
 
+    async def test_set_balancer_config_stores_validated_overrides(self) -> None:
+        self.games.get.return_value = _game()
+
+        game = await self.service.set_balancer_config(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            balancer_config={"population_size": 200, "generation_count": 300},
+            actor_user_id=9,
+        )
+
+        self.assertEqual(game.config_json, {"population_size": 200, "generation_count": 300})
+
+    async def test_set_balancer_config_drops_unknown_keys(self) -> None:
+        """Same schema a saved tournament config is validated against: an
+        unrecognised key must not reach the solver as a silent override."""
+        self.games.get.return_value = _game()
+
+        game = await self.service.set_balancer_config(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            balancer_config={"population_size": 200, "not_a_real_knob": 1},
+            actor_user_id=9,
+        )
+
+        self.assertEqual(game.config_json, {"population_size": 200})
+
+    async def test_set_balancer_config_preserves_reserved_config_keys(self) -> None:
+        self.games.get.return_value = _game(
+            config_json={"role_mask": {"tank": 1}, "points_per_win": 10, "team_names": {"0": "Wolves"}}
+        )
+
+        game = await self.service.set_balancer_config(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            balancer_config={"population_size": 200},
+            actor_user_id=9,
+        )
+
+        self.assertEqual(
+            game.config_json,
+            {
+                "role_mask": {"tank": 1},
+                "points_per_win": 10,
+                "team_names": {"0": "Wolves"},
+                "population_size": 200,
+            },
+        )
+
+    async def test_set_balancer_config_null_clears_it_without_touching_reserved_keys(self) -> None:
+        self.games.get.return_value = _game(config_json={"population_size": 200, "points_per_win": 10})
+
+        game = await self.service.set_balancer_config(
+            self.session, workspace_id=1, custom_game_id=11, balancer_config=None, actor_user_id=9
+        )
+
+        self.assertEqual(game.config_json, {"points_per_win": 10})
+
+    async def test_balance_forwards_the_stored_balancer_config_to_the_solver(self) -> None:
+        """End-to-end wiring: whatever `set_balancer_config` persisted into
+        `config_json` is exactly what `balance` forwards to the solver as
+        `config_overrides` (`_CONFIG_ONLY` keys stay carved out)."""
+        self.games.get.return_value = _game(config_json={"population_size": 200, "points_per_win": 10})
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        self.ranks.resolve.return_value = _ranks(7)
+
+        await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+
+        _player_data, config_overrides, _progress, _role_mask = self.run_balance.await_args.args
+        self.assertEqual(config_overrides, {"population_size": 200})
+
     async def test_set_points_per_win_terminal_409(self) -> None:
         self.games.get.return_value = _row(
             id=11, workspace_id=1, host_user_id=9, name="Scrim", status="completed", config_json=None

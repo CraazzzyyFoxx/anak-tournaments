@@ -1,6 +1,6 @@
 """Custom games over typed RPC.
 
-``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,set_points_per_win,swap_seats,record_outcome,match_history,rotation,close,delete}``.
+``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,set_points_per_win,set_balancer_config,swap_seats,record_outcome,match_history,rotation,close,delete}``.
 Writes require ``actor == host``. Reads are any workspace member.
 """
 
@@ -134,6 +134,26 @@ def _points_per_win_body(data: dict[str, Any]) -> int | None:
     if raw is not None and (not isinstance(raw, int) or isinstance(raw, bool)):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="points_per_win must be an integer or null"
+        )
+    return raw
+
+
+def _balancer_config_body(data: dict[str, Any]) -> dict[str, Any] | None:
+    """The mix's own balancer algorithm overrides, or ``None`` to clear them back to defaults.
+
+    Mirrors ``_role_mask_body``: the whole value may legitimately be ``null``,
+    so a missing key -- not an explicit ``null`` -- is what is rejected.
+    """
+    body = c.payload(data)
+    if "balancer_config" in body:
+        raw = body["balancer_config"]
+    elif "balancer_config" in data:
+        raw = data["balancer_config"]
+    else:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="balancer_config is required")
+    if raw is not None and not isinstance(raw, dict):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="balancer_config must be a map or null"
         )
     return raw
 
@@ -490,6 +510,25 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.set_points_per_win", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.set_balancer_config")
+    async def _set_balancer_config(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "update")
+            game = await custom_game_service.set_balancer_config(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                balancer_config=_balancer_config_body(data),
+                actor_user_id=user.id,
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="balancer_config", actor_user_id=user.id)
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.set_balancer_config", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.swap_seats")
     async def _swap_seats(data: dict, msg: RabbitMessage) -> dict:

@@ -1,5 +1,6 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type { RosterShape, RosterSlotMap } from "@/lib/roster-shape";
+import type { BalancerConfig } from "@/types/balancer.types";
 
 /** Where an effective rank came from, strongest first. */
 export type RankSource = "author" | "workspace" | "ow";
@@ -216,6 +217,23 @@ export const customGameService = {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/points-per-win`, {
       method: "PUT",
       body: { points_per_win: pointsPerWin },
+    }).then((r) => r.json());
+  },
+
+  /**
+   * The mix's own balancer algorithm overrides (weights, generation count,
+   * ...), or `null` to clear every override back to the solver's own
+   * defaults -- the same override/inherit split `setRoleMask` already uses.
+   * `balance` forwards whatever is stored here straight to the solver.
+   */
+  setBalancerConfig(
+    workspaceId: number,
+    gameId: number,
+    balancerConfig: BalancerConfig | null,
+  ): Promise<CustomGame> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/balancer-config`, {
+      method: "PUT",
+      body: { balancer_config: balancerConfig },
     }).then((r) => r.json());
   },
 

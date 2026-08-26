@@ -1,6 +1,8 @@
 import { ROLES, canonicalToRegistrationRole, type RoleCode } from "@/lib/roles";
 import { isRosterSlotCode, type RosterSlotMap } from "@/lib/roster-shape";
+import { sanitizeBalancerConfig } from "@/app/balancer/components/balancer-config-helpers";
 import type { CustomGameOutcome, CustomGamePlayer, CustomGamePlayerPatch } from "@/services/custom-game.service";
+import type { BalancerConfig } from "@/types/balancer.types";
 
 /** What recording a match needs: the click, and which balance option it was played from. */
 export type PickupRecordOutcomeInput = {
@@ -317,6 +319,29 @@ export function parseRoleMask(configJson: unknown): RosterSlotMap | null {
 export function parsePointsPerWin(configJson: unknown): number | null {
   const value = asRecord(configJson)?.points_per_win;
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/**
+ * The mix's own balancer algorithm overrides -- every `config_json` key
+ * `balance` forwards straight to the solver as `config_overrides`
+ * (`custom_game.py`'s `_CONFIG_ONLY` carves out the four keys below, which
+ * this mix's own controls own). Sanitized the same way the tournament
+ * balancer page sanitizes a saved config, so a stray or legacy key never
+ * reaches the field editor.
+ */
+const MIX_CONFIG_RESERVED_KEYS: Record<string, true> = {
+  role_mask: true,
+  team_count: true,
+  team_names: true,
+  points_per_win: true,
+};
+
+export function parseBalancerConfig(configJson: unknown): BalancerConfig {
+  const raw = asRecord(configJson) ?? {};
+  const overrides = Object.fromEntries(
+    Object.entries(raw).filter(([key]) => !MIX_CONFIG_RESERVED_KEYS[key]),
+  );
+  return sanitizeBalancerConfig(overrides as BalancerConfig);
 }
 
 function parseSeats(roster: Record<string, unknown>): PickupSeat[] {
