@@ -24,6 +24,7 @@ from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER, MemberRankService, member_rank_service
 from shared.services.roster_shape_access import get_workspace_roster_slots
 from shared.services.workspace_roster import RosterMember, hosts_by_user_id, list_roster
+from src.domain.mix_rotation import PlayerHistory, RotationRecommendation, recommend_rotation
 from src.services.balancer.role_naming import role_slot_code
 from src.services.balancer.solver import run_balance as _run_balance
 
@@ -918,6 +919,62 @@ class CustomGameService:
         """
         game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
         return list(await self.casual_matches.list_for_custom_game(session, game.id))
+
+    async def rotation(
+        self, session: AsyncSession, *, workspace_id: int, custom_game_id: int
+    ) -> list[RotationRecommendation]:
+        """Recommend who is owed the next seat and who should sit, from this mix's own map history.
+
+        Ranks the whole pool -- bench included, a benched player can still be
+        "owed" a seat -- by :func:`recommend_rotation` against every map
+        recorded via :meth:`record_outcome` for this game, then splits it at
+        the same seat count :meth:`balance` would fill for the current pool
+        size. A row's own ``must_play`` pin (see :meth:`update_player`) is
+        honoured the same way it is honoured there: a seat, not a vote.
+
+        Read-only, no roster row is touched -- the host applies the verdict
+        through the existing ``is_active``/``must_play`` toggles.
+        """
+        game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
+        roster = list(await self.roster.list_for_game(session, game.id))
+        if not roster:
+            return []
+
+        matches = list(await self.casual_matches.list_for_custom_game(session, game.id))
+        matches.reverse()  # newest-first -> chronological, oldest map first
+        team_ids = [team_id for match in matches for team_id in (match.home_team_id, match.away_team_id)]
+        seats = await self.casual_players.list_for_teams(session, team_ids)
+        members_by_team: dict[int, set[int]] = {}
+        for seat in seats:
+            members_by_team.setdefault(seat.team_id, set()).add(seat.workspace_member_id)
+        match_participants = [
+            members_by_team.get(match.home_team_id, set()) | members_by_team.get(match.away_team_id, set())
+            for match in matches
+        ]
+
+        histories = [
+            PlayerHistory(
+                member_id=row.workspace_member_id,
+                # Only maps recorded after this row joined the pool count --
+                # a map played before they signed up is not one they sat out.
+                played=tuple(
+                    row.workspace_member_id in participants
+                    for match, participants in zip(matches, match_participants, strict=True)
+                    if row.created_at is None or match.created_at >= row.created_at
+                ),
+                pinned_must_play=row.must_play,
+            )
+            for row in roster
+        ]
+
+        role_mask = (
+            await self.roster_shape(session, workspace_id=workspace_id, config_json=game.config_json)
+        ).slots
+        players_per_team = sum(role_mask.values())
+        usable_count = (
+            len(roster) if players_per_team <= 0 else (len(roster) // players_per_team) * players_per_team
+        )
+        return recommend_rotation(histories, usable_count=usable_count)
 
     async def close(
         self, session: AsyncSession, *, workspace_id: int, custom_game_id: int, actor_user_id: int

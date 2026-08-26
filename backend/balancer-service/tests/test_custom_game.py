@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,13 +13,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
@@ -1328,3 +1320,77 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                 actor_user_id=99,
             )
         self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_rotation_returns_empty_list_for_an_empty_pool(self) -> None:
+        self.games.get.return_value = _game()
+        self.roster.list_for_game.return_value = []
+
+        recommendations = await self.service.rotation(self.session, workspace_id=1, custom_game_id=11)
+
+        self.assertEqual(recommendations, [])
+
+    async def test_rotation_ranks_pool_by_map_history_and_splits_at_seat_count(self) -> None:
+        from src.domain.mix_rotation import RotationStatus
+
+        # players_per_team=2, pool of 3 -> exactly one seat short next map.
+        self.games.get.return_value = _game(config_json={"role_mask": {"tank": 1, "dps": 1}})
+        self.roster.list_for_game.return_value = [
+            _roster_row(1, 7, 0, created_at=0),
+            _roster_row(2, 8, 1, created_at=0),
+            _roster_row(3, 9, 2, created_at=0),
+        ]
+        # Newest-first, as CasualMatchRepository.list_for_custom_game returns it.
+        self.casual_matches.list_for_custom_game = AsyncMock(
+            return_value=[
+                _row(id=2, home_team_id=201, away_team_id=202, created_at=2),  # 7 & 9 played, 8 sat
+                _row(id=1, home_team_id=101, away_team_id=102, created_at=1),  # 7 & 8 played, 9 sat
+            ]
+        )
+        self.casual_players.list_for_teams = AsyncMock(
+            return_value=[
+                _row(team_id=101, workspace_member_id=7),
+                _row(team_id=102, workspace_member_id=8),
+                _row(team_id=201, workspace_member_id=9),
+                _row(team_id=202, workspace_member_id=7),
+            ]
+        )
+
+        recommendations = await self.service.rotation(self.session, workspace_id=1, custom_game_id=11)
+        by_id = {rec.member_id: rec for rec in recommendations}
+
+        # 8 sat out the most recent map -- owed the next seat.
+        self.assertEqual(by_id[8].status, RotationStatus.MUST_PLAY)
+        # 7 played both maps in a row -- longest active streak rests.
+        self.assertEqual(by_id[7].status, RotationStatus.SHOULD_REST)
+        # 9 fills the remaining seat with no fatigue signal of its own.
+        self.assertEqual(by_id[9].status, RotationStatus.NEUTRAL)
+
+    async def test_rotation_ignores_maps_played_before_a_member_joined(self) -> None:
+        from src.domain.mix_rotation import RotationStatus
+
+        # players_per_team=2, pool of 3 -> one seat short.
+        self.games.get.return_value = _game(config_json={"role_mask": {"tank": 1, "dps": 1}})
+        self.roster.list_for_game.return_value = [
+            _roster_row(1, 7, 0, created_at=0),
+            _roster_row(2, 8, 1, created_at=0),
+            _roster_row(3, 9, 2, created_at=5),  # joined after the only map recorded so far
+        ]
+        self.casual_matches.list_for_custom_game = AsyncMock(
+            return_value=[_row(id=1, home_team_id=101, away_team_id=102, created_at=1)]
+        )
+        self.casual_players.list_for_teams = AsyncMock(
+            return_value=[_row(team_id=101, workspace_member_id=7)]
+        )
+
+        recommendations = await self.service.rotation(self.session, workspace_id=1, custom_game_id=11)
+        by_id = {rec.member_id: rec for rec in recommendations}
+
+        # 9 has no history yet (joined after the only recorded map) -- no
+        # fatigue penalty, plain tie-break fills the last seat with it.
+        self.assertEqual(by_id[9].games_played, 0)
+        self.assertEqual(by_id[9].consecutive_sat, 0)
+        self.assertEqual(by_id[9].status, RotationStatus.NEUTRAL)
+        # 8 sat out the map it was eligible for -- owed the other seat.
+        self.assertEqual(by_id[8].status, RotationStatus.MUST_PLAY)
+        # 7 is the only one who actually played -- rests to make room.
+        self.assertEqual(by_id[7].status, RotationStatus.SHOULD_REST)

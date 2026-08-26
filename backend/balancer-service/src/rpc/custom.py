@@ -1,6 +1,6 @@
 """Custom games over typed RPC.
 
-``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,set_points_per_win,swap_seats,record_outcome,match_history,close,delete}``.
+``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,set_points_per_win,swap_seats,record_outcome,match_history,rotation,close,delete}``.
 Writes require ``actor == host``. Reads are any workspace member.
 """
 
@@ -304,6 +304,20 @@ async def _dump_matches(session: Any, matches: list[Any]) -> list[dict[str, Any]
     return [_dump_match(match, map_info) for match in matches]
 
 
+def _dump_rotation(recommendations: list[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "workspace_member_id": rec.member_id,
+            "status": rec.status.value,
+            "reason": rec.reason,
+            "consecutive_sat": rec.consecutive_sat,
+            "consecutive_played": rec.consecutive_played,
+            "games_played": rec.games_played,
+        }
+        for rec in recommendations
+    ]
+
+
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.balancer.custom.create")
     async def _create(data: dict, msg: RabbitMessage) -> dict:
@@ -544,6 +558,19 @@ def register(broker: Any, logger: Any) -> None:
             return await _dump_matches(session, matches)
 
         return await c.envelope(logger, "custom.match_history", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.rotation")
+    async def _rotation(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "read")
+            recommendations = await custom_game_service.rotation(
+                session, workspace_id=workspace_id, custom_game_id=_game_id(data)
+            )
+            return _dump_rotation(recommendations)
+
+        return await c.envelope(logger, "custom.rotation", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.close")
     async def _close(data: dict, msg: RabbitMessage) -> dict:

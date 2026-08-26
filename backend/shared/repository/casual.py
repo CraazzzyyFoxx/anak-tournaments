@@ -39,3 +39,14 @@ class CasualTeamRepository(BaseRepository[models.CasualTeam]):
 class CasualPlayerRepository(BaseRepository[models.CasualPlayer]):
     def __init__(self) -> None:
         super().__init__(models.CasualPlayer)
+
+    async def list_for_teams(self, session: AsyncSession, team_ids: Sequence[int]) -> Sequence[models.CasualPlayer]:
+        """Every seat frozen for a set of casual teams, unordered.
+
+        Bulk by design: a rotation read over N recorded matches needs the
+        rosters of 2N teams, and one ``IN`` query beats N+1 round trips.
+        """
+        if not team_ids:
+            return []
+        result = await session.scalars(self.select().where(self.model.team_id.in_(team_ids)))
+        return result.all()
