@@ -137,8 +137,7 @@ export function PickupTeamsPanel({
             className={cn(PANEL_CLASS, "px-4 py-16")}
           />
         ) : (
-          <div ref={captureRef} data-testid="teams-capture" className="flex flex-col gap-3.5">
-            <VariantMetrics variant={variant} />
+          <div ref={captureRef} data-testid="teams-capture">
             <VariantView variant={variant} canWrite={canWrite} onRenameTeam={onRenameTeam} />
           </div>
         )}
@@ -324,25 +323,29 @@ function VariantView({
 
   return (
     <div className="space-y-3">
-      {/* One card with a divider column, not two cards: the matchup is a single
-          object, and a gap between two boxes read as two unrelated rosters. */}
-      <div
-        className={cn(
-          PANEL_CLASS,
-          "flex items-stretch overflow-hidden rounded-2xl",
-          twoTeams ? "flex-col lg:flex-row" : "flex-col",
-        )}
-      >
-        {variant.teams.map((team, teamIndex) => (
-          <TeamColumnAndDivider
-            key={team.id}
-            team={team}
-            teamIndex={teamIndex}
-            showDivider={twoTeams && teamIndex === 0}
-            canWrite={canWrite}
-            onRenameTeam={onRenameTeam}
-          />
-        ))}
+      {/* One card with a divider column, not two cards: the matchup is a
+          single object, and a gap between two boxes read as two unrelated
+          rosters. The verdict pills live inside it too, centred over the
+          seam between the teams and above their rosters -- inside the same
+          border, not a strip floating above the card on its own. */}
+      <div className={cn(PANEL_CLASS, "overflow-hidden rounded-2xl")}>
+        <div className="flex flex-wrap items-center justify-center gap-1.5 border-b border-[color:var(--aqt-border)] px-4 py-2.5">
+          <VariantMetrics variant={variant} />
+        </div>
+        <div
+          className={cn("flex items-stretch", twoTeams ? "flex-col lg:flex-row" : "flex-col")}
+        >
+          {variant.teams.map((team, teamIndex) => (
+            <TeamColumnAndDivider
+              key={team.id}
+              team={team}
+              teamIndex={teamIndex}
+              showDivider={twoTeams && teamIndex === 0}
+              canWrite={canWrite}
+              onRenameTeam={onRenameTeam}
+            />
+          ))}
+        </div>
       </div>
 
       {variant.benched.length === 0 ? null : (

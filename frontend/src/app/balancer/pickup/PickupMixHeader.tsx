@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { ArrowLeft, UserPlus } from "lucide-react";
 
+import { PANEL_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import { EYEBROW_CLASS } from "@/app/balancer/pickup/pickup-chrome";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { CustomGame } from "@/services/custom-game.service";
 
 type PickupMixHeaderProps = {
@@ -21,6 +23,12 @@ type PickupMixHeaderProps = {
  * write used to stack as separate rows and read as three unrelated pieces of
  * chrome instead of one header.
  *
+ * Boxed in the same `PANEL_CLASS` card every other block on this screen
+ * uses (the verdict pills, the team card, the record-result bar) -- bare, it
+ * was the only unbordered row on the page, so the gap `Add players` leaves
+ * between itself and the title read as an accident instead of a header's own
+ * padding.
+ *
  * Which mix this is comes from the route, not from state this header owns --
  * switching to another one, or starting a new one, happens on the list at
  * `/balancer/pickup`. This is the only place the mix's name and number sit
@@ -33,7 +41,7 @@ export function PickupMixHeader({
   onOpenPool,
 }: Readonly<PickupMixHeaderProps>) {
   return (
-    <div className="flex flex-wrap items-center gap-3 pb-4">
+    <div className={cn(PANEL_CLASS, "flex flex-wrap items-center gap-3 px-4 py-3")}>
       <Link
         href="/balancer/pickup"
         className="flex shrink-0 items-center gap-1.5 text-[13px] text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)]"
