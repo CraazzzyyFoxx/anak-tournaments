@@ -47,6 +47,7 @@ def _roster_row(row_id: int, member_id: int, sort_order: int, **overrides) -> Si
         "team_index": None,
         "sort_order": sort_order,
         "is_active": True,
+        "must_play": False,
         "roles_json": None,
     }
     fields.update(overrides)
@@ -338,6 +339,37 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(game.result_json, {"variants": []})
         self.assertEqual(row.team_index, 0)
 
+    async def test_update_player_toggles_must_play(self) -> None:
+        game = _game()
+        row = _roster_row(1, 7, 0)
+        self.games.get.return_value = game
+        self.roster.list_for_game.return_value = [row]
+        await self.service.update_player(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            workspace_member_id=7,
+            patch={"must_play": True},
+            actor_user_id=9,
+        )
+        self.assertTrue(row.must_play)
+        # A patch, not a replace: the bench switch is untouched.
+        self.assertTrue(row.is_active)
+
+    async def test_balance_sends_must_play_to_the_solver(self) -> None:
+        game = _game()
+        roster = [_roster_row(1, 7, 0, must_play=True), _roster_row(2, 8, 1)]
+        self.games.get.return_value = game
+        self.roster.list_for_game.return_value = roster
+        self.ranks.resolve.return_value = _ranks(7, 8)
+        self.run_balance.return_value = {"teams": []}
+
+        await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+
+        player_data = self.run_balance.await_args.args[0]
+        self.assertTrue(player_data["players"]["7"]["identity"]["mustPlay"])
+        self.assertFalse(player_data["players"]["8"]["identity"]["mustPlay"])
+
     async def test_balance_skips_benched_rows(self) -> None:
         game = _game()
         roster = [_roster_row(1, 7, 0), _roster_row(2, 8, 1, is_active=False)]
@@ -354,6 +386,29 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(self.ranks.resolve.await_args.kwargs["members"], {7: 70})
         self.assertEqual(roster[0].team_index, 0)
         self.assertIsNone(roster[1].team_index)
+
+    async def test_balance_benches_players_left_out_of_the_result(self) -> None:
+        """A player the solver could not seat (an uneven leftover, or a
+        structural gap) is switched off the same way a manual bench would be,
+        so the lineup reflects the result immediately."""
+        game = _game()
+        roster = [_roster_row(1, 7, 0), _roster_row(2, 8, 1), _roster_row(3, 9, 2)]
+        self.games.get.return_value = game
+        self.roster.list_for_game.return_value = roster
+        self.ranks.resolve.return_value = _ranks(7, 8, 9)
+        self.run_balance.return_value = {
+            "teams": [{"roster": {"tank": [{"uuid": "7"}, {"uuid": "8"}]}}],
+            "benched_players": [{"uuid": "9", "name": "P9"}],
+        }
+
+        await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+
+        self.assertEqual(roster[0].team_index, 0)
+        self.assertEqual(roster[1].team_index, 0)
+        self.assertIsNone(roster[2].team_index)
+        self.assertTrue(roster[0].is_active)
+        self.assertTrue(roster[1].is_active)
+        self.assertFalse(roster[2].is_active)
 
     async def test_balance_all_benched_422(self) -> None:
         self.games.get.return_value = _game()
@@ -679,6 +734,193 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         created_match = self.casual_matches.create.await_args.args[1]
         self.assertEqual((created_match.home_score, created_match.away_score), (0, 0))
+
+    async def test_record_outcome_without_points_per_win_never_adjusts_ranks(self) -> None:
+        result = {
+            "variants": [
+                {
+                    "teams": [
+                        {"roster": {"tank": [self._seat("7", "Alpha", 3200, "tank")]}},
+                        {"roster": {"tank": [self._seat("9", "Charlie", 2600, "tank")]}},
+                    ]
+                }
+            ]
+        }
+        self.games.get.return_value = _row(
+            id=11,
+            workspace_id=1,
+            host_user_id=9,
+            name="Scrim",
+            status="balanced",
+            config_json=None,
+            result_json=result,
+        )
+
+        await self.service.record_outcome(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            outcome_json={"winner": 1},
+            variant_index=0,
+            actor_user_id=9,
+        )
+
+        self.ranks.set_ranks.assert_not_awaited()
+
+    async def test_record_outcome_applies_points_per_win_with_fallback_to_balance_rating(self) -> None:
+        result = {
+            "variants": [
+                {
+                    "teams": [
+                        {
+                            "roster": {
+                                "tank": [self._seat("7", "Alpha", 3200, "tank")],
+                                "dps": [self._seat("8", "Bravo", 2900, "dps")],
+                            }
+                        },
+                        {"roster": {"tank": [self._seat("9", "Charlie", 2600, "tank")]}},
+                    ]
+                }
+            ]
+        }
+        self.games.get.return_value = _row(
+            id=11,
+            workspace_id=1,
+            host_user_id=9,
+            name="Scrim",
+            status="balanced",
+            config_json={"points_per_win": 25},
+            result_json=result,
+        )
+        # Member 9 has no author-layer entry yet -- the write must fall back to
+        # their balance-time rating (2600) instead of dropping the adjustment.
+        self.ranks.list_layer = AsyncMock(return_value={(7, "tank"): 2500, (8, "dps"): 2800})
+
+        await self.service.record_outcome(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            outcome_json={"winner": 1},
+            variant_index=0,
+            actor_user_id=9,
+        )
+
+        calls = {
+            (call.kwargs["workspace_member_id"], call.kwargs["author_user_id"], tuple(call.kwargs["ranks"].items()))
+            for call in self.ranks.set_ranks.await_args_list
+        }
+        self.assertEqual(
+            calls,
+            {
+                (7, 9, (("tank", 2525),)),
+                (8, 9, (("dps", 2825),)),
+                (9, 9, (("tank", 2575),)),
+            },
+        )
+
+    async def test_record_outcome_skips_points_delta_on_a_draw(self) -> None:
+        result = {
+            "variants": [
+                {
+                    "teams": [
+                        {"roster": {"tank": [self._seat("7", "Alpha", 3200, "tank")]}},
+                        {"roster": {"tank": [self._seat("9", "Charlie", 2600, "tank")]}},
+                    ]
+                }
+            ]
+        }
+        self.games.get.return_value = _row(
+            id=11,
+            workspace_id=1,
+            host_user_id=9,
+            name="Scrim",
+            status="balanced",
+            config_json={"points_per_win": 25},
+            result_json=result,
+        )
+
+        await self.service.record_outcome(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            outcome_json={"winner": None},
+            variant_index=0,
+            actor_user_id=9,
+        )
+
+        self.ranks.set_ranks.assert_not_awaited()
+
+    async def test_list_matches_returns_the_recorded_history(self) -> None:
+        self.games.get.return_value = _game()
+        matches = [object(), object()]
+        self.casual_matches.list_for_custom_game = AsyncMock(return_value=matches)
+
+        result = await self.service.list_matches(self.session, workspace_id=1, custom_game_id=11)
+
+        self.assertEqual(result, matches)
+        self.casual_matches.list_for_custom_game.assert_awaited_once_with(self.session, 11)
+
+    async def test_set_points_per_win_stores_the_value(self) -> None:
+        self.games.get.return_value = _game()
+
+        game = await self.service.set_points_per_win(
+            self.session, workspace_id=1, custom_game_id=11, points_per_win=25, actor_user_id=9
+        )
+
+        self.assertEqual(game.config_json, {"points_per_win": 25})
+
+    async def test_set_points_per_win_preserves_other_config_keys(self) -> None:
+        self.games.get.return_value = _game(config_json={"team_names": {"0": "Wolves"}})
+
+        game = await self.service.set_points_per_win(
+            self.session, workspace_id=1, custom_game_id=11, points_per_win=10, actor_user_id=9
+        )
+
+        self.assertEqual(game.config_json, {"team_names": {"0": "Wolves"}, "points_per_win": 10})
+
+    async def test_set_points_per_win_null_clears_it(self) -> None:
+        self.games.get.return_value = _game(config_json={"points_per_win": 25})
+
+        game = await self.service.set_points_per_win(
+            self.session, workspace_id=1, custom_game_id=11, points_per_win=None, actor_user_id=9
+        )
+
+        self.assertIsNone(game.config_json)
+
+    async def test_set_points_per_win_zero_clears_it(self) -> None:
+        self.games.get.return_value = _game(config_json={"points_per_win": 25})
+
+        game = await self.service.set_points_per_win(
+            self.session, workspace_id=1, custom_game_id=11, points_per_win=0, actor_user_id=9
+        )
+
+        self.assertIsNone(game.config_json)
+
+    async def test_set_points_per_win_rejects_out_of_range(self) -> None:
+        self.games.get.return_value = _game()
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_points_per_win(
+                self.session, workspace_id=1, custom_game_id=11, points_per_win=1001, actor_user_id=9
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    async def test_set_points_per_win_terminal_409(self) -> None:
+        self.games.get.return_value = _row(
+            id=11, workspace_id=1, host_user_id=9, name="Scrim", status="completed", config_json=None
+        )
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_points_per_win(
+                self.session, workspace_id=1, custom_game_id=11, points_per_win=25, actor_user_id=9
+            )
+        self.assertEqual(ctx.exception.status_code, 409)
+
+    async def test_set_points_per_win_requires_the_host(self) -> None:
+        self.games.get.return_value = _game()
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_points_per_win(
+                self.session, workspace_id=1, custom_game_id=11, points_per_win=25, actor_user_id=99
+            )
+        self.assertEqual(ctx.exception.status_code, 403)
 
     async def test_close_marks_the_mix_completed_without_a_result(self) -> None:
         self.games.get.return_value = _row(id=11, workspace_id=1, host_user_id=9, name="Scrim", status="balanced")

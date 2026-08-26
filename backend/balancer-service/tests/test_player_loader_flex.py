@@ -76,9 +76,11 @@ def _class(rank: int, priority: int, *, is_active: bool = True, subtype: str = "
     return node
 
 
-def _node(name: str, classes: dict[str, Any], *, is_full_flex: bool = False) -> dict[str, Any]:
+def _node(
+    name: str, classes: dict[str, Any], *, is_full_flex: bool = False, must_play: bool = False
+) -> dict[str, Any]:
     return {
-        "identity": {"name": name, "isFullFlex": is_full_flex},
+        "identity": {"name": name, "isFullFlex": is_full_flex, "mustPlay": must_play},
         "stats": {"classes": classes},
     }
 
@@ -362,3 +364,43 @@ def test_balance_run_takes_the_mask_from_the_resolved_roster_shape() -> None:
     assert len(valid_players) == 12
     assert set(role_assignment.values()) == {FLEX_SLOT_CODE}
     assert sum(1 for player in valid_players if player.is_captain) == num_teams
+
+
+# ---------------------------------------------------------------------------
+# 'must play' -- guaranteed a seat when the lineup doesn't divide evenly
+# ---------------------------------------------------------------------------
+
+
+def test_must_play_players_are_never_trimmed_ahead_of_optional_ones() -> None:
+    # 5 players, team size 2 -> 1 sits out. Without a flag it would be
+    # whichever sorts last (u-5, see test_public_balancer_architecture.py's
+    # equivalent unflagged case); flagging it 'must play' instead benches an
+    # earlier, optional player.
+    payload = {
+        "players": {
+            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}, must_play=(index == 5))
+            for index in range(1, 6)
+        }
+    }
+
+    _config, valid_players, num_teams, _, _role_assignment, _, overflow_benched = _prepare_balance_context(
+        payload, None, None, role_mask={"tank": 2}
+    )
+
+    assert num_teams == 2
+    assert {player.uuid for player in valid_players} == {"u-1", "u-2", "u-3", "u-5"}
+    assert [player.uuid for player in overflow_benched] == ["u-4"]
+
+
+def test_too_many_must_play_players_raises_a_clear_error() -> None:
+    # 5 players, team size 2 -> only 4 slots exist; flagging all 5 as
+    # 'must play' cannot be honoured.
+    payload = {
+        "players": {
+            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}, must_play=True)
+            for index in range(1, 6)
+        }
+    }
+
+    with pytest.raises(ValueError, match="must play"):
+        _prepare_balance_context(payload, None, None, role_mask={"tank": 2})

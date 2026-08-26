@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AlertTriangle, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { AlertTriangle, Pin, SlidersHorizontal, Trash2, X } from "lucide-react";
 
 import {
   ICON_BUTTON_CLASS,
@@ -413,6 +413,34 @@ function LineupRow({ row, canWrite, saving, onPatch, onOpen, onRemove }: Readonl
         />
       </RowAction>
 
+      <RowAction>
+        <button
+          type="button"
+          disabled={!canWrite || saving}
+          onClick={() => onPatch({ must_play: !row.must_play })}
+          title={
+            row.must_play
+              ? `${label} is guaranteed a seat in the balance`
+              : `Guarantee ${label} a seat in the balance`
+          }
+          className={cn(
+            "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
+            row.must_play
+              ? "text-[color:var(--aqt-amber)] hover:text-[color:color-mix(in_srgb,var(--aqt-amber)_80%,white)]"
+              : "text-[color:var(--aqt-fg-faint)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg-muted)]",
+          )}
+        >
+          <Pin
+            className="size-[15px]"
+            aria-hidden="true"
+            fill={row.must_play ? "currentColor" : "none"}
+          />
+          <span className="sr-only">
+            {`${row.must_play ? "Stop guaranteeing" : "Guarantee"} ${label} a seat in the balance`}
+          </span>
+        </button>
+      </RowAction>
+
       <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
         <span className="truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]">
           {name}
@@ -509,6 +537,27 @@ function BenchedRow({
         onCheckedChange={(checked) => onPatch({ is_active: checked === true })}
         className="h-5 w-[34px] shrink-0 [&>span]:size-4 [&>span]:data-[state=checked]:translate-x-[15px]"
       />
+      <button
+        type="button"
+        disabled={!canWrite || saving}
+        onClick={() => onPatch({ must_play: !row.must_play })}
+        title={
+          row.must_play
+            ? `${label} is guaranteed a seat in the balance`
+            : `Guarantee ${label} a seat in the balance`
+        }
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
+          row.must_play
+            ? "text-[color:var(--aqt-amber)] hover:text-[color:color-mix(in_srgb,var(--aqt-amber)_80%,white)]"
+            : "text-[color:var(--aqt-fg-faint)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg-muted)]",
+        )}
+      >
+        <Pin className="size-[15px]" aria-hidden="true" fill={row.must_play ? "currentColor" : "none"} />
+        <span className="sr-only">
+          {`${row.must_play ? "Stop guaranteeing" : "Guarantee"} ${label} a seat in the balance`}
+        </span>
+      </button>
       <button
         type="button"
         onClick={onOpen}

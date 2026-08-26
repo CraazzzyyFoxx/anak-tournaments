@@ -17,7 +17,9 @@ export const RANK_SOURCE_LABELS: Record<RankSource, string> = {
  * `is_active` is the bench switch: a benched row keeps its role order but is
  * skipped when the mix is balanced. `roles` is the ordered role list — position
  * is the balancer's role priority, and `null` means "every role this player has
- * a rank for".
+ * a rank for". `must_play` guarantees this player a seat when the active
+ * lineup does not divide evenly into full teams: the balancer trims the
+ * leftover from the un-flagged players first.
  *
  * Ranks come from three layers and the row carries enough to tell them apart:
  * `ranks` is what balance will actually use, `rank_sources` says which layer won
@@ -34,6 +36,7 @@ export type CustomGamePlayer = {
   team_index: number | null;
   sort_order: number;
   is_active: boolean;
+  must_play: boolean;
   roles: string[] | null;
   ranks: Record<string, number>;
   rank_sources: Record<string, RankSource>;
@@ -76,6 +79,7 @@ export type CustomGame = {
 export type CustomGamePlayerPatch = {
   is_active?: boolean;
   roles?: string[] | null;
+  must_play?: boolean;
 };
 
 export const customGameKeys = {

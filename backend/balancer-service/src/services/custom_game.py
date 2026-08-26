@@ -30,14 +30,18 @@ from src.services.balancer.solver import run_balance as _run_balance
 __all__ = ("CustomGameService", "custom_game_service")
 
 _TERMINAL = frozenset({"completed", "cancelled"})
-_CONFIG_ONLY = frozenset({"role_mask", "team_count", "team_names"})
+_CONFIG_ONLY = frozenset({"role_mask", "team_count", "team_names", "points_per_win"})
 #: Plenty for any pickup mix (2-3 teams in practice); guards against a
 #: malformed payload turning into an unbounded dict.
 _MAX_TEAMS = 8
 _MAX_TEAM_NAME_LEN = 60
+#: Upper bound on the host's configurable rank-adjustment-per-win. Generous
+#: for any plausible rank scale, guards against a fat-fingered config wrecking
+#: the rank book in one recorded match.
+_MAX_POINTS_PER_WIN = 1000
 #: A roster row owns only its lineup state. A rank correction goes into the
 #: host's own layer of ``member_rank``, so it outlives the game it was made in.
-_PLAYER_PATCH_FIELDS = frozenset({"is_active", "roles"})
+_PLAYER_PATCH_FIELDS = frozenset({"is_active", "roles", "must_play"})
 
 
 def _require_host(actor_user_id: int, host_user_id: int | None) -> None:
@@ -116,7 +120,17 @@ def _normalize_team_names(raw: Mapping[str, Any]) -> dict[str, str | None]:
     return out
 
 
-def _apply_team_index(roster: Sequence[models.CustomGamePlayer], result: Any) -> None:
+def _apply_balance_result(roster: Sequence[models.CustomGamePlayer], result: Any) -> None:
+    """Sync the roster to the applied balance option: seat placement and who sat out.
+
+    Runs after every :meth:`CustomGameService.balance` call, against
+    ``variants[0]`` -- the option the roster's ``team_index`` always tracks. A
+    player the solver could not seat (an uneven leftover trimmed by
+    ``runtime._prepare_balance_context``, or a structural role gap) is switched
+    off exactly like a host manually benching them, so the lineup reflects the
+    result immediately instead of requiring the host to toggle each one off by
+    hand.
+    """
     by_uuid = {str(row.workspace_member_id): row for row in roster}
     for row in roster:
         row.team_index = None
@@ -125,30 +139,42 @@ def _apply_team_index(roster: Sequence[models.CustomGamePlayer], result: Any) ->
         variants = result.get("variants")
         if isinstance(variants, list) and variants:
             payload = variants[0]
-    teams = payload.get("teams") if isinstance(payload, dict) else None
-    if not isinstance(teams, list):
+    if not isinstance(payload, dict):
         return
-    for index, team in enumerate(teams):
-        if not isinstance(team, dict):
-            continue
-        slots = team.get("roster")
-        groups: list[Any]
-        if isinstance(slots, dict):
-            groups = list(slots.values())
-        elif isinstance(slots, list):
-            groups = [slots]
-        else:
-            continue
-        for group in groups:
-            if not isinstance(group, list):
+
+    teams = payload.get("teams")
+    if isinstance(teams, list):
+        for index, team in enumerate(teams):
+            if not isinstance(team, dict):
                 continue
-            for player in group:
-                if not isinstance(player, dict):
+            slots = team.get("roster")
+            groups: list[Any]
+            if isinstance(slots, dict):
+                groups = list(slots.values())
+            elif isinstance(slots, list):
+                groups = [slots]
+            else:
+                continue
+            for group in groups:
+                if not isinstance(group, list):
                     continue
-                uuid = player.get("uuid")
-                row = by_uuid.get(str(uuid)) if uuid is not None else None
-                if row is not None:
-                    row.team_index = index
+                for player in group:
+                    if not isinstance(player, dict):
+                        continue
+                    uuid = player.get("uuid")
+                    row = by_uuid.get(str(uuid)) if uuid is not None else None
+                    if row is not None:
+                        row.team_index = index
+
+    benched = payload.get("benched_players")
+    if isinstance(benched, list):
+        for player in benched:
+            if not isinstance(player, dict):
+                continue
+            uuid = player.get("uuid")
+            row = by_uuid.get(str(uuid)) if uuid is not None else None
+            if row is not None:
+                row.is_active = False
 
 
 def _locate_seat(teams: Sequence[Mapping[str, Any]], uuid: str) -> tuple[int, str, int] | None:
@@ -436,10 +462,11 @@ class CustomGameService:
         patch: Mapping[str, Any],
         actor_user_id: int,
     ) -> models.CustomGame:
-        """Patch one roster row: ``is_active`` and/or ``roles``.
+        """Patch one roster row: ``is_active``, ``roles``, and/or ``must_play``.
 
-        A patch, not a replace: an absent key is left alone, so the bench switch
-        and the role order are independently settable from separate controls.
+        A patch, not a replace: an absent key is left alone, so the bench switch,
+        the role order and the "must play" pin are independently settable from
+        separate controls.
         """
         unknown = sorted(set(patch) - _PLAYER_PATCH_FIELDS)
         if unknown:
@@ -457,6 +484,8 @@ class CustomGameService:
             row.is_active = bool(patch["is_active"])
         if "roles" in patch:
             row.roles_json = _normalize_roles(patch["roles"])
+        if "must_play" in patch:
+            row.must_play = bool(patch["must_play"])
         await session.flush()
         return game
 
@@ -519,6 +548,7 @@ class CustomGameService:
                 "identity": {
                     "name": member.display_name or member.battle_tag or f"player-{member.member_id}",
                     "isFullFlex": False,
+                    "mustPlay": row.must_play,
                 },
                 "stats": {"classes": classes},
             }
@@ -540,7 +570,7 @@ class CustomGameService:
             # actual, actionable reason from the host.
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
         game.result_json = result
-        _apply_team_index(roster, result)
+        _apply_balance_result(roster, result)
         game.status = "balanced"
         await session.flush()
         return game
@@ -617,6 +647,45 @@ class CustomGameService:
         await session.flush()
         return game
 
+    async def set_points_per_win(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        points_per_win: int | None,
+        actor_user_id: int,
+    ) -> models.CustomGame:
+        """Patch the host's rank-adjustment-per-win knob. ``None``/``0`` disables it.
+
+        Recording an outcome then bumps the host's own rank book (the layer a
+        mix already resolves against, see ``MIX_ORDER``) by this many points
+        for the winning team and down by the same for the losing team, per
+        player and role -- see :meth:`record_outcome`. A draw never adjusts
+        anything, win or lose.
+        """
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
+        if points_per_win is not None:
+            if not isinstance(points_per_win, int) or isinstance(points_per_win, bool):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="points_per_win must be an integer"
+                )
+            if not (0 <= points_per_win <= _MAX_POINTS_PER_WIN):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"points_per_win must be between 0 and {_MAX_POINTS_PER_WIN}",
+                )
+        config = dict(game.config_json or {})
+        if not points_per_win:
+            config.pop("points_per_win", None)
+        else:
+            config["points_per_win"] = points_per_win
+        game.config_json = config or None
+        await session.flush()
+        return game
+
     async def swap_seats(
         self,
         session: AsyncSession,
@@ -678,6 +747,40 @@ class CustomGameService:
         await session.flush()
         return game
 
+    async def _apply_points_delta(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        host_user_id: int,
+        team_players: Sequence[tuple[int, str, int]],
+        delta: int,
+    ) -> None:
+        """Bump the host's own rank book by ``delta`` for one team's seats.
+
+        Reads the *current* author-layer value rather than each seat's
+        balance-time ``rank`` snapshot, so a second match recorded the same
+        night compounds on top of the first instead of re-applying from a
+        stale baseline. A player with no author-layer entry yet (should not
+        normally happen -- ``_seed_host_ranks`` seeds one on join) falls back
+        to their balance-time rating instead of silently dropping the write.
+        """
+        if delta == 0 or not team_players:
+            return
+        member_ids = [member_id for member_id, _role, _fallback in team_players]
+        current = await self.ranks.list_layer(
+            session, workspace_id=workspace_id, member_ids=member_ids, author_user_id=host_user_id
+        )
+        for member_id, role, fallback in team_players:
+            base = current.get((member_id, role), fallback)
+            await self.ranks.set_ranks(
+                session,
+                workspace_id=workspace_id,
+                workspace_member_id=member_id,
+                ranks={role: base + delta},
+                author_user_id=host_user_id,
+            )
+
     async def record_outcome(
         self,
         session: AsyncSession,
@@ -692,12 +795,19 @@ class CustomGameService:
         """Snapshot one played match: two teams, their rosters, and who won.
 
         Repeatable -- a mix can record many matches before its host explicitly
-        closes it (``close``). Never touches ``game.status``. ``outcome_json`` is
-        still kept as "the most recently recorded result", for the UI's pressed-
-        button state -- the permanent record lives in ``casual.match`` from here
-        on, not in this single mutable field. ``map_id`` is optional -- the mix
-        UI offers no map veto, so a host recording a quick result may not know
-        or care which map it names.
+        closes it (``close``). Never touches ``game.status``. ``outcome_json``
+        is kept as "the most recently recorded result" for API consumers -- the
+        mix UI itself renders from the permanent ``casual.match`` history below,
+        not this single mutable field. ``map_id`` is optional -- the mix UI
+        offers no map veto, so a host recording a quick result may not know or
+        care which map it names.
+
+        When the host has configured ``config_json.points_per_win`` (see
+        :meth:`set_points_per_win`) and the match has a winner (not a draw),
+        every winning-team player's host-authored rank is bumped by that many
+        points for their recorded role, and every losing-team player's by the
+        same amount downward -- a night of mixes self-corrects without the
+        host retyping ranks between games.
         """
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
@@ -723,6 +833,9 @@ class CustomGameService:
             )
         config = game.config_json if isinstance(game.config_json, dict) else {}
         team_names = config.get("team_names") if isinstance(config.get("team_names"), dict) else {}
+        points_per_win = config.get("points_per_win")
+        if not isinstance(points_per_win, int) or isinstance(points_per_win, bool) or points_per_win <= 0:
+            points_per_win = 0
 
         casual_teams = [
             models.CasualTeam(workspace_id=workspace_id, name=team_names.get(str(index)) or f"Team {index + 1}")
@@ -730,26 +843,34 @@ class CustomGameService:
         ]
         await self.casual_teams.create_many(session, casual_teams)
 
-        for team, casual_team in zip(teams, casual_teams, strict=True):
+        # Per-team (member_id, role_slot_code, balance-time rating) seats,
+        # collected alongside the casual-player snapshot below so the points
+        # delta can reuse the exact same walk instead of re-parsing ``teams``.
+        team_players: list[list[tuple[int, str, int]]] = [[], []]
+        for team_index, (team, casual_team) in enumerate(zip(teams, casual_teams, strict=True)):
             roster = team.get("roster") if isinstance(team, dict) else None
             if not isinstance(roster, dict):
                 continue
             for bucket_name, seats in roster.items():
                 if not isinstance(seats, list):
                     continue
-                role = HeroClass.from_slot_code(role_slot_code(bucket_name))
+                slot_code = role_slot_code(bucket_name)
+                role = HeroClass.from_slot_code(slot_code)
                 for seat in seats:
                     if not isinstance(seat, dict) or seat.get("uuid") is None:
                         continue
+                    member_id = int(seat["uuid"])
+                    rating = int(seat["assigned_rating"])
                     await self.casual_players.create(
                         session,
                         models.CasualPlayer(
                             team_id=casual_team.id,
-                            workspace_member_id=int(seat["uuid"]),
+                            workspace_member_id=member_id,
                             role=role,
-                            rank=int(seat["assigned_rating"]),
+                            rank=rating,
                         ),
                     )
+                    team_players[team_index].append((member_id, slot_code, rating))
 
         home_score, away_score = (1, 0) if winner == 1 else (0, 1) if winner == 2 else (0, 0)
         await self.casual_matches.create(
@@ -766,8 +887,37 @@ class CustomGameService:
             ),
         )
         game.outcome_json = dict(outcome_json)
+
+        if points_per_win and winner in (1, 2) and game.host_user_id is not None:
+            winning_index = 0 if winner == 1 else 1
+            losing_index = 1 - winning_index
+            await self._apply_points_delta(
+                session,
+                workspace_id=workspace_id,
+                host_user_id=game.host_user_id,
+                team_players=team_players[winning_index],
+                delta=points_per_win,
+            )
+            await self._apply_points_delta(
+                session,
+                workspace_id=workspace_id,
+                host_user_id=game.host_user_id,
+                team_players=team_players[losing_index],
+                delta=-points_per_win,
+            )
+
         await session.flush()
         return game
+
+    async def list_matches(
+        self, session: AsyncSession, *, workspace_id: int, custom_game_id: int
+    ) -> list[models.CasualMatch]:
+        """Every match recorded for this mix, newest first -- read is open to
+        any workspace member, same as :meth:`get` (no host gate: watching the
+        history is not writing it).
+        """
+        game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
+        return list(await self.casual_matches.list_for_custom_game(session, game.id))
 
     async def close(
         self, session: AsyncSession, *, workspace_id: int, custom_game_id: int, actor_user_id: int

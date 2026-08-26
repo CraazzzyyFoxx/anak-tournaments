@@ -1,6 +1,6 @@
 """Custom games over typed RPC.
 
-``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,swap_seats,record_outcome,close,delete}``.
+``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,set_points_per_win,swap_seats,record_outcome,match_history,close,delete}``.
 Writes require ``actor == host``. Reads are any workspace member.
 """
 
@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import sqlalchemy as sa
 from faststream.rabbit import RabbitMessage
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
@@ -116,6 +118,26 @@ def _role_mask_body(data: dict[str, Any]) -> dict[str, Any] | None:
     return raw
 
 
+def _points_per_win_body(data: dict[str, Any]) -> int | None:
+    """The host's rank-adjustment-per-win knob, or ``None`` to disable it.
+
+    Mirrors ``_role_mask_body``: the whole value may legitimately be ``null``,
+    so a missing key -- not an explicit ``null`` -- is what is rejected.
+    """
+    body = c.payload(data)
+    if "points_per_win" in body:
+        raw = body["points_per_win"]
+    elif "points_per_win" in data:
+        raw = data["points_per_win"]
+    else:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="points_per_win is required")
+    if raw is not None and (not isinstance(raw, int) or isinstance(raw, bool)):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="points_per_win must be an integer or null"
+        )
+    return raw
+
+
 def _swap_seats_body(data: dict[str, Any]) -> tuple[int, str, str]:
     body = c.payload(data)
     variant_index = body.get("variant_index", data.get("variant_index"))
@@ -134,7 +156,7 @@ def _player_patch(data: dict[str, Any]) -> dict[str, Any]:
     """Only the keys the caller actually sent, so absent fields stay untouched."""
     body = c.payload(data)
     patch: dict[str, Any] = {}
-    for key in ("is_active", "roles"):
+    for key in ("is_active", "roles", "must_play"):
         if key in body:
             patch[key] = body[key]
         elif key in data:
@@ -162,6 +184,7 @@ def _dump_row(
         "team_index": row.team_index,
         "sort_order": row.sort_order,
         "is_active": row.is_active,
+        "must_play": row.must_play,
         "roles": row.roles_json,
         # The ranks balance would actually use: host book > workspace canon > OW.
         "ranks": {role: rank.value for role, rank in effective.items()},
@@ -249,6 +272,32 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         )
     )
     return _dump_game(game, roster, members, resolved, author_ranks, host_display_name, roster_shape)
+
+
+def _dump_match(match: Any, map_names: dict[int, str]) -> dict[str, Any]:
+    winner = 1 if match.home_score > match.away_score else 2 if match.away_score > match.home_score else None
+    return {
+        "id": match.id,
+        "home_team_name": match.home_team.name,
+        "away_team_name": match.away_team.name,
+        "home_score": match.home_score,
+        "away_score": match.away_score,
+        "winner": winner,
+        "map_id": match.map_id,
+        "map_name": map_names.get(match.map_id) if match.map_id is not None else None,
+        "recorded_by": match.recorded_by,
+        "recorded_at": match.created_at.isoformat() if match.created_at else None,
+    }
+
+
+async def _dump_matches(session: Any, matches: list[Any]) -> list[dict[str, Any]]:
+    """Bulk-resolves map names in one query instead of one per row."""
+    map_ids = {match.map_id for match in matches if match.map_id is not None}
+    map_names: dict[int, str] = {}
+    if map_ids:
+        rows = await session.execute(sa.select(models.Map.id, models.Map.name).where(models.Map.id.in_(map_ids)))
+        map_names = dict(rows.all())
+    return [_dump_match(match, map_names) for match in matches]
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -405,6 +454,25 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "custom.set_role_mask", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.balancer.custom.set_points_per_win")
+    async def _set_points_per_win(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "update")
+            game = await custom_game_service.set_points_per_win(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                points_per_win=_points_per_win_body(data),
+                actor_user_id=user.id,
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="points_per_win", actor_user_id=user.id)
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.set_points_per_win", op, session_factory=_SF)
+
     @broker.subscriber("rpc.balancer.custom.swap_seats")
     async def _swap_seats(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -459,6 +527,19 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.record_outcome", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.match_history")
+    async def _match_history(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "read")
+            matches = await custom_game_service.list_matches(
+                session, workspace_id=workspace_id, custom_game_id=_game_id(data)
+            )
+            return await _dump_matches(session, matches)
+
+        return await c.envelope(logger, "custom.match_history", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.close")
     async def _close(data: dict, msg: RabbitMessage) -> dict:

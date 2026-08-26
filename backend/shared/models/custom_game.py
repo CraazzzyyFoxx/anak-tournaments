@@ -40,7 +40,10 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
     list of registration role codes -- position is the balancer's role
     ``priority``, absence means the player does not play that role at all.
     ``None`` means "every role this player has a rank for", the pre-lineup
-    default.
+    default. ``must_play`` guarantees a seat when the active lineup does not
+    divide evenly into full teams: the balancer trims the leftover from the
+    optional players first, only reaching into the flagged ones if there are
+    more of them than team slots exist.
     """
 
     __tablename__ = "custom_game_player"
@@ -56,4 +59,5 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
     team_index: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True, server_default="true")
+    must_play: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="false")
     roles_json: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)

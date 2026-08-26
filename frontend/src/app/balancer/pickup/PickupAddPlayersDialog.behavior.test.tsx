@@ -117,6 +117,7 @@ function seated(memberId: number, battleTag: string, overrides: Partial<CustomGa
     team_index: null,
     sort_order: memberId,
     is_active: true,
+    must_play: false,
     roles: ["tank"],
     ranks: { tank: 2400 },
     rank_sources: { tank: "workspace" as const },

@@ -24,6 +24,7 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     team_index: null,
     sort_order: 0,
     is_active: true,
+    must_play: false,
     roles: null,
     ranks: { tank: 2400, dps: 2600, support: 2500 },
     rank_sources: { tank: "workspace", dps: "workspace", support: "workspace" },

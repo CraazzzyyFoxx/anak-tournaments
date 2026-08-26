@@ -16,6 +16,7 @@ class Player:
         "is_captain",
         "is_flex",
         "captain_role",
+        "must_play",
         "_max_rating",
         "_mask",
     )
@@ -29,6 +30,7 @@ class Player:
         mask: dict[str, int],
         is_flex: bool = False,
         subclasses: dict[str, str] | None = None,
+        must_play: bool = False,
     ) -> None:
         self.uuid = uuid
         self.name = name
@@ -38,6 +40,11 @@ class Player:
         self.is_captain = False
         self.is_flex = is_flex
         self.captain_role: str | None = None
+        # Guaranteed a seat when the roster doesn't divide evenly into full
+        # teams (see ``runtime._prepare_balance_context``): never among the
+        # players trimmed off to sit out, unless there are more of them than
+        # team slots exist.
+        self.must_play = must_play
         self._max_rating = max(ratings.values()) if ratings else 0
         self._mask = mask
 

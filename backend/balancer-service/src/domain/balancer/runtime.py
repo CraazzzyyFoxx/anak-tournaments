@@ -121,17 +121,29 @@ def _prepare_balance_context(
 
     # A player count that isn't an exact multiple of the team size no longer
     # blocks the run: the leftover players just sit out, exactly like a host
-    # manually benching someone. Trimmed off the tail of the loaded
-    # (uuid-sorted) list, deterministically, so the same roster always
-    # benches the same names.
+    # manually benching someone. A ``must_play`` player is never among them
+    # unless there are more of them than team slots exist -- they are moved to
+    # the front before the tail is cut, so trimming always reaches for an
+    # optional player first.
     usable_count = num_teams * players_per_team
-    valid_players, overflow_benched = valid_players[:usable_count], valid_players[usable_count:]
-    if overflow_benched:
+    if usable_count < len(valid_players):
+        must_play_players = [player for player in valid_players if player.must_play]
+        if len(must_play_players) > usable_count:
+            raise ValueError(
+                f"{len(must_play_players)} players are marked 'must play' but only "
+                f"{usable_count} team slots exist for {len(valid_players)} players. "
+                f"Unflag {len(must_play_players) - usable_count} of them or add more players."
+            )
+        optional_players = [player for player in valid_players if not player.must_play]
+        ordered = must_play_players + optional_players
+        valid_players, overflow_benched = ordered[:usable_count], ordered[usable_count:]
         valid_players, role_capable_counts = _filter_valid_players_and_role_counts(valid_players, needed_roles)
         logger.info(
             f"{len(overflow_benched)} player(s) sit out: {len(valid_players)} "
             f"players do not divide evenly into teams of {players_per_team}."
         )
+    else:
+        overflow_benched = []
 
     base_seed = build_balancer_seed(valid_players, num_teams, config)
 
