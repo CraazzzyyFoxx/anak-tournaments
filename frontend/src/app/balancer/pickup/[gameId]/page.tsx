@@ -106,16 +106,16 @@ export default function BalancerPickupMixPage() {
   const rows = game?.players ?? [];
   const rosterIds = rows.map((row) => row.workspace_member_id);
   // Everything that writes a mix -- roster, player patch, balance, outcome --
-  // goes through `_writable`, which 403s anyone but the host. A member who only
-  // holds `custom_game.create` used to see every control live and collect a 403
-  // per click, so hosting is part of the gate rather than a surprise at the end
-  // of one.
+  // goes through `_writable`, which 403s anyone but the host or a co-host.
+  // That per-game grant is the actual write gate: `custom_game.create` only
+  // decides who may start a *new* mix (see `canEdit` above), so a co-host
+  // added to somebody else's mix writes it regardless of their own role.
   const isHost = game != null && currentUserId != null && game.host_user_id === currentUserId;
   const isCoHost =
     game != null && currentUserId != null && game.co_hosts.some((coHost) => coHost.user_id === currentUserId);
   // A completed or cancelled mix is read-only server-side; hide its controls
   // rather than let a click 409.
-  const canWrite = canEdit && (isHost || isCoHost) && game != null && !PICKUP_TERMINAL_STATUSES[game.status];
+  const canWrite = (isHost || isCoHost) && game != null && !PICKUP_TERMINAL_STATUSES[game.status];
   // Ranks are the host's book -- `author_user_id = game.host_user_id` is the
   // layer this mix resolves against. Anyone else who typed here wrote their own
   // book, got a 200, and watched the number stay put. Not gated on `canWrite`:
@@ -200,7 +200,6 @@ export default function BalancerPickupMixPage() {
 
           <div className="mx-auto flex w-full min-w-0 max-w-[1180px] flex-1 flex-col gap-5">
             <PickupMixHeader
-              canEdit={canEdit}
               canWrite={canWrite}
               game={game}
               gameLoading={gameQuery.isLoading}

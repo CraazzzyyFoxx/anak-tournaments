@@ -60,17 +60,28 @@ def _require_member(user: Any, workspace_id: int) -> None:
 
 
 def _require_mix(data: dict[str, Any], user: Any, workspace_id: int, action: str) -> None:
-    """Reading a mix is open to any workspace member; hosting one is its own grant.
+    """Reading a mix is open to any workspace member; only ``create`` needs a role grant.
 
     ``read`` stops at membership -- a workspace member watching a mix without
-    running it needs no ``custom_game`` grant of its own. Write actions still
-    go through the permission check: membership stays in front of it because
-    ``has_workspace_permission`` also answers True for a *global* admin role or
-    a global (``workspace_id IS NULL``) grant, neither of which puts the caller
-    inside this workspace -- and mixes are workspace-scoped data.
+    running one needs no ``custom_game`` grant of its own. ``create`` is the
+    only action still checked against the workspace-level permission: it has
+    no existing game to hold a per-game grant, so the ``host``/``admin``/
+    ``owner`` role (``custom_game.create``) is the only gate available for
+    starting a *new* mix.
+
+    ``update``/``delete`` used to also require the matching workspace-level
+    permission here, on top of the per-game host-or-co-host check every
+    write already re-runs (``CustomGameService._writable``). That coarse gate
+    is what a co-host grant is supposed to bypass -- "a co-host writes the
+    roster, balance, outcomes and settings exactly like the host" -- but a
+    co-host who only holds the plain ``member`` role got 403'd here before
+    ``_writable`` ever got a chance to see their per-game grant. Dropping it
+    for those two actions is safe: every mutating service method loads the
+    game and re-checks host-or-co-host membership itself, so a non-writer
+    still 403s, just from the check that actually knows about co-hosts.
     """
     _require_member(user, workspace_id)
-    if action == "read":
+    if action != "create":
         return
     c.require_workspace_permission(data, user, workspace_id, "custom_game", action)
 

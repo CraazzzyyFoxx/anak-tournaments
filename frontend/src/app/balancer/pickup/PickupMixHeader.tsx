@@ -10,8 +10,7 @@ import { cn } from "@/lib/utils";
 import type { CustomGame } from "@/services/custom-game.service";
 
 type PickupMixHeaderProps = {
-  canEdit: boolean;
-  /** Host or co-host, and not-terminal -- gates "Manage access" the same way every write does. */
+  /** Host or co-host, and not-terminal -- gates every write action in this header. */
   canWrite: boolean;
   game: CustomGame | undefined;
   gameLoading: boolean;
@@ -39,7 +38,6 @@ type PickupMixHeaderProps = {
  * together.
  */
 export function PickupMixHeader({
-  canEdit,
   canWrite,
   game,
   gameLoading,
@@ -71,7 +69,7 @@ export function PickupMixHeader({
         ) : null}
       </div>
 
-      {canEdit ? (
+      {canWrite ? (
         <Button
           type="button"
           variant="outline"
@@ -84,7 +82,7 @@ export function PickupMixHeader({
         </Button>
       ) : null}
 
-      {canEdit ? (
+      {canWrite ? (
         <Button
           type="button"
           variant="outline"

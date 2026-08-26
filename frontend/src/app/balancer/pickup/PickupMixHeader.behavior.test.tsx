@@ -56,7 +56,7 @@ const roots: { unmount: () => void }[] = [];
 
 async function mount(
   currentGame: CustomGame | undefined,
-  props: { canEdit?: boolean; canWrite?: boolean; gameLoading?: boolean } = {},
+  props: { canWrite?: boolean; gameLoading?: boolean } = {},
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -65,7 +65,6 @@ async function mount(
     roots.push(root);
     root.render(
       <PickupMixHeader
-        canEdit={props.canEdit ?? true}
         canWrite={props.canWrite ?? true}
         game={currentGame}
         gameLoading={props.gameLoading ?? false}
@@ -121,8 +120,8 @@ describe("PickupMixHeader", () => {
     expect(settled.textContent).toContain("No mix yet");
   });
 
-  it("gives a viewer who cannot host no way to write", async () => {
-    const scope = await mount(game(), { canEdit: false });
+  it("gives a viewer who cannot write no way to write", async () => {
+    const scope = await mount(game(), { canWrite: false });
 
     expect(byName(scope, "Add players")).toBeNull();
     // Reading which mix is open is not a write.
