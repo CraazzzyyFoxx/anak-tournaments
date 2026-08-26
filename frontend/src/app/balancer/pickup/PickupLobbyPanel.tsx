@@ -558,7 +558,10 @@ function LineupRow({ row, canWrite, saving, dimmed, onPatch, onOpen, onRemove }:
       {...draggable.attributes}
       title={`${label} \u2014 roles and ranks`}
       onClick={(event) => {
-        if (event.target instanceof HTMLElement && event.target.closest("[data-card-action]")) {
+        // `event.target` on a click landing on the role/remove buttons' SVG
+        // icon is an `SVGElement`, which is not an `HTMLElement` \u2014 checking
+        // the narrower type let those clicks fall through to `onOpen()`.
+        if (event.target instanceof Element && event.target.closest("[data-card-action]")) {
           return;
         }
         onOpen();

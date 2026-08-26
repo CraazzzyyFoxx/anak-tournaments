@@ -136,6 +136,31 @@ class MemberRankService:
         )
         return {(row.workspace_member_id, row.role): row.rank_value for row in rows}
 
+    async def list_layer_rows(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        member_ids: Sequence[int],
+        author_user_id: int | None = None,
+    ) -> Sequence[models.MemberRank]:
+        """Canon + one author's own layer, raw rows, in one round trip.
+
+        Exactly the fetch ``resolve`` makes internally to build its ``canon``/
+        ``author`` buckets. A caller that also needs the author-only rows
+        un-mixed with canon (to show the host's own book verbatim) would
+        otherwise pay for that same query twice -- once here, once inside
+        ``resolve``. Feed the result back into ``resolve(layers=...)`` to make
+        it skip its own fetch and reuse these rows instead.
+        """
+        return await self.ranks.list_layers(
+            session,
+            workspace_id=workspace_id,
+            member_ids=member_ids,
+            author_user_id=author_user_id,
+            include_canon=True,
+        )
+
     async def resolve(
         self,
         session: AsyncSession,
@@ -147,6 +172,7 @@ class MemberRankService:
         author_user_id: int | None = None,
         registration_ranks: Mapping[tuple[int, str], int] | None = None,
         grid: DivisionGrid | None = None,
+        layers: Sequence[models.MemberRank] | None = None,
     ) -> dict[tuple[int, str], ResolvedRank]:
         """Effective rank per ``(workspace_member_id, role)``.
 
@@ -155,6 +181,10 @@ class MemberRankService:
         the layers to consult, strongest first; a layer not named is not queried,
         so a tournament never pays for the author book and a mix never pays for
         the registration join.
+
+        ``layers``, when given, is the canon+author row set a caller already
+        fetched via ``list_layer_rows`` -- skips this method's own identical
+        query instead of running it twice in the same request.
         """
         if not members or not roles:
             return {}
@@ -164,13 +194,18 @@ class MemberRankService:
         canon: dict[tuple[int, str], int] = {}
         author: dict[tuple[int, str], int] = {}
         if wants_author or wants_canon:
-            for row in await self.ranks.list_layers(
-                session,
-                workspace_id=workspace_id,
-                member_ids=list(members),
-                author_user_id=author_user_id if wants_author else None,
-                include_canon=wants_canon,
-            ):
+            rows = (
+                layers
+                if layers is not None
+                else await self.ranks.list_layers(
+                    session,
+                    workspace_id=workspace_id,
+                    member_ids=list(members),
+                    author_user_id=author_user_id if wants_author else None,
+                    include_canon=wants_canon,
+                )
+            )
+            for row in rows:
                 bucket = canon if row.author_user_id is None else author
                 bucket[(row.workspace_member_id, row.role)] = row.rank_value
 

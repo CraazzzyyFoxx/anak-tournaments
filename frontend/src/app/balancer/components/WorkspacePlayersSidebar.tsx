@@ -155,7 +155,7 @@ const RosterMemberRow = memo(function RosterMemberRow({
       <ContextMenuTrigger asChild>
         <li
           onDoubleClick={(event) => {
-            if (event.target instanceof HTMLElement && event.target.closest("[data-card-action]")) {
+            if (event.target instanceof Element && event.target.closest("[data-card-action]")) {
               return;
             }
             onOpen(member);

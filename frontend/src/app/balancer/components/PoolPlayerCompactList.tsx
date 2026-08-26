@@ -108,7 +108,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
         <div
           title={issueSummary || primaryBattleTag}
           onDoubleClick={(event) => {
-            if (event.target instanceof HTMLElement && event.target.closest("[data-card-action]")) {
+            if (event.target instanceof Element && event.target.closest("[data-card-action]")) {
               return;
             }
             onSelectPlayer?.(player.id);

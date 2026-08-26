@@ -295,6 +295,12 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         )
     member_ids = [row.workspace_member_id for row in roster]
     members = await custom_game_service.members(session, game.workspace_id, member_ids)
+    layer_rows = await custom_game_service.ranks.list_layer_rows(
+        session,
+        workspace_id=game.workspace_id,
+        member_ids=member_ids,
+        author_user_id=game.host_user_id,
+    )
     resolved = await custom_game_service.ranks.resolve(
         session,
         workspace_id=game.workspace_id,
@@ -303,16 +309,16 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         order=MIX_ORDER,
         author_user_id=game.host_user_id,
         grid=await get_effective_division_grid(session, None),
+        layers=layer_rows,
     )
     author_ranks = (
         {}
         if game.host_user_id is None
-        else await custom_game_service.ranks.list_layer(
-            session,
-            workspace_id=game.workspace_id,
-            member_ids=member_ids,
-            author_user_id=game.host_user_id,
-        )
+        else {
+            (row.workspace_member_id, row.role): row.rank_value
+            for row in layer_rows
+            if row.author_user_id is not None
+        }
     )
     return _dump_game(game, roster, members, resolved, author_ranks, host_display_name, roster_shape, co_hosts)
 
