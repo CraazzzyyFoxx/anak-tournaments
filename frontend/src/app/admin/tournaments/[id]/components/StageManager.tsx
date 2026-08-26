@@ -208,10 +208,11 @@ function projectedBracketSeedCounts(
   const source = stages
     .filter(
       (candidate) =>
-        candidate.order < stage.order &&
+        (candidate.order < stage.order ||
+          (candidate.order === stage.order && candidate.id < stage.id)) &&
         (candidate.stage_type === "swiss" || candidate.stage_type === "round_robin")
     )
-    .sort((left, right) => right.order - left.order)[0];
+    .sort((left, right) => right.order - left.order || right.id - left.id)[0];
   if (!source || !source.advance_count || source.advance_count <= 0) return { upper: 0, lower: 0 };
 
   const groups = source.items.length || 1;

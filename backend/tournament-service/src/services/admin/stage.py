@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 
 from loguru import logger
-from sqlalchemy import case, func, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -322,6 +322,14 @@ class AdminStageService:
         await self.encounter_repo.delete_for_stage(session, stage_id)
         await self.standing_repo.delete_for_stage(session, stage_id)
         await self.stage_repo.delete(session, stage)
+        # Close the gap left in `order` — otherwise the next stage created via
+        # the frontend's `order: stages.length` collides with whatever stage
+        # already sits at that position (two stages sharing one `order` value
+        # silently breaks "preceding stage" lookups like auto-wire's, which
+        # compare `order` strictly).
+        await self._reindex_tournament_stages(
+            session, tournament_id=tournament_id, removed_stage_ids={stage_id}
+        )
         await self._publish_tournament_changed(session, tournament_id, "structure_changed")
         await session.commit()
 
@@ -1370,7 +1378,12 @@ class AdminStageService:
 
     async def _preceding_group_stage(self, session: AsyncSession, stage: models.Stage) -> models.Stage | None:
         """The group stage immediately before ``stage`` in stage order — the source
-        used for auto-wiring playoff seeds."""
+        used for auto-wiring playoff seeds.
+
+        Ties on ``order`` (data predating the delete-stage reindex fix, where two
+        stages can share one order value) break on ``id``: the lower id was
+        created first, so it counts as "earlier" too.
+        """
         # Analytical: a descending-order "nearest earlier stage of these types"
         # lookup, not a plain by-tournament list.
         result = await session.execute(
@@ -1378,10 +1391,13 @@ class AdminStageService:
             .where(
                 models.Stage.tournament_id == stage.tournament_id,
                 models.Stage.stage_type.in_(GROUPED_GENERATION_STAGE_TYPES),
-                models.Stage.order < stage.order,
+                or_(
+                    models.Stage.order < stage.order,
+                    and_(models.Stage.order == stage.order, models.Stage.id < stage.id),
+                ),
             )
             .options(selectinload(models.Stage.items))
-            .order_by(models.Stage.order.desc())
+            .order_by(models.Stage.order.desc(), models.Stage.id.desc())
         )
         return result.scalars().first()
 
