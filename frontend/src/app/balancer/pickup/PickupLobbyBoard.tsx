@@ -6,9 +6,9 @@ import { ChevronLeft, ChevronRight, Copy, Loader2, X } from "lucide-react";
 import { PickupResultControls } from "@/app/balancer/pickup/PickupResultControls";
 import { teamAccent } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
+import { MapSelect } from "@/components/MapSelect";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNodeCapture } from "@/hooks/useNodeCapture";
 import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
@@ -181,22 +181,7 @@ export function PickupLobbyBoard({
           className="mt-7 flex flex-wrap items-center gap-3 border-t border-[color:var(--aqt-border)] pt-4"
         >
           {canWrite ? (
-            <Select
-              value={mapId == null ? "none" : String(mapId)}
-              onValueChange={(value) => onMapIdChange(value === "none" ? null : Number(value))}
-            >
-              <SelectTrigger className="h-[38px] w-[170px] rounded-lg border-[color:var(--aqt-border)] bg-white/[0.015] text-[13px]">
-                <SelectValue placeholder="Map (optional)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No map</SelectItem>
-                {maps.map((map) => (
-                  <SelectItem key={map.id} value={String(map.id)}>
-                    {map.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MapSelect maps={maps} mapId={mapId} onMapIdChange={onMapIdChange} size="lg" />
           ) : null}
           <PickupResultControls
             teamCount={variant.teams.length}
