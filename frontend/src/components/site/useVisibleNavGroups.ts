@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 
 import { usePermissions } from "@/hooks/usePermissions";
-import { adminEntryPermissions, mixEntryPermissions } from "@/lib/admin-permissions";
+import { adminEntryPermissions } from "@/lib/admin-permissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { NAV_GROUPS, type NavGroupKey, type NavItem } from "./site-nav-groups";
 
@@ -19,7 +19,7 @@ export interface VisibleNavGroup {
  */
 export function useVisibleNavGroups(): VisibleNavGroup[] {
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
-  const { isOrganizer, isLoaded, canAccessAdminRoute, canAccessAnyPermission } = usePermissions();
+  const { isOrganizer, isLoaded, canAccessAdminRoute } = usePermissions();
 
   // D27: organizers get the admin entry — the same predicate that used to open
   // the balancer.
@@ -32,24 +32,14 @@ export function useVisibleNavGroups(): VisibleNavGroup[] {
         workspaceAdminVisible: true
       }));
 
-  // Mixes hang off their own grant rather than off admin entry: a workspace
-  // member can be trusted to host a mix without holding admin-panel access.
-  const canHostMixes = isLoaded && canAccessAnyPermission(mixEntryPermissions, currentWorkspaceId);
-
   return useMemo(
     () =>
-      NAV_GROUPS.filter(
-        (group) =>
-          (group.key !== "organization" || canAccessAdminEntry) &&
-          (group.key !== "mixes" || canHostMixes)
-      ).map((group) => ({
-        key: group.key,
-        items: group.items.filter(
-          (item) =>
-            (!item.requiresAdminAccess || canAccessAdminEntry) &&
-            (!item.requiresMixAccess || canHostMixes)
-        )
-      })),
-    [canAccessAdminEntry, canHostMixes]
+      NAV_GROUPS.filter((group) => group.key !== "organization" || canAccessAdminEntry).map(
+        (group) => ({
+          key: group.key,
+          items: group.items.filter((item) => !item.requiresAdminAccess || canAccessAdminEntry)
+        })
+      ),
+    [canAccessAdminEntry]
   );
 }

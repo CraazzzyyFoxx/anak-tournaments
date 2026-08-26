@@ -12,7 +12,6 @@ import Header from "@/components/Header";
 import { Separator } from "@/components/ui/separator";
 import { adminEntryPermissions } from "@/lib/admin-permissions";
 import { usePermissions } from "@/hooks/usePermissions";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 
 function LoadingState() {
   return (
@@ -80,8 +79,7 @@ type BalancerLayoutClientProps = {
 
 export function BalancerLayoutClient({ children }: Readonly<BalancerLayoutClientProps>) {
   const pathname = usePathname();
-  const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-  const { isLoaded, isOrganizer, canAccessAdminRoute, canAccessPermission } = usePermissions();
+  const { isLoaded, isOrganizer, canAccessAdminRoute } = usePermissions();
   const { status: contextStatus, summary } = useToolContext();
   const isPickup = pathname.startsWith("/balancer/pickup");
 
@@ -89,20 +87,16 @@ export function BalancerLayoutClient({ children }: Readonly<BalancerLayoutClient
     if (!isLoaded) {
       return <LoadingState />;
     }
-    // Reading a mix is its own grant now, so a workspace member who hosts
-    // pickups reaches the tool without any tournament-admin permission.
-    const pickupAllowed =
-      isOrganizer || workspaceId == null || canAccessPermission("custom_game.read", workspaceId);
-    if (!pickupAllowed) {
-      return <UnauthorizedState />;
-    }
+    // Viewing a mix is open to anyone who can reach the tool -- only hosting
+    // one (create/update/delete) needs the `custom_game` grant, gated inside
+    // the mix pages and the balancer-service RPCs themselves.
+    //
     // The tool used to replace the site shell entirely (its own top bar,
     // `.admin-theme` palette, a fixed full-viewport frame). Hosting a mix is a
-    // member-level grant now, not an admin one — the page is read by the same
-    // audience as the rest of the site, so it renders as one: the real
-    // `Header`/`Footer` on the site's own `--aqt-*` tokens, document flow that
-    // scrolls like every other page instead of a viewport-locked frame with
-    // two internally-scrolling panels.
+    // member-level grant, read by the same audience as the rest of the site,
+    // so it renders as one: the real `Header`/`Footer` on the site's own
+    // `--aqt-*` tokens, document flow that scrolls like every other page
+    // instead of a viewport-locked frame with two internally-scrolling panels.
     return (
       <div className="site-theme min-h-screen w-full">
         <div className="mx-auto h-full w-full max-w-screen-3xl px-4 pt-6 md:px-6 xl:px-10">

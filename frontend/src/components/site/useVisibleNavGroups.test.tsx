@@ -31,8 +31,8 @@ interface Viewer {
 
 /**
  * The nav tree and the admin-panel predicates as one viewer sees them. Both are
- * read in a single render because the escalation this file guards was the pair
- * disagreeing: a mix grant that showed Mixes AND opened the admin entry.
+ * read in a single render so a future regression that ties them back together
+ * (a mix grant that opens the admin entry) fails loudly in one probe.
  *
  * The probe *renders* its reading rather than assigning it to a closure
  * variable: writing to an outer binding during render is the side effect
@@ -64,10 +64,10 @@ function viewerWith(workspacePermissions: string[]): Viewer {
 }
 
 describe("useVisibleNavGroups", () => {
-  it("shows Mixes to a member holding only custom_game.create, without admin access", () => {
+  it("shows Mixes under Matches to a member holding only custom_game.create, without admin access", () => {
     const viewer = viewerWith(["custom_game.create"]);
 
-    expect(viewer.navKeys).toContain("mixes/mixes");
+    expect(viewer.navKeys).toContain("matches/mixes");
     // Hosting a mix is member-level: it must not imply the admin panel.
     expect(viewer.navKeys).not.toContain("organization/admin");
     expect(viewer.isWorkspaceAdmin).toBe(false);
@@ -77,20 +77,21 @@ describe("useVisibleNavGroups", () => {
   it("still opens the admin entry for a real management permission", () => {
     const viewer = viewerWith(["team.update"]);
 
-    // The "any non-read grant means management" shortcut stays live for
-    // administrative resources — the mix exclusion is not a blanket disable.
     expect(viewer.navKeys).toContain("organization/admin");
     expect(viewer.isWorkspaceAdmin).toBe(true);
     expect(viewer.canManageAnyWorkspace).toBe(true);
-    expect(viewer.navKeys).not.toContain("mixes/mixes");
+    // Viewing mixes needs no grant of its own, so it stays visible regardless.
+    expect(viewer.navKeys).toContain("matches/mixes");
   });
 
-  it("drops the whole Mixes group without the grant, leaving Tournaments intact", () => {
-    const viewer = viewerWith(["custom_game.read"]);
+  it("shows Mixes to a viewer with no workspace permissions at all", () => {
+    const viewer = viewerWith([]);
 
-    // Group-level, not item-level: an empty group would still render a
-    // trigger, so a viewer who cannot host must not see the entry at all.
-    expect(viewer.navKeys.some((key) => key.startsWith("mixes/"))).toBe(false);
+    // Reading a mix used to need `custom_game.read`; it is open to everyone
+    // now, so the entry survives even a grant-free profile.
+    expect(viewer.navKeys).toContain("matches/mixes");
+    expect(viewer.navKeys).toContain("matches/encounters");
+    expect(viewer.navKeys).toContain("matches/matches");
     expect(viewer.navKeys).toContain("tournaments/tournaments");
     expect(viewer.navKeys).toContain("tournaments/analytics");
   });

@@ -58,14 +58,18 @@ def _require_member(user: Any, workspace_id: int) -> None:
 
 
 def _require_mix(data: dict[str, Any], user: Any, workspace_id: int, action: str) -> None:
-    """Membership alone no longer opens mixes; hosting a mix is its own grant.
+    """Reading a mix is open to any workspace member; hosting one is its own grant.
 
-    Membership stays in front of the permission check because
+    ``read`` stops at membership -- a workspace member watching a mix without
+    running it needs no ``custom_game`` grant of its own. Write actions still
+    go through the permission check: membership stays in front of it because
     ``has_workspace_permission`` also answers True for a *global* admin role or
     a global (``workspace_id IS NULL``) grant, neither of which puts the caller
     inside this workspace -- and mixes are workspace-scoped data.
     """
     _require_member(user, workspace_id)
+    if action == "read":
+        return
     c.require_workspace_permission(data, user, workspace_id, "custom_game", action)
 
 
