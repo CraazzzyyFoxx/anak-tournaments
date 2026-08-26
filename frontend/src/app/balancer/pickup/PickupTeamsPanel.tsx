@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import Image from "next/image";
+
 import {
   DndContext,
   DragOverlay,
@@ -327,30 +329,79 @@ export function PickupTeamsPanel({
 /** Every match this mix has recorded, newest first — the permanent record `Record result` writes into. */
 function MatchHistoryList({ matches }: Readonly<{ matches: CustomGameMatch[] }>) {
   return (
-    <div className="flex flex-col gap-1.5 border-t border-[color:var(--aqt-border)] pt-3">
+    <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
       <span className={cn(EYEBROW_CLASS, "flex items-center gap-1.5 tracking-[0.14em]")}>
         <History className="size-3.5" aria-hidden="true" />
         Match history
       </span>
-      <ul className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-1.5">
         {matches.map((match) => (
-          <li
-            key={match.id}
-            className="flex flex-wrap items-center gap-x-2 text-[12.5px] text-[color:var(--aqt-fg-muted)]"
-          >
-            <span className="w-16 shrink-0 font-mono text-[11.5px] text-[color:var(--aqt-fg-dim)]">
-              {formatRelative(match.recorded_at)}
-            </span>
-            <span className="font-semibold text-[color:var(--aqt-fg)]">
-              {match.home_team_name} {match.home_score} : {match.away_score} {match.away_team_name}
-            </span>
-            {match.map_name ? (
-              <span className="text-[color:var(--aqt-fg-dim)]">&middot; {match.map_name}</span>
-            ) : null}
-          </li>
+          <MatchHistoryRow key={match.id} match={match} />
         ))}
       </ul>
     </div>
+  );
+}
+
+/** Two-letter fallback for a map with no thumbnail yet, same rule `MapRow` uses. */
+function mapInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((word) => word[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+function MatchHistoryRow({ match }: Readonly<{ match: CustomGameMatch }>) {
+  const homeAccent = teamAccent(0);
+  const awayAccent = teamAccent(1);
+
+  return (
+    <li className="flex items-center gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-white/[0.012] px-2.5 py-2">
+      <div className="relative h-8 w-14 shrink-0 overflow-hidden rounded-md border border-[color:var(--aqt-border-2)] bg-[linear-gradient(135deg,var(--aqt-card-2),var(--aqt-bg-2))]">
+        {match.map_image_path ? (
+          <Image src={match.map_image_path} alt="" fill sizes="56px" className="object-cover" />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center font-display text-[10px] font-extrabold text-[color:var(--aqt-fg-faint)]">
+            {match.map_name ? mapInitials(match.map_name) : "?"}
+          </span>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-1.5 text-[13px] font-semibold leading-tight">
+          <span
+            aria-hidden="true"
+            className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", homeAccent.bar)}
+          />
+          <span
+            className={cn(
+              "truncate",
+              match.winner === 1 ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]",
+            )}
+          >
+            {match.home_team_name}
+          </span>
+          <span className="font-mono tabular-nums text-[color:var(--aqt-fg-muted)]">
+            {match.home_score} : {match.away_score}
+          </span>
+          <span
+            className={cn(
+              "truncate",
+              match.winner === 2 ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]",
+            )}
+          >
+            {match.away_team_name}
+          </span>
+          <span aria-hidden="true" className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", awayAccent.bar)} />
+        </div>
+        <div className="mt-0.5 flex items-center gap-1.5 truncate text-[11.5px] text-[color:var(--aqt-fg-dim)]">
+          <span className="truncate">{match.map_name ?? "No map"}</span>
+          <span aria-hidden="true">&middot;</span>
+          <span className="shrink-0 font-mono">{formatRelative(match.recorded_at)}</span>
+        </div>
+      </div>
+    </li>
   );
 }
 

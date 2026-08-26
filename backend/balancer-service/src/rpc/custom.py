@@ -274,8 +274,9 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     return _dump_game(game, roster, members, resolved, author_ranks, host_display_name, roster_shape)
 
 
-def _dump_match(match: Any, map_names: dict[int, str]) -> dict[str, Any]:
+def _dump_match(match: Any, map_info: dict[int, tuple[str, str]]) -> dict[str, Any]:
     winner = 1 if match.home_score > match.away_score else 2 if match.away_score > match.home_score else None
+    map_name, map_image_path = map_info.get(match.map_id, (None, None)) if match.map_id is not None else (None, None)
     return {
         "id": match.id,
         "home_team_name": match.home_team.name,
@@ -284,20 +285,23 @@ def _dump_match(match: Any, map_names: dict[int, str]) -> dict[str, Any]:
         "away_score": match.away_score,
         "winner": winner,
         "map_id": match.map_id,
-        "map_name": map_names.get(match.map_id) if match.map_id is not None else None,
+        "map_name": map_name,
+        "map_image_path": map_image_path,
         "recorded_by": match.recorded_by,
         "recorded_at": match.created_at.isoformat() if match.created_at else None,
     }
 
 
 async def _dump_matches(session: Any, matches: list[Any]) -> list[dict[str, Any]]:
-    """Bulk-resolves map names in one query instead of one per row."""
+    """Bulk-resolves map name + thumbnail in one query instead of one per row."""
     map_ids = {match.map_id for match in matches if match.map_id is not None}
-    map_names: dict[int, str] = {}
+    map_info: dict[int, tuple[str, str]] = {}
     if map_ids:
-        rows = await session.execute(sa.select(models.Map.id, models.Map.name).where(models.Map.id.in_(map_ids)))
-        map_names = dict(rows.all())
-    return [_dump_match(match, map_names) for match in matches]
+        rows = await session.execute(
+            sa.select(models.Map.id, models.Map.name, models.Map.image_path).where(models.Map.id.in_(map_ids))
+        )
+        map_info = {row.id: (row.name, row.image_path) for row in rows}
+    return [_dump_match(match, map_info) for match in matches]
 
 
 def register(broker: Any, logger: Any) -> None:

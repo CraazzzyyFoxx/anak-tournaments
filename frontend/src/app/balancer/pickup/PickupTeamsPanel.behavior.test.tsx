@@ -395,6 +395,7 @@ describe("PickupTeamsPanel", () => {
           winner: 1,
           map_id: 5,
           map_name: "King's Row",
+          map_image_path: null,
           recorded_by: 9,
           recorded_at: new Date().toISOString(),
         },

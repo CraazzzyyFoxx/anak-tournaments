@@ -90,6 +90,7 @@ export type CustomGameMatch = {
   winner: number | null;
   map_id: number | null;
   map_name: string | null;
+  map_image_path: string | null;
   recorded_by: number | null;
   recorded_at: string | null;
 };
