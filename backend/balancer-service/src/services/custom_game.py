@@ -8,15 +8,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import http_status as status
+from shared.core.enums import HeroClass
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.domain.roster_shape import resolve_roster_shape
-from shared.repository import CustomGamePlayerRepository, CustomGameRepository
+from shared.repository import (
+    CasualMatchRepository,
+    CasualPlayerRepository,
+    CasualTeamRepository,
+    CustomGamePlayerRepository,
+    CustomGameRepository,
+)
 from shared.schemas.roster_slots import RosterShapeRead, normalize_roster_slots
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER, MemberRankService, member_rank_service
 from shared.services.roster_shape_access import get_workspace_roster_slots
 from shared.services.workspace_roster import RosterMember, hosts_by_user_id, list_roster
+from src.services.balancer.role_naming import role_slot_code
 from src.services.balancer.solver import run_balance as _run_balance
 
 __all__ = ("CustomGameService", "custom_game_service")
@@ -224,6 +232,9 @@ class CustomGameService:
         *,
         games: CustomGameRepository = CustomGameRepository(),
         roster: CustomGamePlayerRepository = CustomGamePlayerRepository(),
+        casual_matches: CasualMatchRepository = CasualMatchRepository(),
+        casual_teams: CasualTeamRepository = CasualTeamRepository(),
+        casual_players: CasualPlayerRepository = CasualPlayerRepository(),
         ranks: MemberRankService | None = None,
         load_roster=list_roster,
         load_hosts=hosts_by_user_id,
@@ -231,6 +242,9 @@ class CustomGameService:
     ) -> None:
         self.games = games
         self.roster = roster
+        self.casual_matches = casual_matches
+        self.casual_teams = casual_teams
+        self.casual_players = casual_players
         self.ranks = ranks if ranks is not None else member_rank_service
         self.load_roster = load_roster
         self.load_hosts = load_hosts
@@ -671,13 +685,100 @@ class CustomGameService:
         workspace_id: int,
         custom_game_id: int,
         outcome_json: Mapping[str, Any],
+        variant_index: int,
+        map_id: int | None = None,
         actor_user_id: int,
     ) -> models.CustomGame:
+        """Snapshot one played match: two teams, their rosters, and who won.
+
+        Repeatable -- a mix can record many matches before its host explicitly
+        closes it (``close``). Never touches ``game.status``. ``outcome_json`` is
+        still kept as "the most recently recorded result", for the UI's pressed-
+        button state -- the permanent record lives in ``casual.match`` from here
+        on, not in this single mutable field. ``map_id`` is optional -- the mix
+        UI offers no map veto, so a host recording a quick result may not know
+        or care which map it names.
+        """
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
+        winner = outcome_json.get("winner")
+        if winner not in (1, 2, None):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="winner must be 1, 2 or null"
+            )
+        if map_id is not None and await session.get(models.Map, map_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Map not found")
+
+        result = game.result_json if isinstance(game.result_json, dict) else {}
+        variants = result.get("variants")
+        if not isinstance(variants, list) or not (0 <= variant_index < len(variants)):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance option not found")
+        variant = variants[variant_index] if isinstance(variants[variant_index], dict) else {}
+        teams = variant.get("teams")
+        if not isinstance(teams, list) or len(teams) != 2:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="A match can only be recorded for a two-team balance",
+            )
+        config = game.config_json if isinstance(game.config_json, dict) else {}
+        team_names = config.get("team_names") if isinstance(config.get("team_names"), dict) else {}
+
+        casual_teams = [
+            models.CasualTeam(workspace_id=workspace_id, name=team_names.get(str(index)) or f"Team {index + 1}")
+            for index in range(2)
+        ]
+        await self.casual_teams.create_many(session, casual_teams)
+
+        for team, casual_team in zip(teams, casual_teams, strict=True):
+            roster = team.get("roster") if isinstance(team, dict) else None
+            if not isinstance(roster, dict):
+                continue
+            for bucket_name, seats in roster.items():
+                if not isinstance(seats, list):
+                    continue
+                role = HeroClass.from_slot_code(role_slot_code(bucket_name))
+                for seat in seats:
+                    if not isinstance(seat, dict) or seat.get("uuid") is None:
+                        continue
+                    await self.casual_players.create(
+                        session,
+                        models.CasualPlayer(
+                            team_id=casual_team.id,
+                            workspace_member_id=int(seat["uuid"]),
+                            role=role,
+                            rank=int(seat["assigned_rating"]),
+                        ),
+                    )
+
+        home_score, away_score = (1, 0) if winner == 1 else (0, 1) if winner == 2 else (0, 0)
+        await self.casual_matches.create(
+            session,
+            models.CasualMatch(
+                custom_game_id=game.id,
+                workspace_id=workspace_id,
+                home_team_id=casual_teams[0].id,
+                away_team_id=casual_teams[1].id,
+                home_score=home_score,
+                away_score=away_score,
+                map_id=map_id,
+                recorded_by=actor_user_id,
+            ),
+        )
+        game.outcome_json = dict(outcome_json)
+        await session.flush()
+        return game
+
+    async def close(
+        self, session: AsyncSession, *, workspace_id: int, custom_game_id: int, actor_user_id: int
+    ) -> models.CustomGame:
+        """Ends the mix. No result of its own -- matches already recorded via
+        ``record_outcome`` stay recorded; this only stops further writes.
+        """
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
         game.status = "completed"
-        game.outcome_json = dict(outcome_json)
         await session.flush()
         return game
 

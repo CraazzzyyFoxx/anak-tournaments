@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { PickupAddPlayersDialog } from "@/app/balancer/pickup/PickupAddPlayersDialog";
 import { PickupLobbyBoard } from "@/app/balancer/pickup/PickupLobbyBoard";
@@ -21,6 +22,7 @@ import {
 import { usePickupMix } from "@/app/balancer/pickup/usePickupMix";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
+import mapService from "@/services/map.service";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -60,6 +62,14 @@ export default function BalancerPickupMixPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [variantIndex, setVariantIndex] = useState(0);
+  // Which map a host is about to name a recorded match for -- the mix flow
+  // has no veto, so this is a plain, optional picker beside the win buttons.
+  const [mapId, setMapId] = useState<number | null>(null);
+  const mapsQuery = useQuery({
+    queryKey: ["maps-lookup"],
+    queryFn: () => mapService.lookup(),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const {
     selectedGameId,
@@ -69,6 +79,7 @@ export default function BalancerPickupMixPage() {
     patchPlayer,
     balance,
     recordOutcome,
+    closeMix,
     setAuthorRanks,
     setTeamNames,
     setRoleMask,
@@ -191,7 +202,12 @@ export default function BalancerPickupMixPage() {
               variantIndex={variantIndex}
               onVariantIndexChange={setVariantIndex}
               recordingOutcome={recordOutcome.isPending}
-              onRecordOutcome={(outcome) => recordOutcome.mutate(outcome)}
+              onRecordOutcome={(input) => recordOutcome.mutate(input)}
+              maps={mapsQuery.data ?? []}
+              mapId={mapId}
+              onMapIdChange={setMapId}
+              closingMix={closeMix.isPending}
+              onCloseMix={() => closeMix.mutate()}
               onRenameTeam={(teamIndex, name) => setTeamNames.mutateAsync({ teamIndex, name })}
               onSwapSeats={(idx, firstUuid, secondUuid) =>
                 swapSeats.mutateAsync({ variantIndex: idx, firstUuid, secondUuid })
@@ -258,7 +274,10 @@ export default function BalancerPickupMixPage() {
           outcome={parseOutcome(game?.outcome_json)}
           canWrite={canWrite}
           recordingOutcome={recordOutcome.isPending}
-          onRecordOutcome={(outcome) => recordOutcome.mutate(outcome)}
+          onRecordOutcome={(input) => recordOutcome.mutate(input)}
+          maps={mapsQuery.data ?? []}
+          mapId={mapId}
+          onMapIdChange={setMapId}
           onClose={() => setIsBoardOpen(false)}
         />
       ) : null}

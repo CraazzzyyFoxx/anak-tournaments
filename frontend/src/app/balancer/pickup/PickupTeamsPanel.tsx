@@ -37,17 +37,20 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { InlineEditText } from "@/components/admin/InlineEditText";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNodeCapture } from "@/hooks/useNodeCapture";
 import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
-import type { CustomGame, CustomGameOutcome } from "@/services/custom-game.service";
+import type { CustomGame } from "@/services/custom-game.service";
+import type { LookupItem } from "@/types/pagination.types";
 
 import {
   parseOutcome,
   parseTeamNames,
   parseVariants,
+  type PickupRecordOutcomeInput,
   type PickupSeat,
   type PickupTeam,
   type PickupVariant,
@@ -68,7 +71,13 @@ type PickupTeamsPanelProps = {
   variantIndex: number;
   onVariantIndexChange: (index: number) => void;
   recordingOutcome: boolean;
-  onRecordOutcome: (outcome: CustomGameOutcome) => void;
+  onRecordOutcome: (input: PickupRecordOutcomeInput) => void;
+  /** The OW map catalogue for the optional result-recording picker. */
+  maps: LookupItem[];
+  mapId: number | null;
+  onMapIdChange: (mapId: number | null) => void;
+  closingMix: boolean;
+  onCloseMix: () => void;
   /** Omitted -- team headers render read-only, matching a `canWrite=false` viewer. */
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
   /** Omitted -- seats render without drag handles, matching a `canWrite=false` viewer. */
@@ -78,8 +87,8 @@ type PickupTeamsPanelProps = {
 };
 
 /**
- * The result side: the teams the solver produced, and the two writes that act on
- * them — re-balance, and record who won.
+ * The result side: the teams the solver produced, and the writes that act on
+ * them — re-balance, record who won (repeatable), and close the mix.
  *
  * Teams are read from the stored `result_json` rather than the roster's
  * `team_index`, because only the payload knows which *seat* each player got and
@@ -102,6 +111,11 @@ export function PickupTeamsPanel({
   onVariantIndexChange,
   recordingOutcome,
   onRecordOutcome,
+  maps,
+  mapId,
+  onMapIdChange,
+  closingMix,
+  onCloseMix,
   onRenameTeam,
   onSwapSeats,
   onShowBoard,
@@ -266,19 +280,53 @@ export function PickupTeamsPanel({
         {variant ? (
           <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 border-t border-[color:var(--aqt-border)] pt-3">
             <span className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>Record result</span>
+            {canWrite ? (
+              <Select
+                value={mapId == null ? "none" : String(mapId)}
+                onValueChange={(value) => onMapIdChange(value === "none" ? null : Number(value))}
+              >
+                <SelectTrigger className="h-8 w-[160px] rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 text-[12.5px]">
+                  <SelectValue placeholder="Map (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No map</SelectItem>
+                  {maps.map((map) => (
+                    <SelectItem key={map.id} value={String(map.id)}>
+                      {map.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
             <PickupResultControls
               teamCount={variant.teams.length}
               teamNames={variant.teams.map((team) => team.name)}
               outcome={outcome}
               canRecord={canWrite}
               saving={recordingOutcome}
-              onRecord={onRecordOutcome}
+              onRecord={(recordedOutcome) =>
+                onRecordOutcome({ outcome: recordedOutcome, variantIndex: index, mapId })
+              }
             />
             <span className="text-[12.5px] text-[color:var(--aqt-fg-faint)]">
               {outcome == null
-                ? "Recording a result closes the mix \u2014 nothing is written until you do."
-                : "Recorded. This mix is closed."}
+                ? "Record who won — log as many matches as this mix plays."
+                : "Recorded. Log another match, or close the mix when you're done."}
             </span>
+            {canWrite ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="ml-auto h-9"
+                disabled={closingMix}
+                onClick={onCloseMix}
+              >
+                {closingMix ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
+                ) : null}
+                Close mix
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </div>

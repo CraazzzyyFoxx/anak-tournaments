@@ -1,6 +1,6 @@
 """Custom games over typed RPC.
 
-``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,swap_seats,record_outcome,delete}``.
+``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,swap_seats,record_outcome,close,delete}``.
 Writes require ``actor == host``. Reads are any workspace member.
 """
 
@@ -433,11 +433,21 @@ def register(broker: Any, logger: Any) -> None:
             outcome = body.get("outcome_json", data.get("outcome_json", body.get("outcome", data.get("outcome"))))
             if not isinstance(outcome, dict):
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="outcome_json is required")
+            variant_index = body.get("variant_index", data.get("variant_index"))
+            if not isinstance(variant_index, int):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="variant_index is required"
+                )
+            map_id = body.get("map_id", data.get("map_id"))
+            if map_id is not None and not isinstance(map_id, int):
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="map_id must be an int")
             game = await custom_game_service.record_outcome(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
                 outcome_json=outcome,
+                variant_index=variant_index,
+                map_id=map_id,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -445,6 +455,24 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.record_outcome", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.close")
+    async def _close(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "update")
+            game = await custom_game_service.close(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                actor_user_id=user.id,
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="close", actor_user_id=user.id)
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.close", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.delete")
     async def _delete(data: dict, msg: RabbitMessage) -> dict:

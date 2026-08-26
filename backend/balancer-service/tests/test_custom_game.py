@@ -103,6 +103,12 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.games.get = AsyncMock()
         self.games.list_for_workspace = AsyncMock(return_value=[])
         self.roster.create_many = AsyncMock(side_effect=lambda _s, rows: rows)
+        self.casual_teams = MagicMock()
+        self.casual_teams.create_many = AsyncMock(side_effect=self._assign_casual_team_ids)
+        self.casual_players = MagicMock()
+        self.casual_players.create = AsyncMock(side_effect=lambda _s, row: row)
+        self.casual_matches = MagicMock()
+        self.casual_matches.create = AsyncMock(side_effect=lambda _s, row: row)
         self.roster.list_for_game = AsyncMock(return_value=[])
         self.roster.delete_for_game = AsyncMock()
         self.roster.get_by = AsyncMock(return_value=None)
@@ -133,6 +139,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.service = CustomGameService(
             games=self.games,
             roster=self.roster,
+            casual_matches=self.casual_matches,
+            casual_teams=self.casual_teams,
+            casual_players=self.casual_players,
             ranks=self.ranks,
             load_roster=self.load_roster,
             run_balance=self.run_balance,
@@ -144,6 +153,12 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         if getattr(row, "id", None) is None:
             row.id = 11
         return row
+
+    @staticmethod
+    async def _assign_casual_team_ids(_session, rows):
+        for index, row in enumerate(rows, start=101):
+            row.id = index
+        return rows
 
     async def test_create_roster_from_member_ids(self) -> None:
         game = await self.service.create(
@@ -512,11 +527,175 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                         workspace_id=1,
                         custom_game_id=11,
                         outcome_json={"winner": 1},
+                        variant_index=0,
                         actor_user_id=9,
                     )
                 self.assertEqual(ctx.exception.status_code, 409)
                 self.session.flush.assert_not_called()
                 self.session.flush.reset_mock()
+
+    async def test_record_outcome_snapshots_a_casual_match_and_stays_open(self) -> None:
+        result = {
+            "variants": [
+                {
+                    "teams": [
+                        {
+                            "roster": {
+                                "tank": [self._seat("7", "Alpha", 3200, "tank")],
+                                "dps": [self._seat("8", "Bravo", 2900, "dps")],
+                            }
+                        },
+                        {
+                            "roster": {
+                                "tank": [self._seat("9", "Charlie", 2600, "tank")],
+                                "dps": [self._seat("10", "Delta", 3000, "dps")],
+                            }
+                        },
+                    ]
+                }
+            ]
+        }
+        self.games.get.return_value = _row(
+            id=11,
+            workspace_id=1,
+            host_user_id=9,
+            name="Scrim",
+            status="balanced",
+            config_json={"team_names": {"0": "Wolves"}},
+            result_json=result,
+        )
+
+        game = await self.service.record_outcome(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            outcome_json={"winner": 1},
+            variant_index=0,
+            actor_user_id=9,
+        )
+
+        # Repeatable: recording a result never closes the mix.
+        self.assertEqual(game.status, "balanced")
+        self.assertEqual(game.outcome_json, {"winner": 1})
+
+        created_teams = self.casual_teams.create_many.await_args.args[1]
+        self.assertEqual([team.name for team in created_teams], ["Wolves", "Team 2"])
+
+        created_players = [call.args[1] for call in self.casual_players.create.await_args_list]
+        self.assertEqual(
+            sorted((row.workspace_member_id, row.team_id, row.rank) for row in created_players),
+            [(7, 101, 3200), (8, 101, 2900), (9, 102, 2600), (10, 102, 3000)],
+        )
+
+        created_match = self.casual_matches.create.await_args.args[1]
+        self.assertEqual(created_match.home_team_id, 101)
+        self.assertEqual(created_match.away_team_id, 102)
+        self.assertEqual((created_match.home_score, created_match.away_score), (1, 0))
+        self.assertEqual(created_match.recorded_by, 9)
+
+    async def test_record_outcome_writes_the_selected_map(self) -> None:
+        result = {
+            "variants": [
+                {
+                    "teams": [
+                        {"roster": {"tank": [self._seat("7", "Alpha", 3200, "tank")]}},
+                        {"roster": {"tank": [self._seat("9", "Charlie", 2600, "tank")]}},
+                    ]
+                }
+            ]
+        }
+        self.games.get.return_value = _row(
+            id=11, workspace_id=1, host_user_id=9, name="Scrim", status="balanced", config_json=None, result_json=result
+        )
+        self.session.get = AsyncMock(return_value=_row(id=42, name="King's Row"))
+
+        await self.service.record_outcome(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            outcome_json={"winner": 1},
+            variant_index=0,
+            map_id=42,
+            actor_user_id=9,
+        )
+
+        created_match = self.casual_matches.create.await_args.args[1]
+        self.assertEqual(created_match.map_id, 42)
+
+    async def test_record_outcome_unknown_map_404(self) -> None:
+        self.games.get.return_value = _row(
+            id=11,
+            workspace_id=1,
+            host_user_id=9,
+            name="Scrim",
+            status="balanced",
+            config_json=None,
+            result_json={"variants": [{"teams": []}]},
+        )
+        self.session.get = AsyncMock(return_value=None)
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.record_outcome(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                outcome_json={"winner": 1},
+                variant_index=0,
+                map_id=999,
+                actor_user_id=9,
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.casual_matches.create.assert_not_called()
+
+    async def test_record_outcome_draw_scores_zero_zero(self) -> None:
+        result = {
+            "variants": [
+                {
+                    "teams": [
+                        {"roster": {"tank": [self._seat("7", "Alpha", 3200, "tank")]}},
+                        {"roster": {"tank": [self._seat("9", "Charlie", 2600, "tank")]}},
+                    ]
+                }
+            ]
+        }
+        self.games.get.return_value = _row(
+            id=11,
+            workspace_id=1,
+            host_user_id=9,
+            name="Scrim",
+            status="balanced",
+            config_json=None,
+            result_json=result,
+        )
+
+        await self.service.record_outcome(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            outcome_json={"winner": None},
+            variant_index=0,
+            actor_user_id=9,
+        )
+
+        created_match = self.casual_matches.create.await_args.args[1]
+        self.assertEqual((created_match.home_score, created_match.away_score), (0, 0))
+
+    async def test_close_marks_the_mix_completed_without_a_result(self) -> None:
+        self.games.get.return_value = _row(id=11, workspace_id=1, host_user_id=9, name="Scrim", status="balanced")
+
+        game = await self.service.close(
+            self.session, workspace_id=1, custom_game_id=11, actor_user_id=9
+        )
+
+        self.assertEqual(game.status, "completed")
+
+    async def test_close_terminal_409(self) -> None:
+        self.games.get.return_value = _row(
+            id=11, workspace_id=1, host_user_id=9, name="Scrim", status="completed"
+        )
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.close(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+        self.assertEqual(ctx.exception.status_code, 409)
 
     async def test_set_team_names_stores_by_index(self) -> None:
         self.games.get.return_value = _game()

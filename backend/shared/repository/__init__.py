@@ -140,6 +140,7 @@ from .workspace import (
     get_or_create_workspace_member,
     resolve_workspace_member_id,
 )
+from .casual import CasualMatchRepository, CasualPlayerRepository, CasualTeamRepository
 from .custom_game import CustomGamePlayerRepository, CustomGameRepository
 from .member_rank import MemberRankRepository
 
@@ -254,6 +255,9 @@ __all__ = (
     "VerifiedChannelRow",
     "WorkspaceBalancerConfigRepository",
     "WorkspaceMemberRepository",
+    "CasualMatchRepository",
+    "CasualPlayerRepository",
+    "CasualTeamRepository",
     "CustomGamePlayerRepository",
     "CustomGameRepository",
     "WorkspaceRepository",

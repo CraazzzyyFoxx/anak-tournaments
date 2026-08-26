@@ -2,6 +2,13 @@ import { ROLES, canonicalToRegistrationRole, type RoleCode } from "@/lib/roles";
 import { isRosterSlotCode, type RosterSlotMap } from "@/lib/roster-shape";
 import type { CustomGameOutcome, CustomGamePlayer } from "@/services/custom-game.service";
 
+/** What recording a match needs: the click, and which balance option it was played from. */
+export type PickupRecordOutcomeInput = {
+  outcome: CustomGameOutcome;
+  variantIndex: number;
+  mapId: number | null;
+};
+
 /**
  * Lineup rules for a pickup mix, kept pure so the panels stay presentational.
  *

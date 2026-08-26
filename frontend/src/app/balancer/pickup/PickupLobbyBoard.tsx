@@ -8,13 +8,15 @@ import { teamAccent } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNodeCapture } from "@/hooks/useNodeCapture";
 import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { CustomGameOutcome } from "@/services/custom-game.service";
+import type { LookupItem } from "@/types/pagination.types";
 
-import type { PickupTeam, PickupVariant } from "./pickup-lineup";
+import type { PickupRecordOutcomeInput, PickupTeam, PickupVariant } from "./pickup-lineup";
 
 
 type PickupLobbyBoardProps = {
@@ -26,7 +28,10 @@ type PickupLobbyBoardProps = {
   outcome: CustomGameOutcome | null;
   canWrite: boolean;
   recordingOutcome: boolean;
-  onRecordOutcome: (outcome: CustomGameOutcome) => void;
+  onRecordOutcome: (input: PickupRecordOutcomeInput) => void;
+  maps: LookupItem[];
+  mapId: number | null;
+  onMapIdChange: (mapId: number | null) => void;
   onClose: () => void;
 };
 
@@ -54,6 +59,9 @@ export function PickupLobbyBoard({
   canWrite,
   recordingOutcome,
   onRecordOutcome,
+  maps,
+  mapId,
+  onMapIdChange,
   onClose,
 }: Readonly<PickupLobbyBoardProps>) {
   useEffect(() => {
@@ -172,6 +180,24 @@ export function PickupLobbyBoard({
           data-export-hide
           className="mt-7 flex flex-wrap items-center gap-3 border-t border-[color:var(--aqt-border)] pt-4"
         >
+          {canWrite ? (
+            <Select
+              value={mapId == null ? "none" : String(mapId)}
+              onValueChange={(value) => onMapIdChange(value === "none" ? null : Number(value))}
+            >
+              <SelectTrigger className="h-[38px] w-[170px] rounded-lg border-[color:var(--aqt-border)] bg-white/[0.015] text-[13px]">
+                <SelectValue placeholder="Map (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No map</SelectItem>
+                {maps.map((map) => (
+                  <SelectItem key={map.id} value={String(map.id)}>
+                    {map.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <PickupResultControls
             teamCount={variant.teams.length}
             teamNames={variant.teams.map((team) => team.name)}
@@ -179,7 +205,7 @@ export function PickupLobbyBoard({
             canRecord={canWrite}
             saving={recordingOutcome}
             size="lg"
-            onRecord={onRecordOutcome}
+            onRecord={(recordedOutcome) => onRecordOutcome({ outcome: recordedOutcome, variantIndex, mapId })}
           />
           {variantCount > 1 ? (
             <span className="ml-auto flex h-[38px] items-center gap-0.5 rounded-lg border border-[color:var(--aqt-border)] px-1">

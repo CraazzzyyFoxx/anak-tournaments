@@ -33,13 +33,13 @@ type PickupResultControlsProps = {
 };
 
 /**
- * Recording the result of a mix — the one control that closes it.
+ * Recording who won one match of a mix — repeatable, does not close it.
  *
  * Shared by the mix screen and the fullscreen lobby board because a host calls
  * the scoreline out from the board and wants to log it without leaving. The
- * selected option stays visibly selected after the write, so a read-only
- * terminal mix renders as its own recorded result rather than as three dead
- * buttons.
+ * selected option stays visibly selected after the write, matching the last
+ * match recorded; once the host closes the mix (a separate action) the
+ * controls render read-only instead of as three dead buttons.
  */
 export function PickupResultControls({
   teamCount,

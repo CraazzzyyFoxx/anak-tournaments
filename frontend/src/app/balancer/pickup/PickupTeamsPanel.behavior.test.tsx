@@ -11,9 +11,9 @@
 //  3. the index is clamped, so a shorter result cannot point past the end;
 //  4. Balance is refused while nobody is checked in the lineup, which is the
 //     `empty_lineup` 422 the server would raise;
-//  5. recording a result is terminal, so it is a deliberate click and a recorded
-//     mix renders its scoreline instead of three live buttons;
-//  6. a read-only viewer and a terminal mix get no writes but still see teams;
+//  5. recording a result is a deliberate click, repeatable, and carries the
+//     page's variant index; closing the mix is a separate, explicit action;
+//  6. a read-only viewer gets no writes but still sees teams;
 //  7. the verdict pills sit inside the captured block with the team card, so
 //     "Copy image" exports them together, while "Show lobby"/"Copy image"/
 //     "Copy battletags" stay outside it -- exporting its own toolbar would be
@@ -69,6 +69,8 @@ vi.mock("@dnd-kit/core", () => ({
 const onBalance = vi.fn();
 const onVariantIndexChange = vi.fn();
 const onRecordOutcome = vi.fn();
+const onMapIdChange = vi.fn();
+const onCloseMix = vi.fn();
 const onShowBoard = vi.fn();
 const onCopyBattleTags = vi.fn();
 const onRenameTeam = vi.fn();
@@ -127,6 +129,8 @@ async function mount(
     variantIndex?: number;
     hasMix?: boolean;
     omitSwapSeats?: boolean;
+    maps?: { id: number; name: string }[];
+    mapId?: number | null;
   } = {},
 ) {
   const container = document.createElement("div");
@@ -148,6 +152,11 @@ async function mount(
         onVariantIndexChange={onVariantIndexChange}
         recordingOutcome={false}
         onRecordOutcome={onRecordOutcome}
+        maps={props.maps ?? []}
+        mapId={props.mapId ?? null}
+        onMapIdChange={onMapIdChange}
+        closingMix={false}
+        onCloseMix={onCloseMix}
         onRenameTeam={onRenameTeam}
         onSwapSeats={props.omitSwapSeats ? undefined : onSwapSeats}
         onShowBoard={onShowBoard}
@@ -199,6 +208,8 @@ beforeEach(() => {
   onBalance.mockReset();
   onVariantIndexChange.mockReset();
   onRecordOutcome.mockReset();
+  onMapIdChange.mockReset();
+  onCloseMix.mockReset();
   onShowBoard.mockReset();
   onCopyBattleTags.mockReset();
   onRenameTeam.mockReset();
@@ -288,17 +299,47 @@ describe("PickupTeamsPanel", () => {
     expect(onBalance).toHaveBeenCalledTimes(1);
   });
 
-  it("records a result only on a deliberate click, and says it closes the mix", async () => {
+  it("records a result only on a deliberate click, without closing the mix", async () => {
     const scope = await mount(game());
 
-    expect(scope.textContent).toContain("Recording a result closes the mix");
+    expect(scope.textContent).toContain("Record who won");
     expect(onRecordOutcome).not.toHaveBeenCalled();
 
     await click(byName(scope, "Draw"));
-    expect(onRecordOutcome).toHaveBeenCalledWith({ winner: null });
+    expect(onRecordOutcome).toHaveBeenCalledWith({ outcome: { winner: null }, variantIndex: 0, mapId: null });
 
     await click(byName(scope, "Team 2 win"));
-    expect(onRecordOutcome).toHaveBeenLastCalledWith({ winner: 2 });
+    expect(onRecordOutcome).toHaveBeenLastCalledWith({
+      outcome: { winner: 2 },
+      variantIndex: 0,
+      mapId: null,
+    });
+  });
+
+  it("reports the page's variant index alongside a recorded result", async () => {
+    const scope = await mount(game(), { variantIndex: 1 });
+
+    await click(byName(scope, "Team 1 win"));
+    expect(onRecordOutcome).toHaveBeenCalledWith({ outcome: { winner: 1 }, variantIndex: 1, mapId: null });
+  });
+
+  it("carries the page's selected map into a recorded result", async () => {
+    const scope = await mount(game(), {
+      maps: [{ id: 5, name: "King's Row" }],
+      mapId: 5,
+    });
+
+    expect(scope.textContent).toContain("King's Row");
+
+    await click(byName(scope, "Team 1 win"));
+    expect(onRecordOutcome).toHaveBeenCalledWith({ outcome: { winner: 1 }, variantIndex: 0, mapId: 5 });
+  });
+
+  it("lets the host close the mix independently of recording a result", async () => {
+    const scope = await mount(game());
+
+    await click(byName(scope, "Close mix"));
+    expect(onCloseMix).toHaveBeenCalledTimes(1);
   });
 
   it("reads a recorded result back as the pressed scoreline", async () => {
@@ -309,7 +350,7 @@ describe("PickupTeamsPanel", () => {
     expect(byName(scope, "Team 1 win")?.getAttribute("aria-pressed")).toBe("true");
     expect(byName(scope, "Draw")?.getAttribute("aria-pressed")).toBe("false");
     expect(byName(scope, "Draw")?.hasAttribute("disabled")).toBe(true);
-    expect(scope.textContent).toContain("Recorded. This mix is closed.");
+    expect(scope.textContent).toContain("Recorded. Log another match");
   });
 
   it("hands the fullscreen board and the tag copy to the page", async () => {

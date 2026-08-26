@@ -8,10 +8,10 @@ import {
   customGameKeys,
   customGameService,
   type CustomGame,
-  type CustomGameOutcome,
   type CustomGamePlayerPatch,
 } from "@/services/custom-game.service";
 import type { RosterSlotMap } from "@/lib/roster-shape";
+import type { PickupRecordOutcomeInput } from "@/app/balancer/pickup/pickup-lineup";
 import {
   workspacePlayerKeys,
   workspacePlayerService,
@@ -160,11 +160,26 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
   });
 
   const recordOutcome = useMutation({
-    mutationFn: (outcome: CustomGameOutcome) =>
-      customGameService.recordOutcome(workspaceId, selectedGameId as number, outcome),
+    mutationFn: (input: PickupRecordOutcomeInput) =>
+      customGameService.recordOutcome(
+        workspaceId,
+        selectedGameId as number,
+        input.outcome,
+        input.variantIndex,
+        input.mapId,
+      ),
     onSuccess: (game) => {
       applyGame(game);
-      notify.success("Result saved — this mix is now closed");
+      notify.success("Result recorded");
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
+  const closeMix = useMutation({
+    mutationFn: () => customGameService.close(workspaceId, selectedGameId as number),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success("Mix closed");
     },
     onError: (error) => notify.apiError(error),
   });
@@ -201,6 +216,7 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     patchPlayer,
     balance,
     recordOutcome,
+    closeMix,
     setAuthorRanks,
     setTeamNames,
     setRoleMask,

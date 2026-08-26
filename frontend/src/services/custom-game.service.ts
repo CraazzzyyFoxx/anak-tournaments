@@ -127,11 +127,29 @@ export const customGameService = {
     }).then((r) => r.json());
   },
 
-  /** Terminal: the server flips the mix to `completed` and stops accepting writes. */
-  recordOutcome(workspaceId: number, gameId: number, outcome: CustomGameOutcome): Promise<CustomGame> {
+  /**
+   * Snapshots one played match into the permanent casual-match log — team
+   * rosters and who won. Repeatable: a mix can record many before its host
+   * calls `close`. `variantIndex` is whichever balance option is on screen;
+   * `mapId` is optional -- the mix flow offers no map veto.
+   */
+  recordOutcome(
+    workspaceId: number,
+    gameId: number,
+    outcome: CustomGameOutcome,
+    variantIndex: number,
+    mapId: number | null,
+  ): Promise<CustomGame> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/outcome`, {
       method: "POST",
-      body: { outcome_json: outcome },
+      body: { outcome_json: outcome, variant_index: variantIndex, map_id: mapId },
+    }).then((r) => r.json());
+  },
+
+  /** Ends the mix. Matches already recorded stay recorded; this only stops further writes. */
+  close(workspaceId: number, gameId: number): Promise<CustomGame> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/close`, {
+      method: "POST",
     }).then((r) => r.json());
   },
 
