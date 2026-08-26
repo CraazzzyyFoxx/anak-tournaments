@@ -350,12 +350,13 @@ Email в reuse **не участвует** (fail-closed, review C1/C2).
 
 ### 5.3. RBAC рядом с идентичностью
 
-Системные роли workspace (`WORKSPACE_SYSTEM_ROLE_NAMES`): `owner`, `admin`, `member`, `player`.
+Системные роли workspace (`WORKSPACE_SYSTEM_ROLE_NAMES`): `owner`, `admin`, `host`, `member`, `player`.
 
 | Роль | Permissions | Как появляется | Блокирует unlink игрока? |
 |---|---|---|---|
 | `player` | пусто | self-service регистрация (`assign_workspace_system_role(..., "player")`) | нет |
 | `member` | каталог member | `add_member` / autofill при создании auth-linked `workspace_member` | да |
+| `host` | каталог member + полный CRUD `custom_game` | явное назначение (создатели миксов: членство само по себе миксы больше не открывает, см. `_require_mix`) | да |
 | `admin` / `owner` | каталог | явное назначение | да |
 | кастомная | свои | админ | да |
 

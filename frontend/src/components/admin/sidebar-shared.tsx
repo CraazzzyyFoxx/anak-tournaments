@@ -28,7 +28,7 @@ import { SITE_FAVICON, SITE_NAME } from "@/config/site";
 
 // Role names come from two RBAC scopes: global roles ("admin",
 // "tournament_organizer", "moderator" — see AppRole in usePermissions) and
-// workspace-scoped roles ("owner", "admin", "member", "player" — see
+// workspace-scoped roles ("owner", "admin", "host", "member", "player" — see
 // WORKSPACE_SYSTEM_ROLE_NAMES). A workspace admin never holds the *global*
 // "admin" role, so checking only global roles left every workspace-scoped
 // staff member (the common case) falling through to the "Operator"
@@ -48,6 +48,7 @@ function getRoleLabel({
   if (globalRoles.includes("moderator")) return "Moderator";
   if (workspaceRoles.includes("owner")) return "Owner";
   if (workspaceRoles.includes("admin")) return "Admin";
+  if (workspaceRoles.includes("host")) return "Host";
   if (workspaceRoles.includes("member")) return "Member";
   if (workspaceRoles.includes("player")) return "Player";
   return "Operator";

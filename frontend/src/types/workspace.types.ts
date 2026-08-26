@@ -261,7 +261,7 @@ export interface WorkspaceBranding {
   brand_destructive?: string | null;
 }
 
-export type WorkspaceSystemRole = "owner" | "admin" | "member" | "player";
+export type WorkspaceSystemRole = "owner" | "admin" | "host" | "member" | "player";
 
 export interface WorkspaceMember {
   id: number;
