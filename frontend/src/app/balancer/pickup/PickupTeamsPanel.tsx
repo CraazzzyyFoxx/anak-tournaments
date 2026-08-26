@@ -33,7 +33,7 @@ import {
   teamAccent,
 } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
-import { MapSelect } from "@/components/MapSelect";
+import { MapCombobox } from "@/components/MapCombobox";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { InlineEditText } from "@/components/admin/InlineEditText";
 import { Button } from "@/components/ui/button";
@@ -281,7 +281,7 @@ export function PickupTeamsPanel({
           <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 border-t border-[color:var(--aqt-border)] pt-3">
             <span className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>Record result</span>
             {canWrite ? (
-              <MapSelect maps={maps} mapId={mapId} onMapIdChange={onMapIdChange} />
+              <MapCombobox maps={maps} mapId={mapId} onMapIdChange={onMapIdChange} />
             ) : null}
             <PickupResultControls
               teamCount={variant.teams.length}

@@ -335,6 +335,23 @@ describe("PickupTeamsPanel", () => {
     expect(onRecordOutcome).toHaveBeenCalledWith({ outcome: { winner: 1 }, variantIndex: 0, mapId: 5 });
   });
 
+  it("opens the map combobox and picks a map, notifying the page", async () => {
+    const scope = await mount(game(), {
+      maps: [
+        { id: 5, name: "King's Row" },
+        { id: 6, name: "Ilios" },
+      ],
+    });
+
+    await click(byName(scope, "No map"));
+    const option = [...document.body.querySelectorAll<HTMLElement>("[cmdk-item]")].find(
+      (node) => node.textContent?.trim() === "Ilios",
+    );
+    await click(option);
+
+    expect(onMapIdChange).toHaveBeenCalledWith(6);
+  });
+
   it("lets the host close the mix independently of recording a result", async () => {
     const scope = await mount(game());
 

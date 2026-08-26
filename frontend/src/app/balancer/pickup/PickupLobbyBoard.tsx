@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Copy, Loader2, X } from "lucide-react";
 import { PickupResultControls } from "@/app/balancer/pickup/PickupResultControls";
 import { teamAccent } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
-import { MapSelect } from "@/components/MapSelect";
+import { MapCombobox } from "@/components/MapCombobox";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { useNodeCapture } from "@/hooks/useNodeCapture";
@@ -181,7 +181,7 @@ export function PickupLobbyBoard({
           className="mt-7 flex flex-wrap items-center gap-3 border-t border-[color:var(--aqt-border)] pt-4"
         >
           {canWrite ? (
-            <MapSelect maps={maps} mapId={mapId} onMapIdChange={onMapIdChange} size="lg" />
+            <MapCombobox maps={maps} mapId={mapId} onMapIdChange={onMapIdChange} size="lg" />
           ) : null}
           <PickupResultControls
             teamCount={variant.teams.length}
