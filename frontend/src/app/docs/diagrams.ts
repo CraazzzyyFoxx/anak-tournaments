@@ -365,7 +365,10 @@ export const domains: DiagramDomain[] = [
         string slug UK
         string name
         bool is_active
-        string discord_guild_id "nullable"
+        string discord_guild_id UK "nullable"
+        timestamp discord_guild_verified_at "nullable"
+        int discord_guild_verified_by_auth_user_id FK "nullable → auth.user (SET NULL)"
+        int owner_id FK "nullable → auth.user (SET NULL); accountability, decoupled from RBAC owner role"
         int default_division_grid_version_id FK "nullable"
     }
     WORKSPACE_MEMBER {

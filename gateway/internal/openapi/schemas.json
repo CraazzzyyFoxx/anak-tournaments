@@ -3222,6 +3222,18 @@
       "description": "Returns connection status, server name, icon URL, and member count of the workspace's linked Discord server.",
       "summary": "Workspace Discord server status"
     },
+    "rpc.app.workspaces.discord_guild_verify": {
+      "description": "Proves the caller administers the given Discord guild (via identity-service, owner or MANAGE_GUILD) and binds it to the workspace, stamping verified_at/verified_by; requires workspace.update, 404 if workspace missing, 403 if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
+      "request": {
+        "array": false,
+        "ref": "app.WorkspaceDiscordGuildVerify"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.WorkspaceRead"
+      },
+      "summary": "Verify and bind a Discord guild"
+    },
     "rpc.app.workspaces.discord_roles": {
       "description": "Returns roles of the workspace's linked Discord server with names, colors, and positions from discord.py cache.",
       "summary": "List workspace Discord roles"
@@ -16492,6 +16504,21 @@
       "title": "WorkspaceCustomDomainSet",
       "type": "object"
     },
+    "app.WorkspaceDiscordGuildVerify": {
+      "description": "Body for ``discord_guild_verify``. The snowflake pattern gates shape\nonly -- the actual proof of administration happens server-side via\n``rpc.identity.oauth_discord_guilds``, not here. No blank-clears-it\nnormalization like ``WorkspaceUpdate`` used to carry: there is no \"clear\"\nverb for a verified claim, only bind (this) and whatever future admin\noverride unbinds it.",
+      "properties": {
+        "guild_id": {
+          "pattern": "^\\d{17,19}$",
+          "title": "Guild Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "guild_id"
+      ],
+      "title": "WorkspaceDiscordGuildVerify",
+      "type": "object"
+    },
     "app.WorkspaceMemberAutofillResult": {
       "description": "Result of the ``members_autofill_roles`` action: how many role-less\nmembers were granted the baseline ``member`` role.",
       "properties": {
@@ -16942,6 +16969,19 @@
           "default": null,
           "title": "Discord Guild Id"
         },
+        "discord_guild_verified_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discord Guild Verified At"
+        },
         "icon_url": {
           "anyOf": [
             {
@@ -17219,19 +17259,6 @@
           ],
           "default": null,
           "title": "Description"
-        },
-        "discord_guild_id": {
-          "anyOf": [
-            {
-              "pattern": "^\\d{17,19}$",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Discord Guild Id"
         },
         "icon_url": {
           "anyOf": [

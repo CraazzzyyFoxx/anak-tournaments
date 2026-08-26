@@ -156,6 +156,9 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.app.workspaces.verify_custom_domain": Op(response=schemas.WorkspaceRead),
     "rpc.app.workspaces.clear_custom_domain": Op(response=schemas.WorkspaceRead),
+    "rpc.app.workspaces.discord_guild_verify": Op(
+        request=schemas.WorkspaceDiscordGuildVerify, response=schemas.WorkspaceRead
+    ),
     # ── metadata admin (hero/map/gamemode) ─────────────────────────────────
     "rpc.app.heroes.admin_create": Op(request=schemas.HeroCreate, response=schemas.HeroRead),
     "rpc.app.heroes.admin_update": Op(request=schemas.HeroUpdate, response=schemas.HeroRead),
