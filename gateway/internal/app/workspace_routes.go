@@ -30,4 +30,8 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/discord/roles", Queue: "rpc.app.workspaces.discord_roles", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/discord/channels", Queue: "rpc.app.workspaces.discord_channels", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/discord/guild", Queue: "rpc.app.workspaces.discord_guild", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	// --- discord guild verification (self-service design §4.1): proves the
+	// caller administers the guild on Discord (via identity-service) before it
+	// can be bound to the workspace. workspace.update, like every sibling here.
+	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/discord-guild", Queue: "rpc.app.workspaces.discord_guild_verify", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 }
