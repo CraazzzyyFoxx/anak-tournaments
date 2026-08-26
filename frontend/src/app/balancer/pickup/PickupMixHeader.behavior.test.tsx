@@ -27,12 +27,14 @@ vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 
 const onOpenPool = vi.fn();
 const onOpenSettings = vi.fn();
+const onOpenAccess = vi.fn();
 
 function game(overrides: Partial<CustomGame> = {}): CustomGame {
   return {
     id: 12,
     workspace_id: 7,
     host_user_id: 9,
+    co_hosts: [],
     host_display_name: "Host",
     name: "Thursday scrim",
     status: "balanced",
@@ -54,7 +56,7 @@ const roots: { unmount: () => void }[] = [];
 
 async function mount(
   currentGame: CustomGame | undefined,
-  props: { canEdit?: boolean; gameLoading?: boolean } = {},
+  props: { canEdit?: boolean; canWrite?: boolean; gameLoading?: boolean } = {},
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -64,10 +66,12 @@ async function mount(
     root.render(
       <PickupMixHeader
         canEdit={props.canEdit ?? true}
+        canWrite={props.canWrite ?? true}
         game={currentGame}
         gameLoading={props.gameLoading ?? false}
         onOpenPool={onOpenPool}
         onOpenSettings={onOpenSettings}
+        onOpenAccess={onOpenAccess}
       />,
     );
   });
@@ -98,6 +102,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
   onOpenPool.mockReset();
   onOpenSettings.mockReset();
+  onOpenAccess.mockReset();
 });
 
 describe("PickupMixHeader", () => {
@@ -144,5 +149,19 @@ describe("PickupMixHeader", () => {
     await click(scope.querySelector('[aria-label="Team composition"]'));
 
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the access dialog on request", async () => {
+    const scope = await mount(game());
+
+    await click(scope.querySelector('[aria-label="Manage access"]'));
+
+    expect(onOpenAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the access control from a viewer who cannot write", async () => {
+    const scope = await mount(game(), { canWrite: false });
+
+    expect(scope.querySelector('[aria-label="Manage access"]')).toBeNull();
   });
 });

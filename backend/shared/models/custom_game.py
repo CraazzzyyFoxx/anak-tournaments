@@ -21,6 +21,11 @@ class CustomGame(db.TimeStampIntegerMixin):
     host_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    #: Extra workspace-member user ids who write this mix exactly like the
+    #: host (roster, balance, outcomes, settings) -- see
+    #: ``CustomGameService.add_co_host``/``remove_co_host``. Never includes
+    #: ``host_user_id`` itself; ``None``/empty means no co-hosts.
+    co_host_user_ids: Mapped[list[int] | None] = mapped_column(JSONB, nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft", server_default="draft")
     config_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

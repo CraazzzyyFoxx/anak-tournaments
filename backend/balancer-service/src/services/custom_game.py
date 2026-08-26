@@ -36,6 +36,9 @@ _CONFIG_ONLY = frozenset({"role_mask", "team_count", "team_names", "points_per_w
 #: Plenty for any pickup mix (2-3 teams in practice); guards against a
 #: malformed payload turning into an unbounded dict.
 _MAX_TEAMS = 8
+#: Plenty for any pickup mix; guards a malformed payload from growing the
+#: co-host list without bound.
+_MAX_CO_HOSTS = 16
 _MAX_TEAM_NAME_LEN = 60
 #: Upper bound on the host's configurable rank-adjustment-per-win. Generous
 #: for any plausible rank scale, guards against a fat-fingered config wrecking
@@ -49,6 +52,17 @@ _PLAYER_PATCH_FIELDS = frozenset({"is_active", "roles", "must_play"})
 def _require_host(actor_user_id: int, host_user_id: int | None) -> None:
     if host_user_id is None or actor_user_id != host_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the host can write this pool")
+
+
+def _is_writer(actor_user_id: int, game: models.CustomGame) -> bool:
+    return actor_user_id == game.host_user_id or actor_user_id in (game.co_host_user_ids or ())
+
+
+def _require_writer(actor_user_id: int, game: models.CustomGame) -> None:
+    if not _is_writer(actor_user_id, game):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Only the host or a co-host can write this pool"
+        )
 
 
 def _noop_progress(*_args: Any, **_kwargs: Any) -> None:
@@ -323,7 +337,7 @@ class CustomGameService:
         self, session: AsyncSession, *, workspace_id: int, custom_game_id: int, actor_user_id: int
     ) -> models.CustomGame:
         game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
-        _require_host(actor_user_id, game.host_user_id)
+        _require_writer(actor_user_id, game)
         if game.status in _TERMINAL:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Game is {game.status}")
         return game
@@ -716,6 +730,106 @@ class CustomGameService:
         config = {key: value for key, value in (game.config_json or {}).items() if key in _CONFIG_ONLY}
         config.update(normalized)
         game.config_json = config or None
+        await session.flush()
+        return game
+
+    async def transfer_host(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        new_host_user_id: int,
+        actor_user_id: int,
+    ) -> models.CustomGame:
+        """Hand primary ownership of the mix to another workspace member.
+
+        Any current writer -- the host or a co-host -- may do this, and only
+        while the mix is still writable -- same gate every other write here
+        uses (``_require_writer``). The new host is deduped out of
+        ``co_host_user_ids`` if they were already listed there, so nobody is
+        simultaneously the primary host and a co-host of themselves. Existing
+        co-hosts are otherwise untouched: this only ever moves the one
+        ``host_user_id`` slot, a caller who is not already a co-host still
+        loses write access on their very next call here after handing it off.
+        ``hosts`` is reused as the membership check: an id it cannot resolve
+        to a display name is not a member of this workspace.
+        """
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
+        if new_host_user_id == game.host_user_id:
+            return game
+        names = await self.hosts(session, workspace_id, [new_host_user_id])
+        if new_host_user_id not in names:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
+        game.host_user_id = new_host_user_id
+        if game.co_host_user_ids and new_host_user_id in game.co_host_user_ids:
+            game.co_host_user_ids = [uid for uid in game.co_host_user_ids if uid != new_host_user_id] or None
+        await session.flush()
+        return game
+
+    async def add_co_host(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        co_host_user_id: int,
+        actor_user_id: int,
+    ) -> models.CustomGame:
+        """Grant another workspace member the same write access as the host.
+
+        Any current writer -- the host or an existing co-host -- may extend
+        the list; there is no separate "manage co-hosts" grant, matching
+        ``_require_writer``. The primary host is never listed here (they are
+        ``host_user_id``), so re-adding them is a no-op rather than a
+        duplicate entry, and so is re-adding an id already present. Capped at
+        ``_MAX_CO_HOSTS``: plenty for any pickup mix, guards a malformed
+        payload from growing the list without bound.
+        """
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
+        if co_host_user_id == game.host_user_id:
+            return game
+        current = list(game.co_host_user_ids or ())
+        if co_host_user_id in current:
+            return game
+        names = await self.hosts(session, workspace_id, [co_host_user_id])
+        if co_host_user_id not in names:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
+        if len(current) >= _MAX_CO_HOSTS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"A mix can have at most {_MAX_CO_HOSTS} co-hosts",
+            )
+        game.co_host_user_ids = [*current, co_host_user_id]
+        await session.flush()
+        return game
+
+    async def remove_co_host(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        co_host_user_id: int,
+        actor_user_id: int,
+    ) -> models.CustomGame:
+        """Revoke a co-host's write access -- including the caller's own, a self-service "leave".
+
+        Removing an id that is not currently a co-host is a no-op rather than
+        a 404: the caller's intent ("this id should not be a co-host") is
+        already satisfied.
+        """
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
+        current = list(game.co_host_user_ids or ())
+        if co_host_user_id not in current:
+            return game
+        game.co_host_user_ids = [uid for uid in current if uid != co_host_user_id] or None
         await session.flush()
         return game
 

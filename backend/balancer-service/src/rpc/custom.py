@@ -1,7 +1,7 @@
 """Custom games over typed RPC.
 
-``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,set_points_per_win,set_balancer_config,swap_seats,record_outcome,match_history,rotation,close,delete}``.
-Writes require ``actor == host``. Reads are any workspace member.
+``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,set_points_per_win,set_balancer_config,transfer_host,add_co_host,remove_co_host,swap_seats,record_outcome,match_history,rotation,close,delete}``.
+Writes require ``actor`` to be the host or a co-host. Reads are any workspace member.
 """
 
 from __future__ import annotations
@@ -158,6 +158,14 @@ def _balancer_config_body(data: dict[str, Any]) -> dict[str, Any] | None:
     return raw
 
 
+def _new_host_user_id(data: dict[str, Any]) -> int:
+    body = c.payload(data)
+    raw = body.get("new_host_user_id", data.get("new_host_user_id"))
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="new_host_user_id is required")
+    return raw
+
+
 def _swap_seats_body(data: dict[str, Any]) -> tuple[int, str, str]:
     body = c.payload(data)
     variant_index = body.get("variant_index", data.get("variant_index"))
@@ -229,12 +237,17 @@ def _dump_game(
     author_ranks: dict[tuple[int, str], int] | None = None,
     host_display_name: str | None = None,
     roster_shape: dict[str, Any] | None = None,
+    co_hosts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": game.id,
         "workspace_id": game.workspace_id,
         "host_user_id": game.host_user_id,
         "host_display_name": host_display_name,
+        # Resolved (user_id + display_name) rather than the raw id list, so
+        # the sheet never has to guess a name from a separate roster query --
+        # the same reason `host_display_name` sits beside `host_user_id`.
+        "co_hosts": co_hosts or [],
         "name": game.name,
         "status": game.status,
         "config_json": game.config_json,
@@ -252,6 +265,15 @@ def _dump_game(
     return out
 
 
+async def _resolve_hosts(session: Any, game: Any) -> tuple[str | None, list[dict[str, Any]]]:
+    """The primary host's display name, and every co-host resolved the same way -- one batched lookup."""
+    co_host_ids = list(game.co_host_user_ids or ())
+    names = await custom_game_service.hosts(session, game.workspace_id, [game.host_user_id, *co_host_ids])
+    return names.get(game.host_user_id), [
+        {"user_id": user_id, "display_name": names.get(user_id)} for user_id in co_host_ids
+    ]
+
+
 async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     """Roster rows carry the member's name, effective ranks and their source.
 
@@ -266,10 +288,11 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         await custom_game_service.roster_shape(session, workspace_id=game.workspace_id, config_json=game.config_json)
     ).model_dump()
     roster = list(await custom_game_service.roster.list_for_game(session, game.id))
-    host_names = await custom_game_service.hosts(session, game.workspace_id, [game.host_user_id])
-    host_display_name = host_names.get(game.host_user_id)
+    host_display_name, co_hosts = await _resolve_hosts(session, game)
     if not roster:
-        return _dump_game(game, roster, host_display_name=host_display_name, roster_shape=roster_shape)
+        return _dump_game(
+            game, roster, host_display_name=host_display_name, roster_shape=roster_shape, co_hosts=co_hosts
+        )
     member_ids = [row.workspace_member_id for row in roster]
     members = await custom_game_service.members(session, game.workspace_id, member_ids)
     resolved = await custom_game_service.ranks.resolve(
@@ -291,7 +314,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
             author_user_id=game.host_user_id,
         )
     )
-    return _dump_game(game, roster, members, resolved, author_ranks, host_display_name, roster_shape)
+    return _dump_game(game, roster, members, resolved, author_ranks, host_display_name, roster_shape, co_hosts)
 
 
 def _dump_match(match: Any, map_info: dict[int, tuple[str, str]]) -> dict[str, Any]:
@@ -529,6 +552,63 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.set_balancer_config", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.transfer_host")
+    async def _transfer_host(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "update")
+            game = await custom_game_service.transfer_host(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                new_host_user_id=_new_host_user_id(data),
+                actor_user_id=user.id,
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="host", actor_user_id=user.id)
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.transfer_host", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.add_co_host")
+    async def _add_co_host(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "update")
+            game = await custom_game_service.add_co_host(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                co_host_user_id=_int(data, "co_host_user_id"),
+                actor_user_id=user.id,
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="co_hosts", actor_user_id=user.id)
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.add_co_host", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.remove_co_host")
+    async def _remove_co_host(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "update")
+            game = await custom_game_service.remove_co_host(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                co_host_user_id=_int(data, "co_host_user_id"),
+                actor_user_id=user.id,
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="co_hosts", actor_user_id=user.id)
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.remove_co_host", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.swap_seats")
     async def _swap_seats(data: dict, msg: RabbitMessage) -> dict:

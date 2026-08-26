@@ -57,8 +57,8 @@ describe("balancer config helpers", () => {
   });
 
   it("uses draft config as the run config for supported custom settings", () => {
-    expect(getRunConfig({ max_result_variants: 6, algorithm: "cpsat" }, configData, CUSTOM_PRESET)).toEqual({
-      algorithm: "cpsat",
+    expect(getRunConfig({ max_result_variants: 6, algorithm: "moo" }, configData, CUSTOM_PRESET)).toEqual({
+      algorithm: "moo",
       max_result_variants: 6,
     });
   });

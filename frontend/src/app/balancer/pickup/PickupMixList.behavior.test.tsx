@@ -36,6 +36,7 @@ function game(overrides: Partial<CustomGame> = {}): CustomGame {
     id: 12,
     workspace_id: 7,
     host_user_id: 9,
+    co_hosts: [],
     host_display_name: "HostTag#1234",
     name: "Thursday scrim",
     status: "balanced",

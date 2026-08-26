@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Settings2, UserPlus } from "lucide-react";
+import { ArrowLeft, Settings2, UserCog, UserPlus } from "lucide-react";
 
 import { PANEL_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import { EYEBROW_CLASS } from "@/app/balancer/pickup/pickup-chrome";
@@ -11,10 +11,13 @@ import type { CustomGame } from "@/services/custom-game.service";
 
 type PickupMixHeaderProps = {
   canEdit: boolean;
+  /** Host or co-host, and not-terminal -- gates "Manage access" the same way every write does. */
+  canWrite: boolean;
   game: CustomGame | undefined;
   gameLoading: boolean;
   onOpenPool: () => void;
   onOpenSettings: () => void;
+  onOpenAccess: () => void;
 };
 
 /**
@@ -37,10 +40,12 @@ type PickupMixHeaderProps = {
  */
 export function PickupMixHeader({
   canEdit,
+  canWrite,
   game,
   gameLoading,
   onOpenPool,
   onOpenSettings,
+  onOpenAccess,
 }: Readonly<PickupMixHeaderProps>) {
   return (
     <div className={cn(PANEL_CLASS, "flex flex-wrap items-center gap-3 px-4 py-3")}>
@@ -90,6 +95,19 @@ export function PickupMixHeader({
           aria-label="Team composition"
         >
           <Settings2 className="size-3.5" aria-hidden="true" />
+        </Button>
+      ) : null}
+      {canWrite ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          disabled={game == null}
+          onClick={onOpenAccess}
+          aria-label="Manage access"
+        >
+          <UserCog className="size-3.5" aria-hidden="true" />
         </Button>
       ) : null}
     </div>

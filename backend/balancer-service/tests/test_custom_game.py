@@ -18,7 +18,7 @@ from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
 from shared.services.member_rank import MIX_ORDER  # noqa: E402
 from shared.services.workspace_roster import RosterMember  # noqa: E402
-from src.services.custom_game import CustomGameService  # noqa: E402
+from src.services.custom_game import _MAX_CO_HOSTS, CustomGameService  # noqa: E402
 
 
 def _session() -> MagicMock:
@@ -51,6 +51,7 @@ def _game(**overrides) -> SimpleNamespace:
         "id": 11,
         "workspace_id": 1,
         "host_user_id": 9,
+        "co_host_user_ids": None,
         "name": "Scrim",
         "status": "draft",
         "config_json": None,
@@ -110,6 +111,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.load_roster = AsyncMock(
             side_effect=lambda _s, *, workspace_id, member_ids: _members(*member_ids)
         )
+        # No workspace member resolves to a host name unless a test says
+        # otherwise -- `transfer_host` treats an unresolved id as "not a member".
+        self.load_hosts = AsyncMock(return_value={})
         self.ranks.resolve = AsyncMock(return_value={})
         self.ranks.set_ranks = AsyncMock(return_value={})
         self.grid = object()
@@ -137,6 +141,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             casual_players=self.casual_players,
             ranks=self.ranks,
             load_roster=self.load_roster,
+            load_hosts=self.load_hosts,
             run_balance=self.run_balance,
         )
         self.session = _session()
@@ -968,6 +973,180 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         _player_data, config_overrides, _progress, _role_mask = self.run_balance.await_args.args
         self.assertEqual(config_overrides, {"population_size": 200})
+
+    async def test_transfer_host_moves_ownership_to_a_workspace_member(self) -> None:
+        self.games.get.return_value = _game()
+        self.load_hosts.return_value = {21: "Beta"}
+
+        game = await self.service.transfer_host(
+            self.session, workspace_id=1, custom_game_id=11, new_host_user_id=21, actor_user_id=9
+        )
+
+        self.assertEqual(game.host_user_id, 21)
+        self.load_hosts.assert_awaited_once_with(self.session, workspace_id=1, user_ids=[21])
+
+    async def test_transfer_host_rejects_a_non_member_404(self) -> None:
+        self.games.get.return_value = _game()
+        self.load_hosts.return_value = {}
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.transfer_host(
+                self.session, workspace_id=1, custom_game_id=11, new_host_user_id=404, actor_user_id=9
+            )
+
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_transfer_host_requires_the_current_host_403(self) -> None:
+        self.games.get.return_value = _game()
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.transfer_host(
+                self.session, workspace_id=1, custom_game_id=11, new_host_user_id=21, actor_user_id=99
+            )
+
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.load_hosts.assert_not_awaited()
+
+    async def test_transfer_host_terminal_409(self) -> None:
+        self.games.get.return_value = _game(status="completed")
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.transfer_host(
+                self.session, workspace_id=1, custom_game_id=11, new_host_user_id=21, actor_user_id=9
+            )
+
+        self.assertEqual(ctx.exception.status_code, 409)
+
+    async def test_transfer_host_to_self_is_a_noop(self) -> None:
+        self.games.get.return_value = _game()
+
+        game = await self.service.transfer_host(
+            self.session, workspace_id=1, custom_game_id=11, new_host_user_id=9, actor_user_id=9
+        )
+
+        self.assertEqual(game.host_user_id, 9)
+        self.load_hosts.assert_not_awaited()
+
+    async def test_transfer_host_dedupes_new_host_out_of_co_hosts(self) -> None:
+        self.games.get.return_value = _game(co_host_user_ids=[21, 22])
+        self.load_hosts.return_value = {21: "Beta"}
+
+        game = await self.service.transfer_host(
+            self.session, workspace_id=1, custom_game_id=11, new_host_user_id=21, actor_user_id=9
+        )
+
+        self.assertEqual(game.host_user_id, 21)
+        self.assertEqual(game.co_host_user_ids, [22])
+
+    async def test_add_co_host_grants_write_access(self) -> None:
+        self.games.get.return_value = _game()
+        self.load_hosts.return_value = {21: "Beta"}
+
+        game = await self.service.add_co_host(
+            self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=9
+        )
+        self.assertEqual(game.co_host_user_ids, [21])
+
+        # The new co-host can now write this mix without being the host.
+        game.status = "draft"
+        renamed = await self.service.set_points_per_win(
+            self.session, workspace_id=1, custom_game_id=11, points_per_win=10, actor_user_id=21
+        )
+        self.assertEqual(renamed.config_json, {"points_per_win": 10})
+
+    async def test_add_co_host_rejects_a_non_member_404(self) -> None:
+        self.games.get.return_value = _game()
+        self.load_hosts.return_value = {}
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.add_co_host(
+                self.session, workspace_id=1, custom_game_id=11, co_host_user_id=404, actor_user_id=9
+            )
+
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_add_co_host_is_idempotent(self) -> None:
+        self.games.get.return_value = _game(co_host_user_ids=[21])
+
+        game = await self.service.add_co_host(
+            self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=9
+        )
+
+        self.assertEqual(game.co_host_user_ids, [21])
+        self.load_hosts.assert_not_awaited()
+
+    async def test_add_co_host_treats_the_current_host_as_a_noop(self) -> None:
+        self.games.get.return_value = _game()
+
+        game = await self.service.add_co_host(
+            self.session, workspace_id=1, custom_game_id=11, co_host_user_id=9, actor_user_id=9
+        )
+
+        self.assertIsNone(game.co_host_user_ids)
+        self.load_hosts.assert_not_awaited()
+
+    async def test_add_co_host_enforces_the_cap(self) -> None:
+        self.games.get.return_value = _game(co_host_user_ids=list(range(100, 100 + _MAX_CO_HOSTS)))
+        self.load_hosts.return_value = {21: "Beta"}
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.add_co_host(
+                self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=9
+            )
+
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    async def test_add_co_host_allowed_by_an_existing_co_host(self) -> None:
+        self.games.get.return_value = _game(co_host_user_ids=[21])
+        self.load_hosts.return_value = {22: "Gamma"}
+
+        game = await self.service.add_co_host(
+            self.session, workspace_id=1, custom_game_id=11, co_host_user_id=22, actor_user_id=21
+        )
+
+        self.assertEqual(game.co_host_user_ids, [21, 22])
+
+    async def test_add_co_host_requires_the_host_or_a_co_host_403(self) -> None:
+        self.games.get.return_value = _game()
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.add_co_host(
+                self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=99
+            )
+
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_remove_co_host_revokes_write_access(self) -> None:
+        self.games.get.return_value = _game(co_host_user_ids=[21])
+
+        game = await self.service.remove_co_host(
+            self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=9
+        )
+        self.assertIsNone(game.co_host_user_ids)
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_points_per_win(
+                self.session, workspace_id=1, custom_game_id=11, points_per_win=10, actor_user_id=21
+            )
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_remove_co_host_is_a_noop_for_an_absent_id(self) -> None:
+        self.games.get.return_value = _game(co_host_user_ids=[21])
+
+        game = await self.service.remove_co_host(
+            self.session, workspace_id=1, custom_game_id=11, co_host_user_id=404, actor_user_id=9
+        )
+
+        self.assertEqual(game.co_host_user_ids, [21])
+
+    async def test_remove_co_host_allows_self_removal(self) -> None:
+        self.games.get.return_value = _game(co_host_user_ids=[21, 22])
+
+        game = await self.service.remove_co_host(
+            self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=21
+        )
+
+        self.assertEqual(game.co_host_user_ids, [22])
 
     async def test_set_points_per_win_terminal_409(self) -> None:
         self.games.get.return_value = _row(

@@ -55,10 +55,18 @@ export type CustomGameOutcome = {
   winner: number | null;
 };
 
+/** A workspace member with the same write access as the mix's host. */
+export type CustomGameCoHost = {
+  user_id: number;
+  display_name: string | null;
+};
+
 export type CustomGame = {
   id: number;
   workspace_id: number;
   host_user_id: number;
+  /** Extra workspace members who write this mix exactly like the host (see `custom.add_co_host`). */
+  co_hosts: CustomGameCoHost[];
   host_display_name: string | null;
   name: string;
   status: CustomGameStatus | string;
@@ -235,6 +243,39 @@ export const customGameService = {
       method: "PUT",
       body: { balancer_config: balancerConfig },
     }).then((r) => r.json());
+  },
+
+  /**
+   * Hands primary ownership to another workspace member. Any current writer
+   * -- the host or a co-host -- may call this; it 403s the caller's very
+   * next write here unless they are also a co-host, and opens every write
+   * (roster, balance, outcomes, settings) to the new host.
+   */
+  transferHost(workspaceId: number, gameId: number, newHostUserId: number): Promise<CustomGame> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/host`, {
+      method: "PUT",
+      body: { new_host_user_id: newHostUserId },
+    }).then((r) => r.json());
+  },
+
+  /**
+   * Grants another workspace member the same write access as the host --
+   * roster, balance, outcomes, settings, even transferring the host on. Any
+   * current writer (host or existing co-host) may extend the list.
+   */
+  addCoHost(workspaceId: number, gameId: number, coHostUserId: number): Promise<CustomGame> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/co-hosts`, {
+      method: "POST",
+      body: { co_host_user_id: coHostUserId },
+    }).then((r) => r.json());
+  },
+
+  /** Revokes a co-host's write access, including a co-host removing themselves. */
+  removeCoHost(workspaceId: number, gameId: number, coHostUserId: number): Promise<CustomGame> {
+    return apiFetch(
+      `/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/co-hosts/${coHostUserId}`,
+      { method: "DELETE" },
+    ).then((r) => r.json());
   },
 
   /**

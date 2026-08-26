@@ -148,7 +148,7 @@ def test_config_policy_rejects_non_numeric_cap_value() -> None:
 
 def test_config_policy_rejects_algorithm_override_field() -> None:
     with pytest.raises(HTTPException) as exc_info:
-        validate_api_key_config_policy(_api_key_user(), {"algorithm": "cpsat"})
+        validate_api_key_config_policy(_api_key_user(), {"algorithm": "moo"})
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail["code"] == "api_key_config_field_not_allowed"

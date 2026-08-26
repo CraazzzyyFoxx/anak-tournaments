@@ -8,6 +8,7 @@ import { PickupAddPlayersDialog } from "@/app/balancer/pickup/PickupAddPlayersDi
 import { PickupLobbyBoard } from "@/app/balancer/pickup/PickupLobbyBoard";
 import { PickupLobbyPanel } from "@/app/balancer/pickup/PickupLobbyPanel";
 import { PickupMixConfigDialog } from "@/app/balancer/pickup/PickupMixConfigDialog";
+import { PickupAccessDialog } from "@/app/balancer/pickup/PickupAccessDialog";
 import { PickupMixHeader } from "@/app/balancer/pickup/PickupMixHeader";
 import { PickupPlayerSheet } from "@/app/balancer/pickup/PickupPlayerSheet";
 import { PickupTeamsPanel } from "@/app/balancer/pickup/PickupTeamsPanel";
@@ -61,6 +62,7 @@ export default function BalancerPickupMixPage() {
   const [openPlayerId, setOpenPlayerId] = useState<number | null>(null);
   const [isPoolOpen, setIsPoolOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAccessOpen, setIsAccessOpen] = useState(false);
   const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [variantIndex, setVariantIndex] = useState(0);
   // Which map a host is about to name a recorded match for -- the mix flow
@@ -94,6 +96,9 @@ export default function BalancerPickupMixPage() {
     setRoleMask,
     setPointsPerWin,
     setBalancerConfig,
+    transferHost,
+    addCoHost,
+    removeCoHost,
     swapSeats,
   } = usePickupMix(workspaceId ?? 0, pickedGameId);
 
@@ -106,9 +111,11 @@ export default function BalancerPickupMixPage() {
   // per click, so hosting is part of the gate rather than a surprise at the end
   // of one.
   const isHost = game != null && currentUserId != null && game.host_user_id === currentUserId;
+  const isCoHost =
+    game != null && currentUserId != null && game.co_hosts.some((coHost) => coHost.user_id === currentUserId);
   // A completed or cancelled mix is read-only server-side; hide its controls
   // rather than let a click 409.
-  const canWrite = canEdit && isHost && game != null && !PICKUP_TERMINAL_STATUSES[game.status];
+  const canWrite = canEdit && (isHost || isCoHost) && game != null && !PICKUP_TERMINAL_STATUSES[game.status];
   // Ranks are the host's book -- `author_user_id = game.host_user_id` is the
   // layer this mix resolves against. Anyone else who typed here wrote their own
   // book, got a 200, and watched the number stay put. Not gated on `canWrite`:
@@ -194,10 +201,12 @@ export default function BalancerPickupMixPage() {
           <div className="mx-auto flex w-full min-w-0 max-w-[1180px] flex-1 flex-col gap-5">
             <PickupMixHeader
               canEdit={canEdit}
+              canWrite={canWrite}
               game={game}
               gameLoading={gameQuery.isLoading}
               onOpenPool={() => setIsPoolOpen(true)}
               onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenAccess={() => setIsAccessOpen(true)}
             />
             <PickupTeamsPanel
               canWrite={canWrite}
@@ -260,6 +269,19 @@ export default function BalancerPickupMixPage() {
         balancerConfigData={balancerConfigQuery.data}
         balancerConfigSaving={setBalancerConfig.isPending}
         onSaveBalancerConfig={(balancerConfig) => setBalancerConfig.mutate(balancerConfig)}
+      />
+
+      <PickupAccessDialog
+        open={isAccessOpen}
+        onOpenChange={setIsAccessOpen}
+        workspaceId={workspaceId}
+        game={game}
+        addingCoHost={addCoHost.isPending}
+        removingCoHostId={removeCoHost.isPending ? (removeCoHost.variables ?? null) : null}
+        transferring={transferHost.isPending}
+        onAddCoHost={(userId) => addCoHost.mutate(userId)}
+        onRemoveCoHost={(userId) => removeCoHost.mutate(userId)}
+        onTransfer={(newHostUserId) => transferHost.mutate(newHostUserId)}
       />
 
       <PickupPlayerSheet

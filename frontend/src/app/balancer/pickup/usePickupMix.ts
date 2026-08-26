@@ -159,6 +159,36 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     onError: (error) => notify.apiError(error),
   });
 
+  const transferHost = useMutation({
+    mutationFn: (newHostUserId: number) =>
+      customGameService.transferHost(workspaceId, selectedGameId as number, newHostUserId),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success("Host transferred");
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
+  const addCoHost = useMutation({
+    mutationFn: (coHostUserId: number) =>
+      customGameService.addCoHost(workspaceId, selectedGameId as number, coHostUserId),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success("Co-host added");
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
+  const removeCoHost = useMutation({
+    mutationFn: (coHostUserId: number) =>
+      customGameService.removeCoHost(workspaceId, selectedGameId as number, coHostUserId),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success("Co-host removed");
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
   const swapSeats = useMutation({
     mutationFn: (input: PickupSwapSeatsInput) =>
       customGameService.swapSeats(
@@ -245,6 +275,9 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     setRoleMask,
     setPointsPerWin,
     setBalancerConfig,
+    transferHost,
+    addCoHost,
+    removeCoHost,
     swapSeats,
   };
 }

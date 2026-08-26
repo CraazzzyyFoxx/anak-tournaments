@@ -1,4 +1,4 @@
-export const SUPPORTED_BALANCER_ALGORITHMS = ["moo", "cpsat"] as const;
+export const SUPPORTED_BALANCER_ALGORITHMS = ["moo"] as const;
 
 type BalancerAlgorithm = (typeof SUPPORTED_BALANCER_ALGORITHMS)[number];
 
