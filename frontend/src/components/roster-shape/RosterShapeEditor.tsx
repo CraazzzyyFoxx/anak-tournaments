@@ -77,12 +77,13 @@ function SlotIcon({ code, size = 18 }: Readonly<{ code: RosterSlotCode; size?: n
 }
 
 interface RosterShapeEditorProps {
-  /** Stored tournament override, straight off `Tournament.roster_slots_json`. */
+  /** Stored override, straight off `Tournament.roster_slots_json` or a pickup
+   * mix's `config_json.role_mask` -- whichever entity `entity` names. */
   value: RosterSlotMap | null;
   /**
-   * Server-resolved shape (`Tournament.roster_shape`). Every derived number --
-   * team size, draft rounds, whether any slot asks for a role -- is read from
-   * here; `null` only when the read did not opt into the entity.
+   * Server-resolved shape (`Tournament.roster_shape` / `CustomGame.roster_shape`).
+   * Every derived number -- team size, draft rounds, whether any slot asks for a
+   * role -- is read from here; `null` only when the read did not opt into it.
    */
   effective: RosterShape | null;
   /**
@@ -91,9 +92,16 @@ interface RosterShapeEditorProps {
    */
   locked?: boolean;
   disabled?: boolean;
-  /** Emits the value for `TournamentUpdate.roster_slots_json`; `null` = inherit. */
+  /** Emits the value for `TournamentUpdate.roster_slots_json` (or a mix's
+   * `role_mask`); `null` = inherit. */
   onChange: (next: RosterSlotMap | null) => void;
   className?: string;
+  /**
+   * Which entity owns the override, for the two sentences that name it by word
+   * rather than by shape ("this {entity} pins its own shape..."). Both entities
+   * inherit the same workspace default, so every other string stays as-is.
+   */
+  entity?: "tournament" | "mix";
 }
 
 export function RosterShapeEditor({
@@ -102,7 +110,8 @@ export function RosterShapeEditor({
   locked = false,
   disabled = false,
   onChange,
-  className
+  className,
+  entity = "tournament"
 }: Readonly<RosterShapeEditorProps>) {
   const t = useTranslations("rosterShape");
   const errorId = useId();
@@ -150,8 +159,10 @@ export function RosterShapeEditor({
   // the workspace" describes a state the admin is in the middle of leaving.
   const sourceNote = (() => {
     if (!effective) return null;
-    if (!isInherit) return t("overriding");
-    if (effective.source === "tournament") return t("willInherit");
+    if (!isInherit) return t(entity === "mix" ? "overridingMix" : "overriding");
+    if (effective.source === "tournament") {
+      return t(entity === "mix" ? "willInheritMix" : "willInherit");
+    }
     return t("inherited", {
       source: t(
         effective.source === "workspace"

@@ -4974,7 +4974,9 @@
       "default": "built-in Overwatch 5v5 default"
     },
     "overriding": "This tournament pins its own shape instead of following the workspace.",
+    "overridingMix": "This mix pins its own shape instead of following the workspace.",
     "willInherit": "Saving hands this tournament back to the workspace shape.",
+    "willInheritMix": "Saving hands this mix back to the workspace shape.",
     "locked": "A draft session has already been created, so the roster shape is locked. Complete or cancel it to change the shape."
   },
   "scrims": {

@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-fetch";
+import type { RosterShape, RosterSlotMap } from "@/lib/roster-shape";
 
 /** Where an effective rank came from, strongest first. */
 export type RankSource = "author" | "workspace" | "ow";
@@ -61,6 +62,13 @@ export type CustomGame = {
   result_json: unknown;
   outcome_json: unknown;
   created_at: string | null;
+  /**
+   * The mix's resolved team composition -- own `config_json.role_mask`
+   * override, else the workspace default, else the built-in Overwatch 5v5
+   * shape. Optional only for older cached rows read before this field
+   * shipped; every fresh response carries it.
+   */
+  roster_shape?: RosterShape | null;
   players?: CustomGamePlayer[];
 };
 
@@ -136,6 +144,18 @@ export const customGameService = {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/team-names`, {
       method: "PUT",
       body: { team_names: teamNames },
+    }).then((r) => r.json());
+  },
+
+  /**
+   * Patch the mix's own roster-shape override, or clear it (`null`) to inherit
+   * the workspace default -- the same override/inherit split
+   * `RosterShapeEditor` already offers for a tournament's `roster_slots_json`.
+   */
+  setRoleMask(workspaceId: number, gameId: number, roleMask: RosterSlotMap | null): Promise<CustomGame> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/role-mask`, {
+      method: "PUT",
+      body: { role_mask: roleMask },
     }).then((r) => r.json());
   },
 

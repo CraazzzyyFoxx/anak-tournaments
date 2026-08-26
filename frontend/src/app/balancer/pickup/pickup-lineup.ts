@@ -1,4 +1,5 @@
 import { ROLES, canonicalToRegistrationRole, type RoleCode } from "@/lib/roles";
+import { isRosterSlotCode, type RosterSlotMap } from "@/lib/roster-shape";
 import type { CustomGameOutcome, CustomGamePlayer } from "@/services/custom-game.service";
 
 /**
@@ -266,6 +267,26 @@ export function parseTeamNames(configJson: unknown): Record<number, string> {
     }
   }
   return out;
+}
+
+/**
+ * The mix's own roster-shape override, straight off `config_json.role_mask`
+ * (`custom.set_role_mask`). `null` means "no override" — `balance` falls back
+ * through the workspace default to the built-in Overwatch 5v5 shape, and
+ * `CustomGame.roster_shape` reports whichever one actually won.
+ */
+export function parseRoleMask(configJson: unknown): RosterSlotMap | null {
+  const raw = asRecord(asRecord(configJson)?.role_mask);
+  if (raw == null) {
+    return null;
+  }
+  const out: RosterSlotMap = {};
+  for (const [code, value] of Object.entries(raw)) {
+    if (isRosterSlotCode(code) && Number.isInteger(value) && (value as number) > 0) {
+      out[code] = value as number;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 function parseSeats(roster: Record<string, unknown>): PickupSeat[] {

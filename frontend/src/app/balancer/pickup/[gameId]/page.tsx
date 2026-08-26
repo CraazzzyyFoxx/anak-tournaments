@@ -6,6 +6,7 @@ import { useState } from "react";
 import { PickupAddPlayersDialog } from "@/app/balancer/pickup/PickupAddPlayersDialog";
 import { PickupLobbyBoard } from "@/app/balancer/pickup/PickupLobbyBoard";
 import { PickupLobbyPanel } from "@/app/balancer/pickup/PickupLobbyPanel";
+import { PickupMixConfigDialog } from "@/app/balancer/pickup/PickupMixConfigDialog";
 import { PickupMixHeader } from "@/app/balancer/pickup/PickupMixHeader";
 import { PickupPlayerSheet } from "@/app/balancer/pickup/PickupPlayerSheet";
 import { PickupTeamsPanel } from "@/app/balancer/pickup/PickupTeamsPanel";
@@ -56,6 +57,7 @@ export default function BalancerPickupMixPage() {
 
   const [openPlayerId, setOpenPlayerId] = useState<number | null>(null);
   const [isPoolOpen, setIsPoolOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [variantIndex, setVariantIndex] = useState(0);
 
@@ -69,6 +71,7 @@ export default function BalancerPickupMixPage() {
     recordOutcome,
     setAuthorRanks,
     setTeamNames,
+    setRoleMask,
     swapSeats,
   } = usePickupMix(workspaceId ?? 0, pickedGameId);
 
@@ -172,6 +175,7 @@ export default function BalancerPickupMixPage() {
               game={game}
               gameLoading={gameQuery.isLoading}
               onOpenPool={() => setIsPoolOpen(true)}
+              onOpenSettings={() => setIsSettingsOpen(true)}
             />
             <PickupTeamsPanel
               canWrite={canWrite}
@@ -209,6 +213,17 @@ export default function BalancerPickupMixPage() {
         hostUserId={game?.host_user_id ?? null}
         rows={rows}
         onTogglePlayer={togglePoolMember}
+      />
+
+      <PickupMixConfigDialog
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        game={game}
+        canWrite={canWrite}
+        saving={setRoleMask.isPending}
+        onSave={(roleMask) =>
+          setRoleMask.mutate(roleMask, { onSuccess: () => setIsSettingsOpen(false) })
+        }
       />
 
       <PickupPlayerSheet

@@ -1,6 +1,6 @@
 """Custom games over typed RPC.
 
-``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,record_outcome,delete}``.
+``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,swap_seats,record_outcome,delete}``.
 Writes require ``actor == host``. Reads are any workspace member.
 """
 
@@ -93,6 +93,25 @@ def _team_names(data: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
+def _role_mask_body(data: dict[str, Any]) -> dict[str, Any] | None:
+    """The mix's own override, or ``None`` to clear it back to inheriting.
+
+    Unlike ``_team_names`` the whole value may legitimately be ``null`` (clear
+    the override), so a missing key -- rather than an explicit ``null`` -- is
+    what is rejected here.
+    """
+    body = c.payload(data)
+    if "role_mask" in body:
+        raw = body["role_mask"]
+    elif "role_mask" in data:
+        raw = data["role_mask"]
+    else:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="role_mask is required")
+    if raw is not None and not isinstance(raw, dict):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="role_mask must be a map or null")
+    return raw
+
+
 def _swap_seats_body(data: dict[str, Any]) -> tuple[int, str, str]:
     body = c.payload(data)
     variant_index = body.get("variant_index", data.get("variant_index"))
@@ -162,6 +181,7 @@ def _dump_game(
     resolved: dict[tuple[int, str], Any] | None = None,
     author_ranks: dict[tuple[int, str], int] | None = None,
     host_display_name: str | None = None,
+    roster_shape: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": game.id,
@@ -174,6 +194,7 @@ def _dump_game(
         "result_json": game.result_json,
         "outcome_json": game.outcome_json,
         "created_at": game.created_at.isoformat() if game.created_at else None,
+        "roster_shape": roster_shape,
     }
     if roster is not None:
         by_id = members or {}
@@ -194,11 +215,14 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     an Overwatch snapshot, and the sheet could not say which it is about to
     overwrite.
     """
+    roster_shape = (
+        await custom_game_service.roster_shape(session, workspace_id=game.workspace_id, config_json=game.config_json)
+    ).model_dump()
     roster = list(await custom_game_service.roster.list_for_game(session, game.id))
     host_names = await custom_game_service.hosts(session, game.workspace_id, [game.host_user_id])
     host_display_name = host_names.get(game.host_user_id)
     if not roster:
-        return _dump_game(game, roster, host_display_name=host_display_name)
+        return _dump_game(game, roster, host_display_name=host_display_name, roster_shape=roster_shape)
     member_ids = [row.workspace_member_id for row in roster]
     members = await custom_game_service.members(session, game.workspace_id, member_ids)
     resolved = await custom_game_service.ranks.resolve(
@@ -220,7 +244,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
             author_user_id=game.host_user_id,
         )
     )
-    return _dump_game(game, roster, members, resolved, author_ranks, host_display_name)
+    return _dump_game(game, roster, members, resolved, author_ranks, host_display_name, roster_shape)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -357,6 +381,25 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.set_team_names", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.set_role_mask")
+    async def _set_role_mask(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "update")
+            game = await custom_game_service.set_role_mask(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                role_mask=_role_mask_body(data),
+                actor_user_id=user.id,
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="role_mask", actor_user_id=user.id)
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.set_role_mask", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.swap_seats")
     async def _swap_seats(data: dict, msg: RabbitMessage) -> dict:

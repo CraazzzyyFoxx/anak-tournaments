@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, UserPlus } from "lucide-react";
+import { ArrowLeft, Settings2, UserPlus } from "lucide-react";
 
 import { PANEL_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import { EYEBROW_CLASS } from "@/app/balancer/pickup/pickup-chrome";
@@ -14,6 +14,7 @@ type PickupMixHeaderProps = {
   game: CustomGame | undefined;
   gameLoading: boolean;
   onOpenPool: () => void;
+  onOpenSettings: () => void;
 };
 
 /**
@@ -39,6 +40,7 @@ export function PickupMixHeader({
   game,
   gameLoading,
   onOpenPool,
+  onOpenSettings,
 }: Readonly<PickupMixHeaderProps>) {
   return (
     <div className={cn(PANEL_CLASS, "flex flex-wrap items-center gap-3 px-4 py-3")}>
@@ -74,6 +76,20 @@ export function PickupMixHeader({
         >
           <UserPlus className="mr-1.5 size-3.5" aria-hidden="true" />
           Add players
+        </Button>
+      ) : null}
+
+      {canEdit ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          disabled={game == null}
+          onClick={onOpenSettings}
+          aria-label="Team composition"
+        >
+          <Settings2 className="size-3.5" aria-hidden="true" />
         </Button>
       ) : null}
     </div>

@@ -120,6 +120,16 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
         self._grid_patch.start()
         self.addCleanup(self._grid_patch.stop)
+        # No workspace-level roster default unless a test says otherwise --
+        # `roster_shape`/`balance` then fall back to the built-in Overwatch 5v5
+        # shape, matching every existing assertion below.
+        self.workspace_roster_slots = AsyncMock(return_value=None)
+        self._workspace_slots_patch = patch(
+            "src.services.custom_game.get_workspace_roster_slots",
+            new=self.workspace_roster_slots,
+        )
+        self._workspace_slots_patch.start()
+        self.addCleanup(self._workspace_slots_patch.stop)
         self.service = CustomGameService(
             games=self.games,
             roster=self.roster,
@@ -593,6 +603,106 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                 self.session, workspace_id=1, custom_game_id=11, team_names={"0": "Wolves"}, actor_user_id=99
             )
         self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_set_role_mask_stores_the_override(self) -> None:
+        self.games.get.return_value = _game()
+
+        game = await self.service.set_role_mask(
+            self.session, workspace_id=1, custom_game_id=11, role_mask={"flex": 6}, actor_user_id=9
+        )
+
+        self.assertEqual(game.config_json, {"role_mask": {"flex": 6}})
+
+    async def test_set_role_mask_preserves_other_config_keys(self) -> None:
+        self.games.get.return_value = _game(config_json={"team_names": {"0": "Wolves"}})
+
+        game = await self.service.set_role_mask(
+            self.session, workspace_id=1, custom_game_id=11, role_mask={"tank": 1, "flex": 4}, actor_user_id=9
+        )
+
+        self.assertEqual(
+            game.config_json, {"team_names": {"0": "Wolves"}, "role_mask": {"tank": 1, "flex": 4}}
+        )
+
+    async def test_set_role_mask_none_clears_the_override(self) -> None:
+        self.games.get.return_value = _game(config_json={"role_mask": {"flex": 6}})
+
+        game = await self.service.set_role_mask(
+            self.session, workspace_id=1, custom_game_id=11, role_mask=None, actor_user_id=9
+        )
+
+        self.assertIsNone(game.config_json)
+
+    async def test_set_role_mask_rejects_an_invalid_shape(self) -> None:
+        self.games.get.return_value = _game()
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_role_mask(
+                self.session, workspace_id=1, custom_game_id=11, role_mask={"healer": 6}, actor_user_id=9
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    async def test_set_role_mask_terminal_409(self) -> None:
+        self.games.get.return_value = _row(
+            id=11, workspace_id=1, host_user_id=9, name="Scrim", status="completed", config_json=None
+        )
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_role_mask(
+                self.session, workspace_id=1, custom_game_id=11, role_mask={"flex": 6}, actor_user_id=9
+            )
+        self.assertEqual(ctx.exception.status_code, 409)
+
+    async def test_set_role_mask_requires_the_host(self) -> None:
+        self.games.get.return_value = _game()
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_role_mask(
+                self.session, workspace_id=1, custom_game_id=11, role_mask={"flex": 6}, actor_user_id=99
+            )
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_roster_shape_reports_the_override_source(self) -> None:
+        shape = await self.service.roster_shape(
+            self.session, workspace_id=1, config_json={"role_mask": {"flex": 6}}
+        )
+        self.assertEqual(shape.slots, {"flex": 6})
+        self.assertEqual(shape.source, "tournament")
+
+    async def test_roster_shape_falls_back_to_the_workspace_default(self) -> None:
+        self.workspace_roster_slots.return_value = {"tank": 1, "flex": 5}
+
+        shape = await self.service.roster_shape(self.session, workspace_id=1, config_json=None)
+
+        self.assertEqual(shape.slots, {"tank": 1, "flex": 5})
+        self.assertEqual(shape.source, "workspace")
+
+    async def test_roster_shape_falls_back_to_the_builtin_default(self) -> None:
+        shape = await self.service.roster_shape(self.session, workspace_id=1, config_json=None)
+
+        self.assertEqual(shape.slots, {"tank": 1, "dps": 2, "support": 2})
+        self.assertEqual(shape.source, "default")
+
+    async def test_balance_uses_the_workspace_default_when_the_mix_has_no_override(self) -> None:
+        self.workspace_roster_slots.return_value = {"flex": 6}
+        self.games.get.return_value = _game()
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        self.ranks.resolve.return_value = _ranks(7)
+        self.run_balance.return_value = {"teams": []}
+
+        await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+
+        role_mask = self.run_balance.await_args.args[3]
+        self.assertEqual(role_mask, {"flex": 6})
+
+    async def test_balance_mix_override_wins_over_the_workspace_default(self) -> None:
+        self.workspace_roster_slots.return_value = {"flex": 6}
+        self.games.get.return_value = _game(config_json={"role_mask": {"tank": 1, "flex": 4}})
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        self.ranks.resolve.return_value = _ranks(7)
+        self.run_balance.return_value = {"teams": []}
+
+        await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+
+        role_mask = self.run_balance.await_args.args[3]
+        self.assertEqual(role_mask, {"tank": 1, "flex": 4})
 
     async def test_balance_excludes_team_names_from_solver_config_overrides(self) -> None:
         game = _game(config_json={"team_names": {"0": "Wolves"}, "MMR_DIFF_WEIGHT": 5})

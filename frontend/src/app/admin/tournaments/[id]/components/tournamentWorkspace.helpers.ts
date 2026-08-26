@@ -3,7 +3,7 @@ import type { Stage, Standings, Tournament } from "@/types/tournament.types";
 import type { TournamentPhaseScheduleEntryInput, TournamentUpdateInput } from "@/types/admin.types";
 import { utcToZonedInput, zonedInputToUtc } from "@/lib/timezone";
 import type { RosterSlotMap } from "@/lib/roster-shape";
-import { normalizeSlots } from "@/components/admin/tournaments/roster-shape-editor.model";
+import { normalizeSlots } from "@/components/roster-shape/roster-shape-editor.model";
 import { normalizeChallongeSlug } from "@/lib/challonge";
 
 export const SCHEDULABLE_PHASES = ["registration", "check_in", "draft", "live"] as const;

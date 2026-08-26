@@ -11,6 +11,7 @@ import {
   type CustomGameOutcome,
   type CustomGamePlayerPatch,
 } from "@/services/custom-game.service";
+import type { RosterSlotMap } from "@/lib/roster-shape";
 import {
   workspacePlayerKeys,
   workspacePlayerService,
@@ -129,6 +130,13 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     onError: (error) => notify.apiError(error),
   });
 
+  const setRoleMask = useMutation({
+    mutationFn: (roleMask: RosterSlotMap | null) =>
+      customGameService.setRoleMask(workspaceId, selectedGameId as number, roleMask),
+    onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
   const swapSeats = useMutation({
     mutationFn: (input: PickupSwapSeatsInput) =>
       customGameService.swapSeats(
@@ -195,6 +203,7 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     recordOutcome,
     setAuthorRanks,
     setTeamNames,
+    setRoleMask,
     swapSeats,
   };
 }

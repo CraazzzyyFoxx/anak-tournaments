@@ -26,6 +26,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 
 const onOpenPool = vi.fn();
+const onOpenSettings = vi.fn();
 
 function game(overrides: Partial<CustomGame> = {}): CustomGame {
   return {
@@ -66,6 +67,7 @@ async function mount(
         game={currentGame}
         gameLoading={props.gameLoading ?? false}
         onOpenPool={onOpenPool}
+        onOpenSettings={onOpenSettings}
       />,
     );
   });
@@ -95,6 +97,7 @@ beforeEach(() => {
   }
   document.body.innerHTML = "";
   onOpenPool.mockReset();
+  onOpenSettings.mockReset();
 });
 
 describe("PickupMixHeader", () => {
@@ -133,5 +136,13 @@ describe("PickupMixHeader", () => {
     await click(byName(scope, "Add players"));
 
     expect(onOpenPool).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the composition settings on request", async () => {
+    const scope = await mount(game());
+
+    await click(scope.querySelector('[aria-label="Team composition"]'));
+
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 });

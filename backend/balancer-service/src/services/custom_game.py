@@ -10,10 +10,12 @@ from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
-from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS
+from shared.domain.roster_shape import resolve_roster_shape
 from shared.repository import CustomGamePlayerRepository, CustomGameRepository
+from shared.schemas.roster_slots import RosterShapeRead, normalize_roster_slots
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER, MemberRankService, member_rank_service
+from shared.services.roster_shape_access import get_workspace_roster_slots
 from shared.services.workspace_roster import RosterMember, hosts_by_user_id, list_roster
 from src.services.balancer.solver import run_balance as _run_balance
 
@@ -444,6 +446,22 @@ class CustomGameService:
         await session.flush()
         return game
 
+    async def roster_shape(
+        self, session: AsyncSession, *, workspace_id: int, config_json: Mapping[str, Any] | None
+    ) -> RosterShapeRead:
+        """The mix's resolved roster shape, projected the same way a tournament's is.
+
+        Own override (``config_json['role_mask']``) -> workspace default ->
+        built-in Overwatch 5v5, via the same :func:`resolve_roster_shape` a
+        tournament resolves against -- so a workspace-wide roster preset reaches
+        every mix run in it too, not only tournament team formation.
+        """
+        role_mask = (config_json or {}).get("role_mask")
+        workspace_slots = await get_workspace_roster_slots(session, workspace_id)
+        shape = resolve_roster_shape(role_mask, workspace_slots)
+        source = "tournament" if role_mask else "workspace" if workspace_slots else "default"
+        return RosterShapeRead.from_shape(shape, source=source)
+
     async def balance(
         self,
         session: AsyncSession,
@@ -491,7 +509,7 @@ class CustomGameService:
                 "stats": {"classes": classes},
             }
         config = game.config_json or {}
-        role_mask = config.get("role_mask") or dict(DEFAULT_ROSTER_SLOTS)
+        role_mask = (await self.roster_shape(session, workspace_id=workspace_id, config_json=config)).slots
         config_overrides = {key: value for key, value in config.items() if key not in _CONFIG_ONLY}
         try:
             result = await self.run_balance(
@@ -550,6 +568,37 @@ class CustomGameService:
             config["team_names"] = merged
         else:
             config.pop("team_names", None)
+        game.config_json = config or None
+        await session.flush()
+        return game
+
+    async def set_role_mask(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        role_mask: Mapping[str, int] | None,
+        actor_user_id: int,
+    ) -> models.CustomGame:
+        """Patch the mix's own roster-shape override, or clear it back to inheriting.
+
+        Mirrors ``Tournament.roster_slots_json``: ``None`` clears the override, and
+        ``balance``/``roster_shape`` then fall back through ``resolve_roster_shape``
+        to the workspace default, then the built-in Overwatch 5v5 shape.
+        """
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
+        try:
+            normalized = normalize_roster_slots(role_mask)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        config = dict(game.config_json or {})
+        if normalized is None:
+            config.pop("role_mask", None)
+        else:
+            config["role_mask"] = normalized
         game.config_json = config or None
         await session.flush()
         return game
