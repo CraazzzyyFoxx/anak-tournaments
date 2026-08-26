@@ -458,6 +458,15 @@ class EncounterRepository(BaseRepository[models.Encounter]):
             sa.delete(models.Encounter).where(models.Encounter.stage_id == stage_id)
         )
 
+    async def delete_for_stage_item(self, session: AsyncSession, stage_item_id: int) -> None:
+        """Statement delete — see ``delete_for_stage``, scoped to one stage item
+        (group/bracket lane) instead of the whole stage. ``Encounter.stage_item_id``
+        is also ``ON DELETE SET NULL``.
+        """
+        await session.execute(
+            sa.delete(models.Encounter).where(models.Encounter.stage_item_id == stage_item_id)
+        )
+
 
 class MatchRepository(BaseRepository[models.Match]):
     def __init__(self) -> None:
@@ -510,6 +519,12 @@ class StandingRepository(BaseRepository[models.Standing]):
         """Statement delete — see ``EncounterRepository.delete_for_stage``."""
         await session.execute(
             sa.delete(models.Standing).where(models.Standing.stage_id == stage_id)
+        )
+
+    async def delete_for_stage_item(self, session: AsyncSession, stage_item_id: int) -> None:
+        """Statement delete — see ``EncounterRepository.delete_for_stage_item``."""
+        await session.execute(
+            sa.delete(models.Standing).where(models.Standing.stage_item_id == stage_item_id)
         )
 
     async def delete_for_tournament(self, session: AsyncSession, tournament_id: int) -> None:

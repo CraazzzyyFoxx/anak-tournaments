@@ -285,8 +285,9 @@ REGISTRY: dict[str, EntityConfig] = {
             s, _int_or_400(d.get("stage_id"), "stage_id"), p
         ),
         service_update=lambda s, i, p, d: stage_service.update_stage_item(s, i, p),
+        service_delete=lambda s, i, d: stage_service.delete_stage_item(s, i),
         not_found_detail="Stage item not found",
-        actions=frozenset({"create", "update"}),
+        actions=frozenset({"create", "update", "delete"}),
     ),
     "stage_item_input": EntityConfig(
         entity="stage_item_input",

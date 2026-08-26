@@ -325,6 +325,23 @@ class AdminStageService:
         await self._publish_tournament_changed(session, tournament_id, "structure_changed")
         await session.commit()
 
+    async def delete_stage_item(self, session: AsyncSession, stage_item_id: int) -> None:
+        """Delete one stage item (group/bracket lane) without deleting its stage.
+
+        Same reasoning as ``delete_stage``: Encounter.stage_item_id and
+        Standing.stage_item_id are ON DELETE SET NULL, so deleting the item alone
+        would orphan its matches and standings rather than remove them. The item's
+        own inputs cascade (StageItemInput.stage_item_id is ON DELETE CASCADE).
+        """
+        item = await self.get_stage_item(session, stage_item_id)
+        tournament_id = await self.stage_repo.get_tournament_id(session, item.stage_id)
+        await self.encounter_repo.delete_for_stage_item(session, stage_item_id)
+        await self.standing_repo.delete_for_stage_item(session, stage_item_id)
+        await self.stage_item_repo.delete(session, item)
+        await enqueue_tournament_recalculation(session, tournament_id)
+        await self._publish_tournament_changed(session, tournament_id, "structure_changed")
+        await session.commit()
+
     async def _merge_pick_ban_configs(
         self,
         session: AsyncSession,

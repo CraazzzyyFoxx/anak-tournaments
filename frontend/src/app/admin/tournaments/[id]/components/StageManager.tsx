@@ -345,6 +345,7 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
   const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [stageToDelete, setStageToDelete] = useState<Stage | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<StageItem | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [seedStageConfirm, setSeedStageConfirm] = useState<Stage | null>(null);
   const [mergeStageConfirm, setMergeStageConfirm] = useState<Stage | null>(null);
@@ -645,6 +646,15 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
       adminService.updateStageItem(stageItemId, { name }),
     onSuccess: () => invalidateStageData(),
     onError: (error) => notify.apiError(error, { title: "Could not rename this structure item" })
+  });
+
+  const deleteItemMutation = useMutation({
+    mutationFn: (stageItemId: number) => adminService.deleteStageItem(stageItemId),
+    onSuccess: () => {
+      setItemToDelete(null);
+      invalidateStageData();
+    },
+    onError: (error) => notify.apiError(error, { title: "Could not delete this structure item" })
   });
 
   const updateInputMutation = useMutation({
@@ -1283,6 +1293,15 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
                                     <Pencil className="size-3.5" aria-hidden />
                                   </button>
                                 )}
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="size-8 shrink-0 text-destructive hover:text-destructive"
+                                  aria-label={`Delete ${item.name}`}
+                                  onClick={() => setItemToDelete(item)}
+                                >
+                                  <Trash2 className="size-4" aria-hidden />
+                                </Button>
                               </div>
 
                               {item.inputs.length > 0 ? (
@@ -2258,6 +2277,26 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
         }
         cascadeInfo={["Stage structure items", "Team input slots", "Generated stage matches"]}
         isDeleting={deleteMutation.isPending}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(itemToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setItemToDelete(null);
+        }}
+        onConfirm={() => {
+          if (itemToDelete) {
+            deleteItemMutation.mutate(itemToDelete.id);
+          }
+        }}
+        title="Delete structure item"
+        description={
+          itemToDelete
+            ? `Delete "${itemToDelete.name}"? This removes its team slots and generated matches.`
+            : undefined
+        }
+        cascadeInfo={["Team input slots", "Generated matches for this group/lane", "Standings for this group/lane"]}
+        isDeleting={deleteItemMutation.isPending}
       />
 
       <DeleteConfirmDialog

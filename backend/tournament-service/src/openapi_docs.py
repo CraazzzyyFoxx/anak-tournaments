@@ -192,6 +192,10 @@ DOCS: dict[str, dict] = {
         "summary": "Update stage item",
         "description": "Updates a stage item by id; requires stage-update permission on its workspace.",
     },
+    "rpc.tournament.admin.delete#stage_item": {
+        "summary": "Delete stage item",
+        "description": "Deletes a stage item (group/bracket lane) by id, along with its own encounters and standings (204 no body); requires stage-delete permission on its workspace.",
+    },
     "rpc.tournament.admin.create#stage_item_input": {
         "summary": "Create stage item input",
         "description": "Creates a stage item input under a stage item; requires stage-create permission on the workspace resolved from the path stage_item_id.",
