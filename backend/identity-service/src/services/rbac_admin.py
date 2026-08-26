@@ -24,7 +24,7 @@ from shared.core import http_status as status
 from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.rbac import Permission, Role, UserPermissionDeny
-from shared.rbac import user_has_only_workspace_owner_role
+from shared.rbac import ensure_workspace_system_roles, user_has_only_workspace_owner_role
 from shared.repository import (
     AuthUserRepository,
     OAuthConnectionRepository,
@@ -272,6 +272,15 @@ class RoleAdminService:
     ) -> dict:
         """List roles by scope (paginated, server-side search)."""
         self._policy.require_role_scope(current_user, params.workspace_id, "read")
+
+        if params.workspace_id is not None:
+            # System roles (owner/admin/host/member/player) are created lazily by
+            # add_member/grant/registration paths, not on workspace creation alone.
+            # A workspace that has not exercised one of those since a new system
+            # role landed in the catalog would otherwise show a stale role list --
+            # e.g. the members page's role picker missing "Host" entirely.
+            await ensure_workspace_system_roles(session, params.workspace_id)
+            await session.commit()
 
         roles, total = await self._roles.list_in_scope(
             session, params, workspace_id=params.workspace_id, search=params.search
