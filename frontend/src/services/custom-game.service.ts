@@ -75,6 +75,25 @@ export type CustomGame = {
   players?: CustomGamePlayer[];
 };
 
+/**
+ * One match recorded by `recordOutcome`, as it comes back from the permanent
+ * `casual.match` log rather than the mix's own mutable `outcome_json`. `winner`
+ * is derived server-side from the scoreline, the same 1-based/`null` shape as
+ * `CustomGameOutcome`.
+ */
+export type CustomGameMatch = {
+  id: number;
+  home_team_name: string;
+  away_team_name: string;
+  home_score: number;
+  away_score: number;
+  winner: number | null;
+  map_id: number | null;
+  map_name: string | null;
+  recorded_by: number | null;
+  recorded_at: string | null;
+};
+
 /** Patch semantics: an omitted key is left untouched on the server. */
 export type CustomGamePlayerPatch = {
   is_active?: boolean;
@@ -83,10 +102,11 @@ export type CustomGamePlayerPatch = {
 };
 
 export const customGameKeys = {
-  /** Every mix query for a workspace — `list` is a prefix of `one`, so this covers both. */
+  /** Every mix query for a workspace — `list` is a prefix of `one`/`matches`, so this covers all three. */
   all: (workspaceId: number) => ["custom-games", workspaceId] as const,
   list: (workspaceId: number) => ["custom-games", workspaceId] as const,
   one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId] as const,
+  matches: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId, "matches"] as const,
 };
 
 export const customGameService = {
@@ -150,6 +170,11 @@ export const customGameService = {
     }).then((r) => r.json());
   },
 
+  /** Every match this mix has recorded, newest first. */
+  listMatches(workspaceId: number, gameId: number): Promise<CustomGameMatch[]> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/matches`).then((r) => r.json());
+  },
+
   /** Ends the mix. Matches already recorded stay recorded; this only stops further writes. */
   close(workspaceId: number, gameId: number): Promise<CustomGame> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/close`, {
@@ -178,6 +203,18 @@ export const customGameService = {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/role-mask`, {
       method: "PUT",
       body: { role_mask: roleMask },
+    }).then((r) => r.json());
+  },
+
+  /**
+   * The host's rank-adjustment-per-win knob: recording a win/loss then bumps
+   * the winning team's author-book rank by this many points and the losing
+   * team's down by the same, per player and role. `null`/`0` disables it.
+   */
+  setPointsPerWin(workspaceId: number, gameId: number, pointsPerWin: number | null): Promise<CustomGame> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/points-per-win`, {
+      method: "PUT",
+      body: { points_per_win: pointsPerWin },
     }).then((r) => r.json());
   },
 

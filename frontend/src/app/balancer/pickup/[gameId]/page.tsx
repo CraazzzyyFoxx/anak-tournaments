@@ -13,7 +13,7 @@ import { PickupPlayerSheet } from "@/app/balancer/pickup/PickupPlayerSheet";
 import { PickupTeamsPanel } from "@/app/balancer/pickup/PickupTeamsPanel";
 import {
   PICKUP_TERMINAL_STATUSES,
-  parseOutcome,
+  parsePointsPerWin,
   parseTeamNames,
   parseVariants,
   playerLabel,
@@ -75,6 +75,7 @@ export default function BalancerPickupMixPage() {
     selectedGameId,
     gamesQuery,
     gameQuery,
+    matchesQuery,
     setRoster,
     patchPlayer,
     balance,
@@ -83,6 +84,7 @@ export default function BalancerPickupMixPage() {
     setAuthorRanks,
     setTeamNames,
     setRoleMask,
+    setPointsPerWin,
     swapSeats,
   } = usePickupMix(workspaceId ?? 0, pickedGameId);
 
@@ -202,8 +204,11 @@ export default function BalancerPickupMixPage() {
               variantIndex={variantIndex}
               onVariantIndexChange={setVariantIndex}
               recordingOutcome={recordOutcome.isPending}
-              onRecordOutcome={(input) => recordOutcome.mutate(input)}
+              onRecordOutcome={(input) =>
+                recordOutcome.mutate(input, { onSuccess: () => setMapId(null) })
+              }
               maps={mapsQuery.data ?? []}
+              matches={matchesQuery.data ?? []}
               mapId={mapId}
               onMapIdChange={setMapId}
               closingMix={closeMix.isPending}
@@ -236,10 +241,13 @@ export default function BalancerPickupMixPage() {
         onOpenChange={setIsSettingsOpen}
         game={game}
         canWrite={canWrite}
-        saving={setRoleMask.isPending}
-        onSave={(roleMask) =>
-          setRoleMask.mutate(roleMask, { onSuccess: () => setIsSettingsOpen(false) })
-        }
+        saving={setRoleMask.isPending || setPointsPerWin.isPending}
+        onSave={(input) => {
+          setRoleMask.mutate(input.roleMask, { onSuccess: () => setIsSettingsOpen(false) });
+          if (input.pointsPerWin !== parsePointsPerWin(game?.config_json)) {
+            setPointsPerWin.mutate(input.pointsPerWin);
+          }
+        }}
       />
 
       <PickupPlayerSheet
@@ -271,10 +279,12 @@ export default function BalancerPickupMixPage() {
           variantIndex={boardIndex}
           variantCount={variants.length}
           onVariantIndexChange={setVariantIndex}
-          outcome={parseOutcome(game?.outcome_json)}
+          pointsPerWin={parsePointsPerWin(game?.config_json)}
           canWrite={canWrite}
           recordingOutcome={recordOutcome.isPending}
-          onRecordOutcome={(input) => recordOutcome.mutate(input)}
+          onRecordOutcome={(input) =>
+            recordOutcome.mutate(input, { onSuccess: () => setMapId(null) })
+          }
           maps={mapsQuery.data ?? []}
           mapId={mapId}
           onMapIdChange={setMapId}

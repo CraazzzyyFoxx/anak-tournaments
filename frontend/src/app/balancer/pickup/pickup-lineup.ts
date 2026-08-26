@@ -181,25 +181,6 @@ export function summarizeRoleSupply(rows: CustomGamePlayer[]): RoleSupply[] {
   });
 }
 
-/**
- * The recorded result, or `null` while the mix is still open.
- *
- * `outcome_json` is a free-form dict server-side, so an unrecognised payload
- * reads as "no result" rather than throwing — a mix written by another client
- * degrades to an unrecorded scoreline instead of blanking the page.
- */
-export function parseOutcome(outcomeJson: unknown): CustomGameOutcome | null {
-  const record = asRecord(outcomeJson);
-  if (record == null) {
-    return null;
-  }
-  if (record.winner === null) {
-    return { winner: null };
-  }
-  const winner = asNumber(record.winner);
-  return winner == null ? null : { winner };
-}
-
 /** Active players first, then the host's own ordering. */
 export function sortLineup(rows: CustomGamePlayer[]): CustomGamePlayer[] {
   return [...rows].sort((a, b) => {
@@ -294,6 +275,16 @@ export function parseRoleMask(configJson: unknown): RosterSlotMap | null {
     }
   }
   return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * The host's rank-adjustment-per-win knob, straight off
+ * `config_json.points_per_win` (`custom.set_points_per_win`). `null` means
+ * "disabled" -- recording a win/loss then leaves every rank untouched.
+ */
+export function parsePointsPerWin(configJson: unknown): number | null {
+  const value = asRecord(configJson)?.points_per_win;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function parseSeats(roster: Record<string, unknown>): PickupSeat[] {

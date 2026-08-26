@@ -13,11 +13,9 @@ import { useNodeCapture } from "@/hooks/useNodeCapture";
 import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
-import type { CustomGameOutcome } from "@/services/custom-game.service";
 import type { LookupItem } from "@/types/pagination.types";
 
 import type { PickupRecordOutcomeInput, PickupTeam, PickupVariant } from "./pickup-lineup";
-
 
 type PickupLobbyBoardProps = {
   mixName: string;
@@ -25,7 +23,8 @@ type PickupLobbyBoardProps = {
   variantIndex: number;
   variantCount: number;
   onVariantIndexChange: (index: number) => void;
-  outcome: CustomGameOutcome | null;
+  /** The host's configured rank-adjustment-per-win, shown on the win buttons; `null`/`0` hides it. */
+  pointsPerWin: number | null;
   canWrite: boolean;
   recordingOutcome: boolean;
   onRecordOutcome: (input: PickupRecordOutcomeInput) => void;
@@ -55,7 +54,7 @@ export function PickupLobbyBoard({
   variantIndex,
   variantCount,
   onVariantIndexChange,
-  outcome,
+  pointsPerWin,
   canWrite,
   recordingOutcome,
   onRecordOutcome,
@@ -186,9 +185,9 @@ export function PickupLobbyBoard({
           <PickupResultControls
             teamCount={variant.teams.length}
             teamNames={variant.teams.map((team) => team.name)}
-            outcome={outcome}
             canRecord={canWrite}
             saving={recordingOutcome}
+            pointsPerWin={pointsPerWin}
             size="lg"
             onRecord={(recordedOutcome) => onRecordOutcome({ outcome: recordedOutcome, variantIndex, mapId })}
           />

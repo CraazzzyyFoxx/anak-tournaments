@@ -75,6 +75,13 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     enabled: selectedGameId != null,
   });
 
+  /** The permanent match history for the selected mix, newest first. */
+  const matchesQuery = useQuery({
+    queryKey: customGameKeys.matches(workspaceId, selectedGameId ?? 0),
+    queryFn: () => customGameService.listMatches(workspaceId, selectedGameId as number),
+    enabled: selectedGameId != null,
+  });
+
   // Another host editing this workspace's mixes (roster, ranks, bench, role
   // order) in a different tab/session: this thin, non-durable signal (see
   // `pickup_mix_realtime.py`) is the only way that becomes visible here
@@ -133,6 +140,13 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
   const setRoleMask = useMutation({
     mutationFn: (roleMask: RosterSlotMap | null) =>
       customGameService.setRoleMask(workspaceId, selectedGameId as number, roleMask),
+    onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
+  const setPointsPerWin = useMutation({
+    mutationFn: (pointsPerWin: number | null) =>
+      customGameService.setPointsPerWin(workspaceId, selectedGameId as number, pointsPerWin),
     onSuccess: applyGame,
     onError: (error) => notify.apiError(error),
   });
@@ -211,6 +225,7 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     selectedGameId,
     gamesQuery,
     gameQuery,
+    matchesQuery,
     createGame,
     setRoster,
     patchPlayer,
@@ -220,6 +235,7 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     setAuthorRanks,
     setTeamNames,
     setRoleMask,
+    setPointsPerWin,
     swapSeats,
   };
 }

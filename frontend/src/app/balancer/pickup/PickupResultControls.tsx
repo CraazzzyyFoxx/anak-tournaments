@@ -3,31 +3,18 @@
 import { cn } from "@/lib/utils";
 import type { CustomGameOutcome } from "@/services/custom-game.service";
 
-const UNSELECTED_TONE =
-  "border-[color:var(--aqt-border)] bg-white/[0.015] text-[color:var(--aqt-fg-muted)]";
-
-const SELECTED_TONE = {
-  first:
-    "border-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] text-[color:var(--aqt-fg)]",
-  other:
-    "border-[color:color-mix(in_srgb,var(--aqt-amber)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_14%,transparent)] text-[color:var(--aqt-fg)]",
-  draw: "border-[color:var(--aqt-border-3)] bg-white/[0.07] text-[color:var(--aqt-fg)]",
-} as const;
-
-function toneKey(winner: number | null): keyof typeof SELECTED_TONE {
-  if (winner == null) return "draw";
-  return winner === 1 ? "first" : "other";
-}
+const BUTTON_TONE = "border-[color:var(--aqt-border)] bg-white/[0.015] text-[color:var(--aqt-fg-muted)]";
 
 type PickupResultControlsProps = {
   /** How many teams the open balance produced — one win button each. */
   teamCount: number;
   /** Host overrides by position, falling back to `Team N` per button. */
   teamNames?: readonly string[];
-  outcome: CustomGameOutcome | null;
   /** False once the mix is terminal or the viewer cannot write: shows the record read-only. */
   canRecord: boolean;
   saving: boolean;
+  /** The host's configured rank-adjustment-per-win, shown on the win buttons; `null`/`0` hides it. */
+  pointsPerWin?: number | null;
   size?: "sm" | "lg";
   onRecord: (outcome: CustomGameOutcome) => void;
 };
@@ -36,17 +23,19 @@ type PickupResultControlsProps = {
  * Recording who won one match of a mix — repeatable, does not close it.
  *
  * Shared by the mix screen and the fullscreen lobby board because a host calls
- * the scoreline out from the board and wants to log it without leaving. The
- * selected option stays visibly selected after the write, matching the last
- * match recorded; once the host closes the mix (a separate action) the
- * controls render read-only instead of as three dead buttons.
+ * the scoreline out from the board and wants to log it without leaving. A
+ * click adds the match to the permanent history straight away and the controls
+ * go right back to their resting state -- there is nothing to stay "pressed",
+ * so a host can call out and log several matches back to back without
+ * resetting anything by hand. Once the host closes the mix (a separate action)
+ * the controls render read-only instead of as three dead buttons.
  */
 export function PickupResultControls({
   teamCount,
   teamNames,
-  outcome,
   canRecord,
   saving,
+  pointsPerWin,
   size = "sm",
   onRecord,
 }: Readonly<PickupResultControlsProps>) {
@@ -62,29 +51,27 @@ export function PickupResultControls({
 
   return (
     <div className="flex items-center gap-1.5">
-      {options.map((option) => {
-        const selected = outcome != null && outcome.winner === option.winner;
-        return (
-          <button
-            key={option.key}
-            type="button"
-            aria-pressed={selected}
-            disabled={!canRecord || saving}
-            onClick={() => onRecord({ winner: option.winner })}
-            className={cn(
-              "flex items-center rounded-lg border font-semibold transition-colors",
-              size === "lg" ? "h-[38px] px-4 text-[13px]" : "h-8 px-3 text-[12.5px]",
-              // The selected pill borrows the winning team's accent, so the
-              // record reads in the same colour language as the team column.
-              selected ? SELECTED_TONE[toneKey(option.winner)] : UNSELECTED_TONE,
-              canRecord && !selected && "hover:border-[color:var(--aqt-border-3)]",
-              "disabled:cursor-default disabled:opacity-100",
-            )}
-          >
-            {option.label}
-          </button>
-        );
-      })}
+      {options.map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          disabled={!canRecord || saving}
+          onClick={() => onRecord({ winner: option.winner })}
+          className={cn(
+            "flex items-center rounded-lg border font-semibold transition-colors",
+            size === "lg" ? "h-[38px] px-4 text-[13px]" : "h-8 px-3 text-[12.5px]",
+            BUTTON_TONE,
+            canRecord && "hover:border-[color:var(--aqt-border-3)]",
+            "disabled:cursor-default disabled:opacity-100",
+          )}
+        >
+          {option.label}
+          {/* A draw never adjusts ranks, so it never earns the hint. */}
+          {pointsPerWin && option.winner != null ? (
+            <span className="ml-1 font-mono text-[0.9em] opacity-70"> +{pointsPerWin}</span>
+          ) : null}
+        </button>
+      ))}
     </div>
   );
 }

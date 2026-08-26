@@ -16,17 +16,20 @@ import { usePickupMix } from "./usePickupMix";
 const updateRoster = vi.fn();
 const listGames = vi.fn();
 const getGame = vi.fn();
+const listMatches = vi.fn();
 
 vi.mock("@/services/custom-game.service", () => ({
   customGameKeys: {
     all: (workspaceId: number) => ["custom-games", workspaceId],
     list: (workspaceId: number) => ["custom-games", workspaceId],
     one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId],
+    matches: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId, "matches"],
   },
   customGameService: {
     list: (...args: unknown[]) => listGames(...args),
     get: (...args: unknown[]) => getGame(...args),
     updateRoster: (...args: unknown[]) => updateRoster(...args),
+    listMatches: (...args: unknown[]) => listMatches(...args),
   },
 }));
 
@@ -92,6 +95,7 @@ beforeEach(() => {
   listGames.mockResolvedValue([{ id: GAME_ID, workspace_id: WORKSPACE_ID, host_user_id: 1, name: "Tonight", status: "draft", config_json: null, result_json: null, outcome_json: null }]);
   getGame.mockResolvedValue({ id: GAME_ID, workspace_id: WORKSPACE_ID, host_user_id: 1, name: "Tonight", status: "draft", config_json: null, result_json: null, outcome_json: null, players: [] });
   updateRoster.mockResolvedValue({ id: GAME_ID, workspace_id: WORKSPACE_ID, host_user_id: 1, name: "Tonight", status: "draft", config_json: null, result_json: null, outcome_json: null, players: [] });
+  listMatches.mockResolvedValue([]);
 });
 
 describe("usePickupMix", () => {

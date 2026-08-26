@@ -5,7 +5,7 @@ import type { CustomGamePlayer } from "@/services/custom-game.service";
 import {
   averageRank,
   getLineupIssue,
-  parseOutcome,
+  parsePointsPerWin,
   parseVariants,
   playerLabel,
   resolveRoleOrder,
@@ -71,17 +71,18 @@ describe("summarizeRoleSupply", () => {
   });
 });
 
-describe("parseOutcome", () => {
-  it("reads a recorded winner and a recorded draw apart from an open mix", () => {
-    expect(parseOutcome({ winner: 2 })).toEqual({ winner: 2 });
-    expect(parseOutcome({ winner: null })).toEqual({ winner: null });
-    expect(parseOutcome(null)).toBeNull();
+describe("parsePointsPerWin", () => {
+  it("reads the configured points-per-win, ignoring a disabled/absent knob", () => {
+    expect(parsePointsPerWin({ points_per_win: 25 })).toBe(25);
+    expect(parsePointsPerWin({ points_per_win: 0 })).toBeNull();
+    expect(parsePointsPerWin(null)).toBeNull();
+    expect(parsePointsPerWin({})).toBeNull();
   });
 
-  it("treats an unrecognised payload as no result rather than throwing", () => {
-    expect(parseOutcome({})).toBeNull();
-    expect(parseOutcome({ winner: "team one" })).toBeNull();
-    expect(parseOutcome("draw")).toBeNull();
+  it("rejects a non-integer or negative value rather than throwing", () => {
+    expect(parsePointsPerWin({ points_per_win: 2.5 })).toBeNull();
+    expect(parsePointsPerWin({ points_per_win: -10 })).toBeNull();
+    expect(parsePointsPerWin({ points_per_win: "25" })).toBeNull();
   });
 });
 

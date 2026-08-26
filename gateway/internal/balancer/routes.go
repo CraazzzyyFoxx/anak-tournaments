@@ -64,9 +64,11 @@ var RosterRoutes = []edge.RouteSpec{
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/players/{workspace_member_id}", Queue: "rpc.balancer.custom.update_player", IDParam: "game_id", Path: []string{"workspace_id", "workspace_member_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/team-names", Queue: "rpc.balancer.custom.set_team_names", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/role-mask", Queue: "rpc.balancer.custom.set_role_mask", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/points-per-win", Queue: "rpc.balancer.custom.set_points_per_win", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/balance", Queue: "rpc.balancer.custom.balance", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/outcome", Queue: "rpc.balancer.custom.record_outcome", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/teams/swap", Queue: "rpc.balancer.custom.swap_seats", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/matches", Queue: "rpc.balancer.custom.match_history", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/close", Queue: "rpc.balancer.custom.close", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 }
 

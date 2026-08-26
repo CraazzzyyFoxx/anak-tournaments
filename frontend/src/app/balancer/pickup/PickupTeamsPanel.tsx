@@ -18,6 +18,7 @@ import {
   ChevronRight,
   ClipboardCopy,
   Copy,
+  History,
   Loader2,
   Maximize2,
   Shuffle,
@@ -36,6 +37,7 @@ import DivisionIcon from "@/components/DivisionIcon";
 import { MapCombobox } from "@/components/MapCombobox";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { InlineEditText } from "@/components/admin/InlineEditText";
+import { formatRelative } from "@/components/admin/format-time";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,11 +45,11 @@ import { useNodeCapture } from "@/hooks/useNodeCapture";
 import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
-import type { CustomGame } from "@/services/custom-game.service";
+import type { CustomGame, CustomGameMatch } from "@/services/custom-game.service";
 import type { LookupItem } from "@/types/pagination.types";
 
 import {
-  parseOutcome,
+  parsePointsPerWin,
   parseTeamNames,
   parseVariants,
   type PickupRecordOutcomeInput,
@@ -72,6 +74,8 @@ type PickupTeamsPanelProps = {
   onVariantIndexChange: (index: number) => void;
   recordingOutcome: boolean;
   onRecordOutcome: (input: PickupRecordOutcomeInput) => void;
+  /** The permanent record of every match this mix has played, newest first. */
+  matches: CustomGameMatch[];
   /** The OW map catalogue for the optional result-recording picker. */
   maps: LookupItem[];
   mapId: number | null;
@@ -111,6 +115,7 @@ export function PickupTeamsPanel({
   onVariantIndexChange,
   recordingOutcome,
   onRecordOutcome,
+  matches,
   maps,
   mapId,
   onMapIdChange,
@@ -126,7 +131,7 @@ export function PickupTeamsPanel({
   // pager pointing past the end.
   const index = Math.min(variantIndex, Math.max(0, variants.length - 1));
   const variant = variants[index];
-  const outcome = parseOutcome(game?.outcome_json);
+  const pointsPerWin = parsePointsPerWin(game?.config_json);
   // The matchup card is a self-contained graphic, so "share the teams" here needs
   // no detour through the fullscreen board.
   const { ref: captureRef, capturing, capture } = useNodeCapture();
@@ -286,17 +291,15 @@ export function PickupTeamsPanel({
             <PickupResultControls
               teamCount={variant.teams.length}
               teamNames={variant.teams.map((team) => team.name)}
-              outcome={outcome}
               canRecord={canWrite}
               saving={recordingOutcome}
+              pointsPerWin={pointsPerWin}
               onRecord={(recordedOutcome) =>
                 onRecordOutcome({ outcome: recordedOutcome, variantIndex: index, mapId })
               }
             />
             <span className="text-[12.5px] text-[color:var(--aqt-fg-faint)]">
-              {outcome == null
-                ? "Record who won — log as many matches as this mix plays."
-                : "Recorded. Log another match, or close the mix when you're done."}
+              Record who won — every match logs below and the map picker resets for the next one.
             </span>
             {canWrite ? (
               <Button
@@ -314,7 +317,39 @@ export function PickupTeamsPanel({
             ) : null}
           </div>
         ) : null}
+
+        {matches.length > 0 ? <MatchHistoryList matches={matches} /> : null}
       </div>
+    </div>
+  );
+}
+
+/** Every match this mix has recorded, newest first — the permanent record `Record result` writes into. */
+function MatchHistoryList({ matches }: Readonly<{ matches: CustomGameMatch[] }>) {
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-[color:var(--aqt-border)] pt-3">
+      <span className={cn(EYEBROW_CLASS, "flex items-center gap-1.5 tracking-[0.14em]")}>
+        <History className="size-3.5" aria-hidden="true" />
+        Match history
+      </span>
+      <ul className="flex flex-col gap-1">
+        {matches.map((match) => (
+          <li
+            key={match.id}
+            className="flex flex-wrap items-center gap-x-2 text-[12.5px] text-[color:var(--aqt-fg-muted)]"
+          >
+            <span className="w-16 shrink-0 font-mono text-[11.5px] text-[color:var(--aqt-fg-dim)]">
+              {formatRelative(match.recorded_at)}
+            </span>
+            <span className="font-semibold text-[color:var(--aqt-fg)]">
+              {match.home_team_name} {match.home_score} : {match.away_score} {match.away_team_name}
+            </span>
+            {match.map_name ? (
+              <span className="text-[color:var(--aqt-fg-dim)]">&middot; {match.map_name}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

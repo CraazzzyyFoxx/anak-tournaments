@@ -26,7 +26,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CustomGame } from "@/services/custom-game.service";
+import type { CustomGame, CustomGameMatch } from "@/services/custom-game.service";
 
 import { PickupTeamsPanel } from "./PickupTeamsPanel";
 
@@ -131,6 +131,7 @@ async function mount(
     omitSwapSeats?: boolean;
     maps?: { id: number; name: string }[];
     mapId?: number | null;
+    matches?: CustomGameMatch[];
   } = {},
 ) {
   const container = document.createElement("div");
@@ -152,6 +153,7 @@ async function mount(
         onVariantIndexChange={onVariantIndexChange}
         recordingOutcome={false}
         onRecordOutcome={onRecordOutcome}
+        matches={props.matches ?? []}
         maps={props.maps ?? []}
         mapId={props.mapId ?? null}
         onMapIdChange={onMapIdChange}
@@ -359,15 +361,56 @@ describe("PickupTeamsPanel", () => {
     expect(onCloseMix).toHaveBeenCalledTimes(1);
   });
 
-  it("reads a recorded result back as the pressed scoreline", async () => {
-    const scope = await mount(game({ status: "completed", outcome_json: { winner: 1 } }), {
-      canWrite: false,
+  it("never persists a pressed state -- a completed mix's buttons are plain read-only controls", async () => {
+    const scope = await mount(game({ status: "completed" }), { canWrite: false });
+
+    expect(byName(scope, "Team 1 win")?.hasAttribute("aria-pressed")).toBe(false);
+    expect(byName(scope, "Draw")?.hasAttribute("disabled")).toBe(true);
+    expect(scope.textContent).not.toContain("Recorded. Log another match");
+  });
+
+  it("shows the configured points-per-win on the win buttons, never on Draw", async () => {
+    const scope = await mount(game({ config_json: { points_per_win: 25 } }));
+
+    expect(byName(scope, "Team 1 win +25")).not.toBeNull();
+    expect(byName(scope, "Team 2 win +25")).not.toBeNull();
+    expect(byName(scope, "Draw")).not.toBeNull();
+  });
+
+  it("omits the points hint once no rank-adjustment is configured", async () => {
+    const scope = await mount(game());
+
+    expect(byName(scope, "Team 1 win")).not.toBeNull();
+  });
+
+  it("renders the recorded match history the page hands it", async () => {
+    const scope = await mount(game(), {
+      matches: [
+        {
+          id: 2,
+          home_team_name: "Wolves",
+          away_team_name: "Bears",
+          home_score: 1,
+          away_score: 0,
+          winner: 1,
+          map_id: 5,
+          map_name: "King's Row",
+          recorded_by: 9,
+          recorded_at: new Date().toISOString(),
+        },
+      ],
     });
 
-    expect(byName(scope, "Team 1 win")?.getAttribute("aria-pressed")).toBe("true");
-    expect(byName(scope, "Draw")?.getAttribute("aria-pressed")).toBe("false");
-    expect(byName(scope, "Draw")?.hasAttribute("disabled")).toBe(true);
-    expect(scope.textContent).toContain("Recorded. Log another match");
+    expect(scope.textContent).toContain("Match history");
+    expect(scope.textContent).toContain("Wolves");
+    expect(scope.textContent).toContain("Bears");
+    expect(scope.textContent).toContain("King's Row");
+  });
+
+  it("hides the match history section until something has been recorded", async () => {
+    const scope = await mount(game());
+
+    expect(scope.textContent).not.toContain("Match history");
   });
 
   it("hands the fullscreen board and the tag copy to the page", async () => {
