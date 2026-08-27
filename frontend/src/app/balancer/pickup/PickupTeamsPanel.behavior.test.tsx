@@ -247,6 +247,7 @@ describe("PickupTeamsPanel", () => {
     expect(captured?.textContent).toContain("karin");
     expect(captured?.textContent).not.toContain("Copy image");
     expect(captured?.textContent).not.toContain("Copy battletags");
+    expect(captured?.textContent).not.toContain("Close mix");
   });
 
   it("reports a pager move to the page instead of keeping its own index", async () => {
@@ -351,10 +352,17 @@ describe("PickupTeamsPanel", () => {
     expect(onMapIdChange).toHaveBeenCalledWith(6);
   });
 
-  it("lets the host close the mix independently of recording a result", async () => {
+  it("lets the host close the mix independently of recording a result, after confirming", async () => {
     const scope = await mount(game());
 
     await click(byName(scope, "Close mix"));
+    expect(onCloseMix).not.toHaveBeenCalled();
+
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(
+      "Close this mix?",
+    );
+
+    await click(byName(document, "Yes, close mix"));
     expect(onCloseMix).toHaveBeenCalledTimes(1);
   });
 

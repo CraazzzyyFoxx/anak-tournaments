@@ -89,6 +89,7 @@ export default function BalancerPickupMixPage() {
     rotationQuery,
     setRoster,
     patchPlayer,
+    applyRotationHints,
     balance,
     recordOutcome,
     closeMix,
@@ -194,6 +195,8 @@ export default function BalancerPickupMixPage() {
               onRemovePlayer={togglePoolMember}
               onOpenPlayer={setOpenPlayerId}
               onOpenPool={() => setIsPoolOpen(true)}
+              onApplyRotationHints={() => applyRotationHints.mutate()}
+              applyingHints={applyRotationHints.isPending}
             />
           </div>
 

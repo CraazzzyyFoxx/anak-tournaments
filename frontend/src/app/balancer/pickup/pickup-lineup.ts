@@ -1,7 +1,12 @@
 import { ROLES, canonicalToRegistrationRole, type RoleCode } from "@/lib/roles";
 import { isRosterSlotCode, type RosterSlotMap } from "@/lib/roster-shape";
 import { sanitizeBalancerConfig } from "@/app/balancer/components/balancer-config-helpers";
-import type { CustomGameOutcome, CustomGamePlayer, CustomGamePlayerPatch } from "@/services/custom-game.service";
+import type {
+  CustomGameOutcome,
+  CustomGamePlayer,
+  CustomGamePlayerPatch,
+  RotationRecommendation,
+} from "@/services/custom-game.service";
 import type { BalancerConfig } from "@/types/balancer.types";
 
 /** What recording a match needs: the click, and which balance option it was played from. */
@@ -223,6 +228,37 @@ export function bucketPatch(bucket: LineupBucket): CustomGamePlayerPatch {
     case "benched":
       return { is_active: false, must_play: false };
   }
+}
+
+/** One roster patch `applyRotationHints` fires for one row. */
+export type RotationHintPatch = { workspaceMemberId: number; patch: CustomGamePlayerPatch };
+
+/**
+ * The patches that bring the lineup in line with the rotation-fairness read
+ * (`mix_rotation.recommend_rotation`): `must_play` seats a benched member
+ * without pinning them -- a pin (`must_play: true`) is the host's own
+ * explicit call, never inferred from a streak that will not be true forever
+ * -- and `should_rest` benches them exactly like a manual drop into
+ * `Benched` (`bucketPatch("benched")`, which also clears any existing pin).
+ * A row already matching its hint, or with no hint at all (`neutral`, or not
+ * loaded yet), gets no patch -- applying is always idempotent.
+ */
+export function computeRotationHintPatches(
+  rows: readonly CustomGamePlayer[],
+  recommendations: readonly RotationRecommendation[],
+): RotationHintPatch[] {
+  const hintByMember = new Map(recommendations.map((rec) => [rec.workspace_member_id, rec]));
+  const patches: RotationHintPatch[] = [];
+  for (const row of rows) {
+    const hint = hintByMember.get(row.workspace_member_id);
+    if (!hint) continue;
+    if (hint.status === "must_play" && !row.is_active) {
+      patches.push({ workspaceMemberId: row.workspace_member_id, patch: { is_active: true } });
+    } else if (hint.status === "should_rest" && (row.is_active || row.must_play)) {
+      patches.push({ workspaceMemberId: row.workspace_member_id, patch: bucketPatch("benched") });
+    }
+  }
+  return patches;
 }
 
 /** One assigned seat in a balanced team, flattened out of the role buckets. */

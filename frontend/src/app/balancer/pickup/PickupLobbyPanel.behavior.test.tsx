@@ -85,6 +85,7 @@ const onClear = vi.fn();
 const onRemovePlayer = vi.fn();
 const onOpenPlayer = vi.fn();
 const onOpenPool = vi.fn();
+const onApplyRotationHints = vi.fn();
 
 function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
   return {
@@ -112,7 +113,12 @@ function tick() {
 
 async function mount(
   rows: CustomGamePlayer[],
-  props: { canWrite?: boolean; hasMix?: boolean; rotation?: RotationRecommendation[] } = {},
+  props: {
+    canWrite?: boolean;
+    hasMix?: boolean;
+    rotation?: RotationRecommendation[];
+    applyingHints?: boolean;
+  } = {},
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -130,6 +136,8 @@ async function mount(
         onRemovePlayer={onRemovePlayer}
         onOpenPlayer={onOpenPlayer}
         onOpenPool={onOpenPool}
+        onApplyRotationHints={onApplyRotationHints}
+        applyingHints={props.applyingHints ?? false}
       />,
     );
   });
@@ -182,6 +190,7 @@ beforeEach(() => {
   onRemovePlayer.mockReset();
   onOpenPlayer.mockReset();
   onOpenPool.mockReset();
+  onApplyRotationHints.mockReset();
   dndSpies.useDraggable.mockClear();
   dndSpies.useDroppable.mockClear();
   dndSpies.dragEndHandlers.length = 0;
@@ -323,6 +332,51 @@ describe("PickupLobbyPanel rotation hints", () => {
 
     const noData = await mount([row()]);
     expect(noData.querySelector('[title*="owed a seat"]')).toBeNull();
+  });
+});
+
+describe("PickupLobbyPanel apply hints button", () => {
+  it("is absent until rotation data has loaded", async () => {
+    const scope = await mount([row()]);
+    expect(byName(scope, "Apply rotation hints")).toBeNull();
+  });
+
+  it("is disabled once loaded but nothing needs to change", async () => {
+    const scope = await mount([row({ is_active: true })], {
+      rotation: [
+        {
+          workspace_member_id: 7,
+          status: "neutral",
+          reason: "",
+          consecutive_sat: 0,
+          consecutive_played: 0,
+          games_played: 0,
+        },
+      ],
+    });
+    const button = byName(scope, "Apply rotation hints");
+    expect(button).not.toBeNull();
+    expect(button?.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("applies every actionable hint on click", async () => {
+    const scope = await mount([row({ is_active: false, must_play: false })], {
+      rotation: [
+        {
+          workspace_member_id: 7,
+          status: "must_play",
+          reason: "Owed a seat",
+          consecutive_sat: 1,
+          consecutive_played: 0,
+          games_played: 2,
+        },
+      ],
+    });
+    const button = byName(scope, "Apply rotation hints");
+    expect(button?.hasAttribute("disabled")).toBe(false);
+
+    await click(button);
+    expect(onApplyRotationHints).toHaveBeenCalledTimes(1);
   });
 });
 

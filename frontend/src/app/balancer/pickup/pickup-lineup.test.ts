@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { CustomGamePlayer } from "@/services/custom-game.service";
+import type { CustomGamePlayer, RotationRecommendation } from "@/services/custom-game.service";
 
 import {
   averageRank,
+  computeRotationHintPatches,
   getLineupIssue,
   parseBalancerConfig,
   parsePointsPerWin,
@@ -33,6 +34,90 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     ...overrides,
   };
 }
+
+function hint(overrides: Partial<RotationRecommendation> = {}): RotationRecommendation {
+  return {
+    workspace_member_id: 7,
+    status: "neutral",
+    reason: "",
+    consecutive_sat: 0,
+    consecutive_played: 0,
+    games_played: 0,
+    ...overrides,
+  };
+}
+
+describe("computeRotationHintPatches", () => {
+  it("seats a benched member who is owed a seat, without pinning them", () => {
+    const patches = computeRotationHintPatches(
+      [row({ is_active: false, must_play: false })],
+      [hint({ status: "must_play" })],
+    );
+    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { is_active: true } }]);
+  });
+
+  it("leaves an already-active must_play member untouched", () => {
+    const patches = computeRotationHintPatches(
+      [row({ is_active: true })],
+      [hint({ status: "must_play" })],
+    );
+    expect(patches).toEqual([]);
+  });
+
+  it("benches an active member who should rest, exactly like a manual drop into Benched", () => {
+    const patches = computeRotationHintPatches(
+      [row({ is_active: true, must_play: false })],
+      [hint({ status: "should_rest" })],
+    );
+    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { is_active: false, must_play: false } }]);
+  });
+
+  it("clears a stale host pin when benching a should_rest member", () => {
+    const patches = computeRotationHintPatches(
+      [row({ is_active: true, must_play: true })],
+      [hint({ status: "should_rest" })],
+    );
+    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { is_active: false, must_play: false } }]);
+  });
+
+  it("leaves an already-benched should_rest member untouched", () => {
+    const patches = computeRotationHintPatches(
+      [row({ is_active: false, must_play: false })],
+      [hint({ status: "should_rest" })],
+    );
+    expect(patches).toEqual([]);
+  });
+
+  it("never patches a neutral verdict", () => {
+    const patches = computeRotationHintPatches(
+      [row({ is_active: false })],
+      [hint({ status: "neutral" })],
+    );
+    expect(patches).toEqual([]);
+  });
+
+  it("skips a member with no hint at all", () => {
+    const patches = computeRotationHintPatches([row({ workspace_member_id: 9, is_active: false })], []);
+    expect(patches).toEqual([]);
+  });
+
+  it("applies only the rows that actually need to change, across a mixed pool", () => {
+    const rows = [
+      row({ workspace_member_id: 1, is_active: false }), // owed a seat
+      row({ workspace_member_id: 2, is_active: true }), // should rest
+      row({ workspace_member_id: 3, is_active: true }), // neutral, no change
+    ];
+    const recommendations = [
+      hint({ workspace_member_id: 1, status: "must_play" }),
+      hint({ workspace_member_id: 2, status: "should_rest" }),
+      hint({ workspace_member_id: 3, status: "neutral" }),
+    ];
+    expect(computeRotationHintPatches(rows, recommendations)).toEqual([
+      { workspaceMemberId: 1, patch: { is_active: true } },
+      { workspaceMemberId: 2, patch: { is_active: false, must_play: false } },
+    ]);
+  });
+});
 
 describe("summarizeRoleSupply", () => {
   it("counts a player once per role they both picked and are ranked for", () => {

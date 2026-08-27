@@ -35,12 +35,23 @@ import {
   METRIC_PILL_CLASS,
   teamAccent,
 } from "@/app/balancer/pickup/pickup-chrome";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import DivisionIcon from "@/components/DivisionIcon";
 import { MapCombobox } from "@/components/MapCombobox";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { InlineEditText } from "@/components/admin/InlineEditText";
 import { formatRelative } from "@/components/admin/format-time";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNodeCapture } from "@/hooks/useNodeCapture";
@@ -274,6 +285,33 @@ export function PickupTeamsPanel({
                 <ClipboardCopy className="mr-1.5 size-3.5" aria-hidden="true" />
                 Copy battletags
               </Button>
+              {canWrite ? (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button type="button" variant="destructive" className="h-9" disabled={closingMix}>
+                      {closingMix ? (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
+                      ) : null}
+                      Close mix
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Close this mix?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Stops further balancing, roster edits, and outcome recording. Matches already
+                        recorded stay recorded -- this cannot be undone from here.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Keep it open</AlertDialogCancel>
+                      <AlertDialogAction className={buttonVariants({ variant: "destructive" })} onClick={onCloseMix}>
+                        Yes, close mix
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -297,20 +335,6 @@ export function PickupTeamsPanel({
             <span className="text-[12.5px] text-[color:var(--aqt-fg-faint)]">
               Record who won — every match logs below and the map picker resets for the next one.
             </span>
-            {canWrite ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="ml-auto h-9"
-                disabled={closingMix}
-                onClick={onCloseMix}
-              >
-                {closingMix ? (
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
-                ) : null}
-                Close mix
-              </Button>
-            ) : null}
           </div>
         ) : null}
 

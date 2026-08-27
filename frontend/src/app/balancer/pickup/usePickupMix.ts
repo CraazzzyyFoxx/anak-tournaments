@@ -12,7 +12,10 @@ import {
 } from "@/services/custom-game.service";
 import type { RosterSlotMap } from "@/lib/roster-shape";
 import type { BalancerConfig } from "@/types/balancer.types";
-import type { PickupRecordOutcomeInput } from "@/app/balancer/pickup/pickup-lineup";
+import {
+  computeRotationHintPatches,
+  type PickupRecordOutcomeInput,
+} from "@/app/balancer/pickup/pickup-lineup";
 import {
   workspacePlayerKeys,
   workspacePlayerService,
@@ -141,6 +144,43 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     mutationFn: (input: PickupPlayerPatchInput) =>
       customGameService.updatePlayer(workspaceId, selectedGameId as number, input.workspaceMemberId, input.patch),
     onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
+  /**
+   * Applies every actionable rotation-fairness hint at once (see
+   * `mix_rotation.recommend_rotation`): seats whoever is owed one, benches
+   * whoever should rest. `computeRotationHintPatches` already skips a row
+   * that matches its hint, so a second click with nothing left to apply is a
+   * no-op that still resolves.
+   */
+  const applyRotationHints = useMutation({
+    mutationFn: async () => {
+      const patches = computeRotationHintPatches(gameQuery.data?.players ?? [], rotationQuery.data ?? []);
+      await Promise.all(
+        patches.map((input) =>
+          customGameService.updatePlayer(
+            workspaceId,
+            selectedGameId as number,
+            input.workspaceMemberId,
+            input.patch,
+          ),
+        ),
+      );
+      return patches.length;
+    },
+    onSuccess: async (appliedCount) => {
+      // Every patch above returned its own game snapshot, but concurrent
+      // writes to different rows race on whose snapshot lands last --
+      // refetching is the only way to see every one of them at once, unlike
+      // `applyGame`'s single optimistic `setQueryData`.
+      await queryClient.invalidateQueries({ queryKey: customGameKeys.one(workspaceId, selectedGameId ?? 0) });
+      void queryClient.invalidateQueries({ queryKey: customGameKeys.list(workspaceId) });
+      void queryClient.invalidateQueries({ queryKey: customGameKeys.rotation(workspaceId, selectedGameId ?? 0) });
+      notify.success(
+        appliedCount > 0 ? `Applied ${appliedCount} hint${appliedCount === 1 ? "" : "s"}` : "Lineup already matches the hints",
+      );
+    },
     onError: (error) => notify.apiError(error),
   });
 
@@ -294,6 +334,7 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     createGame,
     setRoster,
     patchPlayer,
+    applyRotationHints,
     balance,
     recordOutcome,
     closeMix,

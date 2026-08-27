@@ -14,7 +14,17 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { AlertTriangle, Armchair, GripVertical, Pin, RotateCw, SlidersHorizontal, Trash2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Armchair,
+  GripVertical,
+  Pin,
+  RotateCw,
+  SlidersHorizontal,
+  Trash2,
+  Wand2,
+  X,
+} from "lucide-react";
 
 import {
   ICON_BUTTON_CLASS,
@@ -51,6 +61,7 @@ import {
   LINEUP_ROLES,
   averageRank,
   bucketPatch,
+  computeRotationHintPatches,
   getLineupIssue,
   lineupBucket,
   playerLabel,
@@ -96,6 +107,9 @@ type PickupLobbyPanelProps = {
   onRemovePlayer: (workspaceMemberId: number) => void;
   onOpenPlayer: (workspaceMemberId: number) => void;
   onOpenPool: () => void;
+  /** Fires every actionable rotation hint at once (see `computeRotationHintPatches`). */
+  onApplyRotationHints: () => void;
+  applyingHints: boolean;
 };
 
 /** One drag-and-drop column per `LineupBucket`, in the order a host reads commitment. */
@@ -150,11 +164,14 @@ export function PickupLobbyPanel({
   onRemovePlayer,
   onOpenPlayer,
   onOpenPool,
+  onApplyRotationHints,
+  applyingHints,
 }: Readonly<PickupLobbyPanelProps>) {
   const lineup = sortLineup(rows);
   const summary = summarizeLineup(rows);
   const supply = summarizeRoleSupply(rows);
   const rotationByMember = new Map(rotation.map((r) => [r.workspace_member_id, r]));
+  const pendingHintCount = computeRotationHintPatches(rows, rotation).length;
   const columns = COLUMNS.map((def) => ({
     ...def,
     rows: lineup.filter((row) => lineupBucket(row) === def.bucket),
@@ -205,6 +222,28 @@ export function PickupLobbyPanel({
             >
               Add players &rarr;
             </button>
+          ) : null}
+          {canWrite && rotation.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                ICON_BUTTON_CLASS,
+                "size-7 shrink-0",
+                pendingHintCount > 0 && "text-[color:var(--aqt-amber)] hover:text-[color:var(--aqt-amber)]",
+              )}
+              title={
+                pendingHintCount > 0
+                  ? `Apply ${pendingHintCount} rotation hint${pendingHintCount === 1 ? "" : "s"}`
+                  : "Lineup already matches the rotation hints"
+              }
+              disabled={applyingHints || pendingHintCount === 0}
+              onClick={onApplyRotationHints}
+            >
+              <Wand2 className="size-3.5" aria-hidden="true" />
+              <span className="sr-only">Apply rotation hints</span>
+            </Button>
           ) : null}
           {canWrite && rows.length > 0 ? (
             <AlertDialog>
