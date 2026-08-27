@@ -86,13 +86,30 @@ def test_host_pinned_must_play_always_gets_a_seat() -> None:
     assert by_id[3].status == RotationStatus.SHOULD_REST
 
 
-def test_no_history_yet_falls_back_to_deterministic_input_order() -> None:
+def test_no_history_yet_recommends_nothing() -> None:
+    # Brand-new mix, or a roster where every row joined after the last map:
+    # nobody has a fairness signal to rank by, so a seat shortfall must not
+    # get dressed up as a "should rest" verdict -- everyone stays NEUTRAL.
     histories = [PlayerHistory(member_id=member_id, played=()) for member_id in (1, 2, 3)]
     recommendations = recommend_rotation(histories, usable_count=2)
 
-    assert _status_by_id(recommendations, 1) == RotationStatus.NEUTRAL
-    assert _status_by_id(recommendations, 2) == RotationStatus.NEUTRAL
-    assert _status_by_id(recommendations, 3) == RotationStatus.SHOULD_REST
+    assert {r.status for r in recommendations} == {RotationStatus.NEUTRAL}
+    assert all(r.games_played == 0 for r in recommendations)
 
     # Re-running with the same input is stable -- no hidden randomness.
     assert recommend_rotation(histories, usable_count=2) == recommendations
+
+
+def test_no_history_yet_still_honours_a_host_pin() -> None:
+    histories = [
+        PlayerHistory(member_id=1, played=()),
+        PlayerHistory(member_id=2, played=()),
+        PlayerHistory(member_id=3, played=(), pinned_must_play=True),
+    ]
+    recommendations = recommend_rotation(histories, usable_count=2)
+    by_id = {r.member_id: r for r in recommendations}
+
+    assert by_id[3].status == RotationStatus.MUST_PLAY
+    assert by_id[3].reason == "Закреплён хостом (must_play)"
+    assert by_id[1].status == RotationStatus.NEUTRAL
+    assert by_id[2].status == RotationStatus.NEUTRAL

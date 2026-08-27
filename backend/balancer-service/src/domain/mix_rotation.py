@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-__all__ = ("RotationStatus", "PlayerHistory", "RotationRecommendation", "recommend_rotation")
+__all__ = ("RotationStatus", "PlayerHistory", "RotationRecommendation", "recommend_rotation", "rotation_priority")
 
 
 class RotationStatus(Enum):
@@ -68,6 +68,24 @@ def _streak_from_end(played: Sequence[bool], *, value: bool) -> int:
     return streak
 
 
+def rotation_priority(history: PlayerHistory) -> float:
+    """Single sortable score ranking one player by rotation fairness -- lower sorts first (kept
+    longest before an uneven roster's overflow trim reaches for someone).
+
+    Combines the same three keys ``recommend_rotation`` ranks by internally into one float wide
+    enough that no later key can outweigh an earlier one (sat-out streak beats played streak beats
+    total games, exactly like the tuple sort there), so it survives a JSON round trip as a single
+    ``identity.rotationPriority`` number on ``domain.balancer.entities.Player`` -- a caller ordering
+    the pool *before* it reaches ``run_balance`` (whose own overflow trim in
+    ``domain.balancer.runtime._prepare_balance_context`` has no fairness of its own) can make that
+    trim land on the same player the rotation hints would flag ``SHOULD_REST``, instead of an
+    arbitrary tail order Balance never explained.
+    """
+    sat = _streak_from_end(history.played, value=False)
+    played_streak = _streak_from_end(history.played, value=True)
+    return (-sat * 1_000_000) + (played_streak * 1_000) + sum(history.played)
+
+
 def recommend_rotation(
     histories: Sequence[PlayerHistory], *, usable_count: int
 ) -> list[RotationRecommendation]:
@@ -82,8 +100,10 @@ def recommend_rotation(
     A ``pinned_must_play`` member always keeps a seat and is ranked ahead of
     everyone else; the remaining seats (``usable_count`` minus pinned seats)
     go to the top of that ranking. If ``usable_count`` covers the whole pool,
-    or there is no history yet to rank by, everyone comes back ``NEUTRAL`` --
-    there is nothing to rotate.
+    or none of the non-pinned members have played a single map yet, everyone
+    comes back ``NEUTRAL`` (a pin still wins its seat) -- there is no fairness
+    signal to rotate on, so nobody gets told to rest on the strength of a tie-
+    break that only exists to keep sorting deterministic.
     """
     if usable_count >= len(histories):
         return [
@@ -91,6 +111,29 @@ def recommend_rotation(
                 member_id=h.member_id,
                 status=RotationStatus.NEUTRAL,
                 reason="Мест хватает на весь пул",
+                consecutive_sat=_streak_from_end(h.played, value=False),
+                consecutive_played=_streak_from_end(h.played, value=True),
+                games_played=sum(h.played),
+            )
+            for h in histories
+        ]
+
+    if all(not h.played for h in histories if not h.pinned_must_play):
+        # Brand-new mix (or every current row joined after the last recorded
+        # map): nobody the ranking below would compete over has a history to
+        # rank by, so its own tie-break (input order) is the only thing that
+        # would separate them -- surfacing that as a "should rest" verdict
+        # dresses up sort stability as a fairness read it never was. A pin
+        # still claims its seat, exactly like the ranking branch would.
+        return [
+            RotationRecommendation(
+                member_id=h.member_id,
+                status=RotationStatus.MUST_PLAY if h.pinned_must_play else RotationStatus.NEUTRAL,
+                reason=(
+                    "Закреплён хостом (must_play)"
+                    if h.pinned_must_play
+                    else "Ещё нет истории карт — нечего ранжировать"
+                ),
                 consecutive_sat=_streak_from_end(h.played, value=False),
                 consecutive_played=_streak_from_end(h.played, value=True),
                 games_played=sum(h.played),
