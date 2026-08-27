@@ -179,7 +179,7 @@ export function PickupPlayerSheet({
     <Sheet open={row != null} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-[640px]"
+        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px]"
       >
         <SheetHeader className="space-y-0 border-b border-[color:var(--aqt-border)] px-5 pb-4 pt-5 text-left">
           <span className={EYEBROW_CLASS}>Advanced settings</span>
@@ -195,34 +195,16 @@ export function PickupPlayerSheet({
             ) : null}
           </SheetTitle>
           <SheetDescription className="pt-1 text-[12.5px] text-[color:var(--aqt-fg-dim)]">
-            {canEdit ? (
-              <>
-                Bench and roles apply to this mix. A rank goes into your own book, which every mix
-                you host reads; the workspace rank stays untouched. Nothing here writes until you
-                press Save.
-              </>
-            ) : (
-              // Read-only has two causes and they are not interchangeable: a
-              // closed mix, or somebody else's. Both end at the same server
-              // refusal, and saying so beats a sheet of dead controls.
-              <>
-                Read-only. Only the host of a mix changes its lineup, and the ranks it balances on
-                are theirs — yours decide the mixes you run.
-              </>
-            )}
+            {canEdit
+              ? "Nothing here writes until you press Save."
+              : "Read-only — only this mix's host can edit it."}
           </SheetDescription>
         </SheetHeader>
 
         {row == null ? null : (
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
-              <div>
-                <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">Status</h3>
-                <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
-                  Or drag the row between columns in the lineup. Benching keeps these settings without
-                  playing.
-                </p>
-              </div>
+              <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">Status</h3>
               <div
                 role="radiogroup"
                 aria-label={`Lineup status for ${label}`}
@@ -249,14 +231,16 @@ export function PickupPlayerSheet({
                         "disabled:cursor-default disabled:opacity-60",
                       )}
                     >
-                      {option.bucket === "must_play" ? (
-                        <Pin
-                          className="size-3.5"
-                          aria-hidden="true"
-                          fill={selected ? "currentColor" : "none"}
-                        />
-                      ) : null}
-                      <span className="text-[12.5px] font-semibold">{option.label}</span>
+                      <span className="flex items-center gap-1">
+                        {option.bucket === "must_play" ? (
+                          <Pin
+                            className="size-3"
+                            aria-hidden="true"
+                            fill={selected ? "currentColor" : "none"}
+                          />
+                        ) : null}
+                        <span className="text-[12.5px] font-semibold">{option.label}</span>
+                      </span>
                       <span className="text-[10.5px] text-[color:var(--aqt-fg-dim)]">
                         {option.description}
                       </span>
@@ -266,38 +250,40 @@ export function PickupPlayerSheet({
               </div>
             </section>
 
-            <section className="space-y-2 border-b border-[color:var(--aqt-border)] px-5 py-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">
-                    Roles and ranks
-                  </h3>
-                  <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
-                    Drag to set who the balancer seats first; it only uses roles that are on. A
-                    rank you type here goes into your own book — yours across every mix you host,
-                    and it beats the workspace rank until you clear it.
-                  </p>
+            <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
+              <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">
+                Roles and ranks
+              </h3>
+
+              <div
+                className={cn(
+                  "flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
+                  draft.isFlex
+                    ? "border-emerald-400/20 bg-emerald-500/[0.08]"
+                    : "border-[color:var(--aqt-border-2)] bg-white/[0.03]",
+                )}
+              >
+                <div className="min-w-0">
+                  <span className="text-xs font-medium text-[color:var(--aqt-fg)]">Full flex</span>
+                  {draft.isFlex ? (
+                    <p className="mt-0.5 text-[11px] text-[color:var(--aqt-fg-dim)]">
+                      Every role is equally preferred — priority order stops mattering.
+                    </p>
+                  ) : (
+                    <p className="mt-0.5 text-[11px] text-[color:var(--aqt-fg-dim)]">
+                      Drag below to set who the balancer seats first.
+                    </p>
+                  )}
                 </div>
-                <label className="flex shrink-0 items-center gap-1.5 pt-0.5">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
-                    Full flex
-                  </span>
-                  <Switch
-                    checked={draft.isFlex}
-                    disabled={disabled}
-                    aria-label={`Full flex for ${label}`}
-                    onCheckedChange={(checked) =>
-                      setDraft((current) => ({ ...current, isFlex: checked }))
-                    }
-                  />
-                </label>
+                <Switch
+                  checked={draft.isFlex}
+                  disabled={disabled}
+                  aria-label={`Full flex for ${label}`}
+                  onCheckedChange={(checked) =>
+                    setDraft((current) => ({ ...current, isFlex: checked }))
+                  }
+                />
               </div>
-              {draft.isFlex ? (
-                <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">
-                  Every role below is equally preferred — drag order stops mattering as a
-                  priority.
-                </p>
-              ) : null}
 
               <SortableRows
                 items={draft.order}
@@ -391,34 +377,23 @@ export function PickupPlayerSheet({
                 <RankHistory battleTag={row.battle_tag} />
               </div>
             </section>
-
-            {canEdit ? (
-              <section className="border-t border-[color:var(--aqt-border)] px-5 py-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={saving}
-                  className="h-8 text-[color:var(--aqt-fg-muted)] hover:border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] hover:text-rose-200"
-                  onClick={onRemove}
-                >
-                  <UserMinus className="mr-1.5 size-3.5" aria-hidden="true" />
-                  {`Remove ${label} from this mix`}
-                </Button>
-                <p className="mt-2 text-xs text-[color:var(--aqt-fg-dim)]">
-                  Drops these settings too, right away. To sit them out for one game, set its status
-                  to Benched and press Save instead.
-                </p>
-              </section>
-            ) : null}
           </div>
         )}
 
         {row != null && canEdit ? (
           <SheetFooter className="shrink-0 border-t border-[color:var(--aqt-border)] px-5 py-2.5 sm:justify-between sm:space-x-0">
-            <div className="text-[11px] text-[color:var(--aqt-fg-dim)]">
-              Cancel discards bench, roles and ranks changed in this sheet.
-            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={saving}
+              onClick={onRemove}
+              title={`Remove ${label} from this mix`}
+              className="h-8 w-8 shrink-0 rounded-lg border border-[color:color-mix(in_srgb,var(--aqt-rose)_35%,transparent)] bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 hover:text-rose-100"
+            >
+              <UserMinus className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="sr-only">{`Remove ${label} from this mix`}</span>
+            </Button>
             <div className="flex gap-2">
               <Button
                 variant="outline"
