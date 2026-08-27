@@ -324,7 +324,7 @@ async def execute_balance_job(job_id: str, *, progress_clock=None) -> None:
     progress_callback = _build_progress_callback(event_queue, loop)
     progress_throttler: ProgressEventThrottler | None = None
     consume_task: asyncio.Task[None] | None = None
-    algorithm = "moo"
+    algorithm = "tournament_balancer"
     player_count = 0
     team_count = 0
     queue_wait_seconds = 0.0
@@ -354,7 +354,7 @@ async def execute_balance_job(job_id: str, *, progress_clock=None) -> None:
         if role_mask is not None and not isinstance(role_mask, dict):
             raise ValueError("Job payload does not contain a valid role mask")
 
-        algorithm = "moo"
+        algorithm = "tournament_balancer"
         created_at = current_meta.get("created_at") if isinstance(current_meta, dict) else None
         if isinstance(created_at, (int, float)):
             queue_wait_seconds = max(0.0, time.time() - float(created_at))

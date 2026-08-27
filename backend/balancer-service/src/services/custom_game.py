@@ -27,7 +27,7 @@ from shared.services.workspace_roster import RosterMember, hosts_by_user_id, lis
 from src.domain.mix_rotation import PlayerHistory, RotationRecommendation, recommend_rotation
 from src.services.balancer.config.public_contract import normalize_config_overrides
 from src.services.balancer.role_naming import role_slot_code
-from src.services.balancer.solver import run_balance as _run_balance
+from src.services.balancer.solver import run_mix_balance as _run_balance
 
 __all__ = ("CustomGameService", "custom_game_service")
 

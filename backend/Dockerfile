@@ -38,12 +38,16 @@ ARG APP_PATH
 # System build deps are installed BEFORE copying ./shared so that frequent
 # changes to shared source do not invalidate these layers and force a costly
 # re-download/re-install of the Rust/OpenMP toolchain.
+# ``balance-engine`` (vendored under balancer-service/native/balance_engine,
+# see its README for provenance) is built via scikit-build-core during
+# ``uv sync`` below -- needs ``cmake``/``ninja-build`` to configure (no
+# ``git``: it's a local path dependency, not fetched).
 RUN if [ "${APP_PATH}" = "balancer" ]; then \
         set -eux; \
         sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
         for attempt in 1 2 3; do \
             if apt-get update -o Acquire::Retries=3 \
-                && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Acquire::Retries=3 build-essential cargo rustc; then \
+                && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Acquire::Retries=3 build-essential cargo rustc cmake ninja-build; then \
                 break; \
             fi; \
             if [ "${attempt}" -eq 3 ]; then \

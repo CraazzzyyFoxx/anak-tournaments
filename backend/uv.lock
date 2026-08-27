@@ -440,6 +440,11 @@ wheels = [
 ]
 
 [[package]]
+name = "balance-engine"
+version = "1.0.0"
+source = { directory = "balancer-service/native/balance_engine" }
+
+[[package]]
 name = "balancer-service"
 version = "0.1.0"
 source = { virtual = "balancer-service" }
@@ -448,6 +453,7 @@ dependencies = [
     { name = "alembic" },
     { name = "apscheduler" },
     { name = "asyncpg" },
+    { name = "balance-engine", marker = "sys_platform == 'linux'" },
     { name = "bcrypt" },
     { name = "cachetools" },
     { name = "cashews" },
@@ -487,6 +493,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.14.0" },
     { name = "apscheduler", specifier = ">=3.10.4" },
     { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "balance-engine", marker = "sys_platform == 'linux'", directory = "balancer-service/native/balance_engine" },
     { name = "bcrypt", specifier = ">=4.2.1" },
     { name = "cachetools", specifier = ">=6.2.3" },
     { name = "cashews", specifier = ">=7.4.0" },

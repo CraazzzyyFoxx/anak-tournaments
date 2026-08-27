@@ -337,7 +337,7 @@ def test_balance_run_takes_the_mask_from_the_resolved_roster_shape() -> None:
 
     # Captains stay on: role assignment and captain pinning must also survive a
     # roster with no role slots, since that is what the whole run depends on.
-    config, valid_players, num_teams, _, role_assignment, _, _ = _prepare_balance_context(
+    context = _prepare_balance_context(
         payload,
         # A stale saved config must not win over the tournament's shape.
         {"role_mask": ROLE_MASK},
@@ -345,11 +345,11 @@ def test_balance_run_takes_the_mask_from_the_resolved_roster_shape() -> None:
         role_mask=dict(FLEX_ONLY_MASK),
     )
 
-    assert config.role_mask == FLEX_ONLY_MASK
-    assert num_teams == 2
-    assert len(valid_players) == 12
-    assert set(role_assignment.values()) == {FLEX_SLOT_CODE}
-    assert sum(1 for player in valid_players if player.is_captain) == num_teams
+    assert context.config.role_mask == FLEX_ONLY_MASK
+    assert context.num_teams == 2
+    assert len(context.players) == 12
+    assert set(context.role_assignment.values()) == {FLEX_SLOT_CODE}
+    assert sum(1 for player in context.players if player.is_captain) == context.num_teams
 
 
 # ---------------------------------------------------------------------------
@@ -369,13 +369,11 @@ def test_must_play_players_are_never_trimmed_ahead_of_optional_ones() -> None:
         }
     }
 
-    _config, valid_players, num_teams, _, _role_assignment, _, overflow_benched = _prepare_balance_context(
-        payload, None, None, role_mask={"tank": 2}
-    )
+    context = _prepare_balance_context(payload, None, None, role_mask={"tank": 2})
 
-    assert num_teams == 2
-    assert {player.uuid for player in valid_players} == {"u-1", "u-2", "u-3", "u-5"}
-    assert [player.uuid for player in overflow_benched] == ["u-4"]
+    assert context.num_teams == 2
+    assert {player.uuid for player in context.players} == {"u-1", "u-2", "u-3", "u-5"}
+    assert [player.uuid for player in context.overflow_benched] == ["u-4"]
 
 
 def test_too_many_must_play_players_raises_a_clear_error() -> None:

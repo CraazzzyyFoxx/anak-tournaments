@@ -4,6 +4,7 @@ import statistics
 import typing
 from collections import Counter
 
+from src.domain.balancer.backends.base import BalanceMetrics
 from src.domain.balancer.entities import Player, Team
 from src.domain.balancer.feasibility_analyzer import FeasibilityReport
 from src.services.balancer.config.defaults import AlgorithmConfig
@@ -140,7 +141,7 @@ def _build_response_payload(
     mask: dict[str, int],
     config: AlgorithmConfig,
     has_applied_overrides: bool,
-    metrics: dict[str, float] | None = None,
+    metrics: BalanceMetrics | None = None,
     feasibility: FeasibilityReport | None = None,
 ) -> dict[str, typing.Any]:
     placed_uuids: set[str] = set()
@@ -152,12 +153,8 @@ def _build_response_payload(
     benched = [player for player in valid_players if player.uuid not in placed_uuids]
     response_payload = teams_to_json(result, mask, benched_players=benched)
     stats = response_payload.get("statistics") or {}
-    if metrics:
-        stats["balance_objective"] = round(float(metrics.get("balance_objective", 0.0)), 4)
-        stats["comfort_objective"] = round(float(metrics.get("comfort_objective", 0.0)), 4)
-        stats["balance_objective_norm"] = round(float(metrics.get("balance_objective_norm", 0.0)), 4)
-        stats["comfort_objective_norm"] = round(float(metrics.get("comfort_objective_norm", 0.0)), 4)
-        stats["composite_score"] = round(float(metrics.get("composite_score", 0.0)), 4)
+    if metrics is not None:
+        stats.update({key: round(value, 4) for key, value in metrics.to_dict().items()})
     if feasibility is not None:
         actual_off_role = stats.get("off_role_count", 0)
         stats["off_role_above_minimum"] = max(0, actual_off_role - feasibility.structural_min_off_role)

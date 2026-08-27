@@ -19,7 +19,7 @@ for candidate in (str(BACKEND_ROOT), str(SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-from src.domain.balancer.moo_backend import run_moo_optimizer  # noqa: E402
+from src.domain.balancer.backends.tournament_balancer import TournamentBalancerBackend  # noqa: E402
 from src.domain.balancer.result_serializer import _build_response_payload  # noqa: E402
 from src.domain.balancer.runtime import _prepare_balance_context  # noqa: E402
 
@@ -48,44 +48,38 @@ def _run_single(payload: dict[str, Any], config_overrides: dict[str, Any] | None
     total_started_at = perf_counter()
 
     prepare_started_at = perf_counter()
-    config, valid_players, num_teams, has_applied_overrides, role_assignment, optimizer_seed, overflow_benched = (
-        _prepare_balance_context(
-            payload,
-            config_overrides,
-            None,
-        )
-    )
+    context = _prepare_balance_context(payload, config_overrides, None)
     prepare_ms = (perf_counter() - prepare_started_at) * 1000.0
 
     solve_started_at = perf_counter()
-    pareto_solutions = run_moo_optimizer(
-        valid_players,
-        num_teams,
-        config,
+    solutions = TournamentBalancerBackend().solve(
+        context.players,
+        context.num_teams,
+        context.config,
+        context.role_assignment,
+        context.optimizer_seed,
         None,
-        role_assignment=role_assignment,
-        seed=optimizer_seed,
     )
     solve_ms = (perf_counter() - solve_started_at) * 1000.0
 
     serialize_started_at = perf_counter()
     payloads = [
         _build_response_payload(
-            result,
-            valid_players + overflow_benched,
-            config.role_mask,
-            config,
-            has_applied_overrides,
-            metrics,
+            solution.teams,
+            context.players + context.overflow_benched,
+            context.config.role_mask,
+            context.config,
+            context.has_applied_overrides,
+            solution.metrics,
         )
-        for result, metrics in pareto_solutions
+        for solution in solutions
     ]
     serialize_ms = (perf_counter() - serialize_started_at) * 1000.0
 
     total_ms = (perf_counter() - total_started_at) * 1000.0
     return {
-        "players": len(valid_players),
-        "teams": num_teams,
+        "players": len(context.players),
+        "teams": context.num_teams,
         "variants": len(payloads),
         "prepare_ms": round(prepare_ms, 3),
         "solve_ms": round(solve_ms, 3),
