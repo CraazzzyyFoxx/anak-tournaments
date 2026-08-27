@@ -149,7 +149,7 @@ def test_public_config_keys_are_algorithm_fields() -> None:
 # Python <-> Rust ring: native payload <-> ConfigSpec
 # ---------------------------------------------------------------------------
 
-MOO_CORE_LIB_RS = BALANCER_SERVICE_ROOT / "native" / "moo_core" / "src" / "lib.rs"
+MOO_CORE_LIB_RS = BALANCER_SERVICE_ROOT / "native" / "tournament_balancer" / "src" / "lib.rs"
 
 # Present in ConfigSpec, deliberately never sent: the Rust doc-comment says
 # "Принимается по wire опционально; в Python UI пока не выставляется".
@@ -266,7 +266,7 @@ def test_rust_only_allowlist_has_no_stale_entries() -> None:
 # Python <-> Rust ring: roster slot codes <-> role-impact index detection
 # ---------------------------------------------------------------------------
 
-MOO_CORE_CONTEXT_RS = BALANCER_SERVICE_ROOT / "native" / "moo_core" / "src" / "context.rs"
+MOO_CORE_CONTEXT_RS = BALANCER_SERVICE_ROOT / "native" / "tournament_balancer" / "src" / "context.rs"
 
 
 def _rust_role_idx_spellings() -> set[str]:
@@ -301,7 +301,7 @@ def test_rust_recognizes_every_canonical_role_code() -> None:
     unrecognized = {code for code in DEFAULT_ROSTER_SLOTS if code not in spellings}
 
     assert unrecognized == set(), (
-        f"native/moo_core/src/context.rs does not match roster slot codes {sorted(unrecognized)}: "
+        f"native/tournament_balancer/src/context.rs does not match roster slot codes {sorted(unrecognized)}: "
         "their impact weight would silently degrade to 1.0. Add the spelling to the "
         "matching *_role_idx lookup."
     )

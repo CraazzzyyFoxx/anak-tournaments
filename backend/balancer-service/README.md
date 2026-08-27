@@ -11,7 +11,7 @@ WebSocket topic `tournament:{id}:balancer` (served by the Go gateway).
   multi-objective genetic algorithm over two objectives — `balance` vs `comfort` — with a
   `rank_comfort_tilt` knob that ranks result variants between the two. It is offloaded from the event
   loop via `asyncio.to_thread`. Balancing is **Linux-only**: `moo_core` is built with maturin (see
-  `native/moo_core`).
+  `native/tournament_balancer`).
 
 See [`../../docs/architecture.md`](../../docs/architecture.md) for the platform overview.
 

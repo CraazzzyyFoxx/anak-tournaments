@@ -440,11 +440,6 @@ wheels = [
 ]
 
 [[package]]
-name = "balance-engine"
-version = "1.0.0"
-source = { directory = "balancer-service/native/balance_engine" }
-
-[[package]]
 name = "balancer-service"
 version = "0.1.0"
 source = { virtual = "balancer-service" }
@@ -453,7 +448,6 @@ dependencies = [
     { name = "alembic" },
     { name = "apscheduler" },
     { name = "asyncpg" },
-    { name = "balance-engine", marker = "sys_platform == 'linux'" },
     { name = "bcrypt" },
     { name = "cachetools" },
     { name = "cashews" },
@@ -462,6 +456,7 @@ dependencies = [
     { name = "httpx" },
     { name = "loguru" },
     { name = "maturin", marker = "sys_platform == 'linux'" },
+    { name = "mix-balancer", marker = "sys_platform == 'linux'" },
     { name = "openpyxl" },
     { name = "openskill" },
     { name = "opentelemetry-api" },
@@ -493,7 +488,6 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.14.0" },
     { name = "apscheduler", specifier = ">=3.10.4" },
     { name = "asyncpg", specifier = ">=0.30.0" },
-    { name = "balance-engine", marker = "sys_platform == 'linux'", directory = "balancer-service/native/balance_engine" },
     { name = "bcrypt", specifier = ">=4.2.1" },
     { name = "cachetools", specifier = ">=6.2.3" },
     { name = "cashews", specifier = ">=7.4.0" },
@@ -502,6 +496,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "maturin", marker = "sys_platform == 'linux'", specifier = ">=1.8.2" },
+    { name = "mix-balancer", marker = "sys_platform == 'linux'", directory = "balancer-service/native/mix_balancer" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "openskill", specifier = ">=6.1.3" },
     { name = "opentelemetry-api", specifier = ">=1.27.0" },
@@ -1395,6 +1390,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec9
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
 ]
+
+[[package]]
+name = "mix-balancer"
+version = "1.0.0"
+source = { directory = "balancer-service/native/mix_balancer" }
 
 [[package]]
 name = "multidict"

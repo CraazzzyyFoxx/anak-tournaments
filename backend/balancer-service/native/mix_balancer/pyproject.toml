@@ -3,7 +3,7 @@ requires = ["scikit-build-core", "pybind11", "cmake"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "balance-engine"
+name = "mix-balancer"
 version = "1.0.0"
 description = "Fast C++ balance engine for game team distribution"
 readme = "README.md"
@@ -13,8 +13,8 @@ license = { text = "MIT" }
 [tool.scikit-build]
 cmake.version = ">=3.12"
 cmake.build-type = "Release"
-wheel.packages = ["balance_engine"]
-sdist.include = ["CMakeLists.txt", "pybind11_bindings.cpp", "balance_engine.cpp", "balance_engine.hpp"]
+wheel.packages = ["mix_balancer"]
+sdist.include = ["CMakeLists.txt", "pybind11_bindings.cpp", "mix_balancer.cpp", "mix_balancer.hpp"]
 
 [tool.scikit-build.cmake.define]
 CMAKE_INTERPROCEDURAL_OPTIMIZATION = "ON"

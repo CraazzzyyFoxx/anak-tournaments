@@ -12,17 +12,17 @@ from src.services.balancer.config.defaults import AlgorithmConfig
 
 # Fixed, arbitrary namespaces for deriving stable UUIDs from this domain's
 # plain string role codes and player uuids. The vendored engine's library API
-# is UUID-keyed (see balance_engine.models.PlayerRoleInfo/PlayerInfo); uuid5
+# is UUID-keyed (see mix_balancer.models.PlayerRoleInfo/PlayerInfo); uuid5
 # gives a deterministic, collision-free mapping without touching the DB
 # schema or requiring a persisted role-id table.
 _ROLE_NAMESPACE = uuid.UUID("cd85133f-23eb-46b4-a4e3-a30bb16caccc")
 _MEMBER_NAMESPACE = uuid.UUID("e0f084cf-e0a7-41fe-95ee-0334b635c9c4")
 
 # The vendored engine's own documented priority ceiling
-# (balance_engine.models.PlayerRoleInfo: "priority: int  # 1-3, higher = more preferred").
+# (mix_balancer.models.PlayerRoleInfo: "priority: int  # 1-3, higher = more preferred").
 _MAX_PRIORITY = 3
 
-# The vendored engine's own library default (balance_engine.models.BalanceSettings.balance_limit).
+# The vendored engine's own library default (mix_balancer.models.BalanceSettings.balance_limit).
 # Not yet exposed as a tunable knob: this backend is wired only into the
 # mix/custom-game flow (see services/balancer/solver.run_mix_balance), not the
 # tournament-wide public config surface -- see the "narrow scope" decision in
@@ -32,15 +32,15 @@ _DEFAULT_BALANCE_LIMIT = 1000.0
 
 def _load_library():
     try:
-        import balance_engine
+        import mix_balancer as engine_lib
     except ImportError as exc:
         raise RuntimeError(
-            "mix_balancer requires the 'balance-engine' package "
-            "(vendored under balancer-service/native/balance_engine, originally "
+            "mix_balancer requires the 'mix-balancer' package "
+            "(vendored under balancer-service/native/mix_balancer, originally "
             "mixtura-dev/mixtura-balancer); it is a Linux-only dependency built "
             "during 'uv sync'."
         ) from exc
-    return balance_engine
+    return engine_lib
 
 
 def role_uuid(role: str) -> uuid.UUID:
@@ -69,7 +69,7 @@ def priority_for_role(player: Player, role: str, max_priority: int = _MAX_PRIORI
 
 
 def build_metrics(quality) -> BalanceMetrics:
-    """``balance_engine`` ``QualityMetrics`` -> this domain's typed metrics.
+    """``mix_balancer`` ``QualityMetrics`` -> this domain's typed metrics.
 
     Prefixed fields so they never collide with ``tournament_balancer``'s own
     (``balance_objective``, ``comfort_objective``, ...) on the shared
@@ -86,7 +86,7 @@ def build_metrics(quality) -> BalanceMetrics:
 
 class MixBalancerBackend:
     """Adapter over the vendored brute-force two-team engine (originally
-    mixtura-dev/mixtura-balancer, see native/balance_engine) -- pinned only to
+    mixtura-dev/mixtura-balancer, see native/mix_balancer) -- pinned only to
     the mix/custom-game flow (see services/balancer/solver.run_mix_balance).
 
     Exhaustively enumerates every player/role split and returns the true
@@ -117,14 +117,14 @@ class MixBalancerBackend:
                 "tournaments or mixes that span more than two teams."
             )
 
-        balance_engine = _load_library()
+        engine_lib = _load_library()
         mask = config.role_mask
         active_roles = [role for role, count in mask.items() if count > 0]
         team_size = sum(mask[role] for role in active_roles)
 
         role_by_uuid = {role_uuid(role): role for role in active_roles}
         role_constraints = {
-            uid: balance_engine.RoleConstraint(min_in_team=mask[role], max_in_team=mask[role])
+            uid: engine_lib.RoleConstraint(min_in_team=mask[role], max_in_team=mask[role])
             for uid, role in role_by_uuid.items()
         }
 
@@ -134,7 +134,7 @@ class MixBalancerBackend:
             member_id = member_uuid(player.uuid)
             member_by_uuid[member_id] = player
             roles = [
-                balance_engine.PlayerRoleInfo(
+                engine_lib.PlayerRoleInfo(
                     role_id=role_uuid(role),
                     rating=rating,
                     priority=priority_for_role(player, role),
@@ -143,17 +143,17 @@ class MixBalancerBackend:
                 if role in mask and mask[role] > 0
             ]
             cpp_players.append(
-                balance_engine.PlayerInfo(member_id=member_id, roles=roles, is_flex=player.is_flex)
+                engine_lib.PlayerInfo(member_id=member_id, roles=roles, is_flex=player.is_flex)
             )
 
         logger.info("Running mix_balancer brute-force engine for a 2-team split")
-        response = balance_engine.BalanceEngine.quick_find(
+        response = engine_lib.BalanceEngine.quick_find(
             cpp_players,
             list(role_by_uuid.keys()),
             role_constraints,
             team_size,
             _DEFAULT_BALANCE_LIMIT,
-            balance_engine.QualitySettings(max_priority=_MAX_PRIORITY),
+            engine_lib.QualitySettings(max_priority=_MAX_PRIORITY),
             max_results=config.max_result_variants,
         )
 

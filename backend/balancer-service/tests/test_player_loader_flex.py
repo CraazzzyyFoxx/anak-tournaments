@@ -14,7 +14,7 @@ product agree on what a flex player is worth.
 Without the synthesis every player is dropped (no role line resolves into a
 flex-only mask, ``ratings`` stays empty, ``parse_player_node`` returns
 ``None``) and the Rust solver rejects the request with "player count must equal
-total roster slots" — see ``native/moo_core/src/context.rs`` line 41.
+total roster slots" — see ``native/tournament_balancer/src/context.rs`` line 41.
 """
 
 from __future__ import annotations

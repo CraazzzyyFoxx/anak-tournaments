@@ -1,7 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/functional.h>
-#include "balance_engine.hpp"
+#include "mix_balancer.hpp"
 
 namespace py = pybind11;
 
