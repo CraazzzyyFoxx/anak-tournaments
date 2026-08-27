@@ -13,3 +13,14 @@ In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the re
 
 If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
 <!-- CODEGRAPH_END -->
+
+<!-- GRAFT_START -->
+## Graft
+
+In repositories with a `graft/` directory at the repo root, Graft gives structural (tree-sitter, no LLM) code search and dependency graphs — complements CodeGraph, doesn't replace it:
+
+- **MCP tools** (when available): `graft_find_code` (ranked nodes for a question, source inlined), `graft_file_api` (every signature in a file, no bodies), `graft_trace_calls` (callers/callees, blast radius), `graft_find_all` (exhaustive regex, grouped by symbol), `graft_repo_map` (directory clusters, hubs, hotspots), `graft_check_freshness`.
+- **Shell** (always works): `graft ask "<question>"`, `graft grep "<regex>"`, `graft map`, `graft callers <symbol>` (add `--direction out` or `-d N`), `graft blast` (blast radius of a diff).
+- The graph auto-refreshes against the working tree on every query (~3ms, structural, $0) — answers reflect uncommitted edits. Run `graft build` after large structural changes if a query looks stale; `graft build --deep` (needs `GRAFT_API_KEY`) adds LLM-written concept-node summaries, not required for the above.
+- `graft/` is a local, git-ignored cache — never edit it by hand, never commit it.
+<!-- GRAFT_END -->

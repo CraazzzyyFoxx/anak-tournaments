@@ -46,9 +46,7 @@
     ],
     "settings": {
         "python.defaultInterpreterPath": "${workspaceFolder:anak-tournaments}/backend/.venv/Scripts/python.exe",
-        "ty.interpreter": [
-            "${workspaceFolder:anak-tournaments}/backend/.venv/Scripts/python.exe"
-        ],
+        "ty.interpreter": "${workspaceFolder:anak-tournaments}/backend/.venv/Scripts/python.exe",
         "ty.configuration": {
             "environment": {
                 "python": "${workspaceFolder:anak-tournaments}/backend/.venv",
