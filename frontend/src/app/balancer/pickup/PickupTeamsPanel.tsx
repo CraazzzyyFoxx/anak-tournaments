@@ -18,11 +18,11 @@ import {
 import {
   ChevronLeft,
   ChevronRight,
+  AlertCircle,
   ClipboardCopy,
   Copy,
   History,
   Loader2,
-  Maximize2,
   Shuffle,
 } from "lucide-react";
 
@@ -88,7 +88,6 @@ type PickupTeamsPanelProps = {
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
   /** Omitted -- seats render without drag handles, matching a `canWrite=false` viewer. */
   onSwapSeats?: (variantIndex: number, firstUuid: string, secondUuid: string) => void | Promise<unknown>;
-  onShowBoard: () => void;
   onCopyBattleTags: () => void;
 };
 
@@ -125,7 +124,6 @@ export function PickupTeamsPanel({
   onCloseMix,
   onRenameTeam,
   onSwapSeats,
-  onShowBoard,
   onCopyBattleTags,
 }: Readonly<PickupTeamsPanelProps>) {
   const variants = parseVariants(game?.result_json, parseTeamNames(game?.config_json));
@@ -258,10 +256,6 @@ export function PickupTeamsPanel({
 
           {variant ? (
             <div className="ml-auto flex items-center gap-2">
-              <Button type="button" variant="outline" className="h-9" onClick={onShowBoard}>
-                <Maximize2 className="mr-1.5 size-3.5" aria-hidden="true" />
-                Show lobby
-              </Button>
               <Button
                 type="button"
                 variant="ghost"
@@ -706,9 +700,10 @@ function SeatRow({
       {seat.offRole ? (
         <span
           title="Assigned off their first-preference role"
-          className="shrink-0 rounded border border-[color:color-mix(in_srgb,var(--aqt-amber)_30%,transparent)] px-1.5 py-px font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-amber)]"
+          className="flex size-4 shrink-0 items-center justify-center text-[color:var(--aqt-amber)]"
         >
-          Off-role
+          <AlertCircle className="size-3.5" aria-hidden="true" />
+          <span className="sr-only">Off-role</span>
         </span>
       ) : null}
       <span className="shrink-0 font-mono text-lg font-bold tabular-nums text-[color:var(--aqt-fg)]">

@@ -83,6 +83,17 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     enabled: selectedGameId != null,
   });
 
+  /**
+   * Who is owed the next seat and who should rest, from this mix's own map
+   * history -- feeds a hint into the lineup panel, ahead of `balance` rather
+   * than as a separate screen (see `mix_rotation.recommend_rotation`).
+   */
+  const rotationQuery = useQuery({
+    queryKey: customGameKeys.rotation(workspaceId, selectedGameId ?? 0),
+    queryFn: () => customGameService.rotation(workspaceId, selectedGameId as number),
+    enabled: selectedGameId != null,
+  });
+
   // Another host editing this workspace's mixes (roster, ranks, bench, role
   // order) in a different tab/session: this thin, non-durable signal (see
   // `pickup_mix_realtime.py`) is the only way that becomes visible here
@@ -101,6 +112,10 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     queryClient.setQueryData(customGameKeys.one(workspaceId, game.id), game);
     // The list carries name and status, both of which a write can change.
     void queryClient.invalidateQueries({ queryKey: customGameKeys.list(workspaceId) });
+    // Roster, `must_play` and match history all feed the rotation verdict --
+    // any write here can flip it, so it is invalidated alongside the game
+    // itself rather than only on the writes that look rotation-specific.
+    void queryClient.invalidateQueries({ queryKey: customGameKeys.rotation(workspaceId, game.id) });
   };
 
   const createGame = useMutation({
@@ -275,6 +290,7 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     gamesQuery,
     gameQuery,
     matchesQuery,
+    rotationQuery,
     createGame,
     setRoster,
     patchPlayer,

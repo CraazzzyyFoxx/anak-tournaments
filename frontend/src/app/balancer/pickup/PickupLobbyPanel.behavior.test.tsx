@@ -25,7 +25,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CustomGamePlayer, CustomGamePlayerPatch } from "@/services/custom-game.service";
+import type {
+  CustomGamePlayer,
+  CustomGamePlayerPatch,
+  RotationRecommendation,
+} from "@/services/custom-game.service";
 
 import { PickupLobbyPanel } from "./PickupLobbyPanel";
 
@@ -108,7 +112,7 @@ function tick() {
 
 async function mount(
   rows: CustomGamePlayer[],
-  props: { canWrite?: boolean; hasMix?: boolean } = {},
+  props: { canWrite?: boolean; hasMix?: boolean; rotation?: RotationRecommendation[] } = {},
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -118,6 +122,7 @@ async function mount(
         canWrite={props.canWrite ?? true}
         hasMix={props.hasMix ?? true}
         rows={rows}
+        rotation={props.rotation}
         savingPlayerId={null}
         clearing={false}
         onPatchPlayer={onPatchPlayer}
@@ -261,6 +266,63 @@ describe("PickupLobbyPanel drag and drop", () => {
     await dropOnto(7, null);
 
     expect(onPatchPlayer).not.toHaveBeenCalled();
+  });
+});
+
+describe("PickupLobbyPanel rotation hints", () => {
+  it("marks a member owed a seat with an amber hint carrying the reason", async () => {
+    const scope = await mount([row()], {
+      rotation: [
+        {
+          workspace_member_id: 7,
+          status: "must_play",
+          reason: "Sat 1 map(s) in a row \u2014 owed a seat",
+          consecutive_sat: 1,
+          consecutive_played: 0,
+          games_played: 2,
+        },
+      ],
+    });
+
+    const badge = scope.querySelector('[title="Sat 1 map(s) in a row \u2014 owed a seat"]');
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toContain("Sat 1 map(s) in a row \u2014 owed a seat");
+  });
+
+  it("marks a member who has played the most in a row with a should-rest hint", async () => {
+    const scope = await mount([row()], {
+      rotation: [
+        {
+          workspace_member_id: 7,
+          status: "should_rest",
+          reason: "Played 3 map(s) in a row",
+          consecutive_sat: 0,
+          consecutive_played: 3,
+          games_played: 3,
+        },
+      ],
+    });
+
+    expect(scope.querySelector('[title="Played 3 map(s) in a row"]')).not.toBeNull();
+  });
+
+  it("renders no hint for a neutral verdict or when no rotation data has loaded", async () => {
+    const neutral = await mount([row()], {
+      rotation: [
+        {
+          workspace_member_id: 7,
+          status: "neutral",
+          reason: "Seats cover the whole pool",
+          consecutive_sat: 0,
+          consecutive_played: 0,
+          games_played: 0,
+        },
+      ],
+    });
+    expect(neutral.textContent).not.toContain("Seats cover the whole pool");
+
+    const noData = await mount([row()]);
+    expect(noData.querySelector('[title*="owed a seat"]')).toBeNull();
   });
 });
 

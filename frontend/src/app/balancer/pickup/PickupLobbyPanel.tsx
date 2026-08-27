@@ -14,7 +14,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { AlertTriangle, GripVertical, Pin, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { AlertTriangle, Armchair, GripVertical, Pin, RotateCw, SlidersHorizontal, Trash2, X } from "lucide-react";
 
 import {
   ICON_BUTTON_CLASS,
@@ -45,7 +45,7 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLE_LABELS, ROLES } from "@/lib/roles";
 import { cn } from "@/lib/utils";
-import type { CustomGamePlayer, CustomGamePlayerPatch } from "@/services/custom-game.service";
+import type { CustomGamePlayer, CustomGamePlayerPatch, RotationRecommendation } from "@/services/custom-game.service";
 
 import {
   LINEUP_ROLES,
@@ -83,6 +83,12 @@ type PickupLobbyPanelProps = {
   canWrite: boolean;
   hasMix: boolean;
   rows: CustomGamePlayer[];
+  /**
+   * Rotation-fairness verdict per roster member, from `usePickupMix`'s
+   * `rotationQuery`. Optional, and defaulted to empty, so an older caller (or
+   * a not-yet-loaded fetch) just renders the lineup without hints.
+   */
+  rotation?: RotationRecommendation[];
   savingPlayerId: number | null;
   clearing: boolean;
   onPatchPlayer: (workspaceMemberId: number, patch: CustomGamePlayerPatch) => void;
@@ -136,6 +142,7 @@ export function PickupLobbyPanel({
   canWrite,
   hasMix,
   rows,
+  rotation = [],
   savingPlayerId,
   clearing,
   onPatchPlayer,
@@ -147,6 +154,7 @@ export function PickupLobbyPanel({
   const lineup = sortLineup(rows);
   const summary = summarizeLineup(rows);
   const supply = summarizeRoleSupply(rows);
+  const rotationByMember = new Map(rotation.map((r) => [r.workspace_member_id, r]));
   const columns = COLUMNS.map((def) => ({
     ...def,
     rows: lineup.filter((row) => lineupBucket(row) === def.bucket),
@@ -324,6 +332,7 @@ export function PickupLobbyPanel({
                   hint={column.hint}
                   emptyHint={column.emptyHint}
                   rows={column.rows}
+                  rotationByMember={rotationByMember}
                   canWrite={canWrite}
                   savingPlayerId={savingPlayerId}
                   onPatchPlayer={onPatchPlayer}
@@ -353,6 +362,7 @@ function LineupColumn({
   hint,
   emptyHint,
   rows,
+  rotationByMember,
   canWrite,
   savingPlayerId,
   onPatchPlayer,
@@ -364,6 +374,7 @@ function LineupColumn({
   hint: string;
   emptyHint: string;
   rows: CustomGamePlayer[];
+  rotationByMember: Map<number, RotationRecommendation>;
   canWrite: boolean;
   savingPlayerId: number | null;
   onPatchPlayer: (workspaceMemberId: number, patch: CustomGamePlayerPatch) => void;
@@ -423,6 +434,7 @@ function LineupColumn({
             <LineupRow
               key={row.workspace_member_id}
               row={row}
+              rotationHint={rotationByMember.get(row.workspace_member_id)}
               canWrite={canWrite}
               saving={savingPlayerId === row.workspace_member_id}
               dimmed={dimmed}
@@ -517,6 +529,8 @@ function RolePriorityRail({
 
 type LineupRowProps = {
   row: CustomGamePlayer;
+  /** This member's rotation-fairness verdict, if the fetch has one. */
+  rotationHint: RotationRecommendation | undefined;
   canWrite: boolean;
   saving: boolean;
   /** Benched rows read de-emphasised and freeze their role rail. */
@@ -527,6 +541,35 @@ type LineupRowProps = {
 };
 
 /**
+ * The rotation-fairness verdict for one row, as a single 18px icon -- a
+ * `neutral` verdict (or none loaded yet) renders nothing, so a mix with no
+ * map history yet looks exactly like it did before this existed. `must_play`
+ * (owed a seat the longest) and `should_rest` (played the most in a row) are
+ * the only two a host acts on, so they are the only two with an icon; the
+ * reason string carries the specific streak into the tooltip instead of a
+ * wider label competing with the role rail for room.
+ */
+function RotationHintBadge({ hint }: Readonly<{ hint: RotationRecommendation | undefined }>) {
+  if (!hint || hint.status === "neutral") {
+    return null;
+  }
+  const isOwed = hint.status === "must_play";
+  const Icon = isOwed ? RotateCw : Armchair;
+  return (
+    <span
+      title={hint.reason}
+      className={cn(
+        "flex size-[18px] shrink-0 items-center justify-center",
+        isOwed ? "text-[color:var(--aqt-amber)]" : "text-[color:var(--aqt-fg-faint)]",
+      )}
+    >
+      <Icon className="size-3.5" aria-hidden="true" />
+      <span className="sr-only">{hint.reason}</span>
+    </span>
+  );
+}
+
+/**
  * One lineup row, draggable between the three `LineupColumn`s.
  *
  * The whole row is both the click target that opens the drawer and the drag
@@ -535,7 +578,16 @@ type LineupRowProps = {
  * matchup board's seat rows already use. A click that started inside a
  * `RowAction` still belongs to that control, never the row's own onOpen.
  */
-function LineupRow({ row, canWrite, saving, dimmed, onPatch, onOpen, onRemove }: Readonly<LineupRowProps>) {
+function LineupRow({
+  row,
+  rotationHint,
+  canWrite,
+  saving,
+  dimmed,
+  onPatch,
+  onOpen,
+  onRemove,
+}: Readonly<LineupRowProps>) {
   // The global OW grid, not the workspace's: balancer-service resolves a mix's
   // ranks against the grid with `workspace_id=None`, so these ranks are on the
   // OW scale. Labelling them with a workspace's tiers renames the same number.
@@ -590,6 +642,8 @@ function LineupRow({ row, canWrite, saving, dimmed, onPatch, onOpen, onRemove }:
           </span>
         ) : null}
       </span>
+
+      <RotationHintBadge hint={rotationHint} />
 
       <RowAction>
         <RolePriorityRail

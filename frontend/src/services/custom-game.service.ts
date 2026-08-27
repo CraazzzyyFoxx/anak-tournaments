@@ -116,12 +116,30 @@ export type CustomGamePlayerPatch = {
   is_flex?: boolean;
 };
 
+/** A pool member's fairness-rotation verdict for the next map, from `rotation`. */
+export type RotationStatus = "must_play" | "should_rest" | "neutral";
+
+/**
+ * One roster row's rotation-fairness read, computed server-side from this
+ * mix's own map history (see `mix_rotation.recommend_rotation`). Read-only --
+ * a host acts on it through the existing `is_active`/`must_play` toggles.
+ */
+export type RotationRecommendation = {
+  workspace_member_id: number;
+  status: RotationStatus;
+  reason: string;
+  consecutive_sat: number;
+  consecutive_played: number;
+  games_played: number;
+};
+
 export const customGameKeys = {
-  /** Every mix query for a workspace — `list` is a prefix of `one`/`matches`, so this covers all three. */
+  /** Every mix query for a workspace — `list` is a prefix of `one`/`matches`/`rotation`, so this covers all four. */
   all: (workspaceId: number) => ["custom-games", workspaceId] as const,
   list: (workspaceId: number) => ["custom-games", workspaceId] as const,
   one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId] as const,
   matches: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId, "matches"] as const,
+  rotation: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId, "rotation"] as const,
 };
 
 export const customGameService = {
@@ -188,6 +206,18 @@ export const customGameService = {
   /** Every match this mix has recorded, newest first. */
   listMatches(workspaceId: number, gameId: number): Promise<CustomGameMatch[]> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/matches`).then((r) => r.json());
+  },
+
+  /**
+   * Who is owed the next seat and who should rest, ranked from this mix's own
+   * map history and split at the seat count `balance` would fill right now
+   * (see `mix_rotation.recommend_rotation`). Read-only, feeds the lineup as a
+   * hint -- it writes nothing on its own.
+   */
+  rotation(workspaceId: number, gameId: number): Promise<RotationRecommendation[]> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/rotation`).then((r) =>
+      r.json(),
+    );
   },
 
   /** Ends the mix. Matches already recorded stay recorded; this only stops further writes. */

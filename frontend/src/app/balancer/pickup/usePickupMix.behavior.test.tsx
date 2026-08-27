@@ -17,6 +17,7 @@ const updateRoster = vi.fn();
 const listGames = vi.fn();
 const getGame = vi.fn();
 const listMatches = vi.fn();
+const rotation = vi.fn();
 
 vi.mock("@/services/custom-game.service", () => ({
   customGameKeys: {
@@ -24,12 +25,14 @@ vi.mock("@/services/custom-game.service", () => ({
     list: (workspaceId: number) => ["custom-games", workspaceId],
     one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId],
     matches: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId, "matches"],
+    rotation: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId, "rotation"],
   },
   customGameService: {
     list: (...args: unknown[]) => listGames(...args),
     get: (...args: unknown[]) => getGame(...args),
     updateRoster: (...args: unknown[]) => updateRoster(...args),
     listMatches: (...args: unknown[]) => listMatches(...args),
+    rotation: (...args: unknown[]) => rotation(...args),
   },
 }));
 
@@ -96,6 +99,7 @@ beforeEach(() => {
   getGame.mockResolvedValue({ id: GAME_ID, workspace_id: WORKSPACE_ID, host_user_id: 1, name: "Tonight", status: "draft", config_json: null, result_json: null, outcome_json: null, players: [] });
   updateRoster.mockResolvedValue({ id: GAME_ID, workspace_id: WORKSPACE_ID, host_user_id: 1, name: "Tonight", status: "draft", config_json: null, result_json: null, outcome_json: null, players: [] });
   listMatches.mockResolvedValue([]);
+  rotation.mockResolvedValue([]);
 });
 
 describe("usePickupMix", () => {

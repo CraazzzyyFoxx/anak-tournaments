@@ -5,7 +5,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { PickupAddPlayersDialog } from "@/app/balancer/pickup/PickupAddPlayersDialog";
-import { PickupLobbyBoard } from "@/app/balancer/pickup/PickupLobbyBoard";
 import { PickupLobbyPanel } from "@/app/balancer/pickup/PickupLobbyPanel";
 import { PickupMixConfigDialog } from "@/app/balancer/pickup/PickupMixConfigDialog";
 import { PickupAccessDialog } from "@/app/balancer/pickup/PickupAccessDialog";
@@ -15,8 +14,6 @@ import { PickupTeamsPanel } from "@/app/balancer/pickup/PickupTeamsPanel";
 import {
   PICKUP_TERMINAL_STATUSES,
   parsePointsPerWin,
-  parseTeamNames,
-  parseVariants,
   playerLabel,
   summarizeLineup,
 } from "@/app/balancer/pickup/pickup-lineup";
@@ -67,7 +64,6 @@ export default function BalancerPickupMixPage() {
   const [isPoolOpen, setIsPoolOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAccessOpen, setIsAccessOpen] = useState(false);
-  const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [variantIndex, setVariantIndex] = useState(0);
   // Which map a host is about to name a recorded match for -- the mix flow
   // has no veto, so this is a plain, optional picker beside the win buttons.
@@ -90,6 +86,7 @@ export default function BalancerPickupMixPage() {
     gamesQuery,
     gameQuery,
     matchesQuery,
+    rotationQuery,
     setRoster,
     patchPlayer,
     balance,
@@ -139,10 +136,6 @@ export default function BalancerPickupMixPage() {
       (setAuthorRanks.isPending &&
         setAuthorRanks.variables?.workspaceMemberId === openRow.workspace_member_id));
 
-  const variants = parseVariants(game?.result_json, parseTeamNames(game?.config_json));
-  const boardIndex = Math.min(variantIndex, Math.max(0, variants.length - 1));
-  const boardVariant = variants[boardIndex];
-
   if (workspaceId == null) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
@@ -191,6 +184,7 @@ export default function BalancerPickupMixPage() {
               canWrite={canWrite}
               hasMix={selectedGameId != null}
               rows={rows}
+              rotation={rotationQuery.data ?? []}
               savingPlayerId={savingPlayerId}
               clearing={setRoster.isPending}
               onPatchPlayer={(workspaceMemberId, patch) =>
@@ -246,7 +240,6 @@ export default function BalancerPickupMixPage() {
               onSwapSeats={(idx, firstUuid, secondUuid) =>
                 swapSeats.mutateAsync({ variantIndex: idx, firstUuid, secondUuid })
               }
-              onShowBoard={() => setIsBoardOpen(true)}
               onCopyBattleTags={copyBattleTags}
             />
           </div>
@@ -316,26 +309,6 @@ export default function BalancerPickupMixPage() {
           }
         }}
       />
-
-      {isBoardOpen && boardVariant != null ? (
-        <PickupLobbyBoard
-          mixName={game?.name ?? "Mix"}
-          variant={boardVariant}
-          variantIndex={boardIndex}
-          variantCount={variants.length}
-          onVariantIndexChange={setVariantIndex}
-          pointsPerWin={parsePointsPerWin(game?.config_json)}
-          canWrite={canWrite}
-          recordingOutcome={recordOutcome.isPending}
-          onRecordOutcome={(input) =>
-            recordOutcome.mutate(input, { onSuccess: () => setMapId(null) })
-          }
-          maps={mapsQuery.data ?? []}
-          mapId={mapId}
-          onMapIdChange={setMapId}
-          onClose={() => setIsBoardOpen(false)}
-        />
-      ) : null}
     </>
   );
 }

@@ -15,9 +15,9 @@
 //     page's variant index; closing the mix is a separate, explicit action;
 //  6. a read-only viewer gets no writes but still sees teams;
 //  7. the verdict pills sit inside the captured block with the team card, so
-//     "Copy image" exports them together, while "Show lobby"/"Copy image"/
-//     "Copy battletags" stay outside it -- exporting its own toolbar would be
-//     a screenshot of a screenshot button;
+//     "Copy image" exports them together, while "Copy image"/"Copy battletags"
+//     stay outside it -- exporting its own toolbar would be a screenshot of a
+//     screenshot button;
 //  8. every seat is a drag source and drop target, gated on both write access
 //     and the page actually offering a swap handler -- a read-only viewer or
 //     a page with nothing to call must not present drag affordance for a
@@ -71,7 +71,6 @@ const onVariantIndexChange = vi.fn();
 const onRecordOutcome = vi.fn();
 const onMapIdChange = vi.fn();
 const onCloseMix = vi.fn();
-const onShowBoard = vi.fn();
 const onCopyBattleTags = vi.fn();
 const onRenameTeam = vi.fn();
 const onSwapSeats = vi.fn();
@@ -162,7 +161,6 @@ async function mount(
         onCloseMix={onCloseMix}
         onRenameTeam={onRenameTeam}
         onSwapSeats={props.omitSwapSeats ? undefined : onSwapSeats}
-        onShowBoard={onShowBoard}
         onCopyBattleTags={onCopyBattleTags}
       />,
     );
@@ -213,7 +211,6 @@ beforeEach(() => {
   onRecordOutcome.mockReset();
   onMapIdChange.mockReset();
   onCloseMix.mockReset();
-  onShowBoard.mockReset();
   onCopyBattleTags.mockReset();
   onRenameTeam.mockReset();
   onSwapSeats.mockReset();
@@ -248,7 +245,6 @@ describe("PickupTeamsPanel", () => {
     expect(captured).not.toBeNull();
     expect(captured?.textContent).toContain("0.87");
     expect(captured?.textContent).toContain("karin");
-    expect(captured?.textContent).not.toContain("Show lobby");
     expect(captured?.textContent).not.toContain("Copy image");
     expect(captured?.textContent).not.toContain("Copy battletags");
   });
@@ -415,11 +411,8 @@ describe("PickupTeamsPanel", () => {
     expect(scope.textContent).not.toContain("Match history");
   });
 
-  it("hands the fullscreen board and the tag copy to the page", async () => {
+  it("hands the tag copy to the page", async () => {
     const scope = await mount(game());
-
-    await click(byName(scope, "Show lobby"));
-    expect(onShowBoard).toHaveBeenCalledTimes(1);
 
     await click(byName(scope, "Copy battletags"));
     expect(onCopyBattleTags).toHaveBeenCalledTimes(1);
