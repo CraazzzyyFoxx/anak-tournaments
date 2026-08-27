@@ -315,6 +315,23 @@ describe("PickupLobbyPanel rotation hints", () => {
     expect(scope.querySelector('[title="Played 3 map(s) in a row"]')).not.toBeNull();
   });
 
+  it("renders no hint for a row already pinned must_play -- the Pin already says it", async () => {
+    const scope = await mount([row({ must_play: true })], {
+      rotation: [
+        {
+          workspace_member_id: 7,
+          status: "must_play",
+          reason: "Закреплён хостом (must_play)",
+          consecutive_sat: 0,
+          consecutive_played: 2,
+          games_played: 2,
+        },
+      ],
+    });
+
+    expect(scope.querySelector('[title="Закреплён хостом (must_play)"]')).toBeNull();
+  });
+
   it("renders no hint for a neutral verdict or when no rotation data has loaded", async () => {
     const neutral = await mount([row()], {
       rotation: [

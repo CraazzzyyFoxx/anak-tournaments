@@ -586,10 +586,17 @@ type LineupRowProps = {
  * (owed a seat the longest) and `should_rest` (played the most in a row) are
  * the only two a host acts on, so they are the only two with an icon; the
  * reason string carries the specific streak into the tooltip instead of a
- * wider label competing with the role rail for room.
+ * wider label competing with the role rail for room. A row the host already
+ * pinned (`must_play` bucket) never renders one either -- the backend always
+ * verdicts a pin `must_play` too (see `mix_rotation.recommend_rotation`), and
+ * repeating "owed a seat" next to a seat already guaranteed by the Pin icon
+ * is the same fact said twice.
  */
-function RotationHintBadge({ hint }: Readonly<{ hint: RotationRecommendation | undefined }>) {
-  if (!hint || hint.status === "neutral") {
+function RotationHintBadge({
+  hint,
+  pinned,
+}: Readonly<{ hint: RotationRecommendation | undefined; pinned: boolean }>) {
+  if (!hint || hint.status === "neutral" || pinned) {
     return null;
   }
   const isOwed = hint.status === "must_play";
@@ -682,7 +689,7 @@ function LineupRow({
         ) : null}
       </span>
 
-      <RotationHintBadge hint={rotationHint} />
+      <RotationHintBadge hint={rotationHint} pinned={row.must_play} />
 
       <RowAction>
         <RolePriorityRail
