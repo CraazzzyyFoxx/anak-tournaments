@@ -23,7 +23,7 @@ from loguru import logger
 from redis.exceptions import RedisError
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.subscriptions import (
+from shared.services.subscriptions import (
     Outcome,
     SubscriptionRequirement,
     SubscriptionVerdict,

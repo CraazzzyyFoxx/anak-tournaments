@@ -10,7 +10,7 @@ from src import models
 from src.core import db
 from src.services.computation.jobs import jobs_service
 from src.services.standings.service import standings_service
-from src.services.standings.swiss_auto_round import swiss_auto_round_service
+from src.services.standings.swiss_auto_round import swiss_rounds_service
 from src.services.tournament.events import enqueue_tournament_changed
 
 
@@ -35,8 +35,9 @@ async def process_standings_job(job_id: int) -> None:
                 commit=False,
             )
             state = await jobs_service.complete_standings_generation(session, current.tournament_id, generation)
-            await swiss_auto_round_service.enqueue_swiss_next_rounds(session, current.tournament_id)
-            await enqueue_tournament_changed(session, current.tournament_id, "results_changed")
+            generated = await swiss_rounds_service.generate_ready_rounds(session, current.tournament_id)
+            reason = "structure_changed" if generated else "results_changed"
+            await enqueue_tournament_changed(session, current.tournament_id, reason)
             await jobs_service.mark_job_succeeded(
                 session,
                 current,

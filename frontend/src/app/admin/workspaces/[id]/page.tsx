@@ -85,6 +85,51 @@ function formFromWorkspace(ws: Workspace): EditFormData {
   };
 }
 
+// Blank colour -> null (backend rejects "" via the #RRGGBB pattern; a missing
+// token falls back to the derived default).
+const hexOrNull = (v: string | null) => v?.trim() || null;
+
+/** The exact wire shape `handleSubmit` sends, built once so the submit diff
+ * and the initial payload use identical normalisation -- otherwise an
+ * untouched field could still "change" from raw to trimmed/null and pollute
+ * the audit trail with a no-op SET. */
+function buildPayload(f: EditFormData) {
+  return {
+    name: f.name,
+    description: f.description,
+    timezone: f.timezone,
+    newcomer_scope: f.newcomer_scope,
+    is_hidden: f.is_hidden,
+    branding_enabled: f.branding_enabled,
+    brand_primary: hexOrNull(f.brand_primary),
+    brand_secondary: hexOrNull(f.brand_secondary),
+    brand_background: hexOrNull(f.brand_background),
+    brand_surface: hexOrNull(f.brand_surface),
+    brand_accent: hexOrNull(f.brand_accent),
+    brand_foreground: hexOrNull(f.brand_foreground),
+    brand_muted: hexOrNull(f.brand_muted),
+    brand_border: hexOrNull(f.brand_border),
+    brand_ring: hexOrNull(f.brand_ring),
+    brand_destructive: hexOrNull(f.brand_destructive),
+    subdomain: f.subdomain?.trim() || null,
+    seo_title: f.seo_title?.trim() || null,
+    seo_description: f.seo_description?.trim() || null,
+    discord_guild_id: f.discord_guild_id,
+  };
+}
+
+type WorkspaceFormPayload = ReturnType<typeof buildPayload>;
+
+/** Every key present in `current` whose normalised value differs from
+ * `baseline` -- the audit trail then records only what actually changed. */
+function diffPayload<T extends Record<string, unknown>>(current: T, baseline: T): Partial<T> {
+  const changes: Partial<T> = {};
+  for (const key of Object.keys(current) as (keyof T)[]) {
+    if (current[key] !== baseline[key]) changes[key] = current[key];
+  }
+  return changes;
+}
+
 function BrandColorField({
   id,
   label,
@@ -148,6 +193,10 @@ export default function WorkspaceEditPage({ params }: Readonly<{ params: Promise
   const ws = wsQuery.data;
 
   const [form, setForm] = useState<EditFormData | null>(null);
+  // Snapshot of the form as loaded, used only to diff at submit time so an
+  // untouched field never rides along in the update payload -- see
+  // `handleSubmit` and the audit-log fallout this fixes.
+  const [initialForm, setInitialForm] = useState<EditFormData | null>(null);
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [customDomainInput, setCustomDomainInput] = useState("");
@@ -182,6 +231,7 @@ export default function WorkspaceEditPage({ params }: Readonly<{ params: Promise
     // form; not done here because this pass must not change data flow.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(formFromWorkspace(ws));
+    setInitialForm(formFromWorkspace(ws));
     setIconPreview(ws.icon_url ?? null);
     setCustomDomainInput(ws.custom_domain ?? "");
     setDomain({
@@ -208,8 +258,8 @@ export default function WorkspaceEditPage({ params }: Readonly<{ params: Promise
   };
 
   const updateMutation = useMutation({
-    mutationFn: async (data: Partial<EditFormData>) => {
-      await workspaceService.update(id, data);
+    mutationFn: async (data: Partial<WorkspaceFormPayload>) => {
+      if (Object.keys(data).length > 0) await workspaceService.update(id, data);
       if (iconFile) await workspaceService.uploadIcon(id, iconFile);
     },
     onSuccess: () => {
@@ -343,31 +393,9 @@ export default function WorkspaceEditPage({ params }: Readonly<{ params: Promise
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Blank colour → null (backend rejects "" via the #RRGGBB pattern; a missing
-    // token falls back to the derived default). Custom domain is its own flow.
-    const hexOrNull = (v: string | null) => v?.trim() || null;
-    updateMutation.mutate({
-      name: form.name,
-      description: form.description,
-      timezone: form.timezone,
-      newcomer_scope: form.newcomer_scope,
-      is_hidden: form.is_hidden,
-      branding_enabled: form.branding_enabled,
-      brand_primary: hexOrNull(form.brand_primary),
-      brand_secondary: hexOrNull(form.brand_secondary),
-      brand_background: hexOrNull(form.brand_background),
-      brand_surface: hexOrNull(form.brand_surface),
-      brand_accent: hexOrNull(form.brand_accent),
-      brand_foreground: hexOrNull(form.brand_foreground),
-      brand_muted: hexOrNull(form.brand_muted),
-      brand_border: hexOrNull(form.brand_border),
-      brand_ring: hexOrNull(form.brand_ring),
-      brand_destructive: hexOrNull(form.brand_destructive),
-      subdomain: form.subdomain?.trim() || null,
-      seo_title: form.seo_title?.trim() || null,
-      seo_description: form.seo_description?.trim() || null,
-      discord_guild_id: form.discord_guild_id,
-    });
+    // Custom domain is its own flow, not part of this diff.
+    if (!initialForm) return;
+    updateMutation.mutate(diffPayload(buildPayload(form), buildPayload(initialForm)));
   };
 
   const patch = (changes: Partial<EditFormData>) => setForm((f) => (f ? { ...f, ...changes } : f));

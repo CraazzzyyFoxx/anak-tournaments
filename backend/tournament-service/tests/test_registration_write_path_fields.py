@@ -26,34 +26,21 @@ Runs under stdlib unittest -- no pytest-asyncio in this repo.
 from __future__ import annotations
 
 import inspect
-import os
 import sys
 from pathlib import Path
 from typing import Any
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, mock
 
-
-def _ensure_test_env() -> None:
-    for key, value in {
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "tournament_test",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
-        "JWT_SECRET_KEY": "test-secret",
-        "REDIS_URL": "redis://localhost:6379",
-    }.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from src import models  # noqa: E402
-from src.schemas.admin import balancer as admin_schemas  # noqa: E402
+from src import (
+    models,  # noqa: E402
+    schemas,  # noqa: E402
+)
 from src.schemas.registration import RegistrationCreate, RegistrationUpdate  # noqa: E402
 from src.services.registration import lifecycle as reg_lifecycle  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
@@ -85,6 +72,33 @@ class _RecordingSession:
     async def scalar(self, *_args: Any, **_kwargs: Any) -> Any:
         return self._scalar_value
 
+    def begin_nested(self) -> Any:
+        return _Savepoint()
+
+
+class _Savepoint:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+async def _fake_resolve(*_args: Any, **_kwargs: Any) -> dict:
+    return {}
+
+
+def _wp_patches():
+    # Identity provisioning is patched out (it would hit the DB), and the rank
+    # resolver with it: this suite asserts which registration FIELDS a write path
+    # persists, not what the balancer status derives from them.
+    return (
+        mock.patch.object(
+            reg_service.registration_service, "ensure_player_identity", mock.AsyncMock(return_value=None)
+        ),
+        mock.patch("src.services.registration.rank_resolution.resolved_value_map", _fake_resolve),
+    )
+
 
 async def _noop(*_args: Any, **_kwargs: Any) -> None:
     return None
@@ -107,12 +121,13 @@ class TestPublicCreatePersistsEveryHandle(IsolatedAsyncioTestCase):
             "custom_fields": None,
             **overrides,
         }
-        # ensure_player_identity and the RBAC grant are the only DB reachers on
-        # this path; the row itself is built purely in memory.
+        patches = _wp_patches()
         with (
             mock.patch.object(reg_service.registration_service, "ensure_player_identity", _noop),
             mock.patch.object(reg_service, "assign_workspace_system_role", _noop),
             mock.patch.object(reg_service, "enqueue_registration_approved", _noop),
+            patches[0],
+            patches[1],
         ):
             return await reg_service.registration_service.create_registration(session, **payload)
 
@@ -209,6 +224,7 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
             "roles": [],
             **overrides,
         }
+        patches = _wp_patches()
         with (
             mock.patch.object(reg_lifecycle.lifecycle_service, "ensure_unique_battle_tag", _noop),
             mock.patch.object(reg_lifecycle.lifecycle_service.common, "get_registration_form", mock.AsyncMock(return_value=None)),
@@ -219,6 +235,8 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
                 "get_registration_by_id",
                 mock.AsyncMock(side_effect=lambda _s, _i: session.added[0]),
             ),
+            patches[0],
+            patches[1],
         ):
             registration = await reg_lifecycle.lifecycle_service.create_manual_registration(session, **payload)
         return registration, events
@@ -266,7 +284,7 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
         parameters = set(inspect.signature(reg_lifecycle.lifecycle_service.create_manual_registration).parameters)
 
         missing = {
-            renamed.get(name, name) for name in admin_schemas.BalancerRegistrationCreateRequest.model_fields
+            renamed.get(name, name) for name in schemas.BalancerRegistrationCreateRequest.model_fields
         } - parameters
 
         assert missing == set(), f"create request fields no writer accepts: {sorted(missing)}"
@@ -318,7 +336,7 @@ class TestAdminProfileUpdateCustomFields(IsolatedAsyncioTestCase):
         parameters = set(inspect.signature(reg_lifecycle.lifecycle_service.update_registration_profile).parameters)
 
         missing = {
-            renamed.get(name, name) for name in admin_schemas.BalancerRegistrationUpdateRequest.model_fields
+            renamed.get(name, name) for name in schemas.BalancerRegistrationUpdateRequest.model_fields
         } - parameters
 
         assert missing == set(), f"update request fields no writer accepts: {sorted(missing)}"

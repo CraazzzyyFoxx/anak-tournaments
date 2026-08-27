@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,16 +12,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "parser-service"))
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "x")
-os.environ.setdefault("CHALLONGE_API_KEY", "x")
 
 scheduler = importlib.import_module("src.services.overwatch_rank.scheduler")
 service = importlib.import_module("src.services.overwatch_rank.service")
@@ -193,7 +182,7 @@ class CollectionStatsAssemblyTests(IsolatedAsyncioTestCase):
     async def test_assembles_rates_tiers_and_validates(self) -> None:
         from unittest.mock import patch
 
-        from src.schemas.admin.rank_collection import RankCollectionStats
+        from src import schemas
         from src.services.overwatch_rank import admin
 
         raw = {
@@ -218,6 +207,6 @@ class CollectionStatsAssemblyTests(IsolatedAsyncioTestCase):
         self.assertEqual(result["error_rate_24h"], 0.3)  # (error 20 + rate_limited 10) / 100
         self.assertEqual(result["scope"], "all")
         # Coerces nested dicts into RankStatusCounts and ignores the extra keys.
-        model = RankCollectionStats.model_validate(result)
+        model = schemas.RankCollectionStats.model_validate(result)
         self.assertEqual(model.by_status.disabled, 10)
         self.assertEqual(model.fetch_24h.error, 20)

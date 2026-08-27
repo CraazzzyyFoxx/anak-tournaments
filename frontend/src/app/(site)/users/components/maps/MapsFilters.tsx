@@ -58,7 +58,7 @@ const MapsFilters = ({
     name: t("users.maps.sortName")
   };
   return (
-    <div className="aqt-filters">
+    <div className="aqt-filters rounded-xl border border-[color:var(--aqt-border)] p-2.5">
       <div className="w-48">
         <SearchableImageSelect
           value={tournamentId ? String(tournamentId) : undefined}

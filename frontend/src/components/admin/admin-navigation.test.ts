@@ -77,6 +77,8 @@ describe("admin navigation lifecycle grouping (D12, §5)", () => {
     expect(getMatchingAdminRoute("/admin/balancer/anything")?.permissions).toEqual(["team.read"]);
   });
 
+
+
   it("gates /admin/sub-roles by player.read, not the broad workspace-admin entry", () => {
     expect(getMatchingAdminRoute("/admin/sub-roles")?.permissions).toEqual(["player.read"]);
     // Must not fall through to the /admin/players prefix or the /admin catch-all.

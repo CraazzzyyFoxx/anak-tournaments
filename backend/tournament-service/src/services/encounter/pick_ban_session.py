@@ -62,10 +62,9 @@ from src.services.encounter.veto_session import (
     REASON_SLOT_UNDERFILLED,
     REASON_TEAMS_UNKNOWN,
     SLOT_CANDIDATE_FLOOR,
-    VetoSessionService,
     build_sequence_for_best_of,
     build_slot_sequence,
-    veto_session_service,
+    resolve_seeds,
 )
 
 # A config is only ever useful with its pool in hand (`items` in flat mode,
@@ -104,6 +103,16 @@ def rounds_are_progressive(config: PickBanConfig, kind: PickBanKind) -> bool:
     return config.mode == MapVetoMode.SLOTS or kind == PickBanKind.HERO
 
 
+def _resolved_sequence(tokens: list[str], opener: MapPickSide | str) -> list[str]:
+    """``resolve_sequence_tokens`` as a 422 — the engine raises ValueError,
+    and ``_run`` would otherwise turn that into a 500 on the state-read path
+    that creates or advances a session."""
+    try:
+        return engine.resolve_sequence_tokens(tokens, opener)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 def build_round_sequence(
     config: PickBanConfig, kind: PickBanKind, *, candidate_count: int, opener: MapPickSide | str
 ) -> list[str]:
@@ -123,7 +132,7 @@ def build_round_sequence(
         if config.mode == MapVetoMode.SLOTS
         else [token for token in config.sequence_json if token != "decider"]
     )
-    return engine.resolve_sequence_tokens(tokens, opener)
+    return _resolved_sequence(tokens, opener)
 
 
 class PickBanSessionService:
@@ -143,7 +152,6 @@ class PickBanSessionService:
         readiness_repo: EncounterReadinessRepository = EncounterReadinessRepository(),
         ledger_repo: EncounterPickBanLedgerRepository = EncounterPickBanLedgerRepository(),
         match_repo: MatchRepository = MatchRepository(),
-        veto: VetoSessionService = veto_session_service,
     ) -> None:
         self.session_repo = session_repo
         self.entry_repo = entry_repo
@@ -151,7 +159,6 @@ class PickBanSessionService:
         self.readiness_repo = readiness_repo
         self.ledger_repo = ledger_repo
         self.match_repo = match_repo
-        self.veto = veto
 
     async def current_round_of(self, session: AsyncSession, pick_ban: PickBanSession) -> int | None:
         """The round `pick_ban` is currently resolving (see
@@ -426,7 +433,7 @@ class PickBanSessionService:
             return None
 
         pool_size = sum(len(s) for s in slots) if slots is not None else len(config.items)
-        seeds = await self.veto.resolve_seeds(session, encounter)
+        seeds = await resolve_seeds(session, encounter)
         now = datetime.now(UTC)
         flat_item_ids = [item.item_id for item in sorted(config.items, key=lambda item: item.sort_order)]
         progressive = rounds_are_progressive(config, kind)
@@ -445,7 +452,7 @@ class PickBanSessionService:
             resolved_sequence_json=(
                 build_round_sequence(config, kind, candidate_count=len(round_one_item_ids), opener=seeds.first_side)
                 if progressive
-                else engine.resolve_sequence_tokens(
+                else _resolved_sequence(
                     build_sequence_for_best_of(encounter.best_of, pool_size)
                     if config.preset != "custom"
                     else list(config.sequence_json),
@@ -635,7 +642,7 @@ class PickBanSessionService:
                 raise HTTPException(
                     status_code=422,
                     detail=(
-                        f"The {pick_ban.kind.value} pick-ban config this session was created from no longer "
+                        f"The {pick_ban.kind} pick-ban config this session was created from no longer "
                         "exists, so round "
                         f"{completed_round + 1} cannot be opened -- re-create the config, then reset the session."
                     ),
@@ -708,7 +715,7 @@ class PickBanSessionService:
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    f"Round {next_round} of the {pick_ban.kind.value} pick-ban has only {len(candidates)} "
+                    f"Round {next_round} of the {pick_ban.kind} pick-ban has only {len(candidates)} "
                     f"candidate(s) left after no-repeat exclusion (needs >= {SLOT_CANDIDATE_FLOOR}) -- fix "
                     "this tournament's pick-ban config (slot candidates or no_repeat_scope)."
                 ),
@@ -722,7 +729,7 @@ class PickBanSessionService:
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    f"Round {next_round} of the {pick_ban.kind.value} pick-ban has {len(candidates)} "
+                    f"Round {next_round} of the {pick_ban.kind} pick-ban has {len(candidates)} "
                     f"candidate(s) for {len(new_tokens)} step(s) -- fix this tournament's pick-ban config "
                     "(pool size, sequence length or no_repeat_scope)."
                 ),
@@ -760,7 +767,7 @@ class PickBanSessionService:
                 )
             )
 
-        register_map_veto_realtime_update(session, pick_ban.encounter_id, kind=pick_ban.kind.value)
+        register_map_veto_realtime_update(session, pick_ban.encounter_id, kind=str(pick_ban.kind))
         if commit:
             await session.commit()
         else:

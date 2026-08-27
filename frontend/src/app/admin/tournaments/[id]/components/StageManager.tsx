@@ -19,6 +19,7 @@ import {
   Trash2,
   Undo2,
   Wand2,
+  Workflow,
   X,
   Zap
 } from "lucide-react";
@@ -81,6 +82,15 @@ const STAGE_ITEM_TYPE_LABELS: Record<StageItemType, string> = {
   single_bracket: "Single bracket"
 };
 
+type SeedRanking = "slot" | "avg_sr" | "total_sr" | "random";
+
+const SEED_RANKING_LABELS: Record<SeedRanking, string> = {
+  slot: "Slot order (manual / standings)",
+  avg_sr: "Highest team avg SR first",
+  total_sr: "Highest team total SR first",
+  random: "Random (stable per stage)"
+};
+
 const DEFAULT_SWISS_TIEBREAKERS = [
   "points",
   "median_buchholz",
@@ -120,7 +130,6 @@ interface StageItemDraft {
   type: StageItemType;
 }
 
-/** Shape of `Stage.settings_json` as this screen reads and writes it. */
 interface StageSettings {
   ranking_preset?: string;
   tiebreak_order?: string[];
@@ -128,6 +137,7 @@ interface StageSettings {
   swiss_bye_points?: number;
   de_grand_final_type?: "no_reset" | "with_reset";
   best_of?: StageBestOfConfig;
+  seed_ranking?: SeedRanking;
   [key: string]: unknown;
 }
 
@@ -198,10 +208,11 @@ function projectedBracketSeedCounts(
   const source = stages
     .filter(
       (candidate) =>
-        candidate.order < stage.order &&
+        (candidate.order < stage.order ||
+          (candidate.order === stage.order && candidate.id < stage.id)) &&
         (candidate.stage_type === "swiss" || candidate.stage_type === "round_robin")
     )
-    .sort((left, right) => right.order - left.order)[0];
+    .sort((left, right) => right.order - left.order || right.id - left.id)[0];
   if (!source || !source.advance_count || source.advance_count <= 0) return { upper: 0, lower: 0 };
 
   const groups = source.items.length || 1;
@@ -222,8 +233,7 @@ function projectedBracketSeedCounts(
 }
 
 function getDefaultStageItemType(stageType: StageType): StageItemType {
-  if (stageType === "single_elimination") return "single_bracket";
-  if (stageType === "double_elimination") return "bracket_upper";
+  if (stageType === "single_elimination" || stageType === "double_elimination") return "single_bracket";
   return "group";
 }
 
@@ -337,6 +347,7 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
   const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [stageToDelete, setStageToDelete] = useState<Stage | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<StageItem | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [seedStageConfirm, setSeedStageConfirm] = useState<Stage | null>(null);
   const [mergeStageConfirm, setMergeStageConfirm] = useState<Stage | null>(null);
@@ -368,12 +379,16 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
   const [editingInputTeamDraft, setEditingInputTeamDraft] = useState("");
   const [stageSplitLbDrafts, setStageSplitLbDrafts] = useState<Record<number, boolean>>({});
   const [stageBestOfDrafts, setStageBestOfDrafts] = useState<Record<number, StageBestOfConfig>>({});
+  const [stageSeedRankingDrafts, setStageSeedRankingDrafts] = useState<Record<number, SeedRanking>>(
+    {}
+  );
 
   const fieldIdPrefix = useId();
   const stageTypeFieldId = `${fieldIdPrefix}-stage-type`;
   const swissRoundsFieldId = `${fieldIdPrefix}-swiss-rounds`;
   const grandFinalFieldId = `${fieldIdPrefix}-grand-final`;
   const groupSeedingFieldId = `${fieldIdPrefix}-group-seeding`;
+  const seedRankingFieldId = `${fieldIdPrefix}-seed-ranking`;
   const advanceCountFieldId = `${fieldIdPrefix}-advance-count`;
   const rankingPresetFieldId = `${fieldIdPrefix}-ranking-preset`;
   const swissByePointsFieldId = `${fieldIdPrefix}-swiss-bye-points`;
@@ -635,6 +650,15 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
     onError: (error) => notify.apiError(error, { title: "Could not rename this structure item" })
   });
 
+  const deleteItemMutation = useMutation({
+    mutationFn: (stageItemId: number) => adminService.deleteStageItem(stageItemId),
+    onSuccess: () => {
+      setItemToDelete(null);
+      invalidateStageData();
+    },
+    onError: (error) => notify.apiError(error, { title: "Could not delete this structure item" })
+  });
+
   const updateInputMutation = useMutation({
     mutationFn: ({ inputId, teamId }: { inputId: number; teamId: number }) =>
       adminService.updateStageItemInput(inputId, { team_id: teamId, input_type: "final" }),
@@ -695,6 +719,16 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
         title: "Could not activate and generate this stage"
       });
     }
+  });
+
+  const autoWireMutation = useMutation({
+    mutationFn: (stageId: number) => adminService.autoWireStage(stageId),
+    onSuccess: () => {
+      invalidateStageData();
+      notify.success("Auto-wired playoff seeds from the group stage");
+    },
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not auto-wire this stage from groups" })
   });
 
   const seedTeamsMutation = useMutation({
@@ -772,6 +806,15 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
     ? stageAdvanceCountDrafts[selectedStage.id] ?? currentAdvanceCount
     : "";
   const selectedStageSettings = (selectedStage?.settings_json ?? {}) as StageSettings;
+  const currentSeedRanking: SeedRanking =
+    selectedStageSettings.seed_ranking === "avg_sr" ||
+    selectedStageSettings.seed_ranking === "total_sr" ||
+    selectedStageSettings.seed_ranking === "random"
+      ? selectedStageSettings.seed_ranking
+      : "slot";
+  const selectedStageSeedRankingDraft = selectedStage
+    ? stageSeedRankingDrafts[selectedStage.id] ?? currentSeedRanking
+    : "slot";
   const selectedStageRankingPresetDraft = selectedStage
     ? stageRankingPresetDrafts[selectedStage.id] ?? (selectedStageSettings.ranking_preset || "default")
     : "default";
@@ -1110,6 +1153,27 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
                         </Button>
                       ) : null}
 
+                      {BRACKET_STAGE_TYPES.includes(selectedStage.stage_type) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={autoWireMutation.isPending}
+                          onClick={() => autoWireMutation.mutate(selectedStage.id)}
+                          title="Wires this stage's slots from the preceding group stage's &quot;Teams advancing to playoff&quot; count, without activating or generating anything — use to debug or refresh the wiring."
+                        >
+                          {autoWireMutation.isPending &&
+                          autoWireMutation.variables === selectedStage.id ? (
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
+                          ) : (
+                            <Workflow className="size-4" aria-hidden />
+                          )}
+                          {autoWireMutation.isPending &&
+                          autoWireMutation.variables === selectedStage.id
+                            ? "Wiring…"
+                            : "Auto-wire from groups"}
+                        </Button>
+                      ) : null}
+
                       <Button
                         size="sm"
                         variant="outline"
@@ -1262,6 +1326,15 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
                                     <Pencil className="size-3.5" aria-hidden />
                                   </button>
                                 )}
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="size-8 shrink-0 text-destructive hover:text-destructive"
+                                  aria-label={`Delete ${item.name}`}
+                                  onClick={() => setItemToDelete(item)}
+                                >
+                                  <Trash2 className="size-4" aria-hidden />
+                                </Button>
                               </div>
 
                               {item.inputs.length > 0 ? (
@@ -1669,6 +1742,37 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
                                     </span>
                                   </div>
                                 ) : null}
+
+                                {BRACKET_STAGE_TYPES.includes(selectedStageTypeDraft) ? (
+                                  <div>
+                                    <Label htmlFor={seedRankingFieldId} className="text-xs text-muted-foreground">
+                                      Bracket seeds
+                                    </Label>
+                                    <Select
+                                      value={selectedStageSeedRankingDraft}
+                                      onValueChange={(value) =>
+                                        setStageSeedRankingDrafts((current) => ({
+                                          ...current,
+                                          [selectedStage.id]: value as SeedRanking
+                                        }))
+                                      }
+                                    >
+                                      <SelectTrigger id={seedRankingFieldId} className="h-9 w-full sm:w-[260px]">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {(Object.keys(SEED_RANKING_LABELS) as SeedRanking[]).map((value) => (
+                                          <SelectItem key={value} value={value}>
+                                            {SEED_RANKING_LABELS[value]}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <span className="text-xs text-muted-foreground">
+                                      Who is seed 1 in the generated bracket. Slot order keeps standings wiring.
+                                    </span>
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
 
@@ -2050,6 +2154,14 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
                                   } else {
                                     delete nextSettings.de_grand_final_type;
                                   }
+                                  if (
+                                    BRACKET_STAGE_TYPES.includes(selectedStageTypeDraft) &&
+                                    selectedStageSeedRankingDraft !== "slot"
+                                  ) {
+                                    nextSettings.seed_ranking = selectedStageSeedRankingDraft;
+                                  } else {
+                                    delete nextSettings.seed_ranking;
+                                  }
 
                                   const bestOfSettings = buildBestOfSettings(selectedBestOfDraft);
                                   if (bestOfSettings) {
@@ -2198,6 +2310,26 @@ export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
         }
         cascadeInfo={["Stage structure items", "Team input slots", "Generated stage matches"]}
         isDeleting={deleteMutation.isPending}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(itemToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setItemToDelete(null);
+        }}
+        onConfirm={() => {
+          if (itemToDelete) {
+            deleteItemMutation.mutate(itemToDelete.id);
+          }
+        }}
+        title="Delete structure item"
+        description={
+          itemToDelete
+            ? `Delete "${itemToDelete.name}"? This removes its team slots and generated matches.`
+            : undefined
+        }
+        cascadeInfo={["Team input slots", "Generated matches for this group/lane", "Standings for this group/lane"]}
+        isDeleting={deleteItemMutation.isPending}
       />
 
       <DeleteConfirmDialog

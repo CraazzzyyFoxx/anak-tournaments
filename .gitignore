@@ -47,3 +47,7 @@ frontend-redesign/
 # belongs in the tree — a committed worktree pointer breaks every other checkout.
 .aislop/
 OWT Design System/
+.import_linter_cache/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

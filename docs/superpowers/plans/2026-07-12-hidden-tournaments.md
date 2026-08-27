@@ -262,7 +262,7 @@ def rehydrate_user_optional(identity: dict[str, Any] | None) -> AuthUser | None:
 ```python
 from shared.models.identity.auth_user import AuthUser
 from shared.models.tournament.tournament import Tournament
-from shared.services.tournament_visibility import can_view_tournament
+from shared.services.tournament.visibility import can_view_tournament
 
 
 def _tournament(is_hidden: bool, workspace_id: int = 1) -> Tournament:
@@ -459,7 +459,7 @@ def visible_tournaments_predicate(user: AuthUser | None) -> sa.ColumnElement[boo
   ```
 - [ ] `flows.get_all` — add `viewer` param and build the predicate:
   ```python
-  from shared.services.tournament_visibility import visible_tournaments_predicate
+  from shared.services.tournament.visibility import visible_tournaments_predicate
   async def get_all(session, params, *, viewer=None):
       ...
       results, total = await service.get_all(session, params, visibility=visible_tournaments_predicate(viewer))
@@ -532,7 +532,7 @@ async def tournament_id_for_match(session: AsyncSession, match_id: int) -> int:
 
 **Files:** Modify `backend/tournament-service/src/rpc/reads.py`
 
-Add `from shared.rpc.identity import rehydrate_user_optional` and `from shared.services.tournament_visibility import assert_tournament_viewable` and `from src.services import visibility_resolvers`.
+Add `from shared.rpc.identity import rehydrate_user_optional` and `from shared.services.tournament.visibility import assert_tournament_viewable` and `from src.services import visibility_resolvers`.
 
 The pattern (gate BEFORE the cached/expensive read):
 ```python
@@ -698,7 +698,7 @@ const (
 The guard (identity is now injected by the gateway on these routes):
 ```python
 from shared.rpc.identity import rehydrate_user_optional
-from shared.services.tournament_visibility import assert_tournament_viewable
+from shared.services.tournament.visibility import assert_tournament_viewable
 ...
 viewer = rehydrate_user_optional(data.get("identity"))
 await assert_tournament_viewable(session, viewer, tournament_id)

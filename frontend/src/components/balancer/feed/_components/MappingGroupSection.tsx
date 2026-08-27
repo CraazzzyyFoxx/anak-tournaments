@@ -8,6 +8,7 @@ import type {
   MappingTargetMode,
   MappingTargetState,
 } from "@/types/balancer-admin.types";
+import type { SubroleCatalog } from "@/types/registration.types";
 
 import { MappingFieldRow } from "./MappingFieldRow";
 import {
@@ -34,6 +35,7 @@ interface MappingGroupSectionProps extends MappingRowHandlers {
   previewByTarget: Record<string, string>;
   errorsByTarget: Record<string, string>;
   disabled?: boolean;
+  subroleCatalog?: SubroleCatalog;
 }
 
 export function MappingGroupSection({
@@ -45,6 +47,7 @@ export function MappingGroupSection({
   previewByTarget,
   errorsByTarget,
   disabled,
+  subroleCatalog,
   onModeChange,
   onColumnsChange,
   onValueChange,
@@ -70,6 +73,7 @@ export function MappingGroupSection({
         previewValue={previewByTarget[target.key] ?? null}
         error={errorsByTarget[target.key] ?? null}
         disabled={disabled}
+        subroleCatalog={subroleCatalog}
         onModeChange={(mode) => onModeChange(target.key, mode)}
         onColumnsChange={(columns) => onColumnsChange(target.key, columns)}
         onValueChange={(value) => onValueChange(target.key, value)}

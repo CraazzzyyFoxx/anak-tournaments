@@ -20,8 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core.enums import SubscriptionCollectionSource
 from shared.services.registration_window import registration_open_clause
-from shared.services.subscription_wiring import build_resolver
-from shared.subscriptions import parse_requirement
+from shared.services.subscriptions.wiring import build_resolver
+from shared.services.subscriptions import parse_requirement
 from src.core.broker import optional_broker
 from src.domain.subscription_collection import TournamentTarget, _chunked
 

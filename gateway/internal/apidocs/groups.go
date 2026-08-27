@@ -84,7 +84,7 @@ func Groups() (public, admin []openapi.Group) {
 		{Tag: "Admin: Parser & Achievements", Description: "Match-log/rank admin, OverFast sync, settings, achievement engine + rules.",
 			Routes: concat(openapi.AuthedOnly(parser.Routes), parser.AchievementAdminRoutes, parser.BinaryDocRoutes)},
 		{Tag: "Admin: Balancer", Description: "Workspace/tournament balancer config + teams import.",
-			Routes: concat(balancer.AdminRoutes, balancer.BinaryAdminDocRoutes)},
+			Routes: concat(balancer.AdminRoutes, balancer.RosterRoutes, balancer.BinaryAdminDocRoutes)},
 		{Tag: "Admin: Analytics", Description: "Analytics mutations & compute job control.",
 			Routes: analytics.WriteRoutes},
 		{Tag: "Admin: Streams", Description: "Force an immediate live-status re-poll.",

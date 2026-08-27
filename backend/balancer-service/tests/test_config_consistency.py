@@ -32,19 +32,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
-os.environ.setdefault("S3_ACCESS_KEY", "test")
-os.environ.setdefault("S3_SECRET_KEY", "test")
-os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
-os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS  # noqa: E402
@@ -162,7 +149,7 @@ def test_public_config_keys_are_algorithm_fields() -> None:
 # Python <-> Rust ring: native payload <-> ConfigSpec
 # ---------------------------------------------------------------------------
 
-MOO_CORE_LIB_RS = BALANCER_SERVICE_ROOT / "native" / "moo_core" / "src" / "lib.rs"
+MOO_CORE_LIB_RS = BALANCER_SERVICE_ROOT / "native" / "tournament_balancer" / "src" / "lib.rs"
 
 # Present in ConfigSpec, deliberately never sent: the Rust doc-comment says
 # "Принимается по wire опционально; в Python UI пока не выставляется".
@@ -279,7 +266,7 @@ def test_rust_only_allowlist_has_no_stale_entries() -> None:
 # Python <-> Rust ring: roster slot codes <-> role-impact index detection
 # ---------------------------------------------------------------------------
 
-MOO_CORE_CONTEXT_RS = BALANCER_SERVICE_ROOT / "native" / "moo_core" / "src" / "context.rs"
+MOO_CORE_CONTEXT_RS = BALANCER_SERVICE_ROOT / "native" / "tournament_balancer" / "src" / "context.rs"
 
 
 def _rust_role_idx_spellings() -> set[str]:
@@ -314,7 +301,7 @@ def test_rust_recognizes_every_canonical_role_code() -> None:
     unrecognized = {code for code in DEFAULT_ROSTER_SLOTS if code not in spellings}
 
     assert unrecognized == set(), (
-        f"native/moo_core/src/context.rs does not match roster slot codes {sorted(unrecognized)}: "
+        f"native/tournament_balancer/src/context.rs does not match roster slot codes {sorted(unrecognized)}: "
         "their impact weight would silently degrade to 1.0. Add the spelling to the "
         "matching *_role_idx lookup."
     )

@@ -23,18 +23,7 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ["DEBUG"] = "false"
-os.environ.setdefault("S3_ACCESS_KEY", "test")
-os.environ.setdefault("S3_SECRET_KEY", "test")
-os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
-os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 opp = importlib.import_module("src.services.ml.features.opponent_strength")
 
@@ -74,10 +63,10 @@ class SnapshotDedupTests(IsolatedAsyncioTestCase):
         ratings = {f"{p.user_id}-{p.role}": pl.rating() for p in (p1, p2, p3)}
 
         with (
-            patch.object(opp, "get_data_frame", AsyncMock(return_value=pd.DataFrame({"x": [1]}))),
-            patch.object(opp.v1_service, "lookback_tournament_ids", AsyncMock(return_value=[1, 2, 3, 4])),
-            patch.object(opp.v1_service, "get_matches_for_tournaments", AsyncMock(return_value=[e_normal, e_self])),
-            patch.object(opp.v1_service, "get_teams_with_players", AsyncMock(return_value=[])),
+            patch.object(opp.flows_service, "get_data_frame", AsyncMock(return_value=pd.DataFrame({"x": [1]}))),
+            patch.object(opp.analytics_service, "lookback_tournament_ids", AsyncMock(return_value=[1, 2, 3, 4])),
+            patch.object(opp.analytics_service, "get_matches_for_tournaments", AsyncMock(return_value=[e_normal, e_self])),
+            patch.object(opp.analytics_service, "get_teams_with_players", AsyncMock(return_value=[])),
             patch.object(opp, "prepare_openskill_data", return_value=(None, ratings, None)),
             patch.object(opp, "get_id_role", lambda p: f"{p.user_id}-{p.role}"),
         ):

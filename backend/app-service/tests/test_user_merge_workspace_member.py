@@ -15,19 +15,10 @@ reporting ``rowcount=2``, not two UPDATEs reporting 1 each.
 from __future__ import annotations
 
 import importlib
-import os
 from types import SimpleNamespace
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock, patch
-
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 user_merge = importlib.import_module("src.services.admin.user_merge")
 merges = user_merge.merges
@@ -325,7 +316,7 @@ class ExecuteMergeWorkspaceMemberWiringTests(IsolatedAsyncioTestCase):
         method itself calls ``_repoint_player_workspace_members`` exactly
         once (it is no longer part of REFERENCE_CONFIG at all -- Player has no
         plain user-id column left to reassign generically)."""
-        merge_schemas = user_merge.merge_schemas
+        merge_schemas = user_merge.schemas
         request = merge_schemas.UserMergeExecuteRequest(
             source_user_id=5,
             target_user_id=6,

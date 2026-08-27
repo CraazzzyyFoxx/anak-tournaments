@@ -174,7 +174,7 @@ export default class userService {
     id: number,
     page: number,
     perPage: number = 10,
-    sort: string = "id",
+    sort: string = "played_at",
     order: string = "desc",
     entities: string[] = [
       "tournament",

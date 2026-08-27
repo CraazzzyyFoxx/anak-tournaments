@@ -13,8 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ValueMapRow } from "@/types/balancer-admin.types";
+import type { SubroleCatalog, SubroleOption } from "@/types/registration.types";
 
-type ValueEditorKind = "boolean" | "role" | "text" | "number" | "role_subrole";
+type ValueEditorKind = "boolean" | "role" | "text" | "number" | "role_subrole" | "subrole";
 
 interface ValueMapEditorProps {
   title: string;
@@ -23,10 +24,33 @@ interface ValueMapEditorProps {
   rows: ValueMapRow[];
   /** Whether catalog defaults are available to seed. */
   canSeed: boolean;
+  subroleCatalog?: SubroleCatalog;
   onAdd: () => void;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
   onRemove: (id: string) => void;
   onSeedDefaults: () => void;
+}
+
+const NONE = "__none__";
+
+function optionsForRole(catalog: SubroleCatalog | undefined, role: string): SubroleOption[] {
+  if (!role || role === "flex") return [];
+  return catalog?.[role] ?? [];
+}
+
+function flattenSubroleOptions(catalog: SubroleCatalog | undefined): { value: string; label: string }[] {
+  const bySlug = new Map<string, { label: string; roles: string[] }>();
+  for (const [role, options] of Object.entries(catalog ?? {})) {
+    for (const option of options) {
+      const existing = bySlug.get(option.slug);
+      if (existing) existing.roles.push(role);
+      else bySlug.set(option.slug, { label: option.label, roles: [role] });
+    }
+  }
+  return [...bySlug.entries()].map(([slug, { label, roles }]) => ({
+    value: slug,
+    label: roles.length > 1 ? `${label} (${roles.join(", ")})` : label,
+  }));
 }
 
 const BOOLEAN_OPTIONS = [
@@ -78,9 +102,11 @@ function serializeRoleSubroleItems(items: RoleSubroleItem[]): string {
 function RoleSubroleSubForm({
   row,
   onUpdate,
+  catalog,
 }: Readonly<{
   row: ValueMapRow;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
+  catalog: SubroleCatalog | undefined;
 }>) {
   const items = parseRoleSubroleItems(row.value);
 
@@ -94,7 +120,13 @@ function RoleSubroleSubForm({
         if (i !== index) return item;
         if (field === "role") {
           const nextRole = val ?? "";
-          return { role: nextRole, subrole: nextRole === "" || nextRole === "flex" ? null : item.subrole };
+          const allowed = optionsForRole(catalog, nextRole).map((option) => option.slug);
+          const keep =
+            nextRole !== "" &&
+            nextRole !== "flex" &&
+            item.subrole != null &&
+            allowed.includes(item.subrole);
+          return { role: nextRole, subrole: keep ? item.subrole : null };
         }
         return { ...item, subrole: val };
       }),
@@ -111,7 +143,8 @@ function RoleSubroleSubForm({
   return (
     <div className="space-y-1.5">
       {items.map((item, index) => {
-        const subroleDisabled = item.role === "" || item.role === "flex";
+        const roleOptions = optionsForRole(catalog, item.role);
+        const subroleDisabled = item.role === "" || item.role === "flex" || roleOptions.length === 0;
         return (
           <div key={index} className="flex items-center gap-1.5">
             <Select value={item.role || undefined} onValueChange={(v) => updateItem(index, "role", v)}>
@@ -126,13 +159,23 @@ function RoleSubroleSubForm({
                 ))}
               </SelectContent>
             </Select>
-            <Input
-              className="h-8 flex-1"
-              value={item.subrole ?? ""}
-              onChange={(e) => updateItem(index, "subrole", e.target.value || null)}
+            <Select
+              value={item.subrole ?? NONE}
+              onValueChange={(v) => updateItem(index, "subrole", v === NONE ? null : v)}
               disabled={subroleDisabled}
-              placeholder={subroleDisabled ? "—" : "Sub-role slug"}
-            />
+            >
+              <SelectTrigger className="h-8 flex-1">
+                <SelectValue placeholder={subroleDisabled ? "—" : "Sub-role"} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>None</SelectItem>
+                {roleOptions.map((option) => (
+                  <SelectItem key={option.slug} value={option.slug}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="ghost"
               size="icon"
@@ -158,25 +201,60 @@ function ValueInput({
   kind,
   row,
   onUpdate,
+  catalog,
 }: Readonly<{
   kind: ValueEditorKind;
   row: ValueMapRow;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
+  catalog: SubroleCatalog | undefined;
 }>) {
-  if (kind === "text" || kind === "number") {
+  if (kind === "number") {
     return (
       <Input
-        type={kind === "number" ? "number" : "text"}
+        type="number"
         value={row.value}
         onChange={(event) => onUpdate(row.id, { value: event.target.value })}
-        placeholder={kind === "number" ? "Rank value" : "Mapped value"}
+        placeholder="Rank value"
+        className="h-9"
+      />
+    );
+  }
+
+  if (kind === "text") {
+    return (
+      <Input
+        value={row.value}
+        onChange={(event) => onUpdate(row.id, { value: event.target.value })}
+        placeholder="Mapped value"
         className="h-9"
       />
     );
   }
 
   if (kind === "role_subrole") {
-    return <RoleSubroleSubForm row={row} onUpdate={onUpdate} />;
+    return <RoleSubroleSubForm row={row} onUpdate={onUpdate} catalog={catalog} />;
+  }
+
+  if (kind === "subrole") {
+    const options = flattenSubroleOptions(catalog);
+    return (
+      <Select
+        value={row.value || undefined}
+        onValueChange={(value) => onUpdate(row.id, { value })}
+        disabled={options.length === 0}
+      >
+        <SelectTrigger className="h-9">
+          <SelectValue placeholder={options.length === 0 ? "No workspace sub-roles" : "Sub-role"} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
   }
 
   const options = kind === "boolean" ? BOOLEAN_OPTIONS : ROLE_OPTIONS;
@@ -203,6 +281,7 @@ export function ValueMapEditor({
   kind,
   rows,
   canSeed,
+  subroleCatalog,
   onAdd,
   onUpdate,
   onRemove,
@@ -250,7 +329,7 @@ export function ValueMapEditor({
                 placeholder="Text from sheet"
                 className="h-9"
               />
-              <ValueInput kind={kind} row={row} onUpdate={onUpdate} />
+              <ValueInput kind={kind} row={row} onUpdate={onUpdate} catalog={subroleCatalog} />
               <Button
                 variant="ghost"
                 size="icon"

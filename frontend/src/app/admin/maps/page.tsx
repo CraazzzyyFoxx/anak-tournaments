@@ -1,19 +1,15 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AssetPreview } from "@/components/admin/AssetPreview";
 import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
-import {
-  CatalogToolbarActions,
-  entityFormError,
-  onEntityDialogClose
-} from "@/components/admin/CatalogToolbarActions";
+import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { createAliasesColumn, createEntityActionsColumn } from "@/components/admin/catalog-table-columns";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
@@ -34,7 +30,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import type { Gamemode } from "@/types/gamemode.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { usePermissions } from "@/hooks/usePermissions";
-import { hasUnsavedChanges } from "@/lib/form-change";
+import { useCatalogEntityCrud } from "@/hooks/useCatalogEntityCrud";
 
 // Key order matters: `hasUnsavedChanges` compares JSON, so `getMapForm` below
 // must list the same fields in the same order or every dialog opens dirty.
@@ -69,25 +65,12 @@ export default function MapsAdminPage() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
   const formId = useId();
   const nameFieldId = `${formId}-name`;
   const gamemodeFieldId = `${formId}-gamemode`;
   const aliasesFieldId = `${formId}-aliases`;
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editingMap, setEditingMap] = useState<MapRead | null>(null);
-  const [deletingMap, setDeletingMap] = useState<MapRead | null>(null);
-  const [formData, setFormData] = useState<MapCreateInput | MapUpdateInput>({
-    ...emptyMapForm,
-  });
   const selectedGamemodeId = parseGamemodeQueryParam(searchParams.get(GAMEMODE_QUERY_PARAM));
-
-  const closeForm = () => {
-    setCreateDialogOpen(false);
-    setEditingMap(null);
-    setFormData({ ...emptyMapForm });
-  };
 
   // Fetch gamemodes for selector
   const { data: gamemodesData } = useQuery({
@@ -99,46 +82,33 @@ export default function MapsAdminPage() {
     },
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data: MapCreateInput) => adminService.createMap(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "maps"] });
-      closeForm();
+  const {
+    formData,
+    setFormData,
+    editingEntity: editingMap,
+    deletingEntity: deletingMap,
+    setDeletingEntity: setDeletingMap,
+    isDialogOpen,
+    closeForm,
+    openCreate,
+    openEdit,
+    handleSubmit,
+    isFormDirty,
+    createMutation,
+    updateMutation,
+    deleteMutation,
+    syncMutation,
+  } = useCatalogEntityCrud<MapRead, MapCreateInput, MapUpdateInput>({
+    queryKey: ["admin", "maps"],
+    emptyForm: emptyMapForm,
+    getForm: getMapForm,
+    service: {
+      create: (data) => adminService.createMap(data),
+      update: (id, data) => adminService.updateMap(id, data),
+      delete: (id) => adminService.deleteMap(id),
+      sync: () => adminService.syncMaps(),
     },
   });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: MapUpdateInput }) =>
-      adminService.updateMap(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "maps"] });
-      closeForm();
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => adminService.deleteMap(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "maps"] });
-      setDeletingMap(null);
-    },
-  });
-
-  const syncMutation = useMutation({
-    mutationFn: () => adminService.syncMaps(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "maps"] });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingMap) {
-      updateMutation.mutate({ id: editingMap.id, data: formData as MapUpdateInput });
-    } else {
-      createMutation.mutate(formData as MapCreateInput);
-    }
-  };
 
   const handleGamemodeFilterChange = (value: string) => {
     const nextParams = new URLSearchParams(searchParams.toString());
@@ -153,9 +123,6 @@ export default function MapsAdminPage() {
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
-  const formInitial = getMapForm(editingMap);
-
-  const isFormDirty = (createDialogOpen || !!editingMap) && hasUnsavedChanges(formData, formInitial);
   const columns: ColumnDef<MapRead>[] = [
     {
       accessorKey: "id",
@@ -222,11 +189,7 @@ export default function MapsAdminPage() {
       entityLabel: "map",
       getName: (map) => map.name,
       isSuperuser,
-      onEdit: (map) => {
-        updateMutation.reset();
-        setEditingMap(map);
-        setFormData(getMapForm(map));
-      },
+      onEdit: openEdit,
       onDelete: (map) => setDeletingMap(map),
     }),
   ];
@@ -242,12 +205,7 @@ export default function MapsAdminPage() {
             isSyncing={syncMutation.isPending}
             onSync={() => syncMutation.mutate()}
             syncLabel="Sync maps from game"
-            onCreate={() => {
-              createMutation.reset();
-              updateMutation.reset();
-              setFormData({ ...emptyMapForm });
-              setCreateDialogOpen(true);
-            }}
+            onCreate={openCreate}
             createLabel="Create map"
           />
         }
@@ -296,21 +254,12 @@ export default function MapsAdminPage() {
             </SelectContent>
           </Select>
         }
-        onRowDoubleClick={
-          isSuperuser
-            ? (row) => {
-                const map = row.original;
-                updateMutation.reset();
-                setEditingMap(map);
-                setFormData(getMapForm(map));
-              }
-            : undefined
-        }
+        onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
       />
 
       {/* Create/Edit Dialog */}
       <EntityFormDialog
-        open={createDialogOpen || !!editingMap}
+        open={isDialogOpen}
         onOpenChange={onEntityDialogClose(closeForm)}
         title={editingMap ? "Edit map" : "Create map"}
         description={editingMap ? "Update map information" : "Create a new map in the game"}

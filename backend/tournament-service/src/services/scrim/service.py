@@ -58,7 +58,7 @@ from shared.repository import (
     UserRepository,
 )
 from shared.services.settings_provider import get_scrim_config
-from shared.services.tournament_visibility import assert_tournament_viewable
+from shared.services.tournament.visibility import assert_tournament_viewable
 from src import models
 from src.services.encounter.pick_ban_session import (
     pick_ban_session_service,
@@ -290,7 +290,7 @@ class ScrimService:
         same moment would otherwise each see "no container" and make one. A duplicate
         would be harmless (both hidden, each holding its own rooms) but permanent,
         and the lock costs one statement, so it is not worth tolerating. Same pattern
-        as ``shared/services/tournament_computation.py``.
+        as ``shared/services/tournament/computation.py``.
         """
         await session.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"scrim:{workspace_id}"))))
         # Stays in the service: no repository read filters a hidden tournament by

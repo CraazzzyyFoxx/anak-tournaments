@@ -91,7 +91,7 @@ class DiscordOAuthProvider(OAuthProviderBase):
             "client_id": settings.DISCORD_CLIENT_ID,
             "redirect_uri": settings.OAUTH_REDIRECT,
             "response_type": "code",
-            "scope": "identify email",
+            "scope": "identify email guilds",
             "state": state,
         }
         # Use urlencode to properly encode all parameters including redirect_uri
@@ -172,6 +172,57 @@ class DiscordOAuthProvider(OAuthProviderBase):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get Discord user info"
             ) from e
+
+    async def get_user_guilds(self, access_token: str) -> list[dict[str, Any]]:
+        """Guilds (``id``, ``owner``, ``permissions``, ...) the token's holder
+        belongs to. Requires the ``guilds`` scope. No privileged Discord intent
+        needed -- this is the OAuth-user-token endpoint, not the bot-side
+        member/role list. Used to prove workspace Discord-guild ownership
+        (``rpc.identity.oauth.discord_guilds``); combine with
+        ``has_manage_guild`` below, or the raw ``owner`` flag, to decide
+        administration rights.
+        """
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        try:
+            response = await self.http.client().get(f"{settings.DISCORD_API_URL}/users/@me/guilds", headers=headers)
+
+            if response.status_code != 200:
+                logger.warning(
+                    "Discord guild list request failed",
+                    status_code=response.status_code,
+                )
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Discord guild list")
+
+            return response.json()
+        except httpx.TimeoutException as exc:
+            logger.error("Discord API timeout")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Discord service unavailable"
+            ) from exc
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Discord guild list error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get Discord guild list"
+            ) from e
+
+
+# Discord permission bitfield flag for MANAGE_GUILD (see Discord's Permissions
+# documentation). ``/users/@me/guilds`` returns ``permissions`` as a decimal
+# string, not an int -- it can exceed 2**31 for admin/owner accounts.
+_MANAGE_GUILD_BIT = 0x20
+
+
+def has_manage_guild(permissions: str) -> bool:
+    """True when the Discord permission bitfield includes ``MANAGE_GUILD``.
+
+    A user administers a guild iff Discord's ``owner`` flag is set OR this is
+    true (design: workspace self-service, §4.1) -- the caller combines both,
+    this only decodes the bitfield half.
+    """
+    return (int(permissions) & _MANAGE_GUILD_BIT) != 0
 
 
 class TwitchOAuthProvider(OAuthProviderBase):
@@ -466,9 +517,7 @@ class OAuthProviderRegistry:
 
     def available(self) -> list[schemas.OAuthProvider]:
         return [
-            schemas.OAuthProvider(provider_name)
-            for provider_name in self.providers
-            if self.is_enabled(provider_name)
+            schemas.OAuthProvider(provider_name) for provider_name in self.providers if self.is_enabled(provider_name)
         ]
 
     def get(self, provider_name: str) -> OAuthProviderBase:

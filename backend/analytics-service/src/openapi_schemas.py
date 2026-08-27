@@ -2,7 +2,7 @@
 
 Schemas-only module consumed by the export script — see ``shared.rpc.openapi``.
 No generic-CRUD engine here; every subject is a bespoke @broker.subscriber.
-Models mirror the v1 flow return annotations and the v2 handlers' direct
+Models mirror the rating-flow return annotations and the ML handlers' direct
 model construction. ``openskill`` (410 gone) is intentionally omitted.
 """
 
@@ -11,8 +11,8 @@ from __future__ import annotations
 from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
 from src import schemas
-from src.schemas.analytics_read import BalanceQualityRead, PlayerShiftUpdate
-from src.schemas.v2 import (
+from src.schemas.analytics_read import PlayerShiftUpdate
+from src.schemas.ml import (
     AnalyticsJobCreate,
     AnalyticsJobRow,
     AnomalyFeedbackBody,
@@ -34,7 +34,7 @@ _WS = QueryParam("workspace_id", "integer")
 _ALG = QueryParam("algorithm_id", "integer")
 
 OPERATIONS: dict[str, Op] = {
-    # ── v1 reads (public) ──────────────────────────────────────────────────
+    # ── rating reads (public) ──────────────────────────────────────────────
     "rpc.analytics.list_algorithms": Op(
         response=Paginated[schemas.AnalyticsAlgorithmRead],
         query_params=(QueryParam("page", "integer"), QueryParam("per_page", "integer"), _TID),
@@ -53,26 +53,23 @@ OPERATIONS: dict[str, Op] = {
         response_array=True,
         query_params=(QueryParam("tournament_id", "integer", required=True),),
     ),
-    "rpc.analytics.balance_quality": Op(
-        response=BalanceQualityRead, query_params=(QueryParam("tournament_id", "integer", required=True),)
-    ),
-    # ── v2 ML reads (require analytics.read) ───────────────────────────────
-    "rpc.analytics.v2_performance": Op(
+    # ── ML reads (require analytics.read) ──────────────────────────────────
+    "rpc.analytics.performance": Op(
         response=PerformanceRow,
         response_array=True,
         query_params=(QueryParam("tournament_id", "integer", required=True), _ALG),
     ),
-    "rpc.analytics.v2_standings": Op(
+    "rpc.analytics.standings": Op(
         response=StandingsRow,
         response_array=True,
         query_params=(QueryParam("tournament_id", "integer", required=True), _ALG),
     ),
-    "rpc.analytics.v2_match_quality": Op(
+    "rpc.analytics.match_quality": Op(
         response=MatchQualityRow,
         response_array=True,
         query_params=(QueryParam("tournament_id", "integer", required=True), _ALG),
     ),
-    "rpc.analytics.v2_player_anomalies": Op(
+    "rpc.analytics.player_anomalies": Op(
         response=PlayerAnomalyRow,
         response_array=True,
         query_params=(
@@ -81,13 +78,13 @@ OPERATIONS: dict[str, Op] = {
             QueryParam("kind"),
         ),
     ),
-    "rpc.analytics.v2_feedback_list": Op(
+    "rpc.analytics.feedback_list": Op(
         response=AnomalyFeedbackRow,
         response_array=True,
         query_params=(QueryParam("tournament_id", "integer", required=True),),
     ),
-    "rpc.analytics.v2_explain": Op(response=ExplanationRow, query_params=(_ALG,)),
-    "rpc.analytics.v2_artifacts": Op(
+    "rpc.analytics.explain": Op(response=ExplanationRow, query_params=(_ALG,)),
+    "rpc.analytics.artifacts": Op(
         response=MLArtifactRow,
         response_array=True,
         query_params=(QueryParam("model_kind"), QueryParam("active_only", "boolean")),

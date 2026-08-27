@@ -22,20 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.crud import CrudDispatcher, EntityConfig
+from shared.services.player_sub_role import player_sub_role_entity
 from src import schemas
 from src.core import auth, db
 from src.core.workspace import get_division_grid
-from src.schemas.admin import encounter as enc_schemas
-from src.schemas.admin import player_sub_role as psr_schemas
-from src.schemas.admin import stage as stage_schemas
-from src.schemas.admin import standing as standing_schemas
-from src.schemas.admin import team as team_schemas
-from src.schemas.admin import tournament as tournament_schemas
-from src.schemas.admin import tournament_link as tlink_schemas
 from src.services.admin.encounter import encounter_service as enc_service
-from src.services.admin.player_sub_role import PlayerSubRoleService
-from src.services.admin.player_sub_role import player_sub_role_service as psr_service
-from src.services.admin.stage import AdminStageService, stage_service
+from src.services.admin.stage import stage_service
 from src.services.admin.standing import standing_service
 from src.services.admin.team import team_service
 from src.services.admin.tournament import tournament_service
@@ -90,16 +82,12 @@ class AdminRegistryService:
         team_flows: TeamFlowsService = team_flows,
         encounter_flows: EncounterFlowsService = encounter_flows,
         standings_flows: StandingsFlowsService = standings_flows,
-        stage: AdminStageService = stage_service,
-        player_sub_roles: PlayerSubRoleService = psr_service,
         tournament_links: TournamentLinkService = tlink_service,
     ) -> None:
         self.tournament_flows = tournament_flows
         self.team_flows = team_flows
         self.encounter_flows = encounter_flows
         self.standings_flows = standings_flows
-        self.stage = stage
-        self.player_sub_roles = player_sub_roles
         self.tournament_links = tournament_links
 
     # --- workspace resolvers for create/list (must be awaitables) ---
@@ -133,8 +121,6 @@ class AdminRegistryService:
     async def _ws_via_stage_item_path(self, session: AsyncSession, data: dict[str, Any]) -> int:
         return await auth.get_stage_item_workspace_id(session, _int_or_400(data.get("stage_item_id"), "stage_item_id"))
 
-    async def _ws_query(self, session: AsyncSession, data: dict[str, Any]) -> int:
-        return _int_or_400(_query(data).get("workspace_id"), "workspace_id")
 
     # --- serializers (async (session, model) -> json-able dict) ---
 
@@ -143,9 +129,15 @@ class AdminRegistryService:
         # form from it, so this read must ask for it explicitly. `division_grid_version`
         # is the same kind of opt-in: the hub's draft setup resolves player divisions
         # against the tournament's OWN grid, not the workspace default.
-        return _dump(
-            await self.tournament_flows.to_pydantic(session, m, ["stages", "roster_shape", "division_grid_version"])
-        )
+        #
+        # `tournament_read`, not `to_pydantic`: it resolves the `challonge_source`-derived
+        # ids/slugs, which `to_pydantic` serializes as None when a caller omits them (the
+        # columns behind those fields are gone). Omitting them here made the admin Settings
+        # tab read back `challonge_slug: null` right after linking a bracket -- the field
+        # looked blank, the badge read "Not linked" and every sync control stayed disabled
+        # even though the link was persisted.
+        entities = ["stages", "roster_shape", "division_grid_version"]
+        return _dump(await self.tournament_flows.tournament_read(session, m, entities))
 
     async def _ser_team(self, session: AsyncSession, m: Any) -> Any:
         return _dump(
@@ -161,7 +153,9 @@ class AdminRegistryService:
         return _dump(await self.team_flows.to_pydantic_player(session, m, ["user", "tournament"], grid=grid))
 
     async def _ser_stage(self, session: AsyncSession, m: Any) -> Any:
-        return _dump(schemas.StageRead.model_validate(m, from_attributes=True))
+        # `stage_read`, not `model_validate`: same derivation as `_list_stages`, else a
+        # stage create/update response blanks the hub's Challonge link.
+        return _dump(await self.tournament_flows.stage_read(session, m))
 
     async def _ser_stage_item(self, session: AsyncSession, m: Any) -> Any:
         return _dump(schemas.StageItemRead.model_validate(m, from_attributes=True))
@@ -178,31 +172,22 @@ class AdminRegistryService:
     async def _ser_standing(self, session: AsyncSession, m: Any) -> Any:
         return _dump(await self.standings_flows.to_pydantic(session, m, ["team", "stage", "stage_item", "tournament"]))
 
-    async def _ser_player_sub_role(self, session: AsyncSession, m: Any) -> Any:
-        return _dump(psr_schemas.PlayerSubRoleRead.model_validate(m, from_attributes=True))
 
     async def _ser_tournament_link(self, session: AsyncSession, m: Any) -> Any:
-        return _dump(tlink_schemas.TournamentLinkRead.model_validate(m, from_attributes=True))
+        return _dump(schemas.TournamentLinkRead.model_validate(m, from_attributes=True))
 
     # --- list functions ---
 
     async def _list_stages(self, session: AsyncSession, data: dict[str, Any]) -> Any:
+        # `get_stages_read` runs the same query (items+inputs eager, ordered by
+        # `order`) and additionally applies the `challonge_source`-derived
+        # ids/slugs. Validating the models directly, as this used to, left every
+        # `stage.challonge_slug` null — the columns behind them are gone — so the
+        # hub's Challonge-source detection and the stage header link both went dead.
         tournament_id = _int_or_400(data.get("tournament_id"), "tournament_id")
-        stages = await self.stage.get_stages_by_tournament(session, tournament_id)
-        return [_dump(schemas.StageRead.model_validate(s, from_attributes=True)) for s in stages]
+        stages = await self.tournament_flows.get_stages_read(session, tournament_id)
+        return [_dump(stage) for stage in stages]
 
-    async def _list_player_sub_roles(self, session: AsyncSession, data: dict[str, Any]) -> Any:
-        q = _query(data)
-        workspace_id = _int_or_400(q.get("workspace_id"), "workspace_id")
-        role_raw = q.get("role")
-        role = (role_raw[0] if isinstance(role_raw, list) else role_raw) or None
-        inc_raw = q.get("include_inactive")
-        inc = inc_raw[0] if isinstance(inc_raw, list) else inc_raw
-        include_inactive = str(inc).lower() in ("1", "true", "yes", "on") if inc is not None else False
-        rows = await self.player_sub_roles.list_sub_roles(
-            session, workspace_id=workspace_id, role=role, include_inactive=include_inactive
-        )
-        return [_dump(psr_schemas.PlayerSubRoleRead.model_validate(r, from_attributes=True)) for r in rows]
 
     async def _list_tournament_links(self, session: AsyncSession, data: dict[str, Any]) -> Any:
         q = _query(data)
@@ -211,7 +196,7 @@ class AdminRegistryService:
         act = act_raw[0] if isinstance(act_raw, list) else act_raw
         active_only = str(act).lower() in ("1", "true", "yes", "on") if act is not None else False
         rows = await self.tournament_links.list_links(session, tournament_id, active_only=active_only)
-        return [_dump(tlink_schemas.TournamentLinkRead.model_validate(r, from_attributes=True)) for r in rows]
+        return [_dump(schemas.TournamentLinkRead.model_validate(r, from_attributes=True)) for r in rows]
 
 
 registry_service = AdminRegistryService()
@@ -225,8 +210,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,  # service hooks own all DB access; model unused
         permission_resource="tournament",
         serializer=registry_service._ser_tournament,
-        create_schema=tournament_schemas.TournamentCreate,
-        update_schema=tournament_schemas.TournamentUpdate,
+        create_schema=schemas.TournamentCreate,
+        update_schema=schemas.TournamentUpdate,
         resolve_ws_from_id=auth.get_tournament_workspace_id,
         resolve_ws_for_create=lambda s, d: _ws_body(d),
         service_create=lambda s, p, d: tournament_service.create_tournament(s, p),
@@ -241,8 +226,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="team",
         serializer=registry_service._ser_team,
-        create_schema=team_schemas.TeamCreate,
-        update_schema=team_schemas.TeamUpdate,
+        create_schema=schemas.TeamCreate,
+        update_schema=schemas.TeamUpdate,
         resolve_ws_from_id=auth.get_team_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_tournament_body,
         service_create=lambda s, p, d: team_service.create_team(s, p),
@@ -257,8 +242,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="player",
         serializer=registry_service._ser_player,
-        create_schema=team_schemas.PlayerCreate,
-        update_schema=team_schemas.PlayerUpdate,
+        create_schema=schemas.PlayerCreate,
+        update_schema=schemas.PlayerUpdate,
         resolve_ws_from_id=auth.get_player_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_team_body,
         service_create=lambda s, p, d: team_service.create_player(s, p),
@@ -272,8 +257,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="stage",
         serializer=registry_service._ser_stage,
-        create_schema=stage_schemas.StageCreate,
-        update_schema=stage_schemas.StageUpdate,
+        create_schema=schemas.StageCreate,
+        update_schema=schemas.StageUpdate,
         resolve_ws_from_id=auth.get_stage_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_tournament_path,
         resolve_ws_for_list=registry_service._ws_via_tournament_path,
@@ -292,24 +277,25 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="stage",
         serializer=registry_service._ser_stage_item,
-        create_schema=stage_schemas.StageItemCreate,
-        update_schema=stage_schemas.StageItemUpdate,
+        create_schema=schemas.StageItemCreate,
+        update_schema=schemas.StageItemUpdate,
         resolve_ws_from_id=auth.get_stage_item_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_stage_path,
         service_create=lambda s, p, d: stage_service.create_stage_item(
             s, _int_or_400(d.get("stage_id"), "stage_id"), p
         ),
         service_update=lambda s, i, p, d: stage_service.update_stage_item(s, i, p),
+        service_delete=lambda s, i, d: stage_service.delete_stage_item(s, i),
         not_found_detail="Stage item not found",
-        actions=frozenset({"create", "update"}),
+        actions=frozenset({"create", "update", "delete"}),
     ),
     "stage_item_input": EntityConfig(
         entity="stage_item_input",
         model=None,
         permission_resource="stage",
         serializer=registry_service._ser_stage_item_input,
-        create_schema=stage_schemas.StageItemInputCreate,
-        update_schema=stage_schemas.StageItemInputUpdate,
+        create_schema=schemas.StageItemInputCreate,
+        update_schema=schemas.StageItemInputUpdate,
         resolve_ws_from_id=auth.get_stage_item_input_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_stage_item_path,
         service_create=lambda s, p, d: stage_service.create_stage_item_input(
@@ -324,8 +310,8 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="match",
         serializer=registry_service._ser_encounter,
-        create_schema=enc_schemas.EncounterCreate,
-        update_schema=enc_schemas.EncounterUpdate,
+        create_schema=schemas.EncounterCreate,
+        update_schema=schemas.EncounterUpdate,
         resolve_ws_from_id=auth.get_encounter_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_tournament_body,
         service_create=lambda s, p, d: enc_service.create_encounter(s, p),
@@ -339,37 +325,21 @@ REGISTRY: dict[str, EntityConfig] = {
         model=None,
         permission_resource="standing",
         serializer=registry_service._ser_standing,
-        update_schema=standing_schemas.StandingUpdate,
+        update_schema=schemas.StandingUpdate,
         resolve_ws_from_id=auth.get_standing_workspace_id,
         service_update=lambda s, i, p, d: standing_service.update_standing(s, i, p),
         service_delete=lambda s, i, d: standing_service.delete_standing(s, i),
         not_found_detail="Standing not found",
         actions=frozenset({"update", "delete"}),
     ),
-    "player_sub_role": EntityConfig(
-        entity="player_sub_role",
-        model=None,
-        permission_resource="player",
-        serializer=registry_service._ser_player_sub_role,
-        create_schema=psr_schemas.PlayerSubRoleCreate,
-        update_schema=psr_schemas.PlayerSubRoleUpdate,
-        resolve_ws_from_id=auth.get_player_sub_role_workspace_id,
-        resolve_ws_for_create=lambda s, d: _ws_body(d),
-        resolve_ws_for_list=registry_service._ws_query,
-        service_create=lambda s, p, d: psr_service.create_sub_role(s, p),
-        service_update=lambda s, i, p, d: psr_service.update_sub_role(s, i, p),
-        service_delete=lambda s, i, d: psr_service.deactivate_sub_role(s, i),
-        list_fn=registry_service._list_player_sub_roles,
-        not_found_detail="Player sub-role not found",
-        actions=frozenset({"create", "update", "delete", "list"}),
-    ),
+    "player_sub_role": player_sub_role_entity(),
     "tournament_link": EntityConfig(
         entity="tournament_link",
         model=None,
         permission_resource="tournament_link",
         serializer=registry_service._ser_tournament_link,
-        create_schema=tlink_schemas.TournamentLinkCreate,
-        update_schema=tlink_schemas.TournamentLinkUpdate,
+        create_schema=schemas.TournamentLinkCreate,
+        update_schema=schemas.TournamentLinkUpdate,
         resolve_ws_from_id=auth.get_tournament_link_workspace_id,
         resolve_ws_for_create=registry_service._ws_via_tournament_body,
         resolve_ws_for_list=registry_service._ws_via_tournament_query,

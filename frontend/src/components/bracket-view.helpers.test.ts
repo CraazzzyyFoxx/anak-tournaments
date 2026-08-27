@@ -27,7 +27,6 @@ function createEncounter(id: number, round: number, sources?: EncounterSlotSourc
     stage_id: 1,
     stage_item_id: 1,
     challonge_id: null,
-    challonge_slug: null,
     status: "open",
     closeness: null,
     has_logs: false,

@@ -7,7 +7,6 @@ entropy, never stored raw, compared without a timing signal.
 from __future__ import annotations
 
 import hashlib
-import os
 import sys
 from pathlib import Path
 from unittest import TestCase
@@ -15,9 +14,6 @@ from unittest import TestCase
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
-
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 from shared.domain import invite_token  # noqa: E402
 

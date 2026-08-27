@@ -13,34 +13,10 @@ entry must answer the whole payload with no database access at all.
 """
 
 import asyncio
-import os
 import sys
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
-
-
-def _ensure_test_env() -> None:
-    env = {
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "anak_dev",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
-        "JWT_SECRET_KEY": "test-secret",
-        "DISCORD_CLIENT_ID": "discord-client",
-        "DISCORD_CLIENT_SECRET": "discord-secret",
-        "TWITCH_CLIENT_ID": "twitch-client",
-        "TWITCH_CLIENT_SECRET": "twitch-secret",
-        "BATTLENET_CLIENT_ID": "battlenet-client",
-        "BATTLENET_CLIENT_SECRET": "battlenet-secret",
-        "OAUTH_REDIRECT": "http://localhost:3000/auth/callback",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -50,7 +26,7 @@ import sqlalchemy as sa  # noqa: E402
 
 from shared.rbac import assign_workspace_system_role, ensure_workspace_system_roles  # noqa: E402
 from shared.repository import get_or_create_workspace_member  # noqa: E402
-from shared.services.division_grid_access import get_default_division_grid_version_id  # noqa: E402
+from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from src import models, schemas  # noqa: E402
 from src.services.auth import auth  # noqa: E402
 from src.services.token_payload import TokenPayloadBuilder, token_payloads  # noqa: E402

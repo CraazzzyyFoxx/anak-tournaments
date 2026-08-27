@@ -26,14 +26,6 @@ if sys.platform == "win32":
 def _ensure_test_env() -> None:
     env = {
         "DEBUG": "true",
-        "PROJECT_URL": "http://localhost",
-        "RABBITMQ_URL": "amqp://guest:guest@localhost:5672",
-        "REDIS_URL": "redis://localhost:6379/0",
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "anak_dev",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
     }
     for key, value in env.items():
         os.environ.setdefault(key, value)
@@ -50,8 +42,8 @@ from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.models.balancer.draft import DraftSession  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
-from shared.services.division_grid_access import get_default_division_grid_version_id  # noqa: E402
-from src.schemas.admin import tournament as admin_schemas  # noqa: E402
+from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
+from src import schemas  # noqa: E402
 from src.services.admin import tournament as admin_tournament  # noqa: E402
 
 
@@ -114,7 +106,7 @@ async def _cleanup(session_maker, *, workspace_id: int) -> None:
         await session.commit()
 
 
-def _run_update(draft_status: str | None, update: admin_schemas.TournamentUpdate):
+def _run_update(draft_status: str | None, update: schemas.TournamentUpdate):
     """Seed, run update_tournament, return (exception-or-None, team_formation after)."""
 
     async def _run():
@@ -139,7 +131,7 @@ def _run_update(draft_status: str | None, update: admin_schemas.TournamentUpdate
 
 
 def test_team_formation_change_blocked_by_active_draft() -> None:
-    error, formation = _run_update(enums.DraftStatus.LIVE, admin_schemas.TournamentUpdate(team_formation="balancer"))
+    error, formation = _run_update(enums.DraftStatus.LIVE, schemas.TournamentUpdate(team_formation="balancer"))
     assert error is not None
     assert error.status_code == 400
     assert formation == "draft"  # unchanged
@@ -147,7 +139,7 @@ def test_team_formation_change_blocked_by_active_draft() -> None:
 
 def test_team_formation_change_allowed_when_draft_completed() -> None:
     error, formation = _run_update(
-        enums.DraftStatus.COMPLETED, admin_schemas.TournamentUpdate(team_formation="balancer")
+        enums.DraftStatus.COMPLETED, schemas.TournamentUpdate(team_formation="balancer")
     )
     assert error is None
     assert formation == "balancer"
@@ -156,7 +148,7 @@ def test_team_formation_change_allowed_when_draft_completed() -> None:
 def test_same_value_patch_not_blocked_by_active_draft() -> None:
     # Re-sending the current value is not a change and must pass even mid-draft.
     error, formation = _run_update(
-        enums.DraftStatus.LIVE, admin_schemas.TournamentUpdate(team_formation="draft", name="renamed")
+        enums.DraftStatus.LIVE, schemas.TournamentUpdate(team_formation="draft", name="renamed")
     )
     assert error is None
     assert formation == "draft"
@@ -223,7 +215,7 @@ def test_guard_passes_and_excludes_terminal_statuses() -> None:
     assert "cancelled" in compiled and "completed" in compiled  # terminal statuses excluded
 
 
-def _run_update_unit(monkeypatch, *, draft_status, update: admin_schemas.TournamentUpdate):
+def _run_update_unit(monkeypatch, *, draft_status, update: schemas.TournamentUpdate):
     """Drive update_tournament against a fake session; return (error, session, tournament)."""
     tournament = _tournament_stub()
     session = _FakeSession(tournament=tournament, draft_status=draft_status)
@@ -246,7 +238,7 @@ def test_update_blocked_before_commit_when_draft_active(monkeypatch) -> None:
     error, session, tournament = _run_update_unit(
         monkeypatch,
         draft_status="live",
-        update=admin_schemas.TournamentUpdate(team_formation="balancer"),
+        update=schemas.TournamentUpdate(team_formation="balancer"),
     )
     assert error is not None and error.status_code == 400
     assert session.committed is False
@@ -257,7 +249,7 @@ def test_update_same_value_skips_guard(monkeypatch) -> None:
     error, session, _ = _run_update_unit(
         monkeypatch,
         draft_status="live",
-        update=admin_schemas.TournamentUpdate(team_formation="draft", name="renamed"),
+        update=schemas.TournamentUpdate(team_formation="draft", name="renamed"),
     )
     assert error is None
     assert session.scalar_stmts == []  # guard query never issued
@@ -268,7 +260,7 @@ def test_update_allowed_when_no_active_session(monkeypatch) -> None:
     error, session, tournament = _run_update_unit(
         monkeypatch,
         draft_status=None,
-        update=admin_schemas.TournamentUpdate(team_formation="balancer"),
+        update=schemas.TournamentUpdate(team_formation="balancer"),
     )
     assert error is None
     assert tournament.team_formation == "balancer"

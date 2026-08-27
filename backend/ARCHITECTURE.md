@@ -8,12 +8,14 @@ which layer new code belongs in.
 
 It is not a proposal. It is a description of the pattern `identity-service` has followed
 since it was written, that `app-service` (2026-08-20), `balancer-service` (2026-08-21),
-`parser-service` (2026-08-21) and `tournament-service` (2026-08-22) were converted to. Every
-new domain, in every service, follows it. Case studies with before/after numbers live in
+`parser-service` (2026-08-21), `tournament-service` (2026-08-22) and
+`analytics-service` (2026-08-24) were converted to. Every new domain, in every service,
+follows it. Case studies with before/after numbers live in
 `docs/plans/2026-08-20-app-service-oop-repositories.md`,
 `docs/plans/2026-08-21-balancer-service-oop-repositories.md`,
-`docs/plans/2026-08-21-parser-service-oop-repositories.md` and
-`docs/plans/2026-08-22-tournament-service-oop-repositories.md`.
+`docs/plans/2026-08-21-parser-service-oop-repositories.md`,
+`docs/plans/2026-08-22-tournament-service-oop-repositories.md` and
+`docs/plans/2026-08-24-analytics-service-oop-repositories.md`.
 
 ## The five layers
 

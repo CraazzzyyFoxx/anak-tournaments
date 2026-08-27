@@ -1,5 +1,4 @@
 import asyncio
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -8,29 +7,6 @@ from types import SimpleNamespace
 import pytest
 
 from shared.core.errors import BaseAPIException as HTTPException
-
-
-def _ensure_test_env() -> None:
-    env = {
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "auth_test",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
-        "JWT_SECRET_KEY": "test-secret",
-        "DISCORD_CLIENT_ID": "discord-client",
-        "DISCORD_CLIENT_SECRET": "discord-secret",
-        "TWITCH_CLIENT_ID": "twitch-client",
-        "TWITCH_CLIENT_SECRET": "twitch-secret",
-        "BATTLENET_CLIENT_ID": "battlenet-client",
-        "BATTLENET_CLIENT_SECRET": "battlenet-secret",
-        "OAUTH_REDIRECT": "http://localhost:3000/auth/callback",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -331,6 +307,40 @@ def test_auth_user_admin_panel_access_allows_scoped_non_read_permission() -> Non
     assert current_user.has_admin_panel_access() is True
     assert current_user.has_admin_panel_access(8) is True
     assert current_user.has_admin_panel_access(9) is False
+
+
+def test_auth_user_admin_panel_access_rejects_custom_game_grants() -> None:
+    """Hosting a mix is a member-level capability, not an admin-panel key."""
+    current_user = models.AuthUser(
+        email="host@example.com",
+        username="host",
+        is_active=True,
+        is_superuser=False,
+        is_verified=True,
+    )
+    current_user.set_rbac_cache(
+        role_names=[],
+        permissions=[],
+        workspace_rbac={
+            10: {
+                "roles": ["member"],
+                "permissions": [
+                    {"resource": "custom_game", "action": "read"},
+                    {"resource": "custom_game", "action": "create"},
+                    {"resource": "custom_game", "action": "update"},
+                    {"resource": "custom_game", "action": "delete"},
+                ],
+            },
+            11: {
+                "roles": ["member"],
+                "permissions": [{"resource": "team", "action": "update"}],
+            },
+        },
+    )
+
+    assert current_user.has_admin_panel_access(10) is False
+    # The exclusion is per-resource, not a blanket kill of the non-read shortcut.
+    assert current_user.has_admin_panel_access(11) is True
 
 
 def test_auth_user_admin_panel_access_allows_panel_roles() -> None:

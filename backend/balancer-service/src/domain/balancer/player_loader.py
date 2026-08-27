@@ -19,6 +19,8 @@ def parse_player_node(
         identity = data.get("identity", {})
         name = identity.get("name", "Unknown")
         is_flex = bool(identity.get("isFullFlex", False))
+        must_play = bool(identity.get("mustPlay", False))
+        rotation_priority = float(identity.get("rotationPriority", 0.0) or 0.0)
         raw_classes = data.get("stats", {}).get("classes", {})
         ratings: dict[str, int] = {}
         role_priorities: list[tuple[int, str]] = []
@@ -66,7 +68,17 @@ def parse_player_node(
             # slots existed.
             return None
 
-        return Player(name, ratings, preferences, uuid, mask, is_flex=is_flex, subclasses=subclasses)
+        return Player(
+            name,
+            ratings,
+            preferences,
+            uuid,
+            mask,
+            is_flex=is_flex,
+            subclasses=subclasses,
+            must_play=must_play,
+            rotation_priority=rotation_priority,
+        )
     except Exception as exc:
         logger.warning(f"Failed to parse player {uuid}: {exc}")
         return None

@@ -13,10 +13,12 @@ from typing import Any
 from faststream.rabbit import RabbitMessage
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.messaging.config import DISCORD_COMMANDS_QUEUE
+from shared.observability import publish_message
 from shared.rpc.identity import ensure_workspace_permission
+from shared.schemas.events import DiscordCommandEvent
+from src import schemas
 from src.core import auth, db
-from src.schemas.admin import settings as settings_schemas
-from src.schemas.admin.discord_channel import DiscordChannelRead, DiscordChannelUpsert
 from src.services.admin.discord_channel import discord_channel_service
 from src.services.admin.settings import settings_service
 from src.services.gamemode.service import gamemode_service
@@ -52,7 +54,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
             rows = await settings_service.list_settings(session)
-            return [settings_schemas.SettingRead.model_validate(row) for row in rows]
+            return [schemas.SettingRead.model_validate(row) for row in rows]
 
         return await c.envelope(logger, "settings.list", op, session_factory=_SF)
 
@@ -64,7 +66,7 @@ def register(broker: Any, logger: Any) -> None:
             if not key:
                 raise HTTPException(status_code=422, detail="key is required")
             setting = await settings_service.get_setting(session, key)
-            return settings_schemas.SettingRead.model_validate(setting)
+            return schemas.SettingRead.model_validate(setting)
 
         return await c.envelope(logger, "settings.get", op, session_factory=_SF)
 
@@ -76,13 +78,13 @@ def register(broker: Any, logger: Any) -> None:
             key = data.get("key")
             if not key:
                 raise HTTPException(status_code=422, detail="key is required")
-            body = settings_schemas.SettingUpsert.model_validate(c.payload(data))
+            body = schemas.SettingUpsert.model_validate(c.payload(data))
             # `settings_service.upsert_setting` already commits — no rpc-level
             # re-commit.
             setting = await settings_service.upsert_setting(
                 session, key, body.value, description=body.description, updated_by=user.id
             )
-            return settings_schemas.SettingRead.model_validate(setting)
+            return schemas.SettingRead.model_validate(setting)
 
         return await c.envelope(logger, "settings.upsert", op, session_factory=_SF)
 
@@ -96,7 +98,7 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = await auth._get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, workspace_id, "discord_channel", "read")
             channel = await discord_channel_service.get(session, tournament_id)
-            return DiscordChannelRead.model_validate(channel, from_attributes=True) if channel else None
+            return schemas.DiscordChannelRead.model_validate(channel, from_attributes=True) if channel else None
 
         return await c.envelope(logger, "discord_channel.get", op, session_factory=_SF)
 
@@ -108,7 +110,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = c.require_id(data)
             workspace_id = await auth._get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, workspace_id, "discord_channel", "update")
-            body = DiscordChannelUpsert.model_validate(c.payload(data))
+            body = schemas.DiscordChannelUpsert.model_validate(c.payload(data))
 
             # `_get_tournament_workspace_id` above already raises 404 if the
             # tournament doesn't exist, so no separate existence check here.
@@ -119,9 +121,31 @@ def register(broker: Any, logger: Any) -> None:
                 channel_name=body.channel_name,
                 is_active=body.is_active,
             )
-            return DiscordChannelRead.model_validate(channel, from_attributes=True)
+            return schemas.DiscordChannelRead.model_validate(channel, from_attributes=True)
 
         return await c.envelope(logger, "discord_channel.upsert", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.parser.discord_channel.backfill")
+    async def _discord_backfill(data: dict, msg: RabbitMessage) -> dict:
+        # Manual channel-history backfill: same "process_all" bot command the
+        # startup history rescan uses, triggered on demand for a workspace that
+        # just connected an existing Discord channel with prior match logs in it.
+        async def op(session: Any) -> Any:
+            user = c.actor(data)
+            c.require_active(user)
+            tournament_id = c.require_id(data)
+            workspace_id = await auth._get_tournament_workspace_id(session, tournament_id)
+            ensure_workspace_permission(user, workspace_id, "discord_channel", "update")
+
+            channel = await discord_channel_service.get(session, tournament_id)
+            if channel is None:
+                raise HTTPException(status_code=404, detail="Discord channel not configured")
+
+            event = DiscordCommandEvent(action="process_all", tournament_id=tournament_id)
+            await publish_message(broker, event.model_dump(), DISCORD_COMMANDS_QUEUE, logger=logger)
+            return {"message": "Backfill started: scanning channel history for match logs"}
+
+        return await c.envelope(logger, "discord_channel.backfill", op, session_factory=_SF)
 
     @broker.subscriber("rpc.parser.discord_channel.delete")
     async def _discord_delete(data: dict, msg: RabbitMessage) -> dict:

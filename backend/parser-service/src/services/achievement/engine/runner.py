@@ -19,11 +19,11 @@ from shared.models.achievements.achievement import (
 )
 from shared.repository.support import EvaluationRunRepository
 from shared.repository.tournament import TournamentRepository
-from shared.services.division_grid_access import (
+from shared.services.division_grid.access import (
     build_workspace_division_grid_normalizer,
     get_effective_division_grid,
 )
-from shared.services.division_grid_normalization import (
+from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
 )

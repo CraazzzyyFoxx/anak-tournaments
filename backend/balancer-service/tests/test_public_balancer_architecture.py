@@ -15,19 +15,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
-os.environ.setdefault("S3_ACCESS_KEY", "test")
-os.environ.setdefault("S3_SECRET_KEY", "test")
-os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
-os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from src.core.job_store import BalancerJobStore  # noqa: E402
@@ -36,7 +23,7 @@ from src.domain.balancer.entities import Player  # noqa: E402
 from src.domain.balancer.moo_backend import _serialize_native_request, run_moo_optimizer  # noqa: E402
 from src.domain.balancer.player_loader import load_players_from_dict  # noqa: E402
 from src.domain.balancer.role_assignment_service import find_feasible_role_assignment  # noqa: E402
-from src.domain.balancer.runtime import balance_teams_moo  # noqa: E402
+from src.domain.balancer.runtime import balance_teams_tournament  # noqa: E402
 from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
 from src.services.balancer.request_parser import BalancerRequestParser  # noqa: E402
 
@@ -554,7 +541,7 @@ class MooDeterminismTests(TestCase):
 
         with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
             with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
-                runs = [balance_teams_moo(input_data, config_overrides, None, role_mask)[0]["teams"] for _ in range(3)]
+                runs = [balance_teams_tournament(input_data, config_overrides, None, role_mask)[0]["teams"] for _ in range(3)]
 
         self.assertEqual(runs[0], runs[1])
         self.assertEqual(runs[1], runs[2])
@@ -613,12 +600,12 @@ class MooDeterminismTests(TestCase):
 
         with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
             with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
-                ordered_run = balance_teams_moo(make_input([1, 2, 3, 4, 5, 6]), config_overrides, None, role_mask)[0][
-                    "teams"
-                ]
-                reversed_run = balance_teams_moo(make_input([6, 5, 4, 3, 2, 1]), config_overrides, None, role_mask)[0][
-                    "teams"
-                ]
+                ordered_run = balance_teams_tournament(make_input([1, 2, 3, 4, 5, 6]), config_overrides, None, role_mask)[
+                    0
+                ]["teams"]
+                reversed_run = balance_teams_tournament(
+                    make_input([6, 5, 4, 3, 2, 1]), config_overrides, None, role_mask
+                )[0]["teams"]
 
         self.assertEqual(ordered_run, reversed_run)
         self.assertEqual(observed_player_orders[0], observed_player_orders[1])
@@ -626,3 +613,71 @@ class MooDeterminismTests(TestCase):
             observed_player_orders[0],
             [f"player-{index}" for index in range(1, 7)],
         )
+
+    def test_balance_teams_moo_benches_players_left_over_after_full_teams(self) -> None:
+        """A player count that isn't an exact multiple of the team size no
+        longer blocks the run: the leftover players are benched automatically
+        instead of the solver raising a "must be divisible" error."""
+        input_data = {
+            "players": {
+                f"player-{index}": {
+                    "identity": {
+                        "name": f"Player {index}",
+                        "isFullFlex": False,
+                    },
+                    "stats": {
+                        "classes": {
+                            "tank": {
+                                "isActive": True,
+                                "rank": 2500,
+                                "priority": 0,
+                            }
+                        }
+                    },
+                }
+                for index in range(1, 6)  # 5 players, team size 2 -> 1 sits out
+            }
+        }
+        role_mask = {"tank": 2}
+        config_overrides = {
+            "algorithm": "moo",
+            "population_size": 10,
+            "generation_count": 10,
+            "mutation_strength": 1,
+            "max_result_variants": 1,
+            "use_captains": False,
+        }
+
+        def fake_run_moo_optimizer(request_payload: str) -> str:
+            payload = json.loads(request_payload)
+            players = sorted(payload["players"], key=lambda entry: entry["uuid"])
+            team_size = sum(payload["mask"].values())
+            # The native backend must only ever see a player count that
+            # divides evenly into full teams -- the leftover was trimmed
+            # before this request was built.
+            self.assertEqual(len(players) % team_size, 0)
+            teams = [
+                {
+                    "id": team_index + 1,
+                    "roster": {
+                        "tank": [
+                            player["uuid"]
+                            for player in players[team_index * team_size : (team_index + 1) * team_size]
+                        ]
+                    },
+                }
+                for team_index in range(len(players) // team_size)
+            ]
+            return json.dumps({"variants": [{"teams": teams}]})
+
+        native_module = SimpleNamespace(run_moo_optimizer=fake_run_moo_optimizer)
+
+        with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
+            with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
+                result = balance_teams_tournament(input_data, config_overrides, None, role_mask)[0]
+
+        self.assertEqual(len(result["teams"]), 2)
+        self.assertEqual(sum(len(team["roster"].get("tank", [])) for team in result["teams"]), 4)
+        benched = result["benched_players"]
+        self.assertEqual(len(benched), 1)
+        self.assertEqual(benched[0]["uuid"], "player-5")

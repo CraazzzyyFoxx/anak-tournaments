@@ -26,7 +26,6 @@ admin) is serialised by the row lock + result-status state machine.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from collections import defaultdict
 from contextlib import contextmanager
@@ -39,16 +38,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 from shared.core.enums import StageType  # noqa: E402
 from shared.services.bracket.engine import generate_bracket  # noqa: E402

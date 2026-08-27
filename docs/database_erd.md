@@ -299,7 +299,10 @@ erDiagram
         string custom_domain UK "nullable"
         timestamp custom_domain_verified_at "nullable"
         string custom_domain_verification_token "nullable"
-        string discord_guild_id "nullable"
+        string discord_guild_id UK "nullable"
+        timestamp discord_guild_verified_at "nullable"
+        int discord_guild_verified_by_auth_user_id FK "nullable → auth.user (SET NULL)"
+        int owner_id FK "nullable → auth.user (SET NULL); accountability, decoupled from RBAC owner role"
         int default_division_grid_version_id FK "nullable"
     }
     WORKSPACE_MEMBER {
@@ -322,6 +325,8 @@ erDiagram
     WORKSPACE ||--o{ WORKSPACE_MEMBER : "участники"
     PLAYERS_USER ||--o{ WORKSPACE_MEMBER : "член воркспейса"
     DIVISION_GRID_VERSION |o--o{ WORKSPACE : "дефолтная сетка"
+    AUTH_USER |o--o{ WORKSPACE : "owner_id, accountability, decoupled от RBAC (SET NULL)"
+    AUTH_USER |o--o{ WORKSPACE : "верифицировал Discord-гильдию (SET NULL)"
 ```
 
 > **`workspace_member`** ключуется на `player_id` (FK → `players.user`) с
@@ -1640,3 +1645,15 @@ erDiagram
   режимов — ручные (у `/maps` и `/gamemodes` параметра `locale` нет).
   Одна ревизия, expand/contract не нужен: колонка nullable-по-умолчанию для
   старого кода невидима, а новый код читает её сразу после применения.
+- **Workspace self-service: верификация Discord-гильдии + owner_id (`wsgdvrf01`).**
+  `public.workspace.discord_guild_id` получает UNIQUE (раньше — свободный текст
+  без проверки владения и без уникальности); добавлены
+  `discord_guild_verified_at`/`discord_guild_verified_by_auth_user_id` (тот же
+  аудит-шаблон, что `custom_domain_verified_at`/`custom_domain_verification_token`)
+  и `owner_id` (FK → `auth.user`, `SET NULL`) — кто создал воркспейс, намеренно
+  отделено от RBAC-роли `owner` (`auth.roles`, изменяемая, может быть несколько
+  со-владельцев). Одна ревизия, чистый expand: `owner_id` бэкфиллится из текущего
+  держателя RBAC-роли `owner`, только если он единственный; при 0 или нескольких
+  держателях остаётся `NULL` (безобидно — просто не считается ни в чей лимит
+  создания воркспейсов). См.
+  `docs/superpowers/specs/2026-08-26-workspace-self-service-design.md`.

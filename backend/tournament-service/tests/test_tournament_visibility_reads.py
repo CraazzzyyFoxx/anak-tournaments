@@ -28,14 +28,6 @@ if sys.platform == "win32":
 def _ensure_test_env() -> None:
     env = {
         "DEBUG": "true",
-        "PROJECT_URL": "http://localhost",
-        "RABBITMQ_URL": "amqp://guest:guest@localhost:5672",
-        "REDIS_URL": "redis://localhost:6379/0",
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "anak_dev",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
     }
     for key, value in env.items():
         os.environ.setdefault(key, value)
@@ -52,8 +44,8 @@ from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPreviewAccess  # noqa: E402
-from shared.services.division_grid_access import get_default_division_grid_version_id  # noqa: E402
-from shared.services.tournament_visibility import assert_tournament_viewable  # noqa: E402
+from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
+from shared.services.tournament.visibility import assert_tournament_viewable  # noqa: E402
 from src import schemas  # noqa: E402
 from src.services.tournament import flows as tournament_flows  # noqa: E402
 

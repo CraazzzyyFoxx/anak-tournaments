@@ -24,16 +24,6 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 sync = importlib.import_module("src.services.challonge.sync")
 enums = importlib.import_module("shared.core.enums")
@@ -45,7 +35,6 @@ def _encounter(*, status, result_status, home=0, away=0) -> SimpleNamespace:
         tournament_id=1,
         stage_id=None,
         stage_item_id=None,
-        tournament_group_id=None,
         home_team_id=1,
         away_team_id=2,
         home_score=home,
@@ -135,3 +124,170 @@ class ConflictGuardProtectsLocalDecisions(IsolatedAsyncioTestCase):
         """Legacy rows completed before the state machine existed."""
         encounter = _encounter(status=enums.EncounterStatus.COMPLETED, result_status=enums.EncounterResultStatus.NONE)
         self.assertTrue(sync._has_local_decision(encounter))
+
+
+class CreatingAnAlreadyCompleteMatch(IsolatedAsyncioTestCase):
+    """A match can already be Challonge-``complete`` the first time the
+    importer sees it (importing a finished bracket). The row must be born
+    self-consistent: ``ck_encounter_result_status_matches_status`` forbids
+    ``status=COMPLETED`` with ``result_status`` still ``none``, so creation
+    must route through the same finalize+audit path as a live completion
+    rather than writing ``status`` alone."""
+
+    def _match(self, *, state: str) -> object:
+        return sync.schemas.ChallongeMatch(
+            id=1,
+            started_at=None,
+            created_at=sync.datetime.now(sync.UTC),
+            updated_at=None,
+            player1_id=None,
+            player2_id=None,
+            round=1,
+            identifier="A1",
+            state=state,
+            scores_csv="0-2",
+            tournament_id=1,
+            group_id=None,
+        )
+
+    async def _upsert(self, *, state: str):
+        tournament = SimpleNamespace(id=1)
+        source = sync._ImportSource(challonge_id=100, stage=SimpleNamespace())
+        match_lookup = sync._MatchLookup(
+            by_source_key={}, by_challonge_id={}, mapped_keys=set(), unlinked_by_slot={}
+        )
+        team_lookup = sync._TeamLookup(by_source_key={}, by_key={}, teams_by_id={})
+
+        created: list = []
+
+        async def fake_create(_session, encounter):
+            encounter.id = 1
+            created.append(encounter)
+            return encounter
+
+        audits: list = []
+
+        with (
+            patch.object(
+                sync.sync_service.structure,
+                "_resolve_stage_refs_for_match",
+                AsyncMock(return_value=sync.StageRefs(stage_id=None, stage_item_id=None)),
+            ),
+            patch.object(sync.sync_service.mapping, "_ensure_match_mapping", AsyncMock()),
+            patch.object(sync.sync_service.encounter_repo, "create", AsyncMock(side_effect=fake_create)),
+            patch.object(sync.finalize_service, "finalize_encounter_score", AsyncMock()) as finalize,
+            patch.object(sync, "record_result_transition", side_effect=lambda *_a, **kw: audits.append(kw)),
+        ):
+            result = await sync.sync_service._upsert_encounter_from_challonge(
+                SimpleNamespace(),
+                tournament,
+                source,
+                self._match(state=state),
+                match_lookup=match_lookup,
+                team_lookup=team_lookup,
+            )
+        return result, created, finalize, audits
+
+    async def test_confirms_and_finalizes_on_creation(self) -> None:
+        result, created, finalize, audits = await self._upsert(state="complete")
+
+        self.assertEqual("created", result.action)
+        self.assertTrue(result.newly_completed)
+        # Born OPEN, not COMPLETED-without-a-result_status — finalize (mocked
+        # here) is what actually moves it to COMPLETED in the real path.
+        self.assertEqual(enums.EncounterStatus.OPEN, created[0].status)
+        finalize.assert_awaited_once()
+        self.assertEqual(enums.EncounterResultStatus.CONFIRMED, finalize.await_args.kwargs["result_status"])
+        self.assertIsNotNone(finalize.await_args.kwargs["confirmed_at"])
+        self.assertEqual(1, len(audits))
+        self.assertEqual(enums.EncounterResultAuditAction.IMPORT, audits[0]["action"])
+        self.assertIsNone(audits[0]["actor_user_id"])
+
+    async def test_leaves_an_unfinished_match_alone(self) -> None:
+        result, created, finalize, audits = await self._upsert(state="open")
+
+        self.assertEqual("created", result.action)
+        self.assertFalse(result.newly_completed)
+        self.assertEqual(enums.EncounterStatus.OPEN, created[0].status)
+        finalize.assert_not_awaited()
+        self.assertEqual([], audits)
+
+
+class AdoptingAnUnlinkedLocalEncounter(IsolatedAsyncioTestCase):
+    """A bracket generated locally (StageService.generate_encounters) before its
+    Challonge source was ever imported already has real Encounter rows sitting in
+    the bracket's slots, with no challonge_match_mapping yet. Importing the same
+    slot must adopt that row instead of creating a duplicate sibling next to it —
+    the bug behind a double-elimination bracket's later rounds (and the Grand
+    Final in particular) rendering twice after a Challonge import."""
+
+    def _match(self) -> object:
+        return sync.schemas.ChallongeMatch(
+            id=1,
+            started_at=None,
+            created_at=sync.datetime.now(sync.UTC),
+            updated_at=None,
+            player1_id=101,
+            player2_id=102,
+            round=1,
+            identifier="A1",
+            state="complete",
+            scores_csv="2-0",
+            tournament_id=1,
+            group_id=None,
+        )
+
+    async def test_reuses_the_existing_slot_instead_of_creating_a_duplicate(self) -> None:
+        tournament = SimpleNamespace(id=1)
+        source = sync._ImportSource(challonge_id=100, stage=SimpleNamespace())
+        local_encounter = _encounter(
+            status=enums.EncounterStatus.OPEN, result_status=enums.EncounterResultStatus.NONE
+        )
+        match_lookup = sync._MatchLookup(
+            by_source_key={},
+            by_challonge_id={},
+            mapped_keys=set(),
+            unlinked_by_slot={(None, 1, frozenset({1, 2})): local_encounter},
+        )
+        team_lookup = sync._TeamLookup(
+            by_source_key={},
+            by_key={(None, 101): 1, (None, 102): 2},
+            teams_by_id={
+                1: SimpleNamespace(id=1, name="Home"),
+                2: SimpleNamespace(id=2, name="Away"),
+            },
+        )
+        created: list = []
+
+        async def fake_create(_session, encounter):
+            created.append(encounter)
+            return encounter
+
+        session = SimpleNamespace(flush=AsyncMock())
+
+        with (
+            patch.object(
+                sync.sync_service.structure,
+                "_resolve_stage_refs_for_match",
+                AsyncMock(return_value=sync.StageRefs(stage_id=None, stage_item_id=None)),
+            ),
+            patch.object(sync.sync_service.mapping, "_ensure_match_mapping", AsyncMock()),
+            patch.object(sync.sync_service.encounter_repo, "create", AsyncMock(side_effect=fake_create)),
+            patch.object(sync.finalize_service, "finalize_encounter_score", AsyncMock()),
+            patch.object(sync, "record_result_transition"),
+        ):
+            result = await sync.sync_service._upsert_encounter_from_challonge(
+                session,
+                tournament,
+                source,
+                self._match(),
+                match_lookup=match_lookup,
+                team_lookup=team_lookup,
+            )
+
+        self.assertEqual([], created, "must not create a second row for the same slot")
+        self.assertEqual("updated", result.action)
+        self.assertIs(local_encounter, result.encounter)
+        self.assertEqual(2, local_encounter.home_score)
+        self.assertEqual(0, local_encounter.away_score)
+        self.assertEqual({}, match_lookup.unlinked_by_slot, "the slot is claimed, not reusable twice")

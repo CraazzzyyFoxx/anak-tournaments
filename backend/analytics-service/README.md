@@ -25,22 +25,19 @@ APScheduler drift job would multi-fire).
   heavy queues; status and results live in the `AnalyticsJob` table, with live progress
   pushed over Redis (`workspace:{id}:analytics_jobs`) and relayed to WebSocket clients
   by the gateway.
-- **Balance-snapshot consumer (analytics-worker):** balancer-service emits
-  `balancer.balance.exported` via its outbox → `analytics_balance_snapshot` queue →
-  analytics-worker writes `analytics.balance_snapshot` + `balance_player_snapshot`.
 - **Nightly drift check (analytics-worker):** APScheduler cron at 03:30 UTC computes
   per-feature Wasserstein drift against a recent tournament window and emits a Sentry
   breadcrumb when a feature crosses the threshold.
 
 ## Scope
 
-- **v1:** OpenSkill / Plackett-Luce rating shifts, linear/points algorithms, and
-  predicted standings.
-- **v2:** a classical-ML pipeline — LightGBM/XGBoost gradient boosting + Bayesian layer +
-  Monte Carlo — for player performance, shifts, predicted standings, and match quality.
-  v2 is **implemented and wired** (`analytics_train` / `analytics_infer` queues,
-  `MLFeatureStore` / `MLModelArtifact`, and `AnalyticsStandingsDistribution` as the sole
-  predicted-place source), not merely planned.
+- **Ratings:** OpenSkill / Plackett-Luce rating shifts, linear/points algorithms.
+  Code lives in `src/domain/ratings.py` and `src/services/analytics/`.
+- **ML:** LightGBM/XGBoost + Bayesian layer + Monte Carlo — player performance,
+  shifts, predicted standings, match quality. Code lives in `src/services/ml/`
+  and `src/schemas/ml.py`. Wired via `analytics_train` / `analytics_infer`
+  queues, `MLModelArtifact`, and
+  `AnalyticsStandingsDistribution` as the sole predicted-place source.
 
 ## GPU worker
 

@@ -1,4 +1,4 @@
-from shared.subscriptions.discord_roles import RoleTier, parse_role_tiers, resolve_role_tier
+from shared.services.subscriptions.discord_roles import RoleTier, parse_role_tiers, resolve_role_tier
 
 TIERS = (
     RoleTier(role_id="100", tier_rank=1, tier_label="Уровень 1"),

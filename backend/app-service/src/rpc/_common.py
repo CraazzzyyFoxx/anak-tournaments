@@ -3,7 +3,7 @@
 Re-exports ``shared.rpc.common`` — the gateway envelope/param-decoding
 plumbing is identical across every typed-RPC service and lives there as the
 single source of truth. Only ``gate_tournament`` is genuinely app-service
-local (it wraps ``shared.services.tournament_visibility``).
+local (it wraps ``shared.services.tournament.visibility``).
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from shared.rpc.common import (
 from shared.rpc.common import (
     envelope as _envelope,
 )
-from shared.services.tournament_visibility import assert_tournament_viewable
+from shared.services.tournament.visibility import assert_tournament_viewable
 
 __all__ = (
     "identity_user_id",

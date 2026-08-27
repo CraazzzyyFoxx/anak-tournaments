@@ -12,24 +12,15 @@ which left every custom column on the roster permanently empty under a header
 that advertised it. The flag is gone -- one read model, one visibility rule.
 """
 
-import os
 from datetime import datetime
 from types import SimpleNamespace
 
 # Importing the read model instantiates the service Settings(); this file used
 # to rely on whichever sibling test module happened to be collected first.
-for _key, _value in {
-    "POSTGRES_HOST": "localhost",
-    "POSTGRES_PORT": "5432",
-    "POSTGRES_DB": "tournament_test",
-    "POSTGRES_USER": "postgres",
-    "POSTGRES_PASSWORD": "postgres",
-    "JWT_SECRET_KEY": "test-secret",
-    "REDIS_URL": "redis://localhost:6379",
-}.items():
-    os.environ.setdefault(_key, _value)
+
 
 from src.schemas.registration_build import _reg_to_read  # noqa: E402
+from shared.domain.member_rank import ResolvedRank  # noqa: E402
 
 
 def _reg_stub() -> SimpleNamespace:
@@ -86,6 +77,22 @@ def test_ranks_stay_hidden_unless_the_form_publishes_them():
     assert hidden.roles[0].rank_value is None
     assert shown.roles[0].rank_value == 3200
 
+
+
+def test_follow_reg_uses_inherited_workspace_rank():
+    stub = _reg_stub()
+    stub.roles = [
+        SimpleNamespace(role="tank", subrole=None, is_primary=True, priority=0, rank_value=None, hero_entries=[])
+    ]
+
+    read = _reg_to_read(
+        stub,
+        workspace_id=1,
+        show_ranks=True,
+        resolved_ranks={"tank": ResolvedRank(3200, "workspace")},
+    )
+
+    assert read.roles[0].rank_value == 3200
 
 def test_read_payload_includes_profile_visibility():
     read = _reg_to_read(_reg_stub(), workspace_id=1, profiles_open=True)

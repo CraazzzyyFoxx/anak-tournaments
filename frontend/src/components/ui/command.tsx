@@ -61,7 +61,9 @@ const CommandList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
-    className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
+    // `overscroll-contain`: reaching either end must not chain the scroll on to
+    // whatever sits behind the list (a dialog body, or the page).
+    className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden overscroll-contain", className)}
     {...props}
   />
 ));

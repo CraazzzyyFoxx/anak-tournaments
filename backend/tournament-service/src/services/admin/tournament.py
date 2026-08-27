@@ -12,16 +12,15 @@ from shared.core import tournament_state
 from shared.core.enums import StageType, TournamentStatus
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import ChallongeSourceRepository, StandingRepository, TournamentRepository
-from shared.services import division_grid_cache
-from shared.services.division_grid_access import get_workspace_division_grid_version_id
+from shared.services.division_grid import cache as division_grid_cache
+from shared.services.division_grid.access import get_workspace_division_grid_version_id
 from shared.services.draft_guards import assert_no_active_draft_session
 from shared.services.registration_team_guards import assert_no_registered_teams
 from shared.services.roster_shape_access import invalidate_roster_shape_cache
-from shared.services.tournament_computation import request_bracket_job
-from shared.services.tournament_slug import generate_unique_tournament_slug, slugify
-from src import models
+from shared.services.tournament.computation import request_bracket_job
+from shared.services.tournament.slug import generate_unique_tournament_slug, slugify
+from src import models, schemas
 from src.clients.challonge import challonge_client
-from src.schemas.admin import tournament as admin_schemas
 from src.services.admin.stage import stage_service
 from src.services.challonge.sync import sync_service
 from src.services.tournament.events import enqueue_tournament_changed, enqueue_tournament_state_changed
@@ -164,7 +163,7 @@ class AdminTournamentService:
         return tournament
 
     async def create_tournament(
-        self, session: AsyncSession, data: admin_schemas.TournamentCreate
+        self, session: AsyncSession, data: schemas.TournamentCreate
     ) -> models.Tournament:
         """Create a new tournament"""
         existing_tournament = await self.tournament_repo.get_by(
@@ -211,7 +210,7 @@ class AdminTournamentService:
         return await self.get_tournament(session, tournament.id)
 
     async def update_tournament(
-        self, session: AsyncSession, tournament_id: int, data: admin_schemas.TournamentUpdate
+        self, session: AsyncSession, tournament_id: int, data: schemas.TournamentUpdate
     ) -> models.Tournament:
         """Update tournament fields"""
         tournament = await self.tournament_repo.get(
@@ -324,7 +323,7 @@ class AdminTournamentService:
 
         tournament = await self.create_tournament(
             session,
-            admin_schemas.TournamentCreate(
+            schemas.TournamentCreate(
                 workspace_id=workspace_id,
                 name=challonge_tournament.name,
                 description=challonge_tournament.description,

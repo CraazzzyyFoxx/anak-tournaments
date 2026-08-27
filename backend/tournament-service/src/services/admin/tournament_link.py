@@ -3,8 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import TournamentLinkRepository
-from src import models
-from src.schemas.admin import tournament_link as schemas
+from src import models, schemas
 
 _CONFLICT_DETAIL = "Tournament link with this kind and url already exists for this tournament."
 
@@ -64,7 +63,7 @@ class TournamentLinkService:
             session,
             tournament_id=data.tournament_id,
             kind=data.kind,
-            url=data.url,
+            url=str(data.url),
         )
 
         link = await self.link_repo.create(
@@ -73,7 +72,7 @@ class TournamentLinkService:
                 tournament_id=data.tournament_id,
                 kind=data.kind,
                 label=data.label,
-                url=data.url,
+                url=str(data.url),
                 sort_order=data.sort_order,
                 is_active=data.is_active,
             ),
@@ -89,7 +88,7 @@ class TournamentLinkService:
         data: schemas.TournamentLinkUpdate,
     ) -> models.TournamentLink:
         link = await self.get_link(session, link_id)
-        update_data = data.model_dump(exclude_unset=True)
+        update_data = data.model_dump(mode="json", exclude_unset=True)
 
         next_kind = update_data.get("kind", link.kind)
         next_url = update_data.get("url", link.url)

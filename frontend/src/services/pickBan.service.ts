@@ -111,6 +111,13 @@ class PickBanService {
     return response.json();
   }
 
+  async listPublicConfigs(tournamentId: number): Promise<{ configs: PickBanConfig[] }> {
+    const response = await apiFetch(`/api/v1/tournaments/${tournamentId}/pick-ban-configs`, {
+      skipWorkspace: true,
+    });
+    return response.json();
+  }
+
   async listConfigs(tournamentId: number): Promise<{ configs: PickBanConfig[] }> {
     const response = await apiFetch(`/api/v1/admin/tournaments/${tournamentId}/pick-ban-configs`);
     return response.json();

@@ -7,7 +7,7 @@ Mirrors the in-memory AuthUser style of test_auth_user_workspace_deny.py.
 
 from shared.models.identity.auth_user import AuthUser
 from shared.models.tournament.tournament import Tournament
-from shared.services.tournament_visibility import (
+from shared.services.tournament.visibility import (
     admin_visible_workspace_ids,
     can_view_tournament,
     can_view_workspace_tournaments,

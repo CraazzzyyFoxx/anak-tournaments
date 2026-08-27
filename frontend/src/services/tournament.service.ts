@@ -1,5 +1,5 @@
 import { LookupItem, PaginatedResponse } from "@/types/pagination.types";
-import { MapVetoConfig, OwalStack, OwalStandings, Stage, Standings, Tournament } from "@/types/tournament.types";
+import { OwalStack, OwalStandings, Stage, Standings, Tournament } from "@/types/tournament.types";
 import { apiFetch } from "@/lib/api-fetch";
 import { normalizePaginatedResponse } from "@/lib/normalize-paginated-response";
 
@@ -146,11 +146,6 @@ export default class tournamentService {
 
   static async getStages(id: number): Promise<Stage[]> {
     return apiFetch(`/api/v1/tournaments/${id}/stages`, {
-      skipWorkspace: true,
-    }).then((response) => response.json());
-  }
-  static async getVetoConfigs(id: number): Promise<{ configs: MapVetoConfig[] }> {
-    return apiFetch(`/api/v1/tournaments/${id}/veto-configs`, {
       skipWorkspace: true,
     }).then((response) => response.json());
   }

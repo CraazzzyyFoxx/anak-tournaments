@@ -52,7 +52,7 @@ const HeroImage = ({ hero, size = "md", className, title, rounded = "full", popo
   const radiusClass = rounded === "full" ? "rounded-full" : "rounded-md";
 
   const avatar = (
-    <Avatar className={cn(radiusClass, className)} style={{ width: px, height: px }} title={title ?? hero.name}>
+    <Avatar className={cn(radiusClass, "border border-[color:var(--aqt-border-2)]", className)} style={{ width: px, height: px }} title={title ?? hero.name}>
       {hero.image_path ? <AvatarImage src={hero.image_path} alt={hero.name} className={radiusClass} /> : null}
       <AvatarFallback
         className={cn("aqt-display font-extrabold", radiusClass)}
@@ -106,7 +106,10 @@ export const HeroStrip = ({ heroes, size = "sm", limit = 5, className, renderPop
  * lives in `useHoverIntent`, shared with the workspace switcher.
  */
 const HoverPopover = ({ trigger, content }: { trigger: React.ReactNode; content: React.ReactNode }) => {
-  const { open, setOpen, cancel, scheduleOpen, scheduleClose } = useHoverIntent({ closeDelay: 120 });
+  const { open, setOpen, cancel, scheduleOpen, scheduleClose } = useHoverIntent({
+    closeDelay: 120,
+    exclusive: true
+  });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -115,15 +118,10 @@ const HoverPopover = ({ trigger, content }: { trigger: React.ReactNode; content:
           type="button"
           // Hover brightens a ring rather than scaling: a size change on hover
           // shifts neighbouring portraits in an avatar stack.
-          className="inline-flex rounded-full transition-shadow hover:ring-2 hover:ring-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+          className="inline-flex appearance-none border-0 bg-transparent p-0 leading-none rounded-full transition-shadow hover:ring-2 hover:ring-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
           onPointerEnter={(e) => {
             if (e.pointerType !== "mouse") return;
-            cancel();
-          }}
-          onPointerMove={(e) => {
-            if (e.pointerType !== "mouse") return;
-            if (!open) scheduleOpen();
-            else cancel();
+            scheduleOpen();
           }}
           onPointerLeave={(e) => {
             if (e.pointerType !== "mouse") return;
@@ -136,7 +134,8 @@ const HoverPopover = ({ trigger, content }: { trigger: React.ReactNode; content:
         </button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-80 data-[state=open]:animate-none data-[state=closed]:animate-none"
+        className="w-80"
+        animate={false}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onPointerEnter={(e) => {
           if (e.pointerType !== "mouse") return;

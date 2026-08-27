@@ -32,10 +32,8 @@ of the caller's own to exist and survives that player being re-linked/merged.
 from __future__ import annotations
 
 import base64
-import re
 from typing import Any
 
-import httpx
 from faststream.rabbit import RabbitMessage
 
 from shared.clients.s3 import upload_avatar
@@ -44,12 +42,9 @@ from shared.core.social import SOCIAL_PROVIDERS, SocialProvider
 from shared.rpc.query import build_query_model
 from src import schemas
 from src.core import clients, db
-from src.schemas.admin import user as admin_schemas
-from src.schemas.admin import user_merge as merge_schemas
 from src.services import user_cache
 from src.services.admin.favorites import favorites as favorites_service
 from src.services.admin.user import users as admin_users
-from src.services.admin.user_csv import csv_import as csv_service
 from src.services.admin.user_merge import merges as merge_service
 from src.services.user.service import users as user_service
 
@@ -57,9 +52,6 @@ from . import _common as c
 
 _SF = db.async_session_maker
 _ENTITIES = ["discord", "battle_tag", "twitch"]
-
-_SHEETS_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
-_GID_RE = re.compile(r"[?&#]gid=(\d+)")
 
 
 def _gate(data: dict, action: str) -> Any:
@@ -78,16 +70,6 @@ def _account_gate(data: dict) -> Any:
     if user.is_denied("account", "social"):
         raise HTTPException(status_code=403, detail="You are not allowed to manage your accounts")
     return user
-
-
-def _sheets_to_csv_url(url: str) -> str:
-    match = _SHEETS_ID_RE.search(url)
-    if not match:
-        raise HTTPException(status_code=400, detail="Could not extract spreadsheet ID from the provided URL.")
-    spreadsheet_id = match.group(1)
-    gid_match = _GID_RE.search(url)
-    gid = gid_match.group(1) if gid_match else "0"
-    return f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
 
 
 async def _envelope_and_invalidate(logger: Any, label: str, op: Any, data: dict) -> dict:
@@ -117,8 +99,8 @@ def register(broker: Any, logger: Any) -> None:
     async def _list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _gate(data, "read")
-            qp = build_query_model(admin_schemas.UserListQueryParams, data.get("query"))
-            res = await admin_users.get_users(session, admin_schemas.UserListParams.from_query_params(qp))
+            qp = build_query_model(schemas.UserListQueryParams, data.get("query"))
+            res = await admin_users.get_users(session, schemas.UserListParams.from_query_params(qp))
             results = [user_service.to_read(user, _ENTITIES).model_dump(mode="json") for user in res["results"]]
             return {
                 "results": results,
@@ -133,7 +115,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _create(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _gate(data, "create")
-            created = await admin_users.create_user(session, admin_schemas.UserCreate.model_validate(c.payload(data)))
+            created = await admin_users.create_user(session, schemas.UserCreate.model_validate(c.payload(data)))
             return user_service.to_read(created, _ENTITIES)
 
         return await c.envelope(logger, "users.admin_create", op, session_factory=_SF)
@@ -143,7 +125,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             _gate(data, "update")
             updated = await admin_users.update_user(
-                session, c.require_id(data), admin_schemas.UserUpdate.model_validate(c.payload(data))
+                session, c.require_id(data), schemas.UserAdminUpdate.model_validate(c.payload(data))
             )
             return user_service.to_read(updated, _ENTITIES)
 
@@ -164,7 +146,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
             return await merge_service.preview_merge(
-                session, merge_schemas.UserMergePreviewRequest.model_validate(c.payload(data))
+                session, schemas.UserMergePreviewRequest.model_validate(c.payload(data))
             )
 
         return await c.envelope(logger, "users.merge_preview", op, session_factory=_SF)
@@ -176,7 +158,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_superuser(user)
             return await merge_service.execute_merge(
                 session,
-                merge_schemas.UserMergeExecuteRequest.model_validate(c.payload(data)),
+                schemas.UserMergeExecuteRequest.model_validate(c.payload(data)),
                 operator_auth_user_id=user.id,
             )
 
@@ -187,7 +169,7 @@ def register(broker: Any, logger: Any) -> None:
         user = await admin_users.get_user_or_404(session, user_id)
         return user_service.to_read(user, _ENTITIES)
 
-    def _validate_social_create(payload: admin_schemas.SocialAccountCreate) -> None:
+    def _validate_social_create(payload: schemas.SocialAccountCreate) -> None:
         if payload.provider not in SOCIAL_PROVIDERS:
             raise HTTPException(status_code=400, detail=f"Unknown provider: {payload.provider}")
         if not payload.username.strip():
@@ -200,7 +182,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
             user_id = c.require_id(data)
-            payload = admin_schemas.SocialAccountCreate.model_validate(c.payload(data))
+            payload = schemas.SocialAccountCreate.model_validate(c.payload(data))
             _validate_social_create(payload)
             await admin_users.add_social_account(
                 session,
@@ -218,7 +200,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
             user_id = c.require_id(data)
-            payload = admin_schemas.SocialAccountUpdate.model_validate(c.payload(data))
+            payload = schemas.SocialAccountUpdate.model_validate(c.payload(data))
             await admin_users.update_social_account(
                 session,
                 user_id=user_id,
@@ -271,7 +253,7 @@ def register(broker: Any, logger: Any) -> None:
             # editing identities: anyone with ``user.read`` may configure it.
             _gate(data, "read")
             user_id = c.require_id(data)
-            payload = admin_schemas.SocialVisibilityUpdate.model_validate(c.payload(data))
+            payload = schemas.SocialVisibilityUpdate.model_validate(c.payload(data))
             await admin_users.set_social_visibility(
                 session,
                 user_id=user_id,
@@ -342,7 +324,7 @@ def register(broker: Any, logger: Any) -> None:
             # tournament page is the bug this endpoint exists to fix.
             user = _account_gate(data)
             player_id = await admin_users.resolve_my_player_id(session, user.id)
-            payload = admin_schemas.StreamVisibilityUpdate.model_validate(c.payload(data))
+            payload = schemas.StreamVisibilityUpdate.model_validate(c.payload(data))
             await admin_users.set_stream_visible(session, player_id, visible=payload.visible)
             await user_cache.invalidate_user_caches(player_id)
             return await _refresh_user(session, player_id)
@@ -408,44 +390,3 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _envelope_and_invalidate(logger, "users.avatar_delete", op, data)
 
-    # ── CSV / Google-Sheets bulk import (user.create) ─────────────────────────
-    @broker.subscriber("rpc.app.users.csv_import")
-    async def _csv_import(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            _gate(data, "create")
-
-            content_b64 = data.get("content_b64")
-            sheet_url = c.q1(data, "sheet_url") or data.get("sheet_url")
-            if content_b64:
-                lines = base64.b64decode(content_b64).decode("utf-8").split("\n")
-                filename = data.get("filename") or "upload.csv"
-            elif sheet_url:
-                csv_url = _sheets_to_csv_url(sheet_url)
-                async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-                    resp = await client.get(csv_url)
-                if resp.status_code != 200:
-                    raise HTTPException(
-                        status_code=400, detail=f"Failed to fetch Google Sheet (HTTP {resp.status_code})."
-                    )
-                lines = resp.text.split("\n")
-                filename = sheet_url
-            else:
-                raise HTTPException(status_code=400, detail="Provide either a CSV file upload or a Google Sheets URL.")
-
-            await csv_service.bulk_create_users_from_csv(
-                session,
-                filename,
-                lines,
-                c.q1(data, "start_row", int, 0),
-                battle_tag_row=c.require_query_int(data, "battle_tag_row"),
-                discord_row=c.require_query_int(data, "discord_row"),
-                twitch_row=c.require_query_int(data, "twitch_row"),
-                smurf_row=c.require_query_int(data, "smurf_row"),
-                delimiter=c.q1(data, "delimiter", str, ","),
-                has_discord=c.q1(data, "has_discord", c.qbool, True),
-                has_smurf=c.q1(data, "has_smurf", c.qbool, True),
-                has_twitch=c.q1(data, "has_twitch", c.qbool, True),
-            )
-            return {"success": True}
-
-        return await c.envelope(logger, "users.csv_import", op, session_factory=_SF)

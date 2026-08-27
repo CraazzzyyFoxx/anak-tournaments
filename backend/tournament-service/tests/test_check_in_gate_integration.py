@@ -39,16 +39,6 @@ if sys.platform == "win32":
     # psycopg's async mode refuses the Windows default ProactorEventLoop.
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-for _key, _value in {
-    "POSTGRES_HOST": "localhost",
-    "POSTGRES_PORT": "5432",
-    "POSTGRES_DB": "tournament_test",
-    "POSTGRES_USER": "postgres",
-    "POSTGRES_PASSWORD": "postgres",
-    "JWT_SECRET_KEY": "test-secret",
-    "REDIS_URL": "redis://localhost:6379",
-}.items():
-    os.environ.setdefault(_key, _value)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -121,7 +111,7 @@ class TestCheckInGate(IsolatedAsyncioTestCase):
 
     @staticmethod
     def _verdict(state: str, tier: int | None):
-        from shared.subscriptions import SubscriptionVerdict
+        from shared.services.subscriptions import SubscriptionVerdict
 
         now = datetime.now(UTC)
         return SubscriptionVerdict(
@@ -154,8 +144,8 @@ class TestCheckInGate(IsolatedAsyncioTestCase):
         """True when the gate refuses check-in. Providers absent from ``live`` have
         no strategy and therefore resolve to ``unknown``."""
         from shared.core.errors import BaseAPIException
-        from shared.services.subscription_entitlements import SubscriptionResolver
-        from shared.services.subscription_wiring import build_store
+        from shared.services.subscriptions.entitlements import SubscriptionResolver
+        from shared.services.subscriptions.wiring import build_store
         from src.services.registration.subscription_gate import (
             assert_subscription_allows_check_in,
         )

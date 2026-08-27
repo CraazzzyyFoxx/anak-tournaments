@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import sqlalchemy as sa
@@ -10,10 +11,9 @@ from shared.balancer_registration_statuses import (
     build_status_meta_from_model,
     build_unknown_status_meta,
 )
-from src import models
-from src.schemas.admin import balancer as admin_schemas
+from shared.domain.member_rank import ResolvedRank
+from src import models, schemas
 from src.schemas.registration import RegistrationFormRead
-
 
 def loaded_relationship_or_none(instance: object, attribute: str):
     loaded_value = sa.inspect(instance).attrs[attribute].loaded_value
@@ -37,13 +37,19 @@ def _role_top_heroes(role: models.BalancerRegistrationRole) -> list[str]:
 def serialize_registration_role(
     role: models.BalancerRegistrationRole,
     ow_rank_value: int | None = None,
-) -> admin_schemas.BalancerRegistrationRoleRead:
-    return admin_schemas.BalancerRegistrationRoleRead(
+    resolved: ResolvedRank | None = None,
+) -> schemas.BalancerRegistrationRoleRead:
+    if resolved is None:
+        # No resolver ran (single-object serialization): the role's own number is
+        # the registration layer. Inherited layers need a batch call to see.
+        resolved = ResolvedRank(role.rank_value, "registration" if role.rank_value is not None else "none")
+    return schemas.BalancerRegistrationRoleRead(
         role=role.role,
         subrole=role.subrole,
         priority=role.priority,
         is_primary=role.is_primary,
-        rank_value=role.rank_value,
+        rank_value=resolved.value,
+        rank_source=resolved.source,
         is_active=role.is_active,
         top_heroes=_role_top_heroes(role),
         ow_rank_value=ow_rank_value,
@@ -58,7 +64,8 @@ def serialize_registration(
     ow_ranks_for_user: dict[str, int] | None = None,
     profiles_open: bool | None = None,
     subscription_outcome: str | None = None,
-) -> admin_schemas.BalancerRegistrationRead:
+    resolved_ranks: Mapping[str, ResolvedRank] | None = None,
+) -> schemas.BalancerRegistrationRead:
     binding = loaded_relationship_or_none(registration, "google_sheet_binding")
     roles = loaded_relationship_or_none(registration, "roles") or []
     reviewer = loaded_relationship_or_none(registration, "reviewer")
@@ -74,7 +81,7 @@ def serialize_registration(
     resolved_balancer_status_meta = (
         status_meta_map["balancer"].get(registration.balancer_status) if status_meta_map is not None else None
     ) or build_unknown_status_meta("balancer", registration.balancer_status)
-    return admin_schemas.BalancerRegistrationRead(
+    return schemas.BalancerRegistrationRead(
         id=registration.id,
         tournament_id=registration.tournament_id,
         workspace_id=workspace_id,
@@ -95,8 +102,8 @@ def serialize_registration(
         is_flex=bool(sorted_roles) and all(role.is_primary for role in sorted_roles),
         status=registration.status,
         balancer_status=registration.balancer_status,
-        status_meta=admin_schemas.StatusMetaRead(**resolved_status_meta),
-        balancer_status_meta=admin_schemas.StatusMetaRead(**resolved_balancer_status_meta),
+        status_meta=schemas.StatusMetaRead(**resolved_status_meta),
+        balancer_status_meta=schemas.StatusMetaRead(**resolved_balancer_status_meta),
         exclude_reason=registration.exclude_reason,
         checked_in=registration.checked_in,
         checked_in_at=registration.checked_in_at,
@@ -108,7 +115,14 @@ def serialize_registration(
         balancer_profile_overridden_at=registration.balancer_profile_overridden_at,
         profiles_open=profiles_open,
         subscription_outcome=subscription_outcome,
-        roles=[serialize_registration_role(role, (ow_ranks_for_user or {}).get(role.role)) for role in sorted_roles],
+        roles=[
+            serialize_registration_role(
+                role,
+                (ow_ranks_for_user or {}).get(role.role),
+                (resolved_ranks or {}).get(role.role),
+            )
+            for role in sorted_roles
+        ],
     )
 
 
@@ -147,9 +161,9 @@ def serialize_registration_form(
 
 def serialize_status(
     status_row: models.BalancerRegistrationStatus,
-) -> admin_schemas.BalancerRegistrationStatusRead:
+) -> schemas.BalancerRegistrationStatusRead:
     is_override = status_row.kind == "builtin" and status_row.workspace_id is not None
-    return admin_schemas.BalancerRegistrationStatusRead(
+    return schemas.BalancerRegistrationStatusRead(
         id=status_row.id,
         workspace_id=status_row.workspace_id,
         scope=status_row.scope,
@@ -175,8 +189,8 @@ def serialize_status(
 
 def serialize_feed(
     feed: models.BalancerRegistrationGoogleSheetFeed,
-) -> admin_schemas.BalancerGoogleSheetFeedRead:
-    return admin_schemas.BalancerGoogleSheetFeedRead(
+) -> schemas.BalancerGoogleSheetFeedRead:
+    return schemas.BalancerGoogleSheetFeedRead(
         id=feed.id,
         tournament_id=feed.tournament_id,
         source_url=feed.source_url,

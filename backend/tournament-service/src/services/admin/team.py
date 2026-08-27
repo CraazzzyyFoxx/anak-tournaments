@@ -14,12 +14,11 @@ from shared.repository import (
     UserRepository,
     resolve_workspace_member_id,
 )
-from src import models
-from src.schemas.admin import team as admin_schemas
+from src import models, schemas
 from src.services.tournament.events import enqueue_tournament_changed
 
 
-def _prepare_player_create_data(data: admin_schemas.PlayerCreate) -> dict:
+def _prepare_player_create_data(data: schemas.PlayerCreate) -> dict:
     player_data = data.model_dump()
     player_data["sub_role"] = normalize_sub_role(player_data.get("sub_role"))
     if not player_data.get("is_substitution"):
@@ -29,7 +28,7 @@ def _prepare_player_create_data(data: admin_schemas.PlayerCreate) -> dict:
 
 def _prepare_player_update_data(
     player: models.Player,
-    data: admin_schemas.PlayerUpdate,
+    data: schemas.PlayerUpdate,
 ) -> dict:
     update_data = data.model_dump(exclude_unset=True)
     if "sub_role" in update_data:
@@ -75,14 +74,14 @@ def _validate_related_player_scope(
         )
 
 
-def _prepare_team_create_data(data: admin_schemas.TeamCreate) -> dict:
+def _prepare_team_create_data(data: schemas.TeamCreate) -> dict:
     team_data = data.model_dump()
     if team_data["balancer_name"] is None:
         team_data["balancer_name"] = team_data["name"]
     return team_data
 
 
-def _prepare_team_update_data(team: models.Team, data: admin_schemas.TeamUpdate) -> dict:
+def _prepare_team_update_data(team: models.Team, data: schemas.TeamUpdate) -> dict:
     update_data = data.model_dump(exclude_unset=True)
     if update_data.get("balancer_name") is None and "balancer_name" in update_data:
         update_data["balancer_name"] = update_data.get("name") or team.name
@@ -192,7 +191,7 @@ class AdminTeamService:
 
         return player
 
-    async def create_team(self, session: AsyncSession, data: admin_schemas.TeamCreate) -> models.Team:
+    async def create_team(self, session: AsyncSession, data: schemas.TeamCreate) -> models.Team:
         """Create a new team"""
         # Verify tournament exists
         tournament = await self.tournament_repo.get(session, data.tournament_id)
@@ -213,7 +212,7 @@ class AdminTeamService:
         await session.commit()
         return await self.get_team(session, team.id)
 
-    async def update_team(self, session: AsyncSession, team_id: int, data: admin_schemas.TeamUpdate) -> models.Team:
+    async def update_team(self, session: AsyncSession, team_id: int, data: schemas.TeamUpdate) -> models.Team:
         """Update team fields"""
         team = await self.team_repo.get(
             session,
@@ -281,7 +280,7 @@ class AdminTeamService:
     # ─── Player Management ───────────────────────────────────────────────────
 
     async def add_player_to_team(
-        self, session: AsyncSession, team_id: int, data: admin_schemas.PlayerCreate
+        self, session: AsyncSession, team_id: int, data: schemas.PlayerCreate
     ) -> models.Player:
         """Add a player to a team"""
         # Verify team exists
@@ -338,7 +337,7 @@ class AdminTeamService:
 
     # ─── Player CRUD ─────────────────────────────────────────────────────────
 
-    async def create_player(self, session: AsyncSession, data: admin_schemas.PlayerCreate) -> models.Player:
+    async def create_player(self, session: AsyncSession, data: schemas.PlayerCreate) -> models.Player:
         """Create a new player"""
         # Verify user exists
         user = await self.user_repo.get(session, data.user_id)
@@ -386,7 +385,7 @@ class AdminTeamService:
         return await self.get_player(session, player.id)
 
     async def update_player(
-        self, session: AsyncSession, player_id: int, data: admin_schemas.PlayerUpdate
+        self, session: AsyncSession, player_id: int, data: schemas.PlayerUpdate
     ) -> models.Player:
         """Update player fields"""
         player = await self.player_repo.get(session, player_id)

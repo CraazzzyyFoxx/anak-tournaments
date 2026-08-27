@@ -12,33 +12,17 @@ rule -- server-resolved and read-only -- because the public check-in dialog rend
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 import pytest
 
 
-def _ensure_test_env() -> None:
-    env = {
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "tournament_test",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
-        "JWT_SECRET_KEY": "test-secret",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.enums import SubscriptionEnforcementStage  # noqa: E402
-from shared.subscriptions import Outcome, parse_requirement  # noqa: E402
+from shared.services.subscriptions import Outcome, parse_requirement  # noqa: E402
 from src.schemas.registration import (  # noqa: E402
     RegistrationFormRead,
     RegistrationFormUpsert,
@@ -214,7 +198,7 @@ class TestRoundTrip:
 
     def test_single_provider_requirement_is_mode_agnostic(self):
         one = {"requirements": [{"provider": "boosty", "min_tier_rank": 2}]}
-        from shared.subscriptions import SubscriptionVerdict
+        from shared.services.subscriptions import SubscriptionVerdict
 
         def _v(state, tier):
             from datetime import UTC, datetime
@@ -228,7 +212,7 @@ class TestRoundTrip:
                 expires_at=None,
             )
 
-        from shared.subscriptions import evaluate_requirement
+        from shared.services.subscriptions import evaluate_requirement
 
         for mode in ("any", "all"):
             requirement = parse_requirement({**one, "mode": mode})

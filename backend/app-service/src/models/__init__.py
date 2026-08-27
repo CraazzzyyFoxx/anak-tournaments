@@ -20,7 +20,6 @@ from shared.models.preferences.favorite_player import *
 from shared.models.registration.registration import *
 from shared.models.tenancy.workspace import *
 from shared.models.tournament.encounter import *
-from shared.models.tournament.encounter_map import *
 from shared.models.tournament.stage import *
 from shared.models.tournament.standings import *
 from shared.models.tournament.team import *

@@ -25,10 +25,9 @@ from shared.schemas.events import (
 )
 from src.core import config, db
 from src.scheduler import register_jobs
-from src.services.jobs.runner import run_job
 from src.services.ml.inference.runner import run_for_tournament
 from src.services.ml.training.orchestrator import train_all_models
-from src.worker import balance_snapshot
+from src.worker.job_runner import runner_service
 
 logger = setup_logging(
     service_name="analytics-worker",
@@ -41,10 +40,6 @@ broker = make_rabbit_broker(config.settings.rabbitmq_url, logger=logger)
 app = FastStream(broker)
 scheduler = register_jobs()
 redis_client: Redis | None = None
-
-# Domain-event consumer: analytics owns the writes to analytics.balance_snapshot
-# + balance_player_snapshot; balancer-service emits balance_exported via its outbox.
-balance_snapshot.register(broker, logger)
 
 
 @app.on_startup
@@ -117,7 +112,7 @@ async def consume_analytics_job(data: dict, msg: RabbitMessage) -> None:
         event = AnalyticsJobRequested.model_validate(data)
         logger.bind(job_id=event.job_id).info("Consuming analytics job")
         async with db.async_session_maker() as session:
-            await run_job(session, redis_client, event.job_id)
+            await runner_service.run_job(session, redis_client, event.job_id)
 
 
 @broker.subscriber(ANALYTICS_TRAIN_QUEUE)

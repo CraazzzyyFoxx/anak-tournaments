@@ -30,16 +30,6 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 from shared.domain.roster_shape import (  # noqa: E402
     DEFAULT_ROSTER_SHAPE,
@@ -117,6 +107,7 @@ class _LockProbeSession:
         self.draft_status = draft_status
         self.team_status = team_status
         self.scalar_calls: list[Any] = []
+        self.execute_calls: list[Any] = []
 
     async def scalar(self, statement: Any) -> Any:
         self.scalar_calls.append(statement)
@@ -124,6 +115,21 @@ class _LockProbeSession:
         if "registration_team" in rendered:
             return self.team_status
         return self.draft_status
+
+    async def execute(self, statement: Any) -> Any:
+        """No ``challonge_source`` rows — this fake covers the roster-shape branch only.
+
+        The admin serializer also derives the Challonge ids/slugs (they come from
+        ``challonge_source``, not from a tournament column), so it reaches for
+        ``execute``; an unlinked tournament is the case these tests describe.
+        """
+        self.execute_calls.append(statement)
+
+        class _Empty:
+            def all(self) -> list[Any]:
+                return []
+
+        return _Empty()
 
 
 async def _read(

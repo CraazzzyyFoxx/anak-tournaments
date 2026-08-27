@@ -20,6 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.balancer_registration_statuses import is_balancer_status_excluded
 from shared.division_grid import DivisionGrid
 from src import models
+from src.domain.registration.utils import (
+    DEFAULT_SORT_PRIORITY_SENTINEL,
+    normalize_battle_tag_key,
+)
 from src.services.registration._common import (
     RegistrationCommonService,
     _active_roles,
@@ -27,6 +31,7 @@ from src.services.registration._common import (
     included_balancer_status,
     sync_included_balancer_status,
 )
+from src.services.registration import rank_resolution
 from src.services.registration.rank_sources import (
     OW_RANK_WEEK_WINDOW,
     RANK_ROLE_BY_REGISTRATION_ROLE,
@@ -36,10 +41,6 @@ from src.services.registration.rank_sources import (
     _OwRankSignals,
     _RankData,
     rank_sources_service,
-)
-from src.services.registration.utils import (
-    DEFAULT_SORT_PRIORITY_SENTINEL,
-    normalize_battle_tag_key,
 )
 
 
@@ -207,13 +208,20 @@ def build_registration_rank_autofill_plan(
 
 
 def _active_roles_ranked_after_updates(
-    registration: models.BalancerRegistration | Any, updates: list[tuple[Any, Any]]
+    registration: models.BalancerRegistration | Any,
+    updates: list[tuple[Any, Any]],
+    resolved_ranks: dict[str, int | None] | None = None,
 ) -> bool:
     roles = _active_roles(registration)
     if not roles:
         return False
-    updated_role_ids = {id(role_entry) for role_entry, _snapshot in updates}
-    return all(getattr(role, "rank_value", None) is not None or id(role) in updated_role_ids for role in roles)
+    updated_roles = {getattr(role_entry, "role", None) for role_entry, _snapshot in updates}
+    return all(
+        (resolved_ranks or {}).get(getattr(role, "role", None)) is not None
+        or getattr(role, "rank_value", None) is not None
+        or getattr(role, "role", None) in updated_roles
+        for role in roles
+    )
 
 
 def _rank_autofill_balancer_addition(
@@ -221,6 +229,7 @@ def _rank_autofill_balancer_addition(
     updates: list[tuple[Any, Any]],
     *,
     add_to_balancer: bool,
+    resolved_ranks: dict[str, int | None] | None = None,
 ) -> tuple[bool, str | None]:
     if not add_to_balancer:
         return False, None
@@ -228,7 +237,7 @@ def _rank_autofill_balancer_addition(
         return False, "Registration must be approved before it can be added to balancer."
     if not is_balancer_status_excluded(getattr(registration, "balancer_status", None)):
         return False, "Registration is already in balancer."
-    if not _active_roles_ranked_after_updates(registration, updates):
+    if not _active_roles_ranked_after_updates(registration, updates, resolved_ranks):
         return False, "Registration will still be missing active role ranks."
     return True, None
 
@@ -341,6 +350,9 @@ class RankAutofillService:
         now = datetime.now(UTC)
         tournament = await self.rank_sources._load_tournament_for_autofill(session, tournament_id)
         grid = DivisionGrid.from_version(tournament.division_grid_version if tournament else None)
+        # Loop-invariant: one autofill run is scoped to one tournament, and every
+        # inherited rank layer below is read through its workspace.
+        workspace_id = getattr(tournament, "workspace_id", None)
 
         registrations = await self.rank_sources._load_rank_autofill_registrations(
             session, tournament_id, registration_ids
@@ -439,18 +451,31 @@ class RankAutofillService:
 
             changed = False
             if apply and updates:
+                # No identity is provisioned here on purpose: autofill writes the
+                # registration's own layer, and minting players as a side effect of
+                # a rank fill would make a preview-then-apply mutate identity.
                 for role_entry, rank_data in updates:
-                    role_entry.rank_value = getattr(rank_data, "rank_value", None)
-                    role_updates += 1
-                registration.balancer_profile_overridden_at = now
+                    value = getattr(rank_data, "rank_value", None)
+                    if value is None:
+                        continue
+                    if overwrite_existing or getattr(role_entry, "rank_value", None) is None:
+                        role_entry.rank_value = value
+                role_updates += len(updates)
                 applied_registrations += 1
                 changed = True
             elif not apply:
                 role_updates += len(updates)
 
             if apply and will_add_to_balancer:
+                values = await rank_resolution.resolved_value_map(
+                    session, registration, workspace_id=workspace_id, grid=grid
+                )
+                for role_entry, rank_data in updates:
+                    val = getattr(rank_data, "rank_value", None)
+                    if val is not None:
+                        values[role_entry.role] = val
                 registration.exclude_reason = None
-                registration.balancer_status = included_balancer_status(registration)
+                registration.balancer_status = included_balancer_status(registration, values)
                 balancer_additions += 1
                 changed = True
             elif not apply and will_add_to_balancer:
@@ -458,7 +483,14 @@ class RankAutofillService:
 
             if apply and changed:
                 if not will_add_to_balancer:
-                    sync_included_balancer_status(registration)
+                    values = await rank_resolution.resolved_value_map(
+                        session, registration, workspace_id=workspace_id, grid=grid
+                    )
+                    for role_entry, rank_data in updates:
+                        val = getattr(rank_data, "rank_value", None)
+                        if val is not None:
+                            values[role_entry.role] = val
+                    sync_included_balancer_status(registration, values)
                 self.common._register_registration_changed(session, registration)
 
             players.append(row)

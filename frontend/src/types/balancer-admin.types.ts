@@ -26,6 +26,9 @@ export type BalancerRoleCode = Exclude<PlayerRoleSlotCode, "flex">;
 /** Capitalized roster key — the non-flex slice of `PlayerRoleOption`. */
 export type BalancerRosterKey = Exclude<PlayerRoleOption, "Flex">;
 export type BalancerRoleSubtype = string;
+/** Layers a registration role's rank can resolve from, strongest first. */
+export type RegistrationRankSource = "registration" | "workspace" | "ow" | "none";
+
 
 export interface BalancerPlayerRecord {
   id: number;
@@ -50,6 +53,7 @@ export interface BalancerPlayerRoleEntry {
   rank_value: number | null;
   is_active: boolean;
   ow_rank_value: number | null;
+  rank_source?: RegistrationRankSource;
 }
 
 export interface BalancerApplication {
@@ -280,6 +284,8 @@ export interface BalancerPlayerUpdateInput {
   admin_notes?: string | null;
   registration_status?: string | null;
   registration_balancer_status?: string | null;
+  pin?: boolean;
+  clear_pin?: boolean;
 }
 
 export interface BalanceSaveInput {
@@ -342,6 +348,7 @@ export interface AdminRegistrationRole {
   top_heroes?: string[] | null;
   /** Latest OW2 rank for this role, normalised to the workspace grid (from the backend). */
   ow_rank_value?: number | null;
+  rank_source?: RegistrationRankSource;
 }
 
 export type BalancerStatus = string;
@@ -470,6 +477,8 @@ export interface AdminRegistrationUpdateInput {
   auth_user_id?: number | null;
   /** Only meaningful together with balancer_status === "excluded". */
   exclude_reason?: string | null;
+  pin?: boolean;
+  clear_pin?: boolean;
 }
 
 export interface AdminGoogleSheetFeed {
@@ -590,6 +599,7 @@ export interface MappingCatalog {
   value_categories: MappingValueCategory[];
   custom_fields: AdminCustomFieldDef[];
   header_keys: string[];
+  subrole_catalog?: SubroleCatalog;
 }
 
 /** A per-target validation error returned by PUT (422) / preview / sync. */

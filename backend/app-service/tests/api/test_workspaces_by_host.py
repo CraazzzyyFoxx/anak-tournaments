@@ -71,7 +71,7 @@ def custom_domain_workspace():
     DB-skip pattern).
     """
     from shared.models.tenancy.workspace import Workspace
-    from shared.services.division_grid_access import get_default_division_grid_version_id
+    from shared.services.division_grid.access import get_default_division_grid_version_id
     from src.core import db as db_module
 
     suffix = uuid.uuid4().hex[:12]

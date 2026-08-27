@@ -64,6 +64,23 @@ def test_resolve_sequence_tokens_maps_first_second_to_home_away():
     assert resolved == ["ban_away", "ban_home", "protect_home", "decider"]
 
 
+def test_parse_step_token_without_separator_defaults_to_ban_home():
+    """A poll used to 500 here: ``action, side = token.split('_', 1)`` on ``'ban'``."""
+    parsed = engine.parse_step_token("ban")
+    assert parsed.action == "ban"
+    assert parsed.side == "home"
+
+
+def test_resolve_sequence_tokens_rejects_a_token_without_separator():
+    with pytest.raises(ValueError, match="invalid sequence token"):
+        engine.resolve_sequence_tokens(["ban"], enums.MapPickSide.HOME)
+
+
+def test_resolve_sequence_tokens_rejects_a_non_string_token():
+    with pytest.raises(ValueError, match="invalid sequence token"):
+        engine.resolve_sequence_tokens([None], enums.MapPickSide.HOME)  # type: ignore[list-item]
+
+
 # ── current_round / in_current_round / is_entry_bannable ────────────────────
 
 

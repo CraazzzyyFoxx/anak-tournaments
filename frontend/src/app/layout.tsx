@@ -60,6 +60,7 @@ import { Suspense } from "react";
 import { resolveSiteMetadata } from "@/lib/site-metadata";
 import { resolveTenantWorkspace } from "@/lib/tenant-host";
 import { COOKIE_CONSENT_COOKIE } from "@/lib/cookie-consent";
+import { GA_ID, YM_ID } from "@/config/site";
 import CookieConsent from "@/components/CookieConsent";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale } from "next-intl/server";
@@ -123,7 +124,7 @@ export default async function RootLayout({
             <Suspense fallback={null}>
               <AccountSettingsModal />
             </Suspense>
-            <CookieConsent initial={cookieConsent} gaId="G-6TYE0K6SQM" />
+            <CookieConsent initial={cookieConsent} gaId={GA_ID} ymId={YM_ID} />
             <Toaster />
             {children}
           </Providers>

@@ -19,10 +19,8 @@ from shared.repository import (
     WorkspaceBalancerConfigRepository,
 )
 from shared.services.team_export import ExportPlan, team_materialization
-from src import models
-from src.schemas.admin import balancer as admin_schemas
+from src import models, schemas
 from src.schemas.team import InternalBalancerTeamsPayload
-from src.services.admin.balance_analytics import BalanceAnalyticsService, balance_analytics_service
 from src.services.admin.balancer_dual_write import BalancerVariantService, balancer_variant_service
 from src.services.balancer.config.provider import normalize_tournament_config_payload, serialize_saved_config_payload
 from src.services.balancer.config.public_contract import normalize_balance_response_payload
@@ -65,7 +63,6 @@ class BalancerAdminService:
         balances: BalancerBalanceRepository = BalancerBalanceRepository(),
         teams: BalancerTeamRepository = BalancerTeamRepository(),
         variants: BalancerVariantService = balancer_variant_service,
-        analytics: BalanceAnalyticsService = balance_analytics_service,
     ) -> None:
         self.tournaments = tournaments
         self.tournament_configs = tournament_configs
@@ -73,7 +70,6 @@ class BalancerAdminService:
         self.balances = balances
         self.teams = teams
         self.variants = variants
-        self.analytics = analytics
 
     async def ensure_tournament_exists(self, session: AsyncSession, tournament_id: int) -> None:
         if not await self.tournaments.exists(session, id=tournament_id):
@@ -185,7 +181,7 @@ class BalancerAdminService:
         self,
         session: AsyncSession,
         tournament_id: int,
-        data: admin_schemas.BalanceSaveRequest,
+        data: schemas.BalanceSaveRequest,
         auth_user: models.AuthUser,
     ) -> models.BalancerBalance:
         await self.ensure_tournament_exists(session, tournament_id)
@@ -243,7 +239,7 @@ class BalancerAdminService:
             for team in balance.teams:
                 team.exported_team_id = None
 
-        async def _finalize(inner: AsyncSession, by_name: Mapping[str, models.Team]) -> None:
+        async def _finalize(_inner: AsyncSession, by_name: Mapping[str, models.Team]) -> None:
             for materialized_team in balance.teams:
                 public_team = by_name.get(materialized_team.balancer_name)
                 if public_team is not None:
@@ -252,10 +248,6 @@ class BalancerAdminService:
             balance.exported_at = datetime.now(UTC)
             balance.export_status = "success"
             balance.export_error = None
-
-            # Enqueued in the same transaction as the rows it describes: the outbox
-            # only INSERTs here, a separate relay pass publishes it.
-            await self.analytics.enqueue_balance_exported_event(inner, balance, payload, dict(by_name))
 
         async def _on_failure(inner: AsyncSession, exc: BaseException) -> None:
             # Runs after the orchestrator's rollback, in a fresh transaction, so the

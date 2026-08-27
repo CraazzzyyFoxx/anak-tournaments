@@ -1,25 +1,20 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
-import {
-  CatalogToolbarActions,
-  entityFormError,
-  onEntityDialogClose
-} from "@/components/admin/CatalogToolbarActions";
+import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { createAliasesColumn, createEntityActionsColumn } from "@/components/admin/catalog-table-columns";
+import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 
 import adminService from "@/services/admin.service";
 import type { Gamemode, GamemodeCreateInput, GamemodeUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
-import { hasUnsavedChanges } from "@/lib/form-change";
+import { useCatalogEntityCrud } from "@/hooks/useCatalogEntityCrud";
 
 // Key order matters: `hasUnsavedChanges` compares JSON, so the edit form below
 // must list the same fields in the same order or every dialog opens dirty.
@@ -34,67 +29,38 @@ function getGamemodeForm(gamemode: Gamemode | null): GamemodeCreateInput | Gamem
 }
 
 export default function GamemodesAdminPage() {
-  const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
   const formId = useId();
   const nameFieldId = `${formId}-name`;
   const aliasesFieldId = `${formId}-aliases`;
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editingGamemode, setEditingGamemode] = useState<Gamemode | null>(null);
-  const [deletingGamemode, setDeletingGamemode] = useState<Gamemode | null>(null);
-  const [formData, setFormData] = useState<GamemodeCreateInput | GamemodeUpdateInput>({
-    ...emptyGamemodeForm,
-  });
 
-  const closeForm = () => {
-    setCreateDialogOpen(false);
-    setEditingGamemode(null);
-    setFormData({ ...emptyGamemodeForm });
-  };
-
-  const createMutation = useMutation({
-    mutationFn: (data: GamemodeCreateInput) => adminService.createGamemode(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "gamemodes"] });
-      closeForm();
+  const {
+    formData,
+    setFormData,
+    editingEntity: editingGamemode,
+    deletingEntity: deletingGamemode,
+    setDeletingEntity: setDeletingGamemode,
+    isDialogOpen,
+    closeForm,
+    openCreate,
+    openEdit,
+    handleSubmit,
+    isFormDirty,
+    createMutation,
+    updateMutation,
+    deleteMutation,
+    syncMutation,
+  } = useCatalogEntityCrud<Gamemode, GamemodeCreateInput, GamemodeUpdateInput>({
+    queryKey: ["admin", "gamemodes"],
+    emptyForm: emptyGamemodeForm,
+    getForm: getGamemodeForm,
+    service: {
+      create: (data) => adminService.createGamemode(data),
+      update: (id, data) => adminService.updateGamemode(id, data),
+      delete: (id) => adminService.deleteGamemode(id),
+      sync: () => adminService.syncGamemodes(),
     },
   });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: GamemodeUpdateInput }) =>
-      adminService.updateGamemode(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "gamemodes"] });
-      closeForm();
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => adminService.deleteGamemode(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "gamemodes"] });
-      setDeletingGamemode(null);
-    },
-  });
-
-  const syncMutation = useMutation({
-    mutationFn: () => adminService.syncGamemodes(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "gamemodes"] });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingGamemode) {
-      updateMutation.mutate({ id: editingGamemode.id, data: formData as GamemodeUpdateInput });
-    } else {
-      createMutation.mutate(formData as GamemodeCreateInput);
-    }
-  };
-
-  const formInitial = getGamemodeForm(editingGamemode);
-  const isFormDirty = (createDialogOpen || !!editingGamemode) && hasUnsavedChanges(formData, formInitial);
 
   const columns: ColumnDef<Gamemode>[] = [
     {
@@ -112,11 +78,7 @@ export default function GamemodesAdminPage() {
       entityLabel: "gamemode",
       getName: (gamemode) => gamemode.name,
       isSuperuser,
-      onEdit: (gamemode) => {
-        updateMutation.reset();
-        setEditingGamemode(gamemode);
-        setFormData(getGamemodeForm(gamemode));
-      },
+      onEdit: openEdit,
       onDelete: (gamemode) => setDeletingGamemode(gamemode),
     }),
   ];
@@ -132,12 +94,7 @@ export default function GamemodesAdminPage() {
             isSyncing={syncMutation.isPending}
             onSync={() => syncMutation.mutate()}
             syncLabel="Sync gamemodes from game"
-            onCreate={() => {
-              createMutation.reset();
-              updateMutation.reset();
-              setFormData({ ...emptyGamemodeForm });
-              setCreateDialogOpen(true);
-            }}
+            onCreate={openCreate}
             createLabel="Create gamemode"
           />
         }
@@ -151,21 +108,12 @@ export default function GamemodesAdminPage() {
         columns={columns}
         searchPlaceholder="Search gamemodes…"
         emptyMessage="No gamemodes yet. Use “Create gamemode” to add the first one."
-        onRowDoubleClick={
-          isSuperuser
-            ? (row) => {
-                const gamemode = row.original;
-                updateMutation.reset();
-                setEditingGamemode(gamemode);
-                setFormData(getGamemodeForm(gamemode));
-              }
-            : undefined
-        }
+        onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
       />
 
       {/* Create/Edit Dialog */}
       <EntityFormDialog
-        open={createDialogOpen || !!editingGamemode}
+        open={isDialogOpen}
         onOpenChange={onEntityDialogClose(closeForm)}
         title={editingGamemode ? "Edit gamemode" : "Create gamemode"}
         description={

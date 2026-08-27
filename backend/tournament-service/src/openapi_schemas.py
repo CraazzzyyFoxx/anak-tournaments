@@ -17,17 +17,6 @@ from src import schemas
 from src.schemas import encounter_report_form as report_form_schemas
 from src.schemas import registration as reg_schemas
 from src.schemas import registration_team as reg_team_schemas
-from src.schemas.admin import balancer as admin_balancer
-from src.schemas.admin import encounter as admin_encounter
-from src.schemas.admin import encounter_reports as admin_reports
-from src.schemas.admin import matches as admin_matches
-from src.schemas.admin import player_sub_role as admin_player_sub_role
-from src.schemas.admin import stage as admin_stage
-from src.schemas.admin import standing as admin_standing
-from src.schemas.admin import team as admin_team
-from src.schemas.admin import tournament as admin_tournament
-from src.schemas.admin import tournament_link as admin_tournament_link
-from src.schemas.admin.computation import TournamentComputationJobRead
 
 # Reusable ad-hoc query params (handlers read these via _q/_q1, no query model).
 _ENTITIES = QueryParam("entities", array=True)
@@ -72,59 +61,59 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.list_matches": Op(response=Paginated[schemas.MatchRead], query=schemas.MatchSearchQueryParams),
     "rpc.tournament.list_teams": Op(response=Paginated[schemas.TeamRead], query=schemas.TeamFilterQueryParams),
     # ── computation job reads ──────────────────────────────────────────────
-    "rpc.tournament.job_get": Op(response=TournamentComputationJobRead),
-    "rpc.tournament.job_list": Op(response=TournamentComputationJobRead, response_array=True),
+    "rpc.tournament.job_get": Op(response=schemas.TournamentComputationJobRead),
+    "rpc.tournament.job_list": Op(response=schemas.TournamentComputationJobRead, response_array=True),
     # ── generic CRUD engine (create/update/get/list by entity) ─────────────
     "rpc.tournament.admin.create#tournament": Op(
-        request=admin_tournament.TournamentCreate, response=schemas.TournamentRead
+        request=schemas.TournamentCreate, response=schemas.TournamentRead
     ),
-    "rpc.tournament.admin.create#team": Op(request=admin_team.TeamCreate, response=schemas.TeamRead),
-    "rpc.tournament.admin.create#player": Op(request=admin_team.PlayerCreate, response=schemas.PlayerRead),
-    "rpc.tournament.admin.create#stage": Op(request=admin_stage.StageCreate, response=schemas.StageRead),
-    "rpc.tournament.admin.create#stage_item": Op(request=admin_stage.StageItemCreate, response=schemas.StageItemRead),
+    "rpc.tournament.admin.create#team": Op(request=schemas.TeamCreate, response=schemas.TeamRead),
+    "rpc.tournament.admin.create#player": Op(request=schemas.PlayerCreate, response=schemas.PlayerRead),
+    "rpc.tournament.admin.create#stage": Op(request=schemas.StageCreate, response=schemas.StageRead),
+    "rpc.tournament.admin.create#stage_item": Op(request=schemas.StageItemCreate, response=schemas.StageItemRead),
     "rpc.tournament.admin.create#stage_item_input": Op(
-        request=admin_stage.StageItemInputCreate, response=schemas.StageItemInputRead
+        request=schemas.StageItemInputCreate, response=schemas.StageItemInputRead
     ),
     "rpc.tournament.admin.create#encounter": Op(
-        request=admin_encounter.EncounterCreate, response=schemas.EncounterRead
+        request=schemas.EncounterCreate, response=schemas.EncounterRead
     ),
     "rpc.tournament.admin.create#player_sub_role": Op(
-        request=admin_player_sub_role.PlayerSubRoleCreate, response=admin_player_sub_role.PlayerSubRoleRead
+        request=schemas.PlayerSubRoleCreate, response=schemas.PlayerSubRoleRead
     ),
     "rpc.tournament.admin.create#tournament_link": Op(
-        request=admin_tournament_link.TournamentLinkCreate, response=admin_tournament_link.TournamentLinkRead
+        request=schemas.TournamentLinkCreate, response=schemas.TournamentLinkRead
     ),
     "rpc.tournament.admin.update#tournament": Op(
-        request=admin_tournament.TournamentUpdate, response=schemas.TournamentRead
+        request=schemas.TournamentUpdate, response=schemas.TournamentRead
     ),
-    "rpc.tournament.admin.update#team": Op(request=admin_team.TeamUpdate, response=schemas.TeamRead),
-    "rpc.tournament.admin.update#player": Op(request=admin_team.PlayerUpdate, response=schemas.PlayerRead),
-    "rpc.tournament.admin.update#stage": Op(request=admin_stage.StageUpdate, response=schemas.StageRead),
-    "rpc.tournament.admin.update#stage_item": Op(request=admin_stage.StageItemUpdate, response=schemas.StageItemRead),
+    "rpc.tournament.admin.update#team": Op(request=schemas.TeamUpdate, response=schemas.TeamRead),
+    "rpc.tournament.admin.update#player": Op(request=schemas.PlayerUpdate, response=schemas.PlayerRead),
+    "rpc.tournament.admin.update#stage": Op(request=schemas.StageUpdate, response=schemas.StageRead),
+    "rpc.tournament.admin.update#stage_item": Op(request=schemas.StageItemUpdate, response=schemas.StageItemRead),
     "rpc.tournament.admin.update#stage_item_input": Op(
-        request=admin_stage.StageItemInputUpdate, response=schemas.StageItemInputRead
+        request=schemas.StageItemInputUpdate, response=schemas.StageItemInputRead
     ),
     "rpc.tournament.admin.update#encounter": Op(
-        request=admin_encounter.EncounterUpdate, response=schemas.EncounterRead
+        request=schemas.EncounterUpdate, response=schemas.EncounterRead
     ),
-    "rpc.tournament.admin.update#standing": Op(request=admin_standing.StandingUpdate, response=schemas.StandingRead),
+    "rpc.tournament.admin.update#standing": Op(request=schemas.StandingUpdate, response=schemas.StandingRead),
     "rpc.tournament.admin.update#player_sub_role": Op(
-        request=admin_player_sub_role.PlayerSubRoleUpdate, response=admin_player_sub_role.PlayerSubRoleRead
+        request=schemas.PlayerSubRoleUpdate, response=schemas.PlayerSubRoleRead
     ),
     "rpc.tournament.admin.update#tournament_link": Op(
-        request=admin_tournament_link.TournamentLinkUpdate, response=admin_tournament_link.TournamentLinkRead
+        request=schemas.TournamentLinkUpdate, response=schemas.TournamentLinkRead
     ),
     "rpc.tournament.admin.get#tournament": Op(response=schemas.TournamentRead),
     "rpc.tournament.admin.get#team": Op(response=schemas.TeamRead),
     "rpc.tournament.admin.get#stage": Op(response=schemas.StageRead),
     "rpc.tournament.admin.list#stage": Op(response=schemas.StageRead, response_array=True),
     "rpc.tournament.admin.list#player_sub_role": Op(
-        response=admin_player_sub_role.PlayerSubRoleRead,
+        response=schemas.PlayerSubRoleRead,
         response_array=True,
         query_params=(_WS, QueryParam("role"), QueryParam("include_inactive", "boolean")),
     ),
     "rpc.tournament.admin.list#tournament_link": Op(
-        response=admin_tournament_link.TournamentLinkRead,
+        response=schemas.TournamentLinkRead,
         response_array=True,
         query_params=(
             QueryParam("tournament_id", "integer", required=True),
@@ -140,20 +129,21 @@ OPERATIONS: dict[str, Op] = {
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": Op(response=schemas.TournamentRead),
     "rpc.tournament.tournament_status": Op(
-        request=admin_tournament.TournamentStatusTransition, response=schemas.TournamentRead
+        request=schemas.TournamentStatusTransition, response=schemas.TournamentRead
     ),
     "rpc.tournament.tournament_schedule_set": Op(
-        request=admin_tournament.TournamentScheduleSet, response=schemas.TournamentRead
+        request=schemas.TournamentScheduleSet, response=schemas.TournamentRead
     ),
-    "rpc.tournament.standing_recalculate": Op(response=TournamentComputationJobRead),
+    "rpc.tournament.standing_recalculate": Op(response=schemas.TournamentComputationJobRead),
     # ── bespoke: stage workflow ────────────────────────────────────────────
-    "rpc.tournament.stage_merge": Op(request=admin_stage.MergeGroupStagesRequest, response=schemas.StageRead),
+    "rpc.tournament.stage_merge": Op(request=schemas.MergeGroupStagesRequest, response=schemas.StageRead),
     "rpc.tournament.stage_activate": Op(response=schemas.StageRead),
     "rpc.tournament.stage_deactivate": Op(response=schemas.StageRead),
-    "rpc.tournament.stage_generate": Op(response=TournamentComputationJobRead),
-    "rpc.tournament.stage_activate_and_generate": Op(response=TournamentComputationJobRead),
-    "rpc.tournament.stage_wire": Op(request=admin_stage.WireFromGroupsRequest, response=schemas.StageRead),
-    "rpc.tournament.stage_seed": Op(request=admin_stage.SeedTeamsRequest, response=schemas.StageRead),
+    "rpc.tournament.stage_generate": Op(response=schemas.TournamentComputationJobRead),
+    "rpc.tournament.stage_activate_and_generate": Op(response=schemas.TournamentComputationJobRead),
+    "rpc.tournament.stage_auto_wire": Op(response=schemas.StageRead),
+    "rpc.tournament.stage_wire": Op(request=schemas.WireFromGroupsRequest, response=schemas.StageRead),
+    "rpc.tournament.stage_seed": Op(request=schemas.SeedTeamsRequest, response=schemas.StageRead),
     # ── integrations: division grids ───────────────────────────────────────
     "rpc.tournament.grid_workspace_create": Op(request=schemas.DivisionGridCreate, response=schemas.DivisionGridRead),
     "rpc.tournament.grid_update": Op(request=schemas.DivisionGridUpdate, response=schemas.DivisionGridRead),
@@ -206,78 +196,78 @@ OPERATIONS: dict[str, Op] = {
         ),
     ),
     "rpc.tournament.challonge_team_preview": Op(
-        response=admin_team.ChallongeTeamSyncPreview, query_params=(QueryParam("tournament_id", "integer", required=True),)
+        response=schemas.ChallongeTeamSyncPreview, query_params=(QueryParam("tournament_id", "integer", required=True),)
     ),
     "rpc.tournament.challonge_team_apply": Op(
-        request=admin_team.ChallongeTeamSyncRequest,
-        response=admin_team.ChallongeTeamSyncResult,
+        request=schemas.ChallongeTeamSyncRequest,
+        response=schemas.ChallongeTeamSyncResult,
         query_params=(QueryParam("tournament_id", "integer", required=True),),
     ),
     # ── integrations: Google Sheets ────────────────────────────────────────
-    "rpc.tournament.sheet_get": Op(response=admin_balancer.BalancerGoogleSheetFeedRead),
+    "rpc.tournament.sheet_get": Op(response=schemas.BalancerGoogleSheetFeedRead),
     "rpc.tournament.sheet_upsert": Op(
-        request=admin_balancer.BalancerGoogleSheetFeedUpsert, response=admin_balancer.BalancerGoogleSheetFeedRead
+        request=schemas.BalancerGoogleSheetFeedUpsert, response=schemas.BalancerGoogleSheetFeedRead
     ),
-    "rpc.tournament.sheet_sync": Op(response=admin_balancer.BalancerGoogleSheetFeedSyncResponse),
-    "rpc.tournament.sheet_mapping_catalog": Op(response=admin_balancer.BalancerGoogleSheetMappingCatalogResponse),
+    "rpc.tournament.sheet_sync": Op(response=schemas.BalancerGoogleSheetFeedSyncResponse),
+    "rpc.tournament.sheet_mapping_catalog": Op(response=schemas.BalancerGoogleSheetMappingCatalogResponse),
     "rpc.tournament.sheet_suggest_mapping": Op(
-        request=admin_balancer.BalancerGoogleSheetMappingSuggestRequest,
-        response=admin_balancer.BalancerGoogleSheetMappingSuggestResponse,
+        request=schemas.BalancerGoogleSheetMappingSuggestRequest,
+        response=schemas.BalancerGoogleSheetMappingSuggestResponse,
     ),
     "rpc.tournament.sheet_preview": Op(
-        request=admin_balancer.BalancerGoogleSheetMappingPreviewRequest,
-        response=admin_balancer.BalancerGoogleSheetMappingPreviewResponse,
+        request=schemas.BalancerGoogleSheetMappingPreviewRequest,
+        response=schemas.BalancerGoogleSheetMappingPreviewResponse,
     ),
-    "rpc.tournament.sheet_players_export": Op(response=admin_balancer.BalancerPlayerExportResponse),
+    "rpc.tournament.sheet_players_export": Op(response=schemas.BalancerPlayerExportResponse),
     # ── registration admin ─────────────────────────────────────────────────
     "rpc.tournament.reg_form_get": Op(response=reg_schemas.RegistrationFormRead),
     "rpc.tournament.reg_form_upsert": Op(
         request=reg_schemas.RegistrationFormUpsert, response=reg_schemas.RegistrationFormRead
     ),
-    "rpc.tournament.reg_list": Op(response=admin_balancer.BalancerRegistrationRead, response_array=True),
+    "rpc.tournament.reg_list": Op(response=schemas.BalancerRegistrationRead, response_array=True),
     "rpc.tournament.reg_create_manual": Op(
-        request=admin_balancer.BalancerRegistrationCreateRequest, response=admin_balancer.BalancerRegistrationRead
+        request=schemas.BalancerRegistrationCreateRequest, response=schemas.BalancerRegistrationRead
     ),
     "rpc.tournament.reg_update": Op(
-        request=admin_balancer.BalancerRegistrationUpdateRequest, response=admin_balancer.BalancerRegistrationRead
+        request=schemas.BalancerRegistrationUpdateRequest, response=schemas.BalancerRegistrationRead
     ),
-    "rpc.tournament.reg_approve": Op(response=admin_balancer.BalancerRegistrationRead),
-    "rpc.tournament.reg_reject": Op(response=admin_balancer.BalancerRegistrationRead),
-    "rpc.tournament.reg_include_balancer": Op(response=admin_balancer.BalancerRegistrationRead),
-    "rpc.tournament.reg_withdraw": Op(response=admin_balancer.BalancerRegistrationRead),
-    "rpc.tournament.reg_restore": Op(response=admin_balancer.BalancerRegistrationRead),
-    "rpc.tournament.reg_bulk_approve": Op(response=admin_balancer.BulkApproveResponse),
+    "rpc.tournament.reg_approve": Op(response=schemas.BalancerRegistrationRead),
+    "rpc.tournament.reg_reject": Op(response=schemas.BalancerRegistrationRead),
+    "rpc.tournament.reg_include_balancer": Op(response=schemas.BalancerRegistrationRead),
+    "rpc.tournament.reg_withdraw": Op(response=schemas.BalancerRegistrationRead),
+    "rpc.tournament.reg_restore": Op(response=schemas.BalancerRegistrationRead),
+    "rpc.tournament.reg_bulk_approve": Op(response=schemas.BulkApproveResponse),
     "rpc.tournament.reg_set_balancer_status": Op(
-        request=admin_balancer.SetBalancerStatusRequest, response=admin_balancer.BalancerRegistrationRead
+        request=schemas.SetBalancerStatusRequest, response=schemas.BalancerRegistrationRead
     ),
-    "rpc.tournament.reg_bulk_add_balancer": Op(response=admin_balancer.BulkBalancerStatusResponse),
+    "rpc.tournament.reg_bulk_add_balancer": Op(response=schemas.BulkBalancerStatusResponse),
     "rpc.tournament.reg_bulk_set_balancer_status": Op(
-        request=admin_balancer.BulkSetBalancerStatusRequest, response=admin_balancer.BulkBalancerStatusResponse
+        request=schemas.BulkSetBalancerStatusRequest, response=schemas.BulkBalancerStatusResponse
     ),
     "rpc.tournament.reg_rank_autofill_preview": Op(
-        request=admin_balancer.BalancerRegistrationRankAutofillRequest,
-        response=admin_balancer.BalancerRegistrationRankAutofillResponse,
+        request=schemas.BalancerRegistrationRankAutofillRequest,
+        response=schemas.BalancerRegistrationRankAutofillResponse,
     ),
     "rpc.tournament.reg_rank_autofill_apply": Op(
-        request=admin_balancer.BalancerRegistrationRankAutofillRequest,
-        response=admin_balancer.BalancerRegistrationRankAutofillResponse,
+        request=schemas.BalancerRegistrationRankAutofillRequest,
+        response=schemas.BalancerRegistrationRankAutofillResponse,
     ),
-    "rpc.tournament.reg_export_users": Op(response=admin_balancer.RegistrationUserExportResponse),
+    "rpc.tournament.reg_export_users": Op(response=schemas.RegistrationUserExportResponse),
     "rpc.tournament.reg_check_in": Op(
-        request=admin_balancer.CheckInRequest, response=admin_balancer.BalancerRegistrationRead
+        request=schemas.CheckInRequest, response=schemas.BalancerRegistrationRead
     ),
-    "rpc.tournament.reg_user_rank_history": Op(response=admin_balancer.BalancerRegistrationRankHistoryResponse),
+    "rpc.tournament.reg_user_rank_history": Op(response=schemas.BalancerRegistrationRankHistoryResponse),
     # ── registration status catalog ────────────────────────────────────────
-    "rpc.tournament.regstatus_catalog": Op(response=admin_balancer.BalancerRegistrationStatusRead, response_array=True),
-    "rpc.tournament.regstatus_list": Op(response=admin_balancer.BalancerRegistrationStatusRead, response_array=True),
+    "rpc.tournament.regstatus_catalog": Op(response=schemas.BalancerRegistrationStatusRead, response_array=True),
+    "rpc.tournament.regstatus_list": Op(response=schemas.BalancerRegistrationStatusRead, response_array=True),
     "rpc.tournament.regstatus_create": Op(
-        request=admin_balancer.BalancerRegistrationStatusCreate, response=admin_balancer.BalancerRegistrationStatusRead
+        request=schemas.BalancerRegistrationStatusCreate, response=schemas.BalancerRegistrationStatusRead
     ),
     "rpc.tournament.regstatus_update": Op(
-        request=admin_balancer.BalancerRegistrationStatusUpdate, response=admin_balancer.BalancerRegistrationStatusRead
+        request=schemas.BalancerRegistrationStatusUpdate, response=schemas.BalancerRegistrationStatusRead
     ),
     "rpc.tournament.regstatus_builtin_upsert": Op(
-        request=admin_balancer.BalancerRegistrationStatusUpdate, response=admin_balancer.BalancerRegistrationStatusRead
+        request=schemas.BalancerRegistrationStatusUpdate, response=schemas.BalancerRegistrationStatusRead
     ),
     # ── workspace subscription provider config ─────────────────────────────
     "rpc.tournament.sub_config_list": Op(response=reg_schemas.SubscriptionProviderConfigListResponse),
@@ -326,23 +316,23 @@ OPERATIONS: dict[str, Op] = {
     # maps whole request/response models only (see the module docstring).
     # ── encounter result (the single admin write + its audit trail) ────────
     "rpc.tournament.encounter_set_result": Op(
-        request=admin_encounter.EncounterSetResultInput, response=admin_encounter.EncounterResultRead
+        request=schemas.EncounterSetResultInput, response=schemas.EncounterResultRead
     ),
-    "rpc.tournament.encounter_reopen_result": Op(response=admin_encounter.EncounterResultRead),
-    "rpc.tournament.encounter_result_audit": Op(response=admin_encounter.EncounterResultAuditRead, response_array=True),
+    "rpc.tournament.encounter_reopen_result": Op(response=schemas.EncounterResultRead),
+    "rpc.tournament.encounter_result_audit": Op(response=schemas.EncounterResultAuditRead, response_array=True),
     # ── captain reports admin list (cross-tournament, workspace-scoped) ────
     "rpc.tournament.admin_encounter_reports_list": Op(
-        response=Paginated[admin_reports.EncounterReportsRow],
-        query=admin_reports.EncounterReportsQueryParams,
+        response=Paginated[schemas.EncounterReportsRow],
+        query=schemas.EncounterReportsQueryParams,
     ),
     "rpc.tournament.admin_encounter_reports_stats": Op(
-        response=admin_reports.EncounterReportsStats,
-        query=admin_reports.EncounterReportsQueryParams,
+        response=schemas.EncounterReportsStats,
+        query=schemas.EncounterReportsQueryParams,
     ),
     # ── parsed matches (one row per played map) ────────────────────────────
     "rpc.tournament.admin_matches_list": Op(
-        response=Paginated[admin_matches.AdminMatchRow],
-        query=admin_matches.AdminMatchesQueryParams,
+        response=Paginated[schemas.AdminMatchRow],
+        query=schemas.AdminMatchesQueryParams,
     ),
-    "rpc.tournament.admin_match_get": Op(response=admin_matches.AdminMatchDetail),
+    "rpc.tournament.admin_match_get": Op(response=schemas.AdminMatchDetail),
 }

@@ -10,21 +10,12 @@ verification.
 from __future__ import annotations
 
 import importlib
-import os
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-
 user_merge = importlib.import_module("src.services.admin.user_merge")
-merge_schemas = importlib.import_module("src.schemas.admin.user_merge")
+schemas = importlib.import_module("src.schemas")
 
 
 def _account(id_, *, provider, username, is_verified=False, provider_user_id=None, is_primary=False):
@@ -48,7 +39,7 @@ class ApplyIdentitySelectionDedupTests(IsolatedAsyncioTestCase):
         source = SimpleNamespace(id=10, social_accounts=[source_account])
         target = SimpleNamespace(id=20, social_accounts=[target_account])
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock())
-        selection = merge_schemas.UserMergeIdentitySelection(social_account_ids=[1])
+        selection = schemas.UserMergeIdentitySelection(social_account_ids=[1])
 
         result = await user_merge.merges.apply_identity_selection(session, source, target, selection)
 
@@ -65,7 +56,7 @@ class ApplyIdentitySelectionDedupTests(IsolatedAsyncioTestCase):
         source = SimpleNamespace(id=10, social_accounts=[source_account])
         target = SimpleNamespace(id=20, social_accounts=[target_account])
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock())
-        selection = merge_schemas.UserMergeIdentitySelection(social_account_ids=[1])
+        selection = schemas.UserMergeIdentitySelection(social_account_ids=[1])
 
         result = await user_merge.merges.apply_identity_selection(session, source, target, selection)
 
@@ -81,7 +72,7 @@ class ApplyIdentitySelectionDedupTests(IsolatedAsyncioTestCase):
         source = SimpleNamespace(id=10, social_accounts=[source_account])
         target = SimpleNamespace(id=20, social_accounts=[target_account])
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock())
-        selection = merge_schemas.UserMergeIdentitySelection(social_account_ids=[1])
+        selection = schemas.UserMergeIdentitySelection(social_account_ids=[1])
 
         result = await user_merge.merges.apply_identity_selection(session, source, target, selection)
 
@@ -97,7 +88,7 @@ class ApplyIdentitySelectionDedupTests(IsolatedAsyncioTestCase):
         target = SimpleNamespace(id=20, social_accounts=[])
         primary_result = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [source_account]))
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock(), execute=AsyncMock(return_value=primary_result))
-        selection = merge_schemas.UserMergeIdentitySelection(social_account_ids=[1])
+        selection = schemas.UserMergeIdentitySelection(social_account_ids=[1])
 
         result = await user_merge.merges.apply_identity_selection(session, source, target, selection)
 

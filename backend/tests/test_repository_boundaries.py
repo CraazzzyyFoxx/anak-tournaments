@@ -40,19 +40,15 @@ DIRECT_WRITE_RE = re.compile(
 #: convenience.
 APPROVED_DIRECT_WRITE_FILES = {
     "analytics-service/src/services/analytics/flows.py",
-    "analytics-service/src/services/analytics_read/service.py",
-    "analytics-service/src/services/jobs/service.py",
     "analytics-service/src/services/ml/inference/match_quality_runner.py",
     "analytics-service/src/services/ml/inference/player_anomaly_runner.py",
     "analytics-service/src/services/ml/inference/runner.py",
-    "analytics-service/src/services/ml/training/registry.py",
-    "analytics-service/src/worker/balance_snapshot.py",
     "parser-service/src/services/achievement/engine/runner.py",
     "shared/messaging/outbox.py",
     "shared/rbac/bootstrap.py",
     "shared/services/bracket/advancement.py",
     "shared/services/bracket/usability.py",
-    "shared/services/division_grid_access.py",
+    "shared/services/division_grid/access.py",
     "shared/services/realtime_publisher.py",
     "shared/services/stage_refs.py",
     "shared/services/team_export/materialization.py",
@@ -69,8 +65,6 @@ APPROVED_DIRECT_WRITE_FILES = {
 #: line to delete, not a pattern to copy: a new file belongs here only if the same
 #: change also explains why the repository method cannot exist yet.
 PENDING_REPOSITORY_MIGRATION = {
-    "analytics-service/src/rpc/mutations.py",
-    "analytics-service/src/services/ml/training/backtest.py",
     "identity-service/src/services/auth.py",
     "identity-service/src/services/auth_users.py",
     "identity-service/src/services/oauth_accounts.py",
@@ -79,8 +73,8 @@ PENDING_REPOSITORY_MIGRATION = {
     "shared/services/audit.py",
     "shared/services/encounter/result_audit.py",
     "shared/services/social_identity.py",
-    "shared/services/subscription_store.py",
-    "shared/services/tournament_computation.py",
+    "shared/services/subscriptions/store.py",
+    "shared/services/tournament/computation.py",
     "tournament-service/src/services/encounter/captain.py",
     "tournament-service/src/services/encounter/map_report.py",
     "tournament-service/src/services/encounter/pick_ban_session.py",

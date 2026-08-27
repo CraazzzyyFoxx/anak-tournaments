@@ -43,10 +43,15 @@ class ParsedStep:
 
 
 def parse_step_token(token: str) -> ParsedStep:
-    """Resolved tokens are e.g. ``ban_home``/``protect_away``/``decider``."""
+    """Resolved tokens are e.g. ``ban_home``/``protect_away``/``decider``.
+
+    A token with no ``_`` (and not ``decider``) used to ``ValueError`` on the
+    unpack — and ``get_pick_ban_state`` calls this on every poll. Unknown
+    action/side already default to ban/home; missing separator does the same.
+    """
     if token == "decider":
         return ParsedStep(token, "decider", None)
-    action_part, side_part = token.split("_", 1)
+    action_part, _sep, side_part = token.partition("_")
     action: Action = action_part if action_part in ("ban", "pick", "protect") else "ban"  # type: ignore[assignment]
     side: Side = "away" if side_part == "away" else "home"
     return ParsedStep(token, action, side)
@@ -65,6 +70,8 @@ def resolve_sequence_tokens(sequence: list[str], first_side: enums.MapPickSide |
         if token == "decider":
             resolved.append("decider")
             continue
+        if not isinstance(token, str) or "_" not in token:
+            raise ValueError(f"invalid sequence token {token!r}")
         action, slot = token.split("_", 1)
         resolved.append(f"{action}_{first if slot == 'first' else second}")
     return resolved
@@ -72,15 +79,13 @@ def resolve_sequence_tokens(sequence: list[str], first_side: enums.MapPickSide |
 
 # ── entry-shaped protocol ────────────────────────────────────────────────────
 #
-# The engine works over any object exposing these attributes — both
-# `PickBanEntry` (new) and, during the migration window, `EncounterMapPool`
-# (legacy) satisfy it structurally, so the same functions serve both without a
-# DB-model import here (keeps this module DB-free).
+# The engine works over any object exposing these attributes. ``PickBanEntry``
+# satisfies it structurally, so the functions stay free of a DB-model import.
 
 
 class EntryLike:
     """Structural shape the engine reads/writes. Not instantiated directly —
-    documents the attributes `PickBanEntry`/`EncounterMapPool` must have."""
+    documents the attributes ``PickBanEntry`` must have."""
 
     id: int
     item_id: int

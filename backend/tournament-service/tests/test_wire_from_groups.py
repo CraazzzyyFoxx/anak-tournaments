@@ -6,7 +6,6 @@ Verify the two-stage tournament workflow (groups → playoffs).
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,16 +16,9 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 stage_service = importlib.import_module("src.services.admin.stage")
-admin_schemas_module = importlib.import_module("src.schemas.admin.stage")
+schemas = importlib.import_module("src.schemas")
 enums = importlib.import_module("shared.core.enums")
 
 stage_service.stage_service._publish_tournament_changed = AsyncMock()
@@ -275,7 +267,7 @@ class WireFromGroupsTests(IsolatedAsyncioTestCase):
 class StageItemInputSchemaValidationTests(IsolatedAsyncioTestCase):
     async def test_tentative_requires_source(self) -> None:
         with self.assertRaises(Exception) as ctx:
-            admin_schemas_module.StageItemInputCreate(
+            schemas.StageItemInputCreate(
                 slot=1,
                 input_type=enums.StageItemInputType.TENTATIVE,
             )
@@ -283,7 +275,7 @@ class StageItemInputSchemaValidationTests(IsolatedAsyncioTestCase):
 
     async def test_tentative_rejects_team_id(self) -> None:
         with self.assertRaises(Exception) as ctx:
-            admin_schemas_module.StageItemInputCreate(
+            schemas.StageItemInputCreate(
                 slot=1,
                 input_type=enums.StageItemInputType.TENTATIVE,
                 team_id=555,
@@ -294,14 +286,14 @@ class StageItemInputSchemaValidationTests(IsolatedAsyncioTestCase):
 
     async def test_final_requires_team_id(self) -> None:
         with self.assertRaises(Exception) as ctx:
-            admin_schemas_module.StageItemInputCreate(
+            schemas.StageItemInputCreate(
                 slot=1,
                 input_type=enums.StageItemInputType.FINAL,
             )
         self.assertIn("team_id", str(ctx.exception))
 
     async def test_final_with_team_id_ok(self) -> None:
-        created = admin_schemas_module.StageItemInputCreate(
+        created = schemas.StageItemInputCreate(
             slot=1,
             input_type=enums.StageItemInputType.FINAL,
             team_id=42,
@@ -309,7 +301,7 @@ class StageItemInputSchemaValidationTests(IsolatedAsyncioTestCase):
         self.assertEqual(42, created.team_id)
 
     async def test_tentative_with_source_ok(self) -> None:
-        created = admin_schemas_module.StageItemInputCreate(
+        created = schemas.StageItemInputCreate(
             slot=3,
             input_type=enums.StageItemInputType.TENTATIVE,
             source_stage_item_id=10,
@@ -511,3 +503,65 @@ class SplitSeedingTests(IsolatedAsyncioTestCase):
         self.assertEqual(4, len(added_inputs))
         for inp in added_inputs:
             self.assertEqual(target.items[0].id, inp.stage_item_id)
+
+
+class AutoWireStageTests(IsolatedAsyncioTestCase):
+    """Standalone "Auto-wire" action — same derivation as activate-and-generate's
+    automatic wiring, but raising a descriptive 400 (instead of silently no-op'ing)
+    when there's nothing to wire from, since an admin triggering this expects to
+    see WHY it did nothing."""
+
+    async def test_strict_raises_without_source_advance_count(self) -> None:
+        target = _playoff_stage(stage_id=2, tournament_id=99)
+        session = SimpleNamespace(add=Mock(), commit=AsyncMock())
+
+        with patch.object(
+            stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=None)
+        ):
+            with self.assertRaises(Exception) as ctx:
+                await stage_service.stage_service._auto_wire_from_groups(session, target, strict=True)
+
+        self.assertIn("Teams advancing to playoff", str(ctx.exception))
+
+    async def test_strict_raises_for_non_bracket_stage(self) -> None:
+        stage = SimpleNamespace(
+            id=1, tournament_id=99, stage_type=enums.StageType.ROUND_ROBIN, items=[]
+        )
+        session = SimpleNamespace(add=Mock(), commit=AsyncMock())
+
+        with self.assertRaises(Exception) as ctx:
+            await stage_service.stage_service._auto_wire_from_groups(session, stage, strict=True)
+
+        self.assertIn("elimination", str(ctx.exception).lower())
+
+    async def test_auto_wire_stage_wires_from_configured_source(self) -> None:
+        tournament_id = 99
+        source = _group_stage(stage_id=1, tournament_id=tournament_id, num_groups=2)
+        source.advance_count = 2
+        target = _playoff_stage(stage_id=2, tournament_id=tournament_id)
+
+        added_inputs: list = []
+        session = SimpleNamespace(
+            add=Mock(side_effect=lambda obj: added_inputs.append(obj)),
+            commit=AsyncMock(),
+            flush=AsyncMock(),
+        )
+
+        with (
+            patch.object(
+                stage_service.stage_service,
+                "get_stage",
+                AsyncMock(side_effect=[target, target, source, target]),
+            ),
+            patch.object(
+                stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=source)
+            ),
+        ):
+            result = await stage_service.stage_service.auto_wire_stage(session, target.id)
+
+        self.assertIs(target, result)
+        # 2 groups × advance_count 2 = 4 wired TENTATIVE slots.
+        self.assertEqual(4, len(added_inputs))
+        for inp in added_inputs:
+            self.assertEqual(enums.StageItemInputType.TENTATIVE, inp.input_type)
+        session.commit.assert_awaited()

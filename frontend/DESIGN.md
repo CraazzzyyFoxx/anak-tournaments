@@ -8,6 +8,11 @@ Anchor pages that define the product's visual language:
 - `frontend/src/app/(site)/users/[slug]/page.tsx` - User profile: a richer hero header.
 - `frontend/src/app/(site)/tournaments/page.tsx` - List page: hero + filters + one scrollable table.
 
+**Related references:**
+
+- Interactive Design Book (site, real `--aqt-*` tokens, verified/specified/divergences): [`/docs/design-book.html`](public/docs/design-book.html)
+- Design Book source spec (Russian, tokens/type/roles/content/patterns): [`../docs/design-book.md`](../docs/design-book.md)
+
 ## TL;DR
 
 - Data-first UI: every screen answers a concrete question.
@@ -60,9 +65,11 @@ with `font-size` in Tailwind v4.
 
 ### Typography
 
-- Base font is Inter (via next/font) in `frontend/src/app/layout.tsx`.
+- Base fonts are Inter, Onest and JetBrains Mono, self-hosted via `next/font/local` in `frontend/src/app/layout.tsx` (not `next/font/google` — that fetches from `fonts.gstatic.com` at build time and a production build once died on rotated hashes).
 - Use `tabular-nums` for metrics where stable alignment matters.
   Examples: `frontend/src/components/StatisticsCard.tsx`, `frontend/src/app/(site)/users/components/header/UserHeader.tsx`.
+
+**The `:root`-vs-`<html>` font trap.** The `.variable` classes from `next/font/local` MUST mount on `<html>`, not `<body>`: `globals.css` aliases them from `:root` (`--aqt-mono`, `--aqt-display`), and a custom property is substituted where it is *declared* — an alias on `:root` cannot read a variable defined one level down on `<body>`. It silently resolves to nothing (and poisons the whole declaration, so the literal fallback next to it doesn't apply either), so every `--aqt-mono`/`--aqt-display` surface falls back to plain Inter with no error. If you ever re-alias a `next/font` variable in a scoped `:root`, mount its class at or above that scope.
 
 ## Core building blocks
 
@@ -90,6 +97,9 @@ before writing markup:
 | Empty / error / not-found | `components/ui/page-state-card.tsx` |
 | Data table | `components/ui/data-table.tsx` — header scope, scroll region, skeletons, keyboard rows |
 | Placement medal | `components/ui/place-badge.tsx` — `--aqt-medal-*` tokens |
+| Role / division marker | `components/PlayerRoleIcon.tsx`, `components/DivisionIcon.tsx` — icon+label only in a Role split; icon-only (name in `title`/`aria-label`) elsewhere on display surfaces |
+| MVP pill | `components/match/MvpMatchPill.tsx` |
+| Hero avatar / stack | `components/hero/HeroImage.tsx` (`HeroStrip` for the collapsing stack) |
 | Platform totals | `components/stats/PlatformStatsGrid.tsx` |
 | Filter/sort/page in the URL | `hooks/useQueryParams.ts` |
 
@@ -204,6 +214,10 @@ Do not reintroduce them.
   row. `formatDateRange` in `lib/utils.ts` takes `locale` as a **required**
   argument for exactly this reason.
 - Use `tabular-nums` for metrics.
+
+### Low-sample gate
+
+- Percentiles and vs-average comparisons hide below 10 games (`LOW_SAMPLE_GAMES`, e.g. `frontend/src/app/(site)/users/components/overview/OverviewTopHeroesTable.tsx`): render an em dash with the rule in `title`, plus a `LOW SAMPLE` badge. "Top 2%" off three games is noise, not signal — never print a percentile without checking the sample size first.
 
 ### Truncation
 

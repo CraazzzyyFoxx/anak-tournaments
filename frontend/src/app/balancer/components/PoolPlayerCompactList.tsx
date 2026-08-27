@@ -16,8 +16,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
-import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
-import { getRegistrationBattleTags } from "./balancer-page-helpers";
+import type { AdminRegistration, BalancerPlayerRecord } from "@/types/balancer-admin.types";
+import { ROLE_TEXT_ACCENTS, getRegistrationBattleTags, splitBattleTag } from "./balancer-page-helpers";
 import { BalancerStatusContextMenuItems, BalancerStatusMenu, type StatusOptionGroups } from "./BalancerStatusMenu";
 import { BattleTagContextMenuItems, BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
 import { IssueChip, issueChipKey } from "./IssueChip";
@@ -45,11 +45,6 @@ type PoolPlayerCompactListProps = {
   emptyDescription?: string;
 };
 
-const ROLE_TEXT_ACCENTS: Record<BalancerRoleCode, string> = {
-  tank: "text-sky-300",
-  dps: "text-orange-300",
-  support: "text-emerald-300",
-};
 
 /** A single-line row is ~52px; rows carrying issue chips are ~76px. */
 const ESTIMATED_ROW_HEIGHT = 64;
@@ -58,18 +53,6 @@ const INITIAL_VIEWPORT_HEIGHT = 800;
 const ROW_GAP = 6;
 /** Below this a plain list is cheaper than measuring every row; matches the pool sizes we see. */
 const VIRTUALIZATION_THRESHOLD = 50;
-
-function splitBattleTag(battleTag: string): { name: string; suffix: string | null } {
-  const hashIndex = battleTag.indexOf("#");
-  if (hashIndex < 0) {
-    return { name: battleTag, suffix: null };
-  }
-
-  return {
-    name: battleTag.slice(0, hashIndex),
-    suffix: battleTag.slice(hashIndex),
-  };
-}
 
 
 type PoolPlayerRowProps = {
@@ -125,7 +108,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
         <div
           title={issueSummary || primaryBattleTag}
           onDoubleClick={(event) => {
-            if (event.target instanceof HTMLElement && event.target.closest("[data-card-action]")) {
+            if (event.target instanceof Element && event.target.closest("[data-card-action]")) {
               return;
             }
             onSelectPlayer?.(player.id);

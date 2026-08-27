@@ -27,7 +27,6 @@ from shared.rpc.identity import ensure_workspace_permission
 from src import schemas
 from src.core import db
 from src.domain.overwatch_rank import resolve_date_range
-from src.schemas.admin import rank_collection as rc_schemas
 from src.services.overwatch_rank import admin as rank_admin
 from src.services.overwatch_rank import queries
 
@@ -131,7 +130,7 @@ def register(broker: Any, logger: Any) -> None:
                 before_id=c.q1(data, "before_id", int),
                 limit=c.q1(data, "limit", int, 50),
             )
-            return [rc_schemas.FetchLogRead.model_validate(row) for row in rows]
+            return [schemas.FetchLogRead.model_validate(row) for row in rows]
 
         return await c.envelope(logger, "rank.fetch_log", op, session_factory=_SF)
 
@@ -141,7 +140,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             workspace_id = _authorize(data, "read")
             result = await rank_admin.get_collection_stats(session, workspace_id=workspace_id)
-            return rc_schemas.RankCollectionStats.model_validate(result)
+            return schemas.RankCollectionStats.model_validate(result)
 
         return await c.envelope(logger, "rank.stats", op, session_factory=_SF)
 
@@ -151,7 +150,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             workspace_id = _authorize(data, "read")
             rows = await rank_admin.get_user_collection_status(session, c.require_id(data), workspace_id=workspace_id)
-            return [rc_schemas.CollectionStatusRead(**row) for row in rows]
+            return [schemas.CollectionStatusRead(**row) for row in rows]
 
         return await c.envelope(logger, "rank.user_collection", op, session_factory=_SF)
 
@@ -160,14 +159,14 @@ def register(broker: Any, logger: Any) -> None:
         # POST /admin/rank/collect — rank.update, scoped by workspace_id.
         async def op(session: Any) -> Any:
             workspace_id = _authorize(data, "update")
-            body = rc_schemas.CollectTriggerRequest.model_validate(c.payload(data))
+            body = schemas.CollectTriggerRequest.model_validate(c.payload(data))
             enqueued = await rank_admin.trigger_collection(
                 session,
                 user_id=body.user_id,
                 social_account_ids=body.social_account_ids,
                 workspace_id=workspace_id,
             )
-            return rc_schemas.CollectTriggerResponse(enqueued=enqueued)
+            return schemas.CollectTriggerResponse(enqueued=enqueued)
 
         return await c.envelope(logger, "rank.collect", op, session_factory=_SF)
 
@@ -176,12 +175,12 @@ def register(broker: Any, logger: Any) -> None:
         # POST /admin/rank/reenable-disabled — rank.update, scoped by workspace_id.
         async def op(session: Any) -> Any:
             workspace_id = _authorize(data, "update")
-            body = rc_schemas.ReenableDisabledRequest.model_validate(c.payload(data))
+            body = schemas.ReenableDisabledRequest.model_validate(c.payload(data))
             count = await rank_admin.reenable_disabled(
                 session,
                 only_previously_succeeded=body.only_previously_succeeded,
                 workspace_id=workspace_id,
             )
-            return rc_schemas.ReenableDisabledResponse(reenabled=count)
+            return schemas.ReenableDisabledResponse(reenabled=count)
 
         return await c.envelope(logger, "rank.reenable_disabled", op, session_factory=_SF)

@@ -16,6 +16,7 @@ import {
   ratesByMaxRank,
   type PlayerValidationIssue,
 } from "@/app/balancer/components/workspace-helpers";
+import { buildRegistrationUpdateFromPlayerPayload } from "@/app/balancer/components/useBalancerMutations";
 import type {
   AdminRegistration,
   AdminRegistrationRole,
@@ -521,6 +522,26 @@ describe("synthetic registration helpers", () => {
     expect(application.additional_roles_json).toEqual(["tank", "support"]);
     expect(application.player).toBe(player);
   });
+
+  it("copies rank_source onto synthetic role entries", () => {
+    const registration = createRegistration({
+      roles: [
+        {
+          role: "support",
+          subrole: null,
+          is_primary: true,
+          priority: 0,
+          rank_value: 900,
+          is_active: true,
+          rank_source: "registration",
+        },
+      ],
+    });
+
+    const player = createSyntheticPlayerFromRegistration(registration);
+
+    expect(player.role_entries_json[0]?.rank_source).toBe("registration");
+  });
 });
 
 describe("every-role effective ranks", () => {
@@ -632,6 +653,58 @@ describe("every-role effective ranks", () => {
     expect(player.role_entries_json.map((entry) => entry.ow_rank_value)).toEqual([4100, 2000]);
   });
 });
+
+describe("registration rank pin save", () => {
+  const roleEntries = [
+    {
+      role: "support" as const,
+      subtype: null,
+      priority: 1,
+      division_number: 1,
+      rank_value: 900,
+      is_active: true,
+      ow_rank_value: null,
+    },
+  ];
+
+  it("does not send pin:true when the editor pin is off", () => {
+    const patch = buildRegistrationUpdateFromPlayerPayload({
+      role_entries_json: roleEntries,
+      is_flex: false,
+    });
+    expect(patch.pin).toBe(undefined);
+    expect(patch.clear_pin).toBe(undefined);
+  });
+
+  it("sends pin:true when the editor pin is on", () => {
+    const patch = buildRegistrationUpdateFromPlayerPayload({
+      role_entries_json: roleEntries,
+      is_flex: false,
+      pin: true,
+    });
+    expect(patch.pin).toBe(true);
+  });
+
+  it("keeps roles when clear_pin is requested", () => {
+    const patch = buildRegistrationUpdateFromPlayerPayload({
+      role_entries_json: roleEntries,
+      is_flex: false,
+      clear_pin: true,
+    });
+    expect(patch.clear_pin).toBe(true);
+    expect(patch.roles).toEqual([
+      {
+        role: "support",
+        subrole: null,
+        priority: 1,
+        is_primary: true,
+        rank_value: 900,
+        is_active: true,
+      },
+    ]);
+  });
+});
+
 
 describe("ratesByMaxRank", () => {
   const config = (overrides: Partial<BuiltInFieldConfig> = {}): BuiltInFieldConfig =>

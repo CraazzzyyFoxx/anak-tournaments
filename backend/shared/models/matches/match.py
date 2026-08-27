@@ -191,7 +191,7 @@ class MatchKillFeed(db.TimeStampIntegerMixin):
 
 
 class MatchEvent(db.TimeStampIntegerMixin):
-    __tablename__ = "assists"
+    __tablename__ = "event"
     __table_args__ = (
         # FK indexes created CONCURRENTLY by perfidx03.
         Index("ix_matches_assists_hero_id", "hero_id"),

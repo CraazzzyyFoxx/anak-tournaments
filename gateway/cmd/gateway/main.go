@@ -349,9 +349,8 @@ func run() error {
 	mux.HandleFunc("POST /api/v1/assets/{asset_type}/{slug}", appBinary.AssetUpload)
 	mux.HandleFunc("DELETE /api/v1/assets/{asset_type}/{slug}", appBinary.AssetDelete)
 	mux.HandleFunc("GET /api/v1/matches/{match_id}/log", appBinary.MatchLog)
-	// User avatar upload + CSV/Sheets user import (relocated from parser-service).
+	// User avatar upload (relocated from parser-service).
 	mux.HandleFunc("POST /api/v1/admin/users/{id}/avatar", appBinary.UserAvatarUpload)
-	mux.HandleFunc("POST /api/v1/user/create/csv", appBinary.UsersCsvImport)
 	// balancer-service: typed RPC public config + admin balance/config + draft +
 	// jobs. The HTTP balancer-service is decommissioned and no longer proxied; the
 	// only un-migrated endpoint (SSE job stream) was dead code. Unmatched
@@ -359,6 +358,8 @@ func run() error {
 	balancerEdge := edge.New(rpcClient, logger, resolver.Resolve)
 	balancerEdge.Register(mux, balancer.PublicRoutes)
 	balancerEdge.Register(mux, balancer.AdminRoutes)
+	balancerEdge.Register(mux, balancer.RosterRoutes)
+
 	balancerEdge.Register(mux, balancer.DraftReadRoutes)
 	balancerEdge.Register(mux, balancer.DraftRoutes)
 	balancerEdge.Register(mux, balancer.JobRoutes)

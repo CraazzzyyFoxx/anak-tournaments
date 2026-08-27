@@ -5,12 +5,12 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DivisionGrid, load_runtime_grid
-from shared.services.division_grid_access import build_workspace_division_grid_normalizer
-from shared.services.division_grid_normalization import (
+from shared.services.division_grid.access import build_workspace_division_grid_normalizer
+from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
 )
-from shared.services.division_grid_resolution import (
+from shared.services.division_grid.resolution import (
     resolve_tournament_division,
     resolve_workspace_division,
 )
@@ -1216,7 +1216,7 @@ class UserService:
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournament_encounters:{id}:{tournament_id}",
+        key="backend:user_tournament_encounters:v2:{id}:{tournament_id}",
     )
     async def get_tournament_encounters(
         self,
@@ -1255,6 +1255,7 @@ class UserService:
                 matches_cache[encounter.id].append(
                     _mappers.to_match_with_user_stats(
                         match,
+                        encounter=encounter,
                         performance=performance,
                         heroes=heroes,
                         impact_rank=impact_rank,
@@ -1264,13 +1265,17 @@ class UserService:
                     )
                 )
 
+        pool_ids = await self.encounters.get_settled_map_ids(session, encounters_cache)
         return [
             _mappers.to_encounter_with_user_stats(
                 encounter,
-                matches=matches_cache.get(encounter_id, []),
+                matches=_mappers.sort_user_matches(
+                    matches_cache.get(encounter.id, []),
+                    pool_ids.get(encounter.id),
+                ),
                 viewer_user_id=user.id,
             )
-            for encounter_id, encounter in encounters_cache.items()
+            for encounter in sorted(encounters_cache.values(), key=_mappers.encounter_play_key)
         ]
 
     # ``grid`` is a pure function of ``tournament_id`` (a tournament pins its own
@@ -1562,7 +1567,7 @@ class UserService:
     @cache(
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_encounters:{user_id}:{workspace_id}:{params.page}:{params.per_page}:"
+            "backend:user_encounters:v2:{user_id}:{workspace_id}:{params.page}:{params.per_page}:"
             "{params.sort}:{params.order}:{result_filter}:{stage}:{mvp1}:{has_logs}:{opponent}"
         ),
         lock=True,
@@ -1620,6 +1625,7 @@ class UserService:
                 matches_cache[encounter.id].append(
                     _mappers.to_match_with_user_stats(
                         match,
+                        encounter=encounter,
                         performance=performance,
                         heroes=heroes,
                         impact_rank=impact_rank,
@@ -1629,11 +1635,15 @@ class UserService:
                     )
                 )
 
+        pool_ids = await self.encounters.get_settled_map_ids(session, encounters_cache)
         for encounter_id, encounter in encounters_cache.items():
             encounters_read.append(
                 _mappers.to_encounter_with_user_stats(
                     encounter,
-                    matches=matches_cache.get(encounter_id, []),
+                    matches=_mappers.sort_user_matches(
+                        matches_cache.get(encounter_id, []),
+                        pool_ids.get(encounter_id),
+                    ),
                     viewer_user_id=user.id,
                 )
             )

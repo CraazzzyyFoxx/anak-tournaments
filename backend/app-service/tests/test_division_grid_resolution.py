@@ -1,20 +1,11 @@
 from __future__ import annotations
 
 import importlib
-import os
 from unittest import TestCase
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-
 division_grid = importlib.import_module("shared.division_grid")
-division_grid_normalization = importlib.import_module("shared.services.division_grid_normalization")
-division_grid_resolution = importlib.import_module("shared.services.division_grid_resolution")
+division_grid_normalization = importlib.import_module("shared.services.division_grid.normalization")
+division_grid_resolution = importlib.import_module("shared.services.division_grid.resolution")
 
 
 def make_grid(

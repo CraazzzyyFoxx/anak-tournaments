@@ -12,43 +12,35 @@ closures by topic so a test can invoke a handler with a request envelope
 (``{"id":.., "query":{k:[..]}, "payload":{..}, "identity":{..}}``) and assert on
 the returned ``{"ok":bool, "data":..}`` / error envelope. ``rpc`` is the package
 fixture exposing that registry.
+
+Env defaults, cache wiring, and the real-DB ``db_session``/
+``real_db_sessionmaker`` hooks used elsewhere in this suite live in
+``shared.testing`` -- see that package's docstring.
 """
 
-import os
 from collections.abc import Awaitable, Callable, Generator
 from typing import Any
 
-# Provide env defaults before importing config so ``Settings()`` constructs even
-# when no env file is loaded (mirrors the other DB-backed test modules). A real
-# environment / env file still wins via ``setdefault``.
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("S3_ACCESS_KEY", "test")
-os.environ.setdefault("S3_SECRET_KEY", "test")
-os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
-os.environ.setdefault("S3_BUCKET_NAME", "test")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
+from shared.testing import apply_test_env_defaults
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+# Must run before any sibling test module imports ``src.core.config`` --
+# conftest.py always imports first in its own directory. A real environment /
+# loaded ``.env`` still wins over these (``setdefault``).
+apply_test_env_defaults()
 
-from src.core.caching import configure_cache
-from src.core.config import settings
+import pytest  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
-# The cashews cache is a process-global singleton with no default backend. The
-# decommissioned HTTP app (main.py) used to configure it at import — which the old
-# `from main import app` conftest pulled in transitively. With main.py gone, the
-# worker (serve.py) configures it in its process; tests must do the same or any
-# cache-touching flow raises cashews NotConfiguredError.
-configure_cache()
+from shared.testing import configure_test_cache, db_session  # noqa: E402,F401
+from src.core.config import settings  # noqa: E402
+
+# The cashews cache is a process-global singleton with no default backend --
+# any cache-touching flow raises ``NotConfiguredError`` until something calls
+# ``cache.setup(...)`` in this process. ``serve.py`` does this via
+# ``configure_cache()``; tests route every known prefix to an in-memory
+# backend instead (see ``shared.testing.cache``).
+configure_test_cache()
 
 
 def _create_test_engine():

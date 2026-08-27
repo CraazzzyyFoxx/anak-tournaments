@@ -21,10 +21,6 @@ def _encounter_base_query(context: EvalContext) -> sa.Select:
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .outerjoin(models.Stage, models.Stage.id == models.Encounter.stage_id)
         .outerjoin(models.StageItem, models.StageItem.id == models.Encounter.stage_item_id)
-        .outerjoin(
-            models.TournamentGroup,
-            models.TournamentGroup.id == models.Encounter.tournament_group_id,
-        )
         .where(
             models.Encounter.status == "COMPLETED",
             models.Tournament.workspace_id == context.workspace_id,
@@ -122,13 +118,11 @@ async def execute_bracket_path(
         encounter=models.Encounter,
         stage=models.Stage,
         stage_item=models.StageItem,
-        tournament_group=models.TournamentGroup,
     )
     upper_clause = encounter_is_upper_bracket(
         encounter=models.Encounter,
         stage=models.Stage,
         stage_item=models.StageItem,
-        tournament_group=models.TournamentGroup,
     )
 
     if lost_in_round:

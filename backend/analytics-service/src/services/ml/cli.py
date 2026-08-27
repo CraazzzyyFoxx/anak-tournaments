@@ -72,17 +72,17 @@ async def _cmd_backfill(args: argparse.Namespace) -> int:
 
 async def _cmd_backtest(args: argparse.Namespace) -> int:
     # Phase 6 implementation wires this to training/backtest.py.
-    from .training import backtest as bt
+    from .training.backtest import backtest_service
 
     async with db.async_session_maker() as session:
-        report = await bt.run_rolling_backtest(
+        report = await backtest_service.run_rolling_backtest(
             session,
             window=int(args.window),
             cutoff_tournament_id=int(args.cutoff) if args.cutoff else None,
             workspace_id=args.workspace_id,
         )
         if getattr(args, "persist", True):
-            await bt.persist_backtest_summary(session, report)
+            await backtest_service.persist_backtest_summary(session, report)
     if args.output:
         with open(args.output, "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=2, default=str)

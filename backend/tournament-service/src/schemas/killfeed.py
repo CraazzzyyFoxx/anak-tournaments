@@ -1,6 +1,6 @@
 """Kill-feed / event timeline read schemas for a single match.
 
-Backed by the ``matches.kill_feed`` and ``matches.assists`` tables. Player
+Backed by the ``matches.kill_feed`` and ``matches.event`` tables. Player
 display names are intentionally NOT included — the client already has the full
 roster (``user_id`` → name) from the match read and resolves them there, which
 keeps this payload lean and the names consistent with the stats tables. Only the

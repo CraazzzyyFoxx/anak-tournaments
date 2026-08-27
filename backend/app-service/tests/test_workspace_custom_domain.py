@@ -11,7 +11,6 @@ seam ``_dns_txt_contains`` calls), never hitting the network.
 from __future__ import annotations
 
 import importlib
-import os
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
@@ -23,14 +22,6 @@ import dns.rdatatype
 import dns.resolver
 from dns.rdtypes.ANY.TXT import TXT
 from sqlalchemy.exc import IntegrityError
-
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 workspace_service = importlib.import_module("src.services.workspace.service")
 workspaces = workspace_service.workspaces

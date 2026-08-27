@@ -47,16 +47,6 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 from shared.tests import eager_loading  # noqa: E402
 
@@ -858,11 +848,9 @@ class SerializeNeedsTheSlotChain(_UpsertCase):
             self, session.statements["PickBanConfig"][0], "PickBanConfig.slots", "PickBanConfigSlot.items"
         )
 
-    # The legacy suite's ``test_the_public_read_loads_the_slot_chain`` is
-    # dropped: there is no public list route (``rpc.tournament.get_pick_ban_configs``
-    # or similar) over ``PickBanConfig`` yet -- confirmed absent from
-    # ``src/rpc/reads.py`` and the rest of the RPC surface -- so there is
-    # nothing to port this case onto.
+    # Public list (`rpc.tournament.get_pick_ban_configs`) uses the same
+    # `list_configs` + `serialize_pick_ban_config` path as the admin list above.
+
 
 
 class RefreshMustNotReachForTheSlotChain(_UpsertCase):

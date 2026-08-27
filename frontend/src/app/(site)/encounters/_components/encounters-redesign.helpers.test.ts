@@ -26,7 +26,6 @@ function encounter(overrides: Partial<Encounter>): Encounter {
     stage_id: null,
     stage_item_id: null,
     challonge_id: null,
-    challonge_slug: null,
     status: "open",
     closeness: null,
     has_logs: false,

@@ -138,6 +138,7 @@ export interface MatchWithUserStats {
   log_name: string | null;
   encounter_id: number;
   map_id: number;
+  map_index?: number | null;
   code: string | null;
   map: MapRead | null;
   performance: number | null;

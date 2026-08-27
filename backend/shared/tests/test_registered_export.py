@@ -10,7 +10,6 @@ depending on which path materialized their team.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from unittest import TestCase
@@ -18,9 +17,6 @@ from unittest import TestCase
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
-
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.services.team_export.registered import registration_slot_rank  # noqa: E402

@@ -1,21 +1,28 @@
 {
   "operations": {
-    "rpc.analytics.balance_quality": {
-      "description": "Returns the stored balance-quality snapshot (objective score, SR spread, discomfort, per-player rows) for a tournament, or null if none exists.",
+    "rpc.analytics.artifacts": {
+      "description": "Returns ML model artifacts ordered by creation, optionally filtered by model_kind and active_only; requires analytics.read.",
       "query_params": [
         {
-          "name": "tournament_id",
-          "required": true,
+          "name": "model_kind",
+          "required": false,
           "schema": {
-            "type": "integer"
+            "type": "string"
+          }
+        },
+        {
+          "name": "active_only",
+          "required": false,
+          "schema": {
+            "type": "boolean"
           }
         }
       ],
       "response": {
-        "array": false,
-        "ref": "analytics.BalanceQualityRead"
+        "array": true,
+        "ref": "analytics.MLArtifactRow"
       },
-      "summary": "Balance quality"
+      "summary": "ML artifacts"
     },
     "rpc.analytics.create_job": {
       "description": "Creates an analytics job and enqueues it to the worker, returning 202; gates by kind (compute=workspace analytics.update, train_ml=superuser), 409 on an active-job conflict.",
@@ -37,6 +44,40 @@
         "ref": "analytics.AnalyticsJobRow"
       },
       "summary": "Create analytics job"
+    },
+    "rpc.analytics.explain": {
+      "description": "Returns the most recent explanation row for a player in a tournament (optionally by algorithm_id); 404 if none found; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "algorithm_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "analytics.ExplanationRow"
+      },
+      "summary": "Explain player"
+    },
+    "rpc.analytics.feedback_list": {
+      "description": "Returns all anomaly-feedback rows recorded for a tournament; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "analytics.AnomalyFeedbackRow"
+      },
+      "summary": "List anomaly feedback"
     },
     "rpc.analytics.feedback_submit": {
       "description": "Upserts a reviewer verdict/note for a player anomaly and returns the saved row; requires analytics.update.",
@@ -205,9 +246,88 @@
       },
       "summary": "List algorithms"
     },
+    "rpc.analytics.match_quality": {
+      "description": "Returns per-encounter match-quality rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "algorithm_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "analytics.MatchQualityRow"
+      },
+      "summary": "Match quality"
+    },
     "rpc.analytics.openskill": {
       "description": "Deprecated OpenSkill v1 endpoint; validates tournament/workspace then always returns 410 gone, directing callers to run the unified analytics job.",
       "summary": "OpenSkill (gone)"
+    },
+    "rpc.analytics.performance": {
+      "description": "Returns ML performance rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "algorithm_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "analytics.PerformanceRow"
+      },
+      "summary": "Performance rows"
+    },
+    "rpc.analytics.player_anomalies": {
+      "description": "Returns player-anomaly rows for a tournament, optionally filtered by player_id and kind; requires analytics.read.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "player_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "kind",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "analytics.PlayerAnomalyRow"
+      },
+      "summary": "Player anomalies"
     },
     "rpc.analytics.points": {
       "description": "Creates a 202 async compute job scoped to the Points algorithm for the required tournament_id.",
@@ -262,156 +382,7 @@
       },
       "summary": "Override player shift"
     },
-    "rpc.analytics.train": {
-      "description": "Dispatches a 202 ML training job to the worker queue; requires analytics.update and configured RabbitMQ (503 otherwise).",
-      "request": {
-        "array": false,
-        "ref": "analytics.TrainRequestBody"
-      },
-      "response": {
-        "array": false,
-        "ref": "analytics.JobAcceptedResponse"
-      },
-      "summary": "Train model"
-    },
-    "rpc.analytics.v2_artifacts": {
-      "description": "Returns ML model artifacts ordered by creation, optionally filtered by model_kind and active_only; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "model_kind",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "active_only",
-          "required": false,
-          "schema": {
-            "type": "boolean"
-          }
-        }
-      ],
-      "response": {
-        "array": true,
-        "ref": "analytics.MLArtifactRow"
-      },
-      "summary": "ML artifacts"
-    },
-    "rpc.analytics.v2_explain": {
-      "description": "Returns the most recent explanation row for a player in a tournament (optionally by algorithm_id); 404 if none found; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "algorithm_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
-          }
-        }
-      ],
-      "response": {
-        "array": false,
-        "ref": "analytics.ExplanationRow"
-      },
-      "summary": "Explain player"
-    },
-    "rpc.analytics.v2_feedback_list": {
-      "description": "Returns all anomaly-feedback rows recorded for a tournament; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "tournament_id",
-          "required": true,
-          "schema": {
-            "type": "integer"
-          }
-        }
-      ],
-      "response": {
-        "array": true,
-        "ref": "analytics.AnomalyFeedbackRow"
-      },
-      "summary": "List anomaly feedback"
-    },
-    "rpc.analytics.v2_match_quality": {
-      "description": "Returns per-encounter match-quality rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "tournament_id",
-          "required": true,
-          "schema": {
-            "type": "integer"
-          }
-        },
-        {
-          "name": "algorithm_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
-          }
-        }
-      ],
-      "response": {
-        "array": true,
-        "ref": "analytics.MatchQualityRow"
-      },
-      "summary": "Match quality"
-    },
-    "rpc.analytics.v2_performance": {
-      "description": "Returns ML performance rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "tournament_id",
-          "required": true,
-          "schema": {
-            "type": "integer"
-          }
-        },
-        {
-          "name": "algorithm_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
-          }
-        }
-      ],
-      "response": {
-        "array": true,
-        "ref": "analytics.PerformanceRow"
-      },
-      "summary": "Performance rows"
-    },
-    "rpc.analytics.v2_player_anomalies": {
-      "description": "Returns player-anomaly rows for a tournament, optionally filtered by player_id and kind; requires analytics.read.",
-      "query_params": [
-        {
-          "name": "tournament_id",
-          "required": true,
-          "schema": {
-            "type": "integer"
-          }
-        },
-        {
-          "name": "player_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
-          }
-        },
-        {
-          "name": "kind",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "response": {
-        "array": true,
-        "ref": "analytics.PlayerAnomalyRow"
-      },
-      "summary": "Player anomalies"
-    },
-    "rpc.analytics.v2_standings": {
+    "rpc.analytics.standings": {
       "description": "Returns standings-distribution rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
       "query_params": [
         {
@@ -434,6 +405,18 @@
         "ref": "analytics.StandingsRow"
       },
       "summary": "Standings distribution"
+    },
+    "rpc.analytics.train": {
+      "description": "Dispatches a 202 ML training job to the worker queue; requires analytics.update and configured RabbitMQ (503 otherwise).",
+      "request": {
+        "array": false,
+        "ref": "analytics.TrainRequestBody"
+      },
+      "response": {
+        "array": false,
+        "ref": "analytics.JobAcceptedResponse"
+      },
+      "summary": "Train model"
     },
     "rpc.app.achievements.user": {
       "description": "Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace; rejects combining tournament_id with without_tournament=true (public).",
@@ -1792,7 +1775,7 @@
       "description": "Updates a player by id and returns it with its identities; requires the global user.update permission.",
       "request": {
         "array": false,
-        "ref": "app.UserUpdate"
+        "ref": "app.UserAdminUpdate"
       },
       "response": {
         "array": false,
@@ -2124,10 +2107,6 @@
       },
       "summary": "Compare user heroes"
     },
-    "rpc.app.users.csv_import": {
-      "description": "Bulk-creates players from an uploaded CSV file or a Google Sheets URL using the given row/delimiter/flag params; requires the global user.create permission.",
-      "summary": "Bulk import users"
-    },
     "rpc.app.users.discord_add": {
       "description": "Adds a Discord identity to a player; requires the global user.update permission.",
       "summary": "Add Discord identity"
@@ -2195,7 +2174,8 @@
               "home_team_id",
               "away_team_id",
               "closeness",
-              "round"
+              "round",
+              "played_at"
             ],
             "title": "Sort",
             "type": "string"
@@ -3241,6 +3221,18 @@
     "rpc.app.workspaces.discord_guild": {
       "description": "Returns connection status, server name, icon URL, and member count of the workspace's linked Discord server.",
       "summary": "Workspace Discord server status"
+    },
+    "rpc.app.workspaces.discord_guild_verify": {
+      "description": "Proves the caller administers the given Discord guild (via identity-service, owner or MANAGE_GUILD) and binds it to the workspace, stamping verified_at/verified_by; requires workspace.update, 404 if workspace missing, 403 if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
+      "request": {
+        "array": false,
+        "ref": "app.WorkspaceDiscordGuildVerify"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.WorkspaceRead"
+      },
+      "summary": "Verify and bind a Discord guild"
     },
     "rpc.app.workspaces.discord_roles": {
       "description": "Returns roles of the workspace's linked Discord server with names, colors, and positions from discord.py cache.",
@@ -5473,6 +5465,10 @@
       "description": "Deletes a stage by id (204 no body); requires stage-delete permission on its workspace.",
       "summary": "Delete stage"
     },
+    "rpc.tournament.admin.delete#stage_item": {
+      "description": "Deletes a stage item (group/bracket lane) by id, along with its own encounters and standings (204 no body); requires stage-delete permission on its workspace.",
+      "summary": "Delete stage item"
+    },
     "rpc.tournament.admin.delete#standing": {
       "description": "Deletes a standing by id (204 no body); requires standing-delete permission on its workspace.",
       "summary": "Delete standing"
@@ -6199,14 +6195,6 @@
       "description": "Drops an encounter's pick-ban session (map or hero, per the body's `kind`) and its entries, re-creates them with freshly resolved seeds and returns the new room state; requires match-update permission on its workspace.",
       "summary": "Reset pick-ban session"
     },
-    "rpc.tournament.captain_map_pool": {
-      "description": "Returns the public map pool for an encounter; no authentication required.",
-      "summary": "Get encounter map pool"
-    },
-    "rpc.tournament.captain_map_pool_state": {
-      "description": "Returns the encounter's map-veto room state, lazily creating the veto session when both teams and a config are known; without a session it reports the reason (not_configured/teams_unknown, or slot_count_mismatch/slot_underfilled when a slot-mode config disagrees with the bracket) instead of failing. With optional auth the requesting captain's side is annotated, otherwise viewer_side is null.",
-      "summary": "Get map veto state"
-    },
     "rpc.tournament.captain_my_role": {
       "description": "Returns the calling user's captain side (home/away) for an encounter, or null if they are not a captain; requires authentication.",
       "summary": "Get my captain side"
@@ -6218,10 +6206,6 @@
     "rpc.tournament.captain_submit_report": {
       "description": "Lets an encounter captain submit their own report: series score plus whatever the tournament's match-report form enables \u2014 closeness 1..10, per-map match codes, a free-text comment and any organizer-defined text fields. Fields the config disables are dropped rather than rejected, so a stale client cannot fail a submit; fields it marks required are enforced with a 422. Reports are per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes their average (null when either side left it blank), otherwise it is disputed \u2014 comments and custom values never take part in that comparison. Upsert allowed until confirmed; requires authentication.",
       "summary": "Submit captain report"
-    },
-    "rpc.tournament.captain_veto": {
-      "description": "Lets a captain ban or pick a map in the encounter's veto and returns the updated pool entry; requires authentication.",
-      "summary": "Veto map"
     },
     "rpc.tournament.challonge_create_tournament": {
       "description": "Creates a tournament from an existing Challonge bracket -- fetches it for the name/description, links it, and imports its current structure and results in one shot; requires workspace tournament.create.",
@@ -6660,6 +6644,10 @@
         "ref": "tournament.MatchReadWithStats"
       },
       "summary": "Get match with stats"
+    },
+    "rpc.tournament.get_pick_ban_configs": {
+      "description": "Returns the tournament's map pick-ban configs in cascade order. Visibility-gated like other public tournament reads.",
+      "summary": "List public map pick-ban configs"
     },
     "rpc.tournament.get_stages": {
       "description": "Returns all stages of a tournament ordered by stage order, with their items and item inputs hydrated.",
@@ -8143,6 +8131,14 @@
       "description": "Rewrites best_of on the stage's existing encounters from its settings_json best-of config (in place, preserving scores); requires stage-update permission on its workspace.",
       "summary": "Apply best-of to existing matches"
     },
+    "rpc.tournament.stage_auto_wire": {
+      "description": "Wires the stage's TENTATIVE inputs from the preceding round-robin/Swiss stage's \"Teams advancing to playoff\" count \u2014 the same auto-wire Activate & generate runs automatically, exposed standalone for preview/debugging; requires stage-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.StageRead"
+      },
+      "summary": "Auto-wire stage from groups"
+    },
     "rpc.tournament.stage_deactivate": {
       "description": "Reverts an accidentally-activated stage back to Draft/preview; refuses (409) once any of its matches has been reported or started; requires stage-update permission on its workspace.",
       "response": {
@@ -8490,12 +8486,12 @@
             }
           ],
           "default": null,
-          "description": "For kind=compute: list of v1 algorithm names to recalc (None = all). For kind=train_ml: list of model kinds ['performance','shift','standings'].",
+          "description": "For kind=compute: rating algorithm names to recalc (None = all). For kind=train_ml: model kinds ['performance','shift','standings'].",
           "title": "Algorithms"
         },
         "kind": {
           "default": "compute",
-          "description": "'compute' (organizer-allowed) runs v1 recalc + v2 inference. 'train_ml' (superuser only) (re)trains v2 ML boosters.",
+          "description": "'compute' (organizer-allowed) runs rating recalc + ML inference. 'train_ml' (superuser only) (re)trains ML boosters.",
           "enum": [
             "compute",
             "train_ml"
@@ -8774,172 +8770,6 @@
         "verdict"
       ],
       "title": "AnomalyFeedbackRow",
-      "type": "object"
-    },
-    "analytics.BalancePlayerSnapshotRead": {
-      "properties": {
-        "assigned_rank": {
-          "title": "Assigned Rank",
-          "type": "integer"
-        },
-        "assigned_role": {
-          "title": "Assigned Role",
-          "type": "string"
-        },
-        "discomfort": {
-          "default": 0,
-          "title": "Discomfort",
-          "type": "integer"
-        },
-        "division_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Division Number"
-        },
-        "is_captain": {
-          "default": false,
-          "title": "Is Captain",
-          "type": "boolean"
-        },
-        "preferred_role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Preferred Role"
-        },
-        "team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Team Id"
-        },
-        "user_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "User Id"
-        },
-        "was_off_role": {
-          "default": false,
-          "title": "Was Off Role",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "assigned_role",
-        "assigned_rank"
-      ],
-      "title": "BalancePlayerSnapshotRead",
-      "type": "object"
-    },
-    "analytics.BalanceQualityRead": {
-      "properties": {
-        "algorithm": {
-          "title": "Algorithm",
-          "type": "string"
-        },
-        "avg_sr_overall": {
-          "title": "Avg Sr Overall",
-          "type": "number"
-        },
-        "division_scope": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Division Scope"
-        },
-        "objective_score": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Objective Score"
-        },
-        "off_role_count": {
-          "title": "Off Role Count",
-          "type": "integer"
-        },
-        "player_count": {
-          "title": "Player Count",
-          "type": "integer"
-        },
-        "players": {
-          "items": {
-            "$ref": "#/components/schemas/analytics.BalancePlayerSnapshotRead"
-          },
-          "title": "Players",
-          "type": "array"
-        },
-        "sr_range": {
-          "title": "Sr Range",
-          "type": "number"
-        },
-        "sr_std_dev": {
-          "title": "Sr Std Dev",
-          "type": "number"
-        },
-        "team_count": {
-          "title": "Team Count",
-          "type": "integer"
-        },
-        "total_discomfort": {
-          "title": "Total Discomfort",
-          "type": "integer"
-        },
-        "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "tournament_id",
-        "algorithm",
-        "team_count",
-        "player_count",
-        "avg_sr_overall",
-        "sr_std_dev",
-        "sr_range",
-        "total_discomfort",
-        "off_role_count",
-        "players"
-      ],
-      "title": "BalanceQualityRead",
       "type": "object"
     },
     "analytics.ExplanationRow": {
@@ -12594,6 +12424,18 @@
           "title": "Map Id",
           "type": "integer"
         },
+        "map_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Index"
+        },
         "overperformance_badge": {
           "default": false,
           "title": "Overperformance Badge",
@@ -13176,7 +13018,7 @@
       "title": "PaginationQueryParams",
       "type": "object"
     },
-    "app.PaginationSortQueryParams_Literal__id____name____home_team_id____away_team_id____closeness____round___": {
+    "app.PaginationSortQueryParams_Literal__id____name____home_team_id____away_team_id____closeness____round____played_at___": {
       "properties": {
         "entities": {
           "items": {
@@ -13215,13 +13057,14 @@
             "home_team_id",
             "away_team_id",
             "closeness",
-            "round"
+            "round",
+            "played_at"
           ],
           "title": "Sort",
           "type": "string"
         }
       },
-      "title": "PaginationSortQueryParams[Literal['id', 'name', 'home_team_id', 'away_team_id', 'closeness', 'round']]",
+      "title": "PaginationSortQueryParams[Literal['id', 'name', 'home_team_id', 'away_team_id', 'closeness', 'round', 'played_at']]",
       "type": "object"
     },
     "app.PaginationSortQueryParams_Literal__id____name____slug____rarity____similarity___similarity__": {
@@ -13857,6 +13700,25 @@
         "matches"
       ],
       "title": "UserAchievementRead",
+      "type": "object"
+    },
+    "app.UserAdminUpdate": {
+      "description": "Schema for updating a user",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        }
+      },
+      "title": "UserAdminUpdate",
       "type": "object"
     },
     "app.UserBestTeammate": {
@@ -16564,25 +16426,6 @@
       "title": "UserTournamentWithStats",
       "type": "object"
     },
-    "app.UserUpdate": {
-      "description": "Schema for updating a user",
-      "properties": {
-        "name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Name"
-        }
-      },
-      "title": "UserUpdate",
-      "type": "object"
-    },
     "app.WorkspaceCreate": {
       "properties": {
         "default_division_grid_version_id": {
@@ -16671,6 +16514,21 @@
         "custom_domain"
       ],
       "title": "WorkspaceCustomDomainSet",
+      "type": "object"
+    },
+    "app.WorkspaceDiscordGuildVerify": {
+      "description": "Body for ``discord_guild_verify``. The snowflake pattern gates shape\nonly -- the actual proof of administration happens server-side via\n``rpc.identity.oauth_discord_guilds``, not here. No blank-clears-it\nnormalization like ``WorkspaceUpdate`` used to carry: there is no \"clear\"\nverb for a verified claim, only bind (this) and whatever future admin\noverride unbinds it.",
+      "properties": {
+        "guild_id": {
+          "pattern": "^\\d{17,19}$",
+          "title": "Guild Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "guild_id"
+      ],
+      "title": "WorkspaceDiscordGuildVerify",
       "type": "object"
     },
     "app.WorkspaceMemberAutofillResult": {
@@ -17123,6 +16981,19 @@
           "default": null,
           "title": "Discord Guild Id"
         },
+        "discord_guild_verified_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discord Guild Verified At"
+        },
         "icon_url": {
           "anyOf": [
             {
@@ -17400,19 +17271,6 @@
           ],
           "default": null,
           "title": "Description"
-        },
-        "discord_guild_id": {
-          "anyOf": [
-            {
-              "pattern": "^\\d{17,19}$",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Discord Guild Id"
         },
         "icon_url": {
           "anyOf": [
@@ -26208,6 +26066,16 @@
           "title": "Parsers",
           "type": "array"
         },
+        "subrole_catalog": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/components/schemas/tournament.SubroleOption"
+            },
+            "type": "array"
+          },
+          "title": "Subrole Catalog",
+          "type": "object"
+        },
         "targets": {
           "items": {
             "$ref": "#/components/schemas/tournament.MappingTargetRead"
@@ -27508,6 +27376,17 @@
           "title": "Priority",
           "type": "integer"
         },
+        "rank_source": {
+          "default": "none",
+          "enum": [
+            "registration",
+            "workspace",
+            "ow",
+            "none"
+          ],
+          "title": "Rank Source",
+          "type": "string"
+        },
         "rank_value": {
           "anyOf": [
             {
@@ -27877,6 +27756,11 @@
           "default": null,
           "title": "Boosty Nick"
         },
+        "clear_pin": {
+          "default": false,
+          "title": "Clear Pin",
+          "type": "boolean"
+        },
         "custom_fields_json": {
           "anyOf": [
             {
@@ -27937,6 +27821,18 @@
           ],
           "default": null,
           "title": "Notes"
+        },
+        "pin": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pin"
         },
         "roles": {
           "anyOf": [
@@ -30795,18 +30691,6 @@
           "title": "Status",
           "type": "string"
         },
-        "tournament_group_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tournament Group Id"
-        },
         "tournament_id": {
           "title": "Tournament Id",
           "type": "integer"
@@ -32648,18 +32532,6 @@
           ],
           "default": null,
           "title": "Status"
-        },
-        "tournament_group_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tournament Group Id"
         }
       },
       "title": "EncounterUpdate",
@@ -38683,6 +38555,18 @@
           "default": null,
           "title": "Roster Slots Json"
         },
+        "slug": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slug"
+        },
         "start_date": {
           "format": "date",
           "title": "Start Date",
@@ -38783,6 +38667,14 @@
           "type": "boolean"
         },
         "kind": {
+          "enum": [
+            "discord",
+            "stream",
+            "vod",
+            "bracket",
+            "rules",
+            "other"
+          ],
           "title": "Kind",
           "type": "string"
         },
@@ -38808,6 +38700,8 @@
           "type": "integer"
         },
         "url": {
+          "format": "uri",
+          "minLength": 1,
           "title": "Url",
           "type": "string"
         }
@@ -38831,6 +38725,14 @@
           "type": "boolean"
         },
         "kind": {
+          "enum": [
+            "discord",
+            "stream",
+            "vod",
+            "bracket",
+            "rules",
+            "other"
+          ],
           "title": "Kind",
           "type": "string"
         },
@@ -38887,6 +38789,14 @@
         "kind": {
           "anyOf": [
             {
+              "enum": [
+                "discord",
+                "stream",
+                "vod",
+                "bracket",
+                "rules",
+                "other"
+              ],
               "type": "string"
             },
             {
@@ -38923,6 +38833,8 @@
         "url": {
           "anyOf": [
             {
+              "format": "uri",
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -39243,6 +39155,10 @@
           "default": null,
           "title": "Roster Slots Json"
         },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
         "stages": {
           "default": [],
           "items": {
@@ -39290,6 +39206,7 @@
         "id",
         "workspace_id",
         "name",
+        "slug",
         "description",
         "challonge_id",
         "challonge_slug",
@@ -39586,6 +39503,18 @@
           ],
           "default": null,
           "title": "Roster Slots Json"
+        },
+        "slug": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slug"
         },
         "start_date": {
           "anyOf": [

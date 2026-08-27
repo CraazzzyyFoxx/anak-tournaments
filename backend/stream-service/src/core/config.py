@@ -11,7 +11,7 @@ class Settings(BaseServiceSettings):
 
     # Twitch Helix under an **app** access token (client_credentials), not a user
     # token: the poller asks "who is live" about channels it does not own, which
-    # needs no user consent. `shared/subscriptions/providers/twitch_helix.py` is
+    # needs no user consent. `shared/services/subscriptions/providers/twitch_helix.py` is
     # the user-token client for subscription checks and is deliberately NOT reused.
     #
     # This is the SAME Twitch application identity-service uses for OAuth login,

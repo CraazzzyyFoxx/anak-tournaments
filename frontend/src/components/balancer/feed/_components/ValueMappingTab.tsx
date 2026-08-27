@@ -7,12 +7,14 @@ import type {
   ValueMapRow,
   ValueMappingState,
 } from "@/types/balancer-admin.types";
+import type { SubroleCatalog } from "@/types/registration.types";
 
 import { ValueMapEditor } from "./ValueMapEditor";
 
 interface ValueMappingTabProps {
   valueState: ValueMappingState;
   valueCategories: MappingValueCategory[];
+  subroleCatalog: SubroleCatalog;
   onAdd: (category: MappingValueCategoryName) => void;
   onUpdate: (
     category: MappingValueCategoryName,
@@ -33,6 +35,7 @@ function categoryEntries(
 export function ValueMappingTab({
   valueState,
   valueCategories,
+  subroleCatalog,
   onAdd,
   onUpdate,
   onRemove,
@@ -78,10 +81,11 @@ export function ValueMappingTab({
         />
         <ValueMapEditor
           title="Sub-roles"
-          description="Map sub-role text to the canonical sub-role slug."
-          kind="text"
+          description="Map sub-role text from the sheet to a workspace sub-role."
+          kind="subrole"
           rows={valueState.subroles}
           canSeed={Object.keys(subroleDefaults).length > 0}
+          subroleCatalog={subroleCatalog}
           onAdd={() => onAdd("subroles")}
           onUpdate={(id, updates) => onUpdate("subroles", id, updates)}
           onRemove={(id) => onRemove("subroles", id)}
@@ -93,6 +97,7 @@ export function ValueMappingTab({
           kind="role_subrole"
           rows={valueState.role_subroles}
           canSeed={Object.keys(roleSubroleDefaults).length > 0}
+          subroleCatalog={subroleCatalog}
           onAdd={() => onAdd("role_subroles")}
           onUpdate={(id, updates) => onUpdate("role_subroles", id, updates)}
           onRemove={(id) => onRemove("role_subroles", id)}

@@ -1,0 +1,3018 @@
+// Anak Tournaments — PostgreSQL schema dumped from SQLAlchemy metadata.
+// Open in VS Code (DBML extension) or paste into https://dbdiagram.io
+// Tables: 121
+
+Project anak_tournaments {
+  database_type: "PostgreSQL"
+  Note: 'Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py'
+}
+
+Enum abilityevent {
+  PrimaryFire
+  SecondaryFire
+  Ability1
+  Ability2
+  Ultimate
+  Melee
+  Crouch
+}
+
+Enum catalogentitytype {
+  hero
+  map
+  gamemode
+}
+
+Enum encounterlinkrole {
+  winner
+  loser
+}
+
+Enum encounterlinkslot {
+  home
+  away
+}
+
+Enum encounterresultauditaction {
+  confirm
+  reopen
+  auto_confirm
+  auto_dispute
+  import
+  cascade_reset
+}
+
+Enum encounterresultstatus {
+  none
+  pending_confirmation
+  confirmed
+  disputed
+}
+
+Enum encounterstatus {
+  COMPLETED
+  PENDING
+  OPEN
+}
+
+Enum heroclass {
+  tank
+  damage
+  support
+  flex
+}
+
+Enum log_processing_source {
+  upload
+  discord
+  manual
+}
+
+Enum log_processing_status {
+  pending
+  processing
+  done
+  failed
+}
+
+Enum logstatsname {
+  Eliminations
+  FinalBlows
+  Deaths
+  AllDamageDealt
+  BarrierDamageDealt
+  HeroDamageDealt
+  HealingDealt
+  HealingReceived
+  SelfHealing
+  DamageTaken
+  DamageBlocked
+  DefensiveAssists
+  OffensiveAssists
+  UltimatesEarned
+  UltimatesUsed
+  MultikillBest
+  Multikills
+  SoloKills
+  ObjectiveKills
+  EnvironmentalKills
+  EnvironmentalDeaths
+  CriticalHits
+  CriticalHitAccuracy
+  ScopedAccuracy
+  ScopedCriticalHitAccuracy
+  ScopedCriticalHitKills
+  ShotsFired
+  ShotsHit
+  ShotsMissed
+  ScopedShotsFired
+  ScopedShotsHit
+  WeaponAccuracy
+  HeroTimePlayed
+  FirstPicks
+  FirstDeaths
+  UltimateKills
+  SupportKills
+  Performance
+  PerformancePoints
+  KD
+  KDA
+  DamageDelta
+  FBE
+  DamageFB
+  Assists
+  ImpactPoints
+  ImpactRank
+  OverperformanceScore
+}
+
+Enum matchevent {
+  OffensiveAssist
+  DefensiveAssist
+  UltimateCharged
+  UltimateStart
+  UltimateEnd
+  HeroSwap
+  MercyRez
+  EchoDuplicateStart
+  EchoDuplicateEnd
+}
+
+Enum matchsource {
+  log_parser
+  captain_report
+}
+
+Enum pickbanentrystatus {
+  available
+  picked
+  banned
+  played
+  protected
+}
+
+Enum pickbanfirstpickrule {
+  higher_seed
+}
+
+Enum pickbankind {
+  map
+  hero
+}
+
+Enum pickbanmode {
+  pool
+  slots
+}
+
+Enum pickbannorepeatscope {
+  none
+  encounter
+  encounter_same_side
+}
+
+Enum pickbanrotation {
+  fixed
+  alternate
+  result_winner_first
+  result_loser_first
+  result_loser_choice
+}
+
+Enum pickbanseedsource {
+  bracket_slot
+  standings
+  fallback_home
+  admin
+}
+
+Enum pickbansessionstatus {
+  active
+  completed
+  cancelled
+}
+
+Enum pickbanside {
+  home
+  away
+  decider
+  admin
+}
+
+Enum stageiteminputtype {
+  final
+  tentative
+  empty
+}
+
+Enum stageitemtype {
+  "group"
+  bracket_upper
+  bracket_lower
+  single_bracket
+}
+
+Enum stagetype {
+  round_robin
+  single_elimination
+  double_elimination
+  swiss
+}
+
+Enum tournamentstatus {
+  registration
+  draft
+  check_in
+  live
+  playoffs
+  completed
+  archived
+}
+
+// ----- achievements -----
+
+Table achievements.evaluation_result {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  achievement_rule_id bigint [not null]
+  workspace_member_id bigint [not null]
+  tournament_id bigint
+  match_id bigint
+  qualified_at timestamptz [not null, default: `now()`]
+  evidence_json json
+  rule_version int [not null]
+  run_id uuid
+  indexes {
+    (achievement_rule_id, workspace_member_id, tournament_id, match_id) [unique, name: "uq_eval_result_rule_user_tournament_match"]
+    (match_id) [name: "ix_achievements_evaluation_result_match_id"]
+    (workspace_member_id) [name: "ix_achievements_evaluation_result_workspace_member_id"]
+    (achievement_rule_id) [name: "ix_achievements_evaluation_result_achievement_rule_id"]
+    (tournament_id) [name: "ix_achievements_evaluation_result_tournament_id"]
+    (run_id) [name: "ix_achievements_evaluation_result_run_id"]
+  }
+}
+
+Table achievements.evaluation_run {
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  trigger VARCHAR [not null]
+  tournament_id bigint
+  rules_evaluated int [not null, default: 0]
+  results_created int [not null, default: 0]
+  results_removed int [not null, default: 0]
+  started_at timestamptz [not null, default: `now()`]
+  finished_at timestamptz
+  status VARCHAR [not null, default: `running`]
+  error_message VARCHAR
+  id uuid [pk, increment, default: `gen_random_uuid()`]
+  indexes {
+    (id) [name: "ix_achievements_evaluation_run_id"]
+    (workspace_id) [name: "ix_achievements_evaluation_run_workspace_id"]
+  }
+}
+
+Table achievements.override {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  achievement_rule_id bigint [not null]
+  workspace_member_id bigint [not null]
+  tournament_id bigint
+  match_id bigint
+  action VARCHAR [not null]
+  reason VARCHAR [not null]
+  granted_by bigint [not null]
+  indexes {
+    (tournament_id) [name: "ix_achievements_override_tournament_id"]
+    (match_id) [name: "ix_achievements_override_match_id"]
+    (workspace_member_id) [name: "ix_achievements_override_workspace_member_id"]
+    (achievement_rule_id) [name: "ix_achievements_override_achievement_rule_id"]
+  }
+}
+
+Table achievements.rule {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  slug VARCHAR [not null]
+  name VARCHAR [not null]
+  description_ru VARCHAR [not null]
+  description_en VARCHAR [not null]
+  image_url VARCHAR
+  hero_id bigint
+  category VARCHAR [not null]
+  scope VARCHAR [not null]
+  grain VARCHAR [not null]
+  condition_tree json [not null, default: `{}`]
+  depends_on json [not null, default: `[]`]
+  enabled boolean [not null, default: true]
+  rule_version int [not null, default: 1]
+  min_tournament_id int
+  indexes {
+    (workspace_id, slug) [unique, name: "uq_achievement_rule_workspace_slug"]
+    (slug) [name: "ix_achievements_rule_slug"]
+    (workspace_id) [name: "ix_achievements_rule_workspace_id"]
+  }
+}
+
+TableGroup achievements {
+  achievements.evaluation_result
+  achievements.evaluation_run
+  achievements.override
+  achievements.rule
+}
+
+// ----- analytics -----
+
+Table analytics.algorithms {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  name VARCHAR [not null, unique]
+  produces_shifts boolean [not null, default: true]
+}
+
+Table analytics.anomaly_feedback {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  player_id bigint [not null]
+  kind VARCHAR(32) [not null]
+  verdict VARCHAR(16) [not null]
+  reviewer_user_id bigint
+  "note" text
+  indexes {
+    (tournament_id, player_id, kind) [unique, name: "uq_analytics_anomaly_feedback"]
+    (tournament_id) [name: "ix_analytics_anomaly_feedback_tournament_id"]
+    (kind) [name: "ix_analytics_anomaly_feedback_kind"]
+    (reviewer_user_id) [name: "ix_analytics_anomaly_feedback_reviewer_user_id"]
+    (player_id) [name: "ix_analytics_anomaly_feedback_player_id"]
+  }
+}
+
+Table analytics.job {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint
+  tournament_id bigint [not null]
+  requested_by_user_id bigint
+  kind VARCHAR(16) [not null]
+  status VARCHAR(16) [not null, default: `pending`]
+  algorithms json
+  training_workspace_ids json
+  progress json [not null, default: `{}`]
+  error text
+  started_at timestamptz
+  finished_at timestamptz
+  indexes {
+    (requested_by_user_id) [name: "ix_analytics_job_requested_by_user_id"]
+    (tournament_id) [name: "ix_analytics_job_tournament_id"]
+    (workspace_id) [unique, name: "uq_analytics_job_one_running_per_workspace"]
+    (workspace_id) [name: "ix_analytics_job_workspace_id"]
+    (status) [name: "ix_analytics_job_status"]
+  }
+}
+
+Table analytics.match_quality {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  encounter_id bigint [not null]
+  algorithm_id bigint [not null]
+  competitiveness float [not null]
+  predictability float [not null]
+  skill_balance float [not null]
+  quality_score float [not null]
+  indexes {
+    (encounter_id, algorithm_id) [unique, name: "uq_analytics_match_quality"]
+    (algorithm_id) [name: "ix_analytics_match_quality_algorithm_id"]
+    (encounter_id) [name: "ix_analytics_match_quality_encounter_id"]
+  }
+}
+
+Table analytics.ml_model_artifact {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  algorithm_id bigint [not null]
+  model_kind VARCHAR(32) [not null]
+  role VARCHAR(16)
+  version VARCHAR(32) [not null]
+  storage_uri text [not null]
+  feature_version VARCHAR(32) [not null]
+  training_cutoff_tournament_id bigint
+  metrics json
+  feature_importance json
+  is_active boolean [not null, default: false]
+  indexes {
+    (algorithm_id, model_kind, role, version) [unique, name: "uq_analytics_ml_model_artifact"]
+    (is_active) [name: "ix_analytics_ml_model_artifact_is_active"]
+    (model_kind) [name: "ix_analytics_ml_model_artifact_model_kind"]
+    (algorithm_id) [name: "ix_analytics_ml_model_artifact_algorithm_id"]
+    (training_cutoff_tournament_id) [name: "ix_analytics_ml_model_artifact_training_cutoff_tournament_id"]
+  }
+}
+
+Table analytics.performance {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  player_id bigint [not null]
+  algorithm_id bigint [not null]
+  impact_score float [not null]
+  raw_value float [not null]
+  confidence float [not null, default: 0]
+  log_coverage float [not null, default: 0]
+  local_mean float [not null, default: 0]
+  local_std float [not null, default: 1]
+  local_residual float [not null, default: 0]
+  local_zscore float [not null, default: 0]
+  local_percentile float [not null, default: 50]
+  local_reference_n int [not null, default: 0]
+  local_band_min_div int
+  local_band_max_div int
+  contributions json
+  base_value float
+  indexes {
+    (tournament_id, player_id, algorithm_id) [unique, name: "uq_analytics_performance"]
+    (tournament_id) [name: "ix_analytics_performance_tournament_id"]
+    (algorithm_id) [name: "ix_analytics_performance_algorithm_id"]
+    (player_id) [name: "ix_analytics_performance_player_id"]
+  }
+}
+
+Table analytics.player_anomaly {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  player_id bigint [not null]
+  kind VARCHAR(32) [not null]
+  score float [not null]
+  confidence float [not null, default: 0]
+  reasons json [not null]
+  evidence json
+  source_encounter_id bigint
+  indexes {
+    (tournament_id, player_id, kind, source_encounter_id) [unique, name: "uq_analytics_player_anomaly"]
+    (kind) [name: "ix_analytics_player_anomaly_kind"]
+    (source_encounter_id) [name: "ix_analytics_player_anomaly_source_encounter_id"]
+    (player_id) [name: "ix_analytics_player_anomaly_player_id"]
+    (tournament_id) [name: "ix_analytics_player_anomaly_tournament_id"]
+  }
+}
+
+Table analytics.player_shift {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  player_id bigint [not null]
+  wins int [not null]
+  losses int [not null]
+  shift_one int
+  shift_two int
+  shift int
+  indexes {
+    (tournament_id, player_id) [unique, name: "uq_analytics_player_shift"]
+    (tournament_id) [name: "ix_analytics_player_shift_tournament_id"]
+    (player_id) [name: "ix_analytics_player_shift_player_id"]
+  }
+}
+
+Table analytics.shifts {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  algorithm_id bigint [not null]
+  player_id bigint [not null]
+  shift float [not null]
+  confidence float [not null, default: 0]
+  effective_evidence float [not null, default: 0]
+  sample_tournaments int [not null, default: 0]
+  sample_matches int [not null, default: 0]
+  log_coverage float [not null, default: 0]
+  indexes {
+    (tournament_id, player_id, algorithm_id) [unique, name: "uq_analytics_shifts"]
+    (tournament_id) [name: "ix_analytics_shifts_tournament_id"]
+    (player_id) [name: "ix_analytics_shifts_player_id"]
+    (algorithm_id) [name: "ix_analytics_shifts_algorithm_id"]
+  }
+}
+
+Table analytics.standings_distribution {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  team_id bigint [not null]
+  algorithm_id bigint [not null]
+  mean_position float [not null]
+  median_position float [not null]
+  p10_position float [not null]
+  p90_position float [not null]
+  prob_top1 float [not null, default: 0]
+  prob_top3 float [not null, default: 0]
+  prob_top8 float [not null, default: 0]
+  position_histogram json [not null]
+  indexes {
+    (tournament_id, team_id, algorithm_id) [unique, name: "uq_analytics_standings_distribution"]
+    (tournament_id) [name: "ix_analytics_standings_distribution_tournament_id"]
+    (algorithm_id) [name: "ix_analytics_standings_distribution_algorithm_id"]
+    (team_id) [name: "ix_analytics_standings_distribution_team_id"]
+  }
+}
+
+TableGroup analytics {
+  analytics.algorithms
+  analytics.anomaly_feedback
+  analytics.job
+  analytics.match_quality
+  analytics.ml_model_artifact
+  analytics.performance
+  analytics.player_anomaly
+  analytics.player_shift
+  analytics.shifts
+  analytics.standings_distribution
+}
+
+// ----- auth -----
+
+Table auth.api_key {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  auth_user_id bigint [not null]
+  workspace_id bigint [not null]
+  public_id VARCHAR(32) [not null, unique]
+  secret_hash VARCHAR(128) [not null]
+  name VARCHAR(100) [not null]
+  scopes_json json [not null, default: `[]`]
+  limits_json json [not null, default: `{}`]
+  config_policy_json json [not null, default: `{}`]
+  expires_at timestamptz
+  revoked_at timestamptz
+  last_used_at timestamptz
+  indexes {
+    (public_id, revoked_at) [name: "ix_api_key_public_id_active"]
+    (workspace_id) [name: "ix_auth_api_key_workspace_id"]
+    (auth_user_id, workspace_id) [name: "ix_api_key_owner_workspace"]
+    (auth_user_id) [name: "ix_auth_api_key_auth_user_id"]
+    (public_id) [unique, name: "ix_auth_api_key_public_id"]
+  }
+}
+
+Table auth.oauth_connections {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  auth_user_id bigint [not null]
+  provider VARCHAR(50) [not null]
+  provider_user_id VARCHAR(255) [not null]
+  email VARCHAR(255)
+  username VARCHAR(100) [not null]
+  display_name VARCHAR(100)
+  avatar_url VARCHAR(500)
+  access_token text
+  refresh_token text
+  token_expires_at timestamptz
+  provider_data json
+  indexes {
+    (provider, provider_user_id) [unique, name: "uq_provider_user"]
+    (provider_user_id) [name: "ix_auth_oauth_connections_provider_user_id"]
+    (provider) [name: "ix_auth_oauth_connections_provider"]
+  }
+}
+
+Table auth.permissions {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  name VARCHAR(100) [not null, unique]
+  resource VARCHAR(100) [not null]
+  action VARCHAR(50) [not null]
+  description text
+  indexes {
+    (name) [unique, name: "ix_auth_permissions_name"]
+    (resource) [name: "ix_auth_permissions_resource"]
+    (action) [name: "ix_auth_permissions_action"]
+  }
+}
+
+Table auth.refresh_token {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  token text [not null, unique]
+  user_id bigint [not null]
+  session_id uuid [not null]
+  session_started_at timestamptz [not null]
+  expires_at timestamptz [not null]
+  is_revoked boolean [not null]
+  revoked_at timestamptz
+  user_agent VARCHAR(500)
+  ip_address VARCHAR(45)
+  indexes {
+    (session_id) [name: "ix_auth_refresh_token_session_id"]
+    (token) [unique, name: "ix_auth_refresh_token_token"]
+  }
+}
+
+Table auth.role_permissions {
+  id int [pk, increment]
+  role_id int [not null]
+  permission_id int [not null]
+  created_at timestamptz [not null, default: `now()`]
+  indexes {
+    (role_id) [name: "ix_role_permissions_role_id"]
+    (permission_id) [name: "ix_role_permissions_permission_id"]
+  }
+}
+
+Table auth.roles {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  name VARCHAR(100) [not null]
+  description text
+  is_system boolean [not null]
+  workspace_id bigint
+  indexes {
+    (workspace_id) [name: "ix_auth_roles_workspace_id"]
+    (name) [unique, name: "uq_roles_name_global"]
+    (name) [name: "ix_auth_roles_name"]
+    (name, workspace_id) [unique, name: "uq_roles_name_workspace"]
+  }
+}
+
+Table auth.user {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  email VARCHAR(255) [not null, unique]
+  username VARCHAR(100) [not null, unique]
+  hashed_password VARCHAR(255)
+  is_active boolean [not null]
+  is_superuser boolean [not null]
+  is_verified boolean [not null]
+  first_name VARCHAR(100)
+  last_name VARCHAR(100)
+  avatar_url VARCHAR(500)
+  indexes {
+    (username) [unique, name: "ix_auth_user_username"]
+    (email) [unique, name: "ix_auth_user_email"]
+  }
+}
+
+Table auth.user_permission_deny {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  user_id bigint [not null]
+  permission_id bigint [not null]
+  workspace_id bigint
+  created_by bigint
+  reason text
+  indexes {
+    (user_id, permission_id) [unique, name: "uq_user_permission_deny_user_perm_workspace"]
+    (user_id) [name: "ix_user_permission_deny_user_id"]
+    (workspace_id) [name: "ix_auth_user_permission_deny_workspace_id"]
+  }
+}
+
+Table auth.user_roles {
+  id int [pk, increment]
+  user_id int [not null]
+  role_id int [not null]
+  created_at timestamptz [not null, default: `now()`]
+  indexes {
+    (user_id) [name: "ix_user_roles_user_id"]
+    (role_id) [name: "ix_user_roles_role_id"]
+  }
+}
+
+TableGroup auth {
+  auth.api_key
+  auth.oauth_connections
+  auth.permissions
+  auth.refresh_token
+  auth.role_permissions
+  auth.roles
+  auth.user
+  auth.user_permission_deny
+  auth.user_roles
+}
+
+// ----- balancer -----
+
+Table balancer.balance {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  workspace_id bigint
+  algorithm VARCHAR(32)
+  division_grid_json json
+  division_scope VARCHAR(32)
+  config_json json
+  result_json json [not null]
+  saved_by bigint
+  saved_at timestamptz [not null, default: `now()`]
+  exported_at timestamptz
+  export_status VARCHAR(32)
+  export_error text
+  indexes {
+    (tournament_id) [unique, name: "uq_balancer_balance_tournament"]
+    (workspace_id) [name: "ix_balancer_balance_workspace_id"]
+  }
+}
+
+Table balancer.balance_variant {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  balance_id bigint [not null]
+  variant_number int [not null]
+  algorithm VARCHAR(32) [not null]
+  objective_score float
+  statistics_json json
+  is_selected boolean [not null, default: false]
+  indexes {
+    (balance_id, variant_number) [unique, name: "uq_balancer_balance_variant"]
+    (balance_id) [name: "ix_balancer_balance_variant_balance_id"]
+  }
+}
+
+Table balancer.custom_game {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  host_user_id bigint
+  co_host_user_ids jsonb
+  name VARCHAR(255) [not null]
+  status VARCHAR(16) [not null, default: `draft`]
+  config_json jsonb
+  result_json jsonb
+  outcome_json jsonb
+  indexes {
+    (host_user_id) [name: "ix_balancer_custom_game_host_user_id"]
+    (workspace_id) [name: "ix_balancer_custom_game_workspace_id"]
+  }
+}
+
+Table balancer.custom_game_player {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  custom_game_id bigint [not null]
+  workspace_member_id bigint [not null]
+  team_index int
+  sort_order int [not null, default: 0]
+  is_active boolean [not null, default: true]
+  must_play boolean [not null, default: false]
+  is_flex boolean [not null, default: false]
+  roles_json jsonb
+  indexes {
+    (custom_game_id, workspace_member_id) [unique, name: "uq_custom_game_player_member"]
+    (custom_game_id) [name: "ix_balancer_custom_game_player_custom_game_id"]
+    (workspace_member_id) [name: "ix_balancer_custom_game_player_workspace_member_id"]
+  }
+}
+
+Table balancer.draft_audit_event {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  session_id bigint [not null]
+  actor_auth_user_id bigint
+  action VARCHAR(64) [not null]
+  entity_type VARCHAR(64) [not null]
+  entity_id bigint [not null]
+  reason text [not null]
+  before_json json [not null]
+  after_json json [not null]
+  indexes {
+    (actor_auth_user_id) [name: "ix_balancer_draft_audit_event_actor_auth_user_id"]
+    (session_id, created_at) [name: "ix_draft_audit_session_created"]
+  }
+}
+
+Table balancer.draft_pick {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  session_id bigint [not null]
+  overall_no int [not null]
+  round_no int [not null]
+  pick_in_round int [not null]
+  draft_team_id bigint [not null]
+  target_role VARCHAR(16)
+  target_rank_value int
+  status VARCHAR(16) [not null, default: `upcoming`]
+  picked_player_id bigint
+  picked_by_workspace_member_id bigint
+  is_autopick boolean [not null, default: false]
+  is_admin_override boolean [not null, default: false]
+  clock_started_at timestamptz
+  clock_expires_at timestamptz
+  clock_remaining_ms int
+  version int [not null, default: 0]
+  indexes {
+    (session_id, overall_no) [unique, name: "uq_draft_pick_session_overall"]
+    (session_id, status) [name: "ix_draft_pick_session_status"]
+    (picked_player_id) [name: "ix_balancer_draft_pick_picked_player_id"]
+    (draft_team_id) [name: "ix_balancer_draft_pick_draft_team_id"]
+  }
+}
+
+Table balancer.draft_player {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  session_id bigint [not null]
+  workspace_member_id bigint
+  battle_tag VARCHAR(255)
+  primary_role VARCHAR(16) [not null]
+  sub_role VARCHAR(128)
+  is_flex boolean [not null, default: false]
+  division_number int
+  rank_value int
+  status VARCHAR(16) [not null, default: `available`]
+  is_captain boolean [not null, default: false]
+  drafted_by_team_id bigint
+  additional_info json [not null, default: `{}`]
+  version int [not null, default: 0]
+  indexes {
+    (session_id, workspace_member_id) [unique, name: "uq_draft_player_session_member"]
+    (workspace_member_id) [name: "ix_balancer_draft_player_workspace_member_id"]
+    (session_id, status) [name: "ix_draft_player_session_status"]
+    (drafted_by_team_id) [name: "ix_balancer_draft_player_drafted_by_team_id"]
+  }
+}
+
+Table balancer.draft_player_role {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  draft_player_id bigint [not null]
+  role VARCHAR(16) [not null]
+  rank_value int
+  is_secondary boolean [not null, default: false]
+  priority int [not null, default: 0]
+  indexes {
+    (draft_player_id, role) [unique, name: "uq_draft_player_role"]
+    (draft_player_id) [name: "ix_balancer_draft_player_role_draft_player_id"]
+  }
+}
+
+Table balancer.draft_player_role_hero {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  draft_player_role_id bigint [not null]
+  hero_id bigint [not null]
+  priority int [not null]
+  indexes {
+    (draft_player_role_id, hero_id) [unique, name: "uq_draft_player_role_hero_hero"]
+    (draft_player_role_id, priority) [unique, name: "uq_draft_player_role_hero_priority"]
+    (draft_player_role_id) [name: "ix_balancer_draft_player_role_hero_draft_player_role_id"]
+  }
+}
+
+Table balancer.draft_session {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  workspace_id bigint [not null]
+  status VARCHAR(16) [not null, default: `setup`]
+  blocked_reason VARCHAR(64)
+  format VARCHAR(16) [not null, default: `snake`]
+  rounds int [not null, default: 4]
+  pick_time_seconds int [not null, default: 45]
+  current_pick_id bigint
+  pool_source VARCHAR(32) [not null, default: `balancer_balance`]
+  source_balance_id bigint
+  autopick_strategy VARCHAR(16) [not null, default: `best_fit`]
+  allow_admin_override boolean [not null, default: true]
+  exported_at timestamptz
+  export_status VARCHAR(32)
+  settings_json json [not null, default: `{}`]
+  version int [not null, default: 0]
+  indexes {
+    (status, created_at) [name: "ix_draft_session_status_created"]
+    (workspace_id) [name: "ix_balancer_draft_session_workspace_id"]
+    (source_balance_id) [name: "ix_balancer_draft_session_source_balance_id"]
+    (tournament_id) [unique, name: "uq_draft_session_active_tournament"]
+    (tournament_id, status) [name: "ix_draft_session_tournament_status"]
+  }
+}
+
+Table balancer.draft_team {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  session_id bigint [not null]
+  captain_workspace_member_id bigint
+  captain_auth_user_id bigint
+  name VARCHAR(255) [not null]
+  draft_position int [not null]
+  exported_team_id bigint
+  indexes {
+    (session_id, draft_position) [unique, name: "uq_draft_team_session_position"]
+    (session_id) [name: "ix_balancer_draft_team_session_id"]
+    (captain_auth_user_id) [name: "ix_balancer_draft_team_captain_auth_user_id"]
+    (exported_team_id) [name: "ix_balancer_draft_team_exported_team_id"]
+    (captain_workspace_member_id) [name: "ix_balancer_draft_team_captain_workspace_member_id"]
+  }
+}
+
+Table balancer.member_rank {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  workspace_member_id bigint [not null]
+  author_user_id bigint
+  role VARCHAR(16) [not null]
+  rank_value int [not null]
+  indexes {
+    (workspace_id, author_user_id, workspace_member_id, role) [unique, name: "uq_member_rank_author"]
+    (author_user_id) [name: "ix_balancer_member_rank_author_user_id"]
+    (workspace_member_id) [name: "ix_balancer_member_rank_workspace_member_id"]
+    (workspace_id, workspace_member_id, role) [unique, name: "uq_member_rank_canon"]
+    (workspace_id) [name: "ix_balancer_member_rank_workspace_id"]
+  }
+}
+
+Table balancer.registration {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  workspace_member_id bigint
+  display_name VARCHAR(255)
+  battle_tag VARCHAR(255)
+  battle_tag_normalized VARCHAR(255)
+  smurf_tags_json json
+  discord_nick VARCHAR(255)
+  twitch_nick VARCHAR(255)
+  boosty_nick VARCHAR(255)
+  stream_pov boolean [not null, default: false]
+  notes text
+  exclude_reason VARCHAR(64)
+  admin_notes text
+  custom_fields_json json
+  status VARCHAR(32) [not null, default: `pending`]
+  balancer_status VARCHAR(32) [not null, default: `not_in_balancer`]
+  checked_in boolean [not null, default: false]
+  checked_in_at timestamptz
+  checked_in_by bigint
+  submitted_at timestamptz [not null, default: `now()`]
+  reviewed_at timestamptz
+  reviewed_by bigint
+  deleted_at timestamptz
+  deleted_by bigint
+  balancer_profile_overridden_at timestamptz
+  registration_team_id bigint
+  team_slot_code VARCHAR(16)
+  is_substitute boolean [not null, default: false]
+  indexes {
+    (tournament_id) [name: "ix_balancer_registration_tournament_id"]
+    (tournament_id, workspace_member_id) [unique, name: "uq_balancer_registration_user"]
+    (tournament_id, status, balancer_status) [name: "ix_balancer_registration_tournament_balancer_status"]
+    (tournament_id, battle_tag_normalized) [unique, name: "uq_balancer_registration_tournament_tag_active"]
+    (registration_team_id) [name: "ix_balancer_registration_registration_team_id"]
+    (workspace_member_id) [name: "ix_balancer_registration_workspace_member_id"]
+  }
+}
+
+Table balancer.registration_form {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  workspace_id bigint [not null]
+  is_open boolean [not null, default: false]
+  auto_approve boolean [not null, default: false]
+  built_in_fields_json json [not null, default: `{}`]
+  custom_fields_json json [not null, default: `[]`]
+  require_open_profile boolean [not null, default: false]
+  open_profile_scope VARCHAR(8) [not null, default: `main`]
+  show_ranks boolean [not null, default: false]
+  max_substitutes int [not null, default: 0]
+  require_subscription boolean [not null, default: false]
+  subscription_stage VARCHAR(16) [not null, default: `check_in`]
+  indexes {
+    (tournament_id) [unique, name: "uq_balancer_registration_form_tournament"]
+    (workspace_id) [name: "ix_balancer_registration_form_workspace_id"]
+  }
+}
+
+Table balancer.registration_google_sheet_binding {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  feed_id bigint [not null]
+  registration_id bigint [not null]
+  source_record_key VARCHAR(255) [not null]
+  raw_row_json json
+  parsed_fields_json json
+  row_hash VARCHAR(128)
+  last_seen_at timestamptz
+  indexes {
+    (registration_id) [unique, name: "uq_balancer_registration_google_sheet_binding_registration"]
+    (feed_id, source_record_key) [unique, name: "uq_balancer_registration_google_sheet_binding_key"]
+    (feed_id) [name: "ix_balancer_registration_google_sheet_binding_feed_id"]
+  }
+}
+
+Table balancer.registration_google_sheet_feed {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  source_url text [not null]
+  sheet_id VARCHAR(255) [not null]
+  gid VARCHAR(64)
+  title VARCHAR(255)
+  auto_sync_enabled boolean [not null, default: false]
+  auto_sync_interval_seconds int [not null, default: 300]
+  header_row_json json
+  mapping_config_json json
+  value_mapping_json json
+  last_synced_at timestamptz
+  last_sync_status VARCHAR(32)
+  last_error text
+  indexes {
+    (tournament_id) [unique, name: "uq_balancer_registration_google_sheet_feed_tournament"]
+  }
+}
+
+Table balancer.registration_role {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  registration_id bigint [not null]
+  role VARCHAR(16) [not null]
+  subrole VARCHAR(128)
+  is_primary boolean [not null, default: false]
+  priority int [not null, default: 0]
+  rank_value int
+  is_active boolean [not null, default: true]
+  indexes {
+    (registration_id, role) [unique, name: "uq_balancer_registration_role"]
+    (registration_id) [name: "ix_balancer_registration_role_registration_id"]
+  }
+}
+
+Table balancer.registration_role_hero {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  role_id bigint [not null]
+  hero_id bigint [not null]
+  priority int [not null]
+  indexes {
+    (role_id, priority) [unique, name: "uq_reg_role_hero_role_priority"]
+    (role_id, hero_id) [unique, name: "uq_reg_role_hero_role_hero"]
+    (role_id) [name: "ix_balancer_registration_role_hero_role_id"]
+  }
+}
+
+Table balancer.registration_status {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint
+  scope VARCHAR(32) [not null]
+  slug VARCHAR(32) [not null]
+  kind VARCHAR(16) [not null, default: `custom`]
+  icon_slug VARCHAR(128)
+  icon_color VARCHAR(32)
+  name VARCHAR(64) [not null]
+  description text
+  excludes_from_balancer boolean [not null, default: false]
+  excludes_from_ready boolean [not null, default: false]
+  indexes {
+    (workspace_id, scope, slug, kind) [unique, name: "uq_balancer_registration_status_workspace_scope_slug"]
+    (workspace_id) [name: "ix_balancer_registration_status_workspace_id"]
+    (workspace_id, scope) [name: "ix_balancer_registration_status_workspace_scope"]
+  }
+}
+
+Table balancer.registration_team {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  workspace_id bigint [not null]
+  name VARCHAR(255) [not null]
+  name_normalized VARCHAR(255) [not null]
+  image_url VARCHAR(255)
+  captain_registration_id bigint
+  status VARCHAR(16) [not null, default: `forming`]
+  exported_team_id bigint
+  exported_at timestamptz
+  export_status VARCHAR(32)
+  export_error text
+  deleted_at timestamptz
+  deleted_by bigint
+  invite_cap_reset_at timestamptz
+  invite_cap_reset_by bigint
+  indexes {
+    (tournament_id, name_normalized) [unique, name: "uq_balancer_registration_team_name_active"]
+    (tournament_id) [name: "ix_balancer_registration_team_tournament_id"]
+    (tournament_id, status) [name: "ix_balancer_registration_team_tournament_status"]
+    (captain_registration_id) [name: "ix_balancer_registration_team_captain_registration_id"]
+    (exported_team_id) [name: "ix_balancer_registration_team_exported_team_id"]
+    (workspace_id) [name: "ix_balancer_registration_team_workspace_id"]
+  }
+}
+
+Table balancer.registration_team_invite {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  team_id bigint [not null]
+  slot_code VARCHAR(16) [not null]
+  is_substitute boolean [not null, default: false]
+  target_auth_user_id bigint
+  token_sha256 VARCHAR(64)
+  expires_at timestamptz
+  state VARCHAR(16) [not null, default: `pending`]
+  invited_by bigint
+  invited_at timestamptz [not null, default: `now()`]
+  revoked_by bigint
+  revoked_at timestamptz
+  revoked_by_organizer boolean [not null, default: false]
+  accepted_at timestamptz
+  accepted_registration_id bigint
+  indexes {
+    (team_id) [name: "ix_balancer_registration_team_invite_team_id"]
+    (token_sha256) [unique, name: "uq_balancer_registration_team_invite_token"]
+    (team_id, state) [name: "ix_balancer_registration_team_invite_team_state"]
+    (target_auth_user_id) [name: "ix_balancer_registration_team_invite_target_auth_user_id"]
+  }
+}
+
+Table balancer.team {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  balance_id bigint [not null]
+  variant_id bigint
+  exported_team_id bigint
+  name VARCHAR(255) [not null]
+  balancer_name VARCHAR(255) [not null]
+  captain_battle_tag VARCHAR(255)
+  avg_sr float [not null]
+  total_sr int [not null]
+  sort_order int [not null, default: 0]
+  indexes {
+    (balance_id) [name: "ix_balancer_team_balance_id"]
+    (variant_id) [name: "ix_balancer_team_variant_id"]
+    (exported_team_id) [name: "ix_balancer_team_exported_team_id"]
+  }
+}
+
+Table balancer.team_slot {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  team_id bigint [not null]
+  battle_tag_normalized VARCHAR(255)
+  role VARCHAR(16) [not null]
+  assigned_rank int [not null]
+  discomfort int [not null, default: 0]
+  is_captain boolean [not null, default: false]
+  sort_order int [not null, default: 0]
+  indexes {
+    (team_id) [name: "ix_balancer_team_slot_team_id"]
+    (battle_tag_normalized) [name: "ix_balancer_team_slot_battle_tag_normalized"]
+  }
+}
+
+Table balancer.tournament_config {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  workspace_id bigint [not null]
+  config_json json [not null, default: `{}`]
+  updated_by bigint
+  indexes {
+    (tournament_id) [unique, name: "uq_balancer_tournament_config_tournament"]
+    (workspace_id) [name: "ix_balancer_tournament_config_workspace_id"]
+  }
+}
+
+Table balancer.workspace_config {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  config_json json [not null, default: `{}`]
+  updated_by bigint
+  indexes {
+    (workspace_id) [unique, name: "uq_balancer_workspace_config_workspace"]
+  }
+}
+
+TableGroup balancer {
+  balancer.balance
+  balancer.balance_variant
+  balancer.custom_game
+  balancer.custom_game_player
+  balancer.draft_audit_event
+  balancer.draft_pick
+  balancer.draft_player
+  balancer.draft_player_role
+  balancer.draft_player_role_hero
+  balancer.draft_session
+  balancer.draft_team
+  balancer.member_rank
+  balancer.registration
+  balancer.registration_form
+  balancer.registration_google_sheet_binding
+  balancer.registration_google_sheet_feed
+  balancer.registration_role
+  balancer.registration_role_hero
+  balancer.registration_status
+  balancer.registration_team
+  balancer.registration_team_invite
+  balancer.team
+  balancer.team_slot
+  balancer.tournament_config
+  balancer.workspace_config
+}
+
+// ----- casual -----
+
+Table casual.match {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  custom_game_id bigint [not null]
+  workspace_id bigint [not null]
+  home_team_id bigint [not null]
+  away_team_id bigint [not null]
+  home_score int [not null]
+  away_score int [not null]
+  map_id bigint
+  recorded_by bigint
+  indexes {
+    (workspace_id) [name: "ix_casual_match_workspace_id"]
+    (custom_game_id) [name: "ix_casual_match_custom_game_id"]
+  }
+}
+
+Table casual.player {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  team_id bigint [not null]
+  workspace_member_id bigint [not null]
+  role heroclass
+  rank int [not null]
+  indexes {
+    (workspace_member_id) [name: "ix_casual_player_workspace_member_id"]
+    (team_id) [name: "ix_casual_player_team_id"]
+  }
+}
+
+Table casual.team {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  name VARCHAR(255) [not null]
+  indexes {
+    (workspace_id) [name: "ix_casual_team_workspace_id"]
+  }
+}
+
+TableGroup casual {
+  casual.match
+  casual.player
+  casual.team
+}
+
+// ----- log_processing -----
+
+Table log_processing.discord_channel {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null, unique]
+  channel_id bigint [not null, unique]
+  channel_name VARCHAR(100)
+  is_active boolean [not null]
+  indexes {
+    (channel_id) [unique, name: "ix_log_processing_discord_channel_channel_id"]
+  }
+}
+
+Table log_processing.record {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  filename VARCHAR(500) [not null]
+  status log_processing_status [not null]
+  source log_processing_source [not null]
+  uploader_id bigint
+  attached_encounter_id bigint
+  error_message text
+  started_at timestamptz
+  finished_at timestamptz
+  content_hash VARCHAR(64)
+  attempts int [not null, default: 0]
+  indexes {
+    (uploader_id) [name: "ix_log_processing_record_uploader_id"]
+    (attached_encounter_id) [name: "ix_log_processing_record_attached_encounter_id"]
+    (tournament_id) [name: "ix_log_processing_record_tournament_id"]
+    (status, created_at) [name: "ix_log_processing_record_status_created"]
+    (content_hash) [name: "ix_log_processing_record_content_hash"]
+  }
+}
+
+TableGroup log_processing {
+  log_processing.discord_channel
+  log_processing.record
+}
+
+// ----- matches -----
+
+Table matches.event {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  match_id bigint [not null]
+  time float [not null]
+  round int [not null]
+  team_id bigint [not null]
+  user_id bigint [not null]
+  hero_id bigint
+  related_team_id bigint
+  related_user_id bigint
+  related_hero_id bigint
+  name matchevent [not null]
+  indexes {
+    (related_team_id) [name: "ix_matches_assists_related_team_id"]
+    (related_hero_id) [name: "ix_matches_assists_related_hero_id"]
+    (team_id) [name: "ix_matches_event_team_id"]
+    (user_id) [name: "ix_matches_event_user_id"]
+    (hero_id) [name: "ix_matches_assists_hero_id"]
+    (related_user_id) [name: "ix_matches_assists_related_user_id"]
+    (match_id) [name: "ix_matches_event_match_id"]
+  }
+}
+
+Table matches.kill_feed {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  match_id bigint [not null]
+  time float [not null]
+  round int [not null]
+  fight int [not null]
+  ability abilityevent
+  killer_id bigint [not null]
+  killer_hero_id bigint [not null]
+  killer_team_id bigint [not null]
+  victim_id bigint [not null]
+  victim_team_id bigint [not null]
+  victim_hero_id bigint [not null]
+  damage float [not null]
+  is_critical_hit boolean [not null]
+  is_environmental boolean [not null]
+  indexes {
+    (match_id) [name: "ix_matches_kill_feed_match_id"]
+    (killer_team_id) [name: "ix_matches_kill_feed_killer_team_id"]
+    (victim_id) [name: "ix_matches_kill_feed_victim_id"]
+    (victim_team_id) [name: "ix_matches_kill_feed_victim_team_id"]
+    (victim_hero_id) [name: "ix_matches_kill_feed_victim_hero_id"]
+    (killer_id) [name: "ix_matches_kill_feed_killer_id"]
+    (killer_hero_id) [name: "ix_matches_kill_feed_killer_hero_id"]
+  }
+}
+
+Table matches.match {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  home_team_id bigint [not null]
+  away_team_id bigint [not null]
+  home_score int [not null]
+  away_score int [not null]
+  time float
+  log_name VARCHAR
+  code VARCHAR
+  log_record_id bigint
+  source matchsource [not null, default: `log_parser`]
+  encounter_id bigint [not null]
+  map_id bigint [not null]
+  map_index int
+  indexes {
+    (home_team_id) [name: "ix_matches_match_home_team_id"]
+    (map_id) [name: "ix_matches_match_map_id"]
+    (log_record_id) [name: "ix_matches_match_log_record_id"]
+    (encounter_id) [name: "ix_matches_match_encounter_id"]
+    (away_team_id) [name: "ix_matches_match_away_team_id"]
+  }
+}
+
+Table matches.stat_baselines {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  formula_version VARCHAR(64) [not null]
+  role heroclass [not null]
+  rank_bucket smallint [not null, default: -1]
+  stat logstatsname [not null]
+  mean float [not null]
+  std float [not null]
+  meta jsonb
+  computed_at timestamptz [not null, default: `now()`]
+  indexes {
+    (formula_version, role, rank_bucket, stat) [unique, name: "uq_stat_baselines_key"]
+    (formula_version) [name: "ix_stat_baselines_version"]
+  }
+}
+
+Table matches.statistics {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  match_id bigint [not null]
+  round int [not null]
+  team_id bigint [not null]
+  user_id bigint [not null]
+  hero_id bigint
+  name logstatsname [not null]
+  value float [not null]
+  indexes {
+    (match_id, name, round) [name: "ix_match_statistics_match_name_round"]
+    (user_id) [name: "ix_matches_statistics_user_id"]
+    (match_id, user_id, round) [name: "ix_match_statistics_match_user_round"]
+    (user_id, hero_id, name) [name: "ix_match_statistics_user_hero_r0"]
+    (name) [name: "ix_matches_statistics_name"]
+    (team_id) [name: "ix_matches_statistics_team_id"]
+    (user_id, round, name) [name: "ix_match_statistics_user_round_name"]
+    (user_id, name) [name: "ix_match_statistics_user_name_r0"]
+    (match_id, user_id, hero_id) [name: "ix_match_statistics_playtime_r0"]
+    (match_id) [name: "ix_matches_statistics_match_id"]
+  }
+}
+
+TableGroup matches {
+  matches.event
+  matches.kill_feed
+  matches.match
+  matches.stat_baselines
+  matches.statistics
+}
+
+// ----- overwatch -----
+
+Table overwatch.catalog_alias_miss {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  entity_type catalogentitytype [not null]
+  raw_name VARCHAR(128) [not null]
+  occurrences int [not null, default: 1]
+  first_seen_at timestamptz [not null, default: `now()`]
+  last_seen_at timestamptz [not null, default: `now()`]
+  last_log_record_id bigint
+  resolved_at timestamptz
+  indexes {
+    (entity_type, raw_name) [unique, name: "uq_catalog_alias_miss_entity_raw"]
+  }
+}
+
+Table overwatch.gamemode {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  slug VARCHAR [not null, unique]
+  name VARCHAR [not null, unique]
+  image_path VARCHAR [not null]
+  description VARCHAR
+  aliases jsonb [not null, default: `'[]'::jsonb`]
+}
+
+Table overwatch.hero {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  slug VARCHAR [not null, unique]
+  name VARCHAR [not null, unique]
+  image_path VARCHAR [not null]
+  type heroclass [not null]
+  color VARCHAR [not null, default: `#ffffff`]
+  aliases jsonb [not null, default: `'[]'::jsonb`]
+}
+
+Table overwatch.map {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  gamemode_id bigint [not null]
+  name VARCHAR [not null, unique]
+  image_path VARCHAR [not null]
+  in_competitive boolean [not null, default: true]
+  aliases jsonb [not null, default: `'[]'::jsonb`]
+}
+
+TableGroup overwatch {
+  overwatch.catalog_alias_miss
+  overwatch.gamemode
+  overwatch.hero
+  overwatch.map
+}
+
+// ----- overwatch_rank -----
+
+Table overwatch_rank.battle_tag_state {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  social_account_id bigint [not null, unique]
+  battle_tag VARCHAR(255) [not null]
+  player_id_slug VARCHAR(255) [not null]
+  last_checked_at timestamptz
+  last_success_at timestamptz
+  last_snapshot_id bigint
+  status VARCHAR(32) [not null, default: `pending`]
+  consecutive_failures int [not null, default: 0]
+  next_eligible_at timestamptz
+  last_error text
+  priority_tier smallint [not null, default: 0]
+  indexes {
+    (priority_tier, last_checked_at) [name: "ix_battle_tag_state_priority"]
+    (status, next_eligible_at, last_checked_at) [name: "ix_battle_tag_state_due"]
+  }
+}
+
+Table overwatch_rank.fetch_log {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  social_account_id bigint
+  battle_tag VARCHAR(255) [not null]
+  status VARCHAR(32) [not null]
+  source VARCHAR(32) [not null]
+  error text
+  snapshots_written int [not null, default: 0]
+  indexes {
+    (created_at) [name: "ix_fetch_log_created_at"]
+    (status, created_at) [name: "ix_fetch_log_status_created"]
+  }
+}
+
+Table overwatch_rank.rank_snapshot {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  user_id bigint [not null]
+  social_account_id bigint [not null]
+  battle_tag VARCHAR(255) [not null]
+  platform VARCHAR(16) [not null]
+  role VARCHAR(16) [not null]
+  division VARCHAR(32)
+  tier smallint
+  season int
+  rank_value int
+  mapping_version VARCHAR(64)
+  is_ranked boolean [not null, default: true]
+  raw_payload jsonb
+  captured_at timestamptz [not null, default: `now()`]
+  source VARCHAR(32) [not null, default: `scheduled`]
+  indexes {
+    (user_id, captured_at) [name: "ix_rank_snapshot_user_captured"]
+    (social_account_id, role, platform, captured_at) [name: "ix_rank_snapshot_series_captured"]
+    (captured_at) [name: "ix_overwatch_rank_rank_snapshot_captured_at"]
+  }
+}
+
+TableGroup overwatch_rank {
+  overwatch_rank.battle_tag_state
+  overwatch_rank.fetch_log
+  overwatch_rank.rank_snapshot
+}
+
+// ----- players -----
+
+Table players.favorite_player {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  auth_user_id bigint [not null]
+  player_id bigint [not null]
+  indexes {
+    (auth_user_id, player_id) [unique, name: "uq_favorite_player_auth_user_player"]
+    (auth_user_id) [name: "ix_favorite_player_auth_user"]
+    (player_id) [name: "ix_players_favorite_player_player_id"]
+    (auth_user_id) [name: "ix_players_favorite_player_auth_user_id"]
+  }
+}
+
+Table players.social_account {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  user_id bigint [not null]
+  provider VARCHAR(64) [not null]
+  username VARCHAR(255) [not null]
+  username_normalized VARCHAR(255)
+  url VARCHAR(500)
+  provider_user_id VARCHAR(255)
+  is_verified boolean [not null, default: false]
+  is_primary boolean [not null, default: false]
+  indexes {
+    (user_id, provider, username_normalized) [unique, name: "uq_social_account_user_provider_handle"]
+    (provider, provider_user_id) [unique, name: "uq_social_account_provider_subject"]
+    (provider_user_id) [name: "ix_social_account_provider_user_id"]
+    (user_id, provider) [unique, name: "uq_social_account_user_provider_handle_nullnorm"]
+    (provider) [name: "ix_social_account_provider"]
+    (username_normalized) [name: "ix_social_account_username_normalized"]
+    (user_id) [name: "ix_social_account_user_id"]
+  }
+}
+
+Table players.social_account_visibility {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  account_id bigint [not null]
+  workspace_id bigint
+  indexes {
+    (account_id) [name: "ix_social_account_visibility_account_id"]
+    (account_id) [unique, name: "uq_social_visibility_global"]
+    (workspace_id) [name: "ix_social_account_visibility_workspace_id"]
+    (account_id, workspace_id) [unique, name: "uq_social_visibility_workspace"]
+  }
+}
+
+Table players.user {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  name VARCHAR [not null, unique]
+  avatar_url VARCHAR(500)
+  stream_visible boolean [not null, default: true]
+  auth_user_id bigint [unique]
+  indexes {
+    (auth_user_id) [unique, name: "ix_players_user_auth_user_id"]
+    (name) [name: "ix_user_name_trgm"]
+  }
+}
+
+Table players.user_merge_audit {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  source_user_id bigint
+  target_user_id bigint
+  operator_auth_user_id bigint
+  field_policy_json json [not null]
+  moved_identity_ids_json json [not null]
+  deduped_identity_ids_json json [not null]
+  affected_counts_json json [not null]
+  preview_snapshot_json json [not null]
+  indexes {
+    (operator_auth_user_id) [name: "ix_players_user_merge_audit_operator_auth_user_id"]
+    (target_user_id) [name: "ix_players_user_merge_audit_target_user_id"]
+    (source_user_id) [name: "ix_players_user_merge_audit_source_user_id"]
+  }
+}
+
+TableGroup players {
+  players.favorite_player
+  players.social_account
+  players.social_account_visibility
+  players.user
+  players.user_merge_audit
+}
+
+// ----- public -----
+
+Table audit_log {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  workspace_id bigint
+  actor_auth_user_id bigint
+  actor_label VARCHAR(255)
+  source VARCHAR(16) [not null]
+  action VARCHAR(64) [not null]
+  entity_type VARCHAR(64)
+  entity_id bigint
+  entity_label VARCHAR(255)
+  before_json jsonb
+  after_json jsonb
+  reason text
+  ip_address VARCHAR(45)
+  user_agent VARCHAR(255)
+  correlation_id VARCHAR(64)
+  indexes {
+    (workspace_id, created_at) [name: "ix_audit_log_workspace_created"]
+    (entity_type, entity_id, created_at) [name: "ix_audit_log_entity_created"]
+    (actor_auth_user_id, created_at) [name: "ix_audit_log_actor_created"]
+  }
+}
+
+Table division_grid {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint
+  slug VARCHAR [not null]
+  name VARCHAR [not null]
+  description VARCHAR
+  source_workspace_id bigint
+  source_grid_id bigint
+  source_key VARCHAR(255)
+  source_fingerprint VARCHAR(64)
+  imported_at timestamptz
+  archived_at timestamptz
+  indexes {
+    (workspace_id, slug) [unique]
+    (source_fingerprint) [name: "ix_division_grid_source_fingerprint"]
+    (source_workspace_id) [name: "ix_division_grid_source_workspace_id"]
+    (workspace_id) [name: "ix_division_grid_workspace_id"]
+    (source_grid_id) [name: "ix_division_grid_source_grid_id"]
+    (source_key) [name: "ix_division_grid_source_key"]
+  }
+}
+
+Table division_grid_import_job {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  source_workspace_id bigint
+  requested_by_user_id bigint
+  status VARCHAR(16) [not null, default: `pending`]
+  progress int [not null, default: 0]
+  request_json json [not null]
+  result_json json
+  error text
+  idempotency_key VARCHAR(255) [not null]
+  started_at timestamptz
+  finished_at timestamptz
+  indexes {
+    (workspace_id, idempotency_key) [unique]
+    (workspace_id) [name: "ix_division_grid_import_job_workspace_id"]
+    (requested_by_user_id) [name: "ix_division_grid_import_job_requested_by_user_id"]
+    (source_workspace_id) [name: "ix_division_grid_import_job_source_workspace_id"]
+  }
+}
+
+Table division_grid_mapping {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  source_version_id bigint [not null]
+  target_version_id bigint [not null]
+  name VARCHAR [not null]
+  is_complete boolean [not null, default: false]
+  indexes {
+    (source_version_id, target_version_id) [unique]
+    (target_version_id) [name: "ix_division_grid_mapping_target_version_id"]
+    (source_version_id) [name: "ix_division_grid_mapping_source_version_id"]
+  }
+}
+
+Table division_grid_mapping_rule {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  mapping_id bigint [not null]
+  source_tier_id bigint [not null]
+  target_tier_id bigint [not null]
+  weight float [not null, default: 1.0]
+  is_primary boolean [not null, default: false]
+  indexes {
+    (source_tier_id) [name: "ix_division_grid_mapping_rule_source_tier_id"]
+    (mapping_id) [name: "ix_division_grid_mapping_rule_mapping_id"]
+    (target_tier_id) [name: "ix_division_grid_mapping_rule_target_tier_id"]
+  }
+}
+
+Table division_grid_tier {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  version_id bigint [not null]
+  slug VARCHAR [not null]
+  number bigint [not null]
+  name VARCHAR [not null]
+  sort_order bigint [not null]
+  rank_min bigint [not null]
+  rank_max bigint
+  icon_url VARCHAR [not null]
+  ow_rank_min bigint
+  ow_rank_max bigint
+  indexes {
+    (version_id, slug) [unique]
+    (version_id, sort_order) [unique]
+    (version_id) [name: "ix_division_grid_tier_version_id"]
+  }
+}
+
+Table division_grid_version {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  grid_id bigint [not null]
+  version bigint [not null]
+  label VARCHAR [not null]
+  status VARCHAR [not null, default: `draft`]
+  created_from_version_id bigint
+  published_at timestamptz
+  indexes {
+    (grid_id, version) [unique]
+    (created_from_version_id) [name: "ix_division_grid_version_created_from_version_id"]
+    (grid_id) [name: "ix_division_grid_version_grid_id"]
+  }
+}
+
+Table event_outbox {
+  id bigint [pk, increment]
+  event_id VARCHAR(64) [not null, unique]
+  event_type VARCHAR(128) [not null]
+  exchange VARCHAR(255)
+  routing_key VARCHAR(255) [not null]
+  payload_json json [not null]
+  status VARCHAR(16) [not null]
+  attempts int [not null]
+  next_attempt_at timestamptz [not null, default: `now()`]
+  created_at timestamptz [not null, default: `now()`]
+  published_at timestamptz
+  last_error text
+  indexes {
+    (status, next_attempt_at) [name: "ix_event_outbox_status_next_attempt"]
+  }
+}
+
+Table settings {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  key VARCHAR [not null, unique]
+  value json [not null, default: `{}`]
+  description VARCHAR
+  updated_by bigint
+  indexes {
+    (key) [unique, name: "ix_settings_key"]
+  }
+}
+
+Table workspace {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  slug VARCHAR [not null, unique]
+  name VARCHAR [not null]
+  description VARCHAR
+  icon_url VARCHAR
+  is_active boolean [not null, default: true]
+  is_hidden boolean [not null, default: false]
+  timezone VARCHAR(64) [not null, default: `Europe/Moscow`]
+  branding_enabled boolean [not null, default: false]
+  brand_primary VARCHAR
+  brand_secondary VARCHAR
+  brand_background VARCHAR
+  brand_surface VARCHAR
+  brand_accent VARCHAR
+  brand_foreground VARCHAR
+  brand_muted VARCHAR
+  brand_border VARCHAR
+  brand_ring VARCHAR
+  brand_destructive VARCHAR
+  subdomain VARCHAR(63) [unique]
+  seo_title VARCHAR
+  seo_description VARCHAR
+  custom_domain VARCHAR(255) [unique]
+  custom_domain_verified_at timestamptz
+  custom_domain_verification_token VARCHAR(64)
+  discord_guild_id VARCHAR(32) [unique]
+  discord_guild_verified_at timestamptz
+  discord_guild_verified_by_auth_user_id bigint
+  owner_id bigint
+  default_division_grid_version_id bigint
+  default_roster_slots_json jsonb
+  newcomer_scope VARCHAR(16) [not null, default: `global`]
+  indexes {
+    (owner_id) [name: "ix_workspace_owner_id"]
+    (slug) [unique, name: "ix_workspace_slug"]
+    (default_division_grid_version_id) [name: "ix_workspace_default_division_grid_version_id"]
+    (subdomain) [unique, name: "ix_workspace_subdomain"]
+    (custom_domain) [unique, name: "ix_workspace_custom_domain"]
+  }
+}
+
+Table workspace_member {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  player_id bigint [not null]
+  display_name VARCHAR(255)
+  indexes {
+    (id, workspace_id) [unique, name: "uq_workspace_member_id_workspace"]
+    (workspace_id, player_id) [unique, name: "uq_workspace_member_workspace_player"]
+    (workspace_id) [name: "ix_workspace_member_workspace_id"]
+    (player_id) [name: "ix_workspace_member_player_id"]
+  }
+}
+
+TableGroup public {
+  audit_log
+  division_grid
+  division_grid_import_job
+  division_grid_mapping
+  division_grid_mapping_rule
+  division_grid_tier
+  division_grid_version
+  event_outbox
+  settings
+  workspace
+  workspace_member
+}
+
+// ----- realtime -----
+
+Table realtime.workspace_event {
+  id bigint [pk, increment]
+  topic text [not null]
+  event_type VARCHAR(128) [not null]
+  workspace_id bigint
+  tournament_id bigint
+  actor_user_id bigint
+  schema_version smallint [not null, default: 1]
+  payload jsonb [not null]
+  occurred_at timestamptz [not null, default: `now()`]
+  indexes {
+    (tournament_id) [name: "ix_realtime_workspace_event_tournament_id"]
+    (actor_user_id) [name: "ix_realtime_workspace_event_actor_user_id"]
+    (topic, id) [name: "ix_realtime_workspace_event_topic_id"]
+    (workspace_id) [name: "ix_realtime_workspace_event_workspace_id"]
+    (occurred_at) [name: "ix_realtime_workspace_event_occurred_at"]
+  }
+}
+
+TableGroup realtime {
+  realtime.workspace_event
+}
+
+// ----- subscriptions -----
+
+Table subscriptions.check_log {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint
+  auth_user_id bigint
+  provider VARCHAR(32) [not null]
+  state VARCHAR(16) [not null]
+  tier_rank int
+  tier_label VARCHAR(64)
+  source VARCHAR(32) [not null, default: `scheduled`]
+  mechanism VARCHAR(32)
+  reason VARCHAR(64)
+  error text
+  indexes {
+    (created_at) [name: "ix_subscription_check_log_created_at"]
+    (workspace_id) [name: "ix_subscriptions_check_log_workspace_id"]
+    (state, created_at) [name: "ix_subscription_check_log_state_created"]
+    (auth_user_id, created_at) [name: "ix_subscription_check_log_user_created"]
+  }
+}
+
+Table subscriptions.entitlement {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  auth_user_id bigint [not null]
+  provider VARCHAR(32) [not null]
+  state VARCHAR(16) [not null, default: `unknown`]
+  tier_rank int
+  tier_label VARCHAR(64)
+  source VARCHAR(32)
+  checked_at timestamptz
+  expires_at timestamptz
+  evidence_json json
+  indexes {
+    (workspace_id, auth_user_id, provider) [unique, name: "uq_subscription_entitlement_scope"]
+    (workspace_id, provider) [name: "ix_subscription_entitlement_workspace_provider"]
+    (auth_user_id) [name: "ix_subscriptions_entitlement_auth_user_id"]
+    (workspace_id) [name: "ix_subscriptions_entitlement_workspace_id"]
+  }
+}
+
+Table subscriptions.provider_config {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  provider VARCHAR(32) [not null]
+  enabled boolean [not null, default: false]
+  config_json json [not null, default: `{}`]
+  indexes {
+    (workspace_id, provider) [unique, name: "uq_subscription_config_workspace_provider"]
+    (workspace_id) [name: "ix_subscriptions_provider_config_workspace_id"]
+  }
+}
+
+Table subscriptions.requirement {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  name VARCHAR(64) [not null, default: `default`]
+  requirement_json json [not null, default: `{}`]
+  is_default boolean [not null, default: false]
+  indexes {
+    (workspace_id, name) [unique, name: "uq_subscription_requirement_workspace_name"]
+    (workspace_id) [name: "ix_subscriptions_requirement_workspace_id"]
+  }
+}
+
+TableGroup subscriptions {
+  subscriptions.check_log
+  subscriptions.entitlement
+  subscriptions.provider_config
+  subscriptions.requirement
+}
+
+// ----- tournament -----
+
+Table tournament.challonge_match_mapping {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  source_id bigint [not null]
+  challonge_match_id int [not null]
+  encounter_id bigint [not null]
+  indexes {
+    (source_id, encounter_id) [unique, name: "uq_challonge_match_mapping_source_encounter"]
+    (source_id, challonge_match_id) [unique, name: "uq_challonge_match_mapping_source_match"]
+    (encounter_id) [name: "ix_challonge_match_mapping_encounter"]
+    (source_id) [name: "ix_challonge_match_mapping_source"]
+  }
+}
+
+Table tournament.challonge_participant_mapping {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  source_id bigint [not null]
+  challonge_participant_id int [not null]
+  team_id bigint [not null]
+  indexes {
+    (source_id, challonge_participant_id) [unique, name: "uq_challonge_participant_mapping_source_participant"]
+    (source_id) [name: "ix_challonge_participant_mapping_source"]
+    (team_id) [name: "ix_challonge_participant_mapping_team"]
+  }
+}
+
+Table tournament.challonge_source {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  stage_id bigint
+  stage_item_id bigint
+  challonge_tournament_id int [not null]
+  slug VARCHAR
+  source_type VARCHAR(32) [not null]
+  indexes {
+    (tournament_id, challonge_tournament_id) [unique, name: "uq_challonge_source_tournament_challonge"]
+    (stage_id) [name: "ix_challonge_source_stage"]
+    (tournament_id) [name: "ix_challonge_source_tournament"]
+    (stage_item_id) [name: "ix_challonge_source_stage_item"]
+  }
+}
+
+Table tournament.challonge_sync_log {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  source_id bigint
+  direction VARCHAR(10) [not null]
+  operation VARCHAR(32)
+  entity_type VARCHAR(32) [not null]
+  entity_id int
+  challonge_id int
+  status VARCHAR(16) [not null]
+  conflict_type VARCHAR(32)
+  payload_json json
+  before_json json
+  after_json json
+  error_message text
+  indexes {
+    (tournament_id) [name: "ix_tournament_challonge_sync_log_tournament_id"]
+    (tournament_id) [name: "ix_challonge_sync_log_tournament_created"]
+    (source_id) [name: "ix_tournament_challonge_sync_log_source_id"]
+  }
+}
+
+Table tournament.computation_job {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  kind VARCHAR(16) [not null]
+  operation VARCHAR(48) [not null]
+  tournament_id bigint [not null]
+  stage_id bigint
+  stage_item_id bigint
+  status VARCHAR(16) [not null, default: `pending`]
+  payload_json json [not null, default: `'{}'::json`]
+  result_json json
+  error text
+  requested_by_user_id bigint
+  idempotency_key VARCHAR(255) [not null]
+  attempts int [not null, default: 0]
+  started_at timestamptz
+  finished_at timestamptz
+  indexes {
+    (status) [name: "ix_tournament_computation_job_status"]
+    (tournament_id) [name: "ix_tournament_computation_job_tournament_id"]
+    (tournament_id, kind) [name: "ix_tournament_computation_job_tournament_kind"]
+    (idempotency_key) [unique, name: "uq_tournament_computation_job_active_key"]
+    (stage_item_id) [name: "ix_tournament_computation_job_stage_item_id"]
+    (requested_by_user_id) [name: "ix_tournament_computation_job_requested_by_user_id"]
+    (stage_id) [name: "ix_tournament_computation_job_stage_id"]
+  }
+}
+
+Table tournament.encounter {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  name VARCHAR [not null]
+  home_team_id bigint
+  away_team_id bigint
+  home_score int [not null]
+  away_score int [not null]
+  round int [not null]
+  closeness float
+  best_of int [not null, default: 3]
+  scheduled_at timestamptz
+  started_at timestamptz
+  ended_at timestamptz
+  current_map_index int
+  tournament_id bigint [not null]
+  stage_id bigint
+  stage_item_id bigint
+  status encounterstatus [not null]
+  result_status encounterresultstatus [not null, default: `none`]
+  confirmed_at timestamptz
+  indexes {
+    (away_team_id) [name: "ix_tournament_encounter_away_team_id"]
+    (round) [name: "ix_tournament_encounter_round"]
+    (tournament_id, status) [name: "ix_encounter_tournament_status"]
+    (tournament_id, status) [name: "ix_encounter_status_live_upcoming"]
+    (home_team_id) [name: "ix_tournament_encounter_home_team_id"]
+    (tournament_id) [name: "ix_tournament_encounter_tournament_id"]
+    (stage_item_id) [name: "ix_tournament_encounter_stage_item_id"]
+    (stage_id) [name: "ix_tournament_encounter_stage_id"]
+  }
+}
+
+Table tournament.encounter_captain_report {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  encounter_id bigint [not null]
+  team_id bigint [not null]
+  reporter_user_id bigint
+  home_score int [not null]
+  away_score int [not null]
+  closeness int
+  comment text
+  custom_fields_json json [not null, default: `{}`]
+  indexes {
+    (encounter_id, team_id) [unique, name: "uq_encounter_captain_report_encounter_team"]
+    (team_id) [name: "ix_tournament_encounter_captain_report_team_id"]
+    (encounter_id) [name: "ix_tournament_encounter_captain_report_encounter_id"]
+  }
+}
+
+Table tournament.encounter_link {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  source_encounter_id int [not null]
+  target_encounter_id int [not null]
+  role encounterlinkrole [not null]
+  target_slot encounterlinkslot [not null]
+  indexes {
+    (source_encounter_id, role) [unique, name: "uq_encounter_link_source_role"]
+    (target_encounter_id) [name: "ix_tournament_encounter_link_target_encounter_id"]
+    (source_encounter_id) [name: "ix_tournament_encounter_link_source_encounter_id"]
+  }
+}
+
+Table tournament.encounter_map_code {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  report_id bigint [not null]
+  map_index int [not null]
+  map_id bigint
+  code VARCHAR(32) [not null]
+  indexes {
+    (report_id, map_index) [unique, name: "uq_encounter_map_code_report_index"]
+    (report_id) [name: "ix_tournament_encounter_map_code_report_id"]
+    (map_id) [name: "ix_tournament_encounter_map_code_map_id"]
+  }
+}
+
+Table tournament.encounter_map_report {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  encounter_id bigint [not null]
+  map_id bigint [not null]
+  map_index int [not null, default: 0]
+  team_id bigint [not null]
+  reporter_user_id bigint
+  home_score int [not null]
+  away_score int [not null]
+  indexes {
+    (encounter_id, map_id, map_index, team_id) [unique, name: "uq_encounter_map_report_encounter_map_index_team"]
+    (encounter_id) [name: "ix_tournament_encounter_map_report_encounter_id"]
+    (team_id) [name: "ix_tournament_encounter_map_report_team_id"]
+    (map_id) [name: "ix_tournament_encounter_map_report_map_id"]
+  }
+}
+
+Table tournament.encounter_pick_ban_ledger {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  encounter_id bigint [not null]
+  kind pickbankind [not null]
+  item_id int [not null]
+  banned_by_side pickbanside [not null]
+  round int [not null]
+  indexes {
+    (encounter_id, kind, item_id, banned_by_side) [unique, name: "uq_encounter_pick_ban_ledger_entry"]
+    (item_id) [name: "ix_tournament_encounter_pick_ban_ledger_item_id"]
+    (encounter_id) [name: "ix_tournament_encounter_pick_ban_ledger_encounter_id"]
+  }
+}
+
+Table tournament.encounter_readiness {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  encounter_id bigint [not null]
+  side VARCHAR(16) [not null]
+  ready_user_id bigint
+  indexes {
+    (encounter_id, side) [unique, name: "uq_encounter_readiness_encounter_side"]
+    (encounter_id) [name: "ix_tournament_encounter_readiness_encounter_id"]
+  }
+}
+
+Table tournament.encounter_report_form {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  built_in_fields_json json [not null, default: `{}`]
+  custom_fields_json json [not null, default: `[]`]
+  indexes {
+    (tournament_id) [unique, name: "uq_encounter_report_form_tournament"]
+  }
+}
+
+Table tournament.encounter_result_audit {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  encounter_id bigint [not null]
+  actor_user_id bigint
+  action encounterresultauditaction [not null]
+  from_result_status encounterresultstatus
+  to_result_status encounterresultstatus [not null]
+  home_score_before int
+  away_score_before int
+  home_score_after int [not null]
+  away_score_after int [not null]
+  adopted_team_id bigint
+  source VARCHAR(16) [not null]
+  indexes {
+    (encounter_id, created_at) [name: "ix_encounter_result_audit_encounter_created"]
+  }
+}
+
+Table tournament.encounter_saved_view {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  auth_user_id bigint [not null]
+  name VARCHAR(80) [not null]
+  filters_json json [not null]
+  sort_order int [not null, default: 0]
+  indexes {
+    (workspace_id, auth_user_id, name) [unique, name: "uq_encounter_saved_view_workspace_user_name"]
+    (workspace_id, auth_user_id) [name: "ix_encounter_saved_view_workspace_user"]
+    (auth_user_id) [name: "ix_tournament_encounter_saved_view_auth_user_id"]
+    (workspace_id) [name: "ix_tournament_encounter_saved_view_workspace_id"]
+  }
+}
+
+Table tournament.pick_ban_config {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  kind pickbankind [not null]
+  stage_id bigint
+  round int
+  mode pickbanmode [not null, default: `pool`]
+  first_pick_rule pickbanfirstpickrule [not null, default: `higher_seed`]
+  first_ban_rotation pickbanrotation [not null, default: `fixed`]
+  turn_timer_seconds int
+  preset VARCHAR(32)
+  sequence_json json [not null]
+  no_repeat_scope pickbannorepeatscope [not null, default: `none`]
+  unique_attribute_per_side_per_round VARCHAR(32)
+  allow_protect boolean [not null, default: false]
+  indexes {
+    (tournament_id, kind, stage_id, round) [unique, name: "uq_pick_ban_config_level"]
+    (tournament_id) [name: "ix_tournament_pick_ban_config_tournament_id"]
+  }
+}
+
+Table tournament.pick_ban_config_item {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  pick_ban_config_id bigint [not null]
+  item_id int [not null]
+  sort_order int [not null, default: 0]
+  indexes {
+    (pick_ban_config_id, item_id) [unique, name: "uq_pick_ban_config_item"]
+    (item_id) [name: "ix_tournament_pick_ban_config_item_item_id"]
+    (pick_ban_config_id) [name: "ix_tournament_pick_ban_config_item_pick_ban_config_id"]
+  }
+}
+
+Table tournament.pick_ban_config_slot {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  pick_ban_config_id bigint [not null]
+  position int [not null]
+  reserve_item_id int
+  indexes {
+    (pick_ban_config_id, position) [unique, name: "uq_pick_ban_config_slot_position"]
+    (pick_ban_config_id) [name: "ix_tournament_pick_ban_config_slot_pick_ban_config_id"]
+  }
+}
+
+Table tournament.pick_ban_config_slot_item {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  pick_ban_config_slot_id bigint [not null]
+  item_id int [not null]
+  sort_order int [not null, default: 0]
+  indexes {
+    (pick_ban_config_slot_id, item_id) [unique, name: "uq_pick_ban_config_slot_item"]
+    (item_id) [name: "ix_tournament_pick_ban_config_slot_item_item_id"]
+    (pick_ban_config_slot_id) [name: "ix_tournament_pick_ban_config_slot_item_pick_ban_config_slot_id"]
+  }
+}
+
+Table tournament.pick_ban_entry {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  session_id bigint [not null]
+  item_id int [not null]
+  "order" int [not null]
+  action_index int
+  round int
+  picked_by pickbanside
+  status pickbanentrystatus [not null, default: `available`]
+  team_id bigint
+  protected_by pickbanside
+  indexes {
+    (session_id, action_index) [unique, name: "uq_pick_ban_entry_session_action_index"]
+    (team_id) [name: "ix_tournament_pick_ban_entry_team_id"]
+    (item_id) [name: "ix_tournament_pick_ban_entry_item_id"]
+    (session_id) [name: "ix_tournament_pick_ban_entry_session_id"]
+  }
+}
+
+Table tournament.pick_ban_session {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  encounter_id bigint [not null]
+  kind pickbankind [not null]
+  config_id bigint
+  first_side pickbanside
+  seed_source pickbanseedsource [not null]
+  home_seed int
+  away_seed int
+  resolved_sequence_json json [not null]
+  slot_reserves_json json
+  turn_timer_seconds int
+  status pickbansessionstatus [not null, default: `active`]
+  awaiting_choice boolean [not null, default: false]
+  pending_loser_side pickbanside
+  undo_requested_by pickbanside
+  undo_target_index int
+  started_at timestamptz
+  current_step_started_at timestamptz
+  indexes {
+    (encounter_id, kind) [unique, name: "uq_pick_ban_session_encounter_kind"]
+    (encounter_id) [name: "ix_tournament_pick_ban_session_encounter_id"]
+  }
+}
+
+Table tournament.player {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  name VARCHAR [not null]
+  sub_role VARCHAR(128)
+  rank int [not null]
+  role heroclass
+  is_substitution boolean [not null, default: false]
+  related_player_id bigint
+  tournament_id bigint [not null]
+  is_newcomer boolean [not null, default: false]
+  is_newcomer_role boolean [not null, default: false]
+  workspace_member_id bigint [not null]
+  team_id bigint [not null]
+  indexes {
+    (team_id, workspace_member_id) [name: "ix_player_team_workspace_member"]
+    (workspace_member_id, tournament_id) [name: "ix_player_workspace_member_tournament"]
+    (tournament_id, role, sub_role) [name: "ix_player_tournament_role_sub_role"]
+    (related_player_id) [name: "ix_player_related_player_id"]
+    (tournament_id) [name: "ix_tournament_player_tournament_id"]
+    (workspace_member_id, tournament_id) [name: "ix_player_member_not_sub"]
+  }
+}
+
+Table tournament.player_sub_role {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  role VARCHAR(64) [not null]
+  slug VARCHAR(128) [not null]
+  label VARCHAR(128) [not null]
+  description text
+  sort_order int [not null, default: 0]
+  is_active boolean [not null, default: true]
+  indexes {
+    (workspace_id, role, slug) [unique, name: "uq_player_sub_role_workspace_role_slug"]
+    (workspace_id) [name: "ix_player_sub_role_workspace_id"]
+    (workspace_id, role, is_active) [name: "ix_player_sub_role_workspace_role_active"]
+  }
+}
+
+Table tournament.recalculation_state {
+  tournament_id bigint [pk]
+  requested_generation bigint [not null, default: 0]
+  completed_generation bigint [not null, default: 0]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+}
+
+Table tournament.scrim_room {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  token VARCHAR(32) [not null]
+  label VARCHAR(255) [not null]
+  workspace_id bigint [not null]
+  tournament_id bigint [not null]
+  stage_id bigint [not null]
+  encounter_id bigint [not null]
+  created_by_auth_user_id bigint [not null]
+  closed_at timestamptz
+  indexes {
+    (token) [unique, name: "uq_scrim_room_token"]
+    (encounter_id) [unique, name: "uq_scrim_room_encounter"]
+    (workspace_id) [name: "ix_tournament_scrim_room_workspace_id"]
+    (created_by_auth_user_id) [name: "ix_tournament_scrim_room_created_by_auth_user_id"]
+    (stage_id) [name: "ix_tournament_scrim_room_stage_id"]
+    (tournament_id) [name: "ix_tournament_scrim_room_tournament_id"]
+    (created_by_auth_user_id) [name: "ix_scrim_room_open_by_creator"]
+  }
+}
+
+Table tournament.slug_redirect {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  old_slug VARCHAR [not null, unique]
+  tournament_id bigint [not null]
+  indexes {
+    (tournament_id) [name: "ix_tournament_slug_redirect_tournament_id"]
+    (old_slug) [unique, name: "ix_tournament_slug_redirect_old_slug"]
+  }
+}
+
+Table tournament.stage {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  name VARCHAR [not null]
+  description VARCHAR
+  stage_type stagetype [not null]
+  max_rounds int [not null, default: 5]
+  advance_count int
+  split_lower_bracket boolean [not null, default: false]
+  "order" int [not null]
+  is_active boolean [not null, default: false]
+  is_published boolean [not null, default: false]
+  is_completed boolean [not null, default: false]
+  settings_json json
+  indexes {
+    (tournament_id) [name: "ix_tournament_stage_tournament_id"]
+  }
+}
+
+Table tournament.stage_item {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  stage_id bigint [not null]
+  name VARCHAR [not null]
+  type stageitemtype [not null]
+  "order" int [not null]
+  indexes {
+    (stage_id) [name: "ix_tournament_stage_item_stage_id"]
+  }
+}
+
+Table tournament.stage_item_input {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  stage_item_id bigint [not null]
+  slot int [not null]
+  input_type stageiteminputtype [not null]
+  team_id bigint
+  source_stage_item_id bigint
+  source_position int
+  indexes {
+    (team_id) [name: "ix_tournament_stage_item_input_team_id"]
+    (stage_item_id) [name: "ix_tournament_stage_item_input_stage_item_id"]
+  }
+}
+
+Table tournament.standing {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id int [not null]
+  team_id int [not null]
+  stage_id int
+  stage_item_id int
+  position int [not null]
+  overall_position int [not null, default: 0]
+  matches int [not null]
+  win int [not null]
+  draw int [not null]
+  lose int [not null]
+  points float [not null]
+  buchholz float
+  tb int
+  score_differential int
+  indexes {
+    (stage_id, stage_item_id, team_id) [name: "ix_standing_stage_stage_item_team"]
+    (team_id) [name: "ix_tournament_standing_team_id"]
+    (tournament_id) [name: "ix_tournament_standing_tournament_id"]
+    (tournament_id, overall_position) [name: "ix_standing_tournament_position"]
+    (stage_id) [name: "ix_tournament_standing_stage_id"]
+    (stage_item_id) [name: "ix_tournament_standing_stage_item_id"]
+  }
+}
+
+Table tournament.team {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  balancer_name VARCHAR [not null]
+  name VARCHAR [not null]
+  image_url VARCHAR
+  captain_id bigint
+  tournament_id bigint [not null]
+  indexes {
+    (tournament_id) [name: "ix_tournament_team_tournament_id"]
+    (captain_id) [name: "ix_tournament_team_captain_id"]
+  }
+}
+
+Table tournament.tournament {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  name VARCHAR [not null]
+  slug VARCHAR [not null, unique]
+  description VARCHAR
+  is_league boolean [not null, default: false]
+  is_finished boolean [not null, default: false]
+  is_hidden boolean [not null, default: false]
+  team_formation VARCHAR [not null, default: `balancer`]
+  status tournamentstatus [not null, default: `registration`]
+  start_date timestamptz
+  end_date timestamptz
+  auto_transitions_enabled boolean [not null, default: true]
+  allow_late_registration boolean [not null, default: false]
+  win_points float [not null, default: 1.0]
+  draw_points float [not null, default: 0.5]
+  loss_points float [not null, default: 0.0]
+  division_grid_version_id bigint
+  roster_slots_json jsonb
+  indexes {
+    (division_grid_version_id) [name: "ix_tournament_tournament_division_grid_version_id"]
+    (slug) [unique, name: "ix_tournament_tournament_slug"]
+    (workspace_id) [name: "ix_tournament_tournament_workspace_id"]
+    (is_hidden) [name: "ix_tournament_tournament_is_hidden"]
+  }
+}
+
+Table tournament.tournament_link {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  kind VARCHAR(32) [not null]
+  label VARCHAR(128)
+  url VARCHAR(500) [not null]
+  sort_order int [not null, default: 0]
+  is_active boolean [not null, default: true]
+  indexes {
+    (tournament_id, kind, url) [unique, name: "uq_tournament_link_tournament_kind_url"]
+    (tournament_id, is_active) [name: "ix_tournament_link_tournament_active"]
+    (tournament_id) [name: "ix_tournament_tournament_link_tournament_id"]
+  }
+}
+
+Table tournament.tournament_phase_schedule {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  status tournamentstatus [not null]
+  starts_at timestamptz [not null]
+  ends_at timestamptz
+  indexes {
+    (tournament_id, status) [unique, name: "uq_tournament_phase_schedule_phase"]
+    (starts_at) [name: "ix_tournament_tournament_phase_schedule_starts_at"]
+    (tournament_id) [name: "ix_tournament_tournament_phase_schedule_tournament_id"]
+  }
+}
+
+Table tournament.tournament_preview_access {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  tournament_id bigint [not null]
+  auth_user_id bigint [not null]
+  indexes {
+    (tournament_id, auth_user_id) [unique, name: "uq_tournament_preview_access_tournament_user"]
+    (tournament_id) [name: "ix_tournament_tournament_preview_access_tournament_id"]
+    (auth_user_id) [name: "ix_tournament_tournament_preview_access_auth_user_id"]
+  }
+}
+
+TableGroup tournament {
+  tournament.challonge_match_mapping
+  tournament.challonge_participant_mapping
+  tournament.challonge_source
+  tournament.challonge_sync_log
+  tournament.computation_job
+  tournament.encounter
+  tournament.encounter_captain_report
+  tournament.encounter_link
+  tournament.encounter_map_code
+  tournament.encounter_map_report
+  tournament.encounter_pick_ban_ledger
+  tournament.encounter_readiness
+  tournament.encounter_report_form
+  tournament.encounter_result_audit
+  tournament.encounter_saved_view
+  tournament.pick_ban_config
+  tournament.pick_ban_config_item
+  tournament.pick_ban_config_slot
+  tournament.pick_ban_config_slot_item
+  tournament.pick_ban_entry
+  tournament.pick_ban_session
+  tournament.player
+  tournament.player_sub_role
+  tournament.recalculation_state
+  tournament.scrim_room
+  tournament.slug_redirect
+  tournament.stage
+  tournament.stage_item
+  tournament.stage_item_input
+  tournament.standing
+  tournament.team
+  tournament.tournament
+  tournament.tournament_link
+  tournament.tournament_phase_schedule
+  tournament.tournament_preview_access
+}
+
+// ----- refs -----
+
+Ref: achievements.evaluation_result.achievement_rule_id > achievements.rule.id [delete: cascade]
+Ref: achievements.evaluation_result.workspace_member_id > workspace_member.id [delete: cascade]
+Ref: achievements.evaluation_result.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: achievements.evaluation_result.match_id > matches.match.id [delete: cascade]
+Ref: achievements.evaluation_result.run_id > achievements.evaluation_run.id [delete: set null]
+Ref: achievements.evaluation_run.workspace_id > workspace.id [delete: cascade]
+Ref: achievements.evaluation_run.tournament_id > tournament.tournament.id [delete: set null]
+Ref: achievements.override.achievement_rule_id > achievements.rule.id [delete: cascade]
+Ref: achievements.override.workspace_member_id > workspace_member.id [delete: cascade]
+Ref: achievements.override.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: achievements.override.match_id > matches.match.id [delete: cascade]
+Ref: achievements.override.granted_by > auth.user.id [delete: set null]
+Ref: achievements.rule.workspace_id > workspace.id [delete: cascade]
+Ref: achievements.rule.hero_id > overwatch.hero.id [delete: set null]
+Ref: analytics.anomaly_feedback.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: analytics.anomaly_feedback.player_id > tournament.player.id [delete: cascade]
+Ref: analytics.anomaly_feedback.reviewer_user_id > auth.user.id [delete: set null]
+Ref: analytics.job.workspace_id > workspace.id [delete: cascade]
+Ref: analytics.job.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: analytics.job.requested_by_user_id > auth.user.id [delete: set null]
+Ref: analytics.match_quality.encounter_id > tournament.encounter.id [delete: cascade]
+Ref: analytics.match_quality.algorithm_id > analytics.algorithms.id [delete: cascade]
+Ref: analytics.ml_model_artifact.algorithm_id > analytics.algorithms.id [delete: cascade]
+Ref: analytics.ml_model_artifact.training_cutoff_tournament_id > tournament.tournament.id [delete: set null]
+Ref: analytics.performance.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: analytics.performance.player_id > tournament.player.id [delete: cascade]
+Ref: analytics.performance.algorithm_id > analytics.algorithms.id [delete: cascade]
+Ref: analytics.player_anomaly.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: analytics.player_anomaly.player_id > tournament.player.id [delete: cascade]
+Ref: analytics.player_anomaly.source_encounter_id > tournament.encounter.id [delete: cascade]
+Ref: analytics.player_shift.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: analytics.player_shift.player_id > tournament.player.id [delete: cascade]
+Ref: analytics.shifts.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: analytics.shifts.algorithm_id > analytics.algorithms.id [delete: cascade]
+Ref: analytics.shifts.player_id > tournament.player.id [delete: cascade]
+Ref: analytics.standings_distribution.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: analytics.standings_distribution.team_id > tournament.team.id [delete: cascade]
+Ref: analytics.standings_distribution.algorithm_id > analytics.algorithms.id [delete: cascade]
+Ref: auth.api_key.auth_user_id > auth.user.id [delete: cascade]
+Ref: auth.api_key.workspace_id > workspace.id [delete: cascade]
+Ref: auth.oauth_connections.auth_user_id > auth.user.id [delete: cascade]
+Ref: auth.refresh_token.user_id > auth.user.id [delete: cascade]
+Ref: auth.role_permissions.role_id > auth.roles.id [delete: cascade]
+Ref: auth.role_permissions.permission_id > auth.permissions.id [delete: cascade]
+Ref: auth.roles.workspace_id > workspace.id [delete: cascade]
+Ref: auth.user_permission_deny.user_id > auth.user.id [delete: cascade]
+Ref: auth.user_permission_deny.permission_id > auth.permissions.id [delete: cascade]
+Ref: auth.user_permission_deny.workspace_id > workspace.id [delete: cascade]
+Ref: auth.user_permission_deny.created_by > auth.user.id [delete: set null]
+Ref: auth.user_roles.user_id > auth.user.id [delete: cascade]
+Ref: auth.user_roles.role_id > auth.roles.id [delete: cascade]
+Ref: balancer.balance.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: balancer.balance.workspace_id > workspace.id [delete: set null]
+Ref: balancer.balance.saved_by > auth.user.id [delete: set null]
+Ref: balancer.balance_variant.balance_id > balancer.balance.id [delete: cascade]
+Ref: balancer.custom_game.workspace_id > workspace.id [delete: cascade]
+Ref: balancer.custom_game.host_user_id > auth.user.id [delete: set null]
+Ref: balancer.custom_game_player.custom_game_id > balancer.custom_game.id [delete: cascade]
+Ref: balancer.custom_game_player.workspace_member_id > workspace_member.id [delete: cascade]
+Ref: balancer.draft_audit_event.session_id > balancer.draft_session.id [delete: cascade]
+Ref: balancer.draft_audit_event.actor_auth_user_id > auth.user.id [delete: set null]
+Ref: balancer.draft_pick.session_id > balancer.draft_session.id [delete: cascade]
+Ref: balancer.draft_pick.draft_team_id > balancer.draft_team.id [delete: cascade]
+Ref: balancer.draft_pick.picked_player_id > balancer.draft_player.id [delete: set null]
+Ref: balancer.draft_pick.picked_by_workspace_member_id > workspace_member.id [delete: set null]
+Ref: balancer.draft_player.session_id > balancer.draft_session.id [delete: cascade]
+Ref: balancer.draft_player.workspace_member_id > workspace_member.id [delete: set null]
+Ref: balancer.draft_player.drafted_by_team_id > balancer.draft_team.id [delete: set null]
+Ref: balancer.draft_player_role.draft_player_id > balancer.draft_player.id [delete: cascade]
+Ref: balancer.draft_player_role_hero.draft_player_role_id > balancer.draft_player_role.id [delete: cascade]
+Ref: balancer.draft_player_role_hero.hero_id > overwatch.hero.id [delete: cascade]
+Ref: balancer.draft_session.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: balancer.draft_session.workspace_id > workspace.id [delete: cascade]
+Ref: balancer.draft_session.current_pick_id > balancer.draft_pick.id [delete: set null]
+Ref: balancer.draft_session.source_balance_id > balancer.balance.id [delete: set null]
+Ref: balancer.draft_team.session_id > balancer.draft_session.id [delete: cascade]
+Ref: balancer.draft_team.captain_workspace_member_id > workspace_member.id [delete: set null]
+Ref: balancer.draft_team.captain_auth_user_id > auth.user.id [delete: set null]
+Ref: balancer.draft_team.exported_team_id > tournament.team.id [delete: set null]
+Ref: balancer.member_rank.workspace_id > workspace.id [delete: cascade]
+Ref: balancer.member_rank.workspace_member_id > workspace_member.id [delete: cascade]
+Ref: balancer.member_rank.author_user_id > auth.user.id [delete: cascade]
+Ref: balancer.registration.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: balancer.registration.workspace_member_id > workspace_member.id [delete: set null]
+Ref: balancer.registration.checked_in_by > auth.user.id [delete: set null]
+Ref: balancer.registration.reviewed_by > auth.user.id [delete: set null]
+Ref: balancer.registration.deleted_by > auth.user.id [delete: set null]
+Ref: balancer.registration.registration_team_id > balancer.registration_team.id [delete: set null]
+Ref: balancer.registration_form.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: balancer.registration_form.workspace_id > workspace.id [delete: cascade]
+Ref: balancer.registration_google_sheet_binding.feed_id > balancer.registration_google_sheet_feed.id [delete: cascade]
+Ref: balancer.registration_google_sheet_binding.registration_id > balancer.registration.id [delete: cascade]
+Ref: balancer.registration_google_sheet_feed.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: balancer.registration_role.registration_id > balancer.registration.id [delete: cascade]
+Ref: balancer.registration_role_hero.role_id > balancer.registration_role.id [delete: cascade]
+Ref: balancer.registration_role_hero.hero_id > overwatch.hero.id [delete: cascade]
+Ref: balancer.registration_status.workspace_id > workspace.id [delete: cascade]
+Ref: balancer.registration_team.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: balancer.registration_team.workspace_id > workspace.id [delete: cascade]
+Ref: balancer.registration_team.captain_registration_id > balancer.registration.id [delete: set null]
+Ref: balancer.registration_team.exported_team_id > tournament.team.id [delete: set null]
+Ref: balancer.registration_team.deleted_by > auth.user.id [delete: set null]
+Ref: balancer.registration_team.invite_cap_reset_by > auth.user.id [delete: set null]
+Ref: balancer.registration_team_invite.team_id > balancer.registration_team.id [delete: cascade]
+Ref: balancer.registration_team_invite.target_auth_user_id > auth.user.id [delete: set null]
+Ref: balancer.registration_team_invite.invited_by > auth.user.id [delete: set null]
+Ref: balancer.registration_team_invite.revoked_by > auth.user.id [delete: set null]
+Ref: balancer.registration_team_invite.accepted_registration_id > balancer.registration.id [delete: set null]
+Ref: balancer.team.balance_id > balancer.balance.id [delete: cascade]
+Ref: balancer.team.variant_id > balancer.balance_variant.id [delete: cascade]
+Ref: balancer.team.exported_team_id > tournament.team.id [delete: set null]
+Ref: balancer.team_slot.team_id > balancer.team.id [delete: cascade]
+Ref: balancer.tournament_config.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: balancer.tournament_config.workspace_id > workspace.id [delete: cascade]
+Ref: balancer.tournament_config.updated_by > auth.user.id [delete: set null]
+Ref: balancer.workspace_config.workspace_id > workspace.id [delete: cascade]
+Ref: balancer.workspace_config.updated_by > auth.user.id [delete: set null]
+Ref: casual.match.custom_game_id > balancer.custom_game.id [delete: cascade]
+Ref: casual.match.workspace_id > workspace.id [delete: cascade]
+Ref: casual.match.home_team_id > casual.team.id [delete: cascade]
+Ref: casual.match.away_team_id > casual.team.id [delete: cascade]
+Ref: casual.match.map_id > overwatch.map.id [delete: set null]
+Ref: casual.match.recorded_by > auth.user.id [delete: set null]
+Ref: casual.player.team_id > casual.team.id [delete: cascade]
+Ref: casual.player.workspace_member_id > workspace_member.id [delete: cascade]
+Ref: casual.team.workspace_id > workspace.id [delete: cascade]
+Ref: log_processing.discord_channel.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: log_processing.record.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: log_processing.record.uploader_id > players.user.id [delete: set null]
+Ref: log_processing.record.attached_encounter_id > tournament.encounter.id [delete: set null]
+Ref: matches.event.match_id > matches.match.id [delete: cascade]
+Ref: matches.event.team_id > tournament.team.id [delete: cascade]
+Ref: matches.event.user_id > players.user.id [delete: cascade]
+Ref: matches.event.hero_id > overwatch.hero.id [delete: cascade]
+Ref: matches.event.related_team_id > tournament.team.id [delete: cascade]
+Ref: matches.event.related_user_id > players.user.id [delete: cascade]
+Ref: matches.event.related_hero_id > overwatch.hero.id [delete: cascade]
+Ref: matches.kill_feed.match_id > matches.match.id [delete: cascade]
+Ref: matches.kill_feed.killer_id > players.user.id [delete: cascade]
+Ref: matches.kill_feed.killer_hero_id > overwatch.hero.id [delete: cascade]
+Ref: matches.kill_feed.killer_team_id > tournament.team.id [delete: cascade]
+Ref: matches.kill_feed.victim_id > players.user.id [delete: cascade]
+Ref: matches.kill_feed.victim_team_id > tournament.team.id [delete: cascade]
+Ref: matches.kill_feed.victim_hero_id > overwatch.hero.id [delete: cascade]
+Ref: matches.match.home_team_id > tournament.team.id [delete: cascade]
+Ref: matches.match.away_team_id > tournament.team.id [delete: cascade]
+Ref: matches.match.log_record_id > log_processing.record.id [delete: set null]
+Ref: matches.match.encounter_id > tournament.encounter.id [delete: cascade]
+Ref: matches.match.map_id > overwatch.map.id [delete: cascade]
+Ref: matches.statistics.match_id > matches.match.id [delete: cascade]
+Ref: matches.statistics.team_id > tournament.team.id [delete: cascade]
+Ref: matches.statistics.user_id > players.user.id [delete: cascade]
+Ref: matches.statistics.hero_id > overwatch.hero.id [delete: cascade]
+Ref: overwatch.catalog_alias_miss.last_log_record_id > log_processing.record.id [delete: set null]
+Ref: overwatch.map.gamemode_id > overwatch.gamemode.id
+Ref: overwatch_rank.battle_tag_state.social_account_id > players.social_account.id [delete: cascade]
+Ref: overwatch_rank.battle_tag_state.last_snapshot_id > overwatch_rank.rank_snapshot.id [delete: set null]
+Ref: overwatch_rank.fetch_log.social_account_id > players.social_account.id [delete: set null]
+Ref: overwatch_rank.rank_snapshot.user_id > players.user.id [delete: cascade]
+Ref: overwatch_rank.rank_snapshot.social_account_id > players.social_account.id [delete: cascade]
+Ref: players.favorite_player.auth_user_id > auth.user.id [delete: cascade]
+Ref: players.favorite_player.player_id > players.user.id [delete: cascade]
+Ref: players.social_account.user_id > players.user.id [delete: cascade]
+Ref: players.social_account_visibility.account_id > players.social_account.id [delete: cascade]
+Ref: players.social_account_visibility.workspace_id > workspace.id [delete: cascade]
+Ref: players.user.auth_user_id > auth.user.id [delete: set null]
+Ref: players.user_merge_audit.source_user_id > players.user.id [delete: set null]
+Ref: players.user_merge_audit.target_user_id > players.user.id [delete: set null]
+Ref: players.user_merge_audit.operator_auth_user_id > auth.user.id [delete: set null]
+Ref: division_grid.workspace_id > workspace.id [delete: cascade]
+Ref: division_grid.source_workspace_id > workspace.id [delete: set null]
+Ref: division_grid.source_grid_id > division_grid.id [delete: set null]
+Ref: division_grid_import_job.workspace_id > workspace.id [delete: cascade]
+Ref: division_grid_import_job.source_workspace_id > workspace.id [delete: set null]
+Ref: division_grid_import_job.requested_by_user_id > auth.user.id [delete: set null]
+Ref: division_grid_mapping.source_version_id > division_grid_version.id [delete: cascade]
+Ref: division_grid_mapping.target_version_id > division_grid_version.id [delete: cascade]
+Ref: division_grid_mapping_rule.mapping_id > division_grid_mapping.id [delete: cascade]
+Ref: division_grid_mapping_rule.source_tier_id > division_grid_tier.id [delete: cascade]
+Ref: division_grid_mapping_rule.target_tier_id > division_grid_tier.id [delete: cascade]
+Ref: division_grid_tier.version_id > division_grid_version.id [delete: cascade]
+Ref: division_grid_version.grid_id > division_grid.id [delete: cascade]
+Ref: division_grid_version.created_from_version_id > division_grid_version.id [delete: set null]
+Ref: settings.updated_by > auth.user.id [delete: set null]
+Ref: workspace.discord_guild_verified_by_auth_user_id > auth.user.id [delete: set null]
+Ref: workspace.owner_id > auth.user.id [delete: set null]
+Ref: workspace.default_division_grid_version_id > division_grid_version.id [delete: set null]
+Ref: workspace_member.workspace_id > workspace.id [delete: cascade]
+Ref: workspace_member.player_id > players.user.id [delete: cascade]
+Ref: subscriptions.check_log.workspace_id > workspace.id [delete: set null]
+Ref: subscriptions.check_log.auth_user_id > auth.user.id [delete: set null]
+Ref: subscriptions.entitlement.workspace_id > workspace.id [delete: cascade]
+Ref: subscriptions.entitlement.auth_user_id > auth.user.id [delete: cascade]
+Ref: subscriptions.provider_config.workspace_id > workspace.id [delete: cascade]
+Ref: subscriptions.requirement.workspace_id > workspace.id [delete: cascade]
+Ref: tournament.challonge_match_mapping.source_id > tournament.challonge_source.id [delete: cascade]
+Ref: tournament.challonge_match_mapping.encounter_id > tournament.encounter.id [delete: cascade]
+Ref: tournament.challonge_participant_mapping.source_id > tournament.challonge_source.id [delete: cascade]
+Ref: tournament.challonge_participant_mapping.team_id > tournament.team.id [delete: cascade]
+Ref: tournament.challonge_source.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.challonge_source.stage_id > tournament.stage.id [delete: set null]
+Ref: tournament.challonge_source.stage_item_id > tournament.stage_item.id [delete: set null]
+Ref: tournament.challonge_sync_log.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.challonge_sync_log.source_id > tournament.challonge_source.id [delete: set null]
+Ref: tournament.computation_job.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.computation_job.stage_id > tournament.stage.id [delete: cascade]
+Ref: tournament.computation_job.stage_item_id > tournament.stage_item.id [delete: cascade]
+Ref: tournament.computation_job.requested_by_user_id > auth.user.id [delete: set null]
+Ref: tournament.encounter.home_team_id > tournament.team.id [delete: cascade]
+Ref: tournament.encounter.away_team_id > tournament.team.id [delete: cascade]
+Ref: tournament.encounter.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.encounter.stage_id > tournament.stage.id [delete: set null]
+Ref: tournament.encounter.stage_item_id > tournament.stage_item.id [delete: set null]
+Ref: tournament.encounter_captain_report.encounter_id > tournament.encounter.id [delete: cascade]
+Ref: tournament.encounter_captain_report.team_id > tournament.team.id [delete: cascade]
+Ref: tournament.encounter_captain_report.reporter_user_id > players.user.id [delete: set null]
+Ref: tournament.encounter_link.source_encounter_id > tournament.encounter.id [delete: cascade]
+Ref: tournament.encounter_link.target_encounter_id > tournament.encounter.id [delete: cascade]
+Ref: tournament.encounter_map_code.report_id > tournament.encounter_captain_report.id [delete: cascade]
+Ref: tournament.encounter_map_code.map_id > overwatch.map.id [delete: set null]
+Ref: tournament.encounter_map_report.encounter_id > tournament.encounter.id [delete: cascade]
+Ref: tournament.encounter_map_report.map_id > overwatch.map.id [delete: cascade]
+Ref: tournament.encounter_map_report.team_id > tournament.team.id [delete: cascade]
+Ref: tournament.encounter_map_report.reporter_user_id > players.user.id [delete: set null]
+Ref: tournament.encounter_pick_ban_ledger.encounter_id > tournament.encounter.id [delete: cascade]
+Ref: tournament.encounter_readiness.encounter_id > tournament.encounter.id [delete: cascade]
+Ref: tournament.encounter_readiness.ready_user_id > players.user.id [delete: set null]
+Ref: tournament.encounter_report_form.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.encounter_result_audit.encounter_id > tournament.encounter.id [delete: cascade]
+Ref: tournament.encounter_result_audit.actor_user_id > players.user.id [delete: set null]
+Ref: tournament.encounter_result_audit.adopted_team_id > tournament.team.id [delete: set null]
+Ref: tournament.encounter_saved_view.workspace_id > workspace.id [delete: cascade]
+Ref: tournament.encounter_saved_view.auth_user_id > auth.user.id [delete: cascade]
+Ref: tournament.pick_ban_config.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.pick_ban_config.stage_id > tournament.stage.id [delete: cascade]
+Ref: tournament.pick_ban_config_item.pick_ban_config_id > tournament.pick_ban_config.id [delete: cascade]
+Ref: tournament.pick_ban_config_slot.pick_ban_config_id > tournament.pick_ban_config.id [delete: cascade]
+Ref: tournament.pick_ban_config_slot_item.pick_ban_config_slot_id > tournament.pick_ban_config_slot.id [delete: cascade]
+Ref: tournament.pick_ban_entry.session_id > tournament.pick_ban_session.id [delete: cascade]
+Ref: tournament.pick_ban_entry.team_id > tournament.team.id [delete: set null]
+Ref: tournament.pick_ban_session.encounter_id > tournament.encounter.id [delete: cascade]
+Ref: tournament.pick_ban_session.config_id > tournament.pick_ban_config.id [delete: set null]
+Ref: tournament.player.related_player_id > tournament.player.id [delete: set null]
+Ref: tournament.player.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.player.workspace_member_id > workspace_member.id [delete: cascade]
+Ref: tournament.player.team_id > tournament.team.id [delete: cascade]
+Ref: tournament.player_sub_role.workspace_id > workspace.id [delete: cascade]
+Ref: tournament.recalculation_state.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.scrim_room.workspace_id > workspace.id [delete: cascade]
+Ref: tournament.scrim_room.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.scrim_room.stage_id > tournament.stage.id [delete: cascade]
+Ref: tournament.scrim_room.encounter_id > tournament.encounter.id [delete: cascade]
+Ref: tournament.scrim_room.created_by_auth_user_id > auth.user.id [delete: cascade]
+Ref: tournament.slug_redirect.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.stage.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.stage_item.stage_id > tournament.stage.id [delete: cascade]
+Ref: tournament.stage_item_input.stage_item_id > tournament.stage_item.id [delete: cascade]
+Ref: tournament.stage_item_input.team_id > tournament.team.id [delete: set null]
+Ref: tournament.stage_item_input.source_stage_item_id > tournament.stage_item.id [delete: set null]
+Ref: tournament.standing.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.standing.team_id > tournament.team.id [delete: cascade]
+Ref: tournament.standing.stage_id > tournament.stage.id [delete: set null]
+Ref: tournament.standing.stage_item_id > tournament.stage_item.id [delete: set null]
+Ref: tournament.team.captain_id > players.user.id [delete: set null]
+Ref: tournament.team.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.tournament.workspace_id > workspace.id [delete: cascade]
+Ref: tournament.tournament.division_grid_version_id > division_grid_version.id [delete: set null]
+Ref: tournament.tournament_link.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.tournament_phase_schedule.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.tournament_preview_access.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: tournament.tournament_preview_access.auth_user_id > auth.user.id [delete: cascade]

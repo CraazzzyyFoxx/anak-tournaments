@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,13 +16,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 models = importlib.import_module("src.models")
 schemas = importlib.import_module("src.schemas")
@@ -987,5 +979,58 @@ def test_archiving_workspace_default_grid_is_rejected() -> None:
                 )
 
         assert getattr(caught.value, "status_code", None) == 409
+
+    asyncio.run(run())
+
+
+def test_marketplace_workspace_list_is_visible_to_any_admin_not_just_members() -> None:
+    """A non-superuser admin who is not a member of the source workspace must
+    still see it in the marketplace -- the marketplace is cross-tenant by
+    design, gated on `division_grid.read` for the TARGET workspace only
+    (checked by the RPC handler before this runs), not on membership
+    everywhere else."""
+
+    async def run() -> None:
+        rows = [SimpleNamespace(id=3, slug="other", name="Other WS", grids_count=2, versions_count=4)]
+
+        class _CapturingSession:
+            def __init__(self) -> None:
+                self.statement = None
+
+            async def execute(self, statement):
+                self.statement = statement
+                return rows
+
+        session = _CapturingSession()
+        # Only a member of the target workspace, not of workspace 3.
+        user = SimpleNamespace(is_superuser=False, get_workspace_ids=lambda: [9])
+
+        result = await marketplace_service.list_marketplace_workspaces(
+            session, target_workspace_id=9, user=user
+        )
+
+        assert [w.id for w in result] == [3]
+        # Visibility comes from `Workspace.is_hidden`, not source-workspace membership.
+        assert "is_hidden" in str(session.statement)
+
+    asyncio.run(run())
+
+
+def test_marketplace_workspace_list_has_no_extra_filter_for_superusers() -> None:
+    async def run() -> None:
+        class _CapturingSession:
+            def __init__(self) -> None:
+                self.statement = None
+
+            async def execute(self, statement):
+                self.statement = statement
+                return []
+
+        session = _CapturingSession()
+        user = SimpleNamespace(is_superuser=True, get_workspace_ids=lambda: [])
+
+        await marketplace_service.list_marketplace_workspaces(session, target_workspace_id=9, user=user)
+
+        assert "is_hidden" not in str(session.statement)
 
     asyncio.run(run())

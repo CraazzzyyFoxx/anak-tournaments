@@ -29,7 +29,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import type { MapRead } from "@/types/map.types";
-import type { MapVetoConfig, Stage } from "@/types/tournament.types";
+import type { PickBanConfig, Stage } from "@/types/tournament.types";
 
 import TournamentMapsPage from "./TournamentMapsPage";
 
@@ -38,14 +38,18 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const getVetoConfigs = vi.fn();
+const listPublicConfigs = vi.fn();
 const getStages = vi.fn();
 const getAllMaps = vi.fn();
 
 vi.mock("@/services/tournament.service", () => ({
   default: {
-    getVetoConfigs: (...args: unknown[]) => getVetoConfigs(...args),
     getStages: (...args: unknown[]) => getStages(...args)
+  }
+}));
+vi.mock("@/services/pickBan.service", () => ({
+  default: {
+    listPublicConfigs: (...args: unknown[]) => listPublicConfigs(...args)
   }
 }));
 vi.mock("@/services/map.service", () => ({
@@ -137,10 +141,11 @@ const MAPS: MapRead[] = [
 const RETIRED_MAP_ID = 96;
 
 /** Same reason as `map`: no field left to a default the wire does not have. */
-function config(overrides: Partial<MapVetoConfig>): MapVetoConfig {
+function config(overrides: Partial<PickBanConfig>): PickBanConfig {
   return {
     id: 1,
     tournament_id: TOURNAMENT_ID,
+    kind: "map",
     stage_id: null,
     round: null,
     mode: "pool",
@@ -149,7 +154,10 @@ function config(overrides: Partial<MapVetoConfig>): MapVetoConfig {
     first_ban_rotation: "fixed",
     turn_timer_seconds: 30,
     sequence: [],
-    map_ids: [],
+    no_repeat_scope: "none",
+    unique_attribute_per_side_per_round: null,
+    allow_protect: false,
+    item_ids: [],
     slots: [],
     ...overrides
   };
@@ -210,8 +218,8 @@ async function settle(ticks = 3) {
   }
 }
 
-async function render(configs: MapVetoConfig[], stage?: string) {
-  getVetoConfigs.mockResolvedValue({ configs });
+async function render(configs: PickBanConfig[], stage?: string) {
+  listPublicConfigs.mockResolvedValue({ configs });
   search = new URLSearchParams(stage === undefined ? "" : `stage=${stage}`);
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
@@ -314,8 +322,8 @@ const REGULATION = [
     round: 1,
     mode: "slots",
     slots: [
-      { position: 1, candidates: [52, 37, 71], reserve_map_id: null },
-      { position: 2, candidates: [63, 45], reserve_map_id: null }
+      { position: 1, candidates: [52, 37, 71], reserve_item_id: null },
+      { position: 2, candidates: [63, 45], reserve_item_id: null }
     ]
   }),
   config({
@@ -324,8 +332,8 @@ const REGULATION = [
     round: 5,
     mode: "slots",
     slots: [
-      { position: 1, candidates: [71, 52], reserve_map_id: null },
-      { position: 2, candidates: [45, 63], reserve_map_id: null }
+      { position: 1, candidates: [71, 52], reserve_item_id: null },
+      { position: 2, candidates: [45, 63], reserve_item_id: null }
     ]
   }),
   config({
@@ -334,10 +342,10 @@ const REGULATION = [
     round: 1,
     mode: "slots",
     slots: [
-      { position: 1, candidates: [52, 37], reserve_map_id: null },
-      { position: 2, candidates: [63, 45], reserve_map_id: null },
+      { position: 1, candidates: [52, 37], reserve_item_id: null },
+      { position: 2, candidates: [63, 45], reserve_item_id: null },
       // Deliberately mixed: Control + Push, so no single mode can be named.
-      { position: 3, candidates: [71, 84], reserve_map_id: null }
+      { position: 3, candidates: [71, 84], reserve_item_id: null }
     ]
   }),
   config({
@@ -345,7 +353,7 @@ const REGULATION = [
     stage_id: 189,
     round: -1,
     mode: "slots",
-    slots: [{ position: 1, candidates: [45, 63], reserve_map_id: null }]
+    slots: [{ position: 1, candidates: [45, 63], reserve_item_id: null }]
   }),
   config({
     id: 405,
@@ -353,9 +361,9 @@ const REGULATION = [
     round: -4,
     mode: "slots",
     slots: [
-      { position: 7, candidates: [71, 52], reserve_map_id: null },
-      { position: 2, candidates: [84, 84], reserve_map_id: 45 },
-      { position: 4, candidates: [37, 52], reserve_map_id: null }
+      { position: 7, candidates: [71, 52], reserve_item_id: null },
+      { position: 2, candidates: [84, 84], reserve_item_id: 45 },
+      { position: 4, candidates: [37, 52], reserve_item_id: null }
     ]
   })
 ];
@@ -416,7 +424,7 @@ describe("every configured round, in play order", () => {
         stage_id: 188,
         round: 1,
         mode: "slots",
-        slots: [{ position: 1, candidates: [52, 37], reserve_map_id: null }]
+        slots: [{ position: 1, candidates: [52, 37], reserve_item_id: null }]
       })
     ]);
 
@@ -468,8 +476,8 @@ describe("every configured round, in play order", () => {
         round: 3,
         mode: "slots",
         slots: [
-          { position: 1, candidates: [52], reserve_map_id: null },
-          { position: 2, candidates: [52, 37], reserve_map_id: null }
+          { position: 1, candidates: [52], reserve_item_id: null },
+          { position: 2, candidates: [52, 37], reserve_item_id: null }
         ]
       })
     ]);
@@ -481,7 +489,7 @@ describe("every configured round, in play order", () => {
 
   it("gives a flat config one row for the whole series, and no slot number", async () => {
     await render([
-      config({ id: 460, stage_id: 189, round: 2, mode: "pool", map_ids: [52, 37, 45] })
+      config({ id: 460, stage_id: 189, round: 2, mode: "pool", item_ids: [52, 37, 45] })
     ]);
 
     expect(stages()[0]?.rounds[0]).toEqual({
@@ -530,7 +538,7 @@ describe("candidates are map art", () => {
         stage_id: 188,
         round: 2,
         mode: "slots",
-        slots: [{ position: 1, candidates: [52, RETIRED_MAP_ID, 37], reserve_map_id: null }]
+        slots: [{ position: 1, candidates: [52, RETIRED_MAP_ID, 37], reserve_item_id: null }]
       })
     ]);
 
@@ -550,7 +558,7 @@ describe("candidates are map art", () => {
         stage_id: 188,
         round: 1,
         mode: "slots",
-        slots: [{ position: 1, candidates: [52, 37], reserve_map_id: null }]
+        slots: [{ position: 1, candidates: [52, 37], reserve_item_id: null }]
       })
     ]);
 
@@ -596,7 +604,7 @@ describe("the game mode a slot shares", () => {
         stage_id: 188,
         round: 4,
         mode: "slots",
-        slots: [{ position: 1, candidates: [52, RETIRED_MAP_ID], reserve_map_id: null }]
+        slots: [{ position: 1, candidates: [52, RETIRED_MAP_ID], reserve_item_id: null }]
       })
     ]);
 
@@ -610,8 +618,8 @@ describe("levels that are not rounds", () => {
   it("drops the stage-wide and tournament-wide levels while any round exists", async () => {
     const text = await render([
       ...REGULATION,
-      config({ id: 470, stage_id: null, round: null, mode: "pool", map_ids: [52, 37, 71, 63] }),
-      config({ id: 471, stage_id: 188, round: null, mode: "pool", map_ids: [45, 84] })
+      config({ id: 470, stage_id: null, round: null, mode: "pool", item_ids: [52, 37, 71, 63] }),
+      config({ id: 471, stage_id: 188, round: null, mode: "pool", item_ids: [45, 84] })
     ]);
 
     // Rendered next to real rounds, a whole-series level reads as one more round
@@ -625,7 +633,7 @@ describe("levels that are not rounds", () => {
 
   it("renders a whole-series level when it is the only thing configured", async () => {
     await render([
-      config({ id: 470, stage_id: null, round: null, mode: "pool", map_ids: [52, 37] })
+      config({ id: 470, stage_id: null, round: null, mode: "pool", item_ids: [52, 37] })
     ]);
 
     // Nothing else answers "what will we play", so the fallback is the answer.
@@ -658,7 +666,7 @@ describe("nothing to show", () => {
     // An organizer who created the levels and never filled them has published no
     // pool, which is exactly what the empty state says.
     const text = await render([
-      config({ id: 430, stage_id: 188, round: 1, mode: "pool", map_ids: [] }),
+      config({ id: 430, stage_id: 188, round: 1, mode: "pool", item_ids: [] }),
       config({ id: 431, stage_id: 188, round: 2, mode: "slots", slots: [] })
     ]);
 
@@ -694,7 +702,7 @@ describe("the shared public-page design system", () => {
   it("announces the loading state instead of showing silent grey blocks", async () => {
     // A read that never settles: the page must be in its shared skeleton.
     // Deliberately never resolved: the resolver is dropped on the floor.
-    getVetoConfigs.mockReturnValue(Promise.withResolvers<never>().promise);
+    listPublicConfigs.mockReturnValue(Promise.withResolvers<never>().promise);
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     await act(async () => {
       root.render(
@@ -745,7 +753,7 @@ describe("the per-match veto machinery is not on this page", () => {
         round: 2,
         preset: "custom",
         sequence: ["ban_first", "pick_second", "decider"],
-        map_ids: [52, 37, 45]
+        item_ids: [52, 37, 45]
       })
     ]);
 

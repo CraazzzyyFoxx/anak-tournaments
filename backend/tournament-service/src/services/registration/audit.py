@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.services.audit import record_audit
 from src import models
-from src.services.registration.utils import normalize_battle_tag
+from src.domain.registration.utils import normalize_battle_tag
 
 __all__ = ("ENTITY", "audit_service", "label", "profile_changes", "role_snapshot")
 

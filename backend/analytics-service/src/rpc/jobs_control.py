@@ -5,8 +5,8 @@ This svc only writes the row + publishes the request event — the actual comput
 runs in ``analytics-worker`` (``serve.py``). recalculate/points are thin 202
 wrappers over a scoped ``kind=compute`` job (the legacy synchronous 200
 behaviour is intentionally replaced by the unified async job; recalculate's
-old v1-only scope is preserved via ``algorithms``, but the compute job also
-runs v2 inference like every other compute job). Wired from ``serve_rpc.py``.
+old ratings-only scope is preserved via ``algorithms``, but the compute job also
+runs ML inference like every other compute job). Wired from ``serve_rpc.py``.
 
 Auth mirrors the routes: create_job / recalculate / points gate per
 ``_require_actor`` (compute → workspace-scoped ``analytics.update``; train_ml →
@@ -17,10 +17,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.jobs import JobConflict
 from shared.messaging.config import (
     ANALYTICS_INFER_QUEUE,
     ANALYTICS_JOB_QUEUE,
@@ -32,22 +32,16 @@ from shared.schemas.events import (
     AnalyticsJobRequested,
     AnalyticsTrainRequest,
 )
-from src import models
 from src.core import config, db
-from src.schemas.v2 import (
+from src.core.jobs import JOB_KIND_COMPUTE, JOB_KIND_TRAIN_ML, create_analytics_job, job_runtime
+from src.schemas.ml import (
     AnalyticsJobCreate,
     AnalyticsJobRow,
     InferRequestBody,
     JobAcceptedResponse,
     TrainRequestBody,
 )
-from src.services.jobs import (
-    JOB_KIND_COMPUTE,
-    JOB_KIND_TRAIN_ML,
-    ActiveJobConflict,
-    create_job,
-    mark_job_failed,
-)
+from src.services.analytics.service import analytics_service
 
 from . import _common as c
 
@@ -59,7 +53,7 @@ _POINTS = "Points"
 async def _require_actor(
     body: AnalyticsJobCreate,
     workspace_id: int | None,
-    user: models.AuthUser,
+    user: Any,
 ) -> None:
     """Permission gate per ``kind`` (extracted from the decommissioned
     ``src/routes/v2.py``):
@@ -71,7 +65,7 @@ async def _require_actor(
         if not getattr(user, "is_superuser", False):
             raise HTTPException(
                 status_code=403,
-                detail="Training v2 ML models is restricted to superusers.",
+                detail="Training ML models is restricted to superusers.",
             )
         return
     # compute: workspace-scoped permission
@@ -87,11 +81,11 @@ def register(broker: Any, logger: Any) -> None:
 
     async def _dispatch(
         session: Any, body: AnalyticsJobCreate, workspace_id: int | None, user: Any
-    ) -> models.AnalyticsJob:
+    ) -> Any:
         """Create + enqueue a job, mirroring routes.v2.create_analytics_job."""
         await _require_actor(body, workspace_id, user)
         try:
-            job = await create_job(
+            job = await create_analytics_job(
                 session,
                 workspace_id=workspace_id,
                 tournament_id=body.tournament_id,
@@ -100,15 +94,16 @@ def register(broker: Any, logger: Any) -> None:
                 training_workspace_ids=(body.training_workspace_ids if body.kind == JOB_KIND_TRAIN_ML else None),
                 requested_by_user_id=int(user.id),
             )
-        except ActiveJobConflict as exc:
+        except JobConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc))
 
         if not config.settings.rabbitmq_url:
-            await mark_job_failed(
+            await job_runtime.mark_failed(
                 session,
                 int(job.id),
                 error="RabbitMQ is not configured; worker dispatch was not possible.",
             )
+            await session.commit()
             raise HTTPException(
                 status_code=503,
                 detail="RabbitMQ is not configured; analytics job was marked failed.",
@@ -120,11 +115,12 @@ def register(broker: Any, logger: Any) -> None:
         except Exception as exc:
             logger.exception("Failed to publish analytics_job request")
             await session.rollback()
-            await mark_job_failed(
+            await job_runtime.mark_failed(
                 session,
                 int(job.id),
                 error=f"Failed to dispatch analytics job to queue: {exc}",
             )
+            await session.commit()
             raise HTTPException(status_code=502, detail="Failed to dispatch job to queue")
         return job
 
@@ -152,12 +148,9 @@ def register(broker: Any, logger: Any) -> None:
             algorithm_ids = payload.get("algorithm_ids") or []
             algorithm_names: list[str] | None = None
             if algorithm_ids:
-                rows = await session.scalars(
-                    sa.select(models.AnalyticsAlgorithm.name).where(
-                        models.AnalyticsAlgorithm.id.in_([int(i) for i in algorithm_ids])
-                    )
+                algorithm_names = await analytics_service.list_algorithm_names_by_ids(
+                    session, [int(i) for i in algorithm_ids]
                 )
-                algorithm_names = list(rows.all())
             body = AnalyticsJobCreate(
                 tournament_id=tournament_id,
                 kind=JOB_KIND_COMPUTE,

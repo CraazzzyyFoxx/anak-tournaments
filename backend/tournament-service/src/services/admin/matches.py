@@ -27,14 +27,7 @@ from shared.core import enums, pagination
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.ingestion.log_processing import LogProcessingRecord
-from src import models
-from src.schemas.admin.encounter_reports import EncounterTeamRef
-from src.schemas.admin.matches import (
-    AdminMatchDetail,
-    AdminMatchesSearchParams,
-    AdminMatchRow,
-    LogRecordRef,
-)
+from src import models, schemas
 
 __all__ = ("matches_service",)
 
@@ -50,7 +43,7 @@ class _Query:
     pagination reports a total it will never show.
     """
 
-    def __init__(self, workspace_id: int, params: AdminMatchesSearchParams) -> None:
+    def __init__(self, workspace_id: int, params: schemas.AdminMatchesSearchParams) -> None:
         self.params = params
         self.workspace_id = workspace_id
         # A WHERE clause cannot reach through an eager load, so the relations a
@@ -129,14 +122,14 @@ def _load_options() -> tuple[Any, ...]:
     )
 
 
-def _team_ref(team: models.Team) -> EncounterTeamRef:
-    return EncounterTeamRef(id=team.id, name=team.name)
+def _team_ref(team: models.Team) -> schemas.EncounterTeamRef:
+    return schemas.EncounterTeamRef(id=team.id, name=team.name)
 
 
-def _log_record_ref(record: LogProcessingRecord | None) -> LogRecordRef | None:
+def _log_record_ref(record: LogProcessingRecord | None) -> schemas.LogRecordRef | None:
     if record is None:
         return None
-    return LogRecordRef(
+    return schemas.LogRecordRef(
         id=record.id,
         filename=record.filename,
         status=record.status,
@@ -182,8 +175,8 @@ def _row_fields(match: models.Match) -> dict[str, Any]:
     }
 
 
-def _row(match: models.Match) -> AdminMatchRow:
-    return AdminMatchRow(**_row_fields(match))
+def _row(match: models.Match) -> schemas.AdminMatchRow:
+    return schemas.AdminMatchRow(**_row_fields(match))
 
 
 class AdminMatchesService:
@@ -200,8 +193,8 @@ class AdminMatchesService:
         session: AsyncSession,
         *,
         workspace_id: int,
-        params: AdminMatchesSearchParams,
-    ) -> pagination.Paginated[AdminMatchRow]:
+        params: schemas.AdminMatchesSearchParams,
+    ) -> pagination.Paginated[schemas.AdminMatchRow]:
         builder = _Query(workspace_id, params)
         where = builder.scope_predicates() + builder.provenance_predicates()
 
@@ -241,7 +234,7 @@ class AdminMatchesService:
         *,
         workspace_id: int,
         match_id: int,
-    ) -> AdminMatchDetail:
+    ) -> schemas.AdminMatchDetail:
         """One match with its provenance and its stat volumes.
 
         Scoped by the same ``Encounter -> Tournament`` join the list uses, so a match
@@ -281,7 +274,7 @@ class AdminMatchesService:
             sa.select(sa.func.count()).select_from(models.MatchEvent).where(models.MatchEvent.match_id == match_id)
         )
 
-        return AdminMatchDetail(
+        return schemas.AdminMatchDetail(
             **_row_fields(match),
             # MAX over an empty table is NULL; a match whose stats never landed has
             # zero rounds, which is the finding, not an absence of information.

@@ -19,7 +19,6 @@ function createEncounter(id: number, round: number): Encounter {
     stage_id: 1,
     stage_item_id: 1,
     challonge_id: null,
-    challonge_slug: null,
     status: "completed",
     closeness: null,
     has_logs: false,

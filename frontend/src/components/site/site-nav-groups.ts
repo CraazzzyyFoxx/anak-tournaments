@@ -21,8 +21,8 @@ export interface NavGroup {
 }
 
 // Annotated rather than `as const satisfies`: `as const` narrows each item to a
-// literal shape, so items without `requiresAdminAccess` lose the property and
-// consumers cannot read it off the union.
+// literal shape, so an item without `requiresAdminAccess` loses the property
+// and consumers cannot read it off the union.
 export const NAV_GROUPS: readonly NavGroup[] = [
   {
     key: "tournaments",
@@ -49,7 +49,12 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       // Ad-hoc pre-game rooms (docs/plans/2026-08-12-scrim-rooms.md). Sits with
       // encounters/matches rather than under tournaments: a scrim belongs to no
       // tournament, and this is where a captain already looks for "a series".
-      { key: "scrims", href: "/scrims" }
+      { key: "scrims", href: "/scrims" },
+      // Pickup lobbies balanced from a workspace roster. Viewing one is open to
+      // anyone -- only hosting (create/update/delete) needs the `custom_game`
+      // grant, gated inside the mix pages/RPCs themselves, so the entry carries
+      // no access flag here.
+      { key: "mixes", href: "/balancer/pickup" }
     ]
   },
   {

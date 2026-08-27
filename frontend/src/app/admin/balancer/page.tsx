@@ -167,8 +167,6 @@ function StatusColorPicker({
         <PopoverContent
           align="start"
           className="z-[60] w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] space-y-4"
-          onWheelCapture={(event) => event.stopPropagation()}
-          onTouchMove={(event) => event.stopPropagation()}
         >
           <div className="space-y-2">
             <p className={EYEBROW_CLASS} id={`${triggerId}-presets`}>
@@ -319,16 +317,10 @@ function StatusForm({
             <PopoverContent
               className="z-[60] w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] p-0"
               align="start"
-              onWheelCapture={(event) => event.stopPropagation()}
-              onTouchMove={(event) => event.stopPropagation()}
             >
               <Command>
                 <CommandInput placeholder="Search icons…" />
-                <CommandList
-                  className="max-h-64"
-                  onWheelCapture={(event) => event.stopPropagation()}
-                  onTouchMove={(event) => event.stopPropagation()}
-                >
+                <CommandList className="max-h-64">
                   <CommandEmpty>No icon matches that name. Try a shorter word.</CommandEmpty>
                   <CommandGroup>
                     {STATUS_ICON_OPTIONS.map(({ slug, Icon }) => (

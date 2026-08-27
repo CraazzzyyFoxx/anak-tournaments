@@ -9,9 +9,10 @@ import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 import mapService from "@/services/map.service";
+import pickBanService from "@/services/pickBan.service";
 import tournamentService from "@/services/tournament.service";
 import type { MapRead } from "@/types/map.types";
-import type { MapVetoConfig, Stage } from "@/types/tournament.types";
+import type { PickBanConfig, Stage } from "@/types/tournament.types";
 
 import styles from "../TournamentDetail.module.css";
 import { TournamentPageState } from "../_components/TournamentPageState";
@@ -77,13 +78,13 @@ interface StageView {
  * page's emptiness signal: no config naming a single resolvable map means there
  * is no pool to show.
  */
-function collectPoolIds(configs: MapVetoConfig[]): Set<number> {
+function collectPoolIds(configs: PickBanConfig[]): Set<number> {
   const ids = new Set<number>();
   for (const config of configs) {
-    for (const id of config.map_ids) ids.add(id);
+    for (const id of config.item_ids) ids.add(id);
     for (const slot of config.slots) {
       for (const id of slot.candidates) ids.add(id);
-      if (slot.reserve_map_id != null) ids.add(slot.reserve_map_id);
+      if (slot.reserve_item_id != null) ids.add(slot.reserve_item_id);
     }
   }
   return ids;
@@ -101,7 +102,7 @@ function collectPoolIds(configs: MapVetoConfig[]): Set<number> {
  * rounds by depth, so `-1` reads before `-2`.
  */
 function buildStageViews(
-  configs: MapVetoConfig[],
+  configs: PickBanConfig[],
   stagesById: Map<number, Stage>,
   mapsById: Map<number, MapRead>,
   label: {
@@ -112,10 +113,10 @@ function buildStageViews(
   }
 ): StageView[] {
   const entry = (id: number): PoolEntry => ({ id, map: mapsById.get(id) ?? null });
-  const rowsOf = (config: MapVetoConfig): LevelRow[] => {
+  const rowsOf = (config: PickBanConfig): LevelRow[] => {
     if (config.mode !== "slots") {
       // One pool for every map of the series, so one row and no slot number.
-      return [{ position: null, candidates: config.map_ids.map(entry), reserve: null }];
+      return [{ position: null, candidates: config.item_ids.map(entry), reserve: null }];
     }
     // Sorted on `position` rather than trusted from the wire, the same way the
     // admin editor and the veto room sort them: `position` is the play order and
@@ -125,11 +126,11 @@ function buildStageViews(
       .map((slot) => ({
         position: slot.position,
         candidates: slot.candidates.map(entry),
-        reserve: slot.reserve_map_id != null ? entry(slot.reserve_map_id) : null
+        reserve: slot.reserve_item_id != null ? entry(slot.reserve_item_id) : null
       }));
   };
 
-  const byStage = new Map<number | null, MapVetoConfig[]>();
+  const byStage = new Map<number | null, PickBanConfig[]>();
   for (const config of configs) {
     const stageId = config.stage_id ?? null;
     const bucket = byStage.get(stageId);
@@ -268,8 +269,8 @@ export default function TournamentMapsPage({ tournamentId, slug }: Readonly<Tour
   // A failed read renders the error state below; an empty *successful* read is
   // the only thing allowed to render "not configured".
   const vetoConfigsQuery = useQuery({
-    queryKey: ["public", "tournament", tournamentId, "veto-configs"],
-    queryFn: () => tournamentService.getVetoConfigs(tournamentId)
+    queryKey: ["public", "tournament", tournamentId, "pick-ban-configs"],
+    queryFn: () => pickBanService.listPublicConfigs(tournamentId)
   });
 
   // `entities: ["gamemode"]` is load-bearing twice over: the maps endpoint only

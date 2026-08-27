@@ -249,7 +249,7 @@ class MatchLogProcessor:
     async def validate(self, is_raise: bool) -> bool:
         if self._get_rows(enums.LogEventType.MatchEnd).empty:
             msg = f"Match log {self.filename} in tournament {self.tournament.name} is not finished"
-            logger.error(msg)
+            logger.warning(msg)
             await binary_match_logs.delete_log(self._s3, self.tournament.id, self.filename)
             if is_raise:
                 raise errors.ApiHTTPException(

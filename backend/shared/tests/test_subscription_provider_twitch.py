@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from unittest import IsolatedAsyncioTestCase
 
-from shared.subscriptions import SubscriptionSource, SubscriptionState
-from shared.subscriptions.providers.twitch_helix import (
+from shared.services.subscriptions import SubscriptionSource, SubscriptionState
+from shared.services.subscriptions.providers.twitch_helix import (
     HelixForbidden,
     HelixMissingScope,
     HelixNotConfigured,
@@ -180,7 +180,7 @@ class TestSeveralLinkedTwitchAccounts(IsolatedAsyncioTestCase):
     async def _resolve(self, connections, outcomes):
         from unittest.mock import AsyncMock, patch
 
-        from shared.services.subscription_strategies import TwitchSubscriptionStrategy
+        from shared.services.subscriptions.strategies import TwitchSubscriptionStrategy
 
         asked: list[tuple[str, str | None]] = []
 

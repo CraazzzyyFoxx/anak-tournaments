@@ -22,9 +22,6 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/my-role", Queue: "rpc.tournament.captain_my_role", IDParam: "encounter_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/report", Queue: "rpc.tournament.captain_submit_report", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/reports", Queue: "rpc.tournament.captain_reports", IDParam: "encounter_id", Auth: edge.AuthOptional},
-	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/map-pool", Queue: "rpc.tournament.captain_map_pool", IDParam: "encounter_id", Auth: edge.AuthOptional},
-	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/map-pool/state", Queue: "rpc.tournament.captain_map_pool_state", IDParam: "encounter_id", Auth: edge.AuthOptional},
-	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/map-pool/veto", Queue: "rpc.tournament.captain_veto", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/map-pool/{map_id}/report", Queue: "rpc.tournament.captain_report_map", IDParam: "encounter_id", Path: []string{"map_id"}, Body: true, Auth: edge.AuthRequired},
 	// pick_ban_session.py — captain ready-up gate, shared by BOTH pick-ban kinds
 	// (one confirmation per side covers map veto and hero bans together).
@@ -54,7 +51,7 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	// `IDParam`, not `Path`: this dispatches into `reads.py`, whose handlers read
 	// the path id as `data["id"]` (see its module docstring). Declaring it as
 	// `Path` left `data["id"]` unset and 422'd every call.
-	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/veto-configs", Queue: "rpc.tournament.get_veto_configs", IDParam: "tournament_id", Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/pick-ban-configs", Queue: "rpc.tournament.get_pick_ban_configs", IDParam: "tournament_id", Auth: edge.AuthOptional},
 
 	// The public "Teams" roster. AuthOptional like the participants list: anyone
 	// may see the field. Invites are omitted server-side, so this cannot leak who

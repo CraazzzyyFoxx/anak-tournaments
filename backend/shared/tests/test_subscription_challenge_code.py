@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from shared.subscriptions.challenge_code import (
+from shared.services.subscriptions.challenge_code import (
     CodeTier,
     hash_code,
     match_code,

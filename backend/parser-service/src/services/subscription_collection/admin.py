@@ -20,8 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import SubscriptionCheckState, SubscriptionCollectionSource
 from shared.services import settings_provider
-from shared.services.subscription_wiring import build_resolver
-from shared.subscriptions import parse_requirement
+from shared.services.subscriptions.wiring import build_resolver
+from shared.services.subscriptions import parse_requirement
 from src import models
 from src.core.broker import optional_broker
 

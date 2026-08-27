@@ -9,9 +9,9 @@ returned (admin routes do NOT use ``response_model_exclude_none`` -> plain
 job-returning routes return their payloads as the route did).
 
 Scope: ONLY the stage workflow endpoints (progress, merge-group-stages, activate,
-generate, activate-and-generate, wire-from-groups, seed-teams). Stage / stage_item
-/ stage_item_input CRUD creates & updates go through the generic CRUD engine and
-are handled separately.
+generate, activate-and-generate, auto-wire, wire-from-groups, seed-teams). Stage /
+stage_item / stage_item_input CRUD creates & updates go through the generic CRUD
+engine and are handled separately.
 
 The gateway passes path params as ``data["<name>"]`` (and the primary id as
 ``data["id"]`` when the RouteSpec sets IDParam), query params as
@@ -34,12 +34,12 @@ from typing import Any
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.tournament.computation import request_bracket_job
+from src import schemas
 from src.core import auth
 from src.rpc._helpers import _dump, _identity, _path_int, _payload, _run
-from src.schemas.admin import stage as admin_schemas
-from src.schemas.admin.computation import TournamentComputationJobRead
 from src.services.admin.stage import stage_service
-from src.services.computation import jobs as computation_jobs
+from src.services.tournament.flows import flows_service as tournament_flows
 
 # --- helpers -----------------------------------------------------------------
 
@@ -83,7 +83,7 @@ def register(broker: Any, logger: Any) -> None:
             # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
-            body = admin_schemas.MergeGroupStagesRequest.model_validate(_payload(data))
+            body = schemas.MergeGroupStagesRequest.model_validate(_payload(data))
             # merge_group_stages commits internally; returns a Stage.
             stage = await stage_service.merge_group_stages(
                 session,
@@ -91,9 +91,7 @@ def register(broker: Any, logger: Any) -> None:
                 source_stage_ids=body.source_stage_ids,
                 target_name=body.target_name,
             )
-            from src import schemas  # noqa: PLC0415
-
-            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)
 
@@ -109,9 +107,7 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, ws_id, "stage", "update")
             # activate_stage commits internally (commit=True default).
             stage = await stage_service.activate_stage(session, stage_id)
-            from src import schemas  # noqa: PLC0415
-
-            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)
 
@@ -128,9 +124,7 @@ def register(broker: Any, logger: Any) -> None:
             # deactivate_stage commits internally (commit=True default); 409s
             # if any of the stage's encounters left OPEN.
             stage = await stage_service.deactivate_stage(session, stage_id)
-            from src import schemas  # noqa: PLC0415
-
-            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)
 
@@ -144,18 +138,16 @@ def register(broker: Any, logger: Any) -> None:
             # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
-            # Route loads the stage to obtain tournament_id, then requests a
-            # bracket job and commits explicitly (create_job does NOT commit).
-            stage = await stage_service.get_stage(session, stage_id)
-            job = await computation_jobs.request_bracket_job(
+            tournament_id = await stage_service.get_tournament_id(session, stage_id)
+            job = await request_bracket_job(
                 session,
-                tournament_id=stage.tournament_id,
-                stage_id=stage.id,
+                tournament_id=tournament_id,
+                stage_id=stage_id,
                 operation="generate_stage",
                 requested_by_user_id=int(user.id),
             )
             await session.commit()
-            return _dump(TournamentComputationJobRead.model_validate(job, from_attributes=True))
+            return _dump(schemas.TournamentComputationJobRead.model_validate(job, from_attributes=True))
 
         return await _run(logger, op)
 
@@ -194,17 +186,33 @@ def register(broker: Any, logger: Any) -> None:
                 force_raw = force_vals
             force = str(force_raw).lower() in ("1", "true", "yes", "on") if force_raw is not None else False
 
-            stage = await stage_service.get_stage(session, stage_id)
-            job = await computation_jobs.request_bracket_job(
+            tournament_id = await stage_service.get_tournament_id(session, stage_id)
+            job = await request_bracket_job(
                 session,
-                tournament_id=stage.tournament_id,
-                stage_id=stage.id,
+                tournament_id=tournament_id,
+                stage_id=stage_id,
                 operation="activate_and_generate",
                 payload={"force": force},
                 requested_by_user_id=int(user.id),
             )
             await session.commit()
-            return _dump(TournamentComputationJobRead.model_validate(job, from_attributes=True))
+            return _dump(schemas.TournamentComputationJobRead.model_validate(job, from_attributes=True))
+
+        return await _run(logger, op)
+
+    # ── auto-wire (standalone trigger for the Activate & generate auto-wire) ──
+
+    @broker.subscriber("rpc.tournament.stage_auto_wire")
+    async def _stage_auto_wire(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            stage_id = _path_int(data, "stage_id")
+            # Route: require_stage_permission("stage", "update").
+            ws_id = await auth.get_stage_workspace_id(session, stage_id)
+            ensure_workspace_permission(user, ws_id, "stage", "update")
+            # auto_wire_stage commits internally; returns a Stage.
+            stage = await stage_service.auto_wire_stage(session, stage_id)
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)
 
@@ -218,7 +226,7 @@ def register(broker: Any, logger: Any) -> None:
             # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
-            body = admin_schemas.WireFromGroupsRequest.model_validate(_payload(data))
+            body = schemas.WireFromGroupsRequest.model_validate(_payload(data))
             # wire_from_groups commits internally; returns a Stage.
             stage = await stage_service.wire_from_groups(
                 session,
@@ -228,9 +236,7 @@ def register(broker: Any, logger: Any) -> None:
                 top_lb=body.top_lb,
                 mode=body.mode,
             )
-            from src import schemas  # noqa: PLC0415
-
-            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)
 
@@ -244,7 +250,7 @@ def register(broker: Any, logger: Any) -> None:
             # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
-            body = admin_schemas.SeedTeamsRequest.model_validate(_payload(data))
+            body = schemas.SeedTeamsRequest.model_validate(_payload(data))
             # seed_teams commits internally; returns a Stage.
             stage = await stage_service.seed_teams(
                 session,
@@ -252,8 +258,6 @@ def register(broker: Any, logger: Any) -> None:
                 team_ids=body.team_ids,
                 mode=body.mode,
             )
-            from src import schemas  # noqa: PLC0415
-
-            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+            return _dump(await tournament_flows.stage_read(session, stage))
 
         return await _run(logger, op)

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 
 import TeamName from "@/components/TeamName";
+import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
 import {
   AdminDetailTableShell,
   getAdminDetailTableStyles
@@ -34,13 +36,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import {
   Table,
   TableBody,
@@ -54,7 +50,8 @@ import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
   ChallongeTeamMapping,
-  ChallongeTeamPreviewParticipant
+  ChallongeTeamPreviewParticipant,
+  ChallongeTeamPreviewTeam
 } from "@/types/admin.types";
 import type { Team } from "@/types/team.types";
 import { TOURNAMENT_DETAIL_PREVIEW_LIMIT } from "./tournamentWorkspace.helpers";
@@ -94,6 +91,86 @@ function summarizeChallongeSyncResult(result: {
   );
 }
 
+/**
+ * Searchable internal-team picker for one Challonge participant.
+ *
+ * A plain `<Select>` listed every team in creation order with no way to type:
+ * a mix roster runs to dozens of teams whose Challonge participant name
+ * ("litnik team") differs from the internal one ("litnik"), which is precisely
+ * the case that lands here — auto-mapping only matches on an exact normalized
+ * name, so whatever it could resolve is already mapped before this dialog opens.
+ *
+ * Search covers the internal name, the balancer name and the numeric id, because
+ * all three are what an admin actually has in hand while reading the Challonge
+ * side. Own `open`/`searchValue` state per row: the shell is controlled, and one
+ * row's popover must not know about another's.
+ */
+function ChallongeTeamPicker({
+  participant,
+  teams,
+  value,
+  onChange
+}: Readonly<{
+  participant: ChallongeTeamPreviewParticipant;
+  teams: ChallongeTeamPreviewTeam[];
+  value: string;
+  onChange: (next: string) => void;
+}>) {
+  const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+
+  const selected = teams.find((team) => String(team.id) === value);
+
+  const select = (next: string) => {
+    onChange(next);
+    setOpen(false);
+    setSearchValue("");
+  };
+
+  return (
+    <AdminCombobox
+      open={open}
+      onOpenChange={setOpen}
+      label={selected ? selected.name : "Unmapped"}
+      // The visible label repeats down the column, so it cannot name the control.
+      triggerAriaLabel={`Internal team for ${participant.name}`}
+      searchValue={searchValue}
+      onSearchValueChange={setSearchValue}
+      searchPlaceholder="Search team…"
+      searchLabel={`Search internal team for ${participant.name}`}
+      emptyMessage="No teams match that search. Try the balancer name or the numeric id."
+      clear={
+        selected
+          ? {
+              label: "Unmapped",
+              value: "challonge-unmap-participant",
+              onSelect: () => select(UNMAPPED_TEAM_VALUE)
+            }
+          : undefined
+      }
+    >
+      <CommandGroup>
+        {teams.map((team) => (
+          <CommandItem
+            key={team.id}
+            value={`${team.name} ${team.balancer_name} ${team.id}`}
+            onSelect={() => select(String(team.id))}
+          >
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate">{team.name}</span>
+              {team.balancer_name && team.balancer_name !== team.name ? (
+                <span className="truncate text-xs text-muted-foreground">{team.balancer_name}</span>
+              ) : null}
+            </div>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">#{team.id}</span>
+            <AdminComboboxCheck selected={String(team.id) === value} />
+          </CommandItem>
+        ))}
+      </CommandGroup>
+    </AdminCombobox>
+  );
+}
+
 export function TournamentTeamsTab({
   tournamentId,
   teams,
@@ -111,8 +188,29 @@ export function TournamentTeamsTab({
   const tableStyles = getAdminDetailTableStyles("compact");
   const importTeamsFileRef = useRef<HTMLInputElement>(null);
 
-  const [challongeSyncDialogOpen, setChallongeSyncDialogOpen] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // `?challongeSync=1` exists so the Integrations card can send an admin straight
+  // to the mapping table that clears its "N participants not mapped" failure —
+  // otherwise the error is on one tab and its only fix on another. Read once for
+  // the initial value and stripped on mount: with the param left in place a
+  // refresh (or a Back into this page) would reopen a dialog nobody asked for.
+  const [challongeSyncDialogOpen, setChallongeSyncDialogOpen] = useState(
+    () => searchParams.get("challongeSync") === "1"
+  );
   const [challongeMappingDraft, setChallongeMappingDraft] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (searchParams.get("challongeSync") !== "1") {
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("challongeSync");
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const canManageRoster = canCreatePlayer || canUpdatePlayer || canDeletePlayer;
   const canManageTeams = canCreateTeam || canUpdateTeam || canDeleteTeam || canManageRoster;
@@ -546,27 +644,17 @@ export function TournamentTeamsTab({
                             )}
                           </TableCell>
                           <TableCell className={tableStyles.cell}>
-                            <Select
+                            <ChallongeTeamPicker
+                              participant={participant}
+                              teams={challongeTeamOptions}
                               value={getChallongeMappingValue(participant)}
-                              onValueChange={(value) =>
+                              onChange={(next) =>
                                 setChallongeMappingDraft((current) => ({
                                   ...current,
-                                  [participantKey]: value
+                                  [participantKey]: next
                                 }))
                               }
-                            >
-                              <SelectTrigger aria-label={`Internal team for ${participant.name}`}>
-                                <SelectValue placeholder="Select team" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={UNMAPPED_TEAM_VALUE}>Unmapped</SelectItem>
-                                {challongeTeamOptions.map((team) => (
-                                  <SelectItem key={team.id} value={String(team.id)}>
-                                    {team.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            />
                           </TableCell>
                         </TableRow>
                       );

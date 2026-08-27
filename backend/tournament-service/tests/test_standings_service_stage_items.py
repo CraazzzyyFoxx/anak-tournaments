@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,13 +11,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 standings_service = importlib.import_module("src.services.standings.service")
 models = importlib.import_module("src.models")
@@ -56,14 +48,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 99
-        group = models.TournamentGroup(
-            tournament_id=tournament.id,
-            name="Group A",
-            is_groups=True,
-            stage_id=7,
-        )
-        group.id = 55
-        tournament.groups = [group]
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -112,14 +96,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 200
-        group = models.TournamentGroup(
-            tournament_id=tournament.id,
-            name="Group A",
-            is_groups=True,
-            stage_id=7,
-        )
-        group.id = 55
-        tournament.groups = [group]
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -170,14 +146,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 201
-        group = models.TournamentGroup(
-            tournament_id=tournament.id,
-            name="Group A",
-            is_groups=True,
-            stage_id=8,
-        )
-        group.id = 56
-        tournament.groups = [group]
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -239,7 +207,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 104
-        tournament.groups = []
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -287,14 +254,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 101
-        group = models.TournamentGroup(
-            tournament_id=tournament.id,
-            name="Group A",
-            is_groups=True,
-            stage_id=8,
-        )
-        group.id = 56
-        tournament.groups = [group]
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -391,7 +350,6 @@ class StandingsServiceStageItemTests(TestCase):
             loss_points=0.0,
         )
         tournament.id = 102
-        tournament.groups = []
 
         stage = models.Stage(
             tournament_id=tournament.id,
@@ -547,22 +505,6 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
 
         stage.items = [item_a, item_b]
         tournament.stages = [stage]
-        tournament.groups = [
-            models.TournamentGroup(
-                tournament_id=tournament.id,
-                name="Group A",
-                is_groups=True,
-                stage_id=stage.id,
-            ),
-            models.TournamentGroup(
-                tournament_id=tournament.id,
-                name="Group B",
-                is_groups=True,
-                stage_id=stage.id,
-            ),
-        ]
-        tournament.groups[0].id = 301
-        tournament.groups[1].id = 302
 
         encounters = [
             self._encounter(

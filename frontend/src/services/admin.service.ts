@@ -79,7 +79,6 @@ import {
   HardResetResultRead,
   BulkOperationResult,
   TournamentComputationJob,
-  CsvUserImportParams,
   UserMergePreviewRequest,
   UserMergePreviewResponse,
   UserMergeExecuteRequest,
@@ -716,39 +715,7 @@ class AdminService {
     return response.json();
   }
 
-  async bulkCreateUsersFromCsv(
-    params: CsvUserImportParams,
-    file?: File
-  ): Promise<BulkOperationResult> {
-    const formData = new FormData();
-    if (file) {
-      formData.append("data", file);
-    }
 
-    const hasDiscord = params.discord_row != null;
-    const hasTwitch = params.twitch_row != null;
-    const hasSmurf = params.smurf_row != null;
-
-    const query: Record<string, unknown> = {
-      battle_tag_row: params.battle_tag_row,
-      discord_row: params.discord_row ?? 1,
-      twitch_row: params.twitch_row ?? 1,
-      smurf_row: params.smurf_row ?? 1,
-      has_discord: hasDiscord,
-      has_twitch: hasTwitch,
-      has_smurf: hasSmurf
-    };
-    if (params.start_row != null) query.start_row = params.start_row;
-    if (params.delimiter) query.delimiter = params.delimiter;
-    if (params.sheet_url) query.sheet_url = params.sheet_url;
-
-    const response = await apiFetch("/api/v1/user/create/csv", {
-      method: "POST",
-      body: formData,
-      query
-    });
-    return response.json();
-  }
 
   // Unified social-identity management (provider-agnostic). All return the
   // refreshed User so the caller can update state in one round-trip.
@@ -1338,6 +1305,13 @@ class AdminService {
     return response.json();
   }
 
+  async backfillDiscordChannel(tournamentId: number): Promise<Record<string, unknown>> {
+    const response = await apiFetch(`/api/v1/admin/tournaments/${tournamentId}/discord-channel/backfill`, {
+      method: "POST"
+    });
+    return response.json();
+  }
+
   async deleteDiscordChannel(tournamentId: number): Promise<void> {
     await apiFetch(`/api/v1/admin/tournaments/${tournamentId}/discord-channel`, {
       method: "DELETE"
@@ -1507,6 +1481,10 @@ class AdminService {
     return response.json();
   }
 
+  async deleteStageItem(stageItemId: number): Promise<void> {
+    await apiFetch(`/api/v1/admin/stages/items/${stageItemId}`, { method: "DELETE" });
+  }
+
   async createStageItemInput(
     stageItemId: number,
     data: StageItemInputCreateInput
@@ -1554,6 +1532,13 @@ class AdminService {
 
   async applyStageBestOf(stageId: number): Promise<{ updated: number }> {
     const response = await apiFetch(`/api/v1/admin/stages/${stageId}/apply-best-of`, {
+      method: "POST"
+    });
+    return response.json();
+  }
+
+  async autoWireStage(stageId: number): Promise<Stage> {
+    const response = await apiFetch(`/api/v1/admin/stages/${stageId}/auto-wire`, {
       method: "POST"
     });
     return response.json();

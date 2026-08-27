@@ -12,27 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-
-def _ensure_test_env() -> None:
-    for key, value in {
-        "PROJECT_URL": "http://localhost",
-        "REDIS_URL": "redis://localhost:6379/0",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
-        "POSTGRES_DB": "postgres",
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-    }.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))

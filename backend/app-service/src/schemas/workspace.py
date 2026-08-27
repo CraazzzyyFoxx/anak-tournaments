@@ -27,6 +27,7 @@ __all__ = (
     "WorkspaceCreate",
     "WorkspaceUpdate",
     "WorkspaceCustomDomainSet",
+    "WorkspaceDiscordGuildVerify",
     "WorkspaceMemberRoleRead",
     "WorkspaceMemberRead",
     "WorkspaceMemberCreate",
@@ -71,6 +72,12 @@ class WorkspaceRead(BaseRead):
     # A genuinely secret integration value must NOT follow this path; it needs an
     # authenticated admin read model.
     discord_guild_id: str | None = None
+    # Who proved ownership and when (self-service design §4.1) -- same
+    # public-exposure precedent as custom_domain_verified_at just above.
+    # discord_guild_verified_by_auth_user_id stays off this model: unlike a
+    # guild id or a DNS token, an arbitrary internal auth_user_id is not
+    # something this design chooses to publish.
+    discord_guild_verified_at: datetime | None = None
     default_division_grid_version_id: int | None
     default_division_grid_version: DivisionGridVersionRead | None = None
     default_roster_slots_json: dict[str, int] | None = None
@@ -108,7 +115,6 @@ class WorkspaceUpdate(BaseModel):
     subdomain: str | None = None
     seo_title: str | None = None
     seo_description: str | None = None
-    discord_guild_id: str | None = Field(default=None, pattern=_DISCORD_SNOWFLAKE)
     default_division_grid_version_id: int | None = None
     # Edited in place, unlike `default_division_grid_version_id` above: a roster
     # shape has no activation semantics, so it needs no dedicated endpoint.
@@ -156,15 +162,6 @@ class WorkspaceUpdate(BaseModel):
             raise ValueError(f"Unknown IANA timezone: {value!r}") from exc
         return value
 
-    @field_validator("discord_guild_id", mode="before")
-    @classmethod
-    def _blank_snowflake_to_none(cls, value: object) -> object:
-        # A blank id means "clear it", not "fail the digits pattern" -- the same
-        # discipline `_blank_hex_to_none` applies to the brand colours.
-        if isinstance(value, str):
-            return value.strip() or None
-        return value
-
 
 class WorkspaceCustomDomainSet(BaseModel):
     """Body for ``set_custom_domain``. Normalization/validation of the domain
@@ -173,6 +170,17 @@ class WorkspaceCustomDomainSet(BaseModel):
     one source of truth for what counts as a valid custom domain."""
 
     custom_domain: str = Field(..., min_length=1, max_length=255)
+
+
+class WorkspaceDiscordGuildVerify(BaseModel):
+    """Body for ``discord_guild_verify``. The snowflake pattern gates shape
+    only -- the actual proof of administration happens server-side via
+    ``rpc.identity.oauth_discord_guilds``, not here. No blank-clears-it
+    normalization like ``WorkspaceUpdate`` used to carry: there is no "clear"
+    verb for a verified claim, only bind (this) and whatever future admin
+    override unbinds it."""
+
+    guild_id: str = Field(..., pattern=_DISCORD_SNOWFLAKE)
 
 
 class WorkspaceMemberRoleRead(BaseModel):

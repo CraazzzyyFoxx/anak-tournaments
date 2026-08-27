@@ -14,7 +14,7 @@ product agree on what a flex player is worth.
 Without the synthesis every player is dropped (no role line resolves into a
 flex-only mask, ``ratings`` stays empty, ``parse_player_node`` returns
 ``None``) and the Rust solver rejects the request with "player count must equal
-total roster slots" — see ``native/moo_core/src/context.rs`` line 41.
+total roster slots" — see ``native/tournament_balancer/src/context.rs`` line 41.
 """
 
 from __future__ import annotations
@@ -34,20 +34,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
-os.environ.setdefault("S3_ACCESS_KEY", "test")
-os.environ.setdefault("S3_SECRET_KEY", "test")
-os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
-os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS, FLEX_SLOT_CODE, parse_roster_slots  # noqa: E402
@@ -58,7 +44,7 @@ from src.domain.balancer.player_loader import (  # noqa: E402
     parse_player_node,
 )
 from src.domain.balancer.result_serializer import teams_to_json  # noqa: E402
-from src.domain.balancer.runtime import _prepare_balance_context  # noqa: E402
+from src.domain.balancer.runtime import _prepare_balance_context, balance_teams  # noqa: E402
 from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
 from src.services.balancer.config.presets import ConfigPresets  # noqa: E402
 from src.services.balancer.config.provider import EDITABLE_CONFIG_FIELD_KEYS  # noqa: E402
@@ -76,9 +62,11 @@ def _class(rank: int, priority: int, *, is_active: bool = True, subtype: str = "
     return node
 
 
-def _node(name: str, classes: dict[str, Any], *, is_full_flex: bool = False) -> dict[str, Any]:
+def _node(
+    name: str, classes: dict[str, Any], *, is_full_flex: bool = False, must_play: bool = False
+) -> dict[str, Any]:
     return {
-        "identity": {"name": name, "isFullFlex": is_full_flex},
+        "identity": {"name": name, "isFullFlex": is_full_flex, "mustPlay": must_play},
         "stats": {"classes": classes},
     }
 
@@ -349,7 +337,7 @@ def test_balance_run_takes_the_mask_from_the_resolved_roster_shape() -> None:
 
     # Captains stay on: role assignment and captain pinning must also survive a
     # roster with no role slots, since that is what the whole run depends on.
-    config, valid_players, num_teams, _, role_assignment, _ = _prepare_balance_context(
+    context = _prepare_balance_context(
         payload,
         # A stale saved config must not win over the tournament's shape.
         {"role_mask": ROLE_MASK},
@@ -357,8 +345,99 @@ def test_balance_run_takes_the_mask_from_the_resolved_roster_shape() -> None:
         role_mask=dict(FLEX_ONLY_MASK),
     )
 
-    assert config.role_mask == FLEX_ONLY_MASK
-    assert num_teams == 2
-    assert len(valid_players) == 12
-    assert set(role_assignment.values()) == {FLEX_SLOT_CODE}
-    assert sum(1 for player in valid_players if player.is_captain) == num_teams
+    assert context.config.role_mask == FLEX_ONLY_MASK
+    assert context.num_teams == 2
+    assert len(context.players) == 12
+    assert set(context.role_assignment.values()) == {FLEX_SLOT_CODE}
+    assert sum(1 for player in context.players if player.is_captain) == context.num_teams
+
+
+# ---------------------------------------------------------------------------
+# 'must play' -- guaranteed a seat when the lineup doesn't divide evenly
+# ---------------------------------------------------------------------------
+
+
+def test_must_play_players_are_never_trimmed_ahead_of_optional_ones() -> None:
+    # 5 players, team size 2 -> 1 sits out. Without a flag it would be
+    # whichever sorts last (u-5, see test_public_balancer_architecture.py's
+    # equivalent unflagged case); flagging it 'must play' instead benches an
+    # earlier, optional player.
+    payload = {
+        "players": {
+            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}, must_play=(index == 5))
+            for index in range(1, 6)
+        }
+    }
+
+    context = _prepare_balance_context(payload, None, None, role_mask={"tank": 2})
+
+    assert context.num_teams == 2
+    assert {player.uuid for player in context.players} == {"u-1", "u-2", "u-3", "u-5"}
+    assert [player.uuid for player in context.overflow_benched] == ["u-4"]
+
+
+def test_too_many_must_play_players_raises_a_clear_error() -> None:
+    # 5 players, team size 2 -> only 4 slots exist; flagging all 5 as
+    # 'must play' cannot be honoured.
+    payload = {
+        "players": {
+            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}, must_play=True)
+            for index in range(1, 6)
+        }
+    }
+
+    with pytest.raises(ValueError, match="must play"):
+        _prepare_balance_context(payload, None, None, role_mask={"tank": 2})
+
+
+# ---------------------------------------------------------------------------
+# 'max_teams' -- backends pinned to a team-count ceiling (mix_balancer) cap
+# the natural team count and bench the surplus, same as an uneven remainder
+# ---------------------------------------------------------------------------
+
+
+def test_max_teams_cap_benches_the_surplus_even_when_pool_divides_evenly() -> None:
+    # 6 players, team size 2 -> divides evenly into 3 teams; max_teams=2 caps
+    # it to 2, benching the extra pair exactly like an uneven remainder would.
+    payload = {
+        "players": {
+            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}) for index in range(1, 7)
+        }
+    }
+
+    context = _prepare_balance_context(payload, None, None, role_mask={"tank": 2}, max_teams=2)
+
+    assert context.num_teams == 2
+    assert len(context.players) == 4
+    assert len(context.overflow_benched) == 2
+
+
+def test_max_teams_cap_still_protects_must_play_players() -> None:
+    # 6 players, team size 2, capped to 2 teams -> 2 must sit out. A
+    # 'must play' player is never among them unless every seat is already
+    # claimed by other must-play players.
+    payload = {
+        "players": {
+            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}, must_play=(index in (5, 6)))
+            for index in range(1, 7)
+        }
+    }
+
+    context = _prepare_balance_context(payload, None, None, role_mask={"tank": 2}, max_teams=2)
+
+    assert context.num_teams == 2
+    benched_uuids = {player.uuid for player in context.overflow_benched}
+    assert benched_uuids.isdisjoint({"u-5", "u-6"})
+
+
+def test_balance_teams_rejects_too_few_players_for_a_capped_algorithm() -> None:
+    # 2 players, team size 2 -> only 1 team's worth; mix_balancer needs
+    # exactly 2. Raises before ever touching the (Linux-only) native engine.
+    payload = {
+        "players": {
+            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}) for index in range(1, 3)
+        }
+    }
+
+    with pytest.raises(ValueError, match="needs exactly 2 team"):
+        balance_teams(payload, None, None, role_mask={"tank": 2}, algorithm="mix_balancer")

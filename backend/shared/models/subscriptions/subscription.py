@@ -74,7 +74,7 @@ class SubscriptionProviderConfig(db.TimeStampIntegerMixin):
 class WorkspaceSubscriptionRequirement(db.TimeStampIntegerMixin):
     """The subscription rule a workspace enforces, shared by all its tournaments.
 
-    Named `Workspace...` because `shared.subscriptions.SubscriptionRequirement` is
+    Named `Workspace...` because `shared.services.subscriptions.SubscriptionRequirement` is
     the parsed value object this row's blob deserialises into; the two must stay
     importable side by side.
 
@@ -83,7 +83,7 @@ class WorkspaceSubscriptionRequirement(db.TimeStampIntegerMixin):
     ``registration_form`` is a purely additive change, whereas a column on
     ``workspace`` would have forced a data migration.
 
-    ``requirement_json`` keeps the exact shape ``shared.subscriptions.parse_requirement``
+    ``requirement_json`` keeps the exact shape ``shared.services.subscriptions.parse_requirement``
     already validates -- ``{mode, requirements: [{provider, min_tier_rank}]}`` -- so
     the Kleene composition is reused verbatim rather than reimplemented.
     """
@@ -106,7 +106,7 @@ class WorkspaceSubscriptionRequirement(db.TimeStampIntegerMixin):
 class SubscriptionEntitlement(db.TimeStampIntegerMixin):
     """Last-known subscription verdict for one (workspace, user, provider).
 
-    ``state`` is the tri-state contract from ``shared.subscriptions``:
+    ``state`` is the tri-state contract from ``shared.services.subscriptions``:
     ``active`` / ``inactive`` / ``unknown``, where ``unknown`` fails open. It
     defaults to ``unknown`` so a row that exists but was never resolved cannot
     accidentally refuse anybody.

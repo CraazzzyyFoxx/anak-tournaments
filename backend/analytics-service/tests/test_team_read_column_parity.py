@@ -31,16 +31,9 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ["DEBUG"] = "false"
 
-analytics_flows = importlib.import_module("src.services.analytics_read.flows")
+analytics_flows = importlib.import_module("src.services.analytics.reads")
 schemas = importlib.import_module("src.schemas")
 shared_models = importlib.import_module("shared.models")
 

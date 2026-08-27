@@ -18,9 +18,6 @@ export type StageItemInputType = "final" | "tentative" | "empty";
 
 export type EncounterResultStatus = "none" | "pending_confirmation" | "confirmed" | "disputed";
 
-type MapPoolEntryStatus = "available" | "picked" | "banned" | "played";
-type MapPickSide = "home" | "away" | "decider" | "admin";
-type MapVetoAction = "pick" | "ban";
 
 // ─── Legacy (kept for backward compat) ──────────────────────────────────────
 
@@ -136,59 +133,12 @@ export interface Tournament {
   links?: TournamentLink[];
 }
 
-// ─── Map Pool ───────────────────────────────────────────────────────────────
+// ─── Shared pick-ban vocabulary ─────────────────────────────────────────────
 
-export interface EncounterMapPoolEntry {
-  id: number;
-  map_id: number;
-  /**
-   * Slot this candidate belongs to, or null in `"pool"` (flat) mode.
-   *
-   * Every entry of a `"slots"`-mode pool carries one and every entry of a flat
-   * pool carries null, so this — not `EncounterMapPoolState.current_slot` — is
-   * what tells the two modes apart: a completed slot veto also reports
-   * `current_slot: null`.
-   *
-   * The value is the config slot's `position`, never an index into this pool.
-   */
-  slot: number | null;
-  order: number;
-  /** Global veto-action order (bans AND picks); null while still available. */
-  action_index: number | null;
-  picked_by: MapPickSide | null;
-  /** Denormalized team that picked this map (null unless PICKED). */
-  team_id: number | null;
-  status: MapPoolEntryStatus;
-}
 
 type MapVetoSessionStatus = "active" | "completed" | "cancelled";
 type VetoSeedSource = "bracket_slot" | "standings" | "fallback_home" | "admin";
 
-interface EncounterVetoSession {
-  id: number;
-  status: MapVetoSessionStatus;
-  first_side: "home" | "away";
-  seed_source: VetoSeedSource;
-  home_seed: number | null;
-  away_seed: number | null;
-  turn_timer_seconds: number | null;
-  started_at: string | null;
-  current_step_started_at: string | null;
-  /**
-   * The reserve map each in-play slot named, snapshotted when the session was
-   * created and never re-read from the config, so a running veto keeps the
-   * reserves it started with.
-   *
-   * Keyed by the slot's `position` **as a string** — the backing column is JSON,
-   * so the server stringifies the key to survive the round trip — while slot
-   * numbers everywhere else in the room are numbers. `slotReserveMaps` is where
-   * that boundary is crossed.
-   *
-   * Null in `"pool"` mode. A slot that named no reserve is absent rather than
-   * mapped to null, so a lookup missing is the normal case, not an anomaly.
-   */
-  slot_reserves: Record<string, number> | null;
-}
 
 /**
  * Reason the room has no session yet (state responses with `session: null`).
@@ -212,95 +162,14 @@ export type VetoUnavailableReason =
    * activates the stage (`Stage.is_published`). */
   | "bracket_preview";
 
-export interface EncounterMapPoolState {
-  session: EncounterVetoSession | null;
-  /**
-   * Set only when `session` is null. Its presence — not `session === null`
-   * alone — is what identifies the unavailable state.
-   */
-  reason?: VetoUnavailableReason;
-  /** Step tokens already resolved to sides (e.g. "ban_home", "decider"). */
-  sequence: string[];
-  pool: EncounterMapPoolEntry[];
-  viewer_side: "home" | "away" | null;
-  viewer_can_act: boolean;
-  allowed_actions: MapVetoAction[];
-  current_step_index: number | null;
-  current_step: string | null;
-  expected_action: MapVetoAction | "decider" | null;
-  turn_side: "home" | "away" | null;
-  /**
-   * Slot the veto is resolving, and null in three distinct situations: a
-   * `"pool"`-mode veto (no slots at all), a completed slot veto (no pending
-   * step), and the unavailable state (`session: null`).
-   *
-   * So it is neither a completion signal — `is_complete` is the authority —
-   * nor a mode signal; read the mode off `pool[].slot`.
-   */
-  current_slot: number | null;
-  is_complete: boolean;
-}
 
 /** Side-agnostic step tokens stored on veto configs. */
 export type VetoSequenceToken =
   "ban_first" | "ban_second" | "pick_first" | "pick_second" | "decider";
 
-/**
- * How a veto config decides its step order.
- *
- * - `"bracket"` — follow the bracket. The veto session regenerates the steps
- *   from `Encounter.best_of` at match time, so this config carries no opinion
- *   about series length. What is stored alongside it is a fallback preview.
- * - `"custom"` — the organizer authored the steps; they are used verbatim and
- *   this level is opted out of the bracket.
- * - `"bo1"`…`"bo7"` — legacy template labels written before the bracket owned
- *   series length. Behaviourally identical to `"bracket"`: the server treats
- *   everything except `"custom"` as bracket-driven.
- */
-type VetoPreset = "bracket" | "custom" | "bo1" | "bo2" | "bo3" | "bo5" | "bo7";
-
-/** Which pool shape a veto config uses. Mirrors the backend `MapVetoMode`. */
+/** Which pool shape a pick-ban config uses. Mirrors the backend `MapVetoMode`. */
 export type MapVetoMode = "pool" | "slots";
 
-/**
- * Which side opens each slot's bans, in `"slots"` mode only. Mirrors the
- * backend `FirstBanRotation`.
- */
-type FirstBanRotation = "fixed" | "alternate";
-
-/** One slot as the config serializer returns it. */
-interface MapVetoConfigSlot {
-  /**
-   * 1-based play order. Carried even though the upsert derives it: the editor
-   * sorts the stored slots by this rather than trusting the array's order, and
-   * it is the same ordinal `EncounterMapPoolEntry.slot` carries, so the config
-   * and the room name a slot identically.
-   */
-  position: number;
-  /** Candidate map ids, in the organizer's authored order. */
-  candidates: number[];
-  reserve_map_id: number | null;
-}
-
-export interface MapVetoConfig {
-  id: number;
-  tournament_id: number;
-  stage_id: number | null;
-  round: number | null;
-  /** Which pool shape the fields below carry. */
-  mode: MapVetoMode;
-  preset: VetoPreset | null;
-  first_pick_rule: "higher_seed";
-  /** Slot mode only; nothing reads it in `"pool"` mode. */
-  first_ban_rotation: FirstBanRotation;
-  turn_timer_seconds: number | null;
-  /** Empty in `"slots"` mode. */
-  sequence: VetoSequenceToken[];
-  /** Empty in `"slots"` mode. */
-  map_ids: number[];
-  /** Empty in `"pool"` mode: the serializer always sends both pool shapes. */
-  slots: MapVetoConfigSlot[];
-}
 
 interface OwalStandingDay {
   tournament: Tournament;
@@ -372,13 +241,8 @@ export interface OwalStack {
 
 // ─── Generic pick-ban engine (map + hero) ───────────────────────────────────
 //
-// Mirrors backend `PickBanSession`/`PickBanEntry`/`build_pick_ban_state` (see
-// docs/plans/2026-08-09-generic-pickban-engine.md). Deliberately NOT reusing
-// the legacy `EncounterMapPoolState`/`EncounterMapPoolEntry` shapes above:
-// `item_id` replaces `map_id` (a hero-kind pool has no map), entries carry
-// `round` instead of `slot`, and a `protect` action + `team_id` have no
-// analogue there. The legacy map-veto room is unmigrated and keeps using its
-// own types until the cutover (Foundation phase, currently blocked).
+// Mirrors backend `PickBanSession`/`PickBanEntry`/`build_pick_ban_state`.
+
 
 export type PickBanKind = "map" | "hero";
 export type PickBanAction = "ban" | "pick" | "protect";

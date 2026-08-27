@@ -64,8 +64,15 @@ export default defineConfig({
       "src/app/balancer/components/balancer-page-selectors.test.ts",
       "src/app/balancer/components/forced-flex-parity.test.ts",
       "src/app/balancer/components/BalancingPoolSidebar.behavior.test.tsx",
+      "src/app/balancer/components/WorkspacePlayersSidebar.behavior.test.tsx",
       "src/app/balancer/tool-context.test.ts",
       "src/app/balancer/redirect-map.test.ts",
+      "src/app/balancer/BalancerLayoutClient.behavior.test.tsx",
+      // Both extensions: the pickup lineup rules are `.ts` and the panel's
+      // render contract is `.tsx`, and a single `.test.ts` entry would silently
+      // skip the second one.
+      "src/app/balancer/pickup/**/*.test.ts",
+      "src/app/balancer/pickup/**/*.test.tsx",
       "src/app/**/users/compare/**/*.test.ts",
       "src/app/(site)/tournaments/[slug]/_views/_components/participantsColumns.test.tsx",
       // Same allow-list trap: this folder also holds `bun:test` files, so the
@@ -97,6 +104,9 @@ export default defineConfig({
       // and covers the next test added without another edit to this allow-list.
       "src/components/stream/**/*.test.ts",
       "src/components/stream/**/*.test.tsx",
+      // `src/components/realtime` is vitest-only, so a directory glob is safe
+      // here and covers the next test added without another edit to this list.
+      "src/components/realtime/**/*.test.tsx",
       // File-level, not a directory glob: this folder holds BOTH runners'
       // tests. `RoleStep.behavior.test.tsx` is `.tsx` yet imports `bun:test`,
       // so a directory glob here drags it into vitest and it fails on the import.
@@ -140,6 +150,7 @@ export default defineConfig({
       "src/lib/draft-visual.test.ts",
       "src/lib/draft-workspace-model.test.ts",
       "src/lib/stream-platform.test.ts",
+      "src/lib/image-capture.test.ts",
       "src/components/Header.mobile-layout.test.ts",
       "src/components/WorkspaceBootstrap.helpers.test.ts",
       // File-level: `src/components` holds both runners' tests, so a directory
@@ -163,7 +174,12 @@ export default defineConfig({
       "src/app/(site)/tournaments/[slug]/_components/TournamentLinkChips.behavior.test.tsx",
       // Same file-level rule as `src/components`: the bracket folder also holds a
       // `bun:test` file (`TournamentBracketPage.test.ts`).
-      "src/app/(site)/tournaments/[slug]/bracket/bracketLiveStreams.test.ts"
+      // File-level, not a directory glob: `src/hooks` also holds
+      // `tournamentRealtime.helpers.test.ts`, which imports `bun:test`.
+      "src/app/(site)/tournaments/[slug]/bracket/bracketLiveStreams.test.ts",
+      "src/hooks/useRealtimeCoalescedRefetch.test.ts",
+      "src/hooks/useTournamentRealtime.test.ts",
+      "src/hooks/useRealtimePatchedQuery.test.ts"
     ]
   }
 });

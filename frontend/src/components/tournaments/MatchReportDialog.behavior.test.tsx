@@ -24,15 +24,20 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const getReports = vi.fn();
 const getMyRole = vi.fn();
-const getMapPoolState = vi.fn();
+const getPickBanState = vi.fn();
 const submitReport = vi.fn();
 
 vi.mock("@/services/captain.service", () => ({
   default: {
     getReports: (...args: unknown[]) => getReports(...args),
     getMyRole: (...args: unknown[]) => getMyRole(...args),
-    getMapPoolState: (...args: unknown[]) => getMapPoolState(...args),
     submitReport: (...args: unknown[]) => submitReport(...args)
+  }
+}));
+
+vi.mock("@/services/pickBan.service", () => ({
+  default: {
+    getPickBanState: (...args: unknown[]) => getPickBanState(...args)
   }
 }));
 
@@ -60,7 +65,6 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     stage_id: 1,
     stage_item_id: 1,
     challonge_id: null,
-    challonge_slug: null,
     status: "open",
     closeness: null,
     has_logs: false,
@@ -164,7 +168,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
   getReports.mockReset();
   getMyRole.mockReset().mockResolvedValue({ side: "home" });
-  getMapPoolState.mockReset().mockResolvedValue(null);
+  getPickBanState.mockReset().mockResolvedValue(null);
   submitReport.mockReset().mockResolvedValue({ id: 1, result_status: "reported" });
 });
 

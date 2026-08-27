@@ -42,14 +42,6 @@ if sys.platform == "win32":
 def _ensure_test_env() -> None:
     env = {
         "DEBUG": "true",
-        "PROJECT_URL": "http://localhost",
-        "RABBITMQ_URL": "amqp://guest:guest@localhost:5672",
-        "REDIS_URL": "redis://localhost:6379/0",
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DB": "anak_dev",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "postgres",
     }
     for key, value in env.items():
         os.environ.setdefault(key, value)
@@ -67,7 +59,7 @@ from shared.models.identity.rbac import user_roles  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
 from shared.rbac import get_workspace_system_role  # noqa: E402
-from shared.services.division_grid_access import get_default_division_grid_version_id  # noqa: E402
+from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 from src.services.registration import windows  # noqa: E402
 

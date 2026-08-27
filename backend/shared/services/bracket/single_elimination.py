@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 
+from .seeding_order import seeding_order
 from .types import AdvancementEdge, BracketSkeleton, Pairing
 
 
@@ -24,7 +25,7 @@ def generate(team_ids: list[int]) -> BracketSkeleton:
 
     bracket_size = 1 << math.ceil(math.log2(n))
     total_rounds = int(math.log2(bracket_size))
-    seeds = _seeding_order(bracket_size)
+    seeds = seeding_order(bracket_size)
 
     seed_to_team: dict[int, int | None] = {}
     for i, tid in enumerate(team_ids):
@@ -168,17 +169,3 @@ def generate(team_ids: list[int]) -> BracketSkeleton:
     )
 
 
-def _seeding_order(size: int) -> list[int]:
-    """Generate standard tournament seeding order.
-
-    For size=8 → [0, 7, 3, 4, 1, 6, 2, 5]
-    This ensures seed 1 vs seed 8, seed 4 vs seed 5, etc.
-    """
-    if size == 1:
-        return [0]
-    half = _seeding_order(size // 2)
-    result: list[int] = []
-    for seed in half:
-        result.append(seed)
-        result.append(size - 1 - seed)
-    return result

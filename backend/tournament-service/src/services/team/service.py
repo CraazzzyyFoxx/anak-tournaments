@@ -4,8 +4,9 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.repository import PlayerRepository, TeamRepository
-from shared.services.tournament_visibility import visible_tournament_ids_subquery
+from shared.services.tournament.visibility import visible_tournament_ids_subquery
 from src import models, schemas
+from src.core import enums
 
 
 class TeamService:
@@ -162,14 +163,9 @@ class TeamService:
         if params.sort == "group":
             query = (
                 query.join(models.Team.standings)
-                .join(
-                    models.TournamentGroup,
-                    sa.and_(
-                        models.Standing.group_id == models.TournamentGroup.id,
-                        models.TournamentGroup.is_groups.is_(True),
-                    ),
-                )
-                .order_by(params.apply_sort_field(models.TournamentGroup.name))
+                .join(models.Standing.stage_item)
+                .where(models.StageItem.type == enums.StageItemType.GROUP)
+                .order_by(params.apply_sort_field(models.StageItem.name))
             )
         elif params.sort == "placement":
             query = query.join(models.Team.standings).order_by(

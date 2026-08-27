@@ -58,7 +58,6 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     stage_id: 3,
     stage_item_id: 4,
     challonge_id: null,
-    challonge_slug: null,
     status: "completed",
     closeness: null,
     has_logs: false,

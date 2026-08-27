@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from shared.division_grid import DEFAULT_GRID, DivisionGrid
-from shared.services.division_grid_resolution import resolve_tournament_division
+from shared.services.division_grid.resolution import resolve_tournament_division
 
 
 def resolve_rank_from_division(

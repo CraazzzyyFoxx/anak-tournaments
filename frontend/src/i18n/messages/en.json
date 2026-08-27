@@ -267,7 +267,13 @@
       "add": "Add to favorites",
       "remove": "Remove from favorites"
     },
-    "registration": "Team registration"
+    "registration": "Team registration",
+    "connection": {
+      "idle": "Realtime idle",
+      "connecting": "Connecting",
+      "connected": "Live connection",
+      "reconnecting": "Reconnecting"
+    }
   },
   "registration": {
     "wizard": {
@@ -3026,6 +3032,7 @@
       "mapsCount": "{count, plural, one {# map} other {# maps}}",
       "win": "W",
       "loss": "L",
+      "draw": "D",
       "career": {
         "title": "Career",
         "tournamentsWon": "Tournaments won",
@@ -3142,6 +3149,7 @@
         "mapResultsAggregate": "Aggregate result · map order not recorded",
         "mapWon": "Map won",
         "mapLost": "Map lost",
+        "mapDraw": "Map drawn",
         "stat": {
           "kda": "KDA",
           "mvpScore": "MVP score",
@@ -3749,6 +3757,10 @@
         "title": "Balancer",
         "desc": "Balance teams by player roles and ratings"
       },
+      "mixes": {
+        "title": "Mixes",
+        "desc": "Pickup lobbies balanced from your workspace roster"
+      },
       "admin": {
         "title": "Admin",
         "desc": "Manage tournaments, access and operations"
@@ -4165,12 +4177,6 @@
     "progress": "Progress",
     "onClock": "On the clock",
     "onClockLabel": "On the clock",
-    "connection": {
-      "idle": "Realtime idle",
-      "connecting": "Connecting",
-      "connected": "Live connection",
-      "reconnecting": "Reconnecting"
-    },
     "anonymousViewers": "Viewers: {count}",
     "onlineCount": "{n} of {total} online",
     "you": "You",
@@ -4366,7 +4372,7 @@
         },
         "cookies": {
           "title": "Cookies",
-          "body": "{siteName} sets a session cookie to keep you signed in, a cookie recording your active workspace so a custom-domain workspace shows the right branding, and a locale cookie for your language preference. These functional cookies are required for the site to work. Google Analytics cookies, which measure how pages are used, are optional: they load only after you accept them in the cookie notice, and declining keeps them off. You can change that choice at any time from \"Cookie settings\" in the site footer; withdrawing it also deletes the analytics cookies already stored. No advertising cookies are set."
+          "body": "{siteName} sets a session cookie to keep you signed in, a cookie recording your active workspace so a custom-domain workspace shows the right branding, and a locale cookie for your language preference. These functional cookies are required for the site to work. Google Analytics and Yandex Metrica cookies, which measure how pages are used, are optional: they load only after you accept them in the cookie notice, and declining keeps them off. You can change that choice at any time from \"Cookie settings\" in the site footer; withdrawing it also deletes the analytics cookies already stored. No advertising cookies are set."
         },
         "sharing": {
           "title": "Who can see your information",
@@ -4967,7 +4973,9 @@
       "default": "built-in Overwatch 5v5 default"
     },
     "overriding": "This tournament pins its own shape instead of following the workspace.",
+    "overridingMix": "This mix pins its own shape instead of following the workspace.",
     "willInherit": "Saving hands this tournament back to the workspace shape.",
+    "willInheritMix": "Saving hands this mix back to the workspace shape.",
     "locked": "A draft session has already been created, so the roster shape is locked. Complete or cancel it to change the shape."
   },
   "scrims": {

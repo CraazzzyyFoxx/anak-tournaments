@@ -30,22 +30,11 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 admin_misc = importlib.import_module("src.rpc.admin_misc")
 helpers = importlib.import_module("src.rpc._helpers")
 pagination = importlib.import_module("shared.core.pagination")
-match_schemas = importlib.import_module("src.schemas.admin.matches")
-reports_schemas = importlib.import_module("src.schemas.admin.encounter_reports")
+schemas = importlib.import_module("src.schemas")
 log_processing = importlib.import_module("shared.models.ingestion.log_processing")
 
 CREATED_AT = datetime(2026, 5, 1, 12, 30, tzinfo=UTC)
@@ -68,7 +57,7 @@ IDENTITY = {
 }
 
 
-def _match_row(**kw) -> match_schemas.AdminMatchRow:
+def _match_row(**kw) -> schemas.AdminMatchRow:
     base = {
         "id": 100,
         "encounter_id": 10,
@@ -98,11 +87,11 @@ def _match_row(**kw) -> match_schemas.AdminMatchRow:
             "finished_at": None,
         },
     }
-    return match_schemas.AdminMatchRow(**{**base, **kw})
+    return schemas.AdminMatchRow(**{**base, **kw})
 
 
-def _match_detail() -> match_schemas.AdminMatchDetail:
-    return match_schemas.AdminMatchDetail(
+def _match_detail() -> schemas.AdminMatchDetail:
+    return schemas.AdminMatchDetail(
         **_match_row().model_dump(),
         rounds=3,
         statistics_count=18,
@@ -191,7 +180,7 @@ class AdminRpcEnvelopesAreJson(IsolatedAsyncioTestCase):
             "rpc.tournament.admin_matches_list",
             {"identity": IDENTITY, "query": {"workspace_id": ["1"]}},
             **{
-                "matches_service.list_admin_matches": pagination.Paginated[match_schemas.AdminMatchRow](
+                "matches_service.list_admin_matches": pagination.Paginated[schemas.AdminMatchRow](
                     page=1, per_page=10, total=1, results=[_match_row()]
                 )
             },
@@ -215,7 +204,7 @@ class AdminRpcEnvelopesAreJson(IsolatedAsyncioTestCase):
             {"identity": IDENTITY, "query": {"workspace_id": ["1"]}},
             **{
                 "reports_service.encounter_reports_service.list_encounter_reports": pagination.Paginated[
-                    reports_schemas.EncounterReportsRow
+                    schemas.EncounterReportsRow
                 ](
                     page=1, per_page=10, total=0, results=[]
                 )
@@ -229,7 +218,7 @@ class AdminRpcEnvelopesAreJson(IsolatedAsyncioTestCase):
             "rpc.tournament.admin_encounter_reports_stats",
             {"identity": IDENTITY, "query": {"workspace_id": ["1"]}},
             **{
-                "reports_service.encounter_reports_service.get_reports_stats": reports_schemas.EncounterReportsStats(
+                "reports_service.encounter_reports_service.get_reports_stats": schemas.EncounterReportsStats(
                     by_result_status={"disputed": 2}, mismatch_count=2, awaiting_second_count=1
                 )
             },

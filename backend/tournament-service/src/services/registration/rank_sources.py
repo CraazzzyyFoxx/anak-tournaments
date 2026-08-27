@@ -28,13 +28,13 @@ from shared.repository import (
     SocialAccountRepository,
     TournamentRepository,
 )
-from shared.services.division_grid_normalization import (
+from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
     build_division_grid_normalizer,
 )
 from src import models
-from src.services.registration.utils import normalize_battle_tag_key
+from src.domain.registration.utils import normalize_battle_tag_key
 
 
 @dataclass

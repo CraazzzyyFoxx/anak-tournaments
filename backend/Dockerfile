@@ -38,12 +38,16 @@ ARG APP_PATH
 # System build deps are installed BEFORE copying ./shared so that frequent
 # changes to shared source do not invalidate these layers and force a costly
 # re-download/re-install of the Rust/OpenMP toolchain.
+# ``mix-balancer`` (vendored under balancer-service/native/mix_balancer,
+# see its README for provenance) is built via scikit-build-core during
+# ``uv sync`` below -- needs ``cmake``/``ninja-build`` to configure (no
+# ``git``: it's a local path dependency, not fetched).
 RUN if [ "${APP_PATH}" = "balancer" ]; then \
         set -eux; \
         sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
         for attempt in 1 2 3; do \
             if apt-get update -o Acquire::Retries=3 \
-                && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Acquire::Retries=3 build-essential cargo rustc; then \
+                && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Acquire::Retries=3 build-essential cargo rustc cmake ninja-build; then \
                 break; \
             fi; \
             if [ "${attempt}" -eq 3 ]; then \
@@ -80,6 +84,14 @@ RUN if [ "${APP_PATH}" = "analytics" ]; then \
 # `shared` is a workspace member; its source is required to build its wheel during `uv sync`.
 COPY ./shared /app/shared
 
+# ``mix-balancer`` is a local path dependency (balancer-service/pyproject.toml's
+# [tool.uv.sources]) -- unlike registry/git dependencies, uv needs its actual
+# source present to resolve it, so it must land before the first `uv sync`
+# below runs (that step only has pyproject.toml files copied so far, see
+# line ~26). Copied unconditionally: it's a few small files, and every other
+# ``${APP_PATH}`` build simply never references this package.
+COPY ./balancer-service/native/mix_balancer /app/balancer-service/native/mix_balancer
+
 # Install dependencies for the target service only
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -105,19 +117,20 @@ COPY ./${APP_PATH}-service /app/${APP_PATH}-service
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --package ${APP_PATH}-service
 
-# Build the moo_core Rust extension. Cargo's crate registry/git caches and the
-# build target dir are persisted across builds via BuildKit cache mounts, so
-# crates are downloaded once and compilation is incremental. maturin is already
-# installed into the venv by `uv sync` (it is a Linux dependency of the service),
-# so call it directly instead of bootstrapping a throwaway env via `uvx`.
+# Build the moo_core Rust extension (native/tournament_balancer). Cargo's
+# crate registry/git caches and the build target dir are persisted across
+# builds via BuildKit cache mounts, so crates are downloaded once and
+# compilation is incremental. maturin is already installed into the venv by
+# `uv sync` (it is a Linux dependency of the service), so call it directly
+# instead of bootstrapping a throwaway env via `uvx`.
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
-    --mount=type=cache,target=/app/balancer-service/native/moo_core/target \
+    --mount=type=cache,target=/app/balancer-service/native/tournament_balancer/target \
     if [ "${APP_PATH}" = "balancer" ]; then \
         maturin develop \
             --release \
             --features extension-module \
-            --manifest-path /app/balancer-service/native/moo_core/Cargo.toml; \
+            --manifest-path /app/balancer-service/native/tournament_balancer/Cargo.toml; \
     fi
 
 # Set working directory to the service

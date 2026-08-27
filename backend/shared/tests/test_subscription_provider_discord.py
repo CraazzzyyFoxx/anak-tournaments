@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from unittest import IsolatedAsyncioTestCase
 
-from shared.subscriptions import SubscriptionSource, SubscriptionState
-from shared.subscriptions.providers.discord_role import (
+from shared.services.subscriptions import SubscriptionSource, SubscriptionState
+from shared.services.subscriptions.providers.discord_role import (
     DiscordForbidden,
     DiscordNotConfigured,
     DiscordRoleResolver,
@@ -258,7 +258,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
     async def test_resolve_many_uses_rpc_when_available(self):
         from unittest.mock import AsyncMock, patch
 
-        from shared.services.subscription_strategies import BoostyDiscordStrategy
+        from shared.services.subscriptions.strategies import BoostyDiscordStrategy
 
         fake_broker = AsyncMock()
         fake_broker.request.return_value = _rpc_reply(
@@ -275,7 +275,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         strategy = BoostyDiscordStrategy(session, bot_token="token", broker=fake_broker)
 
         with patch(
-            "shared.services.subscription_strategies.load_provider_user_ids",
+            "shared.services.subscriptions.strategies.load_provider_user_ids",
             AsyncMock(return_value={1: ["discord-id-1"], 2: ["discord-id-2"]}),
         ):
             verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1, 2])
@@ -289,7 +289,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         """A user with no Discord link is never asked about over RPC."""
         from unittest.mock import AsyncMock, patch
 
-        from shared.services.subscription_strategies import BoostyDiscordStrategy
+        from shared.services.subscriptions.strategies import BoostyDiscordStrategy
 
         fake_broker = AsyncMock()
         fake_broker.request.return_value = _rpc_reply(
@@ -298,7 +298,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
 
         strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
         with patch(
-            "shared.services.subscription_strategies.load_provider_user_ids",
+            "shared.services.subscriptions.strategies.load_provider_user_ids",
             AsyncMock(return_value={1: ["discord-id-1"]}),
         ):
             verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1, 7])
@@ -312,7 +312,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
     async def test_resolve_many_falls_back_to_http_when_rpc_fails(self):
         from unittest.mock import AsyncMock, patch
 
-        from shared.services.subscription_strategies import BoostyDiscordStrategy
+        from shared.services.subscriptions.strategies import BoostyDiscordStrategy
 
         fake_broker = AsyncMock()
         fake_broker.request.side_effect = RuntimeError("Broker error")
@@ -325,11 +325,11 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "shared.services.subscription_strategies.load_provider_user_ids",
+                "shared.services.subscriptions.strategies.load_provider_user_ids",
                 AsyncMock(return_value={1: ["discord-id-1"]}),
             ),
             patch(
-                "shared.services.subscription_strategies.DiscordRoleResolver",
+                "shared.services.subscriptions.strategies.DiscordRoleResolver",
                 return_value=dummy_resolver,
             ),
         ):
@@ -342,7 +342,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         """``guild_not_found`` from discord-service must not be read as a verdict."""
         from unittest.mock import AsyncMock, patch
 
-        from shared.services.subscription_strategies import BoostyDiscordStrategy
+        from shared.services.subscriptions.strategies import BoostyDiscordStrategy
 
         fake_broker = AsyncMock()
         fake_broker.request.return_value = _rpc_reply({"error": "guild_not_found", "guild_role_ids": [], "members": {}})
@@ -353,11 +353,11 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "shared.services.subscription_strategies.load_provider_user_ids",
+                "shared.services.subscriptions.strategies.load_provider_user_ids",
                 AsyncMock(return_value={1: ["discord-id-1"]}),
             ),
             patch(
-                "shared.services.subscription_strategies.DiscordRoleResolver",
+                "shared.services.subscriptions.strategies.DiscordRoleResolver",
                 return_value=dummy_resolver,
             ),
         ):
@@ -373,13 +373,13 @@ class TestSeveralLinkedDiscordAccounts(IsolatedAsyncioTestCase):
     async def _resolve(self, members: dict, account_ids: list[str], guild_role_ids=("100", "200")):
         from unittest.mock import AsyncMock, patch
 
-        from shared.services.subscription_strategies import BoostyDiscordStrategy
+        from shared.services.subscriptions.strategies import BoostyDiscordStrategy
 
         fake_broker = AsyncMock()
         fake_broker.request.return_value = _rpc_reply({"guild_role_ids": list(guild_role_ids), "members": members})
         strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
         with patch(
-            "shared.services.subscription_strategies.load_provider_user_ids",
+            "shared.services.subscriptions.strategies.load_provider_user_ids",
             AsyncMock(return_value={1: account_ids}),
         ):
             verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1])

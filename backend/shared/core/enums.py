@@ -143,7 +143,7 @@ class RankCollectionSource(StrEnum):
 class SubscriptionCheckState(StrEnum):
     """Outcome of one persisted subscription check.
 
-    The first three mirror ``shared.subscriptions.SubscriptionState`` (the
+    The first three mirror ``shared.services.subscriptions.SubscriptionState`` (the
     tri-state admission contract). ``error`` exists only in the check log: the
     resolver deliberately answers ``unknown`` and persists nothing when a
     provider strategy throws, so without a distinct log value an outage would be
@@ -572,6 +572,7 @@ __all__ = [
     "RankCollectionSource",
     "SubscriptionCheckState",
     "SubscriptionCollectionSource",
+    "SubscriptionEnforcementStage",
     "LogEventType",
     "LogStatsName",
     "StatDirection",
@@ -590,11 +591,16 @@ __all__ = [
     "StageItemType",
     "StageItemInputType",
     "EncounterResultStatus",
+    "EncounterResultAuditAction",
     "MapPoolEntryStatus",
     "MapPickSide",
     "MapVetoSessionStatus",
     "VetoSeedSource",
     "FirstPickRule",
+    "MapVetoMode",
+    "FirstBanRotation",
+    "PickBanKind",
+    "PickBanNoRepeatScope",
     "EncounterStatus",
     "EncounterLinkRole",
     "EncounterLinkSlot",

@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toBlob } from "html-to-image";
 import { AlertCircle, Copy, Download, Images, Loader2 } from "lucide-react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -15,6 +14,12 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { resolveDivisionFromRank, getDivisionIconSrc, getDivisionLabel } from "@/lib/division-grid";
+import {
+  capturePngBlob,
+  copyImageBlob,
+  waitForImages,
+  waitForLayout
+} from "@/lib/image-capture";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { formatSubRoleLabel } from "@/utils/player";
@@ -30,14 +35,6 @@ import {
 
 const TEAMS_PER_IMAGE = 10;
 const EXPORT_WIDTH = 1920;
-/**
- * Canvas flood colour for the rasterised PNG. `html-to-image` hands this
- * straight to the canvas, so it must be a literal colour — a `var()` reference
- * has no element to resolve against there. Mirrors `--aqt-bg`; the captured DOM
- * itself uses the token, which resolves because the clone inherits computed
- * styles from the live document.
- */
-const EXPORT_BACKGROUND = "#090a10";
 
 type BalanceImageExportDialogProps = {
   open: boolean;
@@ -510,59 +507,5 @@ function ExportDivisionIcon({ divisionGrid, rank }: Readonly<{ divisionGrid: Div
         unoptimized
       />
     </div>
-  );
-}
-
-async function capturePngBlob(node: HTMLDivElement): Promise<Blob> {
-  const blob = await toBlob(node, {
-    cacheBust: true,
-    backgroundColor: EXPORT_BACKGROUND,
-    pixelRatio: 2
-  });
-
-  if (!blob) {
-    throw new Error("Could not create PNG blob");
-  }
-
-  return blob;
-}
-
-async function copyImageBlob(blob: Blob): Promise<void> {
-  if (
-    !navigator.clipboard ||
-    typeof navigator.clipboard.write !== "function" ||
-    typeof ClipboardItem === "undefined"
-  ) {
-    throw new Error("Clipboard image copy is not supported");
-  }
-
-  await navigator.clipboard.write([
-    new ClipboardItem({
-      "image/png": blob
-    })
-  ]);
-}
-
-async function waitForLayout(): Promise<void> {
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-}
-
-async function waitForImages(node: HTMLElement): Promise<void> {
-  const imageElements = Array.from(node.querySelectorAll("img"));
-
-  await Promise.all(
-    imageElements.map(
-      (image) =>
-        new Promise<void>((resolve) => {
-          if (image.complete) {
-            resolve();
-            return;
-          }
-
-          image.addEventListener("load", () => resolve(), { once: true });
-          image.addEventListener("error", () => resolve(), { once: true });
-        })
-    )
   );
 }

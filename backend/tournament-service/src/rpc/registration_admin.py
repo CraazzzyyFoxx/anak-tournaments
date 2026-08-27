@@ -57,10 +57,10 @@ from shared.services.rank_snapshots import (
     fetch_latest_ow_ranks_by_account,
     normalize_ow_ranks_to_grid,
 )
-from src import models
+from src import models, schemas
 from src.core import auth
+from src.domain.registration.ow_rank_selection import select_main_account_ow_ranks
 from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _run
-from src.schemas.admin import balancer as admin_schemas
 from src.schemas.registration import (
     RegistrationFormUpsert,
     SubscriptionProviderConfigUpsert,
@@ -73,13 +73,13 @@ from src.services.registration import export as reg_export
 from src.services.registration import lifecycle, rank_autofill, rank_sources, status_catalog, subscription_config
 from src.services.registration import service as reg_svc
 from src.services.registration import teams as team_service
-from src.services.registration.ow_rank_selection import select_main_account_ow_ranks
 from src.services.registration.realtime import emit_balancer_registrations_changed
 from src.services.registration.serializers import (
     serialize_registration,
     serialize_registration_form,
     serialize_status,
 )
+from src.services.registration import rank_resolution
 from src.services.registration.windows import windows_service
 
 # --- helpers -----------------------------------------------------------------
@@ -173,7 +173,17 @@ async def _registration_response(session: Any, ctx: _Ctx, registration: Any) -> 
         workspace_id=ctx.ws_id,
         actor_user_id=ctx.user.id,
     )
-    return _dump(serialize_registration(registration, workspace_id=ctx.ws_id, status_meta_map=status_meta_map))
+    resolved = await rank_resolution.resolve_registration_ranks(
+        session, [registration], workspace_id=ctx.ws_id
+    )
+    return _dump(
+        serialize_registration(
+            registration,
+            workspace_id=ctx.ws_id,
+            status_meta_map=status_meta_map,
+            resolved_ranks=resolved.get(registration.id),
+        )
+    )
 
 
 async def _stage_transition(
@@ -416,6 +426,9 @@ def register(broker: Any, logger: Any) -> None:
                 if registration.workspace_member is not None
             }
             ow_ranks = normalize_ow_ranks_to_grid(raw_ow_ranks_by_registration, grid)
+            resolved_by_reg = await rank_resolution.resolve_registration_ranks(
+                session, registrations, workspace_id=ctx.ws_id, grid=grid
+            )
             # Same resolution the public participants list uses, so the admin
             # Subscription / Profile columns agree with what the player sees.
             form = await reg_svc.registration_service.get_registration_form(session, ctx.id)
@@ -435,6 +448,7 @@ def register(broker: Any, logger: Any) -> None:
                             if registration.id in subscription_reads
                             else None
                         ),
+                        resolved_ranks=resolved_by_reg.get(registration.id),
                     )
                 )
                 for registration in registrations
@@ -448,7 +462,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _reg_create_manual(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = await _tournament_ctx(session, data, "create")
-            body = admin_schemas.BalancerRegistrationCreateRequest.model_validate(_payload(data))
+            body = schemas.BalancerRegistrationCreateRequest.model_validate(_payload(data))
 
             await reg_common._common_service.ensure_tournament_exists(session, ctx.id)
             registration = await lifecycle.lifecycle_service.create_manual_registration(
@@ -502,7 +516,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _reg_update(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = await _registration_ctx(session, data, "update")
-            body = admin_schemas.BalancerRegistrationUpdateRequest.model_validate(_payload(data))
+            body = schemas.BalancerRegistrationUpdateRequest.model_validate(_payload(data))
             # Staged before the service so the row rides the transaction it
             # commits. A save that changes nothing writes no row: the editor
             # round-trips its whole form, and a journal of no-ops is a journal
@@ -540,6 +554,8 @@ def register(broker: Any, logger: Any) -> None:
                 roles=[role.model_dump() for role in body.roles] if body.roles is not None else None,
                 auth_user_id=body.auth_user_id,
                 exclude_reason=body.exclude_reason,
+                pin=body.pin,
+                clear_pin=body.clear_pin,
             )
             return await _registration_response(session, ctx, registration)
 
@@ -688,7 +704,7 @@ def register(broker: Any, logger: Any) -> None:
             )
             if approved:
                 await emit_balancer_registrations_changed(ctx.id, actor_user_id=ctx.user.id)
-            return _dump(admin_schemas.BulkApproveResponse(approved=approved, skipped=skipped))
+            return _dump(schemas.BulkApproveResponse(approved=approved, skipped=skipped))
 
         return await _run(logger, op)
 
@@ -698,7 +714,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _reg_set_balancer_status(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = await _registration_ctx(session, data, "update")
-            body = admin_schemas.SetBalancerStatusRequest.model_validate(_payload(data))
+            body = schemas.SetBalancerStatusRequest.model_validate(_payload(data))
             await _stage_transition(
                 session,
                 data,
@@ -740,7 +756,7 @@ def register(broker: Any, logger: Any) -> None:
             )
             if updated:
                 await emit_balancer_registrations_changed(ctx.id, actor_user_id=ctx.user.id)
-            return _dump(admin_schemas.BulkBalancerStatusResponse(updated=updated, skipped=skipped))
+            return _dump(schemas.BulkBalancerStatusResponse(updated=updated, skipped=skipped))
 
         return await _run(logger, op)
 
@@ -750,7 +766,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _reg_bulk_set_balancer_status(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = await _tournament_ctx(session, data, "update")
-            body = admin_schemas.BulkSetBalancerStatusRequest.model_validate(_payload(data))
+            body = schemas.BulkSetBalancerStatusRequest.model_validate(_payload(data))
             await _stage_bulk(
                 session,
                 data,
@@ -771,7 +787,7 @@ def register(broker: Any, logger: Any) -> None:
             )
             if updated:
                 await emit_balancer_registrations_changed(ctx.id, actor_user_id=ctx.user.id)
-            return _dump(admin_schemas.BulkBalancerStatusResponse(updated=updated, skipped=skipped))
+            return _dump(schemas.BulkBalancerStatusResponse(updated=updated, skipped=skipped))
 
         return await _run(logger, op)
 
@@ -781,7 +797,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _reg_rank_autofill_preview(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = await _tournament_ctx(session, data, "read")
-            body = admin_schemas.BalancerRegistrationRankAutofillRequest.model_validate(_payload(data))
+            body = schemas.BalancerRegistrationRankAutofillRequest.model_validate(_payload(data))
             result = await rank_autofill.rank_autofill_service.autofill_registration_ranks_from_parsed(
                 session,
                 ctx.id,
@@ -793,7 +809,7 @@ def register(broker: Any, logger: Any) -> None:
                 stages=body.stages,
                 apply=False,
             )
-            return _dump(admin_schemas.BalancerRegistrationRankAutofillResponse(**result))
+            return _dump(schemas.BalancerRegistrationRankAutofillResponse(**result))
 
         return await _run(logger, op)
 
@@ -803,7 +819,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _reg_rank_autofill_apply(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = await _tournament_ctx(session, data, "update")
-            body = admin_schemas.BalancerRegistrationRankAutofillRequest.model_validate(_payload(data))
+            body = schemas.BalancerRegistrationRankAutofillRequest.model_validate(_payload(data))
             # Rank autofill rewrites the numbers the balancer sorts on, across as
             # many registrations as the request names, so the parameters it ran
             # with are the audit. `registration_ids: None` means every
@@ -833,7 +849,7 @@ def register(broker: Any, logger: Any) -> None:
                 apply=True,
             )
             await emit_balancer_registrations_changed(ctx.id, actor_user_id=ctx.user.id)
-            return _dump(admin_schemas.BalancerRegistrationRankAutofillResponse(**result))
+            return _dump(schemas.BalancerRegistrationRankAutofillResponse(**result))
 
         return await _run(logger, op)
 
@@ -853,7 +869,7 @@ def register(broker: Any, logger: Any) -> None:
                 user_id=user_id,
                 workspace_id=workspace_id,
             )
-            return _dump(admin_schemas.BalancerRegistrationRankHistoryResponse(entries=entries))
+            return _dump(schemas.BalancerRegistrationRankHistoryResponse(entries=entries))
 
         return await _run(logger, op)
 
@@ -864,7 +880,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             ctx = await _tournament_ctx(session, data, "create")
             result = await reg_export.export_service.export_registrations_to_users(session, ctx.id)
-            return _dump(admin_schemas.RegistrationUserExportResponse(**result))
+            return _dump(schemas.RegistrationUserExportResponse(**result))
 
         return await _run(logger, op)
 
@@ -874,7 +890,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _reg_check_in(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = await _registration_ctx(session, data, "update")
-            body = admin_schemas.CheckInRequest.model_validate(_payload(data))
+            body = schemas.CheckInRequest.model_validate(_payload(data))
             await _stage_transition(
                 session,
                 data,
@@ -927,7 +943,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _regstatus_create(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = _workspace_ctx(data, "update")
-            body = admin_schemas.BalancerRegistrationStatusCreate.model_validate(_payload(data))
+            body = schemas.BalancerRegistrationStatusCreate.model_validate(_payload(data))
             status_row = await status_catalog.status_catalog_service.create_custom_status(
                 session,
                 workspace_id=ctx.ws_id,
@@ -950,7 +966,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             ctx = _workspace_ctx(data, "update")
             status_id = _path_int(data, "status_id")
-            body = admin_schemas.BalancerRegistrationStatusUpdate.model_validate(_payload(data))
+            body = schemas.BalancerRegistrationStatusUpdate.model_validate(_payload(data))
             status_row = await status_catalog.status_catalog_service.update_custom_status(
                 session,
                 workspace_id=ctx.ws_id,
@@ -990,7 +1006,7 @@ def register(broker: Any, logger: Any) -> None:
             ctx = _workspace_ctx(data, "update")
             scope = _require_scope(data)
             slug = _require_slug(data)
-            body = admin_schemas.BalancerRegistrationStatusUpdate.model_validate(_payload(data))
+            body = schemas.BalancerRegistrationStatusUpdate.model_validate(_payload(data))
             status_row = await status_catalog.status_catalog_service.upsert_builtin_override(
                 session,
                 workspace_id=ctx.ws_id,

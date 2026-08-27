@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plug, Trash2 } from "lucide-react";
+import { History, Pencil, Plug, Trash2 } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { Badge } from "@/components/ui/badge";
@@ -105,6 +105,13 @@ export function TournamentIntegrationsPanel({
     }
   });
 
+  const backfillMutation = useMutation({
+    mutationFn: () => adminService.backfillDiscordChannel(tournamentId),
+    onSuccess: () => {
+      notify.success("Backfill started — scanning channel history for match logs");
+    }
+  });
+
   const openDialog = () => {
     const next: DiscordChannelInput = {
       channel_id: discordChannel?.channel_id ?? "",
@@ -186,6 +193,19 @@ export function TournamentIntegrationsPanel({
                   <Pencil className="mr-2 size-4" aria-hidden />
                   {discordChannel ? "Edit channel" : "Add channel"}
                 </Button>
+                {discordChannel ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    title="Scans the last 500 messages in the channel for match-log attachments and queues them for parsing. Useful right after connecting a channel that already has logs in it."
+                    disabled={backfillMutation.isPending}
+                    onClick={() => backfillMutation.mutate()}
+                  >
+                    <History className="mr-2 size-4" aria-hidden />
+                    {backfillMutation.isPending ? "Importing…" : "Import channel history"}
+                  </Button>
+                ) : null}
                 {discordChannel ? (
                   <Button
                     type="button"

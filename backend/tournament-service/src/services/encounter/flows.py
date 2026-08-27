@@ -1,17 +1,14 @@
 import typing
 
-import sqlalchemy as sa
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.repository import StageItemRepository, TournamentGroupRepository
 from shared.services.bracket.advancement import SlotSource, resolve_slot_sources
 from shared.services.challonge_refs import (
     ChallongeRef,
     resolve_encounter_challonge,
     resolve_tournament_challonge,
 )
-from shared.services.stage_refs import StageRefs, resolve_stage_refs_from_group
 from src import models, schemas
 from src.core import config, enums, errors, pagination, utils
 from src.services.encounter.service import EncounterService, encounter_service
@@ -88,109 +85,11 @@ class EncounterFlowsService:
         maps: MapFlowsService = map_flows_service,
         teams: TeamFlowsService = team_flows_service,
         tournaments: TournamentFlowsService = tournament_flows_service,
-        groups: TournamentGroupRepository = TournamentGroupRepository(),
-        stage_items: StageItemRepository = StageItemRepository(),
     ) -> None:
         self.encounters = encounters
         self.maps = maps
         self.teams = teams
         self.tournaments = tournaments
-        self.groups = groups
-        self.stage_items = stage_items
-
-
-    async def _prefetch_stage_refs(
-        self,
-        session: AsyncSession,
-        encounters: typing.Sequence[models.Encounter],
-    ) -> dict[tuple[int, int], StageRefs]:
-        """Batch counterpart of ``resolve_stage_refs_from_group`` for list pages.
-
-        ``to_pydantic`` self-heals legacy encounters (``stage_id`` NULL but
-        ``tournament_group_id`` set) via ``resolve_stage_refs_from_group``, which
-        fires queries PER encounter. List endpoints instead resolve every distinct
-        ``(tournament_id, tournament_group_id)`` pair up-front here (a constant
-        number of queries per page) and pass the mapping into ``to_pydantic``.
-
-        Replicates the resolution order of ``resolve_stage_refs_from_group`` for
-        the ``stage_id is None`` path exactly: group.stage_id with a stage item
-        name-matched to the group name (else the first item by order/id), falling
-        back to the tournament's first stage and its first item.
-        """
-        pairs = {
-            (encounter.tournament_id, encounter.tournament_group_id)
-            for encounter in encounters
-            if encounter.stage_id is None and encounter.tournament_group_id is not None
-        }
-        if not pairs:
-            return {}
-
-        groups = await self.groups.bulk_get(session, list({group_id for _, group_id in pairs}))
-        groups_by_id = {group.id: group for group in groups}
-
-        # Case-4 fallback tournaments: group is missing or has no stage_id.
-        fallback_tournament_ids = {
-            tournament_id
-            for tournament_id, group_id in pairs
-            if group_id not in groups_by_id or groups_by_id[group_id].stage_id is None
-        }
-        first_stage_by_tournament: dict[int, int] = {}
-        if fallback_tournament_ids:
-            # Column-only projection ordered by (tournament, stage order, id) so the
-            # first row per tournament IS its first stage: an analytical shape, not
-            # CRUD, so it stays here rather than moving to StageRepository.
-            stage_rows = await session.execute(
-                sa.select(models.Stage.tournament_id, models.Stage.id)
-                .where(models.Stage.tournament_id.in_(fallback_tournament_ids))
-                .order_by(models.Stage.tournament_id, models.Stage.order.asc(), models.Stage.id.asc())
-            )
-            for tournament_id, stage_id in stage_rows.all():
-                first_stage_by_tournament.setdefault(tournament_id, stage_id)
-
-        stage_ids = {group.stage_id for group in groups_by_id.values() if group.stage_id is not None}
-        stage_ids.update(first_stage_by_tournament.values())
-        items_by_stage: dict[int, list[models.StageItem]] = {}
-        if stage_ids:
-            # ``StageItemRepository.list_by_stage`` is single-stage; batching over
-            # every stage in the page is the whole point of this prefetch, so the
-            # multi-stage ordered fetch is built from the repository's ``select()``
-            # escape hatch instead of N calls.
-            items_result = await session.execute(
-                self.stage_items.select()
-                .where(models.StageItem.stage_id.in_(stage_ids))
-                .order_by(models.StageItem.order.asc(), models.StageItem.id.asc())
-            )
-            for item in items_result.scalars().all():
-                items_by_stage.setdefault(item.stage_id, []).append(item)
-
-        def pick_default_item(stage_id: int, hint_name: str | None = None) -> int | None:
-            items = items_by_stage.get(stage_id)
-            if not items:
-                return None
-            if hint_name:
-                normalized = hint_name.strip().lower()
-                for item in items:
-                    if item.name.strip().lower() == normalized:
-                        return item.id
-            return items[0].id
-
-        refs_by_pair: dict[tuple[int, int], StageRefs] = {}
-        for tournament_id, group_id in pairs:
-            group = groups_by_id.get(group_id)
-            if group is not None and group.stage_id is not None:
-                refs_by_pair[(tournament_id, group_id)] = StageRefs(
-                    stage_id=group.stage_id,
-                    stage_item_id=pick_default_item(group.stage_id, hint_name=group.name),
-                    tournament_group_id=group_id,
-                )
-                continue
-            first_stage_id = first_stage_by_tournament.get(tournament_id)
-            refs_by_pair[(tournament_id, group_id)] = StageRefs(
-                stage_id=first_stage_id,
-                stage_item_id=pick_default_item(first_stage_id) if first_stage_id is not None else None,
-                tournament_group_id=group_id,
-            )
-        return refs_by_pair
 
     async def to_pydantic(
         self,
@@ -198,7 +97,6 @@ class EncounterFlowsService:
         encounter: models.Encounter,
         entities: list[str],
         *,
-        prefetched_stage_refs: typing.Mapping[tuple[int, int], StageRefs] | None = None,
         challonge_match_ids: typing.Mapping[int, int] | None = None,
         tournament_challonge_refs: typing.Mapping[int, ChallongeRef] | None = None,
         slot_sources: typing.Mapping[int, list[SlotSource]] | None = None,
@@ -210,10 +108,6 @@ class EncounterFlowsService:
             session (AsyncSession): The SQLAlchemy async session.
             encounter (models.Encounter): The Encounter model instance to convert.
             entities (list[str]): A list of related entities to include (e.g., ["tournament", "teams"]).
-            prefetched_stage_refs: Optional mapping of (tournament_id, tournament_group_id)
-                to already-resolved StageRefs (see ``_prefetch_stage_refs``). List call
-                sites pass it to avoid a per-encounter resolver query; single-item call
-                sites can omit it and fall back to the per-encounter resolver.
             challonge_match_ids: Optional prefetched ``encounter_id -> challonge_match_id``
                 map DERIVED from ``challonge_match_mapping`` (see
                 ``shared.services.challonge_refs``). The KEPT ``challonge_id`` response
@@ -237,27 +131,6 @@ class EncounterFlowsService:
         away_team: schemas.TeamRead | None = None
         matches_read: list[schemas.MatchRead] = []
 
-        # Self-heal для legacy-encounters: если stage_id/stage_item_id NULL, но есть
-        # tournament_group_id — резолвим из TournamentGroup.stage_id. Страхует
-        # публичную сетку от ситуаций, когда backfill-миграция ещё не применена.
-        # ВАЖНО: используем локальные значения, НЕ мутируем encounter (не хочется
-        # приводить к implicit write-back в session).
-        effective_stage_id = encounter.stage_id
-        effective_stage_item_id = encounter.stage_item_id
-        if effective_stage_id is None and encounter.tournament_group_id is not None:
-            refs = (
-                prefetched_stage_refs.get((encounter.tournament_id, encounter.tournament_group_id))
-                if prefetched_stage_refs is not None
-                else None
-            )
-            if refs is None:
-                refs = await resolve_stage_refs_from_group(
-                    session,
-                    tournament_id=encounter.tournament_id,
-                    tournament_group_id=encounter.tournament_group_id,
-                )
-            effective_stage_id = refs.stage_id
-            effective_stage_item_id = refs.stage_item_id
 
         if "stage" in entities and encounter.stage is not None:
             # Nested stage challonge is derived at the top-level tournament read, not
@@ -301,10 +174,6 @@ class EncounterFlowsService:
             ]
 
         encounter_dict = encounter.to_dict()
-        # Override with resolved refs, because schema source of truth for public API
-        # is the effective (stage_id, stage_item_id) pair even if DB still has NULL.
-        encounter_dict["stage_id"] = effective_stage_id
-        encounter_dict["stage_item_id"] = effective_stage_item_id
         # ``challonge_id`` (a bracket key) is DERIVED from challonge_match_mapping, not
         # read from the deprecated ``encounter.challonge_id`` column. Always set it so
         # the value survives the column being dropped; ``None`` when not prefetched.
@@ -447,7 +316,6 @@ class EncounterFlowsService:
             workspace_id=workspace_id,
             viewer_auth_user_id=viewer_auth_user_id,
         )
-        prefetched_stage_refs = await self._prefetch_stage_refs(session, encounters)
         challonge_match_ids = await resolve_encounter_challonge(session, [encounter.id for encounter in encounters])
         tournament_challonge_refs = await resolve_tournament_challonge(
             session, [encounter.tournament_id for encounter in encounters]
@@ -462,7 +330,6 @@ class EncounterFlowsService:
                     session,
                     encounter,
                     params.entities,
-                    prefetched_stage_refs=prefetched_stage_refs,
                     challonge_match_ids=challonge_match_ids,
                     tournament_challonge_refs=tournament_challonge_refs,
                     slot_sources=slot_sources,
@@ -557,11 +424,7 @@ class EncounterFlowsService:
             for index in range(10)
         ]
 
-        # One batched stage-ref resolution for all featured blocks instead of a
-        # per-encounter resolver query inside to_pydantic (legacy encounters with
-        # only tournament_group_id set).
         featured_encounters = [*data["closest"], *data["upcoming"], *data["live"]]
-        featured_stage_refs = await self._prefetch_stage_refs(session, featured_encounters)
         featured_challonge_match_ids = await resolve_encounter_challonge(
             session, [encounter.id for encounter in featured_encounters]
         )
@@ -599,7 +462,6 @@ class EncounterFlowsService:
                         session,
                         encounter,
                         ["tournament", "stage", "stage_item", "home_team", "away_team", "matches", "matches.map"],
-                        prefetched_stage_refs=featured_stage_refs,
                         challonge_match_ids=featured_challonge_match_ids,
                         tournament_challonge_refs=featured_tournament_challonge_refs,
                     )
@@ -610,7 +472,6 @@ class EncounterFlowsService:
                         session,
                         encounter,
                         ["tournament", "stage", "stage_item", "home_team", "away_team", "matches", "matches.map"],
-                        prefetched_stage_refs=featured_stage_refs,
                         challonge_match_ids=featured_challonge_match_ids,
                         tournament_challonge_refs=featured_tournament_challonge_refs,
                     )
@@ -621,7 +482,6 @@ class EncounterFlowsService:
                         session,
                         encounter,
                         ["tournament", "stage", "stage_item", "home_team", "away_team", "matches", "matches.map"],
-                        prefetched_stage_refs=featured_stage_refs,
                         challonge_match_ids=featured_challonge_match_ids,
                         tournament_challonge_refs=featured_tournament_challonge_refs,
                     )

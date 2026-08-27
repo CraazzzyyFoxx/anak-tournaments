@@ -24,14 +24,6 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from shared.services import challonge_refs  # noqa: E402
 from src import models  # noqa: E402
@@ -131,7 +123,6 @@ def _encounter() -> models.Encounter:
         round=1,
         best_of=3,
         tournament_id=1,
-        tournament_group_id=None,
         stage_id=10,
         stage_item_id=20,
         closeness=None,
@@ -165,28 +156,6 @@ class TournamentDerivationTests(IsolatedAsyncioTestCase):
 
         self.assertIsNone(read.challonge_id)
         self.assertIsNone(read.challonge_slug)
-
-    async def test_group_challonge_read_from_kept_column(self) -> None:
-        # group.challonge_id/slug is a KEPT column (dbarch04b does not drop it);
-        # to_pydantic_group reads it directly, NOT derived from challonge_source.
-        group = models.TournamentGroup(
-            id=3,
-            created_at=datetime.now(UTC),
-            updated_at=None,
-            tournament_id=1,
-            name="Group A",
-            description=None,
-            is_groups=True,
-            challonge_id=777,
-            challonge_slug="group-slug",
-            stage_id=10,
-        )
-        make_transient_to_detached(group)
-
-        read = await tournament_flows.flows_service.to_pydantic_group(cast(AsyncSession, object()), group, [])
-
-        self.assertEqual(read.challonge_id, 777)
-        self.assertEqual(read.challonge_slug, "group-slug")
 
 
 class EncounterDerivationTests(IsolatedAsyncioTestCase):

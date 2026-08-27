@@ -34,12 +34,12 @@ export function useVisibleNavGroups(): VisibleNavGroup[] {
 
   return useMemo(
     () =>
-      NAV_GROUPS.filter(
-        (group) => group.key !== "organization" || canAccessAdminEntry
-      ).map((group) => ({
-        key: group.key,
-        items: group.items.filter((item) => !item.requiresAdminAccess || canAccessAdminEntry)
-      })),
+      NAV_GROUPS.filter((group) => group.key !== "organization" || canAccessAdminEntry).map(
+        (group) => ({
+          key: group.key,
+          items: group.items.filter((item) => !item.requiresAdminAccess || canAccessAdminEntry)
+        })
+      ),
     [canAccessAdminEntry]
   );
 }

@@ -12,7 +12,6 @@ class EncounterCreate(BaseModel):
 
     name: str
     tournament_id: int
-    tournament_group_id: int | None = None
     stage_id: int | None = None
     stage_item_id: int | None = None
     home_team_id: int | None = None
@@ -27,7 +26,6 @@ class EncounterUpdate(BaseModel):
     """Schema for updating an encounter"""
 
     name: str | None = None
-    tournament_group_id: int | None = None
     stage_id: int | None = None
     stage_item_id: int | None = None
     home_team_id: int | None = None

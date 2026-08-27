@@ -29,8 +29,8 @@ const formatPlace = (value: number | null | undefined) => {
 
 const deriveFormStreak = async (userId: number): Promise<FormResult[]> => {
   try {
-    const encounters = await userService.getUserEncounters(userId, 1, 10, "id", "desc");
-    return encounters.results.slice(0, 10).map((enc): FormResult => {
+    const encounters = await userService.getUserEncounters(userId, 1, 10, "played_at", "desc");
+    return encounters.results.slice(0, 10).reverse().map((enc): FormResult => {
       const homePlayers = enc.home_team?.players ?? [];
       const isUserHome = homePlayers.some((p) => p.user_id === userId);
       const userScore = isUserHome ? enc.score.home : enc.score.away;

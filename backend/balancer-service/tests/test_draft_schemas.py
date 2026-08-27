@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -13,13 +12,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from pydantic import ValidationError  # noqa: E402
 
@@ -32,12 +24,12 @@ from shared.core.enums import (  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.models.balancer.draft import DraftSession  # noqa: E402
 from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
+from src import schemas  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
-from src.schemas import draft as ds  # noqa: E402
 
 
 def test_create_request_defaults() -> None:
-    req = ds.DraftSessionCreateRequest()
+    req = schemas.DraftSessionCreateRequest()
     assert req.pool_source == DraftPoolSource.BALANCER_BALANCE
     assert req.format == DraftFormat.SNAKE
     assert req.pick_time_seconds == 45
@@ -47,18 +39,18 @@ def test_create_request_defaults() -> None:
 
 def test_create_request_no_longer_carries_the_roster_size() -> None:
     # The shape owns both, so neither may reappear as a request field.
-    assert "rounds" not in ds.DraftSessionCreateRequest.model_fields
-    assert "team_size" not in ds.DraftSessionCreateRequest.model_fields
+    assert "rounds" not in schemas.DraftSessionCreateRequest.model_fields
+    assert "team_size" not in schemas.DraftSessionCreateRequest.model_fields
 
 
 def test_create_request_ignores_a_stale_client_sending_rounds_or_team_size() -> None:
     # Pydantic's default `extra="ignore"`: the keys are accepted and dropped, so
     # an old admin bundle keeps working and cannot influence the created session.
-    req = ds.DraftSessionCreateRequest(rounds=7, team_size=11)
+    req = schemas.DraftSessionCreateRequest(rounds=7, team_size=11)
 
     assert not hasattr(req, "rounds")
     assert not hasattr(req, "team_size")
-    assert req.model_dump() == ds.DraftSessionCreateRequest().model_dump()
+    assert req.model_dump() == schemas.DraftSessionCreateRequest().model_dump()
 
 
 def test_lifecycle_rejects_rounds_that_do_not_match_the_shape() -> None:
@@ -73,15 +65,15 @@ def test_lifecycle_accepts_rounds_equal_to_the_shape_minus_the_captain() -> None
 
 
 def test_session_read_reports_the_shape_and_never_a_scalar_team_size() -> None:
-    assert "team_size" not in ds.DraftSessionRead.model_fields
-    assert ds.DraftSessionRead.model_fields["roster_shape"].annotation is RosterShapeRead
+    assert "team_size" not in schemas.DraftSessionRead.model_fields
+    assert schemas.DraftSessionRead.model_fields["roster_shape"].annotation is RosterShapeRead
 
 
 def test_session_read_from_session_projects_the_resolved_shape() -> None:
     # A transient row has no column defaults applied (those land on INSERT), so
     # every non-nullable field is spelled out here.
     shape = parse_roster_slots({"tank": 1, "flex": 5})
-    read = ds.DraftSessionRead.from_session(
+    read = schemas.DraftSessionRead.from_session(
         DraftSession(
             id=1,
             tournament_id=2,
@@ -108,7 +100,7 @@ def test_session_read_from_session_projects_the_resolved_shape() -> None:
 
 def test_roster_shape_read_is_one_class_shared_with_tournament_service() -> None:
     # A second copy in balancer-service would be the mirror this feature removes.
-    from src.schemas.draft import RosterShapeRead as balancer_read
+    from src.schemas import RosterShapeRead as balancer_read
 
     assert balancer_read is RosterShapeRead
 
@@ -116,15 +108,15 @@ def test_roster_shape_read_is_one_class_shared_with_tournament_service() -> None
 @pytest.mark.parametrize("seconds", [9, 601])
 def test_create_request_rejects_bad_pick_time(seconds: int) -> None:
     with pytest.raises(ValidationError):
-        ds.DraftSessionCreateRequest(pick_time_seconds=seconds)
+        schemas.DraftSessionCreateRequest(pick_time_seconds=seconds)
 
 
 def test_order_request_accepts_permutation() -> None:
-    req = ds.DraftOrderRequest(
+    req = schemas.DraftOrderRequest(
         order=[
-            ds.DraftOrderEntry(draft_team_id=10, draft_position=2),
-            ds.DraftOrderEntry(draft_team_id=11, draft_position=1),
-            ds.DraftOrderEntry(draft_team_id=12, draft_position=3),
+            schemas.DraftOrderEntry(draft_team_id=10, draft_position=2),
+            schemas.DraftOrderEntry(draft_team_id=11, draft_position=1),
+            schemas.DraftOrderEntry(draft_team_id=12, draft_position=3),
         ]
     )
     assert len(req.order) == 3
@@ -132,32 +124,32 @@ def test_order_request_accepts_permutation() -> None:
 
 def test_order_request_rejects_non_permutation() -> None:
     with pytest.raises(ValidationError):
-        ds.DraftOrderRequest(
+        schemas.DraftOrderRequest(
             order=[
-                ds.DraftOrderEntry(draft_team_id=10, draft_position=1),
-                ds.DraftOrderEntry(draft_team_id=11, draft_position=3),  # gap, no 2
+                schemas.DraftOrderEntry(draft_team_id=10, draft_position=1),
+                schemas.DraftOrderEntry(draft_team_id=11, draft_position=3),  # gap, no 2
             ]
         )
 
 
 def test_order_request_rejects_duplicate_team_ids() -> None:
     with pytest.raises(ValidationError):
-        ds.DraftOrderRequest(
+        schemas.DraftOrderRequest(
             order=[
-                ds.DraftOrderEntry(draft_team_id=10, draft_position=1),
-                ds.DraftOrderEntry(draft_team_id=10, draft_position=2),
+                schemas.DraftOrderEntry(draft_team_id=10, draft_position=1),
+                schemas.DraftOrderEntry(draft_team_id=10, draft_position=2),
             ]
         )
 
 
 def test_select_request_requires_expected_version() -> None:
     with pytest.raises(ValidationError):
-        ds.DraftPickSelectRequest(player_id=5)  # type: ignore[call-arg]
-    ok = ds.DraftPickSelectRequest(player_id=5, expected_version=0)
+        schemas.DraftPickSelectRequest(player_id=5)  # type: ignore[call-arg]
+    ok = schemas.DraftPickSelectRequest(player_id=5, expected_version=0)
     assert ok.expected_version == 0
 
 
 def test_patch_request_pick_time_validation() -> None:
-    assert ds.DraftSessionPatchRequest().pick_time_seconds is None
+    assert schemas.DraftSessionPatchRequest().pick_time_seconds is None
     with pytest.raises(ValidationError):
-        ds.DraftSessionPatchRequest(pick_time_seconds=5)
+        schemas.DraftSessionPatchRequest(pick_time_seconds=5)

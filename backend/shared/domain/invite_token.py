@@ -33,7 +33,7 @@ def hash_invite_token(raw_token: str) -> str:
 
     Plain sha256 rather than a password KDF on purpose: the input is 256 bits of
     machine-generated entropy, so there is nothing to brute-force and no salt to
-    add. This matches ``shared/subscriptions/challenge_code.py`` and the OAuth
+    add. This matches ``shared/services/subscriptions/challenge_code.py`` and the OAuth
     state store.
     """
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()

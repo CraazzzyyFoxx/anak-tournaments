@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
-from shared.subscriptions import Outcome, SubscriptionRequirement, SubscriptionVerdict
+from shared.services.subscriptions import Outcome, SubscriptionRequirement, SubscriptionVerdict
 
 __all__ = (
     "RegistrationSubscription",

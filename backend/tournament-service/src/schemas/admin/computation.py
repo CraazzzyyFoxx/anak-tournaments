@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+__all__ = ("TournamentComputationJobRead",)
+
 
 class TournamentComputationJobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)

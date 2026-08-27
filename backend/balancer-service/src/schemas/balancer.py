@@ -244,6 +244,11 @@ class Statistics(BaseModel):
     balance_objective_norm: float | None = None
     comfort_objective_norm: float | None = None
     composite_score: float | None = None
+    mix_balancer_fairness: float | None = None
+    mix_balancer_uniformity: float | None = None
+    mix_balancer_role_fairness: float | None = None
+    mix_balancer_role_points: float | None = None
+    mix_balancer_quality_total: float | None = None
     off_role_rate: float | None = None
     off_role_above_minimum: int | None = None
     feasibility: FeasibilityReport | None = None

@@ -79,7 +79,6 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	mux.HandleFunc("DELETE /api/v1/assets/{asset_type}/{slug}", bin.AssetDelete)
 	mux.HandleFunc("GET /api/v1/matches/{match_id}/log", bin.MatchLog)
 	mux.HandleFunc("POST /api/v1/admin/users/{id}/avatar", bin.UserAvatarUpload)
-	mux.HandleFunc("POST /api/v1/user/create/csv", bin.UsersCsvImport)
 	pbin := parser.NewBinary(errCaller{}, func(*http.Request) (map[string]any, bool, error) { return nil, false, nil },
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	mux.HandleFunc("POST /api/v1/admin/logs/upload", pbin.AdminLogsUpload)
@@ -248,6 +247,8 @@ func buildBalancerGuardedMux(t *testing.T) *http.ServeMux {
 	mux := http.NewServeMux()
 	d.Register(mux, balancer.PublicRoutes)
 	d.Register(mux, balancer.AdminRoutes)
+	d.Register(mux, balancer.RosterRoutes)
+
 	d.Register(mux, balancer.DraftReadRoutes)
 	d.Register(mux, balancer.DraftRoutes)
 	d.Register(mux, balancer.JobRoutes)

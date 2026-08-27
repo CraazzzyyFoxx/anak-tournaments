@@ -8,7 +8,6 @@ concurrency or as an opaque failure for a real invitee.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from unittest import TestCase
@@ -16,9 +15,6 @@ from unittest import TestCase
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
-
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 from shared.domain.roster_shape import RosterShapeError, parse_roster_slots  # noqa: E402
 from shared.domain.team_roster import RosterMember, RosterOccupancy  # noqa: E402

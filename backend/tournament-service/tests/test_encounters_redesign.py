@@ -10,21 +10,12 @@ from unittest.mock import AsyncMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.services.stage_refs import StageRefs
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from src import models, schemas  # noqa: E402
 from src.services.encounter import flows, service  # noqa: E402
@@ -171,10 +162,7 @@ class EncounterRedesignSerializationTests(IsolatedAsyncioTestCase):
         self.assertEqual(read.filters.sort, "date")
         self.assertEqual(read.filters.closeness_min, 0.8)
 
-    async def test_to_pydantic_uses_prefetched_stage_refs_for_legacy_encounter(self) -> None:
-        # Legacy encounter: stage_id NULL but tournament_group_id set. With a
-        # prefetched mapping (batch path used by list endpoints) the
-        # per-encounter resolver must NOT be called.
+    async def test_to_pydantic_uses_encounter_stage_refs(self) -> None:
         encounter = models.Encounter(
             id=1,
             name="A vs B",
@@ -183,46 +171,23 @@ class EncounterRedesignSerializationTests(IsolatedAsyncioTestCase):
             round=1,
             best_of=3,
             tournament_id=5,
-            tournament_group_id=9,
-            stage_id=None,
-            stage_item_id=None,
+            stage_id=31,
+            stage_item_id=77,
             status="open",
             result_status="none",
             has_logs=False,
             closeness=None,
         )
-        prefetched = {(5, 9): StageRefs(stage_id=31, stage_item_id=77, tournament_group_id=9)}
 
-        with patch.object(flows, "resolve_stage_refs_from_group", AsyncMock()) as resolver:
-            read = await flows.flows_service.to_pydantic(
-                cast(AsyncSession, object()),
-                encounter,
-                [],
-                prefetched_stage_refs=prefetched,
-            )
+        read = await flows.flows_service.to_pydantic(
+            cast(AsyncSession, object()),
+            encounter,
+            [],
+        )
 
-        resolver.assert_not_awaited()
         self.assertEqual(read.stage_id, 31)
         self.assertEqual(read.stage_item_id, 77)
 
-    async def test_prefetch_stage_refs_skips_when_no_legacy_encounters(self) -> None:
-        # Encounters that already carry stage_id need no resolution — the
-        # helper must not touch the session at all (object() would raise).
-        encounter = models.Encounter(
-            id=2,
-            name="C vs D",
-            home_score=0,
-            away_score=0,
-            round=1,
-            tournament_id=5,
-            tournament_group_id=9,
-            stage_id=31,
-            stage_item_id=77,
-        )
-
-        refs = await flows.flows_service._prefetch_stage_refs(cast(AsyncSession, object()), [encounter])
-
-        self.assertEqual(refs, {})
 
     async def test_overview_maps_service_data_to_public_schema(self) -> None:
         raw = {

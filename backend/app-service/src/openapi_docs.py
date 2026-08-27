@@ -218,6 +218,10 @@ DOCS: dict[str, dict] = {
         "summary": "Clear workspace custom domain",
         "description": "Removes the custom domain, its verification token, and verified_at; requires workspace.update, 404 if workspace missing.",
     },
+    "rpc.app.workspaces.discord_guild_verify": {
+        "summary": "Verify and bind a Discord guild",
+        "description": "Proves the caller administers the given Discord guild (via identity-service, owner or MANAGE_GUILD) and binds it to the workspace, stamping verified_at/verified_by; requires workspace.update, 404 if workspace missing, 403 if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
+    },
     # ── workspace discord entities ──────────────────────────────────────────────────
     "rpc.app.workspaces.discord_roles": {
         "summary": "List workspace Discord roles",
@@ -436,10 +440,5 @@ DOCS: dict[str, dict] = {
     "rpc.app.users.avatar_delete": {
         "summary": "Delete user avatar",
         "description": "Removes a player's avatar from S3 and clears its URL; requires the global user.update permission.",
-    },
-    # ── user bulk import (binary CSV / Google Sheets) ──────────────────────────────────────────────────
-    "rpc.app.users.csv_import": {
-        "summary": "Bulk import users",
-        "description": "Bulk-creates players from an uploaded CSV file or a Google Sheets URL using the given row/delimiter/flag params; requires the global user.create permission.",
     },
 }

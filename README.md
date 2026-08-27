@@ -1,194 +1,273 @@
-# Overwatch Tournament Platform
+# OWT — Overwatch Tournament Platform
 
-[![Lint Backend](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/lint-backend.yml/badge.svg)](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/lint-backend.yml)
-[![Test Backend](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/test-backend.yml/badge.svg)](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/test-backend.yml)
+[![Backend lint](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/lint-backend.yml/badge.svg)](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/lint-backend.yml)
+[![Backend tests](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/test-backend.yml/badge.svg)](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/test-backend.yml)
+[![Gateway CI](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/ci-gateway.yml/badge.svg)](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/ci-gateway.yml)
+[![Frontend CI](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/ci-frontend.yml/badge.svg)](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/ci-frontend.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/CraazzzyyFoxx/e00b7692443a542b0e505c090cf83d35/raw/owt-coverage.json)](https://github.com/CraazzzyyFoxx/overwatch-tournaments/actions/workflows/test-backend.yml)
-[![Issues](https://img.shields.io/github/issues/CraazzzyyFoxx/overwatch-tournaments)](https://github.com/CraazzzyyFoxx/overwatch-tournaments/issues)
-[![Documentation](https://img.shields.io/badge/documentation-yes-brightgreen.svg)](https://owt.craazzzyyfoxx.me/api/docs)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://github.com/CraazzzyyFoxx/overwatch-tournaments/blob/master/LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL_v3-blue.svg)](./LICENSE)
 
-> **OWT** provides comprehensive statistics about Overwatch Tournaments —
-> the history of past tournaments and player statistics such as tournaments participated in, divisions, teams,
-> heroes, and performance metrics.
-> The backend is a Python microservices platform of headless [FastStream](https://faststream.airt.ai/)
-> workers (SQLAlchemy, PostgreSQL, Redis, RabbitMQ) fronted by a Go gateway, and the frontend is a
-> Next.js application. The project is optimized for fast and accurate data delivery while minimizing
-> server load. For the full picture, see [docs/architecture.md](./docs/architecture.md).
+OWT is a multi-tenant platform for running Overwatch tournaments from registration to post-tournament analytics. It combines public tournament history and player statistics with organizer tooling for workspaces, brackets, live drafts, map vetoes, match-log processing, achievements, streams, and access control.
 
-## Table of contents
+- **Live platform:** <https://owt.craazzzyyfoxx.me>
+- **API documentation:** <https://owt.craazzzyyfoxx.me/api/docs>
+- **System architecture:** [docs/architecture.md](./docs/architecture.md)
+- **Database model:** [docs/database_erd.md](./docs/database_erd.md)
 
-* [✨ Live instance](#-live-instance)
-* [🏛️ Architecture](#-architecture)
-* [🐋 Docker development](#-docker-development)
-* [📈 Monitoring](#-monitoring)
-* [💾 Backups](#-backups)
-* [👨‍💻 Technical details](#-technical-details)
-* [🙏 Credits](#-credits)
-* [📝 License](#-license)
+## What OWT does
 
-## ✨ [Live instance](https://owt.craazzzyyfoxx.me/)
+### For players and spectators
 
-**Backend**
-> The backend is a set of headless RPC workers behind a Go gateway, which is the single HTTP/WebSocket
-> entry point and serves interactive API documentation (Scalar):
->
-> API docs: https://owt.craazzzyyfoxx.me/api/docs
+- Browse tournaments, divisions, teams, matches, maps, heroes, and player performance.
+- Register teams, complete check-in, and follow tournament progress.
+- Watch bracket, standings, map-veto, draft, analytics-job, and stream updates in real time.
+- Link Discord, Twitch, and Battle.net identities to one OWT account.
+- Follow live Twitch channels attached to a tournament.
 
-**Frontend**
-> The frontend is built with Next.js and provides a user-friendly interface for interacting with the OWT API.
-> It displays tournament history, player statistics, and other relevant data in an intuitive and visually appealing way.
-> You can access the live frontend instance here:
->
-> Frontend Live Instance: https://owt.craazzzyyfoxx.me
+### For organizers
 
-### Pre-commit
+- Run isolated workspaces with custom branding, domains, memberships, API keys, and RBAC.
+- Manage tournament registration, roster shapes, check-in, stages, brackets, standings, and lifecycle transitions.
+- Synchronize tournament data with Challonge and Google Sheets.
+- Build balanced teams with a native Rust multi-objective solver or run an interactive captain draft.
+- Configure map pools and pick/ban veto sessions.
+- Upload and parse Overwatch match logs, calculate statistics, evaluate achievements, and run post-tournament analytics.
+- Gate registration or check-in through Discord/Twitch subscription requirements.
+- Operate a Discord bot for log uploads, commands, and notifications.
 
-The project is using [pre-commit](https://pre-commit.com/) framework to ensure code quality before making any commit on the repository. After installing the project dependencies, you can install the pre-commit by using the `pre-commit install` command.
+## Architecture
 
-The configuration can be found in the `.pre-commit-config.yaml` file. It consists in launching 2 processes on modified files before making any commit :
+OWT is a monorepo with one public edge and headless backend workers:
 
-- `ruff` for linting and code formatting (with `ruff format`)
-- `sourcery` for more code quality checks and a lot of simplifications
-
-## 🏛️ Architecture
-
-**See [docs/architecture.md](./docs/architecture.md) for the full architecture** — request flow,
-inter-service messaging, data model, multitenancy, and deployment topology.
-
-OWT is a microservices monorepo. A **Go gateway** (`gateway/`) is the sole HTTP/WebSocket entry point:
-it terminates HTTP behind nginx (TLS by Traefik upstream), validates JWTs, and dispatches typed
-**request/reply RPC over RabbitMQ** to backend workers. The backend is a set of **headless Python
-FastStream workers** (no HTTP servers) sharing one ORM layer via `backend/shared/`; they communicate
-over PostgreSQL, Redis, and RabbitMQ. The frontend is a Next.js app served through the same gateway.
-
-### Backend services (`backend/`)
-
-| Service | Compose | Kind | Purpose | Docs |
-| --- | --- | --- | --- | --- |
-| `app-service` | `app-svc` | RPC worker | Core read/data API (tournaments, players, teams, heroes, maps, matches, stats) + workspace/user/metadata admin + assets + caching | [README](./backend/app-service/README.md) |
-| `identity-service` | `identity-svc` | RPC worker | AuthN/AuthZ — JWT, Discord OAuth, RBAC, workspace membership, custom domains, API keys, player linking (exposed under `/api/auth`) | [README](./backend/identity-service/README.md) |
-| `tournament-service` | `tournament-svc` | RPC worker + scheduler | Tournament lifecycle — CRUD, registration, brackets/standings, Challonge/Sheets sync, map veto, state machine, outbox sweeper | [README](./backend/tournament-service/README.md) |
-| `parser-service` | `parser-svc` | RPC worker + scheduler | Match-log ingestion/parsing, OverFast rank fetch, achievement evaluation, MVP-impact backfill | [README](./backend/parser-service/README.md) |
-| `balancer-service` | `balancer-svc` | RPC worker | Genetic team balancing (native Rust `moo_core`) + live draft | [README](./backend/balancer-service/README.md) |
-| `analytics-service` | `analytics-svc` + `analytics-worker` | RPC worker + ML worker | Post-tournament analytics — OpenSkill shifts (v1), ML pipeline (v2) | [README](./backend/analytics-service/README.md) |
-| `discord-service` | `discord-worker` | bot | Discord bot — match-log upload, notifications, commands | [README](./backend/discord-service/README.md) |
-| `shared` | — | library | Shared ORM models, schemas, RPC/messaging, tenancy, RBAC, and utilities used by every service | [README](./backend/shared/README.md) |
-
-The **Go gateway** (`gateway/`) is the HTTP/WebSocket edge — [README](./gateway/README.md).
-
-### Frontend (`frontend/`)
-
-Next.js 16 + React 19 + TypeScript, styled with Tailwind CSS 4 and Shadcn/UI, i18n via next-intl.
-See [frontend/README.md](./frontend/README.md).
-
-## 👨‍💻 Technical details
-
-### Technology Stack and Features
-
-- ⚡ [**FastStream**](https://faststream.airt.ai/) for the Python backend workers — headless RPC over RabbitMQ, behind a **Go** gateway (`gateway/`).
-    - 🧰 [SqlAlchemy](https://www.sqlalchemy.org/) for the Python SQL database interactions (ORM).
-    - 🔍 [Pydantic](https://docs.pydantic.dev) for data validation and settings management.
-    - 💾 [PostgreSQL](https://www.postgresql.org) as the SQL database.
-    - 🐇 [RabbitMQ](https://www.rabbitmq.com/) with [FastStream](https://faststream.airt.ai/) for inter-service messaging and workers.
-    - 🧊 [Redis](https://redis.io/) for caching and realtime pub/sub.
-- 🚀 [**Next.js**](https://nextjs.org/) for the frontend.
-    - 💃 Using TypeScript, hooks, and other parts of a modern frontend stack.
-    - 🎨 [Shadcn/UI](https://ui.shadcn.com/) for the frontend components.
-- 🧪 [Vitest](https://vitest.dev) for frontend unit/smoke tests.
-- 🐋 [Docker Compose](https://www.docker.com) for development and production.
-- 🔭 OpenTelemetry, Prometheus, Loki, Tempo, and Grafana for observability.
-- ✅ Tests with [Pytest](https://pytest.org).
-- 🏭 CI/CD based on GitHub Actions.
-
-### Computed statistics values
-
-In statistics, various conversions are applied for ease of use:
-
-- **Duration values** are converted to **seconds** (integer)
-- **Percent values** are represented as **float**
-
-### Redis caching
-
-OWT API integrates a Redis-based cache system, divided into two main components:
-
-API Cache: This high-level cache associates URIs (cache keys) with Pickle data.
-
-Function Cache: This cache stores the results of specific functions, such as the hero statistics. The cache key is generated based on the function name and its arguments. This cache is used to store computed values that are expensive to calculate.
-
-* Heroes: 1 day
-* Maps: 1 day
-* Gamemodes: 1 day
-* Tournaments: 1 day
-* Players: 1 hour
-* Teams: 1 day
-* Statistics: 1 day
-* Matches: 1 day
-* Achievements: 1 day
-
-## 🐋 Docker Development
-
-The local Docker workflow is profile-driven.
-
-- Default dev startup (`docker compose up -d --wait`) starts core services only.
-- The Go gateway + nginx edge are part of the default stack (nginx on `APP_PORT` -> gateway:8080).
-- Optional profiles:
-  - `workers` for background services (`docker compose --profile workers up -d --wait`)
-- Local PostgreSQL is part of the dev stack by default.
-
-### First-time setup
-
-1. Copy root env template: `.env.example` -> `.env`
-2. Copy backend env templates from `backend/env/*.env.example` to matching `.env` files
-3. Start core stack:
-
-```bash
-docker compose up -d --wait
+```mermaid
+flowchart LR
+    Client[Browser / API client] --> Nginx[nginx]
+    Nginx --> Gateway[Go gateway\nHTTP + WebSocket]
+    Gateway --> Frontend[Next.js frontend]
+    Gateway --> RabbitMQ[(RabbitMQ RPC)]
+    RabbitMQ --> Workers[Python FastStream workers]
+    Gateway --> PostgreSQL[(PostgreSQL)]
+    Gateway --> Redis[(Redis)]
+    Workers --> PostgreSQL
+    Workers --> Redis
+    Workers --> Storage[(S3-compatible storage)]
 ```
 
-4. Start full stack (with background workers), if needed:
+The Go gateway is the only HTTP/WebSocket backend entry point. It validates JWTs, applies edge policy, maps REST routes to request/reply RPC over RabbitMQ, proxies the frontend, serves API documentation, caches anonymous reads, and relays Redis-backed realtime events. Python services expose no HTTP API; they share SQLAlchemy models and cross-service infrastructure from `backend/shared/`.
 
-```bash
-docker compose --profile workers up -d --wait
+Production places Traefik in front of the repository-managed nginx edge for TLS termination. See [docs/architecture.md](./docs/architecture.md) for request flow, messaging guarantees, multitenancy, realtime replay, and deployment topology.
+
+### Backend services
+
+| Directory                                                              | Runtime                             | Responsibility                                                                                                     |
+| ---------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| [`backend/app-service`](./backend/app-service/README.md)               | `app-svc`                           | Public data API, statistics, workspace administration, metadata, and binary assets                                 |
+| [`backend/identity-service`](./backend/identity-service/README.md)     | `identity-svc`                      | JWT sessions, OAuth, RBAC, memberships, API keys, custom domains, and player linking                               |
+| [`backend/tournament-service`](./backend/tournament-service/README.md) | `tournament-svc`                    | Tournament lifecycle, registration, brackets, standings, Challonge/Sheets sync, map veto, and transactional outbox |
+| [`backend/parser-service`](./backend/parser-service/README.md)         | `parser-svc`                        | Match-log ingestion, parsing, rank synchronization, achievements, and backfills                                    |
+| [`backend/balancer-service`](./backend/balancer-service/README.md)     | `balancer-svc`                      | Genetic team balancing, native Rust `moo_core`, and live captain drafts                                            |
+| [`backend/analytics-service`](./backend/analytics-service/README.md)   | `analytics-svc`, `analytics-worker` | Analytics RPC plus long-running ML training and inference jobs                                                     |
+| [`backend/stream-service`](./backend/stream-service/README.md)         | `stream-svc`                        | Twitch live-status polling and public tournament stream state                                                      |
+| [`backend/discord-service`](./backend/discord-service/README.md)       | `discord-worker`                    | Discord bot, match-log upload, notifications, and commands                                                         |
+| [`backend/shared`](./backend/shared/README.md)                         | library                             | Shared ORM models, schemas, tenancy, RBAC, messaging, and observability                                            |
+
+The edge implementation is documented separately in [`gateway/README.md`](./gateway/README.md). Frontend conventions and scripts live in [`frontend/README.md`](./frontend/README.md).
+
+## Technology stack
+
+| Layer                   | Technologies                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Frontend                | Next.js 16.2, React 19.2, TypeScript 5.9, Tailwind CSS 4, Radix/Shadcn, TanStack Query/Table, Zustand, Vitest |
+| Gateway                 | Go 1.25, `net/http`, RabbitMQ, Redis, PostgreSQL/pgx, OpenTelemetry                                           |
+| Backend                 | Python 3.14, FastStream, SQLAlchemy 2, Pydantic 2, Alembic, pytest                                            |
+| Balancing and analytics | Rust `moo_core`, OpenSkill, LightGBM/XGBoost, Bayesian and Monte Carlo workflows                              |
+| Data and messaging      | PostgreSQL 16, Redis Stack, RabbitMQ 3.13, S3-compatible object storage                                       |
+| Operations              | Docker Compose, nginx, Prometheus, Grafana, Loki, Tempo, OpenTelemetry Collector, Sentry                      |
+
+## Repository layout
+
+```text
+.
+├── frontend/                   # Next.js application
+├── gateway/                    # Sole HTTP/WebSocket gateway
+├── backend/
+│   ├── shared/                 # Shared Python package and ORM source of truth
+│   ├── *-service/              # Headless FastStream workers
+│   ├── migrations/             # Alembic migrations
+│   └── env/                    # Per-service environment templates
+├── nginx/                      # Internal HTTP edge
+├── monitoring/                 # Metrics, logs, traces, dashboards, and alerts
+├── loadtests/                  # Locust scenarios
+├── ops/backup/                 # Backup tooling
+├── docs/                       # Architecture, data model, runbooks, and designs
+├── docker-compose.yml          # Development stack
+├── docker-compose.production.yml
+└── Makefile                    # Common development and operations commands
 ```
 
-You can also use `make dev-up` and `make dev-up-full`.
+## Quick start with Docker
 
-## 📈 Monitoring
+### Prerequisites
 
-Monitoring deployment and operations are documented in [monitoring/README.md](./monitoring/README.md).
+- Git
+- Docker Engine or Docker Desktop with Docker Compose v2
+- `make` for the convenience commands below; every target is a thin wrapper around `docker compose`
 
-The monitoring stack runs as its own Compose project and includes Prometheus, Alertmanager, Grafana, Loki, Promtail, Tempo, the OpenTelemetry Collector, and Redis/RabbitMQ exporters.
+Host toolchains are optional when using Docker. Direct development requires Python 3.14 with [uv](https://docs.astral.sh/uv/), Bun, and Go 1.25.
 
-## 💾 Backups
+### 1. Clone the repository
 
-Postgres dumps and secrets are stored in a two-site rustfs setup (source on the
-deployment host, replica on a home server) with native S3 bucket replication and
-per-run verification that the copy actually reached the replica.
+```bash
+git clone https://github.com/CraazzzyyFoxx/overwatch-tournaments.git
+cd overwatch-tournaments
+```
 
-Install, verification and restore procedures: [docs/backup-rustfs.md](./docs/backup-rustfs.md).
-Commands: `make backup-up`, `make backup-setup`, `make backup-run`, `make backup-ls`.
+### 2. Create development environment files
 
-## Backend Development
+Copy every maintained template without modifying the templates themselves:
 
-Backend docs: [backend/README.md](./backend/README.md).
+```bash
+for file in backend/env/*.env.example; do cp "$file" "${file%.example}"; done
+cp frontend/.env.example frontend/.env.local
+```
 
-## Frontend Development
+Create the root `.env` used by Docker Compose. These values are suitable only for local development; use generated secrets in any shared or production environment.
 
-Frontend docs: [frontend/README.md](./frontend/README.md).
+```dotenv
+COMPOSE_PROFILES=db
+APP_PORT=80
+GATEWAY_HOST_PORT=8080
 
-## 🙏 Credits
+RABBITMQ_DEFAULT_USER=admin
+RABBITMQ_DEFAULT_PASS=secure_password
 
-- Overwatch API : [Overfast API](https://github.com/TeKrop/overfast-api)
-- Special thanks for the idea and historical data [dashabreeze](https://aqt.vercel.app/players)
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_secure_password_here
+POSTGRES_DB=aqt_db
+```
 
-## 📝 License
+The RabbitMQ and PostgreSQL values must match `backend/env/common.env`. Replace `JWT_SECRET_KEY` in `backend/env/auth.env` with at least 32 random characters. OAuth, Challonge, Twitch, Discord, Battle.net, S3, analytics, and observability credentials are feature-specific; their templates explain when they are required.
 
-Copyright © 2024-2025 [CraazzzyyFoxx](https://github.com/CraazzzyyFoxx).
+### 3. Start the stack and migrate the database
 
-This project is licensed under the [GNU Affero General Public License v3.0](https://github.com/CraazzzyyFoxx/overwatch-tournaments/blob/master/LICENSE) with additional attribution terms (AGPL §7). In short:
+```bash
+make dev-up
+make migrate
+```
 
-- **Self-hosting the unmodified project is allowed** — run it as-is for any purpose, including over a network.
-- **Self-hosting a modified version is allowed**, but the running site must display a visible link back to this original project and its author.
-- **Derivative works must stay open source** under this same license, with source code available to network users.
+`COMPOSE_PROFILES=db` enables the local PostgreSQL container. Without it, the Compose file expects the database settings in `backend/env/common.env` to point at an external PostgreSQL instance.
 
-See the [LICENSE](./LICENSE) file for the full text and the binding Additional Terms.
+Open:
+
+- Application: <http://localhost>
+- Public API docs: <http://localhost/api/docs>
+- Gateway directly: <http://localhost:8080>
+- RabbitMQ management: <http://localhost:15672>
+
+Start optional long-running workers for ML jobs and Discord integration:
+
+```bash
+make dev-up-full
+```
+
+### 4. Inspect or stop the stack
+
+```bash
+make dev-health
+make dev-logs
+make dev-down
+```
+
+## Local development without rebuilding containers
+
+### Backend
+
+The backend is one uv workspace. Service code is bind-mounted into development containers and FastStream reloads it automatically.
+
+```bash
+cd backend
+uv sync
+```
+
+Apply migrations and run the containerized backend suite from the repository root:
+
+```bash
+make migrate
+make test
+```
+
+### Frontend
+
+```bash
+cd frontend
+bun install --frozen-lockfile
+bun run dev
+```
+
+The browser uses same-origin `/api/...` paths. Server-side Next.js requests use `NEXT_INTERNAL_API_URL`, which defaults to the gateway address configured in `frontend/.env.local`.
+
+### Gateway
+
+```bash
+cd gateway
+go test ./...
+go run ./cmd/gateway
+```
+
+Gateway configuration is documented in `backend/env/gateway.env.example` and [`gateway/README.md`](./gateway/README.md).
+
+## Common commands
+
+| Command              | Purpose                                                     |
+| -------------------- | ----------------------------------------------------------- |
+| `make dev-build`     | Build development images                                    |
+| `make dev-up`        | Start the core development stack                            |
+| `make dev-up-full`   | Start the core stack plus `workers` profile                 |
+| `make dev-rebuild`   | Rebuild and restart the core stack                          |
+| `make dev-health`    | Show container state and health                             |
+| `make dev-logs`      | Follow development logs                                     |
+| `make migrate`       | Apply Alembic migrations in `app-svc`                       |
+| `make test`          | Run backend pytest suite in `app-svc`                       |
+| `make loadtest`      | Run headless Locust load tests                              |
+| `make monitoring-up` | Start the separate monitoring stack                         |
+| `make backup-run`    | Create and verify a database backup                         |
+| `make prod-up`       | Start the production Compose stack with configured replicas |
+
+Run `make help` for the complete command list. Component-specific log and restart targets are defined in the root [`Makefile`](./Makefile).
+
+## Quality checks
+
+```bash
+# Backend
+make test
+cd backend && uv run ruff check . && uv run ruff format --check .
+
+# Frontend
+cd frontend && bun run typecheck && bun run test:vitest && bun run lint && bun run lint:design
+
+# Gateway
+cd gateway && go test ./...
+```
+
+GitHub Actions runs independent backend lint/test, frontend, gateway, and production deployment workflows from [`.github/workflows`](./.github/workflows).
+
+## Operations
+
+- **Production:** [`docker-compose.production.yml`](./docker-compose.production.yml) and `make prod-*`. Production scaling requires pgBouncer; the limits and non-replicable workers are documented in the [`Makefile`](./Makefile).
+- **Monitoring:** [`monitoring/README.md`](./monitoring/README.md) covers Prometheus, Alertmanager, Grafana, Loki, Tempo, Promtail, exporters, and OpenTelemetry.
+- **Backups:** [`docs/backup-rustfs.md`](./docs/backup-rustfs.md) covers PostgreSQL dumps, two-site S3 replication, verification, and restore.
+- **Load testing:** [`loadtests/README.md`](./loadtests/README.md) documents Locust configuration, seeding, and reports.
+
+Do not reuse development credentials in production. Keep secrets in untracked environment files, restrict the admin API documentation endpoint, configure allowed WebSocket origins, and place TLS termination in front of nginx.
+
+## Credits
+
+- [OverFast API](https://github.com/TeKrop/overfast-api) for Overwatch data.
+  historical data.
+- Special thanks to [Demogram](https://github.com/dmelackov), creator of the mix balancer and the inspiration behind OWT's tournament balancer.
+
+## License
+
+Copyright © 2024-2026 [CraazzzyyFoxx](https://github.com/CraazzzyyFoxx).
+
+Licensed under the [GNU Affero General Public License v3.0](./LICENSE) with additional attribution terms under AGPL §7. Unmodified self-hosting is allowed. Modified network deployments must keep the work under the same license, publish the corresponding source to network users, and display the attribution required by the Additional Terms. The [`LICENSE`](./LICENSE) file is authoritative.

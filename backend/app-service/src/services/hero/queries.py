@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DivisionGrid, division_case_expr
-from shared.services.tournament_visibility import visible_tournament_ids_subquery
+from shared.services.tournament.visibility import visible_tournament_ids_subquery
 from src import models, schemas
 from src.core import enums, pagination
 

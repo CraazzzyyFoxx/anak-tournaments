@@ -20,9 +20,8 @@ from shared.core.social import SocialProvider, normalize_social_handle
 from shared.repository import BalancerRegistrationRepository, SocialAccountRepository, UserRepository
 from shared.services import social_identity
 from src import models
-from src.services.registration._common import BATTLE_TAG_RE
+from src.domain.registration.utils import BATTLE_TAG_RE, UNKNOWN_PRIORITY_SENTINEL
 from src.services.registration.lifecycle import RegistrationLifecycleService, lifecycle_service
-from src.services.registration.utils import UNKNOWN_PRIORITY_SENTINEL
 
 logger = logging.getLogger(__name__)
 

@@ -417,6 +417,24 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "workspaces.clear_custom_domain", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.app.workspaces.discord_guild_verify")
+    async def _discord_guild_verify(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_active(user)
+            ensure_workspace_permission(user, workspace_id, "workspace", "update")
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            body = schemas.WorkspaceDiscordGuildVerify.model_validate(c.payload(data))
+            workspace = await workspace_service.verify_discord_guild(
+                session, workspace, body.guild_id, actor=user, broker=broker
+            )
+            return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
+
+        return await c.envelope(logger, "workspaces.discord_guild_verify", op, session_factory=_SF)
+
     # --- Discord entities (roles, channels, server status) ------------------
     # Reads of an organizer's own server config, so they carry the same
     # workspace.update gate as the custom-domain endpoints above: the role and

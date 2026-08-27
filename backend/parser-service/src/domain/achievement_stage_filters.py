@@ -29,20 +29,11 @@ def encounter_is_lower_bracket(
     encounter=models.Encounter,
     stage=models.Stage,
     stage_item=models.StageItem,
-    tournament_group=models.TournamentGroup,
 ) -> sa.ColumnElement[bool]:
-    return sa.or_(
-        sa.and_(
-            stage.stage_type == StageType.DOUBLE_ELIMINATION,
-            sa.or_(
-                stage_item.type == StageItemType.BRACKET_LOWER,
-                encounter.round < 0,
-            ),
-        ),
-        sa.and_(
-            stage.id.is_(None),
-            tournament_group.id.is_not(None),
-            tournament_group.is_groups.is_(False),
+    return sa.and_(
+        stage.stage_type == StageType.DOUBLE_ELIMINATION,
+        sa.or_(
+            stage_item.type == StageItemType.BRACKET_LOWER,
             encounter.round < 0,
         ),
     )
@@ -53,7 +44,6 @@ def encounter_is_upper_bracket(
     encounter=models.Encounter,
     stage=models.Stage,
     stage_item=models.StageItem,
-    tournament_group=models.TournamentGroup,
 ) -> sa.ColumnElement[bool]:
     return sa.or_(
         sa.and_(
@@ -70,12 +60,6 @@ def encounter_is_upper_bracket(
                 encounter.round > 0,
             ),
         ),
-        sa.and_(
-            stage.id.is_(None),
-            tournament_group.id.is_not(None),
-            tournament_group.is_groups.is_(False),
-            encounter.round > 0,
-        ),
     )
 
 
@@ -84,20 +68,17 @@ def encounter_is_bracket(
     encounter=models.Encounter,
     stage=models.Stage,
     stage_item=models.StageItem,
-    tournament_group=models.TournamentGroup,
 ) -> sa.ColumnElement[bool]:
     return sa.or_(
         encounter_is_upper_bracket(
             encounter=encounter,
             stage=stage,
             stage_item=stage_item,
-            tournament_group=tournament_group,
         ),
         encounter_is_lower_bracket(
             encounter=encounter,
             stage=stage,
             stage_item=stage_item,
-            tournament_group=tournament_group,
         ),
     )
 

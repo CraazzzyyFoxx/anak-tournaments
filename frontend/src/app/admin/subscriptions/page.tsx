@@ -3,12 +3,11 @@
 import { useCallback, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { useDebounce } from "use-debounce";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { usePermissions } from "@/hooks/usePermissions";
-import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
+import { useRealtimeCoalescedRefetch } from "@/hooks/useRealtimeCoalescedRefetch";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 import { SubscriptionHealthDashboard } from "./_components/subscription-health";
@@ -76,11 +75,13 @@ export default function SubscriptionCollectionAdminPage() {
   const refetchAll = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
   }, [queryClient]);
-  const [scheduleRefetch] = useDebounce(refetchAll, REALTIME_REFRESH_DEBOUNCE_MS);
-  useRealtimeTopic(
+  useRealtimeCoalescedRefetch(
     currentWorkspaceId != null ? `workspace:${currentWorkspaceId}:subscriptions` : null,
-    () => scheduleRefetch(),
-    [scheduleRefetch]
+    {
+      minDelayMs: REALTIME_REFRESH_DEBOUNCE_MS,
+      onEvent: (_event, schedule) => schedule(),
+      onFlush: refetchAll,
+    }
   );
 
   const showSettingsTab = activeTab === "settings" && isSuperuser;

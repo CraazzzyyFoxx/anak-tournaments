@@ -34,6 +34,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 
+from .seeding_order import seeding_order
 from .types import AdvancementEdge, BracketSkeleton, Pairing
 
 # Origin kinds. WINNER/LOSER carry a pairing's ``local_id``; TEAM carries a
@@ -142,7 +143,7 @@ def generate(
         return winners, losers
 
     # ── Upper bracket ───────────────────────────────────────────────────────
-    seeds = _seeding_order(bracket_size)
+    seeds = seeding_order(bracket_size)
     slots: list[Origin | None] = [(_TEAM, team_ids[seed]) if seed < n else None for seed in seeds]
 
     # ``ub_losers[r - 1][k]`` — what drops out of slot k of UB round r, or None
@@ -236,12 +237,3 @@ def _ub_round_label(round_num: int, upper_rounds: int, match_idx: int) -> str:
     return f"UB R{round_num} Match {match_idx}"
 
 
-def _seeding_order(size: int) -> list[int]:
-    if size == 1:
-        return [0]
-    half = _seeding_order(size // 2)
-    result: list[int] = []
-    for seed in half:
-        result.append(seed)
-        result.append(size - 1 - seed)
-    return result

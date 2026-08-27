@@ -19,4 +19,14 @@ from .statistics import *
 from .achievement import *
 from .analytics import *
 from .workspace import *
-from . import admin as admin
+from .admin.balancer import *
+from .admin.computation import *
+from .admin.encounter import *
+from .admin.encounter_reports import *
+from .admin.matches import *
+from .admin.player_sub_role import *
+from .admin.stage import *
+from .admin.standing import *
+from .admin.team import *
+from .admin.tournament import *
+from .admin.tournament_link import *

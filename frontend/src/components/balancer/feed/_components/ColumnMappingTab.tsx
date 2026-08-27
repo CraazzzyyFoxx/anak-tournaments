@@ -114,6 +114,7 @@ export function ColumnMappingTab({
             parsers={catalog.parsers}
             previewByTarget={previewByTarget}
             errorsByTarget={errorsByTarget}
+            subroleCatalog={catalog.subrole_catalog}
             onModeChange={onModeChange}
             onColumnsChange={onColumnsChange}
             onValueChange={onValueChange}

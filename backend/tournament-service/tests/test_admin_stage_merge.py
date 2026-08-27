@@ -13,14 +13,6 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 stage_service = importlib.import_module("src.services.admin.stage")
 enums = importlib.import_module("shared.core.enums")
@@ -185,6 +177,49 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
         )
         self.assertLess(calls.index("enqueue:99"), calls.index("commit"))
         self.assertLess(calls.index("publish:99:structure_changed"), calls.index("commit"))
+
+
+class AdminStageDeleteReindexTests(IsolatedAsyncioTestCase):
+    """Deleting a stage must close the gap in the remaining stages' ``order`` —
+    otherwise the next stage created (frontend sends ``order: stages.length``)
+    collides with whatever stage already sits at that position, which breaks
+    order-dependent lookups like auto-wire's "preceding group stage" query."""
+
+    async def test_delete_stage_reindexes_remaining_stages_densely(self) -> None:
+        deleted_stage = SimpleNamespace(id=10, tournament_id=99, order=1)
+        # A pre-existing gap (0, 2, 3) as if an earlier stage had already been
+        # deleted without reindexing — the fix must still land on a dense 0..n-1
+        # sequence regardless of the starting values.
+        remaining_a = SimpleNamespace(id=9, order=0)
+        remaining_b = SimpleNamespace(id=11, order=2)
+        remaining_c = SimpleNamespace(id=12, order=3)
+
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=_scalars_result([remaining_a, remaining_b, remaining_c])),
+            delete=AsyncMock(),
+            flush=AsyncMock(),
+            commit=AsyncMock(),
+        )
+
+        with (
+            patch.object(
+                stage_service.stage_service, "get_stage", AsyncMock(return_value=deleted_stage)
+            ),
+            patch.object(
+                stage_service.stage_service.encounter_repo, "delete_for_stage", AsyncMock()
+            ),
+            patch.object(
+                stage_service.stage_service.standing_repo, "delete_for_stage", AsyncMock()
+            ),
+            patch.object(stage_service.stage_service, "_publish_tournament_changed", AsyncMock()),
+        ):
+            await stage_service.stage_service.delete_stage(session, deleted_stage.id)
+
+        session.delete.assert_awaited_once_with(deleted_stage)
+        self.assertEqual(0, remaining_a.order)
+        self.assertEqual(1, remaining_b.order)
+        self.assertEqual(2, remaining_c.order)
+        session.commit.assert_awaited_once()
 
 
 POOL_MODE = enums.MapVetoMode.POOL

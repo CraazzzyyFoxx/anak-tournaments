@@ -1,6 +1,7 @@
 {
     "folders": [
         {
+            "name": "anak-tournaments",
             "path": "."
         },
         {
@@ -42,5 +43,26 @@
         {
             "path": "loadtests"
         }
-    ]
+    ],
+    "settings": {
+        "python.defaultInterpreterPath": "${workspaceFolder:anak-tournaments}/backend/.venv/Scripts/python.exe",
+        "ty.interpreter": "${workspaceFolder:anak-tournaments}/backend/.venv/Scripts/python.exe",
+        "ty.configuration": {
+            "environment": {
+                "python": "${workspaceFolder:anak-tournaments}/backend/.venv",
+                "python-version": "3.14",
+                "root": [
+                    "${workspaceFolder:anak-tournaments}/backend",
+                    "${workspaceFolder:anak-tournaments}/backend/app-service",
+                    "${workspaceFolder:anak-tournaments}/backend/identity-service",
+                    "${workspaceFolder:anak-tournaments}/backend/parser-service",
+                    "${workspaceFolder:anak-tournaments}/backend/tournament-service",
+                    "${workspaceFolder:anak-tournaments}/backend/balancer-service",
+                    "${workspaceFolder:anak-tournaments}/backend/discord-service",
+                    "${workspaceFolder:anak-tournaments}/backend/analytics-service",
+                    "${workspaceFolder:anak-tournaments}/backend/stream-service"
+                ]
+            }
+        }
+    }
 }

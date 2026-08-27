@@ -1479,7 +1479,7 @@ def _division_rules(workspace_id: int) -> list[AchievementRule]:
             scope=AchievementScope.tournament,
             grain=AchievementGrain.user_tournament,
             condition_tree={"type": "div_change", "params": {"direction": "up", "min_shift": 1}},
-            depends_on=["analytics.tournament", "tournament.player"],
+            depends_on=["analytics.player_shift", "tournament.player"],
         ),
         _catalog_rule(
             workspace_id,
@@ -1487,7 +1487,7 @@ def _division_rules(workspace_id: int) -> list[AchievementRule]:
             scope=AchievementScope.tournament,
             grain=AchievementGrain.user_tournament,
             condition_tree={"type": "div_change", "params": {"direction": "down", "min_shift": 1}},
-            depends_on=["analytics.tournament", "tournament.player"],
+            depends_on=["analytics.player_shift", "tournament.player"],
         ),
         _catalog_rule(
             workspace_id,
@@ -1495,7 +1495,7 @@ def _division_rules(workspace_id: int) -> list[AchievementRule]:
             scope=AchievementScope.tournament,
             grain=AchievementGrain.user_tournament,
             condition_tree={"type": "div_level", "params": {"op": "<=", "value": 3}},
-            depends_on=["analytics.tournament", "tournament.player"],
+            depends_on=["analytics.player_shift", "tournament.player"],
         ),
         _catalog_rule(
             workspace_id,
@@ -1503,7 +1503,7 @@ def _division_rules(workspace_id: int) -> list[AchievementRule]:
             scope=AchievementScope.tournament,
             grain=AchievementGrain.user_tournament,
             condition_tree={"type": "div_change", "params": {"direction": "up", "min_shift": 4}},
-            depends_on=["analytics.tournament", "tournament.player"],
+            depends_on=["analytics.player_shift", "tournament.player"],
         ),
         _catalog_rule(
             workspace_id,
@@ -1511,7 +1511,7 @@ def _division_rules(workspace_id: int) -> list[AchievementRule]:
             scope=AchievementScope.tournament,
             grain=AchievementGrain.user_tournament,
             condition_tree={"type": "div_change", "params": {"direction": "down", "min_shift": 4}},
-            depends_on=["analytics.tournament", "tournament.player"],
+            depends_on=["analytics.player_shift", "tournament.player"],
         ),
         _catalog_rule(
             workspace_id,
@@ -1527,7 +1527,7 @@ def _division_rules(workspace_id: int) -> list[AchievementRule]:
             scope=AchievementScope.glob,
             grain=AchievementGrain.user,
             condition_tree={"type": "div_span", "params": {"op": ">=", "value": 10}},
-            depends_on=["analytics.tournament", "tournament.player"],
+            depends_on=["analytics.player_shift", "tournament.player"],
         ),
     ]
 
@@ -1711,7 +1711,7 @@ def _standing_rules(workspace_id: int) -> list[AchievementRule]:
                     },
                 ]
             },
-            depends_on=["analytics.tournament", "tournament.player", "tournament.standing", "tournament.team"],
+            depends_on=["analytics.player_shift", "tournament.player", "tournament.standing", "tournament.team"],
         ),
         _catalog_rule(
             workspace_id,
@@ -1742,7 +1742,7 @@ def _team_rules(workspace_id: int) -> list[AchievementRule]:
                     }
                 },
             },
-            depends_on=["analytics.tournament", "tournament.player", "tournament.team"],
+            depends_on=["analytics.player_shift", "tournament.player", "tournament.team"],
         ),
         _catalog_rule(
             workspace_id,
@@ -1760,7 +1760,7 @@ def _team_rules(workspace_id: int) -> list[AchievementRule]:
                     }
                 },
             },
-            depends_on=["analytics.tournament", "tournament.player", "tournament.team"],
+            depends_on=["analytics.player_shift", "tournament.player", "tournament.team"],
         ),
         _catalog_rule(
             workspace_id,
@@ -1778,7 +1778,7 @@ def _team_rules(workspace_id: int) -> list[AchievementRule]:
                     }
                 },
             },
-            depends_on=["analytics.tournament", "tournament.player", "tournament.team"],
+            depends_on=["analytics.player_shift", "tournament.player", "tournament.team"],
         ),
         _catalog_rule(
             workspace_id,

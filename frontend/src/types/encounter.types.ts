@@ -40,7 +40,6 @@ export interface Encounter {
   stage_id: number | null;
   stage_item_id: number | null;
   challonge_id: number | null;
-  challonge_slug?: string | null;
   status: string;
   closeness: number | null;
   has_logs: boolean;

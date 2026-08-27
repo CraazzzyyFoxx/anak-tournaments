@@ -26,17 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
 from shared.core import pagination
-from src import models
-from src.schemas.admin.encounter_reports import (
-    CaptainReportRead,
-    EncounterMapCodeRead,
-    EncounterReportsRow,
-    EncounterReportsSearchParams,
-    EncounterReportsStats,
-    EncounterTeamRef,
-    LastResolutionRead,
-    valid_series_scores,
-)
+from src import models, schemas
 
 __all__ = ("encounter_reports_service",)
 
@@ -83,7 +73,7 @@ class _Query:
     deliberately drop them.
     """
 
-    def __init__(self, workspace_id: int, params: EncounterReportsSearchParams) -> None:
+    def __init__(self, workspace_id: int, params: schemas.EncounterReportsSearchParams) -> None:
         self.params = params
         self.agg = _report_aggregate()
         self.audit = _last_audit()
@@ -135,19 +125,19 @@ class _Query:
         return where
 
 
-def _team_ref(team: models.Team | None) -> EncounterTeamRef | None:
+def _team_ref(team: models.Team | None) -> schemas.EncounterTeamRef | None:
     if team is None:
         return None
-    return EncounterTeamRef(id=team.id, name=team.name)
+    return schemas.EncounterTeamRef(id=team.id, name=team.name)
 
 
-def _report_read(report: models.EncounterCaptainReport, encounter: models.Encounter) -> CaptainReportRead:
+def _report_read(report: models.EncounterCaptainReport, encounter: models.Encounter) -> schemas.CaptainReportRead:
     side: str | None = None
     if report.team_id == encounter.home_team_id:
         side = "home"
     elif report.team_id == encounter.away_team_id:
         side = "away"
-    return CaptainReportRead(
+    return schemas.CaptainReportRead(
         id=report.id,
         encounter_id=report.encounter_id,
         team_id=report.team_id,
@@ -160,7 +150,7 @@ def _report_read(report: models.EncounterCaptainReport, encounter: models.Encoun
         comment=report.comment,
         custom_fields=dict(report.custom_fields_json or {}),
         map_codes=[
-            EncounterMapCodeRead(id=c.id, map_index=c.map_index, map_id=c.map_id, code=c.code) for c in report.map_codes
+            schemas.EncounterMapCodeRead(id=c.id, map_index=c.map_index, map_id=c.map_id, code=c.code) for c in report.map_codes
         ],
         created_at=report.created_at.isoformat() if report.created_at else None,
         updated_at=report.updated_at.isoformat() if report.updated_at else None,
@@ -175,7 +165,7 @@ def _series_valid(encounter: models.Encounter, reports: Sequence[models.Encounte
     """
     if not reports:
         return True
-    allowed = valid_series_scores(encounter.best_of)
+    allowed = schemas.valid_series_scores(encounter.best_of)
     if not allowed:
         return True
     return all((r.home_score, r.away_score) in allowed for r in reports)
@@ -185,14 +175,14 @@ def _row(
     encounter: models.Encounter,
     reported_count: int | None,
     distinct_scores: int | None,
-    resolution: LastResolutionRead | None,
-) -> EncounterReportsRow:
+    resolution: schemas.LastResolutionRead | None,
+) -> schemas.EncounterReportsRow:
     reports = list(encounter.captain_reports)
     by_side = {r.team_id: r for r in reports}
     home_report = by_side.get(encounter.home_team_id) if encounter.home_team_id else None
     away_report = by_side.get(encounter.away_team_id) if encounter.away_team_id else None
     count = int(reported_count or 0)
-    return EncounterReportsRow(
+    return schemas.EncounterReportsRow(
         id=encounter.id,
         name=encounter.name,
         tournament_id=encounter.tournament_id,
@@ -232,8 +222,8 @@ class AdminEncounterReportsService:
         session: AsyncSession,
         *,
         workspace_id: int,
-        params: EncounterReportsSearchParams,
-    ) -> pagination.Paginated[EncounterReportsRow]:
+        params: schemas.EncounterReportsSearchParams,
+    ) -> pagination.Paginated[schemas.EncounterReportsRow]:
         builder = _Query(workspace_id, params)
         where = builder.scope_predicates() + builder.chip_predicates()
 
@@ -278,7 +268,7 @@ class AdminEncounterReportsService:
                 row[0],
                 row.reported_count,
                 row.distinct_scores,
-                LastResolutionRead(
+                schemas.LastResolutionRead(
                     action=row.action,
                     actor_user_id=row.actor_user_id,
                     actor_name=row.actor_name,
@@ -301,8 +291,8 @@ class AdminEncounterReportsService:
         session: AsyncSession,
         *,
         workspace_id: int,
-        params: EncounterReportsSearchParams,
-    ) -> EncounterReportsStats:
+        params: schemas.EncounterReportsSearchParams,
+    ) -> schemas.EncounterReportsStats:
         """Counters for the filter chips.
 
         Scoped by tournament/stage/search but **not** by the chip filters: a chip
@@ -329,7 +319,7 @@ class AdminEncounterReportsService:
         ).where(*scope)
         counts = (await session.execute(counts_query)).one()
 
-        return EncounterReportsStats(
+        return schemas.EncounterReportsStats(
             by_result_status=by_status,
             mismatch_count=int(counts.mismatch),
             awaiting_second_count=int(counts.awaiting_second),

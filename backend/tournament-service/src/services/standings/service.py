@@ -13,13 +13,13 @@ from shared.core import enums
 from shared.core.enums import StageType
 from shared.repository import EncounterRepository, StandingRepository, TeamRepository, TournamentRepository
 from shared.services.bracket.swiss_settings import swiss_bye_counts, swiss_scope_stopped
-from shared.services.tournament_utils import (
+from shared.services.tournament.utils import (
     completed_encounters as _shared_completed_encounters,
 )
-from shared.services.tournament_utils import (
+from shared.services.tournament.utils import (
     completed_encounters_in_finished_rounds as _shared_completed_encounters_in_finished_rounds,
 )
-from shared.services.tournament_utils import sort_bracket_matches
+from shared.services.tournament.utils import sort_bracket_matches
 from src import models, schemas
 from src.core import utils
 from src.services.encounter.service import encounter_service
@@ -84,8 +84,6 @@ def standing_entities(in_entities: list[str]) -> list[_AbstractLoad]:
 
     if "tournament" in in_entities:
         entities.append(sa.orm.selectinload(models.Standing.tournament))
-    if "group" in in_entities:
-        entities.append(sa.orm.selectinload(models.Standing.group))
     if _entity_requested(in_entities, "team"):
         team_entity = sa.orm.selectinload(models.Standing.team)
         entities.append(team_entity)
@@ -482,55 +480,6 @@ def _infer_stage_type_from_encounters(
     return StageType.DOUBLE_ELIMINATION if has_negative else StageType.SINGLE_ELIMINATION
 
 
-def _resolve_compat_group_id(
-    tournament: models.Tournament,
-    stage: models.Stage,
-    stage_item: models.StageItem | None,
-) -> int | None:
-    """Resolve the legacy ``TournamentGroup`` id for a given stage/stage_item.
-
-    Returns ``None`` if no compat-group exists — this is valid now that
-    ``Standing.group_id`` is nullable (Phase A). Callers must tolerate ``None``.
-    """
-    groups = list(getattr(tournament, "groups", []) or [])
-    stage_candidates = [group for group in groups if group.stage_id == stage.id]
-
-    if stage_item is not None:
-        item_name = stage_item.name.strip().lower()
-        exact_match = [group for group in stage_candidates if group.name.strip().lower() == item_name]
-        if exact_match:
-            return exact_match[0].id
-
-    if len(stage_candidates) == 1:
-        return stage_candidates[0].id
-
-    if stage_item is None:
-        stage_name_match = [group for group in groups if group.name.strip().lower() == stage.name.strip().lower()]
-        if stage_name_match:
-            return stage_name_match[0].id
-
-    fallback_candidates = [group for group in groups if group.is_groups == (stage.stage_type in GROUP_STAGE_TYPES)]
-    if stage_item is not None:
-        item_name = stage_item.name.strip().lower()
-        fallback_exact = [group for group in fallback_candidates if group.name.strip().lower() == item_name]
-        if fallback_exact:
-            return fallback_exact[0].id
-
-    if stage_candidates:
-        return stage_candidates[0].id
-    if fallback_candidates:
-        return fallback_candidates[0].id
-
-    # Phase A: Standing.group_id is nullable, so missing compat-group is no
-    # longer a hard error — log and proceed without one.
-    logger.debug(
-        "No compat TournamentGroup for tournament=%s stage=%s; Standing.group_id will be NULL",
-        tournament.id,
-        stage.id,
-    )
-    return None
-
-
 def _stage_item_team_ids(stage_item: models.StageItem | None) -> list[int]:
     if stage_item is None:
         return []
@@ -565,7 +514,6 @@ def _build_group_stage_standings(
         if stage.stage_type == StageType.SWISS
         else {}
     )
-    compat_group_id = _resolve_compat_group_id(tournament, stage, stage_item)
 
     teams = prepare_teams_for_groups(
         encounters,
@@ -584,7 +532,6 @@ def _build_group_stage_standings(
         standings.append(
             models.Standing(
                 tournament_id=tournament.id,
-                group_id=compat_group_id,
                 team_id=team.team_id,
                 stage_id=stage.id,
                 stage_item_id=stage_item.id if stage_item is not None else None,
@@ -622,7 +569,6 @@ def _build_elimination_stage_standings(
     if not encounters and not seed_team_ids:
         return []
 
-    compat_group_id = _resolve_compat_group_id(tournament, stage, None)
 
     if not encounters:
         # No matches played yet — create placeholder standings with position 0.
@@ -631,7 +577,6 @@ def _build_elimination_stage_standings(
             standings.append(
                 models.Standing(
                     tournament_id=tournament.id,
-                    group_id=compat_group_id,
                     team_id=team_id,
                     stage_id=stage.id,
                     stage_item_id=None,
@@ -659,7 +604,6 @@ def _build_elimination_stage_standings(
         standings.append(
             models.Standing(
                 tournament_id=tournament.id,
-                group_id=compat_group_id,
                 team_id=team.id,
                 stage_id=stage.id,
                 stage_item_id=None,
@@ -681,7 +625,6 @@ def _build_elimination_stage_standings(
             standings.append(
                 models.Standing(
                     tournament_id=tournament.id,
-                    group_id=compat_group_id,
                     team_id=team_id,
                     stage_id=stage.id,
                     stage_item_id=None,
@@ -774,7 +717,6 @@ def sort_matches(
 #: Everything ``calculate_for_tournament`` walks: stages, their items, and each
 #: item's seed inputs.
 _STANDINGS_TOURNAMENT_LOAD = (
-    selectinload(models.Tournament.groups),
     selectinload(models.Tournament.stages).selectinload(models.Stage.items).selectinload(models.StageItem.inputs),
 )
 

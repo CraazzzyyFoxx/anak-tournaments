@@ -181,6 +181,9 @@ class MatchReadWithUserStats(BaseModel):
     log_name: str | None
     encounter_id: int
     map_id: int
+    # 1-based play order inside the series. NULL on logs written before the
+    # column existed; callers restore those from the map pool when one exists.
+    map_index: int | None = None
     code: str | None = None
     map: MapRead | None = None
     performance: int | None = None

@@ -191,7 +191,7 @@ class TeamRepository(BaseRepository[models.Team]):
         if "group" in in_entities:
             standings = selectin_entity(child, models.Team.standings)
             entities.append(standings)
-            entities.append(join_entity(standings, models.Standing.group))
+            entities.append(join_entity(standings, models.Standing.stage_item))
         return entities
 
     async def get_by_name_and_tournament(
@@ -458,6 +458,15 @@ class EncounterRepository(BaseRepository[models.Encounter]):
             sa.delete(models.Encounter).where(models.Encounter.stage_id == stage_id)
         )
 
+    async def delete_for_stage_item(self, session: AsyncSession, stage_item_id: int) -> None:
+        """Statement delete — see ``delete_for_stage``, scoped to one stage item
+        (group/bracket lane) instead of the whole stage. ``Encounter.stage_item_id``
+        is also ``ON DELETE SET NULL``.
+        """
+        await session.execute(
+            sa.delete(models.Encounter).where(models.Encounter.stage_item_id == stage_item_id)
+        )
+
 
 class MatchRepository(BaseRepository[models.Match]):
     def __init__(self) -> None:
@@ -510,6 +519,12 @@ class StandingRepository(BaseRepository[models.Standing]):
         """Statement delete — see ``EncounterRepository.delete_for_stage``."""
         await session.execute(
             sa.delete(models.Standing).where(models.Standing.stage_id == stage_id)
+        )
+
+    async def delete_for_stage_item(self, session: AsyncSession, stage_item_id: int) -> None:
+        """Statement delete — see ``EncounterRepository.delete_for_stage_item``."""
+        await session.execute(
+            sa.delete(models.Standing).where(models.Standing.stage_item_id == stage_item_id)
         )
 
     async def delete_for_tournament(self, session: AsyncSession, tournament_id: int) -> None:
@@ -628,48 +643,6 @@ class TournamentLinkRepository(BaseRepository[models.TournamentLink]):
             by_tournament.setdefault(link.tournament_id, []).append(link)
         return by_tournament
 
-
-class TournamentGroupRepository(BaseRepository[models.TournamentGroup]):
-    """``tournament.group`` — legacy group model, still actively written
-    alongside Stage/StageItem during the migration (see the model's own
-    docstring); kept here rather than skipped since ``TournamentService`` still
-    creates rows through it.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(models.TournamentGroup)
-
-    async def get_by_tournament_stage_and_name(
-        self,
-        session: AsyncSession,
-        *,
-        tournament_id: int,
-        stage_id: int | None,
-        name: str,
-    ) -> models.TournamentGroup | None:
-        return await self.get_by(session, tournament_id=tournament_id, stage_id=stage_id, name=name)
-
-    async def list_by_tournament_stage(
-        self,
-        session: AsyncSession,
-        *,
-        tournament_id: int,
-        stage_id: int,
-    ) -> Sequence[models.TournamentGroup]:
-        """Groups attached to one stage.
-
-        ``id ASC`` so the caller's "exactly one group, take it" pick is reproducible;
-        the original had no ``ORDER BY`` and only ever inspected ``len(...) == 1``.
-        """
-        result = await session.execute(
-            self.select()
-            .where(
-                models.TournamentGroup.tournament_id == tournament_id,
-                models.TournamentGroup.stage_id == stage_id,
-            )
-            .order_by(models.TournamentGroup.id.asc())
-        )
-        return result.scalars().all()
 
 
 class StageItemInputRepository(BaseRepository[models.StageItemInput]):

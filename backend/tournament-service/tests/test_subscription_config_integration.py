@@ -32,16 +32,6 @@ DSN = os.environ.get("SUBSCRIPTIONS_IT_DSN")
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-for _key, _value in {
-    "POSTGRES_HOST": "localhost",
-    "POSTGRES_PORT": "5432",
-    "POSTGRES_DB": "tournament_test",
-    "POSTGRES_USER": "postgres",
-    "POSTGRES_PASSWORD": "postgres",
-    "JWT_SECRET_KEY": "test-secret",
-    "REDIS_URL": "redis://localhost:6379",
-}.items():
-    os.environ.setdefault(_key, _value)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -136,7 +126,7 @@ class TestProviderConfigPersistence(IsolatedAsyncioTestCase):
 
     async def test_plaintext_code_never_reaches_the_database(self):
         read = await self._save(provider="boosty", codes=[{"code": "live-secret", "tier_rank": 3, "tier_label": "L3"}])
-        from shared.subscriptions.challenge_code import hash_code
+        from shared.services.subscriptions.challenge_code import hash_code
 
         raw = await self._raw_config("boosty")
         assert "live-secret" not in raw

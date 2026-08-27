@@ -6,6 +6,7 @@ import { Trophy } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { UserTournamentWithStats, UserTournamentSummary } from "@/types/user.types";
+import { type MapResultPip } from "@/app/(site)/users/components/overview/map-results";
 import { UserTournamentStat } from "@/types/statistics.types";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import DivisionIcon from "@/components/DivisionIcon";
@@ -26,6 +27,7 @@ interface Props {
   tournaments: UserTournamentSummary[];
   /** Profile owner's user id — the row highlighted in the lobby leaderboard. */
   userId: number;
+  mapPips?: MapResultPip[] | null;
 }
 
 const compactNumber = (value: number | null | undefined) => {
@@ -110,7 +112,7 @@ const PercentileTile = ({
   );
 };
 
-const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) => {
+const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }: Props) => {
   const t = useTranslations();
   const [lb, setLb] = useState<{ stat: string; label: string } | null>(null);
   const router = useRouter();
@@ -259,38 +261,69 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {Array.from({ length: tournament.maps_won }).map((_, i) => (
-                <span
-                  key={`w${i}`}
-                  className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
-                  style={{
-                    color: "var(--aqt-emerald)",
-                    background: "color-mix(in srgb, var(--aqt-emerald) 14%, transparent)",
-                    border: "1px solid color-mix(in srgb, var(--aqt-emerald) 35%, transparent)"
-                  }}
-                  title={t("users.overview.lastTournament.mapWon")}
-                >
-                  {t("users.overview.win")}
-                </span>
-              ))}
-              {Array.from({ length: Math.max(0, mapsLost) }).map((_, i) => (
-                <span
-                  key={`l${i}`}
-                  className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
-                  style={{
-                    color: "var(--aqt-rose)",
-                    background: "color-mix(in srgb, var(--aqt-rose) 14%, transparent)",
-                    border: "1px solid color-mix(in srgb, var(--aqt-rose) 35%, transparent)"
-                  }}
-                  title={t("users.overview.lastTournament.mapLost")}
-                >
-                  {t("users.overview.loss")}
-                </span>
-              ))}
+              {(mapPips ?? []).length > 0
+                ? mapPips!.map((pip, i) => {
+                    const color =
+                      pip === "win" ? "var(--aqt-emerald)" : pip === "loss" ? "var(--aqt-rose)" : "var(--aqt-amber)";
+                    const title =
+                      pip === "win"
+                        ? t("users.overview.lastTournament.mapWon")
+                        : pip === "loss"
+                          ? t("users.overview.lastTournament.mapLost")
+                          : t("users.overview.lastTournament.mapDraw");
+                    const label =
+                      pip === "win" ? t("users.overview.win") : pip === "loss" ? t("users.overview.loss") : t("users.overview.draw");
+                    return (
+                      <span
+                        key={`${pip}${i}`}
+                        className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
+                        style={{
+                          color,
+                          background: `color-mix(in srgb, ${color} 14%, transparent)`,
+                          border: `1px solid color-mix(in srgb, ${color} 35%, transparent)`
+                        }}
+                        title={title}
+                      >
+                        {label}
+                      </span>
+                    );
+                  })
+                : [
+                    ...Array.from({ length: tournament.maps_won }).map((_, i) => (
+                      <span
+                        key={`w${i}`}
+                        className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
+                        style={{
+                          color: "var(--aqt-emerald)",
+                          background: "color-mix(in srgb, var(--aqt-emerald) 14%, transparent)",
+                          border: "1px solid color-mix(in srgb, var(--aqt-emerald) 35%, transparent)"
+                        }}
+                        title={t("users.overview.lastTournament.mapWon")}
+                      >
+                        {t("users.overview.win")}
+                      </span>
+                    )),
+                    ...Array.from({ length: Math.max(0, mapsLost) }).map((_, i) => (
+                      <span
+                        key={`l${i}`}
+                        className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
+                        style={{
+                          color: "var(--aqt-rose)",
+                          background: "color-mix(in srgb, var(--aqt-rose) 14%, transparent)",
+                          border: "1px solid color-mix(in srgb, var(--aqt-rose) 35%, transparent)"
+                        }}
+                        title={t("users.overview.lastTournament.mapLost")}
+                      >
+                        {t("users.overview.loss")}
+                      </span>
+                    ))
+                  ]}
             </div>
+            {mapPips && mapPips.length > 0 ? null : (
             <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">
               {t("users.overview.lastTournament.mapResultsAggregate")}
             </span>
+            )}
           </div>
         ) : null}
         {statTiles.length > 0 ? (

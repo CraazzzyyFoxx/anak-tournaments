@@ -91,7 +91,7 @@ function splitBattleTag(battleTag: string): { name: string; suffix: string | nul
 }
 
 function isCardActionTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && target.closest("[data-card-action]") !== null;
+  return target instanceof Element && target.closest("[data-card-action]") !== null;
 }
 
 function TriagePlayerCard({

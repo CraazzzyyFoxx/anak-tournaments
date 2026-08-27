@@ -27,16 +27,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DEFAULT_GRID
 from src import models
+from src.core.config import settings
 from src.core.workspace import workspace_scope_filter
+from src.domain.ratings import compute_linear_metrics
 from src.services.analytics.canonical_division import (
     assign_canonical_division,
     load_source_grids,
 )
-from src.services.analytics.flows import (
-    compute_linear_metrics,
-    compute_openskill_shift_map,
-    get_data_frame,
-)
+from src.services.analytics.flows import flows_service
 
 from .aggregations import build_tournament_feature_frame
 from .cache import get_or_build_dataframe, scope_cache_params
@@ -160,12 +158,12 @@ async def _linear_history_frame(
     params = scope_cache_params(workspace_id=workspace_id, workspace_ids=workspace_ids)
 
     async def _build() -> pd.DataFrame:
-        df = await get_data_frame(
+        df = await flows_service.get_data_frame(
             session,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
         )
-        return compute_linear_metrics(df) if not df.empty else df
+        return compute_linear_metrics(df, shift_scale=settings.linear_shift_scale) if not df.empty else df
 
     return await get_or_build_dataframe("shift_linear_history", params, _build)
 
@@ -184,7 +182,7 @@ async def _openskill_shift_frame(
     }
 
     async def _build() -> pd.DataFrame:
-        shift_map, _ = await compute_openskill_shift_map(
+        shift_map, _ = await flows_service.compute_openskill_shift_map(
             session,
             tournament_id,
             df_history,

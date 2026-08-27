@@ -177,18 +177,27 @@ class S3Client:
             return False
 
     async def list_objects(self, prefix: str) -> list[str]:
+        """List every key under ``prefix``.
+
+        A ``ClientError`` propagates — same rule as ``get_object``/``head_object``.
+        Swallowing it returned an empty list indistinguishable from an empty
+        prefix, so an endpoint outage (e.g. a 502 from the gateway in front of
+        MinIO) made ``delete_prefix`` report 0 deletions while its callers went
+        on to null the owning DB column, and made ``get_logs_by_tournament``
+        report that a tournament has no logs.
+        """
         keys: list[str] = []
         kwargs: dict[str, Any] = {"Bucket": self.bucket_name, "Prefix": prefix}
-        try:
-            async with self._client() as client:
-                while True:
-                    response = await client.list_objects_v2(**kwargs)
-                    keys.extend(obj["Key"] for obj in response.get("Contents", []))
-                    if not response.get("IsTruncated"):
-                        break
-                    kwargs["ContinuationToken"] = response["NextContinuationToken"]
-        except ClientError:
-            logger.exception(f"Error listing objects with prefix '{prefix}'")
+        async with self._client() as client:
+            while True:
+                response = await client.list_objects_v2(**kwargs)
+                # Skip legacy zero-byte "folder marker" keys ("logs/90/"): they
+                # are not objects any caller wants, and the tournament sweep
+                # (parser-service/serve.py) fans every listed key out as a log.
+                keys.extend(obj["Key"] for obj in response.get("Contents", []) if not obj["Key"].endswith("/"))
+                if not response.get("IsTruncated"):
+                    break
+                kwargs["ContinuationToken"] = response["NextContinuationToken"]
         return keys
 
     async def head_object(self, key: str) -> dict | None:
@@ -209,27 +218,6 @@ class S3Client:
 
     async def object_exists(self, key: str) -> bool:
         return await self.head_object(key) is not None
-
-    # ── Folder operations ────────────────────────────────────────────────
-
-    async def check_folder(self, prefix: str) -> bool:
-        """Check if a folder (prefix) exists by listing objects under it."""
-        objects = await self.list_objects(prefix)
-        return len(objects) > 0
-
-    async def create_folder(self, prefix: str) -> bool:
-        """Create a folder marker (zero-byte object with trailing slash)."""
-        if not prefix.endswith("/"):
-            prefix = f"{prefix}/"
-        return await self.put_object(prefix, b"")
-
-    async def ensure_folder(self, prefix: str) -> bool:
-        """Create folder if it doesn't exist."""
-        if not prefix.endswith("/"):
-            prefix = f"{prefix}/"
-        if await self.check_folder(prefix):
-            return True
-        return await self.create_folder(prefix)
 
     # ── URL generation ───────────────────────────────────────────────────
 

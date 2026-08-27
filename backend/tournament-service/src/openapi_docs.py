@@ -192,6 +192,10 @@ DOCS: dict[str, dict] = {
         "summary": "Update stage item",
         "description": "Updates a stage item by id; requires stage-update permission on its workspace.",
     },
+    "rpc.tournament.admin.delete#stage_item": {
+        "summary": "Delete stage item",
+        "description": "Deletes a stage item (group/bracket lane) by id, along with its own encounters and standings (204 no body); requires stage-delete permission on its workspace.",
+    },
     "rpc.tournament.admin.create#stage_item_input": {
         "summary": "Create stage item input",
         "description": "Creates a stage item input under a stage item; requires stage-create permission on the workspace resolved from the path stage_item_id.",
@@ -441,6 +445,10 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.stage_activate_and_generate": {
         "summary": "Activate and generate stage",
         "description": "Enqueues a combined activate-and-generate bracket job (202 Accepted), honoring an optional force flag; requires stage-update permission on its workspace.",
+    },
+    "rpc.tournament.stage_auto_wire": {
+        "summary": "Auto-wire stage from groups",
+        "description": "Wires the stage's TENTATIVE inputs from the preceding round-robin/Swiss stage's \"Teams advancing to playoff\" count — the same auto-wire Activate & generate runs automatically, exposed standalone for preview/debugging; requires stage-update permission on its workspace.",
     },
     "rpc.tournament.stage_wire": {
         "summary": "Wire stage from groups",
@@ -773,17 +781,9 @@ DOCS: dict[str, dict] = {
             "view the encounter."
         ),
     },
-    "rpc.tournament.captain_map_pool": {
-        "summary": "Get encounter map pool",
-        "description": "Returns the public map pool for an encounter; no authentication required.",
-    },
-    "rpc.tournament.captain_map_pool_state": {
-        "summary": "Get map veto state",
-        "description": "Returns the encounter's map-veto room state, lazily creating the veto session when both teams and a config are known; without a session it reports the reason (not_configured/teams_unknown, or slot_count_mismatch/slot_underfilled when a slot-mode config disagrees with the bracket) instead of failing. With optional auth the requesting captain's side is annotated, otherwise viewer_side is null.",
-    },
-    "rpc.tournament.captain_veto": {
-        "summary": "Veto map",
-        "description": "Lets a captain ban or pick a map in the encounter's veto and returns the updated pool entry; requires authentication.",
+    "rpc.tournament.get_pick_ban_configs": {
+        "summary": "List public map pick-ban configs",
+        "description": "Returns the tournament's map pick-ban configs in cascade order. Visibility-gated like other public tournament reads.",
     },
     "rpc.tournament.reg_pub_form": {
         "summary": "Get public registration form",

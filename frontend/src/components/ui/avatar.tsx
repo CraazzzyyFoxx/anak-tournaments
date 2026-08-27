@@ -51,7 +51,7 @@ export interface AvatarStackProps extends React.HTMLAttributes<HTMLDivElement> {
   size?: number;
   /** Overlap between adjacent avatars in px. Defaults to ~32% of `size`. */
   overlap?: number;
-  /** Separation ring color drawn around each avatar. Defaults to the page background. */
+  /** Separation ring color drawn around each avatar. Defaults to the card surface. */
   ringColor?: string;
   children: React.ReactNode;
 }
@@ -65,7 +65,7 @@ const AvatarStack = ({
   max = 5,
   size = 26,
   overlap,
-  ringColor = "var(--aqt-bg)",
+  ringColor = "var(--aqt-card)",
   className,
   children,
   ...rest
@@ -85,7 +85,7 @@ const AvatarStack = ({
         // to whichever avatar slid into it.
         <div
           key={(React.isValidElement(child) ? child.key : null) ?? i}
-          className="relative rounded-full"
+          className="relative inline-flex rounded-full"
           style={{ marginLeft: i === 0 ? 0 : -ov, zIndex: shown.length - i, boxShadow: ring }}
         >
           {child}

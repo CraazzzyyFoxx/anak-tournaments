@@ -18,16 +18,6 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 captain_service = importlib.import_module("src.services.encounter.captain")
 enums = importlib.import_module("shared.core.enums")
@@ -654,3 +644,38 @@ class AdminReopenResult(IsolatedAsyncioTestCase):
         session = _mk_session(encounter, [])
         with assert_http_status(self, 409):
             await captain_service.captain_service.reopen_encounter_result(session, 10, actor_user_id=self.ADMIN)
+
+
+class ResolveOptionalViewerSide(IsolatedAsyncioTestCase):
+    """Regression for OWT-TOURNAMENTS-24C.
+
+    ``resolve_optional_viewer_side`` imported the captain *module* as
+    ``captain_service`` and called ``resolve_captain_side`` on it. The
+    method lives on the ``CaptainService`` instance.
+    """
+
+    async def test_uses_the_service_instance(self) -> None:
+        from src.schemas.captain import resolve_optional_viewer_side
+
+        session, user, encounter = object(), object(), object()
+        with patch(
+            "src.schemas.captain.captain_mod.captain_service.resolve_captain_side",
+            new=AsyncMock(return_value="home"),
+        ) as resolve:
+            side = await resolve_optional_viewer_side(session, user, encounter)
+
+        self.assertEqual("home", side)
+        resolve.assert_awaited_once_with(session, user, encounter)
+
+    async def test_non_captain_is_none(self) -> None:
+        from src.schemas.captain import resolve_optional_viewer_side
+
+        forbidden = captain_service.HTTPException(status_code=403, detail="nope")
+        with patch(
+            "src.schemas.captain.captain_mod.captain_service.resolve_captain_side",
+            new=AsyncMock(side_effect=forbidden),
+        ):
+            side = await resolve_optional_viewer_side(object(), object(), object())
+
+        self.assertIsNone(side)
+

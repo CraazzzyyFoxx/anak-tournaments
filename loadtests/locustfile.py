@@ -302,18 +302,6 @@ class StatsAnalyst(OwtUser):
             return
         self.get("/api/analytics/streaks", "/api/analytics/streaks", {"tournament_id": tid}, detail=True)
 
-    @task(1)
-    def analytics_balance_quality(self) -> None:
-        tid = self.pick(self.seed.tournament_ids)
-        if tid is None:
-            return
-        self.get(
-            "/api/analytics/balance-quality",
-            "/api/analytics/balance-quality",
-            {"tournament_id": tid},
-            detail=True,
-        )
-
 
 class SearchUser(OwtUser):
     """Type-ahead search behaviour: short prefixes of real player names."""

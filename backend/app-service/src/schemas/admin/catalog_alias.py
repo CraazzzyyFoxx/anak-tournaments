@@ -25,6 +25,7 @@ __all__ = (
     "CatalogAliasMissListQueryParams",
     "CatalogAliasMissListParams",
     "CatalogAliasAttach",
+    "ALIAS_MAX_LENGTH",
 )
 
 # Mirrors `CatalogAliasMiss.raw_name` (String(128)) — a longer name could not be

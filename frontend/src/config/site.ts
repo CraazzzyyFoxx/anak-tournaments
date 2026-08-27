@@ -19,3 +19,9 @@ export const SITE_ICON = process.env.NEXT_PUBLIC_SITE_ICON ?? "/logo.webp";
 // Browser favicon path (used for <link rel="icon">).
 // Must be a file under `frontend/public` (e.g. "/favicon.ico").
 export const SITE_FAVICON = process.env.NEXT_PUBLIC_SITE_FAVICON ?? "/favicon.ico";
+
+// Google Analytics measurement id (e.g. "G-XXXXXXXXXX"). Unset disables GA.
+export const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
+
+// Yandex Metrica counter id (numeric). Unset disables Metrica.
+export const YM_ID = process.env.NEXT_PUBLIC_YM_ID;

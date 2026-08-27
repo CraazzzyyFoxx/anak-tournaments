@@ -44,10 +44,11 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { RbacRole } from "@/types/rbac.types";
 import type { WorkspaceMember, WorkspaceSystemRole } from "@/types/workspace.types";
 
-const SYSTEM_ROLES: WorkspaceSystemRole[] = ["owner", "admin", "member", "player"];
+const SYSTEM_ROLES: WorkspaceSystemRole[] = ["owner", "admin", "host", "member", "player"];
 const SYSTEM_ROLE_LABEL: Record<WorkspaceSystemRole, string> = {
   owner: "Owner",
   admin: "Admin",
+  host: "Host",
   member: "Member",
   player: "Player"
 };

@@ -1,8 +1,6 @@
 from .analytics_read import (
     AnalyticsAlgorithmRead,
     AnalyticsAnomaly,
-    BalancePlayerSnapshotRead,
-    BalanceQualityRead,
     PlayerAnalytics,
     PlayerShiftUpdate,
     PlayerStreak,
@@ -19,7 +17,7 @@ from .base import (
     TournamentMin,
     UserReadMin,
 )
-from .v2 import (
+from .ml import (
     AnalyticsJobCreate,
     AnalyticsJobRow,
     AnomalyFeedbackBody,
@@ -42,8 +40,6 @@ __all__ = (
     "AnalyticsJobRow",
     "AnomalyFeedbackBody",
     "AnomalyFeedbackRow",
-    "BalancePlayerSnapshotRead",
-    "BalanceQualityRead",
     "BaseRead",
     "ExplanationRow",
     "InferRequestBody",

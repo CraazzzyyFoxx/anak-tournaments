@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,17 +13,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("S3_ACCESS_KEY", "test")
-os.environ.setdefault("S3_SECRET_KEY", "test")
-os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
-os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 analytics_flows = importlib.import_module("src.services.analytics.flows")
 
@@ -35,17 +23,17 @@ class AnalyticsWorkspaceScopeTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_service,
                 "get_analytics",
                 AsyncMock(return_value=[]),
             ) as get_analytics,
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_service,
                 "get_tournament_version_ids",
                 AsyncMock(return_value={}),
             ) as get_tournament_version_ids,
         ):
-            frame = await analytics_flows.get_data_frame(session, workspace_id=5)
+            frame = await analytics_flows.flows_service.get_data_frame(session, workspace_id=5)
 
         self.assertTrue(frame.empty)
         get_analytics.assert_awaited_once_with(session, workspace_id=5, workspace_ids=None)
@@ -69,22 +57,22 @@ class AnalyticsWorkspaceScopeTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_service,
                 "lookback_start_tournament_id",
                 AsyncMock(return_value=3),
             ) as lookback_start,
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_service,
                 "get_matches",
                 AsyncMock(return_value=[]),
             ) as get_matches,
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_service,
                 "get_teams_with_players",
                 AsyncMock(return_value=[team]),
             ),
             patch.object(
-                analytics_flows.service,
+                analytics_flows.analytics_service,
                 "get_grid_versions",
                 AsyncMock(return_value={}),
             ),
@@ -94,7 +82,7 @@ class AnalyticsWorkspaceScopeTests(IsolatedAsyncioTestCase):
                 return_value=(set(), {}, []),
             ),
         ):
-            shift_map, has_history = await analytics_flows.compute_openskill_shift_map(
+            shift_map, has_history = await analytics_flows.flows_service.compute_openskill_shift_map(
                 session,
                 tournament_id=7,
                 df=df,
@@ -126,7 +114,7 @@ class LookbackWindowTests(IsolatedAsyncioTestCase):
         return SimpleNamespace(scalars=scalars)
 
     async def test_returns_min_of_recent_ids_not_numeric_offset(self) -> None:
-        service = importlib.import_module("src.services.analytics.service")
+        service = importlib.import_module("src.services.analytics.service").analytics_service
         # 10 most-recent tournaments up to #73, but ids are sparse: the oldest
         # in the window is #28, far from the naive 73 - 10 = 63.
         session = self._session_returning([73, 70, 64, 61, 55, 50, 44, 40, 33, 28])
@@ -137,7 +125,7 @@ class LookbackWindowTests(IsolatedAsyncioTestCase):
         self.assertNotEqual(63, start)  # would be the buggy tid - look_back
 
     async def test_falls_back_to_end_when_no_rows(self) -> None:
-        service = importlib.import_module("src.services.analytics.service")
+        service = importlib.import_module("src.services.analytics.service").analytics_service
         session = self._session_returning([])
 
         start = await service.lookback_start_tournament_id(session, 73, 10)

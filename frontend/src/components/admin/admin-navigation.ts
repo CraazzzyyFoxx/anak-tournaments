@@ -295,6 +295,7 @@ const adminRoutePermissions: Array<{
   { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/balancer", permissions: ["team.read"] },
+
   { prefix: "/admin/tournaments", permissions: ["tournament.read"] },
   { prefix: "/admin/teams", permissions: ["team.read"] },
   { prefix: "/admin/players", permissions: ["player.read"] },

@@ -13,19 +13,9 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 admin_encounter_service = importlib.import_module("src.services.admin.encounter")
-admin_encounter_schema = importlib.import_module("src.schemas.admin.encounter")
+schemas = importlib.import_module("src.schemas")
 
 
 def _result(value):
@@ -78,7 +68,7 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
             commit=AsyncMock(side_effect=fake_commit),
             refresh=AsyncMock(),
         )
-        payload = admin_encounter_schema.EncounterCreate(
+        payload = schemas.EncounterCreate(
             name="Round 1",
             tournament_id=1,
             stage_id=10,
@@ -112,7 +102,6 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
             tournament_id=1,
             stage_id=20,
             stage_item_id=None,
-            tournament_group_id=None,
             home_team_id=100,
             away_team_id=200,
             home_score=0,
@@ -138,7 +127,7 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
             commit=AsyncMock(side_effect=fake_commit),
             refresh=AsyncMock(),
         )
-        payload = admin_encounter_schema.EncounterUpdate(home_score=2, away_score=1)
+        payload = schemas.EncounterUpdate(home_score=2, away_score=1)
 
         with (
             patch.object(

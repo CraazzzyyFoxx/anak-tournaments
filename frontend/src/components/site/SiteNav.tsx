@@ -61,7 +61,7 @@ const ListItem = React.forwardRef<React.ElementRef<"a">, React.ComponentPropsWit
 ListItem.displayName = "ListItem";
 
 interface SiteNavProps {
-  /** `desktop` renders the hover NavigationMenu; `mobile` the sheet Accordion. */
+  /** `desktop` renders the click-to-open NavigationMenu; `mobile` the sheet Accordion. */
   variant: "desktop" | "mobile";
   className?: string;
 }

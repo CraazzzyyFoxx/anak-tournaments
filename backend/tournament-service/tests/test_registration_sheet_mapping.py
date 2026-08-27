@@ -19,18 +19,10 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
-catalog = importlib.import_module("src.services.registration.mapping_catalog")
+catalog = importlib.import_module("src.domain.registration.mapping_catalog")
 schemas = importlib.import_module("src.schemas.registration")
-sheet_parsing = importlib.import_module("src.services.registration.sheet_parsing")
+sheet_parsing = importlib.import_module("src.domain.registration.sheet_parsing")
 sheet_sync = importlib.import_module("src.services.registration.sheet_sync")
 
 CustomFieldDefinition = schemas.CustomFieldDefinition
@@ -473,6 +465,70 @@ def test_role_subrole_token_unknown_returns_none():
         grid=_grid(),
     )
     assert result is None
+
+
+_SUBROLE_CATALOG = {
+    "tank": [],
+    "dps": [{"slug": "hitscan", "label": "Hitscan"}],
+    "support": [{"slug": "main_heal", "label": "Main Heal"}],
+}
+
+
+def test_map_subrole_token_accepts_catalog_slug_without_value_map():
+    assert sheet_parsing.map_subrole_token("hitscan", {}, _SUBROLE_CATALOG) == "hitscan"
+
+
+def test_map_subrole_token_rejects_unknown_when_catalog():
+    assert sheet_parsing.map_subrole_token("burst", {}, _SUBROLE_CATALOG) is None
+
+
+def test_map_subrole_token_mapped_value_must_be_in_catalog():
+    assert (
+        sheet_parsing.map_subrole_token("хит", {"subroles": {"хит": "hitscan"}}, _SUBROLE_CATALOG)
+        == "hitscan"
+    )
+    assert sheet_parsing.map_subrole_token("хит", {"subroles": {"хит": "burst"}}, _SUBROLE_CATALOG) is None
+
+
+def test_role_subrole_rejects_unknown_subrole_when_catalog():
+    result = sheet_parsing.parse_target_value(
+        parser="role_subrole_token",
+        values=["heal"],
+        value_mapping={"role_subroles": {"heal": {"role": "support", "subrole": "not_a_real"}}},
+        grid=_grid(),
+        subrole_catalog=_SUBROLE_CATALOG,
+    )
+    assert result is None
+
+
+def test_role_subrole_accepts_catalog_subrole():
+    result = sheet_parsing.parse_target_value(
+        parser="role_subrole_token",
+        values=["heal"],
+        value_mapping={"role_subroles": {"heal": {"role": "support", "subrole": "main_heal"}}},
+        grid=_grid(),
+        subrole_catalog=_SUBROLE_CATALOG,
+    )
+    assert result == {"role": "support", "subrole": "main_heal"}
+
+
+def test_validate_value_mapping_unknown_subrole():
+    issues = catalog.validate_value_mapping_subroles({"subroles": {"foo": "burst"}}, _SUBROLE_CATALOG)
+    assert any(issue.code == "unknown_subrole" for issue in issues)
+
+
+def test_mapping_catalog_includes_subrole_catalog():
+    built = sheet_sync.build_mapping_catalog([], subrole_catalog=_SUBROLE_CATALOG)
+    assert built["subrole_catalog"] == _SUBROLE_CATALOG
+
+
+def test_catalog_slugs_none_skips_enforcement():
+    from shared.domain.player_sub_roles import catalog_slugs
+
+    assert catalog_slugs(None) is None
+    assert catalog_slugs(_SUBROLE_CATALOG, "dps") == {"hitscan"}
+    assert catalog_slugs(_SUBROLE_CATALOG) == {"hitscan", "main_heal"}
+
 
 
 def test_sr_value_numeric_string():

@@ -1,19 +1,16 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import {
   applyTournamentRealtimeCatchUp,
   applyTournamentRealtimeUpdate,
   type BracketFamilyReason,
-  type Coalescer,
-  createLeadingCoalescer,
-  createTrailingCoalescer,
   strongerTournamentReason,
   type TournamentChangedReason,
 } from "@/hooks/tournamentRealtime.helpers";
-import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
+import { useRealtimeCoalescedRefetch } from "@/hooks/useRealtimeCoalescedRefetch";
 
 type TournamentRealtimePayload = {
   tournament_id?: number;
@@ -59,38 +56,6 @@ export function useTournamentRealtime({
   const resolvedDetailRef = detailRef ?? tournamentId ?? undefined;
 
   const topic = tournamentId ? `tournament:${tournamentId}:bracket` : null;
-  const catchUp = useMemo(
-    () =>
-      createLeadingCoalescer(() => {
-        if (tournamentId) {
-          applyTournamentRealtimeCatchUp(queryClient, tournamentId, workspaceId, resolvedDetailRef);
-        }
-      }, CATCH_UP_COALESCE_MS),
-    [queryClient, tournamentId, workspaceId, resolvedDetailRef],
-  );
-
-  useEffect(() => () => catchUp.cancel(), [catchUp]);
-
-  // Latest options + queryClient read at flush time (the flush runs from a timer,
-  // not render, so it must not close over stale values).
-  const stateRef = useRef({
-    tournamentId,
-    workspaceId,
-    onUpdate,
-    onStructureChanged,
-    queryClient,
-    detailRef: resolvedDetailRef,
-  });
-  useEffect(() => {
-    stateRef.current = {
-      tournamentId,
-      workspaceId,
-      onUpdate,
-      onStructureChanged,
-      queryClient,
-      detailRef: resolvedDetailRef,
-    };
-  });
 
   // Strongest bracket-family reason accumulated within the current debounce
   // window, plus a separate flag for registration_changed — its plan is
@@ -99,56 +64,21 @@ export function useTournamentRealtime({
   const pendingReasonRef = useRef<BracketFamilyReason | null>(null);
   const pendingRegistrationChangeRef = useRef(false);
 
-  // The debounced flush is created in an effect (not render) so the coalescer's
-  // ref-reading callback is never constructed during render, and the per-client
-  // jitter is drawn here rather than in render. Rebuilt per topic; the cleanup
-  // drops any pending flush and stale reason.
-  const updatesRef = useRef<Coalescer | null>(null);
+  // Dropped on topic change (a different tournamentId) or unmount -- a
+  // reason/flag pending for one tournament's topic must never leak into the
+  // next one's flush.
   useEffect(() => {
-    const delay =
-      REALTIME_REFETCH_MIN_DELAY_MS + Math.floor(Math.random() * REALTIME_REFETCH_JITTER_MS);
-    const coalescer = createTrailingCoalescer(() => {
-      const reason = pendingReasonRef.current;
-      const hasRegistrationChange = pendingRegistrationChangeRef.current;
-      pendingReasonRef.current = null;
-      pendingRegistrationChangeRef.current = false;
-      const {
-        tournamentId: id,
-        workspaceId: ws,
-        onUpdate: notify,
-        onStructureChanged: onStructure,
-        queryClient: client,
-        detailRef: ref,
-      } = stateRef.current;
-      if (!id || (!reason && !hasRegistrationChange)) {
-        return;
-      }
-      if (reason) {
-        applyTournamentRealtimeUpdate(client, id, ws, reason, undefined, ref);
-        notify?.(reason);
-        if (reason === "structure_changed") {
-          onStructure?.();
-        }
-      }
-      // structure_changed's plan already covers the registration keys — skip
-      // the redundant second refetch when both landed in the same window.
-      if (hasRegistrationChange && reason !== "structure_changed") {
-        applyTournamentRealtimeUpdate(client, id, ws, "registration_changed", undefined, ref);
-        notify?.("registration_changed");
-      }
-    }, delay);
-    updatesRef.current = coalescer;
     return () => {
-      coalescer.cancel();
-      updatesRef.current = null;
       pendingReasonRef.current = null;
       pendingRegistrationChangeRef.current = false;
     };
   }, [topic]);
 
-  useRealtimeTopic<TournamentRealtimePayload>(
-    topic,
-    (event) => {
+  useRealtimeCoalescedRefetch<TournamentRealtimePayload>(topic, {
+    minDelayMs: REALTIME_REFETCH_MIN_DELAY_MS,
+    jitterMs: REALTIME_REFETCH_JITTER_MS,
+    catchUpMs: CATCH_UP_COALESCE_MS,
+    onEvent: (event, schedule) => {
       if (
         !tournamentId ||
         event.event_type !== "tournament.updated" ||
@@ -159,7 +89,7 @@ export function useTournamentRealtime({
       const reason = event.data.reason;
       if (reason === "registration_changed") {
         pendingRegistrationChangeRef.current = true;
-        updatesRef.current?.schedule();
+        schedule();
         return;
       }
       if (
@@ -171,11 +101,38 @@ export function useTournamentRealtime({
       }
 
       pendingReasonRef.current = strongerTournamentReason(pendingReasonRef.current, reason);
-      updatesRef.current?.schedule();
+      schedule();
     },
-    [],
-    () => {
-      catchUp.schedule();
+    // The (re)subscribe/reconnect catch-up plan is broader than a normal
+    // flush's -- it re-fetches everything, not just what the accumulated
+    // reason implies -- so it runs independently of pendingReasonRef/
+    // pendingRegistrationChangeRef, exactly as it did before this refactor.
+    onCatchUp: () => {
+      if (tournamentId) {
+        applyTournamentRealtimeCatchUp(queryClient, tournamentId, workspaceId, resolvedDetailRef);
+      }
     },
-  );
+    onFlush: () => {
+      const reason = pendingReasonRef.current;
+      const hasRegistrationChange = pendingRegistrationChangeRef.current;
+      pendingReasonRef.current = null;
+      pendingRegistrationChangeRef.current = false;
+      if (!tournamentId || (!reason && !hasRegistrationChange)) {
+        return;
+      }
+      if (reason) {
+        applyTournamentRealtimeUpdate(queryClient, tournamentId, workspaceId, reason, undefined, resolvedDetailRef);
+        onUpdate?.(reason);
+        if (reason === "structure_changed") {
+          onStructureChanged?.();
+        }
+      }
+      // structure_changed's plan already covers the registration keys — skip
+      // the redundant second refetch when both landed in the same window.
+      if (hasRegistrationChange && reason !== "structure_changed") {
+        applyTournamentRealtimeUpdate(queryClient, tournamentId, workspaceId, "registration_changed", undefined, resolvedDetailRef);
+        onUpdate?.("registration_changed");
+      }
+    },
+  });
 }

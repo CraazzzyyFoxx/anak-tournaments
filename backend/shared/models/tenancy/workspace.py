@@ -68,7 +68,32 @@ class Workspace(db.TimeStampIntegerMixin):
     # same one. String, not BigInteger: there is no arithmetic, no range query and
     # no FK, while both consumers (DiscordRoleResolver, the HTTP boundary) want
     # `str` -- a numeric column would only buy a conversion at every edge.
-    discord_guild_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # UNIQUE since the self-service workspace-verification design (2026-08-26):
+    # a guild is claimed by proof of Discord ownership
+    # (``rpc.app.workspaces.discord_guild_verify``), never free text, so two
+    # workspaces can no longer point at the same guild.
+    discord_guild_id: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
+    # Who proved ownership of ``discord_guild_id`` and when — same audit shape
+    # as ``custom_domain_verified_at``/``custom_domain_verification_token``
+    # above. ``SET NULL`` on account deletion: the guild claim itself is not
+    # invalidated, only its provenance link.
+    discord_guild_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    discord_guild_verified_by_auth_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True
+    )
+    # Accountability, not permission. Deliberately decoupled from the RBAC
+    # ``owner`` role (``auth.roles``, per-workspace-scoped): a workspace can
+    # have zero, one, or several co-owners via RBAC, and that set can be
+    # reassigned any time by an existing owner. ``owner_id`` answers a
+    # narrower, more stable question -- who is this workspace's create-time
+    # accountable party -- used by the self-service create cap
+    # (``count_by_owner``) so a later RBAC role change can't silently free up
+    # or inflate that cap. ``SET NULL`` on account deletion: an orphaned
+    # workspace simply stops counting against anyone's cap, it is not deleted
+    # or reassigned automatically.
+    owner_id: Mapped[int | None] = mapped_column(
+        ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     default_division_grid_version_id: Mapped[int | None] = mapped_column(
         ForeignKey("division_grid_version.id", ondelete="SET NULL"),
         nullable=True,
@@ -104,6 +129,9 @@ class WorkspaceMember(db.TimeStampIntegerMixin):
 
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("players.user.id", ondelete="CASCADE"), index=True)
+    # Workspace-local nickname, when the workspace calls somebody by a name
+    # other than their global ``players.user.name``. Falls back to that name.
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     workspace: Mapped["Workspace"] = relationship(back_populates="members")
     player: Mapped["User"] = relationship()

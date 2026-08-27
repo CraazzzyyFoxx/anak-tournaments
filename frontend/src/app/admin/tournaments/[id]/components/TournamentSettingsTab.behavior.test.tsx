@@ -236,3 +236,70 @@ describe("TournamentSettingsTab integrations card", () => {
     expect(dialogForm.querySelector("[role=alert]")?.textContent).toContain("Pick the channel");
   });
 });
+
+describe("Challonge unmapped-participant callout", () => {
+  /** One failed import row per match, all blocked by the same two participants. */
+  function mappingFailure(id: number, participants: number[]) {
+    return {
+      id,
+      created_at: "2026-08-25T18:18:00Z",
+      source_id: 7,
+      direction: "import",
+      operation: "apply_import",
+      entity_type: "match",
+      entity_id: null,
+      challonge_id: 463348963 + id,
+      status: "failed",
+      conflict_type: null,
+      payload_json: { missing_participant_ids: participants },
+      before_json: null,
+      after_json: null,
+      error_message: `Missing Challonge team mapping for participant(s): ${participants.join(", ")}`
+    };
+  }
+
+  it("counts distinct participants, not failed rows, and routes to the mapping table", async () => {
+    challongeSyncLog.mockResolvedValue([
+      mappingFailure(1, [298247245, 298247312]),
+      mappingFailure(2, [298247312, 298247245]),
+      mappingFailure(3, [298247245, 298247248])
+    ]);
+
+    const card = integrationsCard(await mount());
+
+    // Three failed rows, three overlapping pairs — but only three participants.
+    expect(card.textContent).toContain("3 Challonge participants not mapped");
+    const link = [...card.querySelectorAll("a")].find((anchor) =>
+      anchor.textContent?.includes("Map teams")
+    );
+    expect(link?.getAttribute("href")).toBe("/admin/tournaments/64/teams?challongeSync=1");
+  });
+
+  it("stays hidden when nothing failed for want of a mapping", async () => {
+    challongeSyncLog.mockResolvedValue([
+      { ...mappingFailure(1, []), status: "success", payload_json: null, error_message: null }
+    ]);
+
+    const card = integrationsCard(await mount());
+
+    expect(card.textContent).not.toContain("not mapped");
+    expect([...card.querySelectorAll("a")].some((a) => a.textContent?.includes("Map teams"))).toBe(
+      false
+    );
+  });
+
+  it("links the bracket itself, and leaves log ids as plain identifiers", async () => {
+    challongeSyncLog.mockResolvedValue([mappingFailure(1, [298247245])]);
+
+    const card = integrationsCard(await mount());
+    const anchors = [...card.querySelectorAll("a")];
+
+    // The one Challonge URL that exists: the tournament. A match/participant id
+    // has none, so no row may render a link affordance around one.
+    expect(
+      anchors.find((anchor) => anchor.textContent?.includes("Open bracket"))?.getAttribute("href")
+    ).toBe("https://challonge.com/owt-64");
+    expect(anchors.some((anchor) => anchor.textContent?.includes("463348964"))).toBe(false);
+    expect(card.textContent).toContain("463348964");
+  });
+});

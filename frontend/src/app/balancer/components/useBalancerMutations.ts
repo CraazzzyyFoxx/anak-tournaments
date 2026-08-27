@@ -117,6 +117,56 @@ function mergeRegistrationForCache(
   };
 }
 
+export function buildRegistrationUpdateFromPlayerPayload(
+  payload: BalancerPlayerUpdateInput,
+  existingRoles?: AdminRegistration["roles"]
+): AdminRegistrationUpdateInput {
+  const registrationPatch: AdminRegistrationUpdateInput = {};
+
+  if (payload.role_entries_json !== undefined) {
+    const existingRolesMap = new Map(
+      existingRoles?.map((role) => [role.role, role.top_heroes ?? []]) ?? []
+    );
+    const sortedEntries = [...(payload.role_entries_json ?? [])].sort(
+      (left, right) => left.priority - right.priority
+    );
+    registrationPatch.roles = sortedEntries.map((entry, index) => {
+      const topHeroes = existingRolesMap.get(entry.role) ?? [];
+      return {
+        role: entry.role,
+        subrole: entry.subtype,
+        priority: entry.priority,
+        is_primary: payload.is_flex ? true : index === 0,
+        rank_value: entry.rank_value,
+        is_active: entry.is_active,
+        ...(topHeroes.length > 0 ? { top_heroes: topHeroes } : {})
+      };
+    });
+  }
+
+  if (payload.admin_notes !== undefined) {
+    registrationPatch.admin_notes = payload.admin_notes;
+  }
+  if (payload.registration_status != null) {
+    registrationPatch.status = payload.registration_status;
+  }
+  if (payload.registration_balancer_status != null) {
+    registrationPatch.balancer_status = payload.registration_balancer_status;
+  }
+  if (payload.is_in_pool === false) {
+    registrationPatch.balancer_status = "excluded";
+    registrationPatch.exclude_reason = "manual_exclusion";
+  }
+  if (payload.pin) {
+    registrationPatch.pin = true;
+  }
+  if (payload.clear_pin) {
+    registrationPatch.clear_pin = true;
+  }
+  return registrationPatch;
+}
+
+
 export function useBalancerMutations({
   tournamentId,
   workspaceId,
@@ -193,54 +243,16 @@ export function useBalancerMutations({
       playerId: number;
       payload: BalancerPlayerUpdateInput;
     }) => {
-      const registrationPatch: AdminRegistrationUpdateInput = {};
-
-      if (payload.role_entries_json !== undefined) {
-        const cachedRegistrations = queryClient.getQueryData<AdminRegistration[]>([
-          "balancer-admin",
-          "registrations",
-          tournamentId
-        ]);
-        const existingReg = cachedRegistrations?.find((r) => r.id === playerId);
-        const existingRolesMap = new Map(
-          existingReg?.roles?.map((r) => [r.role, r.top_heroes ?? []]) ?? []
-        );
-
-        const sortedEntries = [...(payload.role_entries_json ?? [])].sort(
-          (left, right) => left.priority - right.priority
-        );
-        registrationPatch.roles = sortedEntries.map((entry, index) => {
-          const topHeroes = existingRolesMap.get(entry.role) ?? [];
-          return {
-            role: entry.role,
-            subrole: entry.subtype,
-            priority: entry.priority,
-            is_primary: payload.is_flex ? true : index === 0,
-            rank_value: entry.rank_value,
-            is_active: entry.is_active,
-            ...(topHeroes.length > 0 ? { top_heroes: topHeroes } : {})
-          };
-        });
-      }
-
-      if (payload.admin_notes !== undefined) {
-        registrationPatch.admin_notes = payload.admin_notes;
-      }
-      if (payload.registration_status != null) {
-        registrationPatch.status = payload.registration_status;
-      }
-      if (payload.registration_balancer_status != null) {
-        registrationPatch.balancer_status = payload.registration_balancer_status;
-      }
-
-      // "Include" can't be expressed as a literal balancer_status in this
-      // combined PATCH (ready/incomplete are computed-only); fold "exclude"
-      // in here, but issue "include" as its own follow-up call below.
-      if (payload.is_in_pool === false) {
-        registrationPatch.balancer_status = "excluded";
-        registrationPatch.exclude_reason = "manual_exclusion";
-      }
-
+      const cachedRegistrations = queryClient.getQueryData<AdminRegistration[]>([
+        "balancer-admin",
+        "registrations",
+        tournamentId
+      ]);
+      const existingReg = cachedRegistrations?.find((r) => r.id === playerId);
+      const registrationPatch = buildRegistrationUpdateFromPlayerPayload(
+        payload,
+        existingReg?.roles
+      );
       let updated: AdminRegistration | null = null;
       if (Object.keys(registrationPatch).length > 0) {
         updated = await balancerAdminService.updateRegistration(playerId, registrationPatch);

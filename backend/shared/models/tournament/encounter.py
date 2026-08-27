@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from shared.core import db, enums
 from shared.models.tournament.stage import Stage, StageItem
 from shared.models.tournament.team import Team
-from shared.models.tournament.tournament import Tournament, TournamentGroup
+from shared.models.tournament.tournament import Tournament
 
 if typing.TYPE_CHECKING:
     from shared.models.matches.match import Match
@@ -41,7 +41,6 @@ class Encounter(db.TimeStampIntegerMixin):
     __tablename__ = "encounter"
 
     __table_args__ = (
-        Index("ix_encounter_tournament_group", "tournament_id", "tournament_group_id"),
         # Created CONCURRENTLY by perfidx04: status is filtered on 10+ read
         # paths (live/upcoming feeds, standings, Challonge export).
         Index("ix_encounter_tournament_status", "tournament_id", "status"),
@@ -76,9 +75,6 @@ class Encounter(db.TimeStampIntegerMixin):
     current_map_index: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
     tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
-    tournament_group_id: Mapped[int | None] = mapped_column(
-        ForeignKey(TournamentGroup.id, ondelete="CASCADE"), nullable=True, index=True
-    )
     stage_id: Mapped[int | None] = mapped_column(ForeignKey(Stage.id, ondelete="SET NULL"), nullable=True, index=True)
     stage_item_id: Mapped[int | None] = mapped_column(
         ForeignKey(StageItem.id, ondelete="SET NULL"), nullable=True, index=True
@@ -112,7 +108,6 @@ class Encounter(db.TimeStampIntegerMixin):
     # forgot everything but the last writer.
     confirmed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
 
-    tournament_group: Mapped[TournamentGroup] = relationship()
     tournament: Mapped[Tournament] = relationship()
     home_team: Mapped["Team"] = relationship(foreign_keys=[home_team_id])
     away_team: Mapped["Team"] = relationship(foreign_keys=[away_team_id])

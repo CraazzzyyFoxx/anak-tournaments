@@ -15,7 +15,7 @@ from shared import models
 from shared.core import enums
 from shared.core.pagination import PaginationSortParams, PaginationSortSearchParams
 from shared.repository.base import BaseRepository
-from shared.services.tournament_visibility import visible_tournament_ids_subquery
+from shared.services.tournament.visibility import visible_tournament_ids_subquery
 
 
 def _jsonb_array(value: str) -> sa.Cast[typing.Any]:

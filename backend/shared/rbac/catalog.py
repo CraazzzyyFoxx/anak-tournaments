@@ -11,7 +11,7 @@ class PermissionSpec:
     description: str
 
 
-WORKSPACE_SYSTEM_ROLE_NAMES = ("owner", "admin", "member", "player")
+WORKSPACE_SYSTEM_ROLE_NAMES = ("owner", "admin", "host", "member", "player")
 
 CRUD = ("read", "create", "update", "delete")
 
@@ -56,6 +56,7 @@ PERMISSION_CATALOG: tuple[PermissionSpec, ...] = (
     _permission("registration", "check_in"),
     *_crud("registration_status"),
     *_crud("balancer"),
+    *_crud("custom_game"),
     *_crud("analytics"),
     *_crud("achievement"),
     *_crud("division_grid"),
@@ -96,6 +97,7 @@ _MEMBER_READ_RESOURCES = frozenset(
         "registration",
         "registration_status",
         "balancer",
+        "custom_game",
         "analytics",
         "achievement",
         "division_grid",
@@ -129,11 +131,26 @@ def _member_permission_names() -> tuple[str, ...]:
     )
 
 
+def _host_permission_names() -> tuple[str, ...]:
+    """Everything a ``member`` gets, plus full authorship over mixes (custom games).
+
+    A host still needs the ordinary member read access -- hosting a mix means
+    seeing rosters, standings, etc. like anyone else -- but on top of that gets
+    ``custom_game`` create/update/delete so they can actually run one. See
+    ``_require_mix`` in ``balancer-service/src/rpc/custom.py``: membership alone
+    no longer opens mixes, this is the grant that does.
+    """
+    extra = (p.name for p in PERMISSION_CATALOG if p.resource == "custom_game")
+    return tuple(dict.fromkeys((*_member_permission_names(), *extra)))
+
+
 def permission_names_for_workspace_role(role_name: str) -> tuple[str, ...]:
     if role_name == "owner":
         return ("admin.*",)
     if role_name == "admin":
         return _admin_permission_names()
+    if role_name == "host":
+        return _host_permission_names()
     if role_name == "member":
         return _member_permission_names()
     if role_name == "player":

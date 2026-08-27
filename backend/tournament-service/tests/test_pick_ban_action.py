@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,15 +11,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CHALLONGE_USERNAME", "test")
-os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 from shared.core.enums import MapPickSide, MapPoolEntryStatus, MapVetoSessionStatus, PickBanKind  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
@@ -42,6 +32,7 @@ def make_entry(
     picked_by: MapPickSide | None = None,
     protected_by: MapPickSide | None = None,
     round: int | None = None,
+    team_id: int | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=item_id,
@@ -52,6 +43,7 @@ def make_entry(
         picked_by=picked_by,
         protected_by=protected_by,
         round=round,
+        team_id=team_id,
     )
 
 
@@ -679,3 +671,32 @@ class SerializePickBanSessionSlotReservesTests(TestCase):
         wire = serialize_pick_ban_session(pick_ban)
 
         self.assertIsNone(wire["slot_reserves"])
+
+
+class BuildPickBanStateTests(TestCase):
+    def test_a_token_without_separator_does_not_500_the_poll(self) -> None:
+        state = pick_ban_action.build_pick_ban_state(
+            ["ban"],
+            [make_entry(1)],
+            viewer_side="home",
+            pick_ban=None,
+            readiness={"home": True, "away": True},
+        )
+        self.assertEqual("ban", state["expected_action"])
+        self.assertEqual("home", state["turn_side"])
+
+
+class AttributeLookupTests(IsolatedAsyncioTestCase):
+    """``select(Hero.type)`` can yield a raw string, not a HeroClass member."""
+
+    async def test_it_accepts_a_stored_string_without_dot_value(self) -> None:
+        class _Rows:
+            def all(self):
+                return [(1, "tank"), (2, SimpleNamespace(value="support"))]
+
+        class _Session:
+            async def execute(self, _stmt):
+                return _Rows()
+
+        lookup = await pick_ban_action_service._attribute_lookup(_Session(), PickBanKind.HERO, [1, 2])
+        self.assertEqual({1: "tank", 2: "support"}, lookup)

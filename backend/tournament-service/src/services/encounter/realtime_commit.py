@@ -10,50 +10,37 @@ the relevant pool state on receipt. Two separate topics, not one parametrized
 by kind, so the legacy map-veto room's subscribers are never woken by a
 hero-only change and vice versa (design: docs/plans/2026-08-09-generic-pickban-engine.md).
 
-The flow mirrors the tournament module exactly:
+Staging is delegated to the shared transactional factory
+(``shared.services.realtime_transaction.register_realtime_update``):
 1. A write path calls ``register_map_veto_realtime_update(session, encounter_id, kind=...)``
-   immediately before its commit, stashing the (id, kind) pair under a DISTINCT
-   ``session.info`` key (so it never collides with the tournament module's keys).
-2. A ``before_flush`` listener persists a ``WorkspaceEvent`` row for durability.
-3. An ``after_commit`` listener publishes the persisted event's envelope to Redis,
-   from which the gateway events consumer relays it to WS subscribers.
+   immediately before its commit.
+2. The factory's ``before_flush`` listener persists a ``WorkspaceEvent`` row for
+   durability.
+3. The factory's ``after_commit`` listener publishes the persisted event's
+   envelope to Redis, from which the gateway events consumer relays it to WS
+   subscribers.
 """
 
 from __future__ import annotations
 
-import asyncio
-from datetime import UTC, datetime
 from typing import Any
 
-from loguru import logger
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from shared.models.platform.realtime import WorkspaceEvent
-from shared.schemas.realtime import WorkspaceEventEnvelope
 from shared.services import realtime_topics
-from shared.services.realtime_publisher import event_to_envelope, publish_event_to_redis_url
+from shared.services.realtime_transaction import register_realtime_update
 from src.core import config
 
 _MAP_VETO_REASON = "veto_changed"
 _EVENT_TYPE_BY_KIND = {"map": "map_veto.updated", "hero": "pick_ban.updated"}
 
-# Distinct from the tournament module's keys so the two listeners never clobber
-# each other's staged updates on a shared Session.
+# Distinct from the tournament module's key so raw staging never collides.
+# Kept for `pop_registered_map_veto_realtime_updates`'s existing callers (test
+# introspection -- see test_pregame_loop.py) rather than for a listener of this
+# module's own anymore -- persistence/publishing now live in the shared factory.
 _SESSION_KEY = "encounter_map_veto_realtime_updates"
-_SESSION_EVENTS_KEY = "encounter_map_veto_realtime_event_objects"
-
-# asyncio holds only a WEAK reference to a running task, so a fire-and-forget
-# `create_task` whose result nobody keeps can be collected mid-flight and take
-# the Redis publish with it -- surfacing as "Task was destroyed but it is
-# pending!". Anchored until done, same as the tournament module's `_spawn`.
-_background_tasks: set[asyncio.Task[Any]] = set()
-
-
-def _spawn(loop: asyncio.AbstractEventLoop, coro: Any) -> None:
-    task = loop.create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
 
 
 def register_map_veto_realtime_update(session: Any, encounter_id: int, *, kind: str = "map") -> None:
@@ -61,9 +48,10 @@ def register_map_veto_realtime_update(session: Any, encounter_id: int, *, kind: 
     session. ``kind`` is ``"map"`` (default, the legacy map-veto topic) or
     ``"hero"`` (the generic hero-ban topic).
 
-    Call immediately before the commit that mutated the pool. The staged pairs
-    are turned into persisted ``WorkspaceEvent`` rows on ``before_flush`` and
-    published to Redis on ``after_commit``.
+    Call immediately before the commit that mutated the pool. The staged pair
+    is turned into a persisted ``WorkspaceEvent`` row on ``before_flush`` and
+    published to Redis on ``after_commit`` by the shared realtime-staging
+    factory (`shared.services.realtime_transaction.register_realtime_update`).
     """
     sync_session = getattr(session, "sync_session", None)
     info = getattr(sync_session or session, "info", None)
@@ -72,6 +60,13 @@ def register_map_veto_realtime_update(session: Any, encounter_id: int, *, kind: 
 
     updates: set[tuple[int, str]] = info.setdefault(_SESSION_KEY, set())
     updates.add((int(encounter_id), kind))
+
+    register_realtime_update(
+        session,
+        key=(int(encounter_id), kind),
+        build_event=lambda: _build_realtime_event(int(encounter_id), kind),
+        redis_url=str(config.settings.redis_url),
+    )
 
 
 def pop_registered_map_veto_realtime_updates(session: Any) -> list[tuple[int, str]]:
@@ -97,47 +92,11 @@ def _build_realtime_event(encounter_id: int, kind: str) -> WorkspaceEvent:
     )
 
 
-async def _publish_persisted_event(topic: str, envelope: WorkspaceEventEnvelope) -> None:
-    try:
-        await publish_event_to_redis_url(str(config.settings.redis_url), topic=topic, envelope=envelope)
-    except Exception:
-        logger.exception("Failed to publish persisted map-veto realtime event", topic=topic)
-
-
-@event.listens_for(Session, "before_flush")
-def _stage_registered_map_veto_updates_before_flush(session: Session, _flush_context: Any, _instances: Any) -> None:
-    updates = pop_registered_map_veto_realtime_updates(session)
-    if not updates:
-        return
-
-    events = [_build_realtime_event(encounter_id, kind) for encounter_id, kind in updates]
-    session.add_all(events)
-    session.info.setdefault(_SESSION_EVENTS_KEY, []).extend(events)
-
-
-@event.listens_for(Session, "after_commit")
-def _publish_registered_map_veto_updates_after_commit(session: Session) -> None:
-    events: list[WorkspaceEvent] = session.info.pop(_SESSION_EVENTS_KEY, [])
-    if not events:
-        return
-
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        logger.warning("Cannot publish map-veto realtime updates without a running event loop")
-        return
-
-    envelopes: list[tuple[str, WorkspaceEventEnvelope]] = []
-    for event_obj in events:
-        if event_obj.occurred_at is None:
-            event_obj.occurred_at = datetime.now(UTC)
-        envelopes.append((event_obj.topic, event_to_envelope(event_obj)))
-
-    for topic, envelope in envelopes:
-        _spawn(loop, _publish_persisted_event(topic, envelope))
-
-
 @event.listens_for(Session, "after_rollback")
 def _clear_registered_map_veto_updates_after_rollback(session: Session) -> None:
+    # The shared factory clears its OWN staged builders on rollback; this
+    # module's raw (encounter_id, kind) accumulation is a distinct piece of
+    # session state it knows nothing about, so it still needs its own cleanup —
+    # otherwise a session reused for a later transaction after a rollback would
+    # carry a stale pair into that transaction's `pop_registered_...` callers.
     pop_registered_map_veto_realtime_updates(session)
-    session.info.pop(_SESSION_EVENTS_KEY, None)

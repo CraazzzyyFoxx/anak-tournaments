@@ -147,7 +147,7 @@ async def load_prior_participation(
     return PriorParticipation(experienced_user_ids, experienced_user_roles)
 ```
 
-Add to `shared/services/__init__.py` if that package re-exports members (check; `division_grid_resolution` is imported directly by dotted path elsewhere, e.g. `from shared.services.division_grid_resolution import resolve_tournament_division` — match that pattern, no `__init__.py` re-export needed).
+Add to `shared/services/__init__.py` if that package re-exports members (check; `division_grid_resolution` is imported directly by dotted path elsewhere, e.g. `from shared.services.division_grid.resolution import resolve_tournament_division` — match that pattern, no `__init__.py` re-export needed).
 
 ---
 

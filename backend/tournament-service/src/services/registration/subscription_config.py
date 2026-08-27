@@ -15,7 +15,7 @@ Two rules carry the weight here:
   so a plain save must not wipe them. Passing an explicit list replaces them.
 - **The verification method is authoritative over the cache, not just the call.**
   Narrowing it invalidates stored entitlements whose source it no longer accepts —
-  see ``shared.subscriptions.verification`` for why that is load-bearing.
+  see ``shared.services.subscriptions.verification`` for why that is load-bearing.
 
 The workspace requirement lives here too, beside the provider config and under the
 same permissions: both answer "what does this workspace demand of a registrant?", and
@@ -38,8 +38,8 @@ from shared.repository import (
     WorkspaceSubscriptionRequirementRepository,
 )
 from shared.services.registration_window import registration_open_clause
-from shared.subscriptions import parse_verification_method
-from shared.subscriptions.challenge_code import hash_code
+from shared.services.subscriptions import parse_verification_method
+from shared.services.subscriptions.challenge_code import hash_code
 from src.schemas.registration import (
     ChallengeCodeRead,
     RoleTierRead,

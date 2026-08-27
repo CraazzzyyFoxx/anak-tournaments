@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from shared.repository import TournamentGroupRepository, TournamentRepository
+from shared.repository import TournamentRepository
 from src import models, schemas
 from src.core import enums, utils
 
@@ -42,8 +42,6 @@ def tournament_entities(in_entities: list[str], child: typing.Any | None = None)
         A list of SQLAlchemy load options (`_AbstractLoad`) for the specified entities.
     """
     entities = []
-    if "groups" in in_entities:
-        entities.append(utils.join_entity(child, models.Tournament.groups))
     if "stages" in in_entities:
         stage_entity = child.selectinload(models.Tournament.stages) if child else selectinload(models.Tournament.stages)
         entities.append(stage_entity)
@@ -53,14 +51,8 @@ def tournament_entities(in_entities: list[str], child: typing.Any | None = None)
 
 
 class TournamentService:
-    def __init__(
-        self,
-        *,
-        tournament_repo: TournamentRepository = TournamentRepository(),
-        group_repo: TournamentGroupRepository = TournamentGroupRepository(),
-    ) -> None:
+    def __init__(self, *, tournament_repo: TournamentRepository = TournamentRepository()) -> None:
         self.tournament_repo = tournament_repo
-        self.group_repo = group_repo
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> models.Tournament | None:
         """
@@ -75,20 +67,6 @@ class TournamentService:
             A `Tournament` model instance if found, otherwise `None`.
         """
         return await self.tournament_repo.get(session, id, options=tournament_entities(entities))
-
-    async def get_group(self, session: AsyncSession, id: int, entities: list[str]) -> models.TournamentGroup | None:
-        """
-        Retrieves a `TournamentGroup` model instance by its ID.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            id: The ID of the tournament group to retrieve.
-            entities: A list of strings representing the names of related entities to include.
-
-        Returns:
-            A `TournamentGroup` model instance if found, otherwise `None`.
-        """
-        return await self.group_repo.get(session, id)
 
     async def get_all(
         self,
@@ -288,15 +266,18 @@ class TournamentService:
             .select_from(models.Player)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .join(models.Standing, models.Standing.team_id == models.Player.team_id)
-            .join(
-                models.TournamentGroup,
-                models.TournamentGroup.id == models.Standing.group_id,
+            .outerjoin(
+                models.StageItem,
+                models.StageItem.id == models.Standing.stage_item_id,
             )
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .where(
                 sa.and_(
                     models.Standing.overall_position == 1,
-                    models.TournamentGroup.is_groups.is_(False),
+                    sa.or_(
+                        models.Standing.stage_item_id.is_(None),
+                        models.StageItem.type != enums.StageItemType.GROUP,
+                    ),
                     models.Player.is_substitution.is_(False),
                     models.Tournament.is_league.is_(False),
                     *ws_filters,

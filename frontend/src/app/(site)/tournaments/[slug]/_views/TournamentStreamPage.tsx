@@ -4,6 +4,7 @@ import { Radio } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
+import { ConnectionIndicator } from "@/components/realtime/ConnectionIndicator";
 import { StreamRow } from "@/components/stream/StreamRow";
 import { StreamTheater } from "@/components/stream/StreamTheater";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
@@ -13,6 +14,7 @@ import {
   sortStreamsByAudience,
   streamEntryKey
 } from "@/lib/stream-platform";
+import { useRealtimeStore } from "@/stores/realtime.store";
 
 import { TournamentPageState } from "../_components/TournamentPageState";
 import { TournamentStreamSkeleton } from "../_components/TournamentSkeletons";
@@ -67,6 +69,7 @@ import { getPublicPageQueryPresentation } from "./publicPageQueryPresentation";
  */
 const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
   const t = useTranslations();
+  const connectionState = useRealtimeStore((s) => s.connectionState);
   const streamsQuery = useTournamentStreamsQuery(tournamentId);
   const participants = streamsQuery.data?.participants ?? [];
   const hasOfficialBroadcast = (streamsQuery.data?.official.length ?? 0) > 0;
@@ -148,6 +151,7 @@ const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
                   {t("stream.card.watching", { count: totalViewers })}
                 </span>
               ) : null}
+              <ConnectionIndicator connectionState={connectionState} />
             </span>
           </div>
 

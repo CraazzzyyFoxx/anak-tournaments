@@ -4,7 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from shared.core import db
 from shared.models.tournament.stage import Stage, StageItem
 from shared.models.tournament.team import Team
-from shared.models.tournament.tournament import Tournament, TournamentGroup
+from shared.models.tournament.tournament import Tournament
 
 __all__ = ("Standing",)
 
@@ -28,14 +28,6 @@ class Standing(db.TimeStampIntegerMixin):
     )
 
     tournament_id: Mapped[int] = mapped_column(Integer, ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
-    # Deprecated: legacy FK to TournamentGroup. New rows may leave it NULL.
-    # Kept for backwards compatibility until TournamentGroup is dropped.
-    group_id: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey(TournamentGroup.id, ondelete="CASCADE"),
-        nullable=True,
-        index=True,
-    )
     team_id: Mapped[int] = mapped_column(Integer, ForeignKey(Team.id, ondelete="CASCADE"), index=True)
     stage_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey(Stage.id, ondelete="SET NULL"), nullable=True, index=True
@@ -58,7 +50,6 @@ class Standing(db.TimeStampIntegerMixin):
     score_differential: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     tournament: Mapped[Tournament] = relationship(back_populates="standings")
-    group: Mapped[TournamentGroup] = relationship()
     team: Mapped[Team] = relationship(back_populates="standings")
     stage: Mapped["Stage | None"] = relationship()
     stage_item: Mapped["StageItem | None"] = relationship()

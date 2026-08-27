@@ -134,7 +134,7 @@ describe("TournamentLinkChips", () => {
       resolve(process.cwd(), "../backend/shared/models/tournament/link.py"),
       "utf8"
     );
-    const block = model.match(/TOURNAMENT_LINK_KINDS[^{]*\{([^}]*)\}/);
+    const block = model.match(/TournamentLinkKind\s*=\s*Literal\[([^\]]*)\]/);
     expect(block).not.toBeNull();
     const kinds = [...(block?.[1] ?? "").matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
     expect(kinds).toContain("stream");

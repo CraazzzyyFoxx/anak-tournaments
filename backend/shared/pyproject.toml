@@ -49,3 +49,10 @@ package-dir = {"shared" = "."}
 [tool.setuptools.package-data]
 shared = ["**/*.py"]
 
+
+[tool.ty.environment]
+# Workspace folder `backend/shared` is its own ty project. `..` is first-party
+# so `import shared.*` resolves (editable finder hook is invisible to ty).
+python = "../.venv"
+python-version = "3.14"
+root = [".."]

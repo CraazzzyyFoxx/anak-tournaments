@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from shared.subscriptions import SubscriptionVerdict
-from shared.subscriptions.requirement import (
+from shared.services.subscriptions import SubscriptionVerdict
+from shared.services.subscriptions.requirement import (
     Outcome,
     ProviderRequirement,
     SubscriptionRequirement,

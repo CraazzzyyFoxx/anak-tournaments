@@ -15,21 +15,13 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 models = importlib.import_module("src.models")
 rank_autofill = importlib.import_module("src.services.registration.rank_autofill")
 rank_sources = importlib.import_module("src.services.registration.rank_sources")
 
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
-from shared.services.division_grid_normalization import DivisionGridNormalizer  # noqa: E402
+from shared.services.division_grid.normalization import DivisionGridNormalizer  # noqa: E402
 
 
 def test_rank_snapshot_model_is_available_from_service_models() -> None:

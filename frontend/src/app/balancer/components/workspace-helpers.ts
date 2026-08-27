@@ -592,7 +592,8 @@ export function flattenRolesToMaxRank(
       division_number: resolveDivisionFromRankHelper(effRank, grid),
       rank_value: effRank,
       is_active: true,
-      ow_rank_value: code === owSourceRole ? effOwRank : null
+      ow_rank_value: code === owSourceRole ? effOwRank : null,
+      rank_source: source?.rank_source ?? roles.find((role) => role.rank_value === effRank)?.rank_source
     };
   });
 }
@@ -620,7 +621,8 @@ export function createSyntheticPlayerFromRegistration(
           division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
           rank_value: role.rank_value,
           is_active: role.is_active,
-          ow_rank_value: role.ow_rank_value ?? null
+          ow_rank_value: role.ow_rank_value ?? null,
+          rank_source: role.rank_source
         })),
     is_flex: isFlex,
     is_in_pool: isRegistrationIncludedInBalancer(registration),

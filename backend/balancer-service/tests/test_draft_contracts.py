@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -15,13 +14,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
-os.environ.setdefault("POSTGRES_DB", "postgres")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from shared.core.enums import (  # noqa: E402
     DraftAutopickStrategy,
@@ -34,10 +26,13 @@ from shared.core.enums import (  # noqa: E402
 )
 from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession  # noqa: E402
-from src import openapi_docs, openapi_schemas  # noqa: E402
+from src import (  # noqa: E402
+    openapi_docs,
+    openapi_schemas,
+    schemas,  # noqa: E402
+)
 from src.domain.draft import rules  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
-from src.schemas import draft as schemas  # noqa: E402
 from src.services.draft import board, lifecycle  # noqa: E402
 from src.services.draft.feasibility import feasibility_service  # noqa: E402
 

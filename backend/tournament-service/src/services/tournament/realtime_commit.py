@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterable
-from datetime import UTC, datetime
 from typing import Any, Literal
 
 from loguru import logger
@@ -10,16 +9,14 @@ from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from shared.models.platform.realtime import WorkspaceEvent
-from shared.schemas.realtime import WorkspaceEventEnvelope
 from shared.services import realtime_topics
-from shared.services.realtime_publisher import event_to_envelope, publish_event_to_redis_url
+from shared.services.realtime_transaction import register_realtime_update
 from src.core import config
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
 
 TournamentRealtimeReason = Literal["bracket_changed", "results_changed", "structure_changed", "registration_changed"]
 
 _SESSION_KEY = "tournament_realtime_updates"
-_SESSION_EVENTS_KEY = "tournament_realtime_event_objects"
 _BRACKET_CHANGED: TournamentRealtimeReason = "bracket_changed"
 _RESULTS_CHANGED: TournamentRealtimeReason = "results_changed"
 _STRUCTURE_CHANGED: TournamentRealtimeReason = "structure_changed"
@@ -27,8 +24,8 @@ _REGISTRATION_CHANGED: TournamentRealtimeReason = "registration_changed"
 
 # asyncio holds only a WEAK reference to a running task, so a fire-and-forget
 # `create_task` whose result nobody keeps can be collected mid-flight and take
-# the cache invalidation or the Redis publish with it, silently. Anchoring the
-# handles here until they finish is the documented remedy.
+# the cache invalidation with it, silently. Anchoring the handles here until
+# they finish is the documented remedy.
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 
@@ -97,6 +94,25 @@ def register_tournament_realtime_update(
     updates = info.setdefault(_SESSION_KEY, set())
     updates.add((int(tournament_id), normalized_reason))
 
+    # `register_realtime_update` dedups by key alone (last write wins), but this
+    # module needs to MERGE every reason registered for this tournament so far
+    # this transaction into the single strongest one (`_merge_updates`), not
+    # just take the latest call's. Re-resolving that merge from the full
+    # accumulated set on every call and re-registering under the SAME stable
+    # key achieves it: each call's closure is a complete, self-sufficient
+    # answer that supersedes the previous one, not an increment of it -- so a
+    # later `structure_changed` correctly replaces an earlier `results_changed`
+    # registration instead of firing alongside it, while a genuinely disjoint
+    # pair (`results_changed` + `registration_changed`) still yields both rows.
+    this_tournament_id = int(tournament_id)
+    merged = _merge_updates((tid, r) for tid, r in updates if tid == this_tournament_id)
+    register_realtime_update(
+        session,
+        key=(this_tournament_id, "tournament"),
+        build_event=lambda events=[_build_realtime_event(tid, r) for tid, r in merged]: events,
+        redis_url=str(config.settings.redis_url),
+    )
+
 
 def pop_registered_tournament_realtime_updates(
     session: Any,
@@ -127,19 +143,6 @@ async def publish_tournament_realtime_updates(
             )
 
 
-async def _publish_persisted_event(
-    tournament_id: int,
-    reason: TournamentRealtimeReason,
-    topic: str,
-    envelope: WorkspaceEventEnvelope,
-) -> None:
-    try:
-        await invalidate_tournament_cache(tournament_id, reason)
-        await publish_event_to_redis_url(str(config.settings.redis_url), topic=topic, envelope=envelope)
-    except Exception:
-        logger.exception("Failed to publish persisted tournament realtime event", topic=topic)
-
-
 def _build_realtime_event(tournament_id: int, reason: TournamentRealtimeReason) -> WorkspaceEvent:
     return WorkspaceEvent(
         topic=realtime_topics.bracket(tournament_id),
@@ -153,60 +156,44 @@ def _build_realtime_event(tournament_id: int, reason: TournamentRealtimeReason) 
     )
 
 
-@event.listens_for(Session, "before_flush")
-def _stage_registered_updates_before_flush(session: Session, _flush_context: Any, _instances: Any) -> None:
-    updates = pop_registered_tournament_realtime_updates(session)
-    if not updates:
-        return
-
-    events = [_build_realtime_event(tournament_id, reason) for tournament_id, reason in updates]
-    session.add_all(events)
-    session.info.setdefault(_SESSION_EVENTS_KEY, []).extend(events)
+async def _invalidate_cache(tournament_id: int, reason: TournamentRealtimeReason) -> None:
+    try:
+        await invalidate_tournament_cache(tournament_id, reason)
+    except Exception:
+        logger.exception(
+            "Failed to invalidate tournament cache after a realtime update",
+            tournament_id=tournament_id,
+            reason=reason,
+        )
 
 
 @event.listens_for(Session, "after_commit")
-def _publish_registered_updates_after_commit(session: Session) -> None:
-    events: list[WorkspaceEvent] = session.info.pop(_SESSION_EVENTS_KEY, [])
-    fallback_updates = pop_registered_tournament_realtime_updates(session)
-    if not events and not fallback_updates:
+def _invalidate_cache_after_commit(session: Session) -> None:
+    # Cache invalidation is tournament-specific business logic, not part of the
+    # shared realtime-staging factory (`register_realtime_update` only persists
+    # and publishes) -- kept as its own listener so it fires for every merged
+    # reason regardless of whether the shared factory's own `before_flush`
+    # actually ran this transaction (it is skipped entirely when nothing else in
+    # the session is new/dirty/deleted).
+    updates = pop_registered_tournament_realtime_updates(session)
+    if not updates:
         return
 
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        logger.warning("Cannot publish tournament realtime updates without a running event loop")
+        logger.warning("Cannot invalidate tournament cache without a running event loop")
         return
 
-    if events:
-        envelopes: list[tuple[int, TournamentRealtimeReason, str, WorkspaceEventEnvelope]] = []
-        for event_obj in events:
-            if event_obj.occurred_at is None:
-                event_obj.occurred_at = datetime.now(UTC)
-            reason = _normalize_reason(str(event_obj.payload.get("reason")))
-            if event_obj.tournament_id is None or reason is None:
-                logger.warning(
-                    "Ignoring malformed persisted tournament realtime event",
-                    topic=event_obj.topic,
-                    tournament_id=event_obj.tournament_id,
-                    reason=event_obj.payload.get("reason"),
-                )
-                continue
-            envelopes.append(
-                (
-                    int(event_obj.tournament_id),
-                    reason,
-                    event_obj.topic,
-                    event_to_envelope(event_obj),
-                )
-            )
-        for tournament_id, reason, topic, envelope in envelopes:
-            _spawn(loop, _publish_persisted_event(tournament_id, reason, topic, envelope))
-
-    if fallback_updates:
-        _spawn(loop, publish_tournament_realtime_updates(fallback_updates))
+    for tournament_id, reason in updates:
+        _spawn(loop, _invalidate_cache(tournament_id, reason))
 
 
 @event.listens_for(Session, "after_rollback")
 def _clear_registered_updates_after_rollback(session: Session) -> None:
+    # The shared factory clears its OWN staged builders on rollback; this
+    # module's raw (tournament_id, reason) accumulation is a distinct piece of
+    # session state it knows nothing about, so it still needs its own cleanup —
+    # otherwise a session reused for a later transaction after a rollback would
+    # carry stale reasons into that transaction's merge.
     pop_registered_tournament_realtime_updates(session)
-    session.info.pop(_SESSION_EVENTS_KEY, None)

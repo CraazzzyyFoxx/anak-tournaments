@@ -18,7 +18,15 @@ ADMIN_EQUIVALENT_ROLE_NAMES = {"admin"}
 ADMIN_PANEL_ROLE_NAMES = {"admin", "tournament_organizer", "moderator"}
 
 
+# The "any non-read permission means management" shortcut below is only sound
+# for administrative resources. A mix is a member-level capability -- hosting
+# one must not confer admin-panel entry -- so its grants are excluded here.
+_NON_ADMIN_PANEL_RESOURCES = frozenset(("custom_game",))
+
+
 def _permission_grants_admin_panel_access(resource: str, action: str) -> bool:
+    if resource in _NON_ADMIN_PANEL_RESOURCES:
+        return False
     return (resource == "*" and action == "*") or action != "read"
 
 

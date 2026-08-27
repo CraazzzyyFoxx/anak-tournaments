@@ -28,7 +28,7 @@ from ..models.performance_v2 import (
 )
 from ..models.shift_v2 import ShiftTrainingResult, train_shift_v2
 from ..models.standings_v2 import StandingsTrainingResult, train_standings_v2
-from .registry import ensure_algorithm, register_artifact
+from .registry import registry_service
 from .splits import TimeSeriesSplit, tournament_ids_up_to
 
 logger = logging.getLogger(__name__)
@@ -161,7 +161,7 @@ async def train_performance_v2_for_cutoff(
       and deactivates older versions of the same role,
     - writes the booster pickles to ``ANALYTICS_MODELS_DIR``.
     """
-    algorithm = await ensure_algorithm(session, PERFORMANCE_ALGORITHM_NAME)
+    algorithm = await registry_service.ensure_algorithm(session, PERFORMANCE_ALGORITHM_NAME)
 
     all_ids = await tournament_ids_up_to(
         session,
@@ -221,7 +221,7 @@ async def train_performance_v2_for_cutoff(
         path = artifact_path(algorithm.id, PERFORMANCE_MODEL_VERSION, f"performance_{role}.joblib")
         storage_uri = save_artifact(result.model, path)
 
-        artifact = await register_artifact(
+        artifact = await registry_service.register_artifact(
             session,
             algorithm_id=algorithm.id,
             model_kind=PERFORMANCE_MODEL_KIND,
@@ -301,7 +301,7 @@ async def train_standings_v2_for_cutoff(
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> StandingsTrainingOutcome | None:
     """Train Standings v2 win-probability classifier."""
-    algorithm = await ensure_algorithm(session, STANDINGS_ALGORITHM_NAME)
+    algorithm = await registry_service.ensure_algorithm(session, STANDINGS_ALGORITHM_NAME)
     all_ids = await tournament_ids_up_to(
         session,
         cutoff_tournament_id,
@@ -343,7 +343,7 @@ async def train_standings_v2_for_cutoff(
 
     path = artifact_path(algorithm.id, STANDINGS_MODEL_VERSION, "standings.joblib")
     storage_uri = save_artifact(result.model, path)
-    artifact = await register_artifact(
+    artifact = await registry_service.register_artifact(
         session,
         algorithm_id=algorithm.id,
         model_kind=STANDINGS_MODEL_KIND,
@@ -367,7 +367,7 @@ async def train_shift_v2_for_cutoff(
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> ShiftTrainingOutcome | None:
     """Train Shift v2 residual model using all tournaments up to cutoff."""
-    algorithm = await ensure_algorithm(session, SHIFT_ALGORITHM_NAME)
+    algorithm = await registry_service.ensure_algorithm(session, SHIFT_ALGORITHM_NAME)
     all_ids = await tournament_ids_up_to(
         session,
         cutoff_tournament_id,
@@ -431,7 +431,7 @@ async def train_shift_v2_for_cutoff(
 
     path = artifact_path(algorithm.id, SHIFT_MODEL_VERSION, "shift.joblib")
     storage_uri = save_artifact(result.model, path)
-    artifact = await register_artifact(
+    artifact = await registry_service.register_artifact(
         session,
         algorithm_id=algorithm.id,
         model_kind=SHIFT_MODEL_KIND,

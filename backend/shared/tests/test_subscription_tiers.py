@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from shared.subscriptions import (
+from shared.services.subscriptions import (
     SubscriptionState,
     SubscriptionVerdict,
     meets_min_tier,

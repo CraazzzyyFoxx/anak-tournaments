@@ -20,29 +20,6 @@ from shared.core.pagination import (
 )
 from shared.rpc.openapi import Op, QueryParam
 from src import schemas
-from src.schemas.admin.audit import AuditLogListQueryParams, AuditLogRead
-from src.schemas.admin.catalog_alias import (
-    CatalogAliasAttach,
-    CatalogAliasMissListQueryParams,
-    CatalogAliasMissRead,
-)
-from src.schemas.admin.gamemode import GamemodeCreate, GamemodeUpdate
-from src.schemas.admin.hero import HeroCreate, HeroUpdate
-from src.schemas.admin.map import MapCreate, MapUpdate
-from src.schemas.admin.user import (
-    SocialAccountCreate,
-    SocialAccountUpdate,
-    SocialVisibilityUpdate,
-    StreamVisibilityUpdate,
-    UserCreate,
-    UserUpdate,
-)
-from src.schemas.admin.user_merge import (
-    UserMergeExecuteRequest,
-    UserMergeExecuteResponse,
-    UserMergePreviewRequest,
-    UserMergePreviewResponse,
-)
 
 # Sort-field whitelists mirror the read handlers' Literal constraints (used to
 # build the generic query-param aliases below). Drift only affects the `sort`
@@ -53,7 +30,7 @@ _GAMEMODE_SORT = typing.Literal["id", "name", "slug", "similarity:name", "simila
 _ACH_SORT = typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
 _USER_SORT = typing.Literal["id", "name", "similarity:name"]
 _STAT_SORT = typing.Literal["id", "name", "value"]
-_ENC_SORT = typing.Literal["id", "name", "home_team_id", "away_team_id", "closeness", "round"]
+_ENC_SORT = typing.Literal["id", "name", "home_team_id", "away_team_id", "closeness", "round", "played_at"]
 _MATE_SORT = typing.Literal["id", "name", "winrate", "tournaments"]
 
 # Reusable ad-hoc query params (handlers read these via c.q/c.q1, no query model).
@@ -179,34 +156,37 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.app.workspaces.verify_custom_domain": Op(response=schemas.WorkspaceRead),
     "rpc.app.workspaces.clear_custom_domain": Op(response=schemas.WorkspaceRead),
+    "rpc.app.workspaces.discord_guild_verify": Op(
+        request=schemas.WorkspaceDiscordGuildVerify, response=schemas.WorkspaceRead
+    ),
     # ── metadata admin (hero/map/gamemode) ─────────────────────────────────
-    "rpc.app.heroes.admin_create": Op(request=HeroCreate, response=schemas.HeroRead),
-    "rpc.app.heroes.admin_update": Op(request=HeroUpdate, response=schemas.HeroRead),
-    "rpc.app.maps.admin_create": Op(request=MapCreate, response=schemas.MapRead),
-    "rpc.app.maps.admin_update": Op(request=MapUpdate, response=schemas.MapRead),
-    "rpc.app.gamemodes.admin_create": Op(request=GamemodeCreate, response=schemas.GamemodeRead),
-    "rpc.app.gamemodes.admin_update": Op(request=GamemodeUpdate, response=schemas.GamemodeRead),
+    "rpc.app.heroes.admin_create": Op(request=schemas.HeroCreate, response=schemas.HeroRead),
+    "rpc.app.heroes.admin_update": Op(request=schemas.HeroUpdate, response=schemas.HeroRead),
+    "rpc.app.maps.admin_create": Op(request=schemas.MapCreate, response=schemas.MapRead),
+    "rpc.app.maps.admin_update": Op(request=schemas.MapUpdate, response=schemas.MapRead),
+    "rpc.app.gamemodes.admin_create": Op(request=schemas.GamemodeCreate, response=schemas.GamemodeRead),
+    "rpc.app.gamemodes.admin_update": Op(request=schemas.GamemodeUpdate, response=schemas.GamemodeRead),
     # ── metadata admin: catalog alias-miss queue ───────────────────────────
     "rpc.app.catalog_aliases.misses_list": Op(
-        response=Paginated[CatalogAliasMissRead], query=CatalogAliasMissListQueryParams
+        response=Paginated[schemas.CatalogAliasMissRead], query=schemas.CatalogAliasMissListQueryParams
     ),
-    "rpc.app.catalog_aliases.attach": Op(request=CatalogAliasAttach),
+    "rpc.app.catalog_aliases.attach": Op(request=schemas.CatalogAliasAttach),
     "rpc.app.catalog_aliases.dismiss": Op(),
     # ── platform audit log ─────────────────────────────────────────────────
-    "rpc.app.audit_list": Op(response=Paginated[AuditLogRead], query=AuditLogListQueryParams),
+    "rpc.app.audit_list": Op(response=Paginated[schemas.AuditLogRead], query=schemas.AuditLogListQueryParams),
     # ── users admin (CRUD + identities + merge) ────────────────────────────
-    "rpc.app.users.admin_create": Op(request=UserCreate, response=schemas.UserRead),
-    "rpc.app.users.admin_update": Op(request=UserUpdate, response=schemas.UserRead),
-    "rpc.app.users.merge_preview": Op(request=UserMergePreviewRequest, response=UserMergePreviewResponse),
-    "rpc.app.users.merge_execute": Op(request=UserMergeExecuteRequest, response=UserMergeExecuteResponse),
-    "rpc.app.users.social_add": Op(request=SocialAccountCreate, response=schemas.UserRead),
-    "rpc.app.users.social_update": Op(request=SocialAccountUpdate, response=schemas.UserRead),
+    "rpc.app.users.admin_create": Op(request=schemas.UserCreate, response=schemas.UserRead),
+    "rpc.app.users.admin_update": Op(request=schemas.UserAdminUpdate, response=schemas.UserRead),
+    "rpc.app.users.merge_preview": Op(request=schemas.UserMergePreviewRequest, response=schemas.UserMergePreviewResponse),
+    "rpc.app.users.merge_execute": Op(request=schemas.UserMergeExecuteRequest, response=schemas.UserMergeExecuteResponse),
+    "rpc.app.users.social_add": Op(request=schemas.SocialAccountCreate, response=schemas.UserRead),
+    "rpc.app.users.social_update": Op(request=schemas.SocialAccountUpdate, response=schemas.UserRead),
     "rpc.app.users.social_verify": Op(response=schemas.UserRead),
     "rpc.app.users.social_delete": Op(response=schemas.UserRead),
     "rpc.app.users.social_set_primary": Op(response=schemas.UserRead),
-    "rpc.app.users.social_set_visibility": Op(request=SocialVisibilityUpdate, response=schemas.UserRead),
+    "rpc.app.users.social_set_visibility": Op(request=schemas.SocialVisibilityUpdate, response=schemas.UserRead),
     # ── users self-service (capability ``account.social``) ──────────────────
-    "rpc.app.users.me_set_stream_visibility": Op(request=StreamVisibilityUpdate, response=schemas.UserRead),
+    "rpc.app.users.me_set_stream_visibility": Op(request=schemas.StreamVisibilityUpdate, response=schemas.UserRead),
     # Ad-hoc dict / 204 responses (me_favorite_add returns {"ok": True},
     # me_favorite_remove returns 204/None) are intentionally omitted -- see the
     # module docstring's "Endpoints returning ad-hoc dicts / None" convention.

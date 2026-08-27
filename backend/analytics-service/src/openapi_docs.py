@@ -21,35 +21,31 @@ DOCS: dict[str, dict] = {
         "summary": "Player streaks",
         "description": "Returns players' placement streaks across recent tournaments for the given tournament_id.",
     },
-    "rpc.analytics.balance_quality": {
-        "summary": "Balance quality",
-        "description": "Returns the stored balance-quality snapshot (objective score, SR spread, discomfort, per-player rows) for a tournament, or null if none exists.",
-    },
-    "rpc.analytics.v2_performance": {
+    "rpc.analytics.performance": {
         "summary": "Performance rows",
         "description": "Returns ML performance rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
     },
-    "rpc.analytics.v2_standings": {
+    "rpc.analytics.standings": {
         "summary": "Standings distribution",
         "description": "Returns standings-distribution rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
     },
-    "rpc.analytics.v2_match_quality": {
+    "rpc.analytics.match_quality": {
         "summary": "Match quality",
         "description": "Returns per-encounter match-quality rows for a tournament, optionally filtered by algorithm_id; requires analytics.read.",
     },
-    "rpc.analytics.v2_player_anomalies": {
+    "rpc.analytics.player_anomalies": {
         "summary": "Player anomalies",
         "description": "Returns player-anomaly rows for a tournament, optionally filtered by player_id and kind; requires analytics.read.",
     },
-    "rpc.analytics.v2_feedback_list": {
+    "rpc.analytics.feedback_list": {
         "summary": "List anomaly feedback",
         "description": "Returns all anomaly-feedback rows recorded for a tournament; requires analytics.read.",
     },
-    "rpc.analytics.v2_explain": {
+    "rpc.analytics.explain": {
         "summary": "Explain player",
         "description": "Returns the most recent explanation row for a player in a tournament (optionally by algorithm_id); 404 if none found; requires analytics.read.",
     },
-    "rpc.analytics.v2_artifacts": {
+    "rpc.analytics.artifacts": {
         "summary": "ML artifacts",
         "description": "Returns ML model artifacts ordered by creation, optionally filtered by model_kind and active_only; requires analytics.read.",
     },
