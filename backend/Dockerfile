@@ -84,6 +84,14 @@ RUN if [ "${APP_PATH}" = "analytics" ]; then \
 # `shared` is a workspace member; its source is required to build its wheel during `uv sync`.
 COPY ./shared /app/shared
 
+# ``mix-balancer`` is a local path dependency (balancer-service/pyproject.toml's
+# [tool.uv.sources]) -- unlike registry/git dependencies, uv needs its actual
+# source present to resolve it, so it must land before the first `uv sync`
+# below runs (that step only has pyproject.toml files copied so far, see
+# line ~26). Copied unconditionally: it's a few small files, and every other
+# ``${APP_PATH}`` build simply never references this package.
+COPY ./balancer-service/native/mix_balancer /app/balancer-service/native/mix_balancer
+
 # Install dependencies for the target service only
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
 RUN --mount=type=cache,target=/root/.cache/uv \
