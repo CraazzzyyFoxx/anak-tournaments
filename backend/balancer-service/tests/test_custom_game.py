@@ -40,6 +40,7 @@ def _roster_row(row_id: int, member_id: int, sort_order: int, **overrides) -> Si
         "sort_order": sort_order,
         "is_active": True,
         "must_play": False,
+        "is_flex": False,
         "roles_json": None,
     }
     fields.update(overrides)
@@ -353,6 +354,23 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # A patch, not a replace: the bench switch is untouched.
         self.assertTrue(row.is_active)
 
+    async def test_update_player_toggles_is_flex(self) -> None:
+        game = _game()
+        row = _roster_row(1, 7, 0)
+        self.games.get.return_value = game
+        self.roster.list_for_game.return_value = [row]
+        await self.service.update_player(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            workspace_member_id=7,
+            patch={"is_flex": True},
+            actor_user_id=9,
+        )
+        self.assertTrue(row.is_flex)
+        # A patch, not a replace: the bench switch is untouched.
+        self.assertTrue(row.is_active)
+
     async def test_balance_sends_must_play_to_the_solver(self) -> None:
         game = _game()
         roster = [_roster_row(1, 7, 0, must_play=True), _roster_row(2, 8, 1)]
@@ -366,6 +384,20 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         player_data = self.run_balance.await_args.args[0]
         self.assertTrue(player_data["players"]["7"]["identity"]["mustPlay"])
         self.assertFalse(player_data["players"]["8"]["identity"]["mustPlay"])
+
+    async def test_balance_sends_is_flex_to_the_solver(self) -> None:
+        game = _game()
+        roster = [_roster_row(1, 7, 0, is_flex=True), _roster_row(2, 8, 1)]
+        self.games.get.return_value = game
+        self.roster.list_for_game.return_value = roster
+        self.ranks.resolve.return_value = _ranks(7, 8)
+        self.run_balance.return_value = {"teams": []}
+
+        await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+
+        player_data = self.run_balance.await_args.args[0]
+        self.assertTrue(player_data["players"]["7"]["identity"]["isFullFlex"])
+        self.assertFalse(player_data["players"]["8"]["identity"]["isFullFlex"])
 
     async def test_balance_skips_benched_rows(self) -> None:
         game = _game()
@@ -1646,3 +1678,21 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(by_id[8].status, RotationStatus.MUST_PLAY)
         # 7 is the only one who actually played -- rests to make room.
         self.assertEqual(by_id[7].status, RotationStatus.SHOULD_REST)
+
+    async def test_hard_delete_removes_the_game_row(self) -> None:
+        game = _game()
+        self.games.get.return_value = game
+        self.games.delete = AsyncMock()
+
+        await self.service.hard_delete(self.session, workspace_id=1, custom_game_id=11)
+
+        self.games.delete.assert_awaited_once_with(self.session, game)
+
+    async def test_hard_delete_404s_a_game_from_another_workspace(self) -> None:
+        self.games.get.return_value = _game(workspace_id=2)
+        self.games.delete = AsyncMock()
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.hard_delete(self.session, workspace_id=1, custom_game_id=11)
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.games.delete.assert_not_awaited()

@@ -1,6 +1,6 @@
 """The workspace roster and its rank layers, over typed RPC.
 
-``rpc.balancer.players.{list, upsert, set_ranks}``.
+``rpc.balancer.players.{list, upsert, set_ranks, summary, authors}``.
 Reads and writes require workspace membership. ``set_ranks`` picks the layer from
 the body's ``scope``; the *author* layer is always the caller's own, because a
 foreign book is readable by every member but writable by nobody else.
@@ -278,3 +278,27 @@ def register(broker: Any, logger: Any) -> None:
             return {"ranks": ranks}
 
         return await c.envelope(logger, "players.set_ranks", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.players.authors")
+    async def _authors(data: dict, msg: RabbitMessage) -> dict:
+        """Everyone who has personally rank-corrected a member here, busiest
+        first -- the add-players dialog's per-author filter chips beyond the
+        two fixed ones (workspace canon, caller's own book).
+        """
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = c.path_int(data, "workspace_id")
+            _require_member(user, workspace_id)
+            counts = await member_rank_service.list_authors(session, workspace_id=workspace_id)
+            names = await workspace_roster.hosts_by_user_id(
+                session, workspace_id=workspace_id, user_ids=[author_user_id for author_user_id, _ in counts]
+            )
+            return {
+                "authors": [
+                    {"user_id": author_user_id, "display_name": names.get(author_user_id), "count": count}
+                    for author_user_id, count in counts
+                ]
+            }
+
+        return await c.envelope(logger, "players.authors", op, session_factory=_SF)

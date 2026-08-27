@@ -1,6 +1,6 @@
 """Custom games over typed RPC.
 
-``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,set_points_per_win,set_balancer_config,transfer_host,add_co_host,remove_co_host,swap_seats,record_outcome,match_history,rotation,close,delete}``.
+``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,set_points_per_win,set_balancer_config,transfer_host,add_co_host,remove_co_host,swap_seats,record_outcome,match_history,rotation,close,delete,hard_delete}``.
 Writes require ``actor`` to be the host or a co-host. Reads are any workspace member.
 """
 
@@ -195,7 +195,7 @@ def _player_patch(data: dict[str, Any]) -> dict[str, Any]:
     """Only the keys the caller actually sent, so absent fields stay untouched."""
     body = c.payload(data)
     patch: dict[str, Any] = {}
-    for key in ("is_active", "roles", "must_play"):
+    for key in ("is_active", "roles", "must_play", "is_flex"):
         if key in body:
             patch[key] = body[key]
         elif key in data:
@@ -224,6 +224,7 @@ def _dump_row(
         "sort_order": row.sort_order,
         "is_active": row.is_active,
         "must_play": row.must_play,
+        "is_flex": row.is_flex,
         "roles": row.roles_json,
         # The ranks balance would actually use: host book > workspace canon > OW.
         "ranks": {role: rank.value for role, rank in effective.items()},
@@ -743,3 +744,26 @@ def register(broker: Any, logger: Any) -> None:
             return _dump_game(game)
 
         return await c.envelope(logger, "custom.delete", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.hard_delete")
+    async def _hard_delete(data: dict, msg: RabbitMessage) -> dict:
+        """Permanently deletes a mix. Workspace admin only -- unlike ``delete``
+        (a status flip a host can trigger on their own game) this destroys the
+        row and every match it recorded, so it needs more than host-or-co-host.
+        """
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_member(user, workspace_id)
+            if not user.is_workspace_admin(workspace_id):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace admin required")
+            custom_game_id = _game_id(data)
+            await custom_game_service.hard_delete(
+                session, workspace_id=workspace_id, custom_game_id=custom_game_id
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="hard_delete", actor_user_id=user.id)
+            return {"id": custom_game_id}
+
+        return await c.envelope(logger, "custom.hard_delete", op, session_factory=_SF)

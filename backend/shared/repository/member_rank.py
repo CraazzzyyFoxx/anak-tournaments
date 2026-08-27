@@ -69,3 +69,24 @@ class MemberRankRepository(BaseRepository[models.MemberRank]):
             )
         )
         return result.all()
+
+    async def list_authors(
+        self, session: AsyncSession, *, workspace_id: int
+    ) -> Sequence[tuple[int, int]]:
+        """Every account that has ever set a rank in this workspace, with how many
+        distinct members they have ranked -- busiest author first.
+
+        The workspace canon (``author_user_id IS NULL``) is excluded on purpose:
+        it belongs to nobody, so it is not "a person who balanced" the way the
+        add-players dialog's per-author chips mean the term.
+        """
+        result = await session.execute(
+            sa.select(
+                self.model.author_user_id,
+                sa.func.count(sa.func.distinct(self.model.workspace_member_id)),
+            )
+            .where(self.model.workspace_id == workspace_id, self.model.author_user_id.isnot(None))
+            .group_by(self.model.author_user_id)
+            .order_by(sa.func.count(sa.func.distinct(self.model.workspace_member_id)).desc())
+        )
+        return [(int(author_user_id), int(count)) for author_user_id, count in result.all()]

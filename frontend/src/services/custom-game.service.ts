@@ -38,6 +38,10 @@ export type CustomGamePlayer = {
   sort_order: number;
   is_active: boolean;
   must_play: boolean;
+  /** Every role this row has a rank for is treated as equally preferred by
+   * the solver, so `roles`'s order stops mattering as a priority hint --
+   * mirrors the tournament balancer's flex flag (`Player.is_flex`). */
+  is_flex: boolean;
   roles: string[] | null;
   ranks: Record<string, number>;
   rank_sources: Record<string, RankSource>;
@@ -109,6 +113,7 @@ export type CustomGamePlayerPatch = {
   is_active?: boolean;
   roles?: string[] | null;
   must_play?: boolean;
+  is_flex?: boolean;
 };
 
 export const customGameKeys = {
@@ -190,6 +195,16 @@ export const customGameService = {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/close`, {
       method: "POST",
     }).then((r) => r.json());
+  },
+
+  /**
+   * Permanently deletes the mix and every match it recorded. Workspace admin
+   * only -- unlike `close` (a host-triggered status flip) this is irreversible.
+   */
+  hardDelete(workspaceId: number, gameId: number): Promise<void> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}`, {
+      method: "DELETE",
+    }).then(() => undefined);
   },
 
   /**

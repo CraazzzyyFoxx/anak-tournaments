@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -54,10 +54,14 @@ export default function BalancerPickupMixPage() {
 
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const currentUserId = useAuthProfileStore((state) => state.user?.id ?? null);
-  const { canAccessPermission } = usePermissions();
+  const { canAccessPermission, isSuperuser, isWorkspaceAdmin } = usePermissions();
+  const router = useRouter();
   // The mix-hosting grant, not a tournament permission: a workspace member can
   // run a pickup game without holding admin rights over teams.
   const canEdit = workspaceId != null && canAccessPermission("custom_game.create", workspaceId);
+  // Irreversible, so it needs more than the host-or-co-host grant every other
+  // write here checks -- see `_hard_delete` in balancer-service's `rpc/custom.py`.
+  const canDeleteMix = workspaceId != null && (isSuperuser || isWorkspaceAdmin(workspaceId));
 
   const [openPlayerId, setOpenPlayerId] = useState<number | null>(null);
   const [isPoolOpen, setIsPoolOpen] = useState(false);
@@ -91,6 +95,7 @@ export default function BalancerPickupMixPage() {
     balance,
     recordOutcome,
     closeMix,
+    hardDeleteMix,
     setAuthorRanks,
     setTeamNames,
     setRoleMask,
@@ -206,6 +211,13 @@ export default function BalancerPickupMixPage() {
               onOpenPool={() => setIsPoolOpen(true)}
               onOpenSettings={() => setIsSettingsOpen(true)}
               onOpenAccess={() => setIsAccessOpen(true)}
+              canDelete={canDeleteMix}
+              deleting={hardDeleteMix.isPending}
+              onDeleteMix={() =>
+                hardDeleteMix.mutate(undefined, {
+                  onSuccess: () => router.push("/balancer/pickup"),
+                })
+              }
             />
             <PickupTeamsPanel
               canWrite={canWrite}

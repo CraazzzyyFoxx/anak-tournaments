@@ -236,6 +236,17 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     onError: (error) => notify.apiError(error),
   });
 
+  /** Irreversible: removes the game row and every match it recorded. */
+  const hardDeleteMix = useMutation({
+    mutationFn: () => customGameService.hardDelete(workspaceId, selectedGameId as number),
+    onSuccess: async () => {
+      queryClient.removeQueries({ queryKey: customGameKeys.one(workspaceId, selectedGameId ?? 0) });
+      await queryClient.invalidateQueries({ queryKey: customGameKeys.list(workspaceId) });
+      notify.success("Mix deleted");
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
   /**
    * The host's own rank book. Unlike every other write here it does not return
    * the game, so the mix detail is refetched: the book feeds rank resolution,
@@ -270,6 +281,7 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     balance,
     recordOutcome,
     closeMix,
+    hardDeleteMix,
     setAuthorRanks,
     setTeamNames,
     setRoleMask,

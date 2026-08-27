@@ -65,6 +65,9 @@ type RoleDraft = {
   order: RoleCode[];
   /** Staged writes to the host's own book. A `null` value is a staged Clear. */
   rankEdits: Partial<Record<RoleCode, number | null>>;
+  /** Every role this row has a rank for is treated as equally preferred, so
+   * `order`'s position stops mattering as a priority hint. */
+  isFlex: boolean;
 };
 
 function buildDraft(row: CustomGamePlayer | null): RoleDraft {
@@ -72,6 +75,7 @@ function buildDraft(row: CustomGamePlayer | null): RoleDraft {
     bucket: row ? lineupBucket(row) : "pool",
     order: row ? resolveRoleOrder(row) : [],
     rankEdits: {},
+    isFlex: row?.is_flex ?? false,
   };
 }
 
@@ -162,9 +166,13 @@ export function PickupPlayerSheet({
       }
     }
     onSave(
-      { ...bucketPatch(draft.bucket), roles: draft.order },
+      { ...bucketPatch(draft.bucket), roles: draft.order, is_flex: draft.isFlex },
       Object.keys(draft.rankEdits).length > 0 ? { ranks, clear } : null,
     );
+    // The mutations fire-and-forget from here (the page owns their pending
+    // state via `saving`); waiting for them to settle before closing left the
+    // sheet open with nothing left to do until the network round-tripped.
+    handleOpenChange(false);
   };
 
   return (
@@ -259,16 +267,37 @@ export function PickupPlayerSheet({
             </section>
 
             <section className="space-y-2 border-b border-[color:var(--aqt-border)] px-5 py-4">
-              <div>
-                <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">
-                  Roles and ranks
-                </h3>
-                <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
-                  Drag to set who the balancer seats first; it only uses roles that are on. A rank
-                  you type here goes into your own book — yours across every mix you host, and it
-                  beats the workspace rank until you clear it.
-                </p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">
+                    Roles and ranks
+                  </h3>
+                  <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
+                    Drag to set who the balancer seats first; it only uses roles that are on. A
+                    rank you type here goes into your own book — yours across every mix you host,
+                    and it beats the workspace rank until you clear it.
+                  </p>
+                </div>
+                <label className="flex shrink-0 items-center gap-1.5 pt-0.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
+                    Full flex
+                  </span>
+                  <Switch
+                    checked={draft.isFlex}
+                    disabled={disabled}
+                    aria-label={`Full flex for ${label}`}
+                    onCheckedChange={(checked) =>
+                      setDraft((current) => ({ ...current, isFlex: checked }))
+                    }
+                  />
+                </label>
               </div>
+              {draft.isFlex ? (
+                <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">
+                  Every role below is equally preferred — drag order stops mattering as a
+                  priority.
+                </p>
+              ) : null}
 
               <SortableRows
                 items={draft.order}

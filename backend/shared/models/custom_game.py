@@ -48,7 +48,10 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
     default. ``must_play`` guarantees a seat when the active lineup does not
     divide evenly into full teams: the balancer trims the leftover from the
     optional players first, only reaching into the flagged ones if there are
-    more of them than team slots exist.
+    more of them than team slots exist. ``is_flex`` mirrors the tournament
+    balancer's flex flag: every role this row has a rank for is treated as
+    equally preferred, so ``roles_json``'s order stops mattering as a priority
+    hint (see ``priority_for_role`` in ``domain/balancer/backends/mix_balancer.py``).
     """
 
     __tablename__ = "custom_game_player"
@@ -65,4 +68,5 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
     sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True, server_default="true")
     must_play: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="false")
+    is_flex: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="false")
     roles_json: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)

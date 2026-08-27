@@ -2,14 +2,14 @@
 
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CornerDownLeft, Loader2, Plus, Search, UserPlus, X } from "lucide-react";
+import { Check, ChevronDown, CornerDownLeft, Loader2, Plus, Search, UserPlus, X } from "lucide-react";
 
 import { splitBattleTag } from "@/app/balancer/components/balancer-page-helpers";
 import {
   CAPTION_CLASS,
   CARD_TITLE_CLASS,
   EYEBROW_CLASS,
-  ROLE_TILE_CLASS,
+  ROLE_ICON_COLOR,
 } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -28,6 +28,7 @@ import type { CustomGamePlayer } from "@/services/custom-game.service";
 import {
   workspacePlayerKeys,
   workspacePlayerService,
+  type RosterAuthor,
   type RosterMember,
 } from "@/services/workspace-player.service";
 
@@ -43,6 +44,9 @@ import {
 
 /** Dense enough that a 900px-tall dialog shows a full page without scrolling twice. */
 const PER_PAGE = 24;
+
+/** Chips before the rest collapse into the "+K more" overflow popover. */
+const VISIBLE_AUTHOR_CHIPS = 4;
 
 /**
  * One workspace roster row, normalised for display: `ranks` is what a balance
@@ -114,7 +118,12 @@ export function PickupAddPlayersDialog({
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<"all" | "mine">("all");
+  // "all" (the workspace canon) | "mine" (the mix host's own book) | a
+  // specific author's user id -- everyone who has ever rank-corrected
+  // somebody here, one chip each, with the overflow beyond
+  // `VISIBLE_AUTHOR_CHIPS` folded into a popover.
+  const [filter, setFilter] = useState<"all" | "mine" | number>("all");
+  const [isAuthorMenuOpen, setIsAuthorMenuOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [cursorKey, setCursorKey] = useState("all|1|");
   const [battleTag, setBattleTag] = useState("");
@@ -124,12 +133,17 @@ export function PickupAddPlayersDialog({
   const deferredSearch = useDeferredValue(search.trim());
 
   const usingMine = filter === "mine";
+  const usingNamedAuthor = typeof filter === "number";
+  // Under "Everyone" the list still reads through the host's own book (the
+  // layer this mix actually balances on), same as before named-author chips
+  // existed; a named chip instead reads that account's book.
+  const activeAuthorUserId = usingNamedAuthor ? filter : (hostUserId ?? undefined);
   const listParams = {
     page,
     perPage: PER_PAGE,
     query: deferredSearch,
-    authorUserId: hostUserId ?? undefined,
-    authorOnly: usingMine,
+    authorUserId: activeAuthorUserId,
+    authorOnly: usingMine || usingNamedAuthor,
   };
   const rosterQuery = useQuery({
     queryKey: workspacePlayerKeys.list(workspaceId, listParams),
@@ -150,6 +164,33 @@ export function PickupAddPlayersDialog({
     queryFn: () => workspacePlayerService.summary(workspaceId, hostUserId ?? undefined),
     enabled: open,
   });
+
+  // Every account that has personally rank-corrected somebody here, one chip
+  // each -- the point of this dialog surfacing a filter beyond "Everyone"/
+  // "My ranks" in the first place. This mix's own host is excluded: "My
+  // ranks" already is that chip, so listing the host again here would be
+  // the same filter under a second label.
+  const authorsQuery = useQuery({
+    queryKey: workspacePlayerKeys.authors(workspaceId),
+    queryFn: () => workspacePlayerService.listAuthors(workspaceId),
+    enabled: open,
+  });
+  const authors = useMemo<RosterAuthor[]>(
+    () => (authorsQuery.data?.authors ?? []).filter((author) => author.user_id !== hostUserId),
+    [authorsQuery.data, hostUserId],
+  );
+  const visibleAuthors = authors.slice(0, VISIBLE_AUTHOR_CHIPS);
+  const overflowAuthors = authors.slice(VISIBLE_AUTHOR_CHIPS);
+  const overflowActiveAuthor = overflowAuthors.find((author) => author.user_id === filter) ?? null;
+  // Whoever the active named-author filter reads as, for the empty state --
+  // `null` under "Everyone", where that message reads differently.
+  const activeAuthorLabel = usingMine
+    ? "You"
+    : usingNamedAuthor
+      ? (visibleAuthors.find((author) => author.user_id === filter)?.display_name ??
+        overflowActiveAuthor?.display_name ??
+        `#${filter}`)
+      : null;
 
   const addByTag = useMutation({
     mutationFn: (tag: string) => workspacePlayerService.upsert(workspaceId, tag),
@@ -317,6 +358,70 @@ export function PickupAddPlayersDialog({
                     setPage(1);
                   }}
                 />
+                {visibleAuthors.map((author) => (
+                  <FilterChip
+                    key={author.user_id}
+                    label={author.display_name ?? `#${author.user_id}`}
+                    count={author.count}
+                    active={filter === author.user_id}
+                    onClick={() => {
+                      setFilter(author.user_id);
+                      setPage(1);
+                    }}
+                  />
+                ))}
+                {overflowAuthors.length > 0 ? (
+                  <Popover open={isAuthorMenuOpen} onOpenChange={setIsAuthorMenuOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        aria-pressed={overflowActiveAuthor != null}
+                        className={cn(
+                          "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] transition-colors",
+                          overflowActiveAuthor != null
+                            ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_38%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]"
+                            : "border-[color:var(--aqt-border)] bg-white/[0.02] text-[color:var(--aqt-fg-muted)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg)]",
+                        )}
+                      >
+                        <span className="max-w-24 truncate">
+                          {overflowActiveAuthor
+                            ? (overflowActiveAuthor.display_name ?? `#${overflowActiveAuthor.user_id}`)
+                            : `+${overflowAuthors.length} more`}
+                        </span>
+                        <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-56 p-1">
+                      <ul className="max-h-64 space-y-0.5 overflow-y-auto">
+                        {overflowAuthors.map((author) => (
+                          <li key={author.user_id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFilter(author.user_id);
+                                setPage(1);
+                                setIsAuthorMenuOpen(false);
+                              }}
+                              className={cn(
+                                "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-colors",
+                                filter === author.user_id
+                                  ? "bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] text-[color:var(--aqt-teal)]"
+                                  : "text-[color:var(--aqt-fg-muted)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg)]",
+                              )}
+                            >
+                              <span className="truncate">
+                                {author.display_name ?? `#${author.user_id}`}
+                              </span>
+                              <span className="shrink-0 font-mono text-[11px] tabular-nums text-[color:var(--aqt-fg-faint)]">
+                                {author.count}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </PopoverContent>
+                  </Popover>
+                ) : null}
                 {canEdit ? (
                   <Popover
                     open={isAddOpen}
@@ -431,14 +536,16 @@ export function PickupAddPlayersDialog({
                   title={
                     deferredSearch
                       ? `Nobody matches \u201C${deferredSearch}\u201D`
-                      : usingMine
-                        ? "You haven't ranked anyone yet"
+                      : activeAuthorLabel != null
+                        ? usingMine
+                          ? "You haven't ranked anyone yet"
+                          : `${activeAuthorLabel} hasn't ranked anyone yet`
                         : "No players in this workspace yet"
                   }
                   description={
                     deferredSearch
                       ? "Try a different name, or add the BattleTag above."
-                      : usingMine
+                      : activeAuthorLabel != null
                         ? "Set a rank on a player in Everyone to add them here."
                         : "Add a BattleTag above to start the roster this workspace balances from."
                   }
@@ -784,18 +891,21 @@ function LineupChip({
       <span aria-hidden="true" className="flex shrink-0 items-center gap-0.5">
         {ROLES.map((role) => {
           const position = order.indexOf(role.code);
+          const isOn = position !== -1;
           return (
             <span
               key={role.code}
               className={cn(
                 "flex size-5 items-center justify-center rounded",
-                // A 9% fill is invisible at 20px, so first choice is marked the
-                // way the lineup rail marks it — a 2px underline in the role
-                // colour, which survives the size.
-                position === -1 ? "opacity-20" : position === 0 ? ROLE_TILE_CLASS[role.code] : "",
+                !isOn && "opacity-20",
               )}
             >
-              <PlayerRoleIcon role={role.icon} size={13} decorative />
+              <PlayerRoleIcon
+                role={role.icon}
+                size={13}
+                decorative
+                color={isOn ? ROLE_ICON_COLOR[role.code] : undefined}
+              />
             </span>
           );
         })}

@@ -174,7 +174,12 @@ describe("PickupPlayerSheet ranks", () => {
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const [patch, rankChange] = onSave.mock.calls[0];
-    expect(patch).toEqual({ is_active: true, must_play: false, roles: ["tank", "dps"] });
+    expect(patch).toEqual({
+      is_active: true,
+      must_play: false,
+      roles: ["tank", "dps"],
+      is_flex: false,
+    });
     expect(rankChange).toEqual({ ranks: { dps: 3000 }, clear: [] });
   });
 

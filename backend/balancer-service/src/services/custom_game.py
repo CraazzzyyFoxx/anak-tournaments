@@ -46,7 +46,7 @@ _MAX_TEAM_NAME_LEN = 60
 _MAX_POINTS_PER_WIN = 1000
 #: A roster row owns only its lineup state. A rank correction goes into the
 #: host's own layer of ``member_rank``, so it outlives the game it was made in.
-_PLAYER_PATCH_FIELDS = frozenset({"is_active", "roles", "must_play"})
+_PLAYER_PATCH_FIELDS = frozenset({"is_active", "roles", "must_play", "is_flex"})
 
 
 def _require_host(actor_user_id: int, host_user_id: int | None) -> None:
@@ -478,7 +478,7 @@ class CustomGameService:
         patch: Mapping[str, Any],
         actor_user_id: int,
     ) -> models.CustomGame:
-        """Patch one roster row: ``is_active``, ``roles``, and/or ``must_play``.
+        """Patch one roster row: ``is_active``, ``roles``, ``must_play``, and/or ``is_flex``.
 
         A patch, not a replace: an absent key is left alone, so the bench switch,
         the role order and the "must play" pin are independently settable from
@@ -502,6 +502,8 @@ class CustomGameService:
             row.roles_json = _normalize_roles(patch["roles"])
         if "must_play" in patch:
             row.must_play = bool(patch["must_play"])
+        if "is_flex" in patch:
+            row.is_flex = bool(patch["is_flex"])
         await session.flush()
         return game
 
@@ -563,7 +565,7 @@ class CustomGameService:
             player_nodes[str(member.member_id)] = {
                 "identity": {
                     "name": member.display_name or member.battle_tag or f"player-{member.member_id}",
-                    "isFullFlex": False,
+                    "isFullFlex": row.is_flex,
                     "mustPlay": row.must_play,
                 },
                 "stats": {"classes": classes},
@@ -1149,6 +1151,24 @@ class CustomGameService:
         game.status = "cancelled"
         await session.flush()
         return game
+
+    async def hard_delete(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+    ) -> None:
+        """Permanently removes the mix and every row it owns.
+
+        Unlike :meth:`cancel` (a status flip a host can undo by starting over)
+        this is irreversible, so the RPC layer gates it on workspace admin
+        rather than host-or-co-host -- see ``rpc.balancer.custom.hard_delete``.
+        ``custom_game_player`` and ``casual_match`` both cascade on
+        ``custom_game_id`` at the DB level, so deleting the game row is enough.
+        """
+        game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
+        await self.games.delete(session, game)
 
 
 custom_game_service = CustomGameService()

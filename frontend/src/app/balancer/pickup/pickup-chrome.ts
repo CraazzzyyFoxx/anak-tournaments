@@ -84,3 +84,16 @@ export const ROLE_TINT_CLASS: Record<string, string> = {
   dps: "bg-[color:color-mix(in_srgb,var(--aqt-damage)_9%,transparent)]",
   support: "bg-[color:color-mix(in_srgb,var(--aqt-support)_9%,transparent)]",
 };
+
+/**
+ * Role glyph colour for the "on" state -- paints the icon itself in the role
+ * colour rather than tinting a background behind it, so a lit role reads at
+ * a glance without depending on a low-alpha fill catching the light. An
+ * "off" role passes no colour at all and falls back to the glyph's own
+ * neutral grey (see `PlayerRoleIcon`).
+ */
+export const ROLE_ICON_COLOR: Record<string, string> = {
+  tank: "var(--aqt-tank)",
+  dps: "var(--aqt-damage)",
+  support: "var(--aqt-support)",
+};

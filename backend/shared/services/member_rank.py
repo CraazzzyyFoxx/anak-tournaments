@@ -161,6 +161,14 @@ class MemberRankService:
             include_canon=True,
         )
 
+    async def list_authors(
+        self, session: AsyncSession, *, workspace_id: int
+    ) -> Sequence[tuple[int, int]]:
+        """Every account that has personally rank-corrected someone in this
+        workspace, busiest first -- see ``MemberRankRepository.list_authors``.
+        """
+        return await self.ranks.list_authors(session, workspace_id=workspace_id)
+
     async def resolve(
         self,
         session: AsyncSession,

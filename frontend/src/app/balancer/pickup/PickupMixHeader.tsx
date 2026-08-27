@@ -1,10 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Settings2, UserCog, UserPlus } from "lucide-react";
+import { ArrowLeft, Settings2, Trash2, UserCog, UserPlus } from "lucide-react";
 
 import { PANEL_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import { EYEBROW_CLASS } from "@/app/balancer/pickup/pickup-chrome";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { CustomGame } from "@/services/custom-game.service";
@@ -17,6 +28,11 @@ type PickupMixHeaderProps = {
   onOpenPool: () => void;
   onOpenSettings: () => void;
   onOpenAccess: () => void;
+  /** Workspace admin (or superuser) -- gates the irreversible hard delete,
+   * a stronger grant than the host-or-co-host `canWrite` above. */
+  canDelete?: boolean;
+  deleting?: boolean;
+  onDeleteMix?: () => void;
 };
 
 /**
@@ -44,6 +60,9 @@ export function PickupMixHeader({
   onOpenPool,
   onOpenSettings,
   onOpenAccess,
+  canDelete = false,
+  deleting = false,
+  onDeleteMix,
 }: Readonly<PickupMixHeaderProps>) {
   return (
     <div className={cn(PANEL_CLASS, "flex flex-wrap items-center gap-3 px-4 py-3")}>
@@ -107,6 +126,36 @@ export function PickupMixHeader({
         >
           <UserCog className="size-3.5" aria-hidden="true" />
         </Button>
+      ) : null}
+
+      {canDelete && onDeleteMix ? (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0 text-[color:var(--aqt-fg-muted)] hover:border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] hover:text-rose-200"
+              disabled={game == null || deleting}
+              aria-label="Delete mix"
+            >
+              <Trash2 className="size-3.5" aria-hidden="true" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this mix?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Permanently removes {game?.name ?? "this mix"} and every match it recorded. This
+                cannot be undone -- unlike Close, there is no way back to it afterwards.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep it</AlertDialogCancel>
+              <AlertDialogAction onClick={onDeleteMix}>Delete permanently</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       ) : null}
     </div>
   );

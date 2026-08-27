@@ -25,6 +25,18 @@ export type RosterSummary = {
   author_total: number;
 };
 
+/**
+ * One account that has personally rank-corrected somebody in this workspace --
+ * the add-players dialog's per-author filter chips beyond "Everyone"/"My
+ * ranks". `count` is how many distinct members they have ranked, busiest
+ * author first.
+ */
+export type RosterAuthor = {
+  user_id: number;
+  display_name: string | null;
+  count: number;
+};
+
 /** Which rank layer a write lands in. `author` is always the caller's own book. */
 export type RankScope = "workspace" | "author";
 
@@ -51,6 +63,7 @@ export const workspacePlayerKeys = {
     ] as const,
   summary: (workspaceId: number, authorUserId?: number) =>
     [...workspacePlayerKeys.all(workspaceId), "summary", authorUserId ?? 0] as const,
+  authors: (workspaceId: number) => [...workspacePlayerKeys.all(workspaceId), "authors"] as const,
 };
 
 export const workspacePlayerService = {
@@ -70,6 +83,11 @@ export const workspacePlayerService = {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/players/summary`, {
       query: authorUserId == null ? {} : { author_user_id: authorUserId },
     }).then((r) => r.json());
+  },
+
+  /** Every author who has ever set a rank here, busiest first. */
+  listAuthors(workspaceId: number): Promise<{ authors: RosterAuthor[] }> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/players/authors`).then((r) => r.json());
   },
 
   upsert(workspaceId: number, battleTag: string, displayName?: string): Promise<RosterMember> {

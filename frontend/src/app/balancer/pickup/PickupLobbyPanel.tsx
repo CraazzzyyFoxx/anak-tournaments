@@ -25,8 +25,7 @@ import {
   CAPTION_CLASS,
   CARD_TITLE_CLASS,
   EYEBROW_CLASS,
-  ROLE_TILE_CLASS,
-  ROLE_TINT_CLASS,
+  ROLE_ICON_COLOR,
 } from "@/app/balancer/pickup/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -498,15 +497,17 @@ function RolePriorityRail({
             onClick={() => onPatch({ roles: toggleRole(order, role) })}
             className={cn(
               "relative flex size-[30px] shrink-0 items-center justify-center rounded-lg transition-opacity",
-              // Tint marks "playable"; the inset underline is reserved for the
-              // first choice, so exactly one tile per row carries it.
-              isOn && (isPrimary ? ROLE_TILE_CLASS[role] : ROLE_TINT_CLASS[role]),
               isOn ? "opacity-100" : "opacity-30",
               isOn && roleRank == null && "ring-1 ring-amber-400/70",
               "disabled:cursor-default",
             )}
           >
-            <PlayerRoleIcon role={icon} size={19} decorative />
+            <PlayerRoleIcon
+              role={icon}
+              size={19}
+              decorative
+              color={isOn ? ROLE_ICON_COLOR[role] : undefined}
+            />
           </button>
         );
       })}

@@ -40,6 +40,7 @@ const list = vi.fn();
 const summary = vi.fn();
 const upsert = vi.fn();
 const setRanks = vi.fn();
+const listAuthors = vi.fn(async () => ({ authors: [] }));
 
 vi.mock("@/services/workspace-player.service", () => ({
   workspacePlayerKeys: {
@@ -68,12 +69,14 @@ vi.mock("@/services/workspace-player.service", () => ({
       "summary",
       authorUserId ?? 0,
     ],
+    authors: (workspaceId: number) => ["workspace-players", workspaceId, "authors"],
   },
   workspacePlayerService: {
     list: (...args: unknown[]) => list(...args),
     summary: (...args: unknown[]) => summary(...args),
     upsert: (...args: unknown[]) => upsert(...args),
     setRanks: (...args: unknown[]) => setRanks(...args),
+    listAuthors: (...args: unknown[]) => listAuthors(...args),
   },
 }));
 
@@ -394,6 +397,48 @@ describe("PickupAddPlayersDialog", () => {
     await click(findChip(scope, "My ranks"));
 
     expect(scope.textContent).toContain("You haven't ranked anyone yet");
+  });
+
+
+  it("offers a chip per author who has rank-corrected somebody, excluding the mix's own host", async () => {
+    listAuthors.mockResolvedValueOnce({
+      authors: [
+        { user_id: HOST_USER_ID, display_name: "Host", count: 5 },
+        { user_id: 501, display_name: "Ravi", count: 3 },
+      ],
+    });
+    const scope = await mount();
+    await settle();
+
+    // The host already has "My ranks" -- listing them again would be the
+    // same filter under a second label.
+    expect(findChip(scope, "Host")).toBeUndefined();
+    const ravi = findChip(scope, "Ravi");
+    expect(ravi?.textContent).toContain("3");
+
+    await click(ravi);
+    expect(list).toHaveBeenLastCalledWith(
+      WORKSPACE_ID,
+      expect.objectContaining({ authorUserId: 501, authorOnly: true }),
+    );
+  });
+
+  it("collapses authors beyond the visible cap into a +K more trigger", async () => {
+    listAuthors.mockResolvedValueOnce({
+      authors: Array.from({ length: 6 }, (_unused, index) => ({
+        user_id: 500 + index,
+        display_name: `Author${index}`,
+        count: 1,
+      })),
+    });
+    const scope = await mount();
+    await settle();
+
+    // 4 inline chips, 2 folded into the overflow trigger.
+    expect(findChip(scope, "Author0")).not.toBeUndefined();
+    expect(findChip(scope, "Author3")).not.toBeUndefined();
+    expect(findChip(scope, "Author4")).toBeUndefined();
+    expect(findChip(scope, "+2 more")).not.toBeUndefined();
   });
 });
 
