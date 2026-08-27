@@ -62,6 +62,8 @@ def _prepare_balance_context(
     config_overrides: dict[str, typing.Any] | None,
     progress_callback: ProgressCallback | None,
     role_mask: dict[str, int] | None = None,
+    *,
+    max_teams: int | None = None,
 ) -> BalanceContext:
     """Prepare config, players and role assignment for balancer flows.
 
@@ -138,6 +140,12 @@ def _prepare_balance_context(
             f"Not enough players to form even one team. "
             f"Need at least {players_per_team} players, got {len(valid_players)}."
         )
+    if max_teams is not None and num_teams > max_teams:
+        logger.info(
+            f"Capping to {max_teams} team(s) for this algorithm (the pool divides evenly "
+            f"into {num_teams}); the rest sit out like any other overflow."
+        )
+        num_teams = max_teams
 
     # A player count that isn't an exact multiple of the team size no longer
     # blocks the run: the leftover players just sit out, exactly like a host
@@ -159,8 +167,8 @@ def _prepare_balance_context(
         valid_players, overflow_benched = ordered[:usable_count], ordered[usable_count:]
         valid_players, role_capable_counts = _filter_valid_players_and_role_counts(valid_players, needed_roles)
         logger.info(
-            f"{len(overflow_benched)} player(s) sit out: {len(valid_players)} "
-            f"players do not divide evenly into teams of {players_per_team}."
+            f"{len(overflow_benched)} player(s) sit out: only {usable_count} of "
+            f"{usable_count + len(overflow_benched)} players fit into {num_teams} team(s) of {players_per_team}."
         )
     else:
         overflow_benched = []
@@ -242,13 +250,16 @@ def balance_teams(
     """
     backend = get_backend(algorithm)
 
-    context = _prepare_balance_context(input_data, config_overrides, progress_callback, role_mask)
+    context = _prepare_balance_context(
+        input_data, config_overrides, progress_callback, role_mask, max_teams=backend.max_teams
+    )
     mask = context.config.role_mask
 
-    if algorithm != "tournament_balancer" and context.num_teams != 2:
+    if backend.max_teams is not None and context.num_teams != backend.max_teams:
         raise ValueError(
-            f"Algorithm '{algorithm}' only supports exactly 2 teams (got {context.num_teams} "
-            f"from {len(context.players)} players / {sum(mask.values())} per team)."
+            f"Algorithm '{algorithm}' needs exactly {backend.max_teams} team(s) worth of players "
+            f"(got enough for only {context.num_teams} from {len(context.players)} players / "
+            f"{sum(mask.values())} per team)."
         )
 
     feasibility = analyze_feasibility(context.players, mask, context.num_teams)

@@ -71,6 +71,13 @@ class OptimizerBackend(typing.Protocol):
     #: persisted-balance ``algorithm`` audit column).
     name: str
 
+    #: Hard ceiling on how many teams this engine can form, or ``None`` if
+    #: it scales to any team count. When set, ``runtime._prepare_balance_context``
+    #: caps the natural team count at this value and benches the surplus the
+    #: same way it already benches an uneven remainder -- must-play players
+    #: first, optional players last.
+    max_teams: int | None
+
     def solve(
         self,
         players: list[Player],

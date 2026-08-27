@@ -19,6 +19,7 @@ class TournamentBalancerBackend:
     """
 
     name = "tournament_balancer"
+    max_teams = None
 
     def solve(
         self,

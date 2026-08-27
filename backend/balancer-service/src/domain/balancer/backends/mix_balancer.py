@@ -98,6 +98,7 @@ class MixBalancerBackend:
     """
 
     name = "mix_balancer"
+    max_teams = 2
 
     def solve(
         self,
