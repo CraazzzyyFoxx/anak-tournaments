@@ -36,12 +36,14 @@ else()
     target_compile_options(_core PRIVATE -O3 -march=native)
 endif()
 
-# Enable interprocedural optimization if available
-if(NOT MSVC)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(_core PRIVATE -flto)
-    endif()
-endif()
+# NOTE: LTO deliberately NOT enabled. It was on both here (-flto compile
+# flag) and via CMAKE_INTERPROCEDURAL_OPTIMIZATION in pyproject.toml, and
+# together they produced link-time GCC bugs (pybind11's link step doesn't
+# pick up the matching LTO flags): "undefined symbol:
+# _ZTVN10__cxxabiv117__class_type_infoE" (missing C++ RTTI typeinfo/vtable
+# symbols) on the target deployment toolchain. -O3 alone already covers the
+# overwhelming majority of the available speedup for a search this small;
+# not worth the fragility.
 
 # For scikit-build, don't set custom output directory
 # It will handle the installation automatically

@@ -17,5 +17,4 @@ wheel.packages = ["mix_balancer"]
 sdist.include = ["CMakeLists.txt", "pybind11_bindings.cpp", "mix_balancer.cpp", "mix_balancer.hpp"]
 
 [tool.scikit-build.cmake.define]
-CMAKE_INTERPROCEDURAL_OPTIMIZATION = "ON"
 PYTHON_VERSION_MIN_MINOR = "1"
