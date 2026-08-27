@@ -40,10 +40,10 @@ except ImportError as e:
     import sys
 
     _import_error_msg = (
-        f"Could not import the compiled C++ balance_engine module: {e}\n\n"
+        f"Could not import the compiled C++ mix_balancer module: {e}\n\n"
         "Possible solutions:\n"
         "  1. Rebuild the package:\n"
-        "     pip install -e ./cpp_balancer --force-reinstall --no-cache-dir\n\n"
+        "     pip install -e ./native/mix_balancer --force-reinstall --no-cache-dir\n\n"
         "  2. Check if the correct Python version is used:\n"
         f"     Current: Python {sys.version_info.major}.{sys.version_info.minor}\n\n"
         "  3. Ensure all build dependencies are installed:\n"

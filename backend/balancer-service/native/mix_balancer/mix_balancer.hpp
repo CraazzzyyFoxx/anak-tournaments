@@ -1,5 +1,5 @@
-#ifndef BALANCE_ENGINE_HPP
-#define BALANCE_ENGINE_HPP
+#ifndef MIX_BALANCER_HPP
+#define MIX_BALANCER_HPP
 
 #include <vector>
 #include <string>
@@ -462,4 +462,4 @@ private:
     );
 };
 
-#endif // BALANCE_ENGINE_HPP
+#endif // MIX_BALANCER_HPP
