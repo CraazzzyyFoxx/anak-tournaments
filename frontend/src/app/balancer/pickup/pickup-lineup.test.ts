@@ -48,17 +48,25 @@ function hint(overrides: Partial<RotationRecommendation> = {}): RotationRecommen
 }
 
 describe("computeRotationHintPatches", () => {
-  it("seats a benched member who is owed a seat, without pinning them", () => {
+  it("seats a benched member who is owed a seat directly into Must Play", () => {
     const patches = computeRotationHintPatches(
       [row({ is_active: false, must_play: false })],
       [hint({ status: "must_play" })],
     );
-    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { is_active: true } }]);
+    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { is_active: true, must_play: true } }]);
   });
 
-  it("leaves an already-active must_play member untouched", () => {
+  it("pins an already-active pool member who is owed a seat into Must Play", () => {
     const patches = computeRotationHintPatches(
-      [row({ is_active: true })],
+      [row({ is_active: true, must_play: false })],
+      [hint({ status: "must_play" })],
+    );
+    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { is_active: true, must_play: true } }]);
+  });
+
+  it("leaves an already-pinned must_play member untouched", () => {
+    const patches = computeRotationHintPatches(
+      [row({ is_active: true, must_play: true })],
       [hint({ status: "must_play" })],
     );
     expect(patches).toEqual([]);
@@ -113,7 +121,7 @@ describe("computeRotationHintPatches", () => {
       hint({ workspace_member_id: 3, status: "neutral" }),
     ];
     expect(computeRotationHintPatches(rows, recommendations)).toEqual([
-      { workspaceMemberId: 1, patch: { is_active: true } },
+      { workspaceMemberId: 1, patch: { is_active: true, must_play: true } },
       { workspaceMemberId: 2, patch: { is_active: false, must_play: false } },
     ]);
   });

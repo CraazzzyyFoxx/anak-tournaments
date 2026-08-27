@@ -235,13 +235,14 @@ export type RotationHintPatch = { workspaceMemberId: number; patch: CustomGamePl
 
 /**
  * The patches that bring the lineup in line with the rotation-fairness read
- * (`mix_rotation.recommend_rotation`): `must_play` seats a benched member
- * without pinning them -- a pin (`must_play: true`) is the host's own
- * explicit call, never inferred from a streak that will not be true forever
- * -- and `should_rest` benches them exactly like a manual drop into
- * `Benched` (`bucketPatch("benched")`, which also clears any existing pin).
- * A row already matching its hint, or with no hint at all (`neutral`, or not
- * loaded yet), gets no patch -- applying is always idempotent.
+ * (`mix_rotation.recommend_rotation`): `must_play` moves the member into the
+ * Must Play column (`bucketPatch("must_play")`) -- the recommendation is the
+ * whole reason to act on it, so the seat it grants is guaranteed exactly
+ * like a host's own drag into that column -- and `should_rest` benches them
+ * exactly like a manual drop into `Benched` (`bucketPatch("benched")`, which
+ * also clears any existing pin). A row already matching its hint, or with no
+ * hint at all (`neutral`, or not loaded yet), gets no patch -- applying is
+ * always idempotent.
  */
 export function computeRotationHintPatches(
   rows: readonly CustomGamePlayer[],
@@ -252,8 +253,8 @@ export function computeRotationHintPatches(
   for (const row of rows) {
     const hint = hintByMember.get(row.workspace_member_id);
     if (!hint) continue;
-    if (hint.status === "must_play" && !row.is_active) {
-      patches.push({ workspaceMemberId: row.workspace_member_id, patch: { is_active: true } });
+    if (hint.status === "must_play" && !(row.is_active && row.must_play)) {
+      patches.push({ workspaceMemberId: row.workspace_member_id, patch: bucketPatch("must_play") });
     } else if (hint.status === "should_rest" && (row.is_active || row.must_play)) {
       patches.push({ workspaceMemberId: row.workspace_member_id, patch: bucketPatch("benched") });
     }
