@@ -80,6 +80,11 @@ def _dump(member: Any, ranks: dict[str, int], author_ranks: dict[str, int]) -> d
         "player_id": member.player_id,
         "battle_tag": member.battle_tag,
         "display_name": member.display_name,
+        # Whether this member has a linked login identity -- a mix's host/
+        # co-host picker excludes anyone without one, since `host_user_id`/
+        # `co_host_user_ids` are `auth.user.id`s and a member who has never
+        # signed in has none.
+        "auth_user_id": member.auth_user_id,
         # Two layers side by side: the workspace canon everyone sees, and the book
         # being read (the caller's own unless ``author_user_id`` asked otherwise).
         # Collapsing them into one map would hide whether a number is inherited.

@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import type { CustomGame } from "@/services/custom-game.service";
 import { workspacePlayerService, type RosterMember } from "@/services/workspace-player.service";
 
-type MemberOption = { playerId: number; label: string };
+type MemberOption = { authUserId: number; label: string };
 
 interface PickupAccessDialogProps {
   open: boolean;
@@ -56,7 +56,18 @@ function MemberSearchCombobox({
     fetchResults: ({ query }) =>
       workspacePlayerService
         .list(workspaceId, { query, perPage: 20 })
-        .then((page) => page.results.filter((member) => !excludeIds.includes(member.player_id))),
+        .then((page) =>
+          // `host_user_id`/`co_host_user_ids` are `auth.user.id`s, so a member
+          // with no linked account (never signed in) cannot be picked here at
+          // all -- there is nobody who could ever log in and pass the write
+          // check. Filtering them out here, not just disabling them, keeps
+          // this the same "type a name, get a name" search every other picker
+          // in the app is.
+          page.results.filter(
+            (member): member is RosterMember & { auth_user_id: number } =>
+              member.auth_user_id != null && !excludeIds.includes(member.auth_user_id),
+          ),
+        ),
     onSelect: (option) => option && onPick(option),
     messages: {
       loading: "Loading members…",
@@ -80,12 +91,14 @@ function MemberSearchCombobox({
     >
       <CommandGroup>
         {results.map((member) => {
-          const label = member.display_name || member.battle_tag || `#${member.player_id}`;
+          const label = member.display_name || member.battle_tag || `#${member.auth_user_id}`;
           return (
             <CommandItem
               key={member.member_id}
-              value={`${member.display_name ?? ""} ${member.battle_tag ?? ""} ${member.player_id}`}
-              onSelect={() => handleSelect({ playerId: member.player_id, label })}
+              value={`${member.display_name ?? ""} ${member.battle_tag ?? ""} ${member.auth_user_id}`}
+              // `fetchResults` above already filtered out every member with
+              // no linked account, so this is never actually null here.
+              onSelect={() => handleSelect({ authUserId: member.auth_user_id as number, label })}
             >
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{label}</span>
@@ -180,7 +193,7 @@ export function PickupAccessDialog({
             excludeIds={excludeFromCoHostSearch}
             placeholder="Add a co-host…"
             disabled={addingCoHost}
-            onPick={(option) => onAddCoHost(option.playerId)}
+            onPick={(option) => onAddCoHost(option.authUserId)}
           />
           <p className="text-xs text-muted-foreground">
             A co-host writes the roster, balance, outcomes and settings exactly like the host.
@@ -211,7 +224,7 @@ export function PickupAccessDialog({
             disabled={transferTarget == null || transferring}
             onClick={() => {
               if (!transferTarget) return;
-              onTransfer(transferTarget.playerId);
+              onTransfer(transferTarget.authUserId);
               setTransferTarget(null);
             }}
           >

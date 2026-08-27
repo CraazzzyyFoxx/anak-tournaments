@@ -13,6 +13,13 @@ import type { PaginatedResponse } from "@/types/pagination.types";
 export type RosterMember = {
   member_id: number;
   player_id: number;
+  /**
+   * The player's linked login identity (`auth.user.id`), or `null` if they
+   * have never signed in. A mix's `host_user_id`/`co_host_user_ids` live in
+   * this id space, not `player_id` -- a member with no linked account can be
+   * ranked and rostered, but can never be picked as a host or co-host.
+   */
+  auth_user_id: number | null;
   battle_tag: string | null;
   display_name: string | null;
   ranks: Record<string, number>;

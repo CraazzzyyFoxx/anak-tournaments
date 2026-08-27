@@ -46,6 +46,13 @@ class RosterMember:
     player_id: int
     battle_tag: str | None
     display_name: str | None
+    #: The player's linked login identity (``players.user.auth_user_id``), or
+    #: ``None`` if they have never signed in. ``auth.user.id`` is the space a
+    #: mix's ``host_user_id``/``co_host_user_ids`` actually live in -- a member
+    #: with no linked account can be ranked and rostered, but can never be
+    #: picked as a host or co-host, because there is nobody who could log in
+    #: and pass ``_require_writer``.
+    auth_user_id: int | None = None
 
 
 def _main_battle_tag() -> sa.ScalarSelect[str]:
@@ -131,6 +138,7 @@ async def roster_page(
             models.WorkspaceMember.player_id,
             models.WorkspaceMember.display_name,
             models.User.name,
+            models.User.auth_user_id,
             _main_battle_tag(),
         )
         .join(models.User, models.User.id == models.WorkspaceMember.player_id)
@@ -145,8 +153,9 @@ async def roster_page(
             player_id=player_id,
             battle_tag=battle_tag,
             display_name=display_name or player_name,
+            auth_user_id=auth_user_id,
         )
-        for member_id, player_id, display_name, player_name, battle_tag in result.all()
+        for member_id, player_id, display_name, player_name, auth_user_id, battle_tag in result.all()
     ]
     return rows, int(total or 0)
 
@@ -197,6 +206,7 @@ async def list_roster(
             models.WorkspaceMember.player_id,
             models.WorkspaceMember.display_name,
             models.User.name,
+            models.User.auth_user_id,
             _main_battle_tag(),
         )
         .join(models.User, models.User.id == models.WorkspaceMember.player_id)
@@ -211,36 +221,43 @@ async def list_roster(
             player_id=player_id,
             battle_tag=battle_tag,
             display_name=display_name or player_name,
+            auth_user_id=auth_user_id,
         )
-        for member_id, player_id, display_name, player_name, battle_tag in result.all()
+        for member_id, player_id, display_name, player_name, auth_user_id, battle_tag in result.all()
     }
 
 
 async def hosts_by_user_id(
     session: AsyncSession, *, workspace_id: int, user_ids: Sequence[int]
 ) -> dict[int, str | None]:
-    """Display name for a set of raw ``auth.user.id``s, resolved within one workspace.
+    """Display name for a set of ``auth.user.id``s, resolved within one workspace.
 
-    The mixes list names each mix's host, but ``CustomGame.host_user_id`` is a
-    player id, not a ``workspace_member_id`` -- so this mirrors ``list_roster``'s
-    override-then-account-name fallback, keyed by player id instead of member id.
+    ``CustomGame.host_user_id``/``co_host_user_ids`` and ``MemberRank.author_user_id``
+    are all ``auth.user.id``s -- the identity ``_require_writer``/``set_ranks``
+    actually compare the caller against -- not ``workspace_member.player_id``.
+    A player can exist with no linked account (``User.auth_user_id`` is a
+    nullable 1:0..1 link to ``auth.user``, set only once somebody signs in), so
+    joining on ``player_id`` used to resolve nothing for a real host/co-host and
+    something wrong for a same-numbered player, letting a member with no login
+    identity through ``transfer_host``/``add_co_host``'s membership check only
+    to fail at the ``custom_game.host_user_id`` foreign key itself.
     """
     ids = {uid for uid in user_ids if uid is not None}
     if not ids:
         return {}
     result = await session.execute(
         sa.select(
-            models.WorkspaceMember.player_id,
+            models.User.auth_user_id,
             models.WorkspaceMember.display_name,
             models.User.name,
         )
         .join(models.User, models.User.id == models.WorkspaceMember.player_id)
         .where(
             models.WorkspaceMember.workspace_id == workspace_id,
-            models.WorkspaceMember.player_id.in_(ids),
+            models.User.auth_user_id.in_(ids),
         )
     )
-    return {player_id: (display_name or player_name) for player_id, display_name, player_name in result.all()}
+    return {auth_user_id: (display_name or player_name) for auth_user_id, display_name, player_name in result.all()}
 
 
 async def ensure_member_for_battle_tag(
