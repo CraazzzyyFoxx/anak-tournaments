@@ -14,6 +14,15 @@ are all ``auth.user.id``s, so ``hosts_by_user_id`` must resolve candidates by
 each player's linked ``auth_user_id``, not their own ``player_id`` -- and must
 never resolve a member with no linked account at all, by any id.
 
+Second regression: the add-players dialog's per-author filter chips
+(``rpc.balancer.players.authors``) fell back to ``#<id>`` for any author who
+had rank-corrected someone here without ever adding *themselves* as a player/
+member of this same workspace -- an admin fixing ranks without playing, the
+common case. The join used to be an inner join through
+``workspace_member``/``players.user``, dropping that account's row entirely;
+it must now resolve every real ``auth.user.id``, falling back through the
+workspace membership to the account's own ``username`` when there is none.
+
 Requires a reachable database via POSTGRES_* env vars (use a disposable DB such
 as anak_dev -- NEVER production). Skips cleanly if the DB is unreachable.
 """
@@ -85,7 +94,11 @@ class HostsByUserIdTests(IsolatedAsyncioTestCase):
 
             # Has actually signed in: a real ``auth.user`` linked to their player.
             signed_in_auth = AuthUser(username=f"auth-{suffix}", email=f"auth-{suffix}@example.test")
-            session.add(signed_in_auth)
+            # A real account that has never added itself as a player/member of
+            # *this* workspace at all -- an admin who only ever corrects other
+            # players' ranks here (see ``test_falls_back_to_username_...`` below).
+            unrostered_auth = AuthUser(username=f"unrostered-{suffix}", email=f"unrostered-{suffix}@example.test")
+            session.add_all([signed_in_auth, unrostered_auth])
             await session.flush()
 
             signed_in_player = User(name=f"signed-in-{suffix}", auth_user_id=signed_in_auth.id)
@@ -105,6 +118,8 @@ class HostsByUserIdTests(IsolatedAsyncioTestCase):
             self.signed_in_auth_id = signed_in_auth.id
             self.signed_in_player_id = signed_in_player.id
             self.ghost_player_id = ghost_player.id
+            self.unrostered_auth_id = unrostered_auth.id
+            self.unrostered_username = unrostered_auth.username
 
     async def asyncTearDown(self) -> None:
         if not hasattr(self, "Session"):
@@ -115,7 +130,9 @@ class HostsByUserIdTests(IsolatedAsyncioTestCase):
             await session.execute(
                 sa.delete(User).where(User.id.in_([self.signed_in_player_id, self.ghost_player_id]))
             )
-            await session.execute(sa.delete(AuthUser).where(AuthUser.id == self.signed_in_auth_id))
+            await session.execute(
+                sa.delete(AuthUser).where(AuthUser.id.in_([self.signed_in_auth_id, self.unrostered_auth_id]))
+            )
             await session.execute(sa.delete(Workspace).where(Workspace.id == self.workspace_id))
             await session.commit()
         await self.engine.dispose()
@@ -137,4 +154,11 @@ class HostsByUserIdTests(IsolatedAsyncioTestCase):
                 session, workspace_id=self.workspace_id, user_ids=[self.ghost_player_id]
             )
         self.assertEqual(names, {})
+
+    async def test_falls_back_to_username_for_an_author_never_rostered_in_this_workspace(self) -> None:
+        async with self.Session() as session:
+            names = await workspace_roster.hosts_by_user_id(
+                session, workspace_id=self.workspace_id, user_ids=[self.unrostered_auth_id]
+            )
+        self.assertEqual(names, {self.unrostered_auth_id: self.unrostered_username})
 

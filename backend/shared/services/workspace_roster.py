@@ -241,23 +241,41 @@ async def hosts_by_user_id(
     something wrong for a same-numbered player, letting a member with no login
     identity through ``transfer_host``/``add_co_host``'s membership check only
     to fail at the ``custom_game.host_user_id`` foreign key itself.
+
+    Left-joined, not inner: an author who rank-corrected someone here (any
+    workspace member can) need never have added *themselves* as a player/
+    member of this workspace's own roster -- an admin fixing ranks without
+    playing is the common case. An inner join on ``workspace_member`` dropped
+    that account's row entirely, so the caller fell back to ``#<id>`` for
+    every such author instead of a name. ``auth.user.username`` is the final
+    fallback: it is required and unique, so it resolves for every id that
+    still names a real account.
     """
     ids = {uid for uid in user_ids if uid is not None}
     if not ids:
         return {}
     result = await session.execute(
         sa.select(
-            models.User.auth_user_id,
+            models.AuthUser.id,
+            models.AuthUser.username,
             models.WorkspaceMember.display_name,
             models.User.name,
         )
-        .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-        .where(
-            models.WorkspaceMember.workspace_id == workspace_id,
-            models.User.auth_user_id.in_(ids),
+        .select_from(models.AuthUser)
+        .outerjoin(models.User, models.User.auth_user_id == models.AuthUser.id)
+        .outerjoin(
+            models.WorkspaceMember,
+            sa.and_(
+                models.WorkspaceMember.player_id == models.User.id,
+                models.WorkspaceMember.workspace_id == workspace_id,
+            ),
         )
+        .where(models.AuthUser.id.in_(ids))
     )
-    return {auth_user_id: (display_name or player_name) for auth_user_id, display_name, player_name in result.all()}
+    return {
+        auth_user_id: (display_name or player_name or username)
+        for auth_user_id, username, display_name, player_name in result.all()
+    }
 
 
 async def ensure_member_for_battle_tag(
