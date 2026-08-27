@@ -1,10 +1,8 @@
 "use client";
 
-import { memo, useDeferredValue, useId, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useId, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Check,
-  Circle,
   Loader2,
   PanelRightClose,
   PanelRightOpen,
@@ -48,40 +46,24 @@ import { cn } from "@/lib/utils";
 import {
   workspacePlayerKeys,
   workspacePlayerService,
-  type RankScope,
   type RosterMember,
 } from "@/services/workspace-player.service";
 
 const PER_PAGE = 30;
 
 /**
- * What each layer actually means, said in the row's own terms.
- *
- * The panel used to claim "ranks here carry across every tournament in this
- * workspace", which stopped being true once the workspace value became a
- * fallback rather than the tournament rank: an organiser's own book, and a
- * tournament's own registration rank, both outrank it.
+ * The panel is mounted once, by the tournament balancer page, always reading
+ * and writing the shared workspace canon -- a mix reads/writes its host's own
+ * book through its own dialog (`PickupAddPlayersDialog`) instead.
  */
-const SCOPE_CAPTIONS: Record<RankScope, string> = {
-  workspace:
-    "Shared fallback \u2014 used only where nobody set their own rank for a tournament or mix.",
-  author: "Your own book \u2014 beats the workspace rank in the mixes you host. Only you see it.",
-};
+const SCOPE_CAPTION =
+  "Shared fallback \u2014 used only where nobody set their own rank for a tournament or mix.";
 
 type WorkspacePlayersSidebarProps = {
   workspaceId: number;
-  /**
-   * Which rank layer this mount reads and writes — fixed by the caller, not a
-   * user choice. The tournament balancer only ever cares about the shared
-   * workspace canon; a mix only ever cares about the host's own book. Neither
-   * page has a reason to see the other layer, so there is nothing to switch.
-   */
-  scope: RankScope;
   canEdit: boolean;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
-  selectedIds?: number[];
-  onTogglePlayer?: (member: RosterMember) => void;
 };
 
 function memberLabel(member: RosterMember): string {
@@ -96,10 +78,6 @@ function rangeSummary(page: number, perPage: number, shown: number, total: numbe
 
 type RosterMemberRowProps = {
   member: RosterMember;
-  /** Which layer the ranks this row reads come from. */
-  scope: RankScope;
-  isSelected: boolean;
-  onToggle?: (member: RosterMember) => void;
   /** Opens the rank sheet — the row shows ranks, it no longer edits them. */
   onOpen: (member: RosterMember) => void;
 };
@@ -107,12 +85,11 @@ type RosterMemberRowProps = {
 /**
  * The tournament pool row, simplified.
  *
- * Same anatomy as `PoolPlayerCompactList`'s row — a leading selection dot where
- * the caller keeps a lineup, the ranked-role glyphs beside the name, the
- * division icon and accent-coloured top rank on the right, a BattleTag copy
- * button, and a right-click menu — minus everything that only exists for a
- * tournament registration: the balancer status menu, the pool include/exclude
- * button, and the Flex / Ready / issue chips.
+ * Same anatomy as `PoolPlayerCompactList`'s row — the ranked-role glyphs
+ * beside the name, the division icon and accent-coloured top rank on the
+ * right, a BattleTag copy button, and a right-click menu — minus everything
+ * that only exists for a tournament registration: the balancer status menu,
+ * the pool include/exclude button, and the Flex / Ready / issue chips.
  *
  * Editing opens `WorkspacePlayerSheet` the same three ways the pool row opens
  * the tournament sheet: the name, a double-click, the context menu. The row used
@@ -120,26 +97,19 @@ type RosterMemberRowProps = {
  * most rows never use and offered no way to clear a rank at all — that picker
  * listed divisions and nothing else.
  *
- * With no lineup toggle there is no leading column either: the placeholder that
- * held its place indented every row by 24px against nothing.
+ * There is no lineup toggle: this panel is mounted once, by the tournament
+ * balancer page, which keeps no per-row selection of its own — a mix picks
+ * its lineup through its own dialog (`PickupAddPlayersDialog`) instead.
  *
  * Memoized for the same reason the pool row is: each row mounts a Radix context
  * menu root, and the search field is deferred, so an unmemoized list re-rendered
  * every row on every keystroke.
  */
-const RosterMemberRow = memo(function RosterMemberRow({
-  member,
-  scope,
-  isSelected,
-  onToggle,
-  onOpen,
-}: RosterMemberRowProps) {
+const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: RosterMemberRowProps) {
   const grid = getDefaultDivisionGrid();
   const label = memberLabel(member);
   const { name, suffix } = splitBattleTag(label);
-  // Only the author layer inherits: the workspace canon has nothing above it
-  // that a roster row can see (Overwatch resolution happens per mix).
-  const effective = scope === "author" ? { ...member.ranks, ...member.author_ranks } : member.ranks;
+  const effective = member.ranks;
 
   const rankedRoles = ROLES.filter((role) => typeof effective[role.code] === "number");
   // The strongest role is what a pool decision is made on, and the glyph alone
@@ -161,35 +131,11 @@ const RosterMemberRow = memo(function RosterMemberRow({
             onOpen(member);
           }}
           className={cn(
-            "group grid w-full items-start gap-2 rounded-xl border px-2.5 py-2 transition-colors",
-            onToggle ? "grid-cols-[24px_minmax(0,1fr)]" : "grid-cols-1",
+            "group grid w-full grid-cols-1 items-start gap-2 rounded-xl border px-2.5 py-2 transition-colors",
             "border-[color:var(--aqt-border)] bg-white/[0.02]",
             "hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.04]",
-            isSelected && "border-primary/45 bg-primary/[0.08]",
           )}
         >
-          {onToggle ? (
-            <button
-              type="button"
-              data-card-action
-              aria-pressed={isSelected}
-              aria-label={isSelected ? `Remove ${label} from the lineup` : `Add ${label} to the lineup`}
-              onClick={() => onToggle(member)}
-              className={cn(
-                "mt-0.5 flex size-6 items-center justify-center rounded-md border transition-colors",
-                isSelected
-                  ? "border-primary/50 bg-primary/20 text-[color:var(--aqt-fg)]"
-                  : "border-[color:var(--aqt-border-2)] bg-black/15 text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg-muted)]",
-              )}
-            >
-              {isSelected ? (
-                <Check className="size-3" aria-hidden="true" />
-              ) : (
-                <Circle className="size-2.5 fill-current stroke-none" aria-hidden="true" />
-              )}
-            </button>
-          ) : null}
-
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -252,12 +198,6 @@ const RosterMemberRow = memo(function RosterMemberRow({
           <Pencil className="h-4 w-4" />
           Edit ranks
         </ContextMenuItem>
-        {onToggle ? (
-          <ContextMenuItem onClick={() => onToggle(member)}>
-            <Check className="h-4 w-4" />
-            {isSelected ? "Remove from the lineup" : "Add to the lineup"}
-          </ContextMenuItem>
-        ) : null}
         {member.battle_tag ? <BattleTagContextMenuItems battleTags={[member.battle_tag]} /> : null}
       </ContextMenuContent>
     </ContextMenu>
@@ -266,12 +206,9 @@ const RosterMemberRow = memo(function RosterMemberRow({
 
 export function WorkspacePlayersSidebar({
   workspaceId,
-  scope,
   canEdit,
   collapsed = false,
   onToggleCollapsed,
-  selectedIds,
-  onTogglePlayer,
 }: Readonly<WorkspacePlayersSidebarProps>) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -285,7 +222,6 @@ export function WorkspacePlayersSidebar({
   const battleTagRef = useRef<HTMLInputElement>(null);
   const battleTagId = useId();
   const battleTagHintId = `${battleTagId}-hint`;
-  const selected = useMemo(() => new Set(selectedIds ?? []), [selectedIds]);
 
   const listParams = { page, perPage: PER_PAGE, query: deferredSearch };
   const membersQuery = useQuery({
@@ -315,7 +251,7 @@ export function WorkspacePlayersSidebar({
   const saveRank = useMutation({
     mutationFn: ({ memberId, role, rank }: { memberId: number; role: string; rank: number | null }) =>
       workspacePlayerService.setRanks(workspaceId, memberId, {
-        scope,
+        scope: "workspace",
         ranks: rank == null ? {} : { [role]: rank },
         clear: rank == null ? [role] : [],
       }),
@@ -537,10 +473,8 @@ export function WorkspacePlayersSidebar({
         ) : null}
       </div>
 
-      {/* Which layer the pickers below belong to — fixed by the caller (see
-          `scope` on the props), so this is a caption, not a control. */}
       <p className="mt-2 text-[11px] leading-tight text-[color:var(--aqt-fg-dim)]">
-        {SCOPE_CAPTIONS[scope]}
+        {SCOPE_CAPTION}
       </p>
 
       <p role="status" aria-live="polite" className="sr-only">
@@ -614,9 +548,6 @@ export function WorkspacePlayersSidebar({
               <RosterMemberRow
                 key={member.member_id}
                 member={member}
-                scope={scope}
-                isSelected={selected.has(member.member_id)}
-                onToggle={onTogglePlayer}
                 onOpen={(row) => setEditingMemberId(row.member_id)}
               />
             ))}
@@ -641,7 +572,6 @@ export function WorkspacePlayersSidebar({
 
       <WorkspacePlayerSheet
         member={editingMember}
-        scope={scope}
         canEdit={canEdit}
         // Scoped to the member being written: the sheet is the only surface that
         // edits, so a save anywhere else has no control to disable.

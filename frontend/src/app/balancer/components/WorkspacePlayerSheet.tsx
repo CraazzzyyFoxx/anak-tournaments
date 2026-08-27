@@ -20,23 +20,20 @@ import {
 } from "@/components/ui/sheet";
 import { ROLE_LABELS, ROLES, type RoleCode } from "@/lib/roles";
 import { cn } from "@/lib/utils";
-import type { RankScope, RosterMember } from "@/services/workspace-player.service";
+import type { RosterMember } from "@/services/workspace-player.service";
 
 const EYEBROW_CLASS =
   "text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--aqt-fg-dim)]";
 
-const SCOPE_HINTS: Record<RankScope, string> = {
-  workspace:
-    "The shared fallback. A tournament or mix uses it only where nobody set their own rank.",
-  author:
-    "Your own book. It beats the workspace rank in the mixes you host, and only you see it.",
-};
+// The panel that mounts this sheet only ever reads/writes the workspace
+// canon (`WorkspacePlayersSidebar`'s sole caller is the tournament balancer
+// page); the per-mix "author" layer has its own sheet (`PickupPlayerSheet`).
+const SCOPE_HINT =
+  "The shared fallback. A tournament or mix uses it only where nobody set their own rank.";
 
 type WorkspacePlayerSheetProps = {
   /** `null` closes the sheet — the caller holds the row being edited. */
   member: RosterMember | null;
-  /** Which rank layer the controls read and write. */
-  scope: RankScope;
   canEdit: boolean;
   saving: boolean;
   onOpenChange: (open: boolean) => void;
@@ -61,7 +58,6 @@ type WorkspacePlayerSheetProps = {
  */
 export function WorkspacePlayerSheet({
   member,
-  scope,
   canEdit,
   saving,
   onOpenChange,
@@ -90,7 +86,7 @@ export function WorkspacePlayerSheet({
             ) : null}
           </SheetTitle>
           <SheetDescription className="pt-1 text-[12.5px] text-[color:var(--aqt-fg-dim)]">
-            {SCOPE_HINTS[scope]}
+            {SCOPE_HINT}
           </SheetDescription>
         </SheetHeader>
 
@@ -121,7 +117,6 @@ export function WorkspacePlayerSheet({
                       member={member}
                       role={role.code}
                       iconName={role.icon}
-                      scope={scope}
                       disabled={!canEdit || saving}
                       onSaveRank={onSaveRank}
                     />
@@ -152,34 +147,23 @@ export function WorkspacePlayerSheet({
 
 /**
  * One role's card: the glyph, the role's name, and the shared rank controls.
- *
- * On the author layer the field edits the *effective* rank — what a mix will
- * actually use — rather than only this author's entry, because an organiser
- * reads the number they see and expects to correct it. Typing stores the
- * correction in their own book; Clear drops that entry and the field falls back
- * to the workspace canon, which the badge names.
  */
 function RoleRankCard({
   member,
   role,
   iconName,
-  scope,
   disabled,
   onSaveRank,
 }: Readonly<{
   member: RosterMember;
   role: RoleCode;
   iconName: string;
-  scope: RankScope;
   disabled: boolean;
   onSaveRank: (role: string, rank: number | null) => void;
 }>) {
   const accent = ROLE_RANK_ACCENTS[role] ?? NEUTRAL_RANK_ACCENT;
-  // Only the author layer inherits: the workspace canon has nothing above it
-  // that a roster row can see (Overwatch resolution happens per mix).
-  const own = (scope === "author" ? member.author_ranks[role] : member.ranks[role]) ?? null;
-  const inherited = scope === "author" && own == null ? (member.ranks[role] ?? null) : null;
-  const rank = useDebouncedRank(own ?? inherited, (next) => onSaveRank(role, next));
+  const own = member.ranks[role] ?? null;
+  const rank = useDebouncedRank(own, (next) => onSaveRank(role, next));
 
   return (
     <div className="min-w-0 space-y-2">
@@ -191,7 +175,7 @@ function RoleRankCard({
       <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_130px]">
         <RoleRankControls
           rankValue={rank.value}
-          sourceLabel={inherited == null ? null : "Workspace"}
+          sourceLabel={null}
           accent={accent}
           active
           disabled={disabled}

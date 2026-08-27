@@ -12,10 +12,8 @@
 //     button, so the reason nothing happens is visible;
 //  4. ranks are edited in the sheet, not in the row: the row's own crest pickers
 //     could set a rank but never clear one, and cost every row three controls;
-//  5. the row indents for a lineup toggle only when there is one to indent for;
-//  6. the layer the panel was mounted with is the layer a write lands in, and an
-//     inherited workspace value is shown as inherited rather than as the
-//     author's own.
+//  5. a write lands on the shared workspace canon, the only layer this panel
+//     ever reads or writes -- a mix's own book has its own dialog instead.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -114,11 +112,8 @@ async function unmountAll() {
 
 async function mount(
   props: {
-    scope?: "workspace" | "author";
     canEdit?: boolean;
     collapsed?: boolean;
-    selectedIds?: number[];
-    onTogglePlayer?: (member: RosterMember) => void;
   } = {},
 ) {
   const container = document.createElement("div");
@@ -131,11 +126,8 @@ async function mount(
       <QueryClientProvider client={client}>
         <WorkspacePlayersSidebar
           workspaceId={WORKSPACE_ID}
-          scope={props.scope ?? "workspace"}
           canEdit={props.canEdit ?? true}
           collapsed={props.collapsed ?? false}
-          selectedIds={props.selectedIds}
-          onTogglePlayer={props.onTogglePlayer}
         />
       </QueryClientProvider>,
     );
@@ -307,17 +299,13 @@ describe("WorkspacePlayersSidebar", () => {
     expect(document.body.textContent).toContain("Roles and ranks");
   });
 
-  it("reserves the leading column only for a panel that owns a lineup", async () => {
-    const withoutLineup = await mount();
-    const row = withoutLineup.querySelector("li");
-    // The placeholder that held the toggle's place indented every row against
-    // nothing on the balancer page, which has no lineup to toggle into.
+  it("never renders a lineup toggle: this panel keeps no selection of its own", async () => {
+    const scope = await mount();
+    const row = scope.querySelector("li");
+    // The placeholder that held a toggle's place used to indent every row
+    // against nothing -- the balancer page has no lineup to toggle into.
     expect(row?.className).toContain("grid-cols-1");
     expect(row?.querySelector("button[aria-label*='the lineup']")).toBeNull();
-
-    await unmountAll();
-    const withLineup = await mount({ onTogglePlayer: vi.fn() });
-    expect(withLineup.querySelector("li")?.className).toContain("grid-cols-[24px_minmax(0,1fr)]");
   });
 
   it("keeps the collapsed rail count honest while the first page is in flight", async () => {
@@ -330,41 +318,11 @@ describe("WorkspacePlayersSidebar", () => {
     expect(scope.querySelector(".animate-pulse")).not.toBeNull();
   });
 
-  it("toggles lineup membership from the row's own control, and opens the sheet from the name", async () => {
-    const onTogglePlayer = vi.fn();
-    const scope = await mount({ onTogglePlayer });
-
-    const add = scope.querySelector("button[aria-label='Add Aria#1111 to the lineup']");
-    expect(add?.getAttribute("aria-pressed")).toBe("false");
-
-    await click(add);
-    expect(onTogglePlayer).toHaveBeenCalledTimes(1);
-    expect(onTogglePlayer.mock.calls[0][0].member_id).toBe(1);
-
-    // The name is the way into the sheet, the way the pool row opens the
-    // tournament one — never a second lineup toggle.
-    await openSheet(scope, "Aria#1111");
-    expect(onTogglePlayer).toHaveBeenCalledTimes(1);
-    expect(rankFields()).toHaveLength(3);
-  });
-
-  it("announces a row already in the lineup as the way back out", async () => {
-    const onTogglePlayer = vi.fn();
-    const scope = await mount({ selectedIds: [1], onTogglePlayer });
-
-    const remove = scope.querySelector("button[aria-label='Remove Aria#1111 from the lineup']");
-    expect(remove?.getAttribute("aria-pressed")).toBe("true");
-    expect(scope.querySelector("button[aria-label='Add Borys#2222 to the lineup']")).not.toBeNull();
-
-    await click(remove);
-    expect(onTogglePlayer.mock.calls[0][0].member_id).toBe(1);
-  });
-
   it("stays the simplified pool row: no status, no exclude, no state chips", async () => {
     // Statuses and pool exclusion belong to a tournament registration, which a
     // workspace player does not have; both are already edited from the
     // registrations table. Re-adding them here would be a third copy.
-    const scope = await mount({ selectedIds: [1], onTogglePlayer: vi.fn() });
+    const scope = await mount();
 
     expect(scope.textContent).not.toMatch(/Exclude|Include in balancer|Ready|Flex/);
     expect(scope.querySelector("[data-slot='badge']")).toBeNull();
@@ -373,8 +331,8 @@ describe("WorkspacePlayersSidebar", () => {
     expect(scope.querySelector("button[title='Copy BattleTag']")).not.toBeNull();
   });
 
-  it("writes to the workspace layer when mounted with the workspace scope", async () => {
-    const scope = await mount({ scope: "workspace" });
+  it("writes to the workspace layer, the only one this panel ever reads or writes", async () => {
+    const scope = await mount();
 
     // The old caption promised the opposite of what the canon now does: it is a
     // fallback, not the rank a tournament balances on.
@@ -391,25 +349,6 @@ describe("WorkspacePlayersSidebar", () => {
     });
   });
 
-  it("writes to the author layer when mounted with the author scope, with no layer switch to find", async () => {
-    const scope = await mount({ scope: "author" });
-
-    // Fixed by the caller now, not a user choice: a mix mount never shows the
-    // workspace canon it does not read or write.
-    expect(button(scope, "Workspace")).toBeUndefined();
-    expect(button(scope, "Mine")).toBeUndefined();
-
-    await openSheet(scope, "Aria#1111");
-    await type(rankFields()[1], "1200");
-    await flushRankWrite();
-
-    expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
-      scope: "author",
-      ranks: { dps: 1200 },
-      clear: [],
-    });
-  });
-
   it("clears a rank off the layer instead of pinning a zero over it", async () => {
     list.mockImplementation(() =>
       Promise.resolve({
@@ -420,7 +359,7 @@ describe("WorkspacePlayersSidebar", () => {
       }),
     );
 
-    const scope = await mount({ scope: "workspace" });
+    const scope = await mount();
     await openSheet(scope, "Aria#1111");
 
     // Only the role that has a value on this layer has anything to drop.
@@ -455,29 +394,5 @@ describe("WorkspacePlayersSidebar", () => {
     // The roster behind the sheet is still readable and still openable.
     expect(scope.querySelector("button[title='Edit Borys#2222']")).not.toBeNull();
   });
-
-  it("shows an inherited workspace rank on the author layer instead of an empty field", async () => {
-    list.mockImplementation(() =>
-      Promise.resolve({
-        results: [
-          member(1, "Aria#1111", { ranks: { tank: 2500 } }),
-          member(2, "Borys#2222", { ranks: { tank: 2500 }, author_ranks: { tank: 3100 } }),
-        ],
-        total: 2,
-        page: 1,
-        per_page: 30,
-      }),
-    );
-
-    const scope = await mount({ scope: "author" });
-
-    // Aria has no entry of her own. An empty field here read as "unranked" and
-    // hid the value the mix would actually use, so the sheet shows the canon and
-    // badges where the number came from — with no Clear, since there is nothing
-    // of hers to drop.
-    await openSheet(scope, "Aria#1111");
-    expect(rankFields()[0].value).toBe("2500");
-    expect(document.body.textContent).toContain("Workspace");
-    expect(clearButtons()).toHaveLength(0);
-  });
 });
+
