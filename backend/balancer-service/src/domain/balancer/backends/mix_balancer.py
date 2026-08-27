@@ -34,11 +34,19 @@ def _load_library():
     try:
         import mix_balancer as engine_lib
     except ImportError as exc:
+        # Walk the chain: mix_balancer/__init__.py wraps the real underlying
+        # ImportError (missing .so, undefined symbol, ABI mismatch, ...) in
+        # its own ImportError with a diagnostic hint -- don't discard that by
+        # only reporting this wrapper's generic message.
+        detail = str(exc)
+        cause = exc.__cause__
+        if cause is not None and str(cause) not in detail:
+            detail = f"{detail} (caused by: {cause})"
         raise RuntimeError(
             "mix_balancer requires the 'mix-balancer' package "
             "(vendored under balancer-service/native/mix_balancer, originally "
             "mixtura-dev/mixtura-balancer); it is a Linux-only dependency built "
-            "during 'uv sync'."
+            f"during 'uv sync'. Underlying error: {detail}"
         ) from exc
     return engine_lib
 
