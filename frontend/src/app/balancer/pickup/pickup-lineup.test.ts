@@ -6,7 +6,6 @@ import {
   averageRank,
   computeRotationHintPatches,
   getLineupIssue,
-  parseBalancerConfig,
   parsePointsPerWin,
   parseVariants,
   playerLabel,
@@ -177,32 +176,6 @@ describe("parsePointsPerWin", () => {
     expect(parsePointsPerWin({ points_per_win: 2.5 })).toBeNull();
     expect(parsePointsPerWin({ points_per_win: -10 })).toBeNull();
     expect(parsePointsPerWin({ points_per_win: "25" })).toBeNull();
-  });
-});
-
-describe("parseBalancerConfig", () => {
-  it("returns the solver overrides, dropping the mix's own reserved keys", () => {
-    expect(
-      parseBalancerConfig({
-        population_size: 200,
-        role_mask: { tank: 1 },
-        team_names: { 0: "Wolves" },
-        points_per_win: 25,
-        team_count: 2,
-      }),
-    ).toEqual({ population_size: 200 });
-  });
-
-  it("returns an empty object when nothing was overridden", () => {
-    expect(parseBalancerConfig(null)).toEqual({});
-    expect(parseBalancerConfig({})).toEqual({});
-    expect(parseBalancerConfig({ role_mask: { tank: 1 } })).toEqual({});
-  });
-
-  it("drops an unsupported key the same way a saved tournament config would", () => {
-    expect(parseBalancerConfig({ population_size: 200, not_a_real_knob: 1 })).toEqual({
-      population_size: 200,
-    });
   });
 });
 

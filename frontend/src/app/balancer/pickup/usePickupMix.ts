@@ -11,7 +11,7 @@ import {
   type CustomGamePlayerPatch,
 } from "@/services/custom-game.service";
 import type { RosterSlotMap } from "@/lib/roster-shape";
-import type { BalancerConfig } from "@/types/balancer.types";
+
 import {
   computeRotationHintPatches,
   type PickupRecordOutcomeInput,
@@ -207,13 +207,6 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     onError: (error) => notify.apiError(error),
   });
 
-  const setBalancerConfig = useMutation({
-    mutationFn: (balancerConfig: BalancerConfig | null) =>
-      customGameService.setBalancerConfig(workspaceId, selectedGameId as number, balancerConfig),
-    onSuccess: applyGame,
-    onError: (error) => notify.apiError(error),
-  });
-
   const transferHost = useMutation({
     mutationFn: (newHostUserId: number) =>
       customGameService.transferHost(workspaceId, selectedGameId as number, newHostUserId),
@@ -343,7 +336,6 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     setTeamNames,
     setRoleMask,
     setPointsPerWin,
-    setBalancerConfig,
     transferHost,
     addCoHost,
     removeCoHost,
