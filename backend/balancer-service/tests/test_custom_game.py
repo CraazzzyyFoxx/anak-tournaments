@@ -682,6 +682,43 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual((created_match.home_score, created_match.away_score), (1, 0))
         self.assertEqual(created_match.recorded_by, 9)
 
+    async def test_record_outcome_clears_must_play_for_participants_only(self) -> None:
+        result = {
+            "variants": [
+                {
+                    "teams": [
+                        {"roster": {"tank": [self._seat("7", "Alpha", 3200, "tank")]}},
+                        {"roster": {"tank": [self._seat("9", "Charlie", 2600, "tank")]}},
+                    ]
+                }
+            ]
+        }
+        self.games.get.return_value = _row(
+            id=11, workspace_id=1, host_user_id=9, name="Scrim", status="balanced", config_json=None, result_json=result
+        )
+        # 7 and 9 played this match; 8 is pinned but sat this one out (e.g.
+        # benched after balancing) and keeps its guarantee for next time.
+        pinned_played = _roster_row(1, 7, 0, must_play=True)
+        pinned_benched = _roster_row(2, 8, 1, must_play=True, is_active=False)
+        unpinned_played = _roster_row(3, 9, 2, must_play=False)
+        self.roster.list_for_game.return_value = [pinned_played, pinned_benched, unpinned_played]
+
+        await self.service.record_outcome(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            outcome_json={"winner": 1},
+            variant_index=0,
+            actor_user_id=9,
+        )
+
+        # Redeemed: the pin guaranteed one seat, and it just got it.
+        self.assertFalse(pinned_played.must_play)
+        # Untouched: never sat, never redeemed, keeps its guarantee.
+        self.assertTrue(pinned_benched.must_play)
+        # Was never pinned in the first place.
+        self.assertFalse(unpinned_played.must_play)
+
     async def test_record_outcome_writes_the_selected_map(self) -> None:
         result = {
             "variants": [

@@ -970,6 +970,14 @@ class CustomGameService:
         points for their recorded role, and every losing-team player's by the
         same amount downward -- a night of mixes self-corrects without the
         host retyping ranks between games.
+
+        Every player who actually took a seat in this match also has their
+        roster row's ``must_play`` pin cleared, win or lose or draw -- the pin
+        promises one guaranteed seat, and reporting the match it guaranteed is
+        what redeems that promise. Without this a host would have to remember
+        to un-pin someone by hand after every mix, and a forgotten pin would
+        keep hard-claiming that seat forever instead of going back to
+        competing for it fairly like everyone else.
         """
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
@@ -1049,6 +1057,17 @@ class CustomGameService:
             ),
         )
         game.outcome_json = dict(outcome_json)
+
+        # A `must_play` pin guarantees one seat, not every seat forever: once a
+        # pinned player's match is actually reported, the pin has done its job.
+        # Clearing it here (instead of leaving the host to remember to untoggle
+        # it) is what keeps a hard pin from silently fossilizing into "this
+        # player is always must-play" across every future balance.
+        participant_ids = {member_id for team in team_players for member_id, _, _ in team}
+        if participant_ids:
+            for row in await self.roster.list_for_game(session, game.id):
+                if row.must_play and row.workspace_member_id in participant_ids:
+                    row.must_play = False
 
         if points_per_win and winner in (1, 2) and game.host_user_id is not None:
             winning_index = 0 if winner == 1 else 1
