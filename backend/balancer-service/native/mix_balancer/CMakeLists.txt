@@ -29,6 +29,19 @@ install(FILES mix_balancer/__init__.py DESTINATION mix_balancer)
 # Link Python libraries
 target_link_libraries(_core PRIVATE Python::Python)
 
+# Explicit libstdc++: on some toolchains CMake resolves CMAKE_CXX_COMPILER to
+# the `gcc` driver (it happily compiles .cpp files, given -std=gnu++XX) rather
+# than `g++`/`c++` -- `gcc` compiles C++ fine but, unlike `g++`, does NOT
+# automatically add `-lstdc++` at link time. The link step then succeeds
+# (shared libraries are allowed undefined symbols), but the module fails to
+# *import*: "undefined symbol: _ZTVN10__cxxabiv117__class_type_infoE" (a C++
+# RTTI vtable symbol), because `_core.so`'s NEEDED list never got
+# `libstdc++.so`. Linking it explicitly is correct regardless of which
+# driver ended up doing the link.
+if(NOT MSVC)
+    target_link_libraries(_core PRIVATE stdc++)
+endif()
+
 # Set compile flags for optimization
 if(MSVC)
     target_compile_options(_core PRIVATE /O2 /Oi /Ot /GL)
@@ -36,14 +49,14 @@ else()
     target_compile_options(_core PRIVATE -O3 -march=native)
 endif()
 
-# NOTE: LTO deliberately NOT enabled. It was on both here (-flto compile
-# flag) and via CMAKE_INTERPROCEDURAL_OPTIMIZATION in pyproject.toml, and
-# together they produced link-time GCC bugs (pybind11's link step doesn't
-# pick up the matching LTO flags): "undefined symbol:
-# _ZTVN10__cxxabiv117__class_type_infoE" (missing C++ RTTI typeinfo/vtable
-# symbols) on the target deployment toolchain. -O3 alone already covers the
+# NOTE: LTO deliberately NOT enabled. Upstream had it on twice over (a
+# manual -flto compile flag here *and* CMAKE_INTERPROCEDURAL_OPTIMIZATION in
+# pyproject.toml, which injects its own -flto=auto -fno-fat-lto-objects) --
+# removed as a precaution against LTO-related link fragility, though the
+# undefined-RTTI-symbol failure above turned out to have a separate root
+# cause (missing -lstdc++, fixed above). -O3 alone already covers the
 # overwhelming majority of the available speedup for a search this small;
-# not worth the fragility.
+# not worth LTO's fragility on top.
 
 # For scikit-build, don't set custom output directory
 # It will handle the installation automatically
