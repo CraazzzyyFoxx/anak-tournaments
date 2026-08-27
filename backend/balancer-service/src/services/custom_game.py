@@ -24,7 +24,7 @@ from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER, MemberRankService, member_rank_service
 from shared.services.roster_shape_access import get_workspace_roster_slots
 from shared.services.workspace_roster import RosterMember, hosts_by_user_id, list_roster
-from src.domain.mix_rotation import PlayerHistory, RotationRecommendation, recommend_rotation
+from src.domain.mix_rotation import PlayerHistory, RotationRecommendation, recommend_rotation, rotation_priority
 from src.services.balancer.config.public_contract import normalize_config_overrides
 from src.services.balancer.role_naming import role_slot_code
 from src.services.balancer.solver import run_mix_balance as _run_balance
@@ -538,6 +538,18 @@ class CustomGameService:
         lineup = [row for row in roster if row.is_active]
         if not lineup:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="empty_lineup")
+        # If the lineup does not divide evenly into full teams, `run_balance`'s own
+        # overflow trim (`domain.balancer.runtime._prepare_balance_context`) benches
+        # whoever has the lowest `Player.rotation_priority` among the non-`must_play`
+        # players -- reusing the same fairness rank the "Apply rotation hints" button
+        # reads, computed here and carried through as one number per player, since
+        # `player_loader.load_players_from_dict` sorts its input by uuid and would
+        # otherwise discard any ordering placed on `lineup` itself. Left at every
+        # player's default 0.0 (no map history yet), the trim falls back to whatever
+        # order it always used.
+        histories_by_member = {
+            history.member_id: history for history in await self._rotation_histories(session, game, lineup)
+        }
         members = await self.members(session, workspace_id, [row.workspace_member_id for row in lineup])
         resolved = await self.ranks.resolve(
             session,
@@ -567,6 +579,7 @@ class CustomGameService:
                     "name": member.display_name or member.battle_tag or f"player-{member.member_id}",
                     "isFullFlex": row.is_flex,
                     "mustPlay": row.must_play,
+                    "rotationPriority": rotation_priority(histories_by_member[row.workspace_member_id]),
                 },
                 "stats": {"classes": classes},
             }
@@ -1068,6 +1081,42 @@ class CustomGameService:
         game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
         return list(await self.casual_matches.list_for_custom_game(session, game.id))
 
+    async def _rotation_histories(
+        self, session: AsyncSession, game: models.CustomGame, roster: Sequence[models.CustomGamePlayer]
+    ) -> list[PlayerHistory]:
+        """One `PlayerHistory` per given roster row, from every map this game has recorded.
+
+        Shared by :meth:`rotation` (ranks the whole pool for the host's hint) and :meth:`balance`
+        (ranks just the active lineup, to order who ``run_balance``'s own overflow trim in
+        ``domain.balancer.runtime._prepare_balance_context`` reaches for first when the lineup does
+        not divide evenly into full teams -- instead of an arbitrary tail order Balance never explained).
+        """
+        matches = list(await self.casual_matches.list_for_custom_game(session, game.id))
+        matches.reverse()  # newest-first -> chronological, oldest map first
+        team_ids = [team_id for match in matches for team_id in (match.home_team_id, match.away_team_id)]
+        seats = await self.casual_players.list_for_teams(session, team_ids)
+        members_by_team: dict[int, set[int]] = {}
+        for seat in seats:
+            members_by_team.setdefault(seat.team_id, set()).add(seat.workspace_member_id)
+        match_participants = [
+            members_by_team.get(match.home_team_id, set()) | members_by_team.get(match.away_team_id, set())
+            for match in matches
+        ]
+        return [
+            PlayerHistory(
+                member_id=row.workspace_member_id,
+                # Only maps recorded after this row joined the pool count --
+                # a map played before they signed up is not one they sat out.
+                played=tuple(
+                    row.workspace_member_id in participants
+                    for match, participants in zip(matches, match_participants, strict=True)
+                    if row.created_at is None or match.created_at >= row.created_at
+                ),
+                pinned_must_play=row.must_play,
+            )
+            for row in roster
+        ]
+
     async def rotation(
         self, session: AsyncSession, *, workspace_id: int, custom_game_id: int
     ) -> list[RotationRecommendation]:
@@ -1088,32 +1137,7 @@ class CustomGameService:
         if not roster:
             return []
 
-        matches = list(await self.casual_matches.list_for_custom_game(session, game.id))
-        matches.reverse()  # newest-first -> chronological, oldest map first
-        team_ids = [team_id for match in matches for team_id in (match.home_team_id, match.away_team_id)]
-        seats = await self.casual_players.list_for_teams(session, team_ids)
-        members_by_team: dict[int, set[int]] = {}
-        for seat in seats:
-            members_by_team.setdefault(seat.team_id, set()).add(seat.workspace_member_id)
-        match_participants = [
-            members_by_team.get(match.home_team_id, set()) | members_by_team.get(match.away_team_id, set())
-            for match in matches
-        ]
-
-        histories = [
-            PlayerHistory(
-                member_id=row.workspace_member_id,
-                # Only maps recorded after this row joined the pool count --
-                # a map played before they signed up is not one they sat out.
-                played=tuple(
-                    row.workspace_member_id in participants
-                    for match, participants in zip(matches, match_participants, strict=True)
-                    if row.created_at is None or match.created_at >= row.created_at
-                ),
-                pinned_must_play=row.must_play,
-            )
-            for row in roster
-        ]
+        histories = await self._rotation_histories(session, game, roster)
 
         role_mask = (
             await self.roster_shape(session, workspace_id=workspace_id, config_json=game.config_json)

@@ -152,7 +152,10 @@ def _prepare_balance_context(
     # manually benching someone. A ``must_play`` player is never among them
     # unless there are more of them than team slots exist -- they are moved to
     # the front before the tail is cut, so trimming always reaches for an
-    # optional player first.
+    # optional player first, and within the optional group ``rotation_priority``
+    # (ascending, default 0.0) breaks the tie -- the tournament balancer never
+    # sets it, so ``sorted``'s stability leaves that group's input order
+    # untouched, exactly as before this field existed.
     usable_count = num_teams * players_per_team
     if usable_count < len(valid_players):
         must_play_players = [player for player in valid_players if player.must_play]
@@ -162,7 +165,10 @@ def _prepare_balance_context(
                 f"{usable_count} team slots exist for {len(valid_players)} players. "
                 f"Unflag {len(must_play_players) - usable_count} of them or add more players."
             )
-        optional_players = [player for player in valid_players if not player.must_play]
+        optional_players = sorted(
+            (player for player in valid_players if not player.must_play),
+            key=lambda player: player.rotation_priority,
+        )
         ordered = must_play_players + optional_players
         valid_players, overflow_benched = ordered[:usable_count], ordered[usable_count:]
         valid_players, role_capable_counts = _filter_valid_players_and_role_counts(valid_players, needed_roles)

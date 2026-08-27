@@ -104,6 +104,11 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.casual_players.create = AsyncMock(side_effect=lambda _s, row: row)
         self.casual_matches = MagicMock()
         self.casual_matches.create = AsyncMock(side_effect=lambda _s, row: row)
+        # No match history recorded unless a test says otherwise -- `balance`'s
+        # rotation-priority read and `rotation()` itself both need this to resolve
+        # to something awaitable by default.
+        self.casual_matches.list_for_custom_game = AsyncMock(return_value=[])
+        self.casual_players.list_for_teams = AsyncMock(return_value=[])
         self.roster.list_for_game = AsyncMock(return_value=[])
         self.roster.delete_for_game = AsyncMock()
         self.roster.get_by = AsyncMock(return_value=None)

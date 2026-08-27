@@ -17,6 +17,7 @@ class Player:
         "is_flex",
         "captain_role",
         "must_play",
+        "rotation_priority",
         "_max_rating",
         "_mask",
     )
@@ -31,6 +32,7 @@ class Player:
         is_flex: bool = False,
         subclasses: dict[str, str] | None = None,
         must_play: bool = False,
+        rotation_priority: float = 0.0,
     ) -> None:
         self.uuid = uuid
         self.name = name
@@ -45,6 +47,15 @@ class Player:
         # players trimmed off to sit out, unless there are more of them than
         # team slots exist.
         self.must_play = must_play
+        # Tie-breaker for who among the non-``must_play`` players an uneven
+        # roster trims first: ascending, lower sorts first (kept longer). A
+        # caller with a fairness read on who is owed a seat (e.g. a pickup
+        # mix's rotation recommender) sets this so the trim's leftover lines
+        # up with what it already told the host to expect; left at the
+        # default 0.0 for everyone, the trim is a stable no-op and behaves
+        # exactly as before -- the tournament balancer, which has no such
+        # read, never sets it.
+        self.rotation_priority = rotation_priority
         self._max_rating = max(ratings.values()) if ratings else 0
         self._mask = mask
 

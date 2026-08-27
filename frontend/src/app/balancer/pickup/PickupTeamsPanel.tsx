@@ -62,6 +62,7 @@ import type { CustomGame, CustomGameMatch } from "@/services/custom-game.service
 import type { LookupItem } from "@/types/pagination.types";
 
 import {
+  LOBBY_SIZE,
   parsePointsPerWin,
   parseTeamNames,
   parseVariants,
@@ -215,6 +216,11 @@ export function PickupTeamsPanel({
               className="h-[38px]"
               disabled={balancing || activeCount === 0}
               onClick={onBalance}
+              title={
+                activeCount > LOBBY_SIZE
+                  ? `${activeCount - LOBBY_SIZE} extra player${activeCount - LOBBY_SIZE === 1 ? "" : "s"} will be benched automatically -- rotation fairness picks who`
+                  : undefined
+              }
             >
               {balancing ? (
                 <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
