@@ -18,6 +18,7 @@ from src.core.config import settings  # noqa: E402
 from src.services import api_keys as api_keys_module  # noqa: E402
 from src.services.api_keys import api_keys  # noqa: E402
 from tests._fakes import FakeExecuteResult as _FakeExecuteResult  # noqa: E402
+from tests._fakes import make_api_key_row as _api_key_row  # noqa: E402
 from tests._fakes import make_auth_user as _user  # noqa: E402
 from tests._fakes import make_workspace as _workspace  # noqa: E402
 
@@ -49,36 +50,6 @@ class _FakeSession:
         row.id = 99
         row.created_at = datetime.now(UTC)
         row.updated_at = None
-
-
-def _api_key_row(
-    *,
-    secret: str = "secret-token",
-    secret_hash: str | None = None,
-    revoked_at=None,
-    expires_at=None,
-    scopes: list[str] | None = None,
-    user: models.AuthUser | None = None,
-    workspace: models.Workspace | None = None,
-) -> models.ApiKey:
-    return models.ApiKey(
-        id=123,
-        auth_user_id=7,
-        workspace_id=11,
-        public_id="publicid",
-        secret_hash=secret_hash if secret_hash is not None else api_keys._hash_secret(secret),
-        name="Balancer API",
-        scopes_json=["team.create"] if scopes is None else list(scopes),
-        limits_json=dict(api_keys.DEFAULT_LIMITS),
-        config_policy_json=dict(api_keys.DEFAULT_CONFIG_POLICY),
-        expires_at=expires_at,
-        revoked_at=revoked_at,
-        last_used_at=None,
-        created_at=datetime.now(UTC),
-        updated_at=None,
-        user=user if user is not None else _user(),
-        workspace=workspace if workspace is not None else _workspace(),
-    )
 
 
 _TEAM_CREATE = [{"resource": "team", "action": "create"}]

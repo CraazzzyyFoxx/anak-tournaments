@@ -26,16 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.services.rbac_admin import PermissionDenyService  # noqa: E402
 from tests._fakes import FakeSessionCache as _NoopCache  # noqa: E402
-
-
-def _current_user(user_id: int = 1) -> SimpleNamespace:
-    return SimpleNamespace(
-        id=user_id,
-        username="root",
-        email="root@example.com",
-        is_superuser=True,
-        has_permission=lambda _r, _a: True,
-    )
+from tests._fakes import make_root_actor as _current_user  # noqa: E402
 
 
 def _service(cache: _NoopCache | None = None) -> PermissionDenyService:

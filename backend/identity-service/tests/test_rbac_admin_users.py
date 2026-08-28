@@ -25,6 +25,7 @@ from src.services.rbac_admin import (  # noqa: E402
 from src.services.rbac_policy import rbac_policy  # noqa: E402
 from src.services.sessions import sessions  # noqa: E402
 from tests._fakes import FakeSessionCache as _RecordingCache
+from tests._fakes import make_root_actor as _root_actor
 
 
 def _role(
@@ -547,13 +548,7 @@ def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkey
     response = asyncio.run(
         auth_user_admin.assign_linked_player(
             session,
-            SimpleNamespace(
-                id=1,
-                username="root",
-                email="root@example.com",
-                is_superuser=True,
-                has_permission=lambda r, a: True,
-            ),
+            _root_actor(),
             9,
             SimpleNamespace(player_id=42, is_primary=False),
         )
@@ -577,13 +572,7 @@ def test_remove_linked_player_from_auth_user_route_calls_admin_unlink_service(mo
     response = asyncio.run(
         auth_user_admin.remove_linked_player(
             session,
-            SimpleNamespace(
-                id=1,
-                username="root",
-                email="root@example.com",
-                is_superuser=True,
-                has_permission=lambda r, a: True,
-            ),
+            _root_actor(),
             9,
             42,
         )
@@ -688,13 +677,7 @@ def test_delete_oauth_connection_route_deletes_connection() -> None:
     asyncio.run(
         auth_user_admin.delete_oauth_connection(
             session,
-            SimpleNamespace(
-                id=1,
-                username="root",
-                email="root@example.com",
-                is_superuser=True,
-                has_permission=lambda r, a: True,
-            ),
+            _root_actor(),
             21,
         )
     )

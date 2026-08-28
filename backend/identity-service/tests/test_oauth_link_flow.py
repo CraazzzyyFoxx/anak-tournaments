@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tests._fakes import FakeRedisClient as _FakeRedisClient  # noqa: E402
+from tests._fakes import make_oauth_info as _oauth_info  # noqa: E402
 
 from src.schemas.oauth import OAuthUserInfo  # noqa: E402
 from src.services.oauth import oauth  # noqa: E402
@@ -53,20 +54,6 @@ _GET_REDIS = "src.core.cache.get_redis"
 def _use_redis(monkeypatch: pytest.MonkeyPatch, client: object) -> object:
     monkeypatch.setattr(_GET_REDIS, lambda: client)
     return client
-
-
-def _oauth_info(**overrides: object) -> OAuthUserInfo:
-    fields = {
-        "provider": "discord",
-        "provider_user_id": "provider-uid-1",
-        "email": "player@example.com",
-        "username": "player1",
-        "display_name": "Player One",
-        "avatar_url": None,
-        "raw_data": {"id": "provider-uid-1"},
-    }
-    fields.update(overrides)
-    return OAuthUserInfo(**fields)
 
 
 def _link_state(

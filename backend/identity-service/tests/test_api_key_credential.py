@@ -41,11 +41,11 @@ from src.services.auth import auth  # noqa: E402
 from src.services.auth_users import auth_users  # noqa: E402
 from src.services.token_validation import token_validation  # noqa: E402
 from tests._fakes import make_auth_user as _owner  # noqa: E402
-from tests._fakes import make_workspace as _workspace  # noqa: E402
 from tests._fakes import CapturingBroker as _CapturingBroker  # noqa: E402
 from tests._fakes import FakeSessionMaker as _SessionMaker  # noqa: E402
 from tests._fakes import SilentLogger as _SilentLogger  # noqa: E402
 from tests._fakes import handler as _handler  # noqa: E402
+from tests._fakes import make_api_key_row  # noqa: E402
 
 _PUBLIC_ID = "publicid"
 _SECRET = "secret-token"
@@ -78,24 +78,7 @@ def _identity(*, keyed: bool) -> dict:
 
 
 def _api_key_row(*, revoked_at=None, expires_at=None) -> models.ApiKey:
-    return models.ApiKey(
-        id=123,
-        auth_user_id=7,
-        workspace_id=11,
-        public_id=_PUBLIC_ID,
-        secret_hash=api_keys._hash_secret(_SECRET),
-        name="Balancer API",
-        scopes_json=["team.create"],
-        limits_json={"requests_per_minute": 60},
-        config_policy_json={},
-        expires_at=expires_at,
-        revoked_at=revoked_at,
-        last_used_at=None,
-        created_at=datetime.now(UTC),
-        updated_at=None,
-        user=_owner(),
-        workspace=_workspace(),
-    )
+    return make_api_key_row(revoked_at=revoked_at, expires_at=expires_at)
 
 
 class _FakeResult:

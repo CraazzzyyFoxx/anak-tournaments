@@ -38,11 +38,33 @@ different things in different files) across ``test_auth_sessions.py``,
 Every method always records -- a caller that never asserts on a given
 attribute simply never reads it back, so recording instead of no-op-ing is
 strictly safe.
+
+``make_root_actor`` was hand-rolled identically as ``_actor``
+(``test_audit_identity.py``), ``_current_user``
+(``test_rbac_user_deny_workspace.py``), and three more inline
+``SimpleNamespace(id=1, username="root", ...)`` literals in
+``test_rbac_admin_users.py``.
+
+``make_oauth_info`` was hand-rolled identically as ``_oauth_info`` in
+``test_oauth_link_flow.py`` and ``test_pending_link_tickets.py``.
+``test_oauth_link_conflict.py``'s own ``_oauth_info`` builds the same
+``OAuthUserInfo`` type with a smaller, always-defaulted field set; it now
+calls this one with explicit overrides instead of duplicating the
+constructor call.
+
+``make_api_key_row`` was hand-rolled three times (``test_api_key_credential.py``,
+``test_api_key_service.py``, ``test_audit_identity.py``) at three different
+levels of parameterization; two of the three even hardcoded
+``limits_json``/``config_policy_json`` values that happen to equal
+``ApiKeyService.DEFAULT_LIMITS``/``DEFAULT_CONFIG_POLICY`` instead of
+referencing them, which would have silently drifted out of sync with the
+service the moment either default changed.
 """
 
 from __future__ import annotations
 
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -56,6 +78,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src import models  # noqa: E402
+from src.schemas.oauth import OAuthUserInfo  # noqa: E402
+from src.services.api_keys import api_keys  # noqa: E402
 
 
 class FakeRedisClient:
@@ -238,3 +262,58 @@ class FakeSessionCache:
     async def blacklist_sessions(self, session_ids: set, ttl_seconds: int) -> None:
         for session_id in sorted(session_ids):
             await self.blacklist_session(session_id, ttl_seconds)
+
+
+def make_root_actor(user_id: int = 1) -> SimpleNamespace:
+    """The superuser RBAC operator every admin-service flow is driven by."""
+    return SimpleNamespace(
+        id=user_id,
+        username="root",
+        email="root@example.com",
+        is_superuser=True,
+        has_permission=lambda _resource, _action: True,
+    )
+
+
+def make_oauth_info(**overrides: object) -> OAuthUserInfo:
+    fields: dict[str, object] = {
+        "provider": "discord",
+        "provider_user_id": "provider-uid-1",
+        "email": "player@example.com",
+        "username": "player1",
+        "display_name": "Player One",
+        "avatar_url": None,
+        "raw_data": {"id": "provider-uid-1"},
+    }
+    fields.update(overrides)
+    return OAuthUserInfo(**fields)
+
+
+def make_api_key_row(
+    *,
+    secret: str = "secret-token",
+    secret_hash: str | None = None,
+    revoked_at: datetime | None = None,
+    expires_at: datetime | None = None,
+    scopes: list[str] | None = None,
+    user: models.AuthUser | None = None,
+    workspace: models.Workspace | None = None,
+) -> models.ApiKey:
+    return models.ApiKey(
+        id=123,
+        auth_user_id=7,
+        workspace_id=11,
+        public_id="publicid",
+        secret_hash=secret_hash if secret_hash is not None else api_keys._hash_secret(secret),
+        name="Balancer API",
+        scopes_json=["team.create"] if scopes is None else list(scopes),
+        limits_json=dict(api_keys.DEFAULT_LIMITS),
+        config_policy_json=dict(api_keys.DEFAULT_CONFIG_POLICY),
+        expires_at=expires_at,
+        revoked_at=revoked_at,
+        last_used_at=None,
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        user=user if user is not None else make_auth_user(),
+        workspace=workspace if workspace is not None else make_workspace(),
+    )
