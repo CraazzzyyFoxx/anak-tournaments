@@ -19,18 +19,7 @@ from src.services.auth_users import auth_users  # noqa: E402
 from src.services.security import token_codec  # noqa: E402
 from src.services.session_cache import session_cache  # noqa: E402
 from src.services.sessions import RefreshTokenService, refresh_tokens, sessions  # noqa: E402
-
-
-class _FakeExecuteResult:
-    def __init__(self, *, scalar=None, scalars=None) -> None:
-        self._scalar = scalar
-        self._scalars = list(scalars or [])
-
-    def scalar_one_or_none(self):
-        return self._scalar
-
-    def scalars(self):
-        return SimpleNamespace(all=lambda: list(self._scalars))
+from tests._fakes import FakeExecuteResult as _FakeExecuteResult  # noqa: E402
 
 
 class _FakeSession:

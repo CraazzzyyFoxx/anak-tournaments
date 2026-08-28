@@ -4,7 +4,6 @@ import asyncio
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -18,18 +17,9 @@ from src.core import key_derivation  # noqa: E402
 from src.core.config import settings  # noqa: E402
 from src.services import api_keys as api_keys_module  # noqa: E402
 from src.services.api_keys import api_keys  # noqa: E402
-
-
-class _FakeExecuteResult:
-    def __init__(self, scalar=None, scalars=None) -> None:
-        self._scalar = scalar
-        self._scalars = list(scalars or [])
-
-    def scalar_one_or_none(self):
-        return self._scalar
-
-    def scalars(self):
-        return SimpleNamespace(all=lambda: list(self._scalars))
+from tests._fakes import FakeExecuteResult as _FakeExecuteResult  # noqa: E402
+from tests._fakes import make_auth_user as _user  # noqa: E402
+from tests._fakes import make_workspace as _workspace  # noqa: E402
 
 
 class _FakeSession:
@@ -59,21 +49,6 @@ class _FakeSession:
         row.id = 99
         row.created_at = datetime.now(UTC)
         row.updated_at = None
-
-
-def _user(*, active: bool = True) -> models.AuthUser:
-    return models.AuthUser(
-        id=7,
-        email="ada@example.com",
-        username="ada",
-        is_active=active,
-        is_superuser=False,
-        is_verified=True,
-    )
-
-
-def _workspace(*, active: bool = True) -> models.Workspace:
-    return models.Workspace(id=11, slug="main", name="Main", is_active=active)
 
 
 def _api_key_row(

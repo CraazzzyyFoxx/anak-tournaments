@@ -40,6 +40,8 @@ from src.services.api_keys import api_keys  # noqa: E402
 from src.services.auth import auth  # noqa: E402
 from src.services.auth_users import auth_users  # noqa: E402
 from src.services.token_validation import token_validation  # noqa: E402
+from tests._fakes import make_auth_user as _owner  # noqa: E402
+from tests._fakes import make_workspace as _workspace  # noqa: E402
 
 _PUBLIC_ID = "publicid"
 _SECRET = "secret-token"
@@ -69,21 +71,6 @@ def _identity(*, keyed: bool) -> dict:
             "scopes": ["team.create"],
         }
     return payload
-
-
-def _owner(*, active: bool = True) -> models.AuthUser:
-    return models.AuthUser(
-        id=7,
-        email="ada@example.com",
-        username="ada",
-        is_active=active,
-        is_superuser=False,
-        is_verified=True,
-    )
-
-
-def _workspace(*, active: bool = True) -> models.Workspace:
-    return models.Workspace(id=11, slug="main", name="Main", is_active=active)
 
 
 def _api_key_row(*, revoked_at=None, expires_at=None) -> models.ApiKey:

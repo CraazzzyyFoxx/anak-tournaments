@@ -31,6 +31,7 @@ from shared.models.platform.audit import AuditLog  # noqa: E402
 from src import models, schemas  # noqa: E402
 from src.services.api_keys import ApiKeyService, api_keys  # noqa: E402
 from src.services.rbac_admin import PermissionDenyService, RoleAdminService  # noqa: E402
+from tests._fakes import make_auth_user as _api_actor  # noqa: E402
 
 _SECRET = "secret-token"
 _PUBLIC_ID = "publicid"
@@ -44,17 +45,6 @@ def _actor(user_id: int = 1) -> SimpleNamespace:
         email="root@example.com",
         is_superuser=True,
         has_permission=lambda _resource, _action: True,
-    )
-
-
-def _api_actor() -> models.AuthUser:
-    return models.AuthUser(
-        id=7,
-        email="ada@example.com",
-        username="ada",
-        is_active=True,
-        is_superuser=False,
-        is_verified=True,
     )
 
 
