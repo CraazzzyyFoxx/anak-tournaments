@@ -22,6 +22,7 @@ shift_features = importlib.import_module("src.services.ml.features.shift_feature
 shift_v2 = importlib.import_module("src.services.ml.models.shift_v2")
 
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
+from tests.factories import identity_assign as _identity_assign
 
 # The shift ramps are keyed on the canonical ladder (DEFAULT_GRID), so tests that
 # mean "at the bottom" / "mid-ladder" name those positions instead of hardcoding
@@ -30,11 +31,6 @@ from shared.division_grid import DEFAULT_GRID  # noqa: E402
 CANONICAL_BOTTOM_DIV = DEFAULT_GRID.max_division
 CANONICAL_MID_DIV = (DEFAULT_GRID.min_division + DEFAULT_GRID.max_division) // 2
 
-
-def _identity_assign(df, grids, *, rank_col, version_col="version_id", out_col="div"):
-    """Stub: canonical division == the supplied rank (1:1), for mechanics tests."""
-    df[out_col] = df[rank_col].astype(int)
-    return df
 
 
 class ShiftRankHistoryTests(IsolatedAsyncioTestCase):

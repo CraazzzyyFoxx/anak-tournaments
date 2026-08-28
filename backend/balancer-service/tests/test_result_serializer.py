@@ -12,19 +12,10 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 
 from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE  # noqa: E402
-from src.domain.balancer.entities import Player, Team  # noqa: E402
+from src.domain.balancer.entities import Team  # noqa: E402
 from src.domain.balancer.result_serializer import teams_to_json  # noqa: E402
-
-MASK = {"Tank": 1, "Damage": 2, "Support": 2}
-
-
-def make_player(
-    uuid: str,
-    ratings: dict[str, int],
-    preferences: list[str],
-    mask: dict[str, int] | None = None,
-) -> Player:
-    return Player(name=f"P{uuid}", ratings=ratings, preferences=preferences, uuid=uuid, mask=mask or MASK)
+from tests.factories import DEFAULT_MASK as MASK  # noqa: E402
+from tests.factories import make_player  # noqa: E402
 
 
 def test_response_is_keyed_by_the_mask_slot_codes() -> None:

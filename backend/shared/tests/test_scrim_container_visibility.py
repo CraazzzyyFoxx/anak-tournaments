@@ -25,16 +25,15 @@ from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 
 import sqlalchemy as sa
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 backend_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(backend_root))
 
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
+from shared.testing import install_postgres_type_shims  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament.preview_access import TournamentPreviewAccess  # noqa: E402
@@ -46,19 +45,7 @@ from shared.services.tournament.visibility import (  # noqa: E402
 )
 
 
-@compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
-    return "JSON"
-
-
-@compiles(ARRAY, "sqlite")
-def _compile_array_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
-    return "JSON"
-
-
-@compiles(sa.BigInteger, "sqlite")
-def _compile_bigint_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
-    return "INTEGER"
+install_postgres_type_shims()
 
 
 # ``Tournament.phase_schedule`` is ``lazy="selectin"``, so selecting a tournament

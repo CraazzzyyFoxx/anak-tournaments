@@ -22,6 +22,7 @@ rank_sources = importlib.import_module("src.services.registration.rank_sources")
 
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
 from shared.services.division_grid.normalization import DivisionGridNormalizer  # noqa: E402
+from shared.testing.factories import division_tier  # noqa: E402
 
 
 def test_rank_snapshot_model_is_available_from_service_models() -> None:
@@ -534,15 +535,7 @@ def test_group_ow_signals_computes_composite_and_latest() -> None:
 
 
 def _tier(tier_id: int, number: int, rank_min: int, rank_max: int | None) -> DivisionTier:
-    return DivisionTier(
-        id=tier_id,
-        slug=None,
-        number=number,
-        name=str(number),
-        rank_min=rank_min,
-        rank_max=rank_max,
-        icon_url="",
-    )
+    return division_tier(tier_id, number, rank_min, rank_max, slug=None, name=str(number))
 
 
 def _make_normalizer() -> tuple[DivisionGridNormalizer, DivisionGrid]:

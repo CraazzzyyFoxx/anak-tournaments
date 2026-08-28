@@ -31,22 +31,12 @@ from sqlalchemy.exc import IntegrityError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tests.factories import make_workspace as _make_workspace  # noqa: E402
+
 workspace_service = importlib.import_module("src.services.workspace.service")
 workspaces = workspace_service.workspaces
 
 _GUILD_ID = "123456789012345678"
-
-
-def _make_workspace(**overrides) -> SimpleNamespace:
-    base = {
-        "id": 7,
-        "slug": "owt",
-        "discord_guild_id": None,
-        "discord_guild_verified_at": None,
-        "discord_guild_verified_by_auth_user_id": None,
-    }
-    base.update(overrides)
-    return SimpleNamespace(**base)
 
 
 def _actor(auth_user_id: int = 42, username: str = "ada") -> SimpleNamespace:

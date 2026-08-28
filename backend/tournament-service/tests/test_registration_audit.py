@@ -24,6 +24,8 @@ from typing import Any
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
+from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
@@ -37,14 +39,9 @@ WORKSPACE_ID = 1
 REGISTRATION_ID = 55
 
 #: Grants the "team create"/"team update" gates the handlers check on workspace 1.
-IDENTITY = {
-    "user_id": 7,
-    "username": "organizer",
-    "is_superuser": False,
-    "is_active": True,
-    "roles": [],
-    "permissions": [],
-    "workspaces": [
+IDENTITY = make_identity(
+    username="organizer",
+    workspaces=[
         {
             "workspace_id": WORKSPACE_ID,
             "rbac_roles": [],
@@ -54,19 +51,7 @@ IDENTITY = {
             ],
         }
     ],
-}
-
-
-class _CapturingBroker:
-    def __init__(self) -> None:
-        self.handlers: dict[str, Any] = {}
-
-    def subscriber(self, subject, *args, **kwargs):
-        def register(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return register
+)
 
 
 class _FakeSession:
@@ -90,20 +75,6 @@ class _FakeSession:
 
     async def flush(self) -> None:  # pragma: no cover - not reached by these paths
         pass
-
-
-class _FakeSessionMaker:
-    def __init__(self, session: _FakeSession) -> None:
-        self._session = session
-
-    def __call__(self):
-        return self
-
-    async def __aenter__(self):
-        return self._session
-
-    async def __aexit__(self, *exc):
-        return False
 
 
 def _role(role: str, rank_value: int | None) -> SimpleNamespace:
@@ -175,7 +146,7 @@ class RegistrationAuditTests(IsolatedAsyncioTestCase):
         stored: SimpleNamespace,
         service_attr: str,
     ) -> tuple[dict[str, Any], _FakeSession, list[str]]:
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         registration_admin.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         self.assertIn(subject, broker.handlers, "subject is not registered")
 
@@ -199,7 +170,7 @@ class RegistrationAuditTests(IsolatedAsyncioTestCase):
             return None
 
         with (
-            patch.object(helpers.db, "async_session_maker", _FakeSessionMaker(session)),
+            patch.object(helpers.db, "async_session_maker", FakeSessionMaker(session)),
             patch.object(registration_admin.auth, "get_registration_workspace_id", fake_ws_id),
             patch.object(registration_admin.lifecycle.lifecycle_service, "get_registration_by_id", fake_get),
             patch.object(registration_admin.lifecycle.lifecycle_service, service_attr, fake_service),
@@ -327,7 +298,7 @@ class RegistrationAuditTests(IsolatedAsyncioTestCase):
         self.assertEqual({"checked_in": False}, row.after_json)
 
     async def test_bulk_approve_is_filed_on_the_tournament(self):
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         registration_admin.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         trace: list[str] = []
         session = _FakeSession(trace)
@@ -343,7 +314,7 @@ class RegistrationAuditTests(IsolatedAsyncioTestCase):
             return None
 
         with (
-            patch.object(helpers.db, "async_session_maker", _FakeSessionMaker(session)),
+            patch.object(helpers.db, "async_session_maker", FakeSessionMaker(session)),
             patch.object(registration_admin.auth, "get_tournament_workspace_id", fake_ws_id),
             patch.object(registration_admin.lifecycle.lifecycle_service, "bulk_approve_registrations", fake_bulk),
             patch.object(registration_admin, "emit_balancer_registrations_changed", fake_emit),

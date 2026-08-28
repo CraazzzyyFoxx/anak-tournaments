@@ -23,6 +23,8 @@ import dns.resolver
 from dns.rdtypes.ANY.TXT import TXT
 from sqlalchemy.exc import IntegrityError
 
+from tests.factories import make_workspace as _make_workspace
+
 workspace_service = importlib.import_module("src.services.workspace.service")
 workspaces = workspace_service.workspaces
 
@@ -99,17 +101,6 @@ class DnsTxtContainsTests(IsolatedAsyncioTestCase):
             result = await workspaces._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
 
         self.assertFalse(result)
-
-
-def _make_workspace(**overrides) -> SimpleNamespace:
-    base = {
-        "id": 7,
-        "custom_domain": None,
-        "custom_domain_verification_token": None,
-        "custom_domain_verified_at": None,
-    }
-    base.update(overrides)
-    return SimpleNamespace(**base)
 
 
 class SetCustomDomainTests(IsolatedAsyncioTestCase):

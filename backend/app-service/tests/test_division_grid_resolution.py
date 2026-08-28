@@ -7,24 +7,7 @@ division_grid = importlib.import_module("shared.division_grid")
 division_grid_normalization = importlib.import_module("shared.services.division_grid.normalization")
 division_grid_resolution = importlib.import_module("shared.services.division_grid.resolution")
 
-
-def make_grid(
-    version_id: int,
-    tiers: tuple[tuple[int, int, int, int | None], ...],
-) -> division_grid.DivisionGrid:
-    runtime_tiers = tuple(
-        division_grid.DivisionTier(
-            id=tier_id,
-            slug=f"division-{number}",
-            number=number,
-            name=f"Division {number}",
-            rank_min=rank_min,
-            rank_max=rank_max,
-            icon_url="",
-        )
-        for tier_id, number, rank_min, rank_max in tiers
-    )
-    return division_grid.DivisionGrid(version_id=version_id, tiers=runtime_tiers)
+from shared.testing.factories import division_grid as make_grid
 
 
 class DivisionGridResolutionTests(TestCase):

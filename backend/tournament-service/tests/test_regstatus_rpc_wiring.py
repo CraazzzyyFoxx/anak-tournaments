@@ -20,6 +20,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
+from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -33,45 +34,16 @@ helpers = importlib.import_module("src.rpc._helpers")
 CREATED_AT = datetime(2026, 5, 1, 12, 30, tzinfo=UTC)
 
 #: Grants exactly the "team update" gate the two subjects check on workspace 1.
-IDENTITY = {
-    "user_id": 7,
-    "is_superuser": False,
-    "is_active": True,
-    "roles": [],
-    "permissions": [],
-    "workspaces": [
+IDENTITY = make_identity(
+    workspaces=[
         {
             "workspace_id": 1,
             "rbac_roles": [],
             "rbac_permissions": [{"resource": "team", "action": "update"}],
         }
     ],
-}
+)
 
-
-class _CapturingBroker:
-    """Records the handler behind each subject instead of binding a queue."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject, *args, **kwargs):
-        def register(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return register
-
-
-class _FakeSessionMaker:
-    def __call__(self):
-        return self
-
-    async def __aenter__(self):
-        return SimpleNamespace()
-
-    async def __aexit__(self, *exc):
-        return False
 
 
 def _status_row(**overrides) -> SimpleNamespace:
@@ -96,7 +68,7 @@ def _status_row(**overrides) -> SimpleNamespace:
 
 class RegstatusHandlersForwardExclusionFlags(IsolatedAsyncioTestCase):
     async def _invoke(self, subject: str, data: dict, *, service_fn, service_result):
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         registration_admin.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         self.assertIn(subject, broker.handlers, "subject is not registered")
 
@@ -107,7 +79,7 @@ class RegstatusHandlersForwardExclusionFlags(IsolatedAsyncioTestCase):
             return service_result
 
         with (
-            patch.object(helpers.db, "async_session_maker", _FakeSessionMaker()),
+            patch.object(helpers.db, "async_session_maker", FakeSessionMaker()),
             patch.object(registration_admin.status_catalog.status_catalog_service, service_fn, stub),
         ):
             envelope = await broker.handlers[subject](data, None)

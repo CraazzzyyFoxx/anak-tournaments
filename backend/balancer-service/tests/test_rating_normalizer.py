@@ -15,18 +15,8 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from src.domain.balancer.entities import Player, Team  # noqa: E402
 from src.domain.balancer.rating_normalizer import RatingNormalizer  # noqa: E402
-
-MASK = {"Tank": 1, "Damage": 2, "Support": 2}
-
-
-def make_player(uuid: str, ratings: dict[str, int], preferences: list[str] | None = None) -> Player:
-    return Player(
-        name=f"P{uuid}",
-        ratings=ratings,
-        preferences=preferences or list(ratings.keys()),
-        uuid=uuid,
-        mask=MASK,
-    )
+from tests.factories import DEFAULT_MASK as MASK  # noqa: E402
+from tests.factories import make_player  # noqa: E402
 
 
 class TestRatingNormalizerScale:

@@ -28,6 +28,8 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
+from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
@@ -53,54 +55,21 @@ CONTENT_B64 = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode()
 
 #: Gateway-shaped identity granting exactly the gate both subjects check.
 #: Deliberately not a superuser, so the real permission path runs.
-IDENTITY = {
-    "user_id": 7,
-    "is_superuser": False,
-    "is_active": True,
-    "roles": [],
-    "permissions": [],
-    "workspaces": [
+IDENTITY = make_identity(
+    workspaces=[
         {
             "workspace_id": WORKSPACE_ID,
             "rbac_roles": [],
             "rbac_permissions": [{"resource": "team", "action": "update"}],
         }
-    ],
-}
+    ]
+)
 
 #: Same identity without team.update — proves the gate is load-bearing.
 IDENTITY_NO_PERMISSION = {
     **IDENTITY,
     "workspaces": [{"workspace_id": WORKSPACE_ID, "rbac_roles": [], "rbac_permissions": []}],
 }
-
-
-class _CapturingBroker:
-    """Records the handler behind each subject instead of binding a queue."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject, *args, **kwargs):
-        def register(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return register
-
-
-class _FakeSessionMaker:
-    """Stands in for ``db.async_session_maker`` — the services are stubbed, so the
-    session only has to exist."""
-
-    def __call__(self):
-        return self
-
-    async def __aenter__(self):
-        return SimpleNamespace()
-
-    async def __aexit__(self, *exc):
-        return False
 
 
 class _FakeS3:
@@ -208,7 +177,7 @@ class TeamImageSubjects(IsolatedAsyncioTestCase):
         self.set_image_calls: list[tuple[int, str | None]] = []
 
     async def _invoke(self, subject: str, data: dict, *, upload_result: object | None = None) -> dict:
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         team_binary.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         self.assertIn(subject, broker.handlers, "subject is not registered")
 
@@ -235,7 +204,7 @@ class TeamImageSubjects(IsolatedAsyncioTestCase):
             return _team_read(team.image_url)
 
         with (
-            patch.object(helpers.db, "async_session_maker", _FakeSessionMaker()),
+            patch.object(helpers.db, "async_session_maker", FakeSessionMaker()),
             patch.object(team_binary, "get_s3", fake_get_s3),
             patch.object(team_binary, "upload_avatar", fake_upload_avatar),
             patch.object(team_binary.auth, "get_team_workspace_id", fake_workspace_id),

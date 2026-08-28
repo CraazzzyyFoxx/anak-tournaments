@@ -42,6 +42,8 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
+from tests._rpc_fakes import CapturingBroker, make_identity
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
@@ -92,20 +94,15 @@ FLAT_ITEM_IDS = [101, 102, 103, 104, 105, 106]
 
 #: Grants exactly the gate this subject checks (``match.update``) and nothing
 #: else, and is not a superuser, so the real permission path runs.
-IDENTITY = {
-    "user_id": 7,
-    "is_superuser": False,
-    "is_active": True,
-    "roles": [],
-    "permissions": [],
-    "workspaces": [
+IDENTITY = make_identity(
+    workspaces=[
         {
             "workspace_id": WORKSPACE_ID,
             "rbac_roles": [],
             "rbac_permissions": [{"resource": "match", "action": "update"}],
         }
-    ],
-}
+    ]
+)
 
 
 def slot_payload(
@@ -225,20 +222,6 @@ class _Result:
         return self._rows[0] if self._rows else None
 
 
-class _CapturingBroker:
-    """Records the handler behind each subject instead of binding a queue."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject, *args, **kwargs):
-        def register(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return register
-
-
 class _FakeSession:
     """Answers each query by the entity it targets, and records every statement.
 
@@ -326,7 +309,7 @@ class _FakeSession:
 
 class _UpsertCase(IsolatedAsyncioTestCase):
     async def invoke(self, body: dict, *, existing=None, stage_tournament_id=TOURNAMENT_ID):
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         pick_ban_admin.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         self.assertIn(UPSERT, broker.handlers, "subject is not registered")
 
@@ -830,7 +813,7 @@ class SerializeNeedsTheSlotChain(_UpsertCase):
         eager_loading.assert_eager_loads(self, statement, "PickBanConfig.items")
 
     async def test_the_admin_list_loads_the_slot_chain(self) -> None:
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         pick_ban_admin.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         session = _FakeSession(configs=[_config(SLOTS, slots=CANDIDATES)])
 

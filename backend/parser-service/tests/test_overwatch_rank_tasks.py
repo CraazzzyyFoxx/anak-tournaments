@@ -18,6 +18,7 @@ from shared.core import enums  # noqa: E402
 from shared.schemas.settings import RankCollectionConfig  # noqa: E402
 from src.domain.overwatch_rank import RankFetchResult  # noqa: E402
 from src.services.overwatch_rank.client import OverFastRateLimited  # noqa: E402
+from tests._fakes import session_factory as _session_factory  # noqa: E402
 
 
 class FakeRedis:
@@ -55,17 +56,6 @@ class _FrozenClock:
     @classmethod
     def now(cls, tz=None):  # noqa: ARG003 - mirrors datetime.now's signature
         return cls.fixed
-
-
-def _session_factory(session):
-    class Ctx:
-        async def __aenter__(self):
-            return session
-
-        async def __aexit__(self, *a):
-            return False
-
-    return lambda: Ctx()
 
 
 class EnqueueTests(IsolatedAsyncioTestCase):

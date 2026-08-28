@@ -24,11 +24,16 @@ from __future__ import annotations
 from shared.testing.cache import configure_test_cache
 from shared.testing.db import PROTECTED_DB_NAMES, db_session, real_db_sessionmaker
 from shared.testing.env import apply_test_env_defaults
+from shared.testing.factories import division_grid, division_tier
+from shared.testing.sqlite_dialect import install_postgres_type_shims
 
 __all__ = (
     "PROTECTED_DB_NAMES",
     "apply_test_env_defaults",
     "configure_test_cache",
     "db_session",
+    "division_grid",
+    "division_tier",
+    "install_postgres_type_shims",
     "real_db_sessionmaker",
 )

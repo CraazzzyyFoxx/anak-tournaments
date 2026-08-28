@@ -25,39 +25,11 @@ os.environ["DEBUG"] = "true"
 
 rpc_misc = importlib.import_module("src.rpc.misc")
 
-
-def _active_identity() -> dict:
-    return {
-        "user_id": 7,
-        "sub": "7",
-        "is_active": True,
-        "is_superuser": True,
-        "roles": ["admin"],
-        "permissions": [],
-    }
-
-
-class _FakeBroker:
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject: str):
-        def _decorator(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return _decorator
-
-
-def _session_factory(session):
-    class _Ctx:
-        async def __aenter__(self):
-            return session
-
-        async def __aexit__(self, *exc):
-            return False
-
-    return lambda: _Ctx()
+from tests._fakes import (
+    FakeBroker as _FakeBroker,
+    active_identity as _active_identity,
+    session_factory as _session_factory,
+)
 
 
 class DiscordChannelBackfillRpcTests(IsolatedAsyncioTestCase):

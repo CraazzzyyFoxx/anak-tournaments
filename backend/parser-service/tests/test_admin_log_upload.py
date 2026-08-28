@@ -31,40 +31,10 @@ os.environ["DEBUG"] = "true"
 
 from shared.models.ingestion.log_processing import LogProcessingSource  # noqa: E402
 
+from tests._fakes import FakeBroker as _FakeBroker, active_identity as _active_identity, session_factory as _session_factory
+
 rpc_logs = importlib.import_module("src.rpc.logs")
 admin_reads = importlib.import_module("src.services.match_logs.admin_reads")
-
-
-# ── identity helper ──────────────────────────────────────────────────────────
-
-
-def _active_identity() -> dict:
-    """A gateway identity payload for an active admin user (permissions stubbed)."""
-    return {
-        "user_id": 7,
-        "sub": "7",
-        "is_active": True,
-        "is_superuser": True,
-        "roles": ["admin"],
-        "permissions": [],
-    }
-
-
-# ── fake broker + session ──────────────────────────────────────────────────────
-
-
-class _FakeBroker:
-    """Capture FastStream subscribers by subject so we can invoke them directly."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject: str):
-        def _decorator(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return _decorator
 
 
 class _Result:
@@ -81,20 +51,6 @@ class _Result:
 
     def one(self):
         return self._row
-
-
-def _session_factory(session):
-    """Build a ``session_factory()`` returning an async-context-managed session."""
-
-    class _Ctx:
-        async def __aenter__(self):
-            return session
-
-        async def __aexit__(self, *exc):
-            return False
-
-    return lambda: _Ctx()
-
 
 class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
