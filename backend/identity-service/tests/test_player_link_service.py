@@ -37,6 +37,8 @@ from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from src.services import players as players_module  # noqa: E402
 from src.services.players import PlayerLinkService, players  # noqa: E402
+from tests._fakes import FakeOAuthConnections as _StubConnections  # noqa: E402
+from tests._fakes import FakeSocialAccounts as _StubSocials  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # DB-free unit tests: stub repositories, real service logic.
@@ -45,28 +47,6 @@ from src.services.players import PlayerLinkService, players  # noqa: E402
 NO_CONNECTION_DETAIL = "Link Discord or Battle.net OAuth account before linking a player"
 NO_MATCH_DETAIL = "Discord or Battle.net account does not match selected player"
 
-
-class _StubConnections:
-    """``OAuthConnectionRepository`` stand-in: canned connections, filtered by
-    the providers the service asks for."""
-
-    def __init__(self, connections=()) -> None:
-        self._connections = list(connections)
-
-    async def list_by_user_providers(self, _session, *, auth_user_id: int, providers):
-        assert auth_user_id is not None
-        return [conn for conn in self._connections if conn.provider in providers]
-
-
-class _StubSocials:
-    """``SocialAccountRepository`` stand-in: the player's handles per provider."""
-
-    def __init__(self, handles=None) -> None:
-        self._handles = dict(handles or {})
-
-    async def list_handles(self, _session, *, user_id: int, provider: str):
-        assert user_id is not None
-        return list(self._handles.get(provider, []))
 
 
 class _StubPlayers:
@@ -128,7 +108,7 @@ def _conn(provider: str, **kwargs):
 def _service(*, connections=(), handles=None, player=None, workspace_ids=()) -> PlayerLinkService:
     return PlayerLinkService(
         connections=_StubConnections(connections),
-        socials=_StubSocials(handles),
+        socials=_StubSocials(handles=handles),
         players=_StubPlayers(player),
         members=_StubMembers(workspace_ids),
     )
@@ -352,39 +332,6 @@ def test_unlink_already_unlinked_is_noop() -> None:
 # ---------------------------------------------------------------------------
 # DB-backed integration tests: link/unlink/get round-trips.
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def db_session():
-    """Yield a live AsyncSession, or skip the test if the DB is unreachable.
-
-    Probes with ``select current_database()`` (mirrors
-    ``test_signup_provisions_player.py``) and hard-guards against ever running
-    against a production database.
-    """
-
-    from src.core import db as db_module
-
-    async def _probe_and_open():
-        session = db_module.async_session_maker()
-        dbname = (await session.execute(sa.text("select current_database()"))).scalar()
-        return session, dbname
-
-    try:
-        session, dbname = asyncio.run(_probe_and_open())
-    except Exception as exc:  # noqa: BLE001 — any connect failure => skip, not fail
-        pytest.skip(f"database unreachable: {exc}")
-        return
-
-    if dbname in {"anak_v5", "anak_prod"}:
-        asyncio.run(session.close())
-        pytest.skip("refusing to run integration tests against production")
-        return
-
-    try:
-        yield session
-    finally:
-        asyncio.run(session.close())
 
 
 async def _make_auth_user(session, suffix: str) -> AuthUser:

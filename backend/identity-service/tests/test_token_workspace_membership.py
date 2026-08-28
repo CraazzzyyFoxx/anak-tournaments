@@ -32,36 +32,6 @@ from src.services.auth import auth  # noqa: E402
 from src.services.token_payload import TokenPayloadBuilder, token_payloads  # noqa: E402
 
 
-@pytest.fixture
-def db_session():
-    """Yield a live AsyncSession, or skip the test if the DB is unreachable.
-
-    Mirrors ``test_signup_provisions_player.py``'s ``db_session`` fixture.
-    """
-    from src.core import db as db_module
-
-    async def _probe_and_open():
-        session = db_module.async_session_maker()
-        dbname = (await session.execute(sa.text("select current_database()"))).scalar()
-        return session, dbname
-
-    try:
-        session, dbname = asyncio.run(_probe_and_open())
-    except Exception as exc:  # noqa: BLE001 -- any connect failure => skip, not fail
-        pytest.skip(f"database unreachable: {exc}")
-        return
-
-    if dbname in {"anak_v5", "anak_prod"}:
-        asyncio.run(session.close())
-        pytest.skip("refusing to run integration tests against production")
-        return
-
-    try:
-        yield session
-    finally:
-        asyncio.run(session.close())
-
-
 def test_token_payload_includes_workspace_membership_with_rbac_roles(db_session) -> None:
     """A user who is a member of workspace W (via player_id) gets a
     WorkspaceMembership for W carrying the RBAC role names assigned in that
@@ -141,19 +111,7 @@ class _ExplodingRepo:
         return _fail
 
 
-class _HitCache:
-    def __init__(self, entry: dict) -> None:
-        self.entry = entry
-        self.reads = 0
-        self.writes: list[tuple[int, dict]] = []
-
-    async def get_rbac(self, user_id: int) -> dict:
-        self.reads += 1
-        return self.entry
-
-    async def set_rbac(self, user_id: int, **payload) -> None:
-        self.writes.append((user_id, payload))
-
+from tests._fakes import FakeSessionCache as _HitCache
 
 def test_full_cache_hit_answers_the_whole_payload_without_the_database() -> None:
     """Every component in the entry => zero queries and zero rewrites.

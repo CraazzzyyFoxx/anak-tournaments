@@ -24,6 +24,7 @@ from src.services.rbac_admin import (  # noqa: E402
 )
 from src.services.rbac_policy import rbac_policy  # noqa: E402
 from src.services.sessions import sessions  # noqa: E402
+from tests._fakes import FakeSessionCache as _RecordingCache
 
 
 def _role(
@@ -86,7 +87,7 @@ def _user(
     )
 
 
-class _Result:
+class _AdminResult:
     """Covers the ``Result`` access shapes the repository layer uses: the
     ``BaseRepository`` ``unique().scalars().first()`` load, ``scalar_one()`` for a
     COUNT, ``scalar_one_or_none()`` for an EXISTS probe and the row-tuple
@@ -111,7 +112,7 @@ class _Result:
         return list(self._value or [])
 
 
-class _QueueSession:
+class _AdminQueueSession:
     """Fakes a session whose ``execute``/``scalar`` calls pop from one FIFO of
     canned values, in the repository call order of the flow under test."""
 
@@ -124,7 +125,7 @@ class _QueueSession:
 
     async def execute(self, _query):
         assert self._results, "unexpected execute() call"
-        return _Result(self._results.pop(0))
+        return _AdminResult(self._results.pop(0))
 
     async def scalar(self, _query):
         assert self._results, "unexpected scalar() call"
@@ -145,17 +146,6 @@ class _QueueSession:
 
     async def commit(self) -> None:
         self.commit_called = True
-
-
-class _RecordingCache:
-    """Stands in for the ``session_cache`` singleton, recording every user whose
-    RBAC entry a flow dropped."""
-
-    def __init__(self) -> None:
-        self.invalidated: list[int] = []
-
-    async def invalidate_rbac(self, user_id: int) -> None:
-        self.invalidated.append(user_id)
 
 
 class _RoleGrants:
@@ -543,7 +533,7 @@ def test_list_auth_sessions_route_sorts_and_paginates(monkeypatch: pytest.Monkey
 
 def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _user(9, "grace@example.com", roles=[])
-    session = _QueueSession(results=[user])
+    session = _AdminQueueSession(results=[user])
 
     async def fake_admin_link(link_session, auth_user_id, player_id, is_primary):
         assert link_session is session
@@ -574,7 +564,7 @@ def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkey
 
 def test_remove_linked_player_from_auth_user_route_calls_admin_unlink_service(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _user(9, "grace@example.com", roles=[])
-    session = _QueueSession(results=[user])
+    session = _AdminQueueSession(results=[user])
 
     async def fake_admin_unlink(link_session, auth_user_id, player_id):
         assert link_session is session
@@ -610,7 +600,7 @@ def test_remove_role_route_blocks_removing_last_admin_assignment() -> None:
     grants = _RoleGrants(1)
     service = RoleAdminService(role_grants=grants, cache=_RecordingCache())
     # execute() order in remove_from_user: target user (with roles), then the role.
-    session = _QueueSession(results=[current_user, admin_role])
+    session = _AdminQueueSession(results=[current_user, admin_role])
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
@@ -635,7 +625,7 @@ def test_remove_role_route_allows_admin_removal_when_another_assignment_exists()
     grants = _RoleGrants(2)
     cache = _RecordingCache()
     service = RoleAdminService(role_grants=grants, cache=cache)
-    session = _QueueSession(results=[current_user, admin_role])
+    session = _AdminQueueSession(results=[current_user, admin_role])
 
     asyncio.run(
         service.remove_from_user(
@@ -657,7 +647,7 @@ def test_update_role_route_rejects_system_roles() -> None:
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
             role_admin.update(
-                _QueueSession(results=[system_role]),
+                _AdminQueueSession(results=[system_role]),
                 SimpleNamespace(is_superuser=True),
                 11,
                 SimpleNamespace(name="moderator_v2", description=None, permission_ids=None),
@@ -674,7 +664,7 @@ def test_delete_role_route_rejects_system_roles() -> None:
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
             role_admin.delete(
-                _QueueSession(results=[system_role]),
+                _AdminQueueSession(results=[system_role]),
                 SimpleNamespace(is_superuser=True),
                 12,
             )
@@ -693,7 +683,7 @@ def test_delete_oauth_connection_route_deletes_connection() -> None:
         auth_user=auth_user,
     )
 
-    session = _QueueSession(results=[connection])
+    session = _AdminQueueSession(results=[connection])
 
     asyncio.run(
         auth_user_admin.delete_oauth_connection(
@@ -724,7 +714,7 @@ def test_delete_oauth_connection_route_blocks_last_passwordless_login() -> None:
 
     # execute() order: the connection with its auth user, then the COUNT of the
     # user's remaining connections (1 -> this is the last one).
-    session = _QueueSession(results=[connection, 1])
+    session = _AdminQueueSession(results=[connection, 1])
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
@@ -748,7 +738,7 @@ def test_delete_auth_user_route_deletes_and_invalidates() -> None:
 
     cache = _RecordingCache()
     service = AuthUserAdminService(cache=cache)
-    session = _QueueSession(results=[target])
+    session = _AdminQueueSession(results=[target])
 
     asyncio.run(
         service.delete(
@@ -794,7 +784,7 @@ def test_delete_auth_user_route_raises_not_found() -> None:
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
             auth_user_admin.delete(
-                _QueueSession(results=[None]),
+                _AdminQueueSession(results=[None]),
                 SimpleNamespace(id=1, is_superuser=True),
                 404,
             )
@@ -831,7 +821,7 @@ def test_create_role_route_blocks_granting_permissions_the_actor_lacks() -> None
     )
     # Repository order in create: name-uniqueness probe via scalar(), then the
     # requested permissions via execute().
-    session = _QueueSession(results=[None, [permission]])
+    session = _AdminQueueSession(results=[None, [permission]])
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
@@ -855,7 +845,7 @@ def test_assign_role_route_requires_workspace_membership() -> None:
     target = SimpleNamespace(id=9, username="grace", email="grace@example.com", roles=[])
     role = _role(5, "Referees", is_system=False, workspace_id=7)
     # execute(): target user, then the role; scalar(): the membership EXISTS probe.
-    session = _QueueSession(results=[target, role, None])
+    session = _AdminQueueSession(results=[target, role, None])
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
@@ -879,7 +869,7 @@ def test_remove_role_route_blocks_removing_last_workspace_owner() -> None:
     target = _user(9, "grace@example.com", roles=[owner_role])
     # execute(): target user, the role, then the workspace owner role lookup;
     # scalar(): "target holds owner", then the owner tally (1 -> the last one).
-    session = _QueueSession(results=[target, owner_role, owner_role, True, 1])
+    session = _AdminQueueSession(results=[target, owner_role, owner_role, True, 1])
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(

@@ -18,7 +18,6 @@ import sys
 import uuid
 from pathlib import Path
 
-import pytest
 import sqlalchemy as sa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -27,39 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from shared.models.identity.user import User  # noqa: E402
 from src.schemas.auth import UserRegister  # noqa: E402
 from src.services.auth import auth  # noqa: E402
-
-
-@pytest.fixture
-def db_session():
-    """Yield a live AsyncSession, or skip the test if the DB is unreachable.
-
-    Probes with ``select current_database()`` (mirrors
-    ``backend/app-service/tests/conftest.py``'s ``rpc`` fixture) and hard-guards
-    against ever running against a production database.
-    """
-
-    from src.core import db as db_module
-
-    async def _probe_and_open():
-        session = db_module.async_session_maker()
-        dbname = (await session.execute(sa.text("select current_database()"))).scalar()
-        return session, dbname
-
-    try:
-        session, dbname = asyncio.run(_probe_and_open())
-    except Exception as exc:  # noqa: BLE001 — any connect failure => skip, not fail
-        pytest.skip(f"database unreachable: {exc}")
-        return
-
-    if dbname in {"anak_v5", "anak_prod"}:
-        asyncio.run(session.close())
-        pytest.skip("refusing to run integration tests against production")
-        return
-
-    try:
-        yield session
-    finally:
-        asyncio.run(session.close())
 
 
 def test_register_provisions_players_user(db_session) -> None:

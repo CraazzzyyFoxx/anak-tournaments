@@ -20,6 +20,7 @@ from src.services.security import token_codec  # noqa: E402
 from src.services.session_cache import session_cache  # noqa: E402
 from src.services.sessions import RefreshTokenService, refresh_tokens, sessions  # noqa: E402
 from tests._fakes import FakeExecuteResult as _FakeExecuteResult  # noqa: E402
+from tests._fakes import FakeSessionCache as _RecordingCache  # noqa: E402
 
 
 class _FakeSession:
@@ -36,18 +37,6 @@ class _FakeSession:
 
     async def commit(self) -> None:
         self.commit_calls += 1
-
-
-class _RecordingCache:
-    def __init__(self) -> None:
-        self.blacklisted: list[tuple[str, int]] = []
-
-    async def blacklist_session(self, session_id: str, ttl_seconds: int) -> None:
-        self.blacklisted.append((session_id, ttl_seconds))
-
-    async def blacklist_sessions(self, session_ids: set[str], ttl_seconds: int) -> None:
-        for session_id in sorted(session_ids):
-            await self.blacklist_session(session_id, ttl_seconds)
 
 
 class _FakeTokenRepo:

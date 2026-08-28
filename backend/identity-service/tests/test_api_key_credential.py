@@ -42,6 +42,10 @@ from src.services.auth_users import auth_users  # noqa: E402
 from src.services.token_validation import token_validation  # noqa: E402
 from tests._fakes import make_auth_user as _owner  # noqa: E402
 from tests._fakes import make_workspace as _workspace  # noqa: E402
+from tests._fakes import CapturingBroker as _CapturingBroker  # noqa: E402
+from tests._fakes import FakeSessionMaker as _SessionMaker  # noqa: E402
+from tests._fakes import SilentLogger as _SilentLogger  # noqa: E402
+from tests._fakes import handler as _handler  # noqa: E402
 
 _PUBLIC_ID = "publicid"
 _SECRET = "secret-token"
@@ -120,47 +124,6 @@ class _FakeSession:
 
     async def commit(self) -> None:
         self.commit_calls += 1
-
-
-class _SessionMaker:
-    """Stands in for ``db.async_session_maker``: one session, no engine."""
-
-    def __init__(self, session: _FakeSession) -> None:
-        self._session = session
-
-    def __call__(self) -> _SessionMaker:
-        return self
-
-    async def __aenter__(self) -> _FakeSession:
-        return self._session
-
-    async def __aexit__(self, *_exc) -> bool:
-        return False
-
-
-class _CapturingBroker:
-    """Collects each subscriber under its queue name so a test can call it."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject: str):
-        def decorator(function):
-            self.handlers[subject] = function
-            return function
-
-        return decorator
-
-
-class _SilentLogger:
-    def exception(self, *_args, **_kwargs) -> None:
-        return None
-
-
-def _handler(module, subject: str):
-    broker = _CapturingBroker()
-    module.register(broker, _SilentLogger())
-    return broker.handlers[subject]
 
 
 def _key_info(api_key_id: int = 123) -> schemas.TokenApiKeyInfo:

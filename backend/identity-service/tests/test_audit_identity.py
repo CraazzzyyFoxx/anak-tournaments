@@ -31,6 +31,7 @@ from shared.models.platform.audit import AuditLog  # noqa: E402
 from src import models, schemas  # noqa: E402
 from src.services.api_keys import ApiKeyService, api_keys  # noqa: E402
 from src.services.rbac_admin import PermissionDenyService, RoleAdminService  # noqa: E402
+from tests._fakes import FakeSessionCache as _NoopCache  # noqa: E402
 from tests._fakes import make_auth_user as _api_actor  # noqa: E402
 
 _SECRET = "secret-token"
@@ -133,14 +134,6 @@ class _EventSession:
         if not self._results:
             raise AssertionError("unexpected scalar() call")
         return self._results.pop(0)
-
-
-class _NoopCache:
-    """Stands in for the ``session_cache`` singleton: these tests assert on the
-    journal, not on Redis."""
-
-    async def invalidate_rbac(self, _user_id: int) -> None:
-        return None
 
 
 def _audit_rows(session: _EventSession) -> list[AuditLog]:
