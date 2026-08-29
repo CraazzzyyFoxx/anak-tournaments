@@ -14,13 +14,6 @@ export const RANK_SOURCE_LABELS: Record<RankSource, string> = {
  * One row of a mix lineup, self-describing so the lineup never has to guess a
  * name from a separately paginated pool query.
  *
- * `is_active` is the bench switch: a benched row keeps its role order but is
- * skipped when the mix is balanced. `roles` is the ordered role list — position
- * is the balancer's role priority, and `null` means "every role this player has
- * a rank for". `must_play` guarantees this player a seat when the active
- * lineup does not divide evenly into full teams: the balancer trims the
- * leftover from the un-flagged players first.
- *
  * Ranks come from three layers and the row carries enough to tell them apart:
  * `ranks` is what balance will actually use, `rank_sources` says which layer won
  * (this host's own book > the workspace canon > Overwatch), and `author_ranks`
@@ -28,19 +21,30 @@ export const RANK_SOURCE_LABELS: Record<RankSource, string> = {
  * inherited value for their own. There is deliberately no per-mix pin: a rank
  * that only existed inside one mix was invisible everywhere else it mattered.
  */
+/** Where a lineup row stands: one field, three states, no impossible pair. */
+export type MixParticipation = "must_play" | "pool" | "benched";
+
+/**
+ * How `roles` is read. `all_ranked` means the server derives the playable roles
+ * from whatever this row is ranked for (`roles` is `null`); `explicit` means
+ * `roles` is the host's own ordered list -- an empty list included, which is
+ * "plays nothing" rather than "plays everything".
+ */
+export type MixRoleSelectionMode = "all_ranked" | "explicit";
+
 export type CustomGamePlayer = {
   id: number;
   workspace_member_id: number;
   display_name: string | null;
   battle_tag: string | null;
-  team_index: number | null;
   sort_order: number;
-  is_active: boolean;
-  must_play: boolean;
+  participation: MixParticipation;
+  role_selection_mode: MixRoleSelectionMode;
   /** Every role this row has a rank for is treated as equally preferred by
    * the solver, so `roles`'s order stops mattering as a priority hint --
    * mirrors the tournament balancer's flex flag (`Player.is_flex`). */
   is_flex: boolean;
+  /** `null` only when `role_selection_mode === "all_ranked"`. */
   roles: string[] | null;
   ranks: Record<string, number>;
   rank_sources: Record<string, RankSource>;
@@ -50,18 +54,31 @@ export type CustomGamePlayer = {
 export type CustomGameStatus = "draft" | "balanced" | "completed" | "cancelled";
 
 /**
- * How a mix ended. `winner` is a 1-based team number, `null` a draw — the same
- * free-form dict `record_outcome` stores, narrowed to the only shape this app
- * writes so a reader never has to guess between `winner: 0` and "no winner".
+ * How a match ended. `winner` is a 1-based team number, `null` a draw.
  */
 export type CustomGameOutcome = {
-  winner: number | null;
+  winner: 1 | 2 | null;
 };
 
 /** A workspace member with the same write access as the mix's host. */
 export type CustomGameCoHost = {
   user_id: number;
+  workspace_member_id: number;
   display_name: string | null;
+};
+
+/**
+ * The mix's own settings. Each one is a stored fact with its own type -- there
+ * is no config blob to parse, and no key that can silently mean two things.
+ */
+export type CustomGameSettings = {
+  points_per_win: number | null;
+  /** Host overrides keyed by 0-based team index. Absent index = computed default. */
+  team_names: Record<string, string>;
+  /** The mix's own roster shape override; `null` inherits the workspace default. */
+  role_mask: RosterSlotMap | null;
+  /** Validated solver overrides; `null` means the solver defaults. */
+  balancer_config: Record<string, unknown> | null;
 };
 
 export type CustomGame = {
@@ -72,25 +89,23 @@ export type CustomGame = {
   co_hosts: CustomGameCoHost[];
   host_display_name: string | null;
   name: string;
-  status: CustomGameStatus | string;
-  config_json: Record<string, unknown> | null;
-  result_json: unknown;
-  outcome_json: unknown;
+  status: CustomGameStatus;
+  settings: CustomGameSettings;
+  /** The solver's own document for the last balance, or `null` before one. */
+  balance_result: unknown;
   created_at: string | null;
   /**
-   * The mix's resolved team composition -- own `config_json.role_mask`
-   * override, else the workspace default, else the built-in Overwatch 5v5
-   * shape. Optional only for older cached rows read before this field
-   * shipped; every fresh response carries it.
+   * The mix's resolved team composition -- own `settings.role_mask` override,
+   * else the workspace default, else the built-in Overwatch 5v5 shape.
    */
-  roster_shape?: RosterShape | null;
+  roster_shape: RosterShape | null;
   players?: CustomGamePlayer[];
 };
 
 /**
  * One match recorded by `recordOutcome`, as it comes back from the permanent
- * `casual.match` log rather than the mix's own mutable `outcome_json`. `winner`
- * is derived server-side from the scoreline, the same 1-based/`null` shape as
+ * `casual.match` log -- the only record of a played match. `winner` is derived
+ * server-side from the scoreline, the same 1-based/`null` shape as
  * `CustomGameOutcome`.
  */
 export type CustomGameMatch = {
@@ -109,10 +124,15 @@ export type CustomGameMatch = {
 
 /** Patch semantics: an omitted key is left untouched on the server. */
 export type CustomGamePlayerPatch = {
-  is_active?: boolean;
+  participation?: MixParticipation;
   roles?: string[] | null;
-  must_play?: boolean;
   is_flex?: boolean;
+};
+
+/** One row of a whole-lineup participation write. */
+export type CustomGameParticipationEntry = {
+  workspace_member_id: number;
+  participation: MixParticipation;
 };
 
 /** A pool member's fairness-rotation verdict for the next map, from `rotation`. */
@@ -121,7 +141,7 @@ export type RotationStatus = "must_play" | "should_rest" | "neutral";
 /**
  * One roster row's rotation-fairness read, computed server-side from this
  * mix's own map history (see `mix_rotation.recommend_rotation`). Read-only --
- * a host acts on it through the existing `is_active`/`must_play` toggles.
+ * a host acts on it through the same `participation` field.
  */
 export type RotationRecommendation = {
   workspace_member_id: number;
@@ -177,6 +197,22 @@ export const customGameService = {
     ).then((r) => r.json());
   },
 
+  /**
+   * One request for a whole-lineup move (the rotation hint applies several rows
+   * at once). Atomic server-side, so there is no half-applied verdict and no
+   * race between per-row responses.
+   */
+  setParticipation(
+    workspaceId: number,
+    gameId: number,
+    players: CustomGameParticipationEntry[],
+  ): Promise<CustomGame> {
+    return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/players`, {
+      method: "PUT",
+      body: { players },
+    }).then((r) => r.json());
+  },
+
   balance(workspaceId: number, gameId: number): Promise<CustomGame> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/balance`, {
       method: "POST",
@@ -198,7 +234,7 @@ export const customGameService = {
   ): Promise<CustomGame> {
     return apiFetch(`/api/balancer/workspaces/${workspaceId}/custom-games/${gameId}/outcome`, {
       method: "POST",
-      body: { outcome_json: outcome, variant_index: variantIndex, map_id: mapId },
+      body: { outcome, variant_index: variantIndex, map_id: mapId },
     }).then((r) => r.json());
   },
 

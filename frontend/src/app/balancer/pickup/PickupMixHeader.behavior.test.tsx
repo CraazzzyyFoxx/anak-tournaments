@@ -38,9 +38,7 @@ function game(overrides: Partial<CustomGame> = {}): CustomGame {
     host_display_name: "Host",
     name: "Thursday scrim",
     status: "balanced",
-    config_json: null,
-    result_json: null,
-    outcome_json: null,
+    balance_result: null,
     created_at: "2026-01-01T00:00:00Z",
     ...overrides,
   };

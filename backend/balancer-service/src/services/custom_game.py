@@ -8,7 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import http_status as status
-from shared.core.enums import HeroClass
+from shared.core.enums import (
+    CasualTeamSide,
+    HeroClass,
+    MixParticipation,
+    MixRoleSelectionMode,
+    MixStatus,
+)
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.domain.roster_shape import resolve_roster_shape
@@ -16,14 +22,23 @@ from shared.repository import (
     CasualMatchRepository,
     CasualPlayerRepository,
     CasualTeamRepository,
+    CustomGameCoHostRepository,
     CustomGamePlayerRepository,
+    CustomGamePlayerRoleRepository,
     CustomGameRepository,
+    CustomGameRoleSlotRepository,
+    CustomGameTeamNameRepository,
 )
 from shared.schemas.roster_slots import RosterShapeRead, normalize_roster_slots
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER, MemberRankService, member_rank_service
 from shared.services.roster_shape_access import get_workspace_roster_slots
-from shared.services.workspace_roster import RosterMember, hosts_by_user_id, list_roster
+from shared.services.workspace_roster import (
+    RosterMember,
+    hosts_by_user_id,
+    list_roster,
+    workspace_members_by_user_id,
+)
 from src.domain.mix_rotation import PlayerHistory, RotationRecommendation, recommend_rotation, rotation_priority
 from src.services.balancer.config.public_contract import normalize_config_overrides
 from src.services.balancer.role_naming import role_slot_code
@@ -31,8 +46,7 @@ from src.services.balancer.solver import run_mix_balance as _run_balance
 
 __all__ = ("CustomGameService", "custom_game_service")
 
-_TERMINAL = frozenset({"completed", "cancelled"})
-_CONFIG_ONLY = frozenset({"role_mask", "team_count", "team_names", "points_per_win"})
+_TERMINAL = frozenset({MixStatus.COMPLETED, MixStatus.CANCELLED})
 #: Plenty for any pickup mix (2-3 teams in practice); guards against a
 #: malformed payload turning into an unbounded dict.
 _MAX_TEAMS = 8
@@ -46,7 +60,7 @@ _MAX_TEAM_NAME_LEN = 60
 _MAX_POINTS_PER_WIN = 1000
 #: A roster row owns only its lineup state. A rank correction goes into the
 #: host's own layer of ``member_rank``, so it outlives the game it was made in.
-_PLAYER_PATCH_FIELDS = frozenset({"is_active", "roles", "must_play", "is_flex"})
+_PLAYER_PATCH_FIELDS = frozenset({"participation", "roles", "is_flex"})
 
 
 def _require_host(actor_user_id: int, host_user_id: int | None) -> None:
@@ -54,15 +68,21 @@ def _require_host(actor_user_id: int, host_user_id: int | None) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the host can write this pool")
 
 
-def _is_writer(actor_user_id: int, game: models.CustomGame) -> bool:
-    return actor_user_id == game.host_user_id or actor_user_id in (game.co_host_user_ids or ())
+def _new_roster_row(game_id: int, member_id: int, sort_order: int) -> models.CustomGamePlayer:
+    """A pool row with its lineup state spelled out.
 
-
-def _require_writer(actor_user_id: int, game: models.CustomGame) -> None:
-    if not _is_writer(actor_user_id, game):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Only the host or a co-host can write this pool"
-        )
+    The column defaults say the same thing, but they only land at INSERT time --
+    an object read back before its flush would carry ``None`` where the whole
+    point of this feature is that a row always has exactly one participation.
+    """
+    return models.CustomGamePlayer(
+        custom_game_id=game_id,
+        workspace_member_id=member_id,
+        sort_order=sort_order,
+        participation=MixParticipation.POOL,
+        role_selection_mode=MixRoleSelectionMode.ALL_RANKED,
+        is_flex=False,
+    )
 
 
 def _noop_progress(*_args: Any, **_kwargs: Any) -> None:
@@ -137,19 +157,7 @@ def _normalize_team_names(raw: Mapping[str, Any]) -> dict[str, str | None]:
 
 
 def _apply_balance_result(roster: Sequence[models.CustomGamePlayer], result: Any) -> None:
-    """Sync the roster to the applied balance option: seat placement and who sat out.
-
-    Runs after every :meth:`CustomGameService.balance` call, against
-    ``variants[0]`` -- the option the roster's ``team_index`` always tracks. A
-    player the solver could not seat (an uneven leftover trimmed by
-    ``runtime._prepare_balance_context``, or a structural role gap) is switched
-    off exactly like a host manually benching them, so the lineup reflects the
-    result immediately instead of requiring the host to toggle each one off by
-    hand.
-    """
-    by_uuid = {str(row.workspace_member_id): row for row in roster}
-    for row in roster:
-        row.team_index = None
+    """Bench only the overflow rows explicitly returned by the solver."""
     payload = result
     if isinstance(result, dict):
         variants = result.get("variants")
@@ -158,39 +166,17 @@ def _apply_balance_result(roster: Sequence[models.CustomGamePlayer], result: Any
     if not isinstance(payload, dict):
         return
 
-    teams = payload.get("teams")
-    if isinstance(teams, list):
-        for index, team in enumerate(teams):
-            if not isinstance(team, dict):
-                continue
-            slots = team.get("roster")
-            groups: list[Any]
-            if isinstance(slots, dict):
-                groups = list(slots.values())
-            elif isinstance(slots, list):
-                groups = [slots]
-            else:
-                continue
-            for group in groups:
-                if not isinstance(group, list):
-                    continue
-                for player in group:
-                    if not isinstance(player, dict):
-                        continue
-                    uuid = player.get("uuid")
-                    row = by_uuid.get(str(uuid)) if uuid is not None else None
-                    if row is not None:
-                        row.team_index = index
-
+    by_uuid = {str(row.workspace_member_id): row for row in roster}
     benched = payload.get("benched_players")
-    if isinstance(benched, list):
-        for player in benched:
-            if not isinstance(player, dict):
-                continue
-            uuid = player.get("uuid")
-            row = by_uuid.get(str(uuid)) if uuid is not None else None
-            if row is not None:
-                row.is_active = False
+    if not isinstance(benched, list):
+        return
+    for player in benched:
+        if not isinstance(player, dict):
+            continue
+        uuid = player.get("uuid")
+        row = by_uuid.get(str(uuid)) if uuid is not None else None
+        if row is not None:
+            row.participation = MixParticipation.BENCHED
 
 
 def _locate_seat(teams: Sequence[Mapping[str, Any]], uuid: str) -> tuple[int, str, int] | None:
@@ -274,22 +260,32 @@ class CustomGameService:
         *,
         games: CustomGameRepository = CustomGameRepository(),
         roster: CustomGamePlayerRepository = CustomGamePlayerRepository(),
+        co_hosts: CustomGameCoHostRepository = CustomGameCoHostRepository(),
+        player_roles: CustomGamePlayerRoleRepository = CustomGamePlayerRoleRepository(),
+        team_names: CustomGameTeamNameRepository = CustomGameTeamNameRepository(),
+        role_slots: CustomGameRoleSlotRepository = CustomGameRoleSlotRepository(),
         casual_matches: CasualMatchRepository = CasualMatchRepository(),
         casual_teams: CasualTeamRepository = CasualTeamRepository(),
         casual_players: CasualPlayerRepository = CasualPlayerRepository(),
         ranks: MemberRankService | None = None,
         load_roster=list_roster,
         load_hosts=hosts_by_user_id,
+        load_host_members=workspace_members_by_user_id,
         run_balance=_run_balance,
     ) -> None:
         self.games = games
         self.roster = roster
+        self.co_hosts = co_hosts
+        self.player_roles = player_roles
+        self.team_names = team_names
+        self.role_slots = role_slots
         self.casual_matches = casual_matches
         self.casual_teams = casual_teams
         self.casual_players = casual_players
         self.ranks = ranks if ranks is not None else member_rank_service
         self.load_roster = load_roster
         self.load_hosts = load_hosts
+        self.load_host_members = load_host_members
         self.run_balance = run_balance
 
     async def members(
@@ -337,7 +333,18 @@ class CustomGameService:
         self, session: AsyncSession, *, workspace_id: int, custom_game_id: int, actor_user_id: int
     ) -> models.CustomGame:
         game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
-        _require_writer(actor_user_id, game)
+        if actor_user_id != game.host_user_id:
+            member_ids = await self.load_host_members(
+                session,
+                workspace_id=workspace_id,
+                user_ids=[actor_user_id],
+            )
+            co_host_ids = await self.co_hosts.member_ids_for_game(session, game.id)
+            if member_ids.get(actor_user_id) not in co_host_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only the host or a co-host can write this pool",
+                )
         if game.status in _TERMINAL:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Game is {game.status}")
         return game
@@ -397,7 +404,7 @@ class CustomGameService:
         name: str,
         actor_user_id: int,
         member_ids: Sequence[int] = (),
-        config_json: Mapping[str, Any] | None = None,
+        balancer_config: Mapping[str, Any] | None = None,
     ) -> models.CustomGame:
         _require_host(actor_user_id, host_user_id)
         trimmed = name.strip() if isinstance(name, str) else ""
@@ -409,14 +416,13 @@ class CustomGameService:
             workspace_id=workspace_id,
             host_user_id=host_user_id,
             name=trimmed,
-            status="draft",
-            config_json=dict(config_json) if config_json is not None else None,
+            status=MixStatus.DRAFT,
+            balancer_config_json=(
+                normalize_config_overrides(balancer_config) if balancer_config else None
+            ),
         )
         await self.games.create(session, game)
-        rows = [
-            models.CustomGamePlayer(custom_game_id=game.id, workspace_member_id=item, sort_order=index)
-            for index, item in enumerate(ids)
-        ]
+        rows = [_new_roster_row(game.id, item, index) for index, item in enumerate(ids)]
         if rows:
             await self.roster.create_many(session, rows)
         await self._seed_host_ranks(session, game, members)
@@ -451,11 +457,7 @@ class CustomGameService:
         for index, member_id in enumerate(ids):
             row = existing.get(member_id)
             if row is None:
-                created.append(
-                    models.CustomGamePlayer(
-                        custom_game_id=game.id, workspace_member_id=member_id, sort_order=index
-                    )
-                )
+                created.append(_new_roster_row(game.id, member_id, index))
             else:
                 row.sort_order = index
         if created:
@@ -478,12 +480,7 @@ class CustomGameService:
         patch: Mapping[str, Any],
         actor_user_id: int,
     ) -> models.CustomGame:
-        """Patch one roster row: ``is_active``, ``roles``, ``must_play``, and/or ``is_flex``.
-
-        A patch, not a replace: an absent key is left alone, so the bench switch,
-        the role order and the "must play" pin are independently settable from
-        separate controls.
-        """
+        """Patch one roster row's participation, role selection and flex mode."""
         unknown = sorted(set(patch) - _PLAYER_PATCH_FIELDS)
         if unknown:
             raise HTTPException(
@@ -496,30 +493,69 @@ class CustomGameService:
         row = next((item for item in roster if item.workspace_member_id == workspace_member_id), None)
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom game player not found")
-        if "is_active" in patch:
-            row.is_active = bool(patch["is_active"])
+        if "participation" in patch:
+            try:
+                row.participation = MixParticipation(patch["participation"])
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="invalid participation",
+                ) from exc
         if "roles" in patch:
-            row.roles_json = _normalize_roles(patch["roles"])
-        if "must_play" in patch:
-            row.must_play = bool(patch["must_play"])
+            roles = _normalize_roles(patch["roles"])
+            row.role_selection_mode = (
+                MixRoleSelectionMode.ALL_RANKED
+                if roles is None
+                else MixRoleSelectionMode.EXPLICIT
+            )
+            await self.player_roles.replace_for_player(session, row.id, roles or ())
         if "is_flex" in patch:
-            row.is_flex = bool(patch["is_flex"])
+            if not isinstance(patch["is_flex"], bool):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="is_flex must be a boolean",
+                )
+            row.is_flex = patch["is_flex"]
+        await session.flush()
+        return game
+
+    async def set_participation(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        participation: Mapping[int, MixParticipation],
+        actor_user_id: int,
+    ) -> models.CustomGame:
+        """Move several roster rows between lineup states atomically.
+
+        The rotation hint applies a whole verdict at once. One transaction, one
+        snapshot: applying it row by row raced on whose response the client
+        saw last, and left the lineup mid-verdict if one call failed.
+        """
+        game = await self._writable(
+            session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
+        )
+        rows = {row.workspace_member_id: row for row in await self.roster.list_for_game(session, game.id)}
+        if not set(participation) <= set(rows):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom game player not found")
+        for member_id, state in participation.items():
+            rows[member_id].participation = state
         await session.flush()
         return game
 
     async def roster_shape(
-        self, session: AsyncSession, *, workspace_id: int, config_json: Mapping[str, Any] | None
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
     ) -> RosterShapeRead:
-        """The mix's resolved roster shape, projected the same way a tournament's is.
-
-        Own override (``config_json['role_mask']``) -> workspace default ->
-        built-in Overwatch 5v5, via the same :func:`resolve_roster_shape` a
-        tournament resolves against -- so a workspace-wide roster preset reaches
-        every mix run in it too, not only tournament team formation.
-        """
-        role_mask = (config_json or {}).get("role_mask")
+        """Resolve the mix override, workspace default, then built-in shape."""
+        role_mask = await self.role_slots.mapping_for_game(session, custom_game_id)
         workspace_slots = await get_workspace_roster_slots(session, workspace_id)
-        shape = resolve_roster_shape(role_mask, workspace_slots)
+        shape = resolve_roster_shape(role_mask or None, workspace_slots)
         source = "tournament" if role_mask else "workspace" if workspace_slots else "default"
         return RosterShapeRead.from_shape(shape, source=source)
 
@@ -535,13 +571,13 @@ class CustomGameService:
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
         roster = list(await self.roster.list_for_game(session, game.id))
-        lineup = [row for row in roster if row.is_active]
+        lineup = [row for row in roster if row.participation != MixParticipation.BENCHED]
         if not lineup:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="empty_lineup")
         # If the lineup does not divide evenly into full teams, `run_balance`'s own
         # overflow trim (`domain.balancer.runtime._prepare_balance_context`) benches
-        # whoever has the lowest `Player.rotation_priority` among the non-`must_play`
-        # players -- reusing the same fairness rank the "Apply rotation hints" button
+        # whoever has the lowest `Player.rotation_priority` among the players not
+        # pinned to a seat -- reusing the same fairness rank the "Apply rotation hints" button
         # reads, computed here and carried through as one number per player, since
         # `player_loader.load_players_from_dict` sorts its input by uuid and would
         # otherwise discard any ordering placed on `lineup` itself. Left at every
@@ -562,12 +598,25 @@ class CustomGameService:
             author_user_id=game.host_user_id,
             grid=await get_effective_division_grid(session, None),
         )
+        explicit_roles = await self.player_roles.roles_for_players(
+            session,
+            [
+                row.id
+                for row in lineup
+                if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
+            ],
+        )
         player_nodes: dict[str, Any] = {}
         for row in lineup:
             member = members[row.workspace_member_id]
             classes: dict[str, Any] = {}
-            # Role order is the priority the host set; an unlisted role is not played.
-            for priority, role in enumerate(row.roles_json or REGISTRATION_ROLE_CODES, start=1):
+            role_order = (
+                explicit_roles.get(row.id, [])
+                if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
+                else REGISTRATION_ROLE_CODES
+            )
+            # An explicit empty list means no playable role; it never falls back.
+            for priority, role in enumerate(role_order, start=1):
                 ranked = resolved.get((member.member_id, role))
                 if ranked is None or ranked.value is None:
                     continue
@@ -578,18 +627,22 @@ class CustomGameService:
                 "identity": {
                     "name": member.display_name or member.battle_tag or f"player-{member.member_id}",
                     "isFullFlex": row.is_flex,
-                    "mustPlay": row.must_play,
+                    "mustPlay": row.participation == MixParticipation.MUST_PLAY,
                     "rotationPriority": rotation_priority(histories_by_member[row.workspace_member_id]),
                 },
                 "stats": {"classes": classes},
             }
-        config = game.config_json or {}
-        role_mask = (await self.roster_shape(session, workspace_id=workspace_id, config_json=config)).slots
-        config_overrides = {key: value for key, value in config.items() if key not in _CONFIG_ONLY}
+        role_mask = (
+            await self.roster_shape(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=game.id,
+            )
+        ).slots
         try:
             result = await self.run_balance(
                 {"players": player_nodes},
-                config_overrides or None,
+                game.balancer_config_json,
                 _noop_progress,
                 role_mask,
             )
@@ -600,9 +653,9 @@ class CustomGameService:
             # apart from a real bug and reports "internal error" -- hiding the
             # actual, actionable reason from the host.
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-        game.result_json = result
+        game.balance_result_json = result
         _apply_balance_result(roster, result)
-        game.status = "balanced"
+        game.status = MixStatus.BALANCED
         await session.flush()
         return game
 
@@ -632,18 +685,8 @@ class CustomGameService:
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
         patch = _normalize_team_names(team_names)
-        config = dict(game.config_json or {})
-        merged = dict(config.get("team_names") or {})
         for index, value in patch.items():
-            if value is None:
-                merged.pop(index, None)
-            else:
-                merged[index] = value
-        if merged:
-            config["team_names"] = merged
-        else:
-            config.pop("team_names", None)
-        game.config_json = config or None
+            await self.team_names.set(session, game.id, int(index), value)
         await session.flush()
         return game
 
@@ -669,13 +712,7 @@ class CustomGameService:
             normalized = normalize_roster_slots(role_mask)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-        config = dict(game.config_json or {})
-        if normalized is None:
-            config.pop("role_mask", None)
-        else:
-            config["role_mask"] = normalized
-        game.config_json = config or None
-        await session.flush()
+        await self.role_slots.replace(session, game.id, normalized)
         return game
 
     async def set_points_per_win(
@@ -708,12 +745,7 @@ class CustomGameService:
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=f"points_per_win must be between 0 and {_MAX_POINTS_PER_WIN}",
                 )
-        config = dict(game.config_json or {})
-        if not points_per_win:
-            config.pop("points_per_win", None)
-        else:
-            config["points_per_win"] = points_per_win
-        game.config_json = config or None
+        game.points_per_win = points_per_win or None
         await session.flush()
         return game
 
@@ -726,25 +758,12 @@ class CustomGameService:
         balancer_config: Mapping[str, Any] | None,
         actor_user_id: int,
     ) -> models.CustomGame:
-        """Patch the mix's own balancer algorithm overrides, or clear them back to the solver defaults.
-
-        ``None``/``{}`` clears every override, the same "own value or inherit"
-        split ``set_role_mask``/``set_points_per_win`` already use. A provided
-        mapping goes through the same ``ConfigOverrides`` schema a saved
-        tournament config is validated against (``normalize_config_overrides``),
-        so an unknown or malformed key is dropped rather than reaching the
-        solver. The result replaces every non-reserved key of ``config_json``
-        wholesale: ``_CONFIG_ONLY`` (this mix's own knobs, not the solver's) is
-        preserved untouched, and everything else is exactly what ``balance``
-        forwards to ``run_balance`` as ``config_overrides``.
-        """
+        """Replace the mix's validated solver overrides."""
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
         normalized = normalize_config_overrides(balancer_config) if balancer_config else {}
-        config = {key: value for key, value in (game.config_json or {}).items() if key in _CONFIG_ONLY}
-        config.update(normalized)
-        game.config_json = config or None
+        game.balancer_config_json = normalized or None
         await session.flush()
         return game
 
@@ -757,31 +776,22 @@ class CustomGameService:
         new_host_user_id: int,
         actor_user_id: int,
     ) -> models.CustomGame:
-        """Hand primary ownership of the mix to another workspace member.
-
-        Any current writer -- the host or a co-host -- may do this, and only
-        while the mix is still writable -- same gate every other write here
-        uses (``_require_writer``). The new host is deduped out of
-        ``co_host_user_ids`` if they were already listed there, so nobody is
-        simultaneously the primary host and a co-host of themselves. Existing
-        co-hosts are otherwise untouched: this only ever moves the one
-        ``host_user_id`` slot, a caller who is not already a co-host still
-        loses write access on their very next call here after handing it off.
-        ``hosts`` is reused as the membership check: an id it cannot resolve
-        to a display name is not a member of this workspace.
-        """
+        """Transfer primary ownership to a signed-in member of this workspace."""
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
         if new_host_user_id == game.host_user_id:
             return game
-        names = await self.hosts(session, workspace_id, [new_host_user_id])
-        if new_host_user_id not in names:
+        members = await self.load_host_members(
+            session,
+            workspace_id=workspace_id,
+            user_ids=[new_host_user_id],
+        )
+        member_id = members.get(new_host_user_id)
+        if member_id is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
         game.host_user_id = new_host_user_id
-        if game.co_host_user_ids and new_host_user_id in game.co_host_user_ids:
-            game.co_host_user_ids = [uid for uid in game.co_host_user_ids if uid != new_host_user_id] or None
-        await session.flush()
+        await self.co_hosts.remove(session, game.id, member_id)
         return game
 
     async def add_co_host(
@@ -793,34 +803,29 @@ class CustomGameService:
         co_host_user_id: int,
         actor_user_id: int,
     ) -> models.CustomGame:
-        """Grant another workspace member the same write access as the host.
-
-        Any current writer -- the host or an existing co-host -- may extend
-        the list; there is no separate "manage co-hosts" grant, matching
-        ``_require_writer``. The primary host is never listed here (they are
-        ``host_user_id``), so re-adding them is a no-op rather than a
-        duplicate entry, and so is re-adding an id already present. Capped at
-        ``_MAX_CO_HOSTS``: plenty for any pickup mix, guards a malformed
-        payload from growing the list without bound.
-        """
+        """Grant a signed-in workspace member co-host write access."""
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
         if co_host_user_id == game.host_user_id:
             return game
-        current = list(game.co_host_user_ids or ())
-        if co_host_user_id in current:
-            return game
-        names = await self.hosts(session, workspace_id, [co_host_user_id])
-        if co_host_user_id not in names:
+        members = await self.load_host_members(
+            session,
+            workspace_id=workspace_id,
+            user_ids=[co_host_user_id],
+        )
+        member_id = members.get(co_host_user_id)
+        if member_id is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
+        current = await self.co_hosts.member_ids_for_game(session, game.id)
+        if member_id in current:
+            return game
         if len(current) >= _MAX_CO_HOSTS:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"A mix can have at most {_MAX_CO_HOSTS} co-hosts",
             )
-        game.co_host_user_ids = [*current, co_host_user_id]
-        await session.flush()
+        await self.co_hosts.add(session, game.id, member_id)
         return game
 
     async def remove_co_host(
@@ -832,20 +837,22 @@ class CustomGameService:
         co_host_user_id: int,
         actor_user_id: int,
     ) -> models.CustomGame:
-        """Revoke a co-host's write access -- including the caller's own, a self-service "leave".
-
-        Removing an id that is not currently a co-host is a no-op rather than
-        a 404: the caller's intent ("this id should not be a co-host") is
-        already satisfied.
-        """
+        """Revoke co-host access, including a co-host removing themselves."""
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
-        current = list(game.co_host_user_ids or ())
-        if co_host_user_id not in current:
+        members = await self.load_host_members(
+            session,
+            workspace_id=workspace_id,
+            user_ids=[co_host_user_id],
+        )
+        member_id = members.get(co_host_user_id)
+        if member_id is None:
             return game
-        game.co_host_user_ids = [uid for uid in current if uid != co_host_user_id] or None
-        await session.flush()
+        current = await self.co_hosts.member_ids_for_game(session, game.id)
+        if member_id not in current:
+            return game
+        await self.co_hosts.remove(session, game.id, member_id)
         return game
 
     async def swap_seats(
@@ -874,7 +881,11 @@ class CustomGameService:
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
-        result = copy.deepcopy(game.result_json) if isinstance(game.result_json, dict) else None
+        result = (
+            copy.deepcopy(game.balance_result_json)
+            if isinstance(game.balance_result_json, dict)
+            else None
+        )
         variants = result.get("variants") if isinstance(result, dict) else None
         if not isinstance(variants, list) or not (0 <= variant_index < len(variants)):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance option not found")
@@ -905,7 +916,7 @@ class CustomGameService:
         first_bucket[first_pos], second_bucket[second_pos] = second_bucket[second_pos], first_bucket[first_pos]
         _recompute_variant_stats(variant)
 
-        game.result_json = result
+        game.balance_result_json = result
         await session.flush()
         return game
 
@@ -949,40 +960,25 @@ class CustomGameService:
         *,
         workspace_id: int,
         custom_game_id: int,
-        outcome_json: Mapping[str, Any],
+        winner: int | None,
         variant_index: int,
         map_id: int | None = None,
         actor_user_id: int,
     ) -> models.CustomGame:
-        """Snapshot one played match: two teams, their rosters, and who won.
+        """Freeze one played match into ``casual.match`` and its two scored sides.
 
-        Repeatable -- a mix can record many matches before its host explicitly
-        closes it (``close``). Never touches ``game.status``. ``outcome_json``
-        is kept as "the most recently recorded result" for API consumers -- the
-        mix UI itself renders from the permanent ``casual.match`` history below,
-        not this single mutable field. ``map_id`` is optional -- the mix UI
-        offers no map veto, so a host recording a quick result may not know or
-        care which map it names.
+        Repeatable -- a mix records many matches before its host calls
+        :meth:`close`, and the frozen snapshot is the only record of each: the
+        mix itself keeps no mutable copy of "the last result".
 
-        When the host has configured ``config_json.points_per_win`` (see
-        :meth:`set_points_per_win`) and the match has a winner (not a draw),
-        every winning-team player's host-authored rank is bumped by that many
-        points for their recorded role, and every losing-team player's by the
-        same amount downward -- a night of mixes self-corrects without the
-        host retyping ranks between games.
-
-        Every player who actually took a seat in this match also has their
-        roster row's ``must_play`` pin cleared, win or lose or draw -- the pin
-        promises one guaranteed seat, and reporting the match it guaranteed is
-        what redeems that promise. Without this a host would have to remember
-        to un-pin someone by hand after every mix, and a forgotten pin would
-        keep hard-claiming that seat forever instead of going back to
-        competing for it fairly like everyone else.
+        ``points_per_win`` (when set, and only for a decided match) moves both
+        teams' host-authored ranks, and every seat that actually played redeems
+        its ``MUST_PLAY`` pin back to ``POOL`` -- the pin promises one
+        guaranteed seat, not every seat forever.
         """
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
-        winner = outcome_json.get("winner")
         if winner not in (1, 2, None):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="winner must be 1, 2 or null"
@@ -990,7 +986,7 @@ class CustomGameService:
         if map_id is not None and await session.get(models.Map, map_id) is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Map not found")
 
-        result = game.result_json if isinstance(game.result_json, dict) else {}
+        result = game.balance_result_json if isinstance(game.balance_result_json, dict) else {}
         variants = result.get("variants")
         if not isinstance(variants, list) or not (0 <= variant_index < len(variants)):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance option not found")
@@ -1001,21 +997,25 @@ class CustomGameService:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="A match can only be recorded for a two-team balance",
             )
-        config = game.config_json if isinstance(game.config_json, dict) else {}
-        team_names = config.get("team_names") if isinstance(config.get("team_names"), dict) else {}
-        points_per_win = config.get("points_per_win")
-        if not isinstance(points_per_win, int) or isinstance(points_per_win, bool) or points_per_win <= 0:
-            points_per_win = 0
 
+        names = await self.team_names.mapping_for_game(session, game.id)
+        scores = (1, 0) if winner == 1 else (0, 1) if winner == 2 else (0, 0)
+        match = models.CasualMatch(custom_game_id=game.id, map_id=map_id, recorded_by=actor_user_id)
+        await self.casual_matches.create(session, match)
         casual_teams = [
-            models.CasualTeam(workspace_id=workspace_id, name=team_names.get(str(index)) or f"Team {index + 1}")
-            for index in range(2)
+            models.CasualTeam(
+                match_id=match.id,
+                side=side,
+                name=names.get(index) or f"Team {index + 1}",
+                score=scores[index],
+            )
+            for index, side in enumerate((CasualTeamSide.HOME, CasualTeamSide.AWAY))
         ]
         await self.casual_teams.create_many(session, casual_teams)
 
         # Per-team (member_id, role_slot_code, balance-time rating) seats,
-        # collected alongside the casual-player snapshot below so the points
-        # delta can reuse the exact same walk instead of re-parsing ``teams``.
+        # collected alongside the frozen snapshot so the points delta reuses the
+        # exact same walk instead of re-parsing ``teams``.
         team_players: list[list[tuple[int, str, int]]] = [[], []]
         for team_index, (team, casual_team) in enumerate(zip(teams, casual_teams, strict=True)):
             roster = team.get("roster") if isinstance(team, dict) else None
@@ -1036,42 +1036,28 @@ class CustomGameService:
                         models.CasualPlayer(
                             team_id=casual_team.id,
                             workspace_member_id=member_id,
+                            # The name as it stood when the match was played --
+                            # a later rename or a member leaving the workspace
+                            # must not rewrite history.
+                            display_name_snapshot=str(seat.get("name") or f"#{member_id}"),
                             role=role,
                             rank=rating,
                         ),
                     )
                     team_players[team_index].append((member_id, slot_code, rating))
 
-        home_score, away_score = (1, 0) if winner == 1 else (0, 1) if winner == 2 else (0, 0)
-        await self.casual_matches.create(
-            session,
-            models.CasualMatch(
-                custom_game_id=game.id,
-                workspace_id=workspace_id,
-                home_team_id=casual_teams[0].id,
-                away_team_id=casual_teams[1].id,
-                home_score=home_score,
-                away_score=away_score,
-                map_id=map_id,
-                recorded_by=actor_user_id,
-            ),
-        )
-        game.outcome_json = dict(outcome_json)
-
-        # A `must_play` pin guarantees one seat, not every seat forever: once a
-        # pinned player's match is actually reported, the pin has done its job.
-        # Clearing it here (instead of leaving the host to remember to untoggle
-        # it) is what keeps a hard pin from silently fossilizing into "this
-        # player is always must-play" across every future balance.
         participant_ids = {member_id for team in team_players for member_id, _, _ in team}
         if participant_ids:
             for row in await self.roster.list_for_game(session, game.id):
-                if row.must_play and row.workspace_member_id in participant_ids:
-                    row.must_play = False
+                if (
+                    row.participation == MixParticipation.MUST_PLAY
+                    and row.workspace_member_id in participant_ids
+                ):
+                    row.participation = MixParticipation.POOL
 
+        points_per_win = game.points_per_win or 0
         if points_per_win and winner in (1, 2) and game.host_user_id is not None:
             winning_index = 0 if winner == 1 else 1
-            losing_index = 1 - winning_index
             await self._apply_points_delta(
                 session,
                 workspace_id=workspace_id,
@@ -1083,7 +1069,7 @@ class CustomGameService:
                 session,
                 workspace_id=workspace_id,
                 host_user_id=game.host_user_id,
-                team_players=team_players[losing_index],
+                team_players=team_players[1 - winning_index],
                 delta=-points_per_win,
             )
 
@@ -1103,22 +1089,16 @@ class CustomGameService:
     async def _rotation_histories(
         self, session: AsyncSession, game: models.CustomGame, roster: Sequence[models.CustomGamePlayer]
     ) -> list[PlayerHistory]:
-        """One `PlayerHistory` per given roster row, from every map this game has recorded.
+        """One `PlayerHistory` per given roster row, from every map this mix recorded.
 
-        Shared by :meth:`rotation` (ranks the whole pool for the host's hint) and :meth:`balance`
-        (ranks just the active lineup, to order who ``run_balance``'s own overflow trim in
-        ``domain.balancer.runtime._prepare_balance_context`` reaches for first when the lineup does
-        not divide evenly into full teams -- instead of an arbitrary tail order Balance never explained).
+        Shared by :meth:`rotation` (ranks the whole pool for the host's hint) and
+        :meth:`balance` (ranks the active lineup, so ``run_balance``'s own
+        overflow trim benches the least-owed player first).
         """
         matches = list(await self.casual_matches.list_for_custom_game(session, game.id))
         matches.reverse()  # newest-first -> chronological, oldest map first
-        team_ids = [team_id for match in matches for team_id in (match.home_team_id, match.away_team_id)]
-        seats = await self.casual_players.list_for_teams(session, team_ids)
-        members_by_team: dict[int, set[int]] = {}
-        for seat in seats:
-            members_by_team.setdefault(seat.team_id, set()).add(seat.workspace_member_id)
-        match_participants = [
-            members_by_team.get(match.home_team_id, set()) | members_by_team.get(match.away_team_id, set())
+        participants = [
+            {seat.workspace_member_id for team in match.teams for seat in team.players}
             for match in matches
         ]
         return [
@@ -1127,11 +1107,11 @@ class CustomGameService:
                 # Only maps recorded after this row joined the pool count --
                 # a map played before they signed up is not one they sat out.
                 played=tuple(
-                    row.workspace_member_id in participants
-                    for match, participants in zip(matches, match_participants, strict=True)
+                    row.workspace_member_id in played
+                    for match, played in zip(matches, participants, strict=True)
                     if row.created_at is None or match.created_at >= row.created_at
                 ),
-                pinned_must_play=row.must_play,
+                pinned_must_play=row.participation == MixParticipation.MUST_PLAY,
             )
             for row in roster
         ]
@@ -1145,11 +1125,11 @@ class CustomGameService:
         "owed" a seat -- by :func:`recommend_rotation` against every map
         recorded via :meth:`record_outcome` for this game, then splits it at
         the same seat count :meth:`balance` would fill for the current pool
-        size. A row's own ``must_play`` pin (see :meth:`update_player`) is
-        honoured the same way it is honoured there: a seat, not a vote.
+        size. A row's own ``MUST_PLAY`` participation (see :meth:`update_player`)
+        is honoured the same way it is honoured there: a seat, not a vote.
 
         Read-only, no roster row is touched -- the host applies the verdict
-        through the existing ``is_active``/``must_play`` toggles.
+        through the same ``participation`` field.
         """
         game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
         roster = list(await self.roster.list_for_game(session, game.id))
@@ -1159,7 +1139,7 @@ class CustomGameService:
         histories = await self._rotation_histories(session, game, roster)
 
         role_mask = (
-            await self.roster_shape(session, workspace_id=workspace_id, config_json=game.config_json)
+            await self.roster_shape(session, workspace_id=workspace_id, custom_game_id=game.id)
         ).slots
         players_per_team = sum(role_mask.values())
         usable_count = (
@@ -1176,7 +1156,7 @@ class CustomGameService:
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
-        game.status = "completed"
+        game.status = MixStatus.COMPLETED
         await session.flush()
         return game
 
@@ -1191,7 +1171,7 @@ class CustomGameService:
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
-        game.status = "cancelled"
+        game.status = MixStatus.CANCELLED
         await session.flush()
         return game
 

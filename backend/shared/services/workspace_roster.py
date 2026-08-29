@@ -33,6 +33,7 @@ __all__ = (
     "ensure_member_for_battle_tag",
     "hosts_by_user_id",
     "list_roster",
+    "workspace_members_by_user_id",
     "roster_page",
     "roster_summary",
 )
@@ -48,10 +49,10 @@ class RosterMember:
     display_name: str | None
     #: The player's linked login identity (``players.user.auth_user_id``), or
     #: ``None`` if they have never signed in. ``auth.user.id`` is the space a
-    #: mix's ``host_user_id``/``co_host_user_ids`` actually live in -- a member
+    #: mix's ``host_user_id`` and its co-host grants are addressed in -- a member
     #: with no linked account can be ranked and rostered, but can never be
     #: picked as a host or co-host, because there is nobody who could log in
-    #: and pass ``_require_writer``.
+    #: and pass the write check.
     auth_user_id: int | None = None
 
 
@@ -232,9 +233,9 @@ async def hosts_by_user_id(
 ) -> dict[int, str | None]:
     """Display name for a set of ``auth.user.id``s, resolved within one workspace.
 
-    ``CustomGame.host_user_id``/``co_host_user_ids`` and ``MemberRank.author_user_id``
-    are all ``auth.user.id``s -- the identity ``_require_writer``/``set_ranks``
-    actually compare the caller against -- not ``workspace_member.player_id``.
+    ``CustomGame.host_user_id``, its co-host grants and ``MemberRank.author_user_id``
+    are all ``auth.user.id``s -- the identity the write checks compare the caller
+    against -- not ``workspace_member.player_id``.
     A player can exist with no linked account (``User.auth_user_id`` is a
     nullable 1:0..1 link to ``auth.user``, set only once somebody signs in), so
     joining on ``player_id`` used to resolve nothing for a real host/co-host and
@@ -276,6 +277,36 @@ async def hosts_by_user_id(
         auth_user_id: (display_name or player_name or username)
         for auth_user_id, username, display_name, player_name in result.all()
     }
+
+
+async def workspace_members_by_user_id(
+    session: AsyncSession,
+    *,
+    workspace_id: int,
+    user_ids: Sequence[int],
+) -> dict[int, int]:
+    """Map signed-in workspace members by ``auth.user.id``.
+
+    Unlike :func:`hosts_by_user_id`, this is an authorization lookup: the
+    workspace-member join is mandatory, so an account outside the workspace is
+    never returned.
+    """
+    ids = {user_id for user_id in user_ids if user_id is not None}
+    if not ids:
+        return {}
+    result = await session.execute(
+        sa.select(models.User.auth_user_id, models.WorkspaceMember.id)
+        .select_from(models.User)
+        .join(
+            models.WorkspaceMember,
+            sa.and_(
+                models.WorkspaceMember.player_id == models.User.id,
+                models.WorkspaceMember.workspace_id == workspace_id,
+            ),
+        )
+        .where(models.User.auth_user_id.in_(ids))
+    )
+    return dict(result.all())
 
 
 async def ensure_member_for_battle_tag(

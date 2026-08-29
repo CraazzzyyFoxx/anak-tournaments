@@ -12,7 +12,8 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
-from shared.core import http_status as status, pagination
+from shared.core import http_status as status
+from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.services import workspace_roster
 from shared.services.member_rank import member_rank_service
@@ -81,9 +82,9 @@ def _dump(member: Any, ranks: dict[str, int], author_ranks: dict[str, int]) -> d
         "battle_tag": member.battle_tag,
         "display_name": member.display_name,
         # Whether this member has a linked login identity -- a mix's host/
-        # co-host picker excludes anyone without one, since `host_user_id`/
-        # `co_host_user_ids` are `auth.user.id`s and a member who has never
-        # signed in has none.
+        # co-host picker excludes anyone without one, since both grants are
+        # addressed by `auth.user.id` and a member who has never signed in
+        # has none.
         "auth_user_id": member.auth_user_id,
         # Two layers side by side: the workspace canon everyone sees, and the book
         # being read (the caller's own unless ``author_user_id`` asked otherwise).

@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { RosterShapeEditor } from "@/components/roster-shape/RosterShapeEditor";
 import { payloadTotalError } from "@/components/roster-shape/roster-shape-editor.model";
-import { parsePointsPerWin, parseRoleMask } from "@/app/balancer/pickup/pickup-lineup";
 import type { RosterSlotMap } from "@/lib/roster-shape";
 import type { CustomGame } from "@/services/custom-game.service";
 
@@ -39,7 +38,7 @@ interface PickupMixConfigDialogProps {
 
 /**
  * Per-mix settings: team composition -- the tournament settings tab's
- * roster-shape editor, wired to `CustomGame.config_json.role_mask` instead of
+ * roster-shape editor, wired to `CustomGame.settings.role_mask` instead of
  * `Tournament.roster_slots_json`. A mix has no tournament level of its own:
  * "inherit" here means the workspace default one level up, exactly what
  * `CustomGameService.roster_shape` resolves against. And the rank-adjustment-
@@ -55,15 +54,17 @@ export function PickupMixConfigDialog({
   saving,
   onSave
 }: Readonly<PickupMixConfigDialogProps>) {
-  const [pending, setPending] = useState<RosterSlotMap | null>(parseRoleMask(game?.config_json));
-  const [pendingPoints, setPendingPoints] = useState<number | null>(parsePointsPerWin(game?.config_json));
+  const [pending, setPending] = useState<RosterSlotMap | null>(game?.settings.role_mask ?? null);
+  const [pendingPoints, setPendingPoints] = useState<number | null>(
+    game?.settings.points_per_win ?? null,
+  );
   const [wasOpen, setWasOpen] = useState(open);
 
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
-      setPending(parseRoleMask(game?.config_json));
-      setPendingPoints(parsePointsPerWin(game?.config_json));
+      setPending(game?.settings.role_mask ?? null);
+      setPendingPoints(game?.settings.points_per_win ?? null);
     }
   }
 

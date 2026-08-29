@@ -63,6 +63,9 @@ var RosterRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}", Queue: "rpc.balancer.custom.get", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/roster", Queue: "rpc.balancer.custom.update_roster", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/players/{workspace_member_id}", Queue: "rpc.balancer.custom.update_player", IDParam: "game_id", Path: []string{"workspace_id", "workspace_member_id"}, Body: true, Auth: edge.AuthRequired},
+	// Whole-lineup participation write: the rotation hint moves several rows at
+	// once, and one request keeps them in one transaction (and one realtime signal).
+	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/players", Queue: "rpc.balancer.custom.set_participation", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/team-names", Queue: "rpc.balancer.custom.set_team_names", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/role-mask", Queue: "rpc.balancer.custom.set_role_mask", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/points-per-win", Queue: "rpc.balancer.custom.set_points_per_win", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},

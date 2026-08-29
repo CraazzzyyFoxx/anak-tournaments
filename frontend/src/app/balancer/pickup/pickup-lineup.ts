@@ -1,9 +1,11 @@
 import { ROLES, canonicalToRegistrationRole, type RoleCode } from "@/lib/roles";
-import { isRosterSlotCode, type RosterSlotMap } from "@/lib/roster-shape";
 import type {
   CustomGameOutcome,
+  CustomGameParticipationEntry,
   CustomGamePlayer,
   CustomGamePlayerPatch,
+  CustomGameSettings,
+  MixParticipation,
   RotationRecommendation,
 } from "@/services/custom-game.service";
 
@@ -19,9 +21,9 @@ export type PickupRecordOutcomeInput = {
  *
  * Two pools exist: the workspace **player pool** (everyone the workspace knows)
  * and the mix **lineup** (who is in this mix). Membership and participation are
- * separate: `is_active === false` benches a player without dropping their rank
- * override or role order, so a host can toggle a late arrival on and off
- * without rebuilding anything.
+ * separate: `participation === "benched"` sits a player out without dropping
+ * their rank override or role order, so a host can toggle a late arrival on and
+ * off without rebuilding anything.
  *
  * Role vocabulary is `@/lib/roles` — the same `tank`/`dps`/`support` codes the
  * balancer and the registration form use.
@@ -95,7 +97,7 @@ export const LINEUP_ISSUE_MESSAGES: Record<LineupIssue, string> = {
  * worth showing before the host presses Balance.
  */
 export function getLineupIssue(row: CustomGamePlayer): LineupIssue | null {
-  if (!row.is_active) {
+  if (row.participation === "benched") {
     return null;
   }
   const order = resolveRoleOrder(row);
@@ -134,7 +136,7 @@ export function summarizeLineup(rows: CustomGamePlayer[]): LineupSummary {
   let active = 0;
   let blocking = 0;
   for (const row of rows) {
-    if (row.is_active) {
+    if (row.participation !== "benched") {
       active += 1;
     }
     if (getLineupIssue(row) != null) {
@@ -148,7 +150,7 @@ export function summarizeLineup(rows: CustomGamePlayer[]): LineupSummary {
  * A 5v5 mix needs one tank and two of each damage/support per team, so the
  * lineup needs twice that before a balance can seat everyone. Hard-coded
  * because the pickup solver runs the same 1-2-2 shape for every mix; a
- * configurable role lock would come from `config_json`, which no mix sets yet.
+ * configurable lock would come from `settings.role_mask`, which no mix sets yet.
  */
 const ROLE_DEMAND: Record<RoleCode, number> = { tank: 2, dps: 4, support: 4 };
 
@@ -179,7 +181,10 @@ export type RoleSupply = {
 export function summarizeRoleSupply(rows: CustomGamePlayer[]): RoleSupply[] {
   return LINEUP_ROLES.map((role) => {
     const supply = rows.filter(
-      (row) => row.is_active && resolveRoleOrder(row).includes(role) && row.ranks[role] != null,
+      (row) =>
+        row.participation !== "benched" &&
+        resolveRoleOrder(row).includes(role) &&
+        row.ranks[role] != null,
     ).length;
     const need = ROLE_DEMAND[role];
     return { role, supply, need, short: Math.max(0, need - supply) };
@@ -189,58 +194,33 @@ export function summarizeRoleSupply(rows: CustomGamePlayer[]): RoleSupply[] {
 /** Active players first, then the host's own ordering. */
 export function sortLineup(rows: CustomGamePlayer[]): CustomGamePlayer[] {
   return [...rows].sort((a, b) => {
-    if (a.is_active !== b.is_active) {
-      return a.is_active ? -1 : 1;
+    const aBenched = a.participation === "benched";
+    const bBenched = b.participation === "benched";
+    if (aBenched !== bBenched) {
+      return aBenched ? 1 : -1;
     }
     return a.sort_order - b.sort_order || a.id - b.id;
   });
 }
 
-/**
- * The three columns the lineup panel drags players between. `must_play`
- * guarantees a seat (see `CustomGamePlayer.must_play`), `pool` is active but
- * optional, `benched` is `is_active === false`. A row's bucket is a pure
- * function of those two server fields -- there is no fourth state to drift
- * out of sync with them.
- */
-export type LineupBucket = "must_play" | "pool" | "benched";
-
-export function lineupBucket(row: Pick<CustomGamePlayer, "is_active" | "must_play">): LineupBucket {
-  if (!row.is_active) {
-    return "benched";
-  }
-  return row.must_play ? "must_play" : "pool";
-}
-
-/**
- * The `is_active`/`must_play` pair a drop onto one of the three lineup
- * columns writes. Benching always clears `must_play` too -- a player sitting
- * out cannot simultaneously be guaranteed a seat.
- */
-export function bucketPatch(bucket: LineupBucket): CustomGamePlayerPatch {
-  switch (bucket) {
-    case "must_play":
-      return { is_active: true, must_play: true };
-    case "pool":
-      return { is_active: true, must_play: false };
-    case "benched":
-      return { is_active: false, must_play: false };
-  }
-}
-
-/** One roster patch `applyRotationHints` fires for one row. */
+/** One roster row `applyRotationHints` moves. */
 export type RotationHintPatch = { workspaceMemberId: number; patch: CustomGamePlayerPatch };
 
 /**
- * The patches that bring the lineup in line with the rotation-fairness read
- * (`mix_rotation.recommend_rotation`): `must_play` moves the member into the
- * Must Play column (`bucketPatch("must_play")`) -- the recommendation is the
- * whole reason to act on it, so the seat it grants is guaranteed exactly
- * like a host's own drag into that column -- and `should_rest` benches them
- * exactly like a manual drop into `Benched` (`bucketPatch("benched")`, which
- * also clears any existing pin). A row already matching its hint, or with no
- * hint at all (`neutral`, or not loaded yet), gets no patch -- applying is
- * always idempotent.
+ * Where each actionable rotation verdict wants the row. `neutral` is absent on
+ * purpose: it is "no opinion", not a column to move anybody into.
+ */
+const PARTICIPATION_BY_HINT: Record<"must_play" | "should_rest", MixParticipation> = {
+  must_play: "must_play",
+  should_rest: "benched",
+};
+
+/**
+ * The moves that bring the lineup in line with the rotation-fairness read
+ * (`mix_rotation.recommend_rotation`): whoever is owed a seat is pinned, and
+ * whoever should rest is benched -- each exactly like the host's own drag into
+ * that column. A row already in its hinted column, or with no actionable hint,
+ * is left alone, so applying is idempotent.
  */
 export function computeRotationHintPatches(
   rows: readonly CustomGamePlayer[],
@@ -249,15 +229,25 @@ export function computeRotationHintPatches(
   const hintByMember = new Map(recommendations.map((rec) => [rec.workspace_member_id, rec]));
   const patches: RotationHintPatch[] = [];
   for (const row of rows) {
-    const hint = hintByMember.get(row.workspace_member_id);
-    if (!hint) continue;
-    if (hint.status === "must_play" && !(row.is_active && row.must_play)) {
-      patches.push({ workspaceMemberId: row.workspace_member_id, patch: bucketPatch("must_play") });
-    } else if (hint.status === "should_rest" && (row.is_active || row.must_play)) {
-      patches.push({ workspaceMemberId: row.workspace_member_id, patch: bucketPatch("benched") });
+    const status = hintByMember.get(row.workspace_member_id)?.status;
+    const wanted = status == null || status === "neutral" ? null : PARTICIPATION_BY_HINT[status];
+    if (wanted == null || wanted === row.participation) {
+      continue;
     }
+    patches.push({ workspaceMemberId: row.workspace_member_id, patch: { participation: wanted } });
   }
   return patches;
+}
+
+/** The same moves as one whole-lineup write (`customGameService.setParticipation`). */
+export function participationEntries(
+  patches: readonly RotationHintPatch[],
+): CustomGameParticipationEntry[] {
+  return patches.flatMap((entry) =>
+    entry.patch.participation == null
+      ? []
+      : [{ workspace_member_id: entry.workspaceMemberId, participation: entry.patch.participation }],
+  );
 }
 
 /** One assigned seat in a balanced team, flattened out of the role buckets. */
@@ -306,54 +296,20 @@ function asNumber(value: unknown): number | null {
 }
 
 /**
- * A host's team-name overrides, keyed by 0-based team index — the same
- * position `parseVariants` below assigns names by. Stored in `config_json`
- * (`custom.set_team_names`) rather than in the solver's own result, so a
- * rename survives paging between balance options and re-running the solver.
+ * A host's team-name overrides re-keyed by 0-based team index -- the same
+ * position `parseVariants` below assigns names by. Stored relationally
+ * (`custom.set_team_names`) rather than in the solver's own result, so a rename
+ * survives paging between balance options and re-running the solver.
  */
-export function parseTeamNames(configJson: unknown): Record<number, string> {
-  const raw = asRecord(asRecord(configJson)?.team_names);
-  if (raw == null) {
-    return {};
-  }
+export function teamNamesByIndex(settings: CustomGameSettings | undefined): Record<number, string> {
   const out: Record<number, string> = {};
-  for (const [key, value] of Object.entries(raw)) {
+  for (const [key, value] of Object.entries(settings?.team_names ?? {})) {
     const index = Number(key);
-    if (Number.isInteger(index) && index >= 0 && typeof value === "string" && value.trim()) {
+    if (Number.isInteger(index) && index >= 0 && value.trim()) {
       out[index] = value;
     }
   }
   return out;
-}
-
-/**
- * The mix's own roster-shape override, straight off `config_json.role_mask`
- * (`custom.set_role_mask`). `null` means "no override" — `balance` falls back
- * through the workspace default to the built-in Overwatch 5v5 shape, and
- * `CustomGame.roster_shape` reports whichever one actually won.
- */
-export function parseRoleMask(configJson: unknown): RosterSlotMap | null {
-  const raw = asRecord(asRecord(configJson)?.role_mask);
-  if (raw == null) {
-    return null;
-  }
-  const out: RosterSlotMap = {};
-  for (const [code, value] of Object.entries(raw)) {
-    if (isRosterSlotCode(code) && Number.isInteger(value) && (value as number) > 0) {
-      out[code] = value as number;
-    }
-  }
-  return Object.keys(out).length > 0 ? out : null;
-}
-
-/**
- * The host's rank-adjustment-per-win knob, straight off
- * `config_json.points_per_win` (`custom.set_points_per_win`). `null` means
- * "disabled" -- recording a win/loss then leaves every rank untouched.
- */
-export function parsePointsPerWin(configJson: unknown): number | null {
-  const value = asRecord(configJson)?.points_per_win;
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function parseSeats(roster: Record<string, unknown>): PickupSeat[] {

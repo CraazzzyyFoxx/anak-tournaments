@@ -141,7 +141,14 @@ from .workspace import (
     resolve_workspace_member_id,
 )
 from .casual import CasualMatchRepository, CasualPlayerRepository, CasualTeamRepository
-from .custom_game import CustomGamePlayerRepository, CustomGameRepository
+from .custom_game import (
+    CustomGameCoHostRepository,
+    CustomGamePlayerRepository,
+    CustomGamePlayerRoleRepository,
+    CustomGameRepository,
+    CustomGameRoleSlotRepository,
+    CustomGameTeamNameRepository,
+)
 from .member_rank import MemberRankRepository
 
 __all__ = (
@@ -258,8 +265,12 @@ __all__ = (
     "CasualMatchRepository",
     "CasualPlayerRepository",
     "CasualTeamRepository",
+    "CustomGameCoHostRepository",
     "CustomGamePlayerRepository",
+    "CustomGamePlayerRoleRepository",
     "CustomGameRepository",
+    "CustomGameRoleSlotRepository",
+    "CustomGameTeamNameRepository",
     "WorkspaceRepository",
     "WorkspaceSubscriptionRequirementRepository",
     "get_or_create_workspace_member",

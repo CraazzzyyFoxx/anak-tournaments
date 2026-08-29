@@ -6,9 +6,9 @@
 // drag-and-drop targets). Everything pinned here is a way that distinction can
 // silently collapse, plus the pre-flight the panel exists to give a host:
 //
-//  1. a row's column is a pure function of `is_active`/`must_play`, and a drop
-//     writes both fields in one patch without touching role order or ranks —
-//     otherwise "he's late" quietly deletes his rank override;
+//  1. a row's column IS its stored `participation`, and a drop writes that one
+//     field without touching role order or ranks — otherwise "he's late"
+//     quietly deletes his rank override;
 //  2. removing is a separate control that does rewrite membership;
 //  3. a role toggle writes the whole selection with the stored order left
 //     alone — turning a role on appends it, off removes it, and neither
@@ -93,10 +93,8 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     workspace_member_id: 7,
     display_name: null,
     battle_tag: "Aria#1111",
-    team_index: null,
     sort_order: 0,
-    is_active: true,
-    must_play: false,
+    participation: "pool",
     roles: null,
     ranks: { tank: 2400, dps: 2600, support: 2500 },
     rank_sources: { tank: "workspace", dps: "workspace", support: "workspace" },
@@ -199,9 +197,9 @@ beforeEach(() => {
 describe("PickupLobbyPanel columns", () => {
   it("splits players into must-play, pool and benched columns", async () => {
     const scope = await mount([
-      row({ must_play: true }),
+      row({ participation: "must_play" }),
       row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222" }),
-      row({ id: 3, workspace_member_id: 9, battle_tag: "Cora#3333", is_active: false }),
+      row({ id: 3, workspace_member_id: 9, battle_tag: "Cora#3333", participation: "benched" }),
     ]);
 
     expect(byLabel(scope, "Must play")?.textContent).toContain("Aria#1111");
@@ -242,23 +240,23 @@ describe("PickupLobbyPanel drag and drop", () => {
 
     await dropOnto(7, "must_play");
 
-    expect(patchOf(7)).toEqual({ is_active: true, must_play: true });
+    expect(patchOf(7)).toEqual({ participation: "must_play" });
   });
 
   it("benches on a drop into Benched, clearing a stale must-play pin too", async () => {
-    await mount([row({ must_play: true })]);
+    await mount([row({ participation: "must_play" })]);
 
     await dropOnto(7, "benched");
 
-    expect(patchOf(7)).toEqual({ is_active: false, must_play: false });
+    expect(patchOf(7)).toEqual({ participation: "benched" });
   });
 
   it("returns a benched player to the pool on a drop back into it", async () => {
-    await mount([row({ is_active: false })]);
+    await mount([row({ participation: "benched" })]);
 
     await dropOnto(7, "pool");
 
-    expect(patchOf(7)).toEqual({ is_active: true, must_play: false });
+    expect(patchOf(7)).toEqual({ participation: "pool" });
   });
 
   it("does nothing when a row is dropped back onto its own column", async () => {
@@ -316,7 +314,7 @@ describe("PickupLobbyPanel rotation hints", () => {
   });
 
   it("renders no hint for a row already pinned must_play -- the Pin already says it", async () => {
-    const scope = await mount([row({ must_play: true })], {
+    const scope = await mount([row({ participation: "must_play" })], {
       rotation: [
         {
           workspace_member_id: 7,
@@ -359,7 +357,7 @@ describe("PickupLobbyPanel apply hints button", () => {
   });
 
   it("is disabled once loaded but nothing needs to change", async () => {
-    const scope = await mount([row({ is_active: true })], {
+    const scope = await mount([row({ participation: "pool" })], {
       rotation: [
         {
           workspace_member_id: 7,
@@ -377,7 +375,7 @@ describe("PickupLobbyPanel apply hints button", () => {
   });
 
   it("applies every actionable hint on click", async () => {
-    const scope = await mount([row({ is_active: false, must_play: false })], {
+    const scope = await mount([row({ participation: "benched" })], {
       rotation: [
         {
           workspace_member_id: 7,
@@ -440,7 +438,7 @@ describe("PickupLobbyPanel", () => {
   it("freezes the role rail for a benched row, but not for pool or must-play", async () => {
     const scope = await mount([
       row({ roles: ["tank"] }),
-      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222", roles: ["tank"], is_active: false }),
+      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222", roles: ["tank"], participation: "benched" }),
     ]);
 
     expect(

@@ -1,28 +1,40 @@
-"""Custom games over typed RPC.
+"""Pickup mixes over typed RPC.
 
-``rpc.balancer.custom.{create,list,get,update_roster,update_player,balance,set_team_names,set_role_mask,set_points_per_win,set_balancer_config,transfer_host,add_co_host,remove_co_host,swap_seats,record_outcome,match_history,rotation,close,delete,hard_delete}``.
-Writes require ``actor`` to be the host or a co-host. Reads are any workspace member.
+``rpc.balancer.custom.{create,list,get,update_roster,update_player,set_participation,
+balance,set_team_names,set_role_mask,set_points_per_win,set_balancer_config,
+transfer_host,add_co_host,remove_co_host,swap_seats,record_outcome,match_history,
+rotation,close,delete,hard_delete}``.
+
+Writes require ``actor`` to be the host or a co-host; the per-mix check lives in
+``CustomGameService._writable``. Reads are open to any workspace member. Every
+request body is validated by a Pydantic model in ``src.schemas.custom_game``
+before it reaches a use case -- nothing here hand-parses a dict.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeVar
 
 import sqlalchemy as sa
 from faststream.rabbit import RabbitMessage
+from pydantic import BaseModel, ValidationError
 
 from shared import models
 from shared.core import http_status as status
+from shared.core.enums import CasualTeamSide, MixRoleSelectionMode
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER
 from src.core import db
 from src.rpc import _common as c
+from src.schemas import custom_game as schemas
 from src.services.custom_game import custom_game_service
 from src.services.pickup_mix_realtime import emit_pickup_mix_updated
 
 _SF = db.async_session_maker
+
+_Body = TypeVar("_Body", bound=BaseModel)
 
 
 def _int(data: dict[str, Any], key: str) -> int:
@@ -51,7 +63,24 @@ def _game_id(data: dict[str, Any]) -> int:
     try:
         return int(raw)
     except (TypeError, ValueError):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="custom_game_id is required") from None
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="custom_game_id is required"
+        ) from None
+
+
+def _body(schema: type[_Body], data: dict[str, Any]) -> _Body:
+    """Validate the gateway body, reporting a schema error as a 422.
+
+    One boundary for every write here: an unknown key, a wrong type or a
+    string where a boolean belongs is rejected before a use case sees it.
+    """
+    try:
+        return schema.model_validate(c.payload(data))
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[{"loc": list(error["loc"]), "msg": error["msg"]} for error in exc.errors()],
+        ) from exc
 
 
 def _require_member(user: Any, workspace_id: int) -> None:
@@ -69,16 +98,11 @@ def _require_mix(data: dict[str, Any], user: Any, workspace_id: int, action: str
     ``owner`` role (``custom_game.create``) is the only gate available for
     starting a *new* mix.
 
-    ``update``/``delete`` used to also require the matching workspace-level
-    permission here, on top of the per-game host-or-co-host check every
-    write already re-runs (``CustomGameService._writable``). That coarse gate
-    is what a co-host grant is supposed to bypass -- "a co-host writes the
-    roster, balance, outcomes and settings exactly like the host" -- but a
-    co-host who only holds the plain ``member`` role got 403'd here before
-    ``_writable`` ever got a chance to see their per-game grant. Dropping it
-    for those two actions is safe: every mutating service method loads the
-    game and re-checks host-or-co-host membership itself, so a non-writer
-    still 403s, just from the check that actually knows about co-hosts.
+    ``update``/``delete`` deliberately skip the coarse workspace permission:
+    every mutating use case re-loads the game and re-checks host-or-co-host
+    itself (``CustomGameService._writable``), which is the check that actually
+    knows about co-hosts. Gating here too used to 403 a co-host who held only
+    the plain ``member`` role before that check ever ran.
     """
     _require_member(user, workspace_id)
     if action != "create":
@@ -86,126 +110,10 @@ def _require_mix(data: dict[str, Any], user: Any, workspace_id: int, action: str
     c.require_workspace_permission(data, user, workspace_id, "custom_game", action)
 
 
-def _member_ids(data: dict[str, Any]) -> list[int] | None:
-    body = c.payload(data)
-    raw = body.get(
-        "member_ids",
-        data.get("member_ids", body.get("workspace_member_ids", data.get("workspace_member_ids"))),
-    )
-    if raw is None:
-        return None
-    if not isinstance(raw, list):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_ids is required")
-    try:
-        return [int(item) for item in raw]
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_ids is required") from None
-
-
-def _team_names(data: dict[str, Any]) -> dict[str, Any]:
-    body = c.payload(data)
-    raw = body.get("team_names", data.get("team_names"))
-    if not isinstance(raw, dict):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="team_names is required")
-    return raw
-
-
-def _role_mask_body(data: dict[str, Any]) -> dict[str, Any] | None:
-    """The mix's own override, or ``None`` to clear it back to inheriting.
-
-    Unlike ``_team_names`` the whole value may legitimately be ``null`` (clear
-    the override), so a missing key -- rather than an explicit ``null`` -- is
-    what is rejected here.
-    """
-    body = c.payload(data)
-    if "role_mask" in body:
-        raw = body["role_mask"]
-    elif "role_mask" in data:
-        raw = data["role_mask"]
-    else:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="role_mask is required")
-    if raw is not None and not isinstance(raw, dict):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="role_mask must be a map or null")
-    return raw
-
-
-def _points_per_win_body(data: dict[str, Any]) -> int | None:
-    """The host's rank-adjustment-per-win knob, or ``None`` to disable it.
-
-    Mirrors ``_role_mask_body``: the whole value may legitimately be ``null``,
-    so a missing key -- not an explicit ``null`` -- is what is rejected.
-    """
-    body = c.payload(data)
-    if "points_per_win" in body:
-        raw = body["points_per_win"]
-    elif "points_per_win" in data:
-        raw = data["points_per_win"]
-    else:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="points_per_win is required")
-    if raw is not None and (not isinstance(raw, int) or isinstance(raw, bool)):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="points_per_win must be an integer or null"
-        )
-    return raw
-
-
-def _balancer_config_body(data: dict[str, Any]) -> dict[str, Any] | None:
-    """The mix's own balancer algorithm overrides, or ``None`` to clear them back to defaults.
-
-    Mirrors ``_role_mask_body``: the whole value may legitimately be ``null``,
-    so a missing key -- not an explicit ``null`` -- is what is rejected.
-    """
-    body = c.payload(data)
-    if "balancer_config" in body:
-        raw = body["balancer_config"]
-    elif "balancer_config" in data:
-        raw = data["balancer_config"]
-    else:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="balancer_config is required")
-    if raw is not None and not isinstance(raw, dict):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="balancer_config must be a map or null"
-        )
-    return raw
-
-
-def _new_host_user_id(data: dict[str, Any]) -> int:
-    body = c.payload(data)
-    raw = body.get("new_host_user_id", data.get("new_host_user_id"))
-    if not isinstance(raw, int) or isinstance(raw, bool):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="new_host_user_id is required")
-    return raw
-
-
-def _swap_seats_body(data: dict[str, Any]) -> tuple[int, str, str]:
-    body = c.payload(data)
-    variant_index = body.get("variant_index", data.get("variant_index"))
-    first_uuid = body.get("first_uuid", data.get("first_uuid"))
-    second_uuid = body.get("second_uuid", data.get("second_uuid"))
-    if not isinstance(variant_index, int) or isinstance(variant_index, bool):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="variant_index is required")
-    if not isinstance(first_uuid, str) or not first_uuid or not isinstance(second_uuid, str) or not second_uuid:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="first_uuid and second_uuid are required"
-        )
-    return variant_index, first_uuid, second_uuid
-
-
-def _player_patch(data: dict[str, Any]) -> dict[str, Any]:
-    """Only the keys the caller actually sent, so absent fields stay untouched."""
-    body = c.payload(data)
-    patch: dict[str, Any] = {}
-    for key in ("is_active", "roles", "must_play", "is_flex"):
-        if key in body:
-            patch[key] = body[key]
-        elif key in data:
-            patch[key] = data[key]
-    return patch
-
-
 def _dump_row(
     row: Any,
     member: Any | None,
+    roles: list[str] | None,
     resolved: dict[tuple[int, str], Any],
     author_ranks: dict[tuple[int, str], int],
 ) -> dict[str, Any]:
@@ -220,12 +128,14 @@ def _dump_row(
         "workspace_member_id": row.workspace_member_id,
         "display_name": getattr(member, "display_name", None),
         "battle_tag": getattr(member, "battle_tag", None),
-        "team_index": row.team_index,
         "sort_order": row.sort_order,
-        "is_active": row.is_active,
-        "must_play": row.must_play,
+        # One field for the whole lineup state: must_play | pool | benched.
+        "participation": row.participation,
+        # `explicit` means `roles` is the host's own ordered list, empty
+        # included; `all_ranked` means it is `null` and every ranked role plays.
+        "role_selection_mode": row.role_selection_mode,
         "is_flex": row.is_flex,
-        "roles": row.roles_json,
+        "roles": roles,
         # The ranks balance would actually use: host book > workspace canon > OW.
         "ranks": {role: rank.value for role, rank in effective.items()},
         # Which of those three a value came from, so the sheet can say whether it
@@ -241,10 +151,27 @@ def _dump_row(
     }
 
 
+def _dump_settings(
+    game: Any,
+    team_names: dict[int, str],
+    role_mask: dict[str, int],
+) -> dict[str, Any]:
+    """The mix's own settings, each one a stored fact rather than a config blob."""
+    return {
+        "points_per_win": game.points_per_win,
+        "team_names": {str(index): name for index, name in sorted(team_names.items())},
+        "role_mask": role_mask or None,
+        "balancer_config": game.balancer_config_json,
+    }
+
+
 def _dump_game(
     game: Any,
+    settings: dict[str, Any],
+    *,
     roster: list[Any] | None = None,
     members: dict[int, Any] | None = None,
+    roles_by_player: dict[int, list[str]] | None = None,
     resolved: dict[tuple[int, str], Any] | None = None,
     author_ranks: dict[tuple[int, str], int] | None = None,
     host_display_name: str | None = None,
@@ -256,57 +183,99 @@ def _dump_game(
         "workspace_id": game.workspace_id,
         "host_user_id": game.host_user_id,
         "host_display_name": host_display_name,
-        # Resolved (user_id + display_name) rather than the raw id list, so
-        # the sheet never has to guess a name from a separate roster query --
-        # the same reason `host_display_name` sits beside `host_user_id`.
+        # Resolved (user_id + display_name) rather than raw ids, so the access
+        # dialog never has to guess a name from a separate roster query.
         "co_hosts": co_hosts or [],
         "name": game.name,
         "status": game.status,
-        "config_json": game.config_json,
-        "result_json": game.result_json,
-        "outcome_json": game.outcome_json,
+        "settings": settings,
+        "balance_result": game.balance_result_json,
         "created_at": game.created_at.isoformat() if game.created_at else None,
         "roster_shape": roster_shape,
     }
     if roster is not None:
         by_id = members or {}
+        by_player = roles_by_player or {}
         out["players"] = [
-            _dump_row(row, by_id.get(row.workspace_member_id), resolved or {}, author_ranks or {})
+            _dump_row(
+                row,
+                by_id.get(row.workspace_member_id),
+                (
+                    by_player.get(row.id, [])
+                    if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
+                    else None
+                ),
+                resolved or {},
+                author_ranks or {},
+            )
             for row in roster
         ]
     return out
 
 
-async def _resolve_hosts(session: Any, game: Any) -> tuple[str | None, list[dict[str, Any]]]:
-    """The primary host's display name, and every co-host resolved the same way -- one batched lookup."""
-    co_host_ids = list(game.co_host_user_ids or ())
-    names = await custom_game_service.hosts(session, game.workspace_id, [game.host_user_id, *co_host_ids])
-    return names.get(game.host_user_id), [
-        {"user_id": user_id, "display_name": names.get(user_id)} for user_id in co_host_ids
+async def _resolve_co_hosts(session: Any, game: Any) -> list[dict[str, Any]]:
+    """Every co-host as (user_id, workspace_member_id, display_name).
+
+    ``user_id`` is the identity the write endpoints address (``auth.user.id``),
+    so the client keeps addressing a co-host the same way it always did while
+    the grant itself is stored relationally against the workspace member.
+    """
+    member_ids = await custom_game_service.co_hosts.member_ids_for_game(session, game.id)
+    if not member_ids:
+        return []
+    members = await custom_game_service.members(session, game.workspace_id, member_ids)
+    return [
+        {
+            "user_id": members[member_id].auth_user_id,
+            "workspace_member_id": member_id,
+            "display_name": members[member_id].display_name or members[member_id].battle_tag,
+        }
+        for member_id in member_ids
+        if member_id in members
     ]
 
 
+async def _game_settings(session: Any, game: Any) -> dict[str, Any]:
+    return _dump_settings(
+        game,
+        await custom_game_service.team_names.mapping_for_game(session, game.id),
+        await custom_game_service.role_slots.mapping_for_game(session, game.id),
+    )
+
+
 async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
-    """Roster rows carry the member's name, effective ranks and their source.
+    """Roster rows carry the member's name, role order, effective ranks and their source.
 
     Without the name a client only has member ids and has to guess from a
-    separately paginated roster query, which is how the lineup used to render
-    ``#123`` for anyone off the current page. Without the source and the host's
-    own layer, "2600" could equally be this host's number, the workspace canon or
+    separately paginated roster query. Without the source and the host's own
+    layer, "2600" could equally be this host's number, the workspace canon or
     an Overwatch snapshot, and the sheet could not say which it is about to
     overwrite.
     """
+    settings = await _game_settings(session, game)
     roster_shape = (
-        await custom_game_service.roster_shape(session, workspace_id=game.workspace_id, config_json=game.config_json)
+        await custom_game_service.roster_shape(
+            session, workspace_id=game.workspace_id, custom_game_id=game.id
+        )
     ).model_dump()
     roster = list(await custom_game_service.roster.list_for_game(session, game.id))
-    host_display_name, co_hosts = await _resolve_hosts(session, game)
+    host_names = await custom_game_service.hosts(session, game.workspace_id, [game.host_user_id])
+    host_display_name = host_names.get(game.host_user_id)
+    co_hosts = await _resolve_co_hosts(session, game)
     if not roster:
         return _dump_game(
-            game, roster, host_display_name=host_display_name, roster_shape=roster_shape, co_hosts=co_hosts
+            game,
+            settings,
+            roster=roster,
+            host_display_name=host_display_name,
+            roster_shape=roster_shape,
+            co_hosts=co_hosts,
         )
     member_ids = [row.workspace_member_id for row in roster]
     members = await custom_game_service.members(session, game.workspace_id, member_ids)
+    roles_by_player = await custom_game_service.player_roles.roles_for_players(
+        session, [row.id for row in roster]
+    )
     layer_rows = await custom_game_service.ranks.list_layer_rows(
         session,
         workspace_id=game.workspace_id,
@@ -332,18 +301,34 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
             if row.author_user_id is not None
         }
     )
-    return _dump_game(game, roster, members, resolved, author_ranks, host_display_name, roster_shape, co_hosts)
+    return _dump_game(
+        game,
+        settings,
+        roster=roster,
+        members=members,
+        roles_by_player=roles_by_player,
+        resolved=resolved,
+        author_ranks=author_ranks,
+        host_display_name=host_display_name,
+        roster_shape=roster_shape,
+        co_hosts=co_hosts,
+    )
 
 
 def _dump_match(match: Any, map_info: dict[int, tuple[str, str]]) -> dict[str, Any]:
-    winner = 1 if match.home_score > match.away_score else 2 if match.away_score > match.home_score else None
+    sides = {team.side: team for team in match.teams}
+    home = sides.get(CasualTeamSide.HOME)
+    away = sides.get(CasualTeamSide.AWAY)
+    home_score = home.score if home is not None else 0
+    away_score = away.score if away is not None else 0
+    winner = 1 if home_score > away_score else 2 if away_score > home_score else None
     map_name, map_image_path = map_info.get(match.map_id, (None, None)) if match.map_id is not None else (None, None)
     return {
         "id": match.id,
-        "home_team_name": match.home_team.name,
-        "away_team_name": match.away_team.name,
-        "home_score": match.home_score,
-        "away_score": match.away_score,
+        "home_team_name": home.name if home is not None else None,
+        "away_team_name": away.name if away is not None else None,
+        "home_score": home_score,
+        "away_score": away_score,
         "winner": winner,
         "map_id": match.map_id,
         "map_name": map_name,
@@ -386,23 +371,17 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "create")
-            body = c.payload(data)
-            name = body.get("name", data.get("name"))
-            if not isinstance(name, str):
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="name is required")
-            config_json = body.get("config_json", data.get("config_json"))
-            if config_json is not None and not isinstance(config_json, dict):
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="config_json is required")
+            body = _body(schemas.CustomGameCreate, data)
             game = await custom_game_service.create(
                 session,
                 workspace_id=workspace_id,
                 host_user_id=_opt_int(data, "host_user_id") or user.id,
-                name=name,
+                name=body.name,
                 actor_user_id=user.id,
-                # An omitted list opens an empty mix; the host fills it from the
+                # An empty list opens an empty mix; the host fills it from the
                 # roster sheet afterwards. There is no pool to default to.
-                member_ids=_member_ids(data) or (),
-                config_json=config_json,
+                member_ids=body.member_ids,
+                balancer_config=body.balancer_config,
             )
             await session.commit()
             await emit_pickup_mix_updated(workspace_id, reason="create", actor_user_id=user.id)
@@ -420,7 +399,14 @@ def register(broker: Any, logger: Any) -> None:
             host_names = await custom_game_service.hosts(
                 session, workspace_id, [row.host_user_id for row in rows]
             )
-            return [_dump_game(row, host_display_name=host_names.get(row.host_user_id)) for row in rows]
+            return [
+                _dump_game(
+                    row,
+                    await _game_settings(session, row),
+                    host_display_name=host_names.get(row.host_user_id),
+                )
+                for row in rows
+            ]
 
         return await c.envelope(logger, "custom.list", op, session_factory=_SF)
 
@@ -441,14 +427,12 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
-            member_ids = _member_ids(data)
-            if member_ids is None:
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_ids is required")
+            body = _body(schemas.CustomGameRosterUpdate, data)
             game = await custom_game_service.update_roster(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                member_ids=member_ids,
+                member_ids=body.member_ids,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -463,12 +447,13 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
+            body = _body(schemas.CustomGamePlayerPatch, data)
             game = await custom_game_service.update_player(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
                 workspace_member_id=_int(data, "workspace_member_id"),
-                patch=_player_patch(data),
+                patch=body.model_dump(exclude_unset=True),
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -476,6 +461,34 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.update_player", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.set_participation")
+    async def _set_participation(data: dict, msg: RabbitMessage) -> dict:
+        """Move several roster rows between lineup states in ONE transaction.
+
+        The rotation-hint button applies a whole verdict at once. Sent as N
+        single-row patches it raced on whose response landed last and needed a
+        follow-up refetch to converge; one request settles the whole lineup and
+        emits one realtime signal.
+        """
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(data, user, workspace_id, "update")
+            body = _body(schemas.CustomGamePlayersParticipationPatch, data)
+            game = await custom_game_service.set_participation(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                participation={player.workspace_member_id: player.participation for player in body.players},
+                actor_user_id=user.id,
+            )
+            await session.commit()
+            await emit_pickup_mix_updated(workspace_id, reason="roster", actor_user_id=user.id)
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.set_participation", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.balance")
     async def _balance(data: dict, msg: RabbitMessage) -> dict:
@@ -501,11 +514,12 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
+            body = _body(schemas.CustomGameTeamNamesPatch, data)
             game = await custom_game_service.set_team_names(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                team_names=_team_names(data),
+                team_names=body.team_names,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -520,11 +534,12 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
+            body = _body(schemas.CustomGameRoleMaskPatch, data)
             game = await custom_game_service.set_role_mask(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                role_mask=_role_mask_body(data),
+                role_mask=body.role_mask,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -539,11 +554,12 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
+            body = _body(schemas.CustomGamePointsPerWinPatch, data)
             game = await custom_game_service.set_points_per_win(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                points_per_win=_points_per_win_body(data),
+                points_per_win=body.points_per_win,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -558,11 +574,12 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
+            body = _body(schemas.CustomGameBalancerConfigPatch, data)
             game = await custom_game_service.set_balancer_config(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                balancer_config=_balancer_config_body(data),
+                balancer_config=body.balancer_config,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -577,11 +594,12 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
+            body = _body(schemas.CustomGameHostTransfer, data)
             game = await custom_game_service.transfer_host(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                new_host_user_id=_new_host_user_id(data),
+                new_host_user_id=body.new_host_user_id,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -596,11 +614,12 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
+            body = _body(schemas.CustomGameCoHostPatch, data)
             game = await custom_game_service.add_co_host(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                co_host_user_id=_int(data, "co_host_user_id"),
+                co_host_user_id=body.co_host_user_id,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -619,6 +638,8 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
+                # Path parameter, not a body: the route is
+                # DELETE .../co-hosts/{co_host_user_id}.
                 co_host_user_id=_int(data, "co_host_user_id"),
                 actor_user_id=user.id,
             )
@@ -634,14 +655,14 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
-            variant_index, first_uuid, second_uuid = _swap_seats_body(data)
+            body = _body(schemas.CustomGameSeatSwap, data)
             game = await custom_game_service.swap_seats(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                variant_index=variant_index,
-                first_uuid=first_uuid,
-                second_uuid=second_uuid,
+                variant_index=body.variant_index,
+                first_uuid=body.first_uuid,
+                second_uuid=body.second_uuid,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -656,25 +677,14 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "update")
-            body = c.payload(data)
-            outcome = body.get("outcome_json", data.get("outcome_json", body.get("outcome", data.get("outcome"))))
-            if not isinstance(outcome, dict):
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="outcome_json is required")
-            variant_index = body.get("variant_index", data.get("variant_index"))
-            if not isinstance(variant_index, int):
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="variant_index is required"
-                )
-            map_id = body.get("map_id", data.get("map_id"))
-            if map_id is not None and not isinstance(map_id, int):
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="map_id must be an int")
+            body = _body(schemas.CustomGameRecordOutcome, data)
             game = await custom_game_service.record_outcome(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
-                outcome_json=outcome,
-                variant_index=variant_index,
-                map_id=map_id,
+                winner=body.outcome.winner,
+                variant_index=body.variant_index,
+                map_id=body.map_id,
                 actor_user_id=user.id,
             )
             await session.commit()
@@ -741,7 +751,7 @@ def register(broker: Any, logger: Any) -> None:
             )
             await session.commit()
             await emit_pickup_mix_updated(workspace_id, reason="delete", actor_user_id=user.id)
-            return _dump_game(game)
+            return _dump_game(game, await _game_settings(session, game))
 
         return await c.envelope(logger, "custom.delete", op, session_factory=_SF)
 

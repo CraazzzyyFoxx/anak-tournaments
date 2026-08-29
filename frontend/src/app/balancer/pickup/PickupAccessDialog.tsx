@@ -57,7 +57,7 @@ function MemberSearchCombobox({
       workspacePlayerService
         .list(workspaceId, { query, perPage: 20 })
         .then((page) =>
-          // `host_user_id`/`co_host_user_ids` are `auth.user.id`s, so a member
+          // Host and co-host are both addressed by `auth.user.id`, so a member
           // with no linked account (never signed in) cannot be picked here at
           // all -- there is nobody who could ever log in and pass the write
           // check. Filtering them out here, not just disabling them, keeps
@@ -115,8 +115,8 @@ function MemberSearchCombobox({
 }
 
 /**
- * Every write here (`_require_writer` in `custom_game.py`) checks the host
- * OR a co-host -- this is the one place both grants are managed.
+ * Every write here checks the host OR a co-host (`CustomGameService._writable`)
+ * -- this is the one place both grants are managed.
  *
  * Co-hosts get exactly the host's write access (roster, balance, outcomes,
  * settings, even transferring the primary host on) the moment they are

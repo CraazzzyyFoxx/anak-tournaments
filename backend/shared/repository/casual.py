@@ -16,16 +16,16 @@ class CasualMatchRepository(BaseRepository[models.CasualMatch]):
         super().__init__(models.CasualMatch)
 
     async def list_for_custom_game(self, session: AsyncSession, custom_game_id: int) -> Sequence[models.CasualMatch]:
-        """Newest-first, with both sides' frozen team names eager-loaded.
+        """Newest-first, with both scored sides and their frozen seats loaded.
 
-        Eager, not lazy: an async session raises on an unawaited lazy load
-        accessed after the fact, and the history view needs both team names for
-        every row regardless of who scored.
+        Eager, not lazy: an async session raises on an unawaited lazy load, and
+        both readers of this need the whole snapshot -- the history view for
+        names and scores, the rotation recommender for who actually played.
         """
         result = await session.scalars(
             self.select()
             .where(self.model.custom_game_id == custom_game_id)
-            .options(selectinload(self.model.home_team), selectinload(self.model.away_team))
+            .options(selectinload(self.model.teams).selectinload(models.CasualTeam.players))
             .order_by(self.model.id.desc())
         )
         return result.all()
@@ -39,14 +39,3 @@ class CasualTeamRepository(BaseRepository[models.CasualTeam]):
 class CasualPlayerRepository(BaseRepository[models.CasualPlayer]):
     def __init__(self) -> None:
         super().__init__(models.CasualPlayer)
-
-    async def list_for_teams(self, session: AsyncSession, team_ids: Sequence[int]) -> Sequence[models.CasualPlayer]:
-        """Every seat frozen for a set of casual teams, unordered.
-
-        Bulk by design: a rotation read over N recorded matches needs the
-        rosters of 2N teams, and one ``IN`` query beats N+1 round trips.
-        """
-        if not team_ids:
-            return []
-        result = await session.scalars(self.select().where(self.model.team_id.in_(team_ids)))
-        return result.all()

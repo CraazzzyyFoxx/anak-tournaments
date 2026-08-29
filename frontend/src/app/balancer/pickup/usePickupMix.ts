@@ -14,6 +14,7 @@ import type { RosterSlotMap } from "@/lib/roster-shape";
 
 import {
   computeRotationHintPatches,
+  participationEntries,
   type PickupRecordOutcomeInput,
 } from "@/app/balancer/pickup/pickup-lineup";
 import {
@@ -115,7 +116,7 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
     queryClient.setQueryData(customGameKeys.one(workspaceId, game.id), game);
     // The list carries name and status, both of which a write can change.
     void queryClient.invalidateQueries({ queryKey: customGameKeys.list(workspaceId) });
-    // Roster, `must_play` and match history all feed the rotation verdict --
+    // Roster, participation and match history all feed the rotation verdict --
     // any write here can flip it, so it is invalidated alongside the game
     // itself rather than only on the writes that look rotation-specific.
     void queryClient.invalidateQueries({ queryKey: customGameKeys.rotation(workspaceId, game.id) });
@@ -150,35 +151,33 @@ export function usePickupMix(workspaceId: number, pickedGameId: number | null) {
   /**
    * Applies every actionable rotation-fairness hint at once (see
    * `mix_rotation.recommend_rotation`): seats whoever is owed one, benches
-   * whoever should rest. `computeRotationHintPatches` already skips a row
-   * that matches its hint, so a second click with nothing left to apply is a
-   * no-op that still resolves.
+   * whoever should rest. One request, one transaction, one returned snapshot --
+   * `computeRotationHintPatches` already skips a row that matches its hint, so
+   * a second click with nothing left to apply never reaches the server.
    */
   const applyRotationHints = useMutation({
     mutationFn: async () => {
-      const patches = computeRotationHintPatches(gameQuery.data?.players ?? [], rotationQuery.data ?? []);
-      await Promise.all(
-        patches.map((input) =>
-          customGameService.updatePlayer(
-            workspaceId,
-            selectedGameId as number,
-            input.workspaceMemberId,
-            input.patch,
-          ),
-        ),
+      const players = participationEntries(
+        computeRotationHintPatches(gameQuery.data?.players ?? [], rotationQuery.data ?? []),
       );
-      return patches.length;
+      if (players.length === 0) {
+        return { appliedCount: 0, game: null };
+      }
+      const game = await customGameService.setParticipation(
+        workspaceId,
+        selectedGameId as number,
+        players,
+      );
+      return { appliedCount: players.length, game };
     },
-    onSuccess: async (appliedCount) => {
-      // Every patch above returned its own game snapshot, but concurrent
-      // writes to different rows race on whose snapshot lands last --
-      // refetching is the only way to see every one of them at once, unlike
-      // `applyGame`'s single optimistic `setQueryData`.
-      await queryClient.invalidateQueries({ queryKey: customGameKeys.one(workspaceId, selectedGameId ?? 0) });
-      void queryClient.invalidateQueries({ queryKey: customGameKeys.list(workspaceId) });
-      void queryClient.invalidateQueries({ queryKey: customGameKeys.rotation(workspaceId, selectedGameId ?? 0) });
+    onSuccess: ({ appliedCount, game }) => {
+      if (game != null) {
+        applyGame(game);
+      }
       notify.success(
-        appliedCount > 0 ? `Applied ${appliedCount} hint${appliedCount === 1 ? "" : "s"}` : "Lineup already matches the hints",
+        appliedCount > 0
+          ? `Applied ${appliedCount} hint${appliedCount === 1 ? "" : "s"}`
+          : "Lineup already matches the hints",
       );
     },
     onError: (error) => notify.apiError(error),

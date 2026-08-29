@@ -6,13 +6,14 @@ import {
   averageRank,
   computeRotationHintPatches,
   getLineupIssue,
-  parsePointsPerWin,
   parseVariants,
+  participationEntries,
   playerLabel,
   resolveRoleOrder,
   sortLineup,
   summarizeLineup,
   summarizeRoleSupply,
+  teamNamesByIndex,
   toggleRole,
 } from "./pickup-lineup";
 
@@ -22,10 +23,10 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     workspace_member_id: 7,
     display_name: null,
     battle_tag: "Aria#1111",
-    team_index: null,
     sort_order: 0,
-    is_active: true,
-    must_play: false,
+    participation: "pool",
+    role_selection_mode: "all_ranked",
+    is_flex: false,
     roles: null,
     ranks: { tank: 2400, dps: 2600, support: 2500 },
     rank_sources: { tank: "workspace", dps: "workspace", support: "workspace" },
@@ -49,23 +50,23 @@ function hint(overrides: Partial<RotationRecommendation> = {}): RotationRecommen
 describe("computeRotationHintPatches", () => {
   it("seats a benched member who is owed a seat directly into Must Play", () => {
     const patches = computeRotationHintPatches(
-      [row({ is_active: false, must_play: false })],
+      [row({ participation: "benched" })],
       [hint({ status: "must_play" })],
     );
-    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { is_active: true, must_play: true } }]);
+    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { participation: "must_play" } }]);
   });
 
   it("pins an already-active pool member who is owed a seat into Must Play", () => {
     const patches = computeRotationHintPatches(
-      [row({ is_active: true, must_play: false })],
+      [row({ participation: "pool" })],
       [hint({ status: "must_play" })],
     );
-    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { is_active: true, must_play: true } }]);
+    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { participation: "must_play" } }]);
   });
 
   it("leaves an already-pinned must_play member untouched", () => {
     const patches = computeRotationHintPatches(
-      [row({ is_active: true, must_play: true })],
+      [row({ participation: "must_play" })],
       [hint({ status: "must_play" })],
     );
     expect(patches).toEqual([]);
@@ -73,23 +74,23 @@ describe("computeRotationHintPatches", () => {
 
   it("benches an active member who should rest, exactly like a manual drop into Benched", () => {
     const patches = computeRotationHintPatches(
-      [row({ is_active: true, must_play: false })],
+      [row({ participation: "pool" })],
       [hint({ status: "should_rest" })],
     );
-    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { is_active: false, must_play: false } }]);
+    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { participation: "benched" } }]);
   });
 
   it("clears a stale host pin when benching a should_rest member", () => {
     const patches = computeRotationHintPatches(
-      [row({ is_active: true, must_play: true })],
+      [row({ participation: "must_play" })],
       [hint({ status: "should_rest" })],
     );
-    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { is_active: false, must_play: false } }]);
+    expect(patches).toEqual([{ workspaceMemberId: 7, patch: { participation: "benched" } }]);
   });
 
   it("leaves an already-benched should_rest member untouched", () => {
     const patches = computeRotationHintPatches(
-      [row({ is_active: false, must_play: false })],
+      [row({ participation: "benched" })],
       [hint({ status: "should_rest" })],
     );
     expect(patches).toEqual([]);
@@ -97,22 +98,22 @@ describe("computeRotationHintPatches", () => {
 
   it("never patches a neutral verdict", () => {
     const patches = computeRotationHintPatches(
-      [row({ is_active: false })],
+      [row({ participation: "benched" })],
       [hint({ status: "neutral" })],
     );
     expect(patches).toEqual([]);
   });
 
   it("skips a member with no hint at all", () => {
-    const patches = computeRotationHintPatches([row({ workspace_member_id: 9, is_active: false })], []);
+    const patches = computeRotationHintPatches([row({ workspace_member_id: 9, participation: "benched" })], []);
     expect(patches).toEqual([]);
   });
 
   it("applies only the rows that actually need to change, across a mixed pool", () => {
     const rows = [
-      row({ workspace_member_id: 1, is_active: false }), // owed a seat
-      row({ workspace_member_id: 2, is_active: true }), // should rest
-      row({ workspace_member_id: 3, is_active: true }), // neutral, no change
+      row({ workspace_member_id: 1, participation: "benched" }), // owed a seat
+      row({ workspace_member_id: 2, participation: "pool" }), // should rest
+      row({ workspace_member_id: 3, participation: "pool" }), // neutral, no change
     ];
     const recommendations = [
       hint({ workspace_member_id: 1, status: "must_play" }),
@@ -120,8 +121,8 @@ describe("computeRotationHintPatches", () => {
       hint({ workspace_member_id: 3, status: "neutral" }),
     ];
     expect(computeRotationHintPatches(rows, recommendations)).toEqual([
-      { workspaceMemberId: 1, patch: { is_active: true, must_play: true } },
-      { workspaceMemberId: 2, patch: { is_active: false, must_play: false } },
+      { workspaceMemberId: 1, patch: { participation: "must_play" } },
+      { workspaceMemberId: 2, patch: { participation: "benched" } },
     ]);
   });
 });
@@ -152,7 +153,7 @@ describe("summarizeRoleSupply", () => {
   });
 
   it("ignores benched players entirely", () => {
-    const supply = summarizeRoleSupply([row({ is_active: false, roles: ["tank"] })]);
+    const supply = summarizeRoleSupply([row({ participation: "benched", roles: ["tank"] })]);
     expect(supply.every((entry) => entry.supply === 0)).toBe(true);
   });
 
@@ -164,18 +165,36 @@ describe("summarizeRoleSupply", () => {
   });
 });
 
-describe("parsePointsPerWin", () => {
-  it("reads the configured points-per-win, ignoring a disabled/absent knob", () => {
-    expect(parsePointsPerWin({ points_per_win: 25 })).toBe(25);
-    expect(parsePointsPerWin({ points_per_win: 0 })).toBeNull();
-    expect(parsePointsPerWin(null)).toBeNull();
-    expect(parsePointsPerWin({})).toBeNull();
+describe("teamNamesByIndex", () => {
+  it("re-keys the host's overrides by team index, dropping blanks", () => {
+    expect(
+      teamNamesByIndex({
+        points_per_win: null,
+        team_names: { "0": "Wolves", "1": "   ", "2": "Bears" },
+        role_mask: null,
+        balancer_config: null,
+      }),
+    ).toEqual({ 0: "Wolves", 2: "Bears" });
   });
 
-  it("rejects a non-integer or negative value rather than throwing", () => {
-    expect(parsePointsPerWin({ points_per_win: 2.5 })).toBeNull();
-    expect(parsePointsPerWin({ points_per_win: -10 })).toBeNull();
-    expect(parsePointsPerWin({ points_per_win: "25" })).toBeNull();
+  it("has nothing to say for a mix with no overrides at all", () => {
+    expect(teamNamesByIndex(undefined)).toEqual({});
+  });
+});
+
+describe("participationEntries", () => {
+  it("flattens the hint patches into one whole-lineup payload", () => {
+    expect(
+      participationEntries([
+        { workspaceMemberId: 7, patch: { participation: "must_play" } },
+        { workspaceMemberId: 8, patch: { participation: "benched" } },
+        // A patch that carries no participation is not a lineup move.
+        { workspaceMemberId: 9, patch: { is_flex: true } },
+      ]),
+    ).toEqual([
+      { workspace_member_id: 7, participation: "must_play" },
+      { workspace_member_id: 8, participation: "benched" },
+    ]);
   });
 });
 
@@ -214,7 +233,7 @@ describe("toggleRole", () => {
 
 describe("getLineupIssue", () => {
   it("stays silent for a benched player, whatever their setup", () => {
-    expect(getLineupIssue(row({ is_active: false, roles: [], ranks: {} }))).toBeNull();
+    expect(getLineupIssue(row({ participation: "benched", roles: [], ranks: {} }))).toBeNull();
   });
 
   it("flags an active player whose selected roles have no rank", () => {
@@ -245,7 +264,7 @@ describe("summarizeLineup", () => {
     expect(
       summarizeLineup([
         row({ workspace_member_id: 1 }),
-        row({ workspace_member_id: 2, is_active: false }),
+        row({ workspace_member_id: 2, participation: "benched" }),
         row({ workspace_member_id: 3, roles: [] }),
       ]),
     ).toEqual({ total: 3, active: 2, benched: 1, blocking: 1 });
@@ -256,7 +275,7 @@ describe("sortLineup", () => {
   it("floats active players above benched ones, then keeps the host order", () => {
     const rows = [
       row({ workspace_member_id: 1, sort_order: 2 }),
-      row({ workspace_member_id: 2, sort_order: 0, is_active: false }),
+      row({ workspace_member_id: 2, sort_order: 0, participation: "benched" }),
       row({ workspace_member_id: 3, sort_order: 1 }),
     ];
     expect(sortLineup(rows).map((item) => item.workspace_member_id)).toEqual([3, 1, 2]);
