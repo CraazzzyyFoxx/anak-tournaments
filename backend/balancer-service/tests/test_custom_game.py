@@ -149,7 +149,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # The normalized child tables of a mix. Empty by default: no co-hosts, no
         # per-team name override, no own role mask -- exactly what a fresh mix has.
         self.co_hosts = MagicMock()
-        self.co_hosts.member_ids_for_game = AsyncMock(return_value=[])
+        self.co_hosts.user_ids_for_game = AsyncMock(return_value=[])
         self.co_hosts.add = AsyncMock()
         self.co_hosts.remove = AsyncMock()
         self.player_roles = MagicMock()
@@ -172,10 +172,11 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # No workspace member resolves to a host name unless a test says
         # otherwise -- `transfer_host` treats an unresolved id as "not a member".
         self.load_hosts = AsyncMock(return_value={})
-        # Nobody resolves to a workspace member unless a test says otherwise --
-        # `transfer_host`/`add_co_host` treat an unresolved account as "not a member",
-        # and `_writable` treats it as "not a co-host".
-        self.load_host_members = AsyncMock(return_value={})
+        # Nobody belongs to this workspace unless a test says otherwise --
+        # `transfer_host`/`add_co_host` treat a non-member target as a 404. The
+        # actor's own membership is settled at the RPC gate, so `_writable` only
+        # reads the co-host grants.
+        self.load_member_user_ids = AsyncMock(return_value=set())
         self.ranks.resolve = AsyncMock(return_value={})
         self.ranks.set_ranks = AsyncMock(return_value={})
         self.grid = object()
@@ -208,7 +209,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             ranks=self.ranks,
             load_roster=self.load_roster,
             load_hosts=self.load_hosts,
-            load_host_members=self.load_host_members,
+            load_member_user_ids=self.load_member_user_ids,
             run_balance=self.run_balance,
         )
         self.session = _session()
@@ -1152,20 +1153,20 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_transfer_host_moves_ownership_to_a_workspace_member(self) -> None:
         self.games.get.return_value = _game()
-        self.load_host_members.return_value = {21: 210}
+        self.load_member_user_ids.return_value = {21}
 
         game = await self.service.transfer_host(
             self.session, workspace_id=1, custom_game_id=11, new_host_user_id=21, actor_user_id=9
         )
 
         self.assertEqual(game.host_user_id, 21)
-        self.load_host_members.assert_awaited_once_with(self.session, workspace_id=1, user_ids=[21])
+        self.load_member_user_ids.assert_awaited_once_with(self.session, workspace_id=1, user_ids=[21])
         # The new host is never also a co-host of themselves.
-        self.co_hosts.remove.assert_awaited_once_with(self.session, 11, 210)
+        self.co_hosts.remove.assert_awaited_once_with(self.session, 11, 21)
 
     async def test_transfer_host_rejects_a_non_member_404(self) -> None:
         self.games.get.return_value = _game()
-        self.load_host_members.return_value = {}
+        self.load_member_user_ids.return_value = set()
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.transfer_host(
@@ -1177,10 +1178,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
     async def test_transfer_host_requires_the_host_or_a_co_host_403(self) -> None:
         game = _game()
         self.games.get.return_value = game
-        # The actor resolves to a member of this workspace, but not a co-host of
-        # this mix -- membership alone never grants a write.
-        self.load_host_members.return_value = {99: 990}
-        self.co_hosts.member_ids_for_game.return_value = []
+        # Membership alone never grants a write: the caller is already known to
+        # belong to this workspace by the time the service is reached.
+        self.co_hosts.user_ids_for_game.return_value = []
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.transfer_host(
@@ -1190,6 +1190,23 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertEqual(game.host_user_id, 9)
         self.co_hosts.remove.assert_not_awaited()
+
+    async def test_a_write_reads_the_grant_alone_not_the_roster(self) -> None:
+        """A co-host's own membership is settled before the service is called.
+
+        Re-deriving it here from ``workspace_member`` demanded a roster row an
+        RBAC-only member (an admin who never plays) does not have, and revoked
+        their write access on every mix they co-hosted.
+        """
+        self.games.get.return_value = _game()
+        self.co_hosts.user_ids_for_game.return_value = [21]
+
+        game = await self.service.set_points_per_win(
+            self.session, workspace_id=1, custom_game_id=11, points_per_win=10, actor_user_id=21
+        )
+
+        self.assertEqual(game.points_per_win, 10)
+        self.load_member_user_ids.assert_not_awaited()
 
     async def test_transfer_host_terminal_409(self) -> None:
         self.games.get.return_value = _game(status="completed")
@@ -1209,12 +1226,12 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(game.host_user_id, 9)
-        self.load_host_members.assert_not_awaited()
+        self.load_member_user_ids.assert_not_awaited()
 
     async def test_transfer_host_dedupes_new_host_out_of_co_hosts(self) -> None:
         self.games.get.return_value = _game()
-        self.load_host_members.return_value = {21: 210}
-        self.co_hosts.member_ids_for_game.return_value = [210, 220]
+        self.load_member_user_ids.return_value = {21}
+        self.co_hosts.user_ids_for_game.return_value = [21, 22]
 
         game = await self.service.transfer_host(
             self.session, workspace_id=1, custom_game_id=11, new_host_user_id=21, actor_user_id=9
@@ -1222,20 +1239,20 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(game.host_user_id, 21)
         # Nobody is simultaneously the primary host and a co-host of themselves.
-        self.co_hosts.remove.assert_awaited_once_with(self.session, 11, 210)
+        self.co_hosts.remove.assert_awaited_once_with(self.session, 11, 21)
 
     async def test_add_co_host_grants_write_access(self) -> None:
         game = _game()
         self.games.get.return_value = game
-        self.load_host_members.return_value = {21: 210}
+        self.load_member_user_ids.return_value = {21}
 
         await self.service.add_co_host(
             self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=9
         )
-        self.co_hosts.add.assert_awaited_once_with(self.session, 11, 210)
+        self.co_hosts.add.assert_awaited_once_with(self.session, 11, 21)
 
         # The new co-host can now write this mix without being the host.
-        self.co_hosts.member_ids_for_game.return_value = [210]
+        self.co_hosts.user_ids_for_game.return_value = [21]
         renamed = await self.service.set_points_per_win(
             self.session, workspace_id=1, custom_game_id=11, points_per_win=10, actor_user_id=21
         )
@@ -1243,7 +1260,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_add_co_host_rejects_a_non_member_404(self) -> None:
         self.games.get.return_value = _game()
-        self.load_host_members.return_value = {}
+        self.load_member_user_ids.return_value = set()
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.add_co_host(
@@ -1254,8 +1271,8 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_add_co_host_is_idempotent(self) -> None:
         self.games.get.return_value = _game()
-        self.load_host_members.return_value = {21: 210}
-        self.co_hosts.member_ids_for_game.return_value = [210]
+        self.load_member_user_ids.return_value = {21}
+        self.co_hosts.user_ids_for_game.return_value = [21]
 
         await self.service.add_co_host(
             self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=9
@@ -1271,12 +1288,12 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
 
         self.co_hosts.add.assert_not_awaited()
-        self.load_host_members.assert_not_awaited()
+        self.load_member_user_ids.assert_not_awaited()
 
     async def test_add_co_host_enforces_the_cap(self) -> None:
         self.games.get.return_value = _game()
-        self.load_host_members.return_value = {21: 210}
-        self.co_hosts.member_ids_for_game.return_value = list(range(300, 300 + _MAX_CO_HOSTS))
+        self.load_member_user_ids.return_value = {21}
+        self.co_hosts.user_ids_for_game.return_value = list(range(300, 300 + _MAX_CO_HOSTS))
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.add_co_host(
@@ -1288,14 +1305,14 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_add_co_host_allowed_by_an_existing_co_host(self) -> None:
         self.games.get.return_value = _game()
-        self.load_host_members.return_value = {21: 210, 22: 220}
-        self.co_hosts.member_ids_for_game.return_value = [210]
+        self.load_member_user_ids.return_value = {22}
+        self.co_hosts.user_ids_for_game.return_value = [21]
 
         await self.service.add_co_host(
             self.session, workspace_id=1, custom_game_id=11, co_host_user_id=22, actor_user_id=21
         )
 
-        self.co_hosts.add.assert_awaited_once_with(self.session, 11, 220)
+        self.co_hosts.add.assert_awaited_once_with(self.session, 11, 22)
 
     async def test_add_co_host_requires_the_host_or_a_co_host_403(self) -> None:
         self.games.get.return_value = _game()
@@ -1309,15 +1326,14 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_remove_co_host_revokes_write_access(self) -> None:
         self.games.get.return_value = _game()
-        self.load_host_members.return_value = {21: 210}
-        self.co_hosts.member_ids_for_game.return_value = [210]
+        self.co_hosts.user_ids_for_game.return_value = [21]
 
         await self.service.remove_co_host(
             self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=9
         )
-        self.co_hosts.remove.assert_awaited_once_with(self.session, 11, 210)
+        self.co_hosts.remove.assert_awaited_once_with(self.session, 11, 21)
 
-        self.co_hosts.member_ids_for_game.return_value = []
+        self.co_hosts.user_ids_for_game.return_value = []
         with self.assertRaises(HTTPException) as ctx:
             await self.service.set_points_per_win(
                 self.session, workspace_id=1, custom_game_id=11, points_per_win=10, actor_user_id=21
@@ -1326,8 +1342,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_remove_co_host_is_a_noop_for_an_absent_id(self) -> None:
         self.games.get.return_value = _game()
-        self.load_host_members.return_value = {}
-        self.co_hosts.member_ids_for_game.return_value = [210]
+        self.co_hosts.user_ids_for_game.return_value = [21]
 
         await self.service.remove_co_host(
             self.session, workspace_id=1, custom_game_id=11, co_host_user_id=404, actor_user_id=9
@@ -1335,16 +1350,32 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         self.co_hosts.remove.assert_not_awaited()
 
+    async def test_remove_co_host_needs_no_membership_of_its_target(self) -> None:
+        """An account that has since left the workspace is still revocable.
+
+        Resolving the target through a membership lookup first stranded the grant
+        the moment the member row went away: the revoke silently no-opped and the
+        row kept its write access.
+        """
+        self.games.get.return_value = _game()
+        self.load_member_user_ids.return_value = set()
+        self.co_hosts.user_ids_for_game.return_value = [21]
+
+        await self.service.remove_co_host(
+            self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=9
+        )
+
+        self.co_hosts.remove.assert_awaited_once_with(self.session, 11, 21)
+
     async def test_remove_co_host_allows_self_removal(self) -> None:
         self.games.get.return_value = _game()
-        self.load_host_members.return_value = {21: 210}
-        self.co_hosts.member_ids_for_game.return_value = [210, 220]
+        self.co_hosts.user_ids_for_game.return_value = [21, 22]
 
         await self.service.remove_co_host(
             self.session, workspace_id=1, custom_game_id=11, co_host_user_id=21, actor_user_id=21
         )
 
-        self.co_hosts.remove.assert_awaited_once_with(self.session, 11, 210)
+        self.co_hosts.remove.assert_awaited_once_with(self.session, 11, 21)
 
     async def test_set_points_per_win_terminal_409(self) -> None:
         self.games.get.return_value = _game(status="completed")

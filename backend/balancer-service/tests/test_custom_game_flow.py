@@ -122,16 +122,16 @@ class _CoHosts:
     def __init__(self) -> None:
         self.by_game: dict[int, list[int]] = {}
 
-    async def member_ids_for_game(self, _session: Any, game_id: int) -> list[int]:
+    async def user_ids_for_game(self, _session: Any, game_id: int) -> list[int]:
         return list(self.by_game.get(game_id, []))
 
-    async def add(self, _session: Any, game_id: int, member_id: int) -> None:
-        self.by_game.setdefault(game_id, []).append(member_id)
+    async def add(self, _session: Any, game_id: int, user_id: int) -> None:
+        self.by_game.setdefault(game_id, []).append(user_id)
 
-    async def remove(self, _session: Any, game_id: int, member_id: int) -> None:
-        members = self.by_game.get(game_id)
-        if members and member_id in members:
-            members.remove(member_id)
+    async def remove(self, _session: Any, game_id: int, user_id: int) -> None:
+        granted = self.by_game.get(game_id)
+        if granted and user_id in granted:
+            granted.remove(user_id)
 
 
 class _CasualStore:
@@ -264,7 +264,7 @@ class MixFlowTests(IsolatedAsyncioTestCase):
                 }
             ),
             load_hosts=AsyncMock(return_value={9: "Host"}),
-            load_host_members=AsyncMock(return_value={}),
+            load_member_user_ids=AsyncMock(return_value=set()),
             run_balance=AsyncMock(),
         )
 

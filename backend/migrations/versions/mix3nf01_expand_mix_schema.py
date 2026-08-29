@@ -50,19 +50,22 @@ def upgrade() -> None:
         schema="balancer",
     )
 
+    # Keyed by ``auth.user.id``, like ``custom_game.host_user_id``: a co-host
+    # grant addresses a login, and workspace membership is an RBAC role rather
+    # than a ``workspace_member`` roster row, so the roster is not the anchor.
     op.create_table(
         "custom_game_co_host",
         sa.Column("custom_game_id", sa.BigInteger(), nullable=False),
-        sa.Column("workspace_member_id", sa.BigInteger(), nullable=False),
+        sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.ForeignKeyConstraint(["custom_game_id"], ["balancer.custom_game.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["workspace_member_id"], ["workspace_member.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("custom_game_id", "workspace_member_id"),
+        sa.ForeignKeyConstraint(["user_id"], ["auth.user.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("custom_game_id", "user_id"),
         schema="balancer",
     )
     op.create_index(
-        "ix_custom_game_co_host_workspace_member_id",
+        "ix_custom_game_co_host_user_id",
         "custom_game_co_host",
-        ["workspace_member_id"],
+        ["user_id"],
         schema="balancer",
     )
     op.create_table(
@@ -181,7 +184,7 @@ def downgrade() -> None:
     op.drop_table("custom_game_team_name", schema="balancer")
     op.drop_table("custom_game_player_role", schema="balancer")
     op.drop_index(
-        "ix_custom_game_co_host_workspace_member_id",
+        "ix_custom_game_co_host_user_id",
         table_name="custom_game_co_host",
         schema="balancer",
     )

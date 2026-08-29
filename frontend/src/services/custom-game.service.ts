@@ -60,10 +60,10 @@ export type CustomGameOutcome = {
   winner: 1 | 2 | null;
 };
 
-/** A workspace member with the same write access as the mix's host. */
+/** An account with the same write access as the mix's host. */
 export type CustomGameCoHost = {
+  /** `auth.user.id` -- the identity every write endpoint addresses, host included. */
   user_id: number;
-  workspace_member_id: number;
   display_name: string | null;
 };
 

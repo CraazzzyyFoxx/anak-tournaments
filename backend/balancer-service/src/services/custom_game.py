@@ -37,7 +37,7 @@ from shared.services.workspace_roster import (
     RosterMember,
     hosts_by_user_id,
     list_roster,
-    workspace_members_by_user_id,
+    workspace_member_user_ids,
 )
 from src.domain.mix_rotation import PlayerHistory, RotationRecommendation, recommend_rotation, rotation_priority
 from src.services.balancer.config.public_contract import normalize_config_overrides
@@ -270,7 +270,7 @@ class CustomGameService:
         ranks: MemberRankService | None = None,
         load_roster=list_roster,
         load_hosts=hosts_by_user_id,
-        load_host_members=workspace_members_by_user_id,
+        load_member_user_ids=workspace_member_user_ids,
         run_balance=_run_balance,
     ) -> None:
         self.games = games
@@ -285,7 +285,7 @@ class CustomGameService:
         self.ranks = ranks if ranks is not None else member_rank_service
         self.load_roster = load_roster
         self.load_hosts = load_hosts
-        self.load_host_members = load_host_members
+        self.load_member_user_ids = load_member_user_ids
         self.run_balance = run_balance
 
     async def members(
@@ -334,13 +334,11 @@ class CustomGameService:
     ) -> models.CustomGame:
         game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
         if actor_user_id != game.host_user_id:
-            member_ids = await self.load_host_members(
-                session,
-                workspace_id=workspace_id,
-                user_ids=[actor_user_id],
-            )
-            co_host_ids = await self.co_hosts.member_ids_for_game(session, game.id)
-            if member_ids.get(actor_user_id) not in co_host_ids:
+            # The caller's workspace membership is already settled at the RPC
+            # gate (``_require_mix``), so the grant itself is the only extra
+            # fact left to read -- and it is keyed by ``auth.user.id``, the same
+            # identity ``host_user_id`` holds.
+            if actor_user_id not in await self.co_hosts.user_ids_for_game(session, game.id):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only the host or a co-host can write this pool",
@@ -782,16 +780,15 @@ class CustomGameService:
         )
         if new_host_user_id == game.host_user_id:
             return game
-        members = await self.load_host_members(
+        if new_host_user_id not in await self.load_member_user_ids(
             session,
             workspace_id=workspace_id,
             user_ids=[new_host_user_id],
-        )
-        member_id = members.get(new_host_user_id)
-        if member_id is None:
+        ):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
         game.host_user_id = new_host_user_id
-        await self.co_hosts.remove(session, game.id, member_id)
+        # Nobody is simultaneously the primary host and a co-host of themselves.
+        await self.co_hosts.remove(session, game.id, new_host_user_id)
         return game
 
     async def add_co_host(
@@ -809,23 +806,21 @@ class CustomGameService:
         )
         if co_host_user_id == game.host_user_id:
             return game
-        members = await self.load_host_members(
+        if co_host_user_id not in await self.load_member_user_ids(
             session,
             workspace_id=workspace_id,
             user_ids=[co_host_user_id],
-        )
-        member_id = members.get(co_host_user_id)
-        if member_id is None:
+        ):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
-        current = await self.co_hosts.member_ids_for_game(session, game.id)
-        if member_id in current:
+        current = await self.co_hosts.user_ids_for_game(session, game.id)
+        if co_host_user_id in current:
             return game
         if len(current) >= _MAX_CO_HOSTS:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"A mix can have at most {_MAX_CO_HOSTS} co-hosts",
             )
-        await self.co_hosts.add(session, game.id, member_id)
+        await self.co_hosts.add(session, game.id, co_host_user_id)
         return game
 
     async def remove_co_host(
@@ -841,18 +836,11 @@ class CustomGameService:
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
-        members = await self.load_host_members(
-            session,
-            workspace_id=workspace_id,
-            user_ids=[co_host_user_id],
-        )
-        member_id = members.get(co_host_user_id)
-        if member_id is None:
+        # No membership check on the way out: an account that has since left the
+        # workspace must still be revocable, or its grant is stranded forever.
+        if co_host_user_id not in await self.co_hosts.user_ids_for_game(session, game.id):
             return game
-        current = await self.co_hosts.member_ids_for_game(session, game.id)
-        if member_id not in current:
-            return game
-        await self.co_hosts.remove(session, game.id, member_id)
+        await self.co_hosts.remove(session, game.id, co_host_user_id)
         return game
 
     async def swap_seats(

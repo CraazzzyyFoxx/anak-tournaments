@@ -35,11 +35,11 @@ class CustomGameRepositoryTests(IsolatedAsyncioTestCase):
         )
         session.flush.assert_awaited_once()
 
-    async def test_co_host_repository_lists_workspace_member_ids(self) -> None:
+    async def test_co_host_repository_lists_auth_user_ids(self) -> None:
         session = _session()
         session.scalars.return_value = SimpleNamespace(all=lambda: [7, 8])
 
-        result = await custom_game.CustomGameCoHostRepository().member_ids_for_game(session, 11)
+        result = await custom_game.CustomGameCoHostRepository().user_ids_for_game(session, 11)
 
         self.assertEqual(result, [7, 8])
 

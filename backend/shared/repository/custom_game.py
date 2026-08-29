@@ -38,28 +38,23 @@ class CustomGamePlayerRepository(BaseRepository[models.CustomGamePlayer]):
 
 
 class CustomGameCoHostRepository:
-    async def member_ids_for_game(self, session: AsyncSession, custom_game_id: int) -> list[int]:
+    async def user_ids_for_game(self, session: AsyncSession, custom_game_id: int) -> list[int]:
         result = await session.scalars(
-            sa.select(models.CustomGameCoHost.workspace_member_id).where(
+            sa.select(models.CustomGameCoHost.user_id).where(
                 models.CustomGameCoHost.custom_game_id == custom_game_id
             )
         )
         return list(result.all())
 
-    async def add(self, session: AsyncSession, custom_game_id: int, workspace_member_id: int) -> None:
-        session.add(
-            models.CustomGameCoHost(
-                custom_game_id=custom_game_id,
-                workspace_member_id=workspace_member_id,
-            )
-        )
+    async def add(self, session: AsyncSession, custom_game_id: int, user_id: int) -> None:
+        session.add(models.CustomGameCoHost(custom_game_id=custom_game_id, user_id=user_id))
         await session.flush()
 
-    async def remove(self, session: AsyncSession, custom_game_id: int, workspace_member_id: int) -> None:
+    async def remove(self, session: AsyncSession, custom_game_id: int, user_id: int) -> None:
         await session.execute(
             sa.delete(models.CustomGameCoHost).where(
                 models.CustomGameCoHost.custom_game_id == custom_game_id,
-                models.CustomGameCoHost.workspace_member_id == workspace_member_id,
+                models.CustomGameCoHost.user_id == user_id,
             )
         )
         await session.flush()

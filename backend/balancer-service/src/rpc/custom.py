@@ -213,28 +213,6 @@ def _dump_game(
     return out
 
 
-async def _resolve_co_hosts(session: Any, game: Any) -> list[dict[str, Any]]:
-    """Every co-host as (user_id, workspace_member_id, display_name).
-
-    ``user_id`` is the identity the write endpoints address (``auth.user.id``),
-    so the client keeps addressing a co-host the same way it always did while
-    the grant itself is stored relationally against the workspace member.
-    """
-    member_ids = await custom_game_service.co_hosts.member_ids_for_game(session, game.id)
-    if not member_ids:
-        return []
-    members = await custom_game_service.members(session, game.workspace_id, member_ids)
-    return [
-        {
-            "user_id": members[member_id].auth_user_id,
-            "workspace_member_id": member_id,
-            "display_name": members[member_id].display_name or members[member_id].battle_tag,
-        }
-        for member_id in member_ids
-        if member_id in members
-    ]
-
-
 async def _game_settings(session: Any, game: Any) -> dict[str, Any]:
     return _dump_settings(
         game,
@@ -259,9 +237,17 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         )
     ).model_dump()
     roster = list(await custom_game_service.roster.list_for_game(session, game.id))
-    host_names = await custom_game_service.hosts(session, game.workspace_id, [game.host_user_id])
+    # One name lookup for every identity on the write side: the host and each
+    # co-host are all ``auth.user.id``s, and the lookup is left-joined, so an
+    # account that holds a role here without playing still resolves to a name.
+    co_host_user_ids = await custom_game_service.co_hosts.user_ids_for_game(session, game.id)
+    host_names = await custom_game_service.hosts(
+        session, game.workspace_id, [game.host_user_id, *co_host_user_ids]
+    )
     host_display_name = host_names.get(game.host_user_id)
-    co_hosts = await _resolve_co_hosts(session, game)
+    co_hosts = [
+        {"user_id": user_id, "display_name": host_names.get(user_id)} for user_id in co_host_user_ids
+    ]
     if not roster:
         return _dump_game(
             game,

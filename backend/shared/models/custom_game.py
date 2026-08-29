@@ -52,15 +52,22 @@ class CustomGame(db.TimeStampIntegerMixin):
 
 
 class CustomGameCoHost(db.Base):
+    """One extra account with the host's write access on one mix.
+
+    Keyed by ``auth.user.id``, exactly like :attr:`CustomGame.host_user_id`: a
+    grant addresses a login, not a roster row. Workspace membership is an RBAC
+    fact (a role scoped to the workspace -- see ``AuthUser.is_workspace_member``),
+    and an admin can hold it without ever appearing on this workspace's player
+    roster, so ``workspace_member`` is the wrong anchor and cannot be an FK here.
+    """
+
     __tablename__ = "custom_game_co_host"
     __table_args__ = ({"schema": "balancer"},)
 
     custom_game_id: Mapped[int] = mapped_column(
         ForeignKey("balancer.custom_game.id", ondelete="CASCADE"), primary_key=True
     )
-    workspace_member_id: Mapped[int] = mapped_column(
-        ForeignKey("workspace_member.id", ondelete="CASCADE"), primary_key=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), primary_key=True)
 
 
 class CustomGamePlayer(db.TimeStampIntegerMixin):

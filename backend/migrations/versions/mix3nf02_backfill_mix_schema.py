@@ -4,9 +4,16 @@ Revision ID: mix3nf02
 Revises: mix3nf01
 Create Date: 2026-08-29 00:10:00.000000
 
-The migration aborts on malformed or tenant-invalid legacy data. A maintenance
-operator must repair the reported rows rather than silently dropping grants or
-history.
+The migration aborts on malformed legacy data -- a maintenance operator must
+repair the reported rows rather than have them silently dropped. A co-host id
+naming an account that no longer exists is the one exception: that grant is
+already unreachable (nobody can authenticate as a deleted account) and cannot
+satisfy the new foreign key, so it is dropped and counted in a NOTICE.
+
+Membership is deliberately *not* revalidated here. It is an RBAC fact that the
+new code checks when a grant is *made*; re-deciding it for grants already in
+the database would revoke live access on any workspace whose role bookkeeping
+predates the check.
 """
 
 from collections.abc import Sequence
@@ -23,6 +30,8 @@ def upgrade() -> None:
     op.execute(
         """
         DO $$
+        DECLARE
+            dead_grants bigint;
         BEGIN
             IF EXISTS (
                 SELECT 1 FROM balancer.custom_game_player
@@ -72,18 +81,16 @@ def upgrade() -> None:
             ) THEN
                 RAISE EXCEPTION 'mix3nf02: co_host_user_ids contains a non-numeric user id';
             END IF;
-            IF EXISTS (
-                SELECT 1
-                FROM balancer.custom_game cg
-                CROSS JOIN LATERAL jsonb_array_elements_text(
-                    COALESCE(cg.co_host_user_ids, '[]'::jsonb)
-                ) AS value
-                LEFT JOIN players."user" player ON player.auth_user_id = value::bigint
-                LEFT JOIN workspace_member member
-                  ON member.player_id = player.id AND member.workspace_id = cg.workspace_id
-                WHERE member.id IS NULL
-            ) THEN
-                RAISE EXCEPTION 'mix3nf02: a co-host is not a member of the mix workspace';
+            SELECT count(*) INTO dead_grants
+            FROM balancer.custom_game cg
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+                COALESCE(cg.co_host_user_ids, '[]'::jsonb)
+            ) AS value
+            WHERE NOT EXISTS (
+                SELECT 1 FROM auth."user" account WHERE account.id = value::bigint
+            );
+            IF dead_grants > 0 THEN
+                RAISE NOTICE 'mix3nf02: dropping % co-host grant(s) naming a deleted account', dead_grants;
             END IF;
             IF EXISTS (
                 SELECT 1
@@ -127,15 +134,13 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        INSERT INTO balancer.custom_game_co_host (custom_game_id, workspace_member_id)
-        SELECT DISTINCT cg.id, member.id
+        INSERT INTO balancer.custom_game_co_host (custom_game_id, user_id)
+        SELECT DISTINCT cg.id, account.id
         FROM balancer.custom_game cg
         CROSS JOIN LATERAL jsonb_array_elements_text(
             COALESCE(cg.co_host_user_ids, '[]'::jsonb)
         ) AS value
-        JOIN players."user" player ON player.auth_user_id = value::bigint
-        JOIN workspace_member member
-          ON member.player_id = player.id AND member.workspace_id = cg.workspace_id
+        JOIN auth."user" account ON account.id = value::bigint
         ON CONFLICT DO NOTHING
         """
     )

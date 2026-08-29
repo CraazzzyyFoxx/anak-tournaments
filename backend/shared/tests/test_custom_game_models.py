@@ -41,6 +41,13 @@ class TestCustomGameModel:
         assert models.CustomGameTeamName.__table__.schema == "balancer"
         assert models.CustomGameRoleSlot.__table__.schema == "balancer"
 
+    def test_co_host_grant_addresses_a_login_not_a_roster_row(self):
+        # Membership is RBAC, so a co-host can hold write access here without a
+        # `workspace_member` row -- the same identity `host_user_id` uses.
+        columns = models.CustomGameCoHost.__table__.columns
+        assert "workspace_member_id" not in columns
+        assert next(iter(columns["user_id"].foreign_keys)).target_fullname == "auth.user.id"
+
     def test_player_role_priority_is_unique_per_player(self):
         constraints = models.CustomGamePlayerRole.__table__.constraints
         unique_columns = {

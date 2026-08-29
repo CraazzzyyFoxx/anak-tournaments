@@ -33,7 +33,7 @@ __all__ = (
     "ensure_member_for_battle_tag",
     "hosts_by_user_id",
     "list_roster",
-    "workspace_members_by_user_id",
+    "workspace_member_user_ids",
     "roster_page",
     "roster_summary",
 )
@@ -279,34 +279,43 @@ async def hosts_by_user_id(
     }
 
 
-async def workspace_members_by_user_id(
+async def workspace_member_user_ids(
     session: AsyncSession,
     *,
     workspace_id: int,
     user_ids: Sequence[int],
-) -> dict[int, int]:
-    """Map signed-in workspace members by ``auth.user.id``.
+) -> set[int]:
+    """The subset of ``auth.user.id``s that belongs to this workspace.
 
-    Unlike :func:`hosts_by_user_id`, this is an authorization lookup: the
-    workspace-member join is mandatory, so an account outside the workspace is
-    never returned.
+    Server-side twin of ``AuthUser.is_workspace_member``, for ids whose
+    ``AuthUser`` the caller does not hold: membership is an RBAC fact -- a role
+    scoped to the workspace -- plus the superuser bypass. It is deliberately
+    *not* a ``workspace_member`` lookup. That table is the player roster, and
+    the two sets differ in both directions: an admin holds a role here without
+    ever playing, while a roster row alone would not pass the RBAC gate every
+    mix endpoint already applies to the caller. Granting off the roster would
+    hand somebody a co-host seat they then get a 403 on.
     """
     ids = {user_id for user_id in user_ids if user_id is not None}
     if not ids:
-        return {}
-    result = await session.execute(
-        sa.select(models.User.auth_user_id, models.WorkspaceMember.id)
-        .select_from(models.User)
-        .join(
-            models.WorkspaceMember,
-            sa.and_(
-                models.WorkspaceMember.player_id == models.User.id,
-                models.WorkspaceMember.workspace_id == workspace_id,
-            ),
+        return set()
+    holds_workspace_role = (
+        sa.select(sa.literal(1))
+        .select_from(models.user_roles)
+        .join(models.Role, models.Role.id == models.user_roles.c.role_id)
+        .where(
+            models.user_roles.c.user_id == models.AuthUser.id,
+            models.Role.workspace_id == workspace_id,
         )
-        .where(models.User.auth_user_id.in_(ids))
+        .exists()
     )
-    return dict(result.all())
+    result = await session.scalars(
+        sa.select(models.AuthUser.id).where(
+            models.AuthUser.id.in_(ids),
+            sa.or_(models.AuthUser.is_superuser.is_(True), holds_workspace_role),
+        )
+    )
+    return set(result.all())
 
 
 async def ensure_member_for_battle_tag(
