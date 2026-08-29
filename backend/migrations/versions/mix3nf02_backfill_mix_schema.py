@@ -4,11 +4,22 @@ Revision ID: mix3nf02
 Revises: mix3nf01
 Create Date: 2026-08-29 00:10:00.000000
 
-The migration aborts on malformed legacy data -- a maintenance operator must
-repair the reported rows rather than have them silently dropped. A co-host id
-naming an account that no longer exists is the one exception: that grant is
-already unreachable (nobody can authenticate as a deleted account) and cannot
-satisfy the new foreign key, so it is dropped and counted in a NOTICE.
+The migration aborts on malformed or ambiguous legacy data -- a maintenance
+operator must repair the reported rows rather than have them silently dropped.
+Two kinds of row are deleted instead, both already unreachable by the running
+application and both impossible to keep under the constraints mix3nf03 adds.
+Each is counted in a NOTICE:
+
+* a co-host id naming an account that no longer exists (nobody can authenticate
+  as a deleted account, and the new foreign key would reject it);
+* a ``casual.team`` row no match refers to. The old foreign key ran
+  ``match -> team``, so deleting a match -- a mix hard-delete cascades into one
+  -- left both of its sides and their seats behind. No read path reaches them:
+  history is always loaded from the match outwards.
+
+A team shared by two match sides is *not* deleted and is not guessable either,
+so it aborts the window: picking a side would silently drop half of a real
+played match.
 
 Membership is deliberately *not* revalidated here. It is an RBAC fact that the
 new code checks when a grant is *made*; re-deciding it for grants already in
@@ -102,6 +113,16 @@ def upgrade() -> None:
             ) THEN
                 RAISE EXCEPTION 'mix3nf02: outcome_json exists without a casual.match snapshot';
             END IF;
+            IF EXISTS (
+                SELECT 1
+                FROM casual.team team
+                JOIN casual.match match
+                  ON match.home_team_id = team.id OR match.away_team_id = team.id
+                GROUP BY team.id
+                HAVING count(*) > 1
+            ) THEN
+                RAISE EXCEPTION 'mix3nf02: a casual.team row is shared by more than one match side';
+            END IF;
         END $$;
         """
     )
@@ -185,6 +206,36 @@ def upgrade() -> None:
         """
     )
 
+    # Orphan snapshots: the old foreign key ran ``match -> team``, so deleting a
+    # match (a mix hard-delete cascades into one) left both of its team rows and
+    # their seats behind. Nothing can read them -- every history path starts at
+    # the match and eager-loads its sides -- and a row with no match cannot
+    # satisfy the ``match_id NOT NULL`` mix3nf03 adds. Inverting that key is what
+    # stops the leak; this clears what it already produced.
+    op.execute(
+        """
+        DO $$
+        DECLARE
+            orphan_teams bigint;
+        BEGIN
+            SELECT count(*) INTO orphan_teams
+            FROM casual.team team
+            WHERE NOT EXISTS (
+                SELECT 1 FROM casual.match match
+                WHERE match.home_team_id = team.id OR match.away_team_id = team.id
+            );
+            IF orphan_teams > 0 THEN
+                RAISE NOTICE 'mix3nf02: deleting % casual.team row(s) no match refers to', orphan_teams;
+                DELETE FROM casual.team team
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM casual.match match
+                    WHERE match.home_team_id = team.id OR match.away_team_id = team.id
+                );
+            END IF;
+        END $$;
+        """
+    )
+
     op.execute(
         """
         UPDATE casual.team team
@@ -214,6 +265,16 @@ def upgrade() -> None:
         WHERE member.id = snapshot.workspace_member_id
         """
     )
+    # A member whose row is gone leaves nothing to read a name from, and the
+    # snapshot column exists precisely so the seat outlives them: fall back to
+    # the same ``#<id>`` label the UI already renders for an unresolvable member.
+    op.execute(
+        """
+        UPDATE casual.player
+        SET display_name_snapshot = '#' || COALESCE(workspace_member_id::text, 'unknown')
+        WHERE display_name_snapshot IS NULL
+        """
+    )
 
     op.execute(
         """
@@ -226,7 +287,7 @@ def upgrade() -> None:
                 RAISE EXCEPTION 'mix3nf02: role-selection backfill left NULL rows';
             END IF;
             IF EXISTS (SELECT 1 FROM casual.team WHERE match_id IS NULL OR side IS NULL OR score IS NULL) THEN
-                RAISE EXCEPTION 'mix3nf02: orphan casual.team rows require manual review';
+                RAISE EXCEPTION 'mix3nf02: casual.team backfill left NULL rows';
             END IF;
             IF EXISTS (SELECT 1 FROM casual.player WHERE display_name_snapshot IS NULL) THEN
                 RAISE EXCEPTION 'mix3nf02: casual.player snapshot name backfill left NULL rows';
