@@ -1,10 +1,9 @@
 "use client";
 
-import { FileText, Link2, ListVideo, Network } from "lucide-react";
+import { FileText, Link2, ListVideo, MessagesSquare, Network } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ComponentType } from "react";
 
-import { SocialIcon } from "@/components/social/SocialIcon";
 import type { TournamentLink, TournamentLinkKind } from "@/types/stream.types";
 
 type TournamentLinkChipsProps = {
@@ -23,9 +22,7 @@ type ChipLabelKey =
 
 type ChipMeta = {
   labelKey: ChipLabelKey;
-  /** `null` means "use the Discord brand mark" — lucide dropped brand glyphs, so
-   *  that one comes from `SocialIcon` instead of this field. */
-  icon: ComponentType<{ className?: string }> | null;
+  icon: ComponentType<{ className?: string }>;
 };
 
 /**
@@ -42,7 +39,7 @@ type ChipMeta = {
  */
 const CHIP_META: Record<TournamentLinkKind, ChipMeta | null> = {
   stream: null,
-  discord: { labelKey: "tournamentDetail.links.kinds.discord", icon: null },
+  discord: { labelKey: "tournamentDetail.links.kinds.discord", icon: MessagesSquare },
   vod: { labelKey: "tournamentDetail.links.kinds.vod", icon: ListVideo },
   bracket: { labelKey: "tournamentDetail.links.kinds.bracket", icon: Network },
   rules: { labelKey: "tournamentDetail.links.kinds.rules", icon: FileText },
@@ -88,15 +85,13 @@ export function TournamentLinkChips({ links, className }: Readonly<TournamentLin
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                // Same chip as the dock's secondary broadcast links, so the two
-                // sets of external links on this page read as one vocabulary.
-                className="inline-flex items-center gap-1.5 rounded-[7px] border border-[color:var(--aqt-border-2)] px-2 py-1 text-[12.5px] font-medium text-inherit no-underline outline-none transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+                // `.meta-pill` — the same box the format/team-formation pills in
+                // this hero already use. These were their own outlined chip with
+                // a full-colour Discord brand mark, which read as two competing
+                // button languages one line under the muted pill row.
+                className="meta-pill no-underline outline-none transition-colors hover:border-[color:var(--aqt-teal)]/40 hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
               >
-                {Icon ? (
-                  <Icon className="size-3.5 opacity-80" aria-hidden />
-                ) : (
-                  <SocialIcon provider="discord" size={13} />
-                )}
+                <Icon className="size-3.5" aria-hidden />
                 {/* `label` is NULL-able with exactly this meaning (see the column
                     docstring): fall back to the kind's own name, never to the raw
                     URL, which would put a tracking query string on screen. */}
