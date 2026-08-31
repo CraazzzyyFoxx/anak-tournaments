@@ -62,9 +62,15 @@ export default function UsersAdminPage() {
     setLinkAuthUserId(null);
     setLinkAuthUserLabel("");
   };
-  const canCreate = canAccessPermission("user.create", workspaceId);
-  const canUpdate = canAccessPermission("user.update", workspaceId);
-  const canDelete = canAccessPermission("user.delete", workspaceId);
+  // A player identity is platform-wide: creating, renaming or deleting one
+  // reaches every workspace that plays with it, so those stay on the GLOBAL
+  // grant — the same line `users_admin._gate` draws. A workspace-scoped
+  // `user.read` (a workspace owner's `admin.*`) opens the page and the roster
+  // list, not the writes; `hasPermission` is the global check, whereas
+  // `canAccessPermission` also answers to a workspace grant.
+  const canCreate = hasPermission("user.create");
+  const canUpdate = hasPermission("user.update");
+  const canDelete = hasPermission("user.delete");
   const canMerge = isSuperuser;
   // Identity (social account) full management is superuser-only; display
   // visibility can be toggled by anyone with read access.
@@ -266,7 +272,11 @@ export default function UsersAdminPage() {
         }
         columns={columns}
         searchPlaceholder="Search player identities…"
-        emptyMessage="No player identities yet. Use “Create player identity” to add the first one."
+        emptyMessage={
+          canCreate
+            ? "No player identities yet. Use “Create player identity” to add the first one."
+            : "No player identities in this workspace yet. They appear once players join its roster."
+        }
         onRowClick={canOpenProfile ? (row) => setProfileUser(row.original) : undefined}
       />
 

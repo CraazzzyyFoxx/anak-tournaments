@@ -5,10 +5,19 @@ Pure transport: every handler decodes params, applies its permission gate, and
 makes one service call. No SQL and no transaction lives here — the services own
 ``commit()``.
 
-Permission model: user CRUD requires the global ``user.<action>`` permission;
-merge is superuser-only. Social identities are managed by **superusers only**
+Permission model: writes to the global identity (create/update/delete, avatar)
+require the global ``user.<action>`` permission, and merge is superuser-only —
+a player identity is platform-wide, so editing one from inside a workspace
+would reach into every other workspace's history. **Reads** are workspace
+grantable instead: ``admin_list`` takes ``workspace_id`` as both the
+authorization scope and the row filter (``_scope``), so a workspace owner's
+``admin.*`` lists their own roster's identities and nothing else. Same shape as
+the rank/subscription collection admin, see ``parser-service/src/rpc/rank.py``.
+Social identities are managed by **superusers only**
 (add/update/verify/delete/set_primary); their per-workspace/global display
-**visibility** is a lighter capability gated on ``user.read``. ``verify``
+**visibility** is a lighter capability gated on ``user.read`` — the
+per-workspace switch against that workspace, the global one globally
+(``_visibility_scope``). ``verify``
 manually marks an OAuth-eligible account verified when the automatic sync
 missed a real OAuth connection that proves it (see
 ``shared.services.social_identity.verify_social_account``); it never
@@ -39,6 +48,7 @@ from faststream.rabbit import RabbitMessage
 from shared.clients.s3 import upload_avatar
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SOCIAL_PROVIDERS, SocialProvider
+from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
 from src import schemas
 from src.core import clients, db
@@ -60,6 +70,42 @@ def _gate(data: dict, action: str) -> Any:
     if not user.has_permission("user", action):
         raise HTTPException(status_code=403, detail=f"Permission denied: user.{action} required")
     return user
+
+
+def _scope(data: dict, action: str) -> int | None:
+    """Gate on ``user.<action>`` and return the workspace to scope rows to.
+
+    ``None`` means "every player identity on the platform", and only a global
+    grant ever gets it — a workspace-scoped holder cannot widen their read into
+    the platform-wide registry by dropping ``workspace_id``. Conversely a
+    workspace owner (whose ``admin.*`` is workspace-scoped and so answers no
+    global check) is no longer refused outright: they get their own roster.
+    """
+    user = c.actor(data)
+    c.require_active(user)
+    if user.has_permission("user", action):
+        return None
+    workspace_id: int | None = c.q1(data, "workspace_id", int)
+    if workspace_id is None:
+        raise HTTPException(status_code=403, detail=f"Permission denied: user.{action} required")
+    ensure_workspace_permission(user, workspace_id, "user", action)
+    return workspace_id
+
+
+def _visibility_scope(data: dict, workspace_id: int | None) -> None:
+    """Gate a display-visibility toggle on ``user.read`` in the scope it changes.
+
+    The per-workspace switch only governs what that workspace shows, so that
+    workspace's own ``user.read`` is the honest gate. The global switch hides the
+    handle everywhere, so it keeps the global grant.
+    """
+    user = c.actor(data)
+    c.require_active(user)
+    if workspace_id is None:
+        if not user.has_permission("user", "read"):
+            raise HTTPException(status_code=403, detail="Permission denied: user.read required")
+        return
+    ensure_workspace_permission(user, workspace_id, "user", "read")
 
 
 def _account_gate(data: dict) -> Any:
@@ -98,9 +144,11 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.admin_list")
     async def _list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _gate(data, "read")
+            workspace_id = _scope(data, "read")
             qp = build_query_model(schemas.UserListQueryParams, data.get("query"))
-            res = await admin_users.get_users(session, schemas.UserListParams.from_query_params(qp))
+            res = await admin_users.get_users(
+                session, schemas.UserListParams.from_query_params(qp), workspace_id=workspace_id
+            )
             results = [user_service.to_read(user, _ENTITIES).model_dump(mode="json") for user in res["results"]]
             return {
                 "results": results,
@@ -250,10 +298,11 @@ def register(broker: Any, logger: Any) -> None:
     async def _social_set_visibility(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             # Display visibility (per-workspace / global) is a lighter capability than
-            # editing identities: anyone with ``user.read`` may configure it.
-            _gate(data, "read")
+            # editing identities: ``user.read`` is enough. The payload names the scope
+            # being changed, so it is also the scope being authorized.
             user_id = c.require_id(data)
             payload = schemas.SocialVisibilityUpdate.model_validate(c.payload(data))
+            _visibility_scope(data, payload.workspace_id)
             await admin_users.set_social_visibility(
                 session,
                 user_id=user_id,

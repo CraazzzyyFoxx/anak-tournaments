@@ -59,18 +59,17 @@ function emptyPaginated<T>(): PaginatedResponse<T> {
 }
 
 export default function AdminDashboard() {
-  const { canAccessPermission, canAccessAdminRoute } = usePermissions();
+  const { canAccessPermission } = usePermissions();
   const workspaceId = useCurrentWorkspaceId();
 
   const canReadTournaments = canAccessPermission("tournament.read", workspaceId);
   const canCreateTournaments = canAccessPermission("tournament.create", workspaceId);
   const canReadTeams = canAccessPermission("team.read", workspaceId);
   const canReadMatches = canAccessPermission("match.read", workspaceId);
-  // /admin/users is globalOnly (players are not workspace-scoped, see
-  // admin-navigation.ts), so this must use the same global gate as the nav
-  // item and route guard -- not a workspace-scoped check, which a workspace
-  // admin's `user.read` grant would satisfy while the page itself 403s them.
-  const canReadUsers = canAccessAdminRoute({ permissions: ["user.read"], globalOnly: true });
+  // Same gate as the nav item and route guard for /admin/users: a
+  // workspace-scoped `user.read` opens it now (the list is filtered to the
+  // workspace's roster, see admin-navigation.ts and `users_admin._scope`).
+  const canReadUsers = canAccessPermission("user.read", workspaceId);
 
   // Aggregated counts from backend (single lightweight query). `workspace_id` is
   // injected by apiFetch, so it MUST be part of the key or a workspace switch

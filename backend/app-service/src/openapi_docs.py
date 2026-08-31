@@ -336,7 +336,7 @@ DOCS: dict[str, dict] = {
     # ── users admin (CRUD) ───────────────────────────────────────────────────────────────
     "rpc.app.users.admin_list": {
         "summary": "Admin list users",
-        "description": "Returns a paginated admin list of users; requires the global user.read permission.",
+        "description": "Returns a paginated admin list of players. Requires user.read: globally for the platform-wide registry, or in the workspace named by workspace_id, in which case the page is filtered to that workspace's roster.",
     },
     "rpc.app.users.admin_create": {
         "summary": "Create user",

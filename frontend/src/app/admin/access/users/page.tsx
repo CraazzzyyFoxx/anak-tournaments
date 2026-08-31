@@ -65,16 +65,15 @@ const PAGE_SIZE = 15;
 
 export default function AccessAdminUsersPage() {
   const queryClient = useQueryClient();
-  const { hasPermission, isSuperuser, canAccessAdminRoute } = usePermissions();
+  const { hasPermission, isSuperuser, canAccessPermission } = usePermissions();
   const currentUserId = useAuthProfileStore((s) => s.user?.id);
   const canAssignRoles = hasPermission("role.update") && hasPermission("role.read");
   const canManageLinkedPlayers = hasPermission("auth_user.update");
-  // Cross-link to /admin/users, which is globalOnly (players are not
-  // workspace-scoped, see admin-navigation.ts) -- must use the same global
-  // gate as that page's nav item and route guard, not a workspace-scoped
-  // check, which a workspace admin's `user.read` grant would satisfy while
-  // the page itself 403s them.
-  const canReadPlayerIdentities = canAccessAdminRoute({ permissions: ["user.read"], globalOnly: true });
+  // Cross-link to /admin/users (D9: the two Users pages stay separate and
+  // cross-navigate). Same gate as that page's nav item and route guard: a
+  // workspace-scoped `user.read` opens it, and the roster it lists is filtered
+  // to the workspace (see admin-navigation.ts, `users_admin._scope`).
+  const canReadPlayerIdentities = canAccessPermission("user.read");
 
   const [managingUserId, setManagingUserId] = useState<number | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");

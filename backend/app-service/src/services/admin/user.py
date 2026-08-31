@@ -49,7 +49,13 @@ class UserAdminService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         return user
 
-    async def get_users(self, session: AsyncSession, params: schemas.UserListParams) -> dict:
+    async def get_users(
+        self,
+        session: AsyncSession,
+        params: schemas.UserListParams,
+        *,
+        workspace_id: int | None = None,
+    ) -> dict:
         """Get a paginated list of users with social identities eager-loaded.
 
         Returns raw ``User`` models; the RPC layer serializes them via the shared
@@ -60,11 +66,28 @@ class UserAdminService:
         without it ``_social_account_read`` falls back to the ``visible_global=True``
         default and the dialog's visibility switches desync from the real state (and
         from the self-service modal, which loads via ``get_user_or_404``).
+
+        ``workspace_id`` narrows the page to that workspace's roster — membership is
+        anchored on ``workspace_member.player_id -> players.user.id``. It is what a
+        workspace-scoped ``user.read`` buys (see ``rpc.users_admin._scope``); ``None``
+        is the platform-wide registry a global grant sees.
         """
         query = select(models.User).options(
             selectinload(models.User.social_accounts).selectinload(models.SocialAccount.visibilities)
         )
         count_query = select(sa.func.count(models.User.id))
+
+        if workspace_id is not None:
+            member_exists = sa.exists(
+                sa.select(1)
+                .select_from(models.WorkspaceMember)
+                .where(
+                    models.WorkspaceMember.player_id == models.User.id,
+                    models.WorkspaceMember.workspace_id == workspace_id,
+                )
+            )
+            query = query.where(member_exists)
+            count_query = count_query.where(member_exists)
 
         if params.search:
             search_term = f"%{params.search}%"

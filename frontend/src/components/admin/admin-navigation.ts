@@ -219,11 +219,12 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: UserCircle,
         description: "Resolve Discord, BattleTag, and Twitch identities.",
         permissions: ["user.read"],
-        // Players are global entities, so the backend gate (`users_admin.py`
-        // `_gate`) demands a GLOBAL `user.<action>` grant. A workspace owner
-        // holds none, so without `globalOnly` they would see the link and then
-        // get a 403 from every request behind it.
-        globalOnly: true,
+        // Workspace-grantable read: `user.read` is in the workspace catalog (a
+        // workspace `member` holds it, `admin`/`owner` hold all of `user.*`), and
+        // the backend list gate takes `workspace_id` as both the authorization
+        // scope and the row filter (`users_admin._scope`), so an owner sees their
+        // own roster's identities. Writes to the global identity still demand a
+        // GLOBAL grant, which is why the page gates its actions on `hasPermission`.
         aliases: ["identities", "discord", "battletag", "twitch"],
       },
       {
@@ -304,7 +305,7 @@ const adminRoutePermissions: Array<{
   { prefix: "/admin/match-reports", permissions: ["match.read"] },
   { prefix: "/admin/matches", permissions: ["match.read"] },
   { prefix: "/admin/standings", permissions: ["standing.read"] },
-  { prefix: "/admin/users", permissions: ["user.read"], globalOnly: true },
+  { prefix: "/admin/users", permissions: ["user.read"] },
   { prefix: "/admin/rank", permissions: ["rank.read"] },
   { prefix: "/admin/subscriptions", permissions: ["subscription.read"] },
   // Global, not workspace-scoped: there is one poller behind this page.

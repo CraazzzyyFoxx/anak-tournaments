@@ -155,15 +155,18 @@ describe("admin administration entry and palette aliases (D10, D11)", () => {
     expect(getMatchingAdminRoute("/admin/rank/anything")?.permissions).toEqual(["rank.read"]);
   });
 
-  it("keeps /admin/users global-only — players are not workspace-scoped", () => {
-    // The backend gate demands a GLOBAL `user.<action>` grant, which a workspace
-    // owner never holds, so the page must stay out of their navigation.
-    expect(getMatchingAdminRoute("/admin/users")?.globalOnly).toBe(true);
+  it("lets a workspace grant open /admin/users — the list is scoped to the workspace", () => {
+    // The regression this exists for: `globalOnly` kept the page out of a
+    // workspace owner's navigation entirely, even though `user.read` is in the
+    // workspace permission catalog and the backend list now takes `workspace_id`
+    // as both the authorization scope and the row filter.
+    expect(getMatchingAdminRoute("/admin/users")?.permissions).toEqual(["user.read"]);
+    expect(getMatchingAdminRoute("/admin/users")?.globalOnly).toBeUndefined();
 
     const groups = getVisibleAdminNavigationGroups((item) => item.globalOnly !== true);
     const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
 
-    expect(hrefs).not.toContain("/admin/users");
+    expect(hrefs).toContain("/admin/users");
     expect(hrefs).toContain("/admin/rank");
   });
 
