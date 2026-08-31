@@ -5,6 +5,13 @@ import { useTranslations } from "next-intl";
 import type { CustomFieldDefinition } from "@/types/registration.types";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import FieldLabel from "./FieldLabel";
 import FormField, { fieldControlClass, fieldInvalidClass } from "./FormField";
 import { getCustomFieldValidationError } from "./validation";
@@ -42,19 +49,23 @@ export default function CustomField({
     return (
       <div className="space-y-1.5">
         <FieldLabel label={definition.label} htmlFor={id} required={definition.required} />
-        <select
-          id={id}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          aria-invalid={Boolean(validationError)}
-          aria-describedby={validationError ? errorId : undefined}
-          className={cn(fieldControlClass, "h-9", validationError && fieldInvalidClass)}
-        >
-          <option value="">{t("common.selectPlaceholder")}</option>
-          {definition.options.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
+        {/* Radix Select rejects an empty item value, so the empty state is the
+            trigger placeholder rather than a blank <option>. */}
+        <Select value={value || undefined} onValueChange={onChange}>
+          <SelectTrigger
+            id={id}
+            aria-invalid={Boolean(validationError)}
+            aria-describedby={validationError ? errorId : undefined}
+            className={cn(fieldControlClass, "h-9", validationError && fieldInvalidClass)}
+          >
+            <SelectValue placeholder={t("common.selectPlaceholder")} />
+          </SelectTrigger>
+          <SelectContent>
+            {definition.options.map((opt) => (
+              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {errorNode}
       </div>
     );
