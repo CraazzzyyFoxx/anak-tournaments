@@ -87,7 +87,7 @@ type SaveTierPayload = {
  */
 export function standardOwTierPayload(): SaveTierPayload[] {
   return buildEditorState(null).tiers.map((tier, index) => ({
-    slug: tier.slug,
+    slug: tier.slug || `division-${tier.number}`,
     number: tier.number,
     name: tier.name,
     sort_order: index,
