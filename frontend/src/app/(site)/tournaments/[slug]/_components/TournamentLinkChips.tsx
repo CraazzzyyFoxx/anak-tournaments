@@ -76,7 +76,7 @@ export function TournamentLinkChips({ links, className }: Readonly<TournamentLin
 
   return (
     <nav aria-label={t("tournamentDetail.links.heading")} className={className}>
-      <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
+      <ul className="m-0 flex list-none flex-wrap items-center gap-2.5 p-0">
         {chips.map(({ link, meta }) => {
           const Icon = meta.icon;
           return (
@@ -85,13 +85,15 @@ export function TournamentLinkChips({ links, className }: Readonly<TournamentLin
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                // `.meta-pill` — the same box the format/team-formation pills in
-                // this hero already use. These were their own outlined chip with
-                // a full-colour Discord brand mark, which read as two competing
-                // button languages one line under the muted pill row.
-                className="meta-pill no-underline outline-none transition-colors hover:border-[color:var(--aqt-teal)]/40 hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+                // Byte-for-byte the secondary action already standing in this
+                // row: `TournamentRegisterButton` renders exactly this box for a
+                // logged-out viewer. Same 36px height, radius and type size as
+                // the teal Register button beside it — `.meta-pill` geometry
+                // (11.5px, 24px tall) made these read as metadata that had
+                // wandered into the action row.
+                className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3.5 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] no-underline outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
               >
-                <Icon className="size-3.5" aria-hidden />
+                <Icon className="size-4 opacity-80" aria-hidden />
                 {/* `label` is NULL-able with exactly this meaning (see the column
                     docstring): fall back to the kind's own name, never to the raw
                     URL, which would put a tracking query string on screen. */}
