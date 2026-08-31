@@ -9,7 +9,8 @@ import {
   Plus,
   RotateCcw,
   Trash2,
-  Upload
+  Upload,
+  Wand2
 } from "lucide-react";
 
 import {
@@ -57,6 +58,9 @@ interface Props {
   permissions: GridLibraryPermissions;
   loading: boolean;
   error: unknown;
+  canLoadStandard: boolean;
+  loadStandardPending: boolean;
+  onLoadStandard: () => void;
   onSelect: (gridId: number, versionId?: number) => void;
   onChanged: () => Promise<void>;
 }
@@ -70,6 +74,9 @@ export function DivisionGridLibrary({
   permissions,
   loading,
   error,
+  canLoadStandard,
+  loadStandardPending,
+  onLoadStandard,
   onSelect,
   onChanged
 }: Readonly<Props>) {
@@ -213,6 +220,17 @@ export function DivisionGridLibrary({
                   <Upload aria-hidden className="mr-2 h-4 w-4" /> Import JSON
                 </Button>
               </>
+            )}
+            {canLoadStandard && (
+              <Button
+                variant="outline"
+                onClick={onLoadStandard}
+                disabled={loadStandardPending}
+                title="Save the standard Overwatch 2 ladder into the selected grid as a new version, OW rank mapping filled in"
+              >
+                <Wand2 aria-hidden className="mr-2 h-4 w-4" />
+                {loadStandardPending ? "Loading…" : "Load standard OW grid"}
+              </Button>
             )}
             {permissions.create && (
               <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>

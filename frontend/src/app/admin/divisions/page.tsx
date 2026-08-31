@@ -75,6 +75,30 @@ type SaveTierPayload = {
   ow_rank_max: number | null;
 };
 
+/**
+ * The standard OW ladder as a ready-to-save payload, OW mapping included.
+ *
+ * Every ladder tier's `rank_min` IS its OW `rank_value` — the artifact carries
+ * one of each and they align 1:1 — so the mapping is a single OW rank per tier,
+ * exactly what "Auto-map OW ranges" produces for a 45-tier grid. The pair must
+ * be filled on BOTH ends: `resolve_division_from_ow_rank` skips any tier with a
+ * `None` endpoint, so leaving the open-ended top tier's `ow_rank_max` null would
+ * make Champion 1 unreachable by OW rank.
+ */
+export function standardOwTierPayload(): SaveTierPayload[] {
+  return buildEditorState(null).tiers.map((tier, index) => ({
+    slug: tier.slug,
+    number: tier.number,
+    name: tier.name,
+    sort_order: index,
+    rank_min: tier.rank_min,
+    rank_max: tier.rank_max,
+    icon_url: tier.icon_url,
+    ow_rank_min: tier.rank_min,
+    ow_rank_max: tier.rank_min
+  }));
+}
+
 type DivisionGridEditorCardProps = {
   workspaceId: number;
   canEdit: boolean;
@@ -496,18 +520,6 @@ function DivisionGridEditorCard({
     });
   }, [rangeStep, tiersToAdd]);
 
-  const loadStandardOwGrid = useCallback(() => {
-    // Same tiers the backend seeds into a fresh grid, and deliberately without
-    // tier ids: the save then classifies as structural and lands as a new
-    // version instead of rewriting the active one in place.
-    //
-    // The label is left alone on purpose: save_workspace_grid feeds `name` into
-    // BOTH the new version's label and the grid's own name, so setting it here
-    // would silently rename the grid. Retitle the version by hand if wanted.
-    setTiers(buildEditorState(null).tiers);
-    setSelectedRows(new Set());
-  }, []);
-
   const removeTier = useCallback((index: number) => {
     setTiers((current) => current.filter((_, tierIndex) => tierIndex !== index));
     setSelectedRows(new Set());
@@ -728,15 +740,6 @@ function DivisionGridEditorCard({
             <Save aria-hidden className="mr-2 h-4 w-4" />
             {saving ? "Saving…" : "Save grid"}
           </Button>
-          <Button
-            variant="outline"
-            onClick={loadStandardOwGrid}
-            disabled={!canEdit || saving}
-            title="Replace the rows below with the standard Overwatch 2 ladder, then save it as a new version"
-          >
-            <Upload aria-hidden className="mr-2 h-4 w-4" />
-            Load standard OW grid
-          </Button>
         </div>
       </CardContent>
     </Card>
@@ -875,6 +878,19 @@ export default function DivisionsAdminPage() {
       })
   });
 
+  /**
+   * "Load standard OW grid" writes the standard ladder straight through the
+   * normal save path, so it versions, auto-remaps every pinned tournament and
+   * activates exactly like any other structural edit. `name` repeats the grid's
+   * current name on purpose: `save_workspace_grid` also assigns it to
+   * `grid.name`, and loading a standard grid must not rename the grid.
+   */
+  const loadStandardGrid = () =>
+    saveMutation.mutate({
+      name: editedGrid?.name ?? "Division Grid",
+      tiers: standardOwTierPayload()
+    });
+
   const publishMutation = useMutation({
     mutationFn: () => workspaceService.publishDivisionGridVersion(activeVersion!.id),
     onSuccess: async () => {
@@ -979,6 +995,9 @@ export default function DivisionsAdminPage() {
         }}
         loading={gridsQuery.isLoading}
         error={gridsQuery.error}
+        canLoadStandard={activeVersion ? canUpdate : canCreate}
+        loadStandardPending={saveMutation.isPending}
+        onLoadStandard={loadStandardGrid}
         onSelect={(gridId) => setSelectedGridId(gridId)}
         onChanged={refreshGrids}
       />

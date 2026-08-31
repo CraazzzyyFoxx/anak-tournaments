@@ -58,13 +58,16 @@ const grids: DivisionGridEntity[] = [
   }
 ];
 
-function renderLibrary(permissions: {
-  create: boolean;
-  update: boolean;
-  import: boolean;
-  export: boolean;
-  delete: boolean;
-}) {
+function renderLibrary(
+  permissions: {
+    create: boolean;
+    update: boolean;
+    import: boolean;
+    export: boolean;
+    delete: boolean;
+  },
+  canLoadStandard = false
+) {
   const html = renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient()}>
       <DivisionGridLibrary
@@ -76,6 +79,9 @@ function renderLibrary(permissions: {
         permissions={permissions}
         loading={false}
         error={null}
+        canLoadStandard={canLoadStandard}
+        loadStandardPending={false}
+        onLoadStandard={() => undefined}
         onSelect={() => undefined}
         onChanged={async () => undefined}
       />
@@ -119,6 +125,7 @@ describe("DivisionGridLibrary", () => {
     expect(buttonLabels).not.toContain("Export JSON");
     expect(buttonLabels).not.toContain("Archive grid");
     expect(buttonLabels).toContain("Open grid");
+    expect(buttonLabels).not.toContain("Load standard OW grid");
   });
 
   it("shows only controls backed by explicitly granted permissions", () => {
@@ -140,5 +147,19 @@ describe("DivisionGridLibrary", () => {
     expect(buttonLabels).toContain("Archive grid");
     expect(buttonLabels).toContain("Delete grid");
     expect(buttonLabels).not.toContain("Import JSON");
+  });
+
+  it("offers the standard OW grid next to Create grid only when allowed", () => {
+    const labels = (canLoadStandard: boolean) =>
+      Array.from(
+        renderLibrary(
+          { create: true, update: true, import: false, export: true, delete: true },
+          canLoadStandard
+        ).querySelectorAll("button"),
+        (button) => button.getAttribute("aria-label") ?? button.textContent?.trim()
+      );
+
+    expect(labels(true)).toContain("Load standard OW grid");
+    expect(labels(false)).not.toContain("Load standard OW grid");
   });
 });
