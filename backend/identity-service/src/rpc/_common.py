@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
@@ -153,16 +153,14 @@ def require_int(data: dict, key: str) -> int:
 def paginated_dump(res: dict) -> dict:
     """Serialize a service-layer ``{results, total, page, per_page}`` envelope.
 
-    ``results`` holds Pydantic models; everything else is passed through (so an
-    optional ``counts`` model is serialized too).
+    ``results`` holds Pydantic models; every other key is passed through, with
+    Pydantic values serialized (``counts``) and plain ones copied as-is
+    (``available_scopes``). Enumerating the keys instead cost the api-key list
+    its ``available_scopes``: the service computed it, the wire dropped it, and
+    the create form silently offered no scopes at all.
     """
     out: dict[str, Any] = {
-        "results": [item.model_dump(mode="json") for item in res["results"]],
-        "total": res["total"],
-        "page": res["page"],
-        "per_page": res["per_page"],
+        key: value.model_dump(mode="json") if isinstance(value, BaseModel) else value for key, value in res.items()
     }
-    counts = res.get("counts")
-    if counts is not None:
-        out["counts"] = counts.model_dump(mode="json")
+    out["results"] = [item.model_dump(mode="json") for item in res["results"]]
     return out

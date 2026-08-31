@@ -15,6 +15,7 @@ from shared.rpc.identity import credential_type, rehydrate_user  # noqa: E402
 from src import models, schemas  # noqa: E402
 from src.core import key_derivation  # noqa: E402
 from src.core.config import settings  # noqa: E402
+from src.rpc import _common as c  # noqa: E402
 from src.services import api_keys as api_keys_module  # noqa: E402
 from src.services.api_keys import api_keys  # noqa: E402
 from tests._fakes import FakeExecuteResult as _FakeExecuteResult  # noqa: E402
@@ -495,6 +496,29 @@ def test_list_api_keys_returns_page_and_workspace_wide_status_counts(monkeypatch
     assert (counts.total, counts.active, counts.expired, counts.revoked) == (4, 3, 0, 1)
     # Sorted so the create form renders deterministically.
     assert result["available_scopes"] == ["team.create", "team.read"]
+
+
+def test_list_api_key_envelope_keeps_available_scopes_on_the_wire() -> None:
+    """The service computed ``available_scopes``; the RPC serializer dropped it.
+
+    With an empty list the create form offers no scopes at all, so every key
+    minted from the UI is inert -- and the picker, handed ``undefined``, took
+    the admin page down with it.
+    """
+    envelope = c.paginated_dump(
+        {
+            "results": [api_keys.describe(_api_key_row())],
+            "total": 1,
+            "page": 1,
+            "per_page": 20,
+            "counts": schemas.ApiKeyStatusCounts(total=1, active=1, expired=0, revoked=0),
+            "available_scopes": ["team.create", "team.read"],
+        }
+    )
+
+    assert envelope["available_scopes"] == ["team.create", "team.read"]
+    assert envelope["counts"] == {"total": 1, "active": 1, "expired": 0, "revoked": 0}
+    assert [row["id"] for row in envelope["results"]] == [123]
 
 
 def test_validated_key_payload_authorizes_exactly_its_scopes_downstream(

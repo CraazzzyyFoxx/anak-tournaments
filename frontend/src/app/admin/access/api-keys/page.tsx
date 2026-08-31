@@ -783,7 +783,9 @@ export default function AccessAdminApiKeysPage() {
             search: search || undefined
           });
           setCounts(result.counts);
-          setAvailableScopes(result.available_scopes);
+          // Never let a missing array reach ScopePicker: it reads `.length`
+          // first, and an undefined there took the whole admin page down.
+          setAvailableScopes(result.available_scopes ?? []);
           return result;
         }}
         columns={columns}
