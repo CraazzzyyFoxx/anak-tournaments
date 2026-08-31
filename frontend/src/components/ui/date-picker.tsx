@@ -48,15 +48,31 @@ interface DateTimePickerProps {
 }
 
 /**
+ * Calendar fields of a local-time Date, re-anchored to UTC.
+ *
+ * The triggers below print a calendar day, but next-intl's formatter carries the
+ * DEPLOYMENT's zone — next-intl resolves its default on the server (UTC in the
+ * container) and `NextIntlClientProvider` inherits it. Formatting these Dates
+ * raw (local midnight from `parseDateValue`, or a local wall clock from
+ * `parseDateTimeValue`) printed the previous day for any viewer east of UTC,
+ * disagreeing with the highlighted calendar cell and with the adjacent
+ * `TimeInput`, which reads local hours.
+ */
+function calendarDayInUtc(date: Date): Date {
+  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+}
+
+/**
  * Takes the formatter rather than pinning a locale: an `en-US` literal here
  * printed English dates into the `ru` default UI. Callers pass `useFormatter()`.
  */
 function formatDisplay(format: DateFormatter, date: Date | undefined): string {
   if (!date) return "";
-  return format.dateTime(date, {
+  return format.dateTime(calendarDayInUtc(date), {
     day: "2-digit",
     month: "long",
-    year: "numeric"
+    year: "numeric",
+    timeZone: "UTC"
   });
 }
 
@@ -69,10 +85,11 @@ function formatDisplay(format: DateFormatter, date: Date | undefined): string {
  */
 function formatDateTimeDisplay(format: DateFormatter, date: Date | undefined): string {
   if (!date) return "";
-  return format.dateTime(date, {
+  return format.dateTime(calendarDayInUtc(date), {
     day: "2-digit",
     month: "long",
-    year: "numeric"
+    year: "numeric",
+    timeZone: "UTC"
   });
 }
 

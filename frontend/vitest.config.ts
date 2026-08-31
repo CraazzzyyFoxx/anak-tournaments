@@ -95,6 +95,7 @@ export default defineConfig({
       // never runs and the suite still reports green.
       "src/components/discord/**/*.test.tsx",
       "src/components/ui/data-pagination.test.tsx",
+      "src/components/ui/date-range-picker.test.tsx",
       "src/components/ui/infinite-scroll.test.tsx",
       "src/components/site/**/*.test.tsx",
       "src/components/ui/toggle-group.test.tsx",

@@ -27,12 +27,26 @@ interface DateRangePickerProps {
   id?: string;
 }
 
+/**
+ * The Dates here are LOCAL midnight (`parseDateValue`), but next-intl's
+ * formatter carries the DEPLOYMENT's zone — next-intl resolves its default on
+ * the server (UTC in the container) and `NextIntlClientProvider` inherits it.
+ * Formatting a local-midnight Date through it printed the previous day for any
+ * viewer east of UTC: the calendar highlighted 12-13 Sep while the trigger read
+ * "11 сент. - 12 сент.". Re-anchor the calendar fields to UTC and name the zone,
+ * so the label always matches the highlighted cell and the ISO value sent up,
+ * in every zone and identically on server and client.
+ */
 function formatDisplay(format: DateFormatter, date: Date): string {
-  return format.dateTime(date, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return format.dateTime(
+    new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())),
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    }
+  );
 }
 
 function parseDateValue(value?: string): Date | undefined {
