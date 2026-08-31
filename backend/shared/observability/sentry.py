@@ -122,6 +122,10 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
         exc = exc_info[1]
         if _is_transport_churn(exc) or _is_expected_client_error(exc):
             return None
+    elif str(event.get("level") or "").lower() == "warning":
+        # capture_message(..., level="warning") and Loguru warning records. Drift
+        # checks and unfinished match logs are operator signal, not defects.
+        return None
     return event
 
 

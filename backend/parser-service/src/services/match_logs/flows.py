@@ -1237,7 +1237,7 @@ class MatchLogProcessor:
             if p.team_id == team_db.id and p.id in current_team_player_ids
         }
         if len(final_players_map_verified) != len(final_players_map):
-            logger.error(
+            logger.warning(
                 f"Team {team_db.name} player map verification failed after collision fix. "
                 f"Some players might not belong to the team."
             )

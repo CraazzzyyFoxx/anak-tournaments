@@ -121,6 +121,15 @@ class BeforeSendTests(TestCase):
         event = {"logger": "src.rpc._helpers"}
         self.assertIs(event, _before_send(event, {}))
 
+    def test_drops_warning_capture_without_an_exception(self) -> None:
+        # Nightly feature-drift used capture_message(level="warning") and opened
+        # a Sentry issue every day (OWT-TOURNAMENTS-W). Warnings are breadcrumbs.
+        self.assertIsNone(_before_send({"level": "warning", "message": "Feature drift detected"}, {}))
+
+    def test_keeps_error_logs_without_an_exception(self) -> None:
+        event = {"level": "error", "logger": "shared.clients.circuit_breaker"}
+        self.assertIs(event, _before_send(event, {}))
+
     def test_tolerates_a_missing_hint(self) -> None:
         event = {"event_id": "keep-me"}
         self.assertIs(event, _before_send(event, {}))

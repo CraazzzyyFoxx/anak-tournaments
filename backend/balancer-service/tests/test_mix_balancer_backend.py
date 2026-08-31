@@ -16,6 +16,7 @@ import unittest
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
@@ -121,6 +122,21 @@ class BuildMetricsTests(unittest.TestCase):
         metrics = build_metrics(quality)
         self.assertIsNone(metrics.balance_objective)
         self.assertIsNone(metrics.composite_score)
+
+
+class MixBalanceFallbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_falls_back_when_native_engine_is_missing(self) -> None:
+        from src.services.balancer.solver import run_mix_balance
+
+        with patch("src.services.balancer.solver.balance_teams") as balance:
+            balance.side_effect = [
+                RuntimeError("mix_balancer requires the 'mix-balancer' package"),
+                [{"ok": True}],
+            ]
+            result = await run_mix_balance({}, None, None, None)
+        self.assertEqual(result, {"variants": [{"ok": True}]})
+        self.assertEqual("mix_balancer", balance.call_args_list[0].kwargs["algorithm"])
+        self.assertEqual("tournament_balancer", balance.call_args_list[1].kwargs["algorithm"])
 
 
 if __name__ == "__main__":

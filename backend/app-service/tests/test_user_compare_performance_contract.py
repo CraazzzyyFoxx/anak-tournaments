@@ -39,7 +39,9 @@ def test_overall_compare_v2_is_a_grouped_candidate_query() -> None:
     assert "WITH compare_candidates AS" in sql
     assert "compare_match_stats AS" in sql
     assert "LEFT OUTER JOIN" in sql
+    assert "UNION ALL" in sql
     assert "matches.statistics.user_id = players.user.id" not in sql
+    assert "home_team_id = tournament.team.id OR" not in sql
 
 
 def test_compare_population_executes_the_grouped_v2_query() -> None:
