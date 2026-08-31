@@ -172,3 +172,17 @@ export function isRegistrationOpen(
   const endsAt = row.ends_at ? new Date(row.ends_at).getTime() : null;
   return startsAt <= now && (endsAt === null || now <= endsAt);
 }
+
+/**
+ * Whether the tournament's streams belong on screen at all.
+ *
+ * Only while something is actually being broadcast: the live player draft, and
+ * match play (`live`/`playoffs`, the two statuses that share the "live"
+ * presentation bucket — checked through that bucket so a future in-progress
+ * status is included by the same rule that colours it green). Earlier the dock
+ * is a permanent "channel is offline" card and the Streams tab an empty list;
+ * afterwards a finished event's channel is somebody else's stream.
+ */
+export function areStreamsVisible(status: TournamentStatus) {
+  return status === "draft" || TOURNAMENT_STATUS_META[status].variant === "live";
+}

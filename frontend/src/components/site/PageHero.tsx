@@ -165,7 +165,11 @@ export function PageHero({
             </p>
           ) : null}
           {actions ? (
-            <div className="mt-6 flex flex-wrap items-center gap-2.5">{actions}</div>
+            /* `empty:hidden` because `actions` is often a fragment whose children
+               each decide whether they render — an ended tournament with no links
+               passes a truthy node that emits nothing, and the margin alone would
+               leave a 24px hole under the lede. */
+            <div className="mt-6 flex flex-wrap items-center gap-2.5 empty:hidden">{actions}</div>
           ) : null}
           {stamp ? (
             <div className="mt-7 flex flex-wrap gap-x-8 gap-y-3">{stamp}</div>

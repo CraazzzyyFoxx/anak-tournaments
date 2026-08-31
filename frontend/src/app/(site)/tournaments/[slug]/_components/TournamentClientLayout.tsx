@@ -7,7 +7,11 @@ import { useRouter } from "next/navigation";
 import TournamentBroadcastDock from "./TournamentBroadcastDock";
 import TournamentLinkChips from "./TournamentLinkChips";
 import TournamentRegisterButton from "./TournamentRegisterButton";
-import { getTournamentStatusMeta, isTournamentStatusEnded } from "@/lib/tournament-status";
+import {
+  areStreamsVisible,
+  getTournamentStatusMeta,
+  isTournamentStatusEnded,
+} from "@/lib/tournament-status";
 import { cn, formatDateRange } from "@/lib/utils";
 import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import { createTrailingCoalescer } from "@/hooks/tournamentRealtime.helpers";
@@ -80,8 +84,16 @@ export default function TournamentClientLayout({
   // tab's present-or-absent gate in the nav. It is also the single owner of the
   // `tournament:{id}:streams` subscription — the sections read the same query
   // key, so one jittered refetch here keeps all of them fresh.
-  const streams = useTournamentStreamsQuery(tournamentId).data;
-  useTournamentStreamRealtime({ tournamentId });
+  //
+  // Both are gated on the phase (`areStreamsVisible`) at the SOURCE rather than
+  // at each render site: a registration-phase page then makes no stream read and
+  // opens no stream subscription, and the two consumers go quiet on their own —
+  // the dock renders nothing without officials, the nav tab nothing without
+  // entries.
+  const streamsTournamentId =
+    tournament && areStreamsVisible(tournament.status) ? tournamentId : undefined;
+  const streams = useTournamentStreamsQuery(streamsTournamentId).data;
+  useTournamentStreamRealtime({ tournamentId: streamsTournamentId });
 
   if (tournamentQuery.isPending) {
     return <TournamentShellSkeleton />;
@@ -170,9 +182,15 @@ export default function TournamentClientLayout({
         }
         lede={tournament.description || undefined}
         actions={
-          !isEnded ? (
-            <TournamentRegisterButton tournament={tournament} />
-          ) : undefined
+          /* Discord, the rules doc, an external bracket and the VODs sit in the
+             hero's own action row rather than in a strip between the hero and the
+             nav, where they read as an orphaned line of chrome. Both slots share
+             one flex row, so the chips wrap under the buttons on a phone and the
+             row collapses to whichever of the two exists. */
+          <>
+            {!isEnded && <TournamentRegisterButton tournament={tournament} />}
+            <TournamentLinkChips links={tournament.links} />
+          </>
         }
         aside={
           <div className="grid grid-cols-2 gap-x-7 gap-y-5 xl:grid-cols-4">
@@ -191,14 +209,6 @@ export default function TournamentClientLayout({
           </div>
         }
       />
-
-      {/* Between the hero and the nav, because Discord, the rules doc, an
-          external bracket and the VODs are wanted from every section — and
-          `tournament` is the payload this component already holds, so the row
-          costs no read of its own. It fits here only because the broadcast moved
-          to the fixed dock below: a chip row is one line tall and does not push
-          the nav off a phone screen the way a second card would. */}
-      <TournamentLinkChips links={tournament.links} />
 
       <TournamentSectionNav
         tournamentId={tournament.slug}

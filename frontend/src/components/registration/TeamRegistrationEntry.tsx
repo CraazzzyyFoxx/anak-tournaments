@@ -19,11 +19,13 @@ import TeamRegistrationWizard from "./TeamRegistrationWizard";
 
 /**
  * The "Register a team" affordance: a button that OPENS the captain wizard.
- *
- * Split out of `MyTeamSection` so it can sit in the tournament header beside the
- * solo Register button. It first shipped there as a link to the Teams tab, which
- * made the primary action of a team tournament a navigation step — and left two
- * identical buttons on screen once the tab rendered its own.
+ * Split out of `MyTeamSection` so it can sit in the tournament header. It first
+ * shipped there as a link to the Teams tab, which made the primary action of a
+ * team tournament a navigation step — and left two identical buttons on screen
+ * once the tab rendered its own. On a team-registration tournament it is now the
+ * ONLY header action: `TournamentRegisterButton` renders this instead of the solo
+ * Register button, because one registration row per player means registering solo
+ * silently forecloses founding a team.
  *
  * Renders nothing (rather than a disabled button) when the caller cannot act:
  * anonymous, registration closed, already registered, or already on a team. The
