@@ -45,11 +45,12 @@ function emptyTier(number: number, index: number): DivisionTier {
 }
 
 /**
- * Editor rows for a version, or for the in-code default ladder when a workspace
- * has no grid version yet. Both go through the same normalization so a default
- * draft and a loaded version cannot differ in ordering or `sort_order`.
+ * Editor rows for a version, or for the in-code default ladder when passed
+ * `null` — which is both the no-version fallback and what "Load standard OW
+ * grid" pushes into the editor. Both go through the same normalization so a
+ * default draft and a loaded version cannot differ in ordering or `sort_order`.
  */
-function buildEditorState(selectedVersion: DivisionGridVersion | null): {
+export function buildEditorState(selectedVersion: DivisionGridVersion | null): {
   label: string;
   tiers: DivisionTier[];
 } {
@@ -495,6 +496,15 @@ function DivisionGridEditorCard({
     });
   }, [rangeStep, tiersToAdd]);
 
+  const loadStandardOwGrid = useCallback(() => {
+    // Same tiers the backend seeds into a fresh grid, and deliberately without
+    // tier ids: the save then classifies as structural and lands as a new
+    // version instead of rewriting the active one in place.
+    setTiers(buildEditorState(null).tiers);
+    setLabel("Default Overwatch 2 Grid");
+    setSelectedRows(new Set());
+  }, []);
+
   const removeTier = useCallback((index: number) => {
     setTiers((current) => current.filter((_, tierIndex) => tierIndex !== index));
     setSelectedRows(new Set());
@@ -714,6 +724,15 @@ function DivisionGridEditorCard({
           <Button onClick={handleSave} disabled={!canEdit || saving}>
             <Save aria-hidden className="mr-2 h-4 w-4" />
             {saving ? "Saving…" : "Save grid"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={loadStandardOwGrid}
+            disabled={!canEdit || saving}
+            title="Replace the rows below with the standard Overwatch 2 ladder, then save it as a new version"
+          >
+            <Upload aria-hidden className="mr-2 h-4 w-4" />
+            Load standard OW grid
           </Button>
         </div>
       </CardContent>
