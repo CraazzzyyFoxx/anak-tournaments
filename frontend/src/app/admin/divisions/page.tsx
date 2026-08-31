@@ -500,8 +500,11 @@ function DivisionGridEditorCard({
     // Same tiers the backend seeds into a fresh grid, and deliberately without
     // tier ids: the save then classifies as structural and lands as a new
     // version instead of rewriting the active one in place.
+    //
+    // The label is left alone on purpose: save_workspace_grid feeds `name` into
+    // BOTH the new version's label and the grid's own name, so setting it here
+    // would silently rename the grid. Retitle the version by hand if wanted.
     setTiers(buildEditorState(null).tiers);
-    setLabel("Default Overwatch 2 Grid");
     setSelectedRows(new Set());
   }, []);
 
