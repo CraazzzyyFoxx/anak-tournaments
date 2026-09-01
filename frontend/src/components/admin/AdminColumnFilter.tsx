@@ -28,6 +28,11 @@ const SEARCHABLE_OPTION_THRESHOLD = 8;
  * It sits beside the sort button rather than wrapping it, so "sort by this
  * column" and "filter this column" stay two separate click targets — the same
  * split antd's table header uses.
+ *
+ * Density is deliberately tighter than the shared `Command` defaults, which
+ * size their rows for a full-screen palette (`min-h-11`). A header filter is a
+ * glanceable list of a handful of values, and at palette size eight statuses
+ * no longer fit on screen under the header they belong to.
  */
 export function AdminColumnFilter({
   spec,
@@ -64,12 +69,37 @@ export function AdminColumnFilter({
           />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-56 p-0">
-        <Command>
-          {searchable ? <CommandInput placeholder={label} /> : null}
-          <CommandList>
-            <CommandEmpty>No options match.</CommandEmpty>
-            <CommandGroup>
+      <PopoverContent align="start" sideOffset={6} className="w-52 overflow-hidden p-0">
+        <div className="flex items-center justify-between gap-2 border-b border-border/60 px-2 py-1.5">
+          <span className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {label}
+          </span>
+          {selected.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                const next = { ...filters };
+                delete next[spec.param];
+                onChange(next);
+              }}
+              className="shrink-0 rounded px-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+        <Command className="bg-transparent">
+          {searchable ? (
+            <CommandInput
+              placeholder="Search…"
+              className="h-8 text-xs placeholder:text-muted-foreground"
+            />
+          ) : null}
+          <CommandList className="max-h-64 py-1">
+            <CommandEmpty className="py-3 text-center text-xs text-muted-foreground">
+              No options match.
+            </CommandEmpty>
+            <CommandGroup className="p-0">
               {spec.options.map((option) => {
                 const checked = selected.includes(option.value);
                 return (
@@ -78,15 +108,25 @@ export function AdminColumnFilter({
                     value={option.label}
                     aria-selected={checked}
                     onSelect={() => onChange(toggleFilterValue(filters, spec, option.value))}
-                    className="gap-2"
+                    // CommandItem sizes its icons for a full-screen palette
+                    // (`[&_svg]:size-4`); tailwind-merge lets the later class win, and
+                    // the tick has to fit a 14px box.
+                    className="mx-1 min-h-0 gap-2 rounded px-1.5 py-1 text-xs [&_svg]:size-2.5"
                   >
-                    <Check
+                    <span
                       aria-hidden
-                      className={cn("size-3.5 shrink-0", checked ? "opacity-100" : "opacity-0")}
-                    />
+                      className={cn(
+                        "flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors",
+                        checked
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border/70"
+                      )}
+                    >
+                      {checked ? <Check className="size-2.5" /> : null}
+                    </span>
                     <span className="flex-1 truncate">{option.label}</span>
                     {option.count != null ? (
-                      <span className="text-[11px] tabular-nums text-muted-foreground">
+                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                         {option.count}
                       </span>
                     ) : null}
@@ -96,21 +136,6 @@ export function AdminColumnFilter({
             </CommandGroup>
           </CommandList>
         </Command>
-        {selected.length > 0 ? (
-          <div className="border-t border-border/50 p-1">
-            <button
-              type="button"
-              onClick={() => {
-                const next = { ...filters };
-                delete next[spec.param];
-                onChange(next);
-              }}
-              className="w-full rounded px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
-            >
-              Clear filter
-            </button>
-          </div>
-        ) : null}
       </PopoverContent>
     </Popover>
   );
