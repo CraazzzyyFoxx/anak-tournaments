@@ -136,6 +136,14 @@ describe("AdminDataTable header filters", () => {
     expect(sortButton?.contains(funnel()!)).toBe(false);
   });
 
+  it("centres body cells, so a one-line cell beside a two-line one does not float", async () => {
+    await render();
+    const cell = container.querySelector("tbody td");
+
+    expect(cell?.className).toContain("align-middle");
+    expect(cell?.className).not.toContain("align-top");
+  });
+
   it("refetches with the checked value and puts it in the URL", async () => {
     await render();
     await click(funnel());

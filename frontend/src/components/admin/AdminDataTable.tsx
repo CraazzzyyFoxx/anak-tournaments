@@ -128,6 +128,13 @@ export interface AdminDataTableProps<TData> {
   rowUnit?: string;
 
   /**
+   * Vertical alignment of body cells. `middle` (default) centres one-line rows;
+   * `top` is for tables whose cells wrap to different heights (role chips next
+   * to a single badge), where centring leaves the short cells floating.
+   */
+  cellAlign?: "top" | "middle";
+
+  /**
    * Opaque identity of filters the caller owns (chips, scope selects) rather
    * than this table. Changing it resets to page 1: narrowing a filter while on
    * page 4 otherwise lands on a page the new result set does not have.
@@ -197,6 +204,7 @@ export function AdminDataTable<TData>({
   columnsStorageKey,
   paging = "pages",
   rowUnit = "rows",
+  cellAlign = "middle",
 }: Readonly<AdminDataTableProps<TData>>) {
   const isClientMode = rows !== undefined;
   // Server mode has no accumulating query to grow, so it always paginates.
@@ -549,7 +557,7 @@ export function AdminDataTable<TData>({
     : [{ key: "all", label: null, rows: pageRows }];
 
   const renderLeadingCell = (row: Row<TData>) => (
-    <TableCell className="w-10 py-2.5 pl-4 align-top">
+    <TableCell className={cn("w-10 py-2.5 pl-4", cellAlign === "top" ? "align-top" : "align-middle")}>
       <div className="flex items-center gap-1.5">
         {renderExpanded ? (
           <button
@@ -755,7 +763,8 @@ export function AdminDataTable<TData>({
                             <TableCell
                               key={cell.id}
                               className={cn(
-                                "py-2.5 align-top text-sm",
+                                "py-2.5 text-sm",
+                                cellAlign === "top" ? "align-top" : "align-middle",
                                 isFirstColumn && "pl-4 text-muted-foreground",
                                 isLastColumn && "pr-4",
                                 isActionColumn && "whitespace-nowrap",

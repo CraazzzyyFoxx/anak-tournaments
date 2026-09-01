@@ -557,6 +557,7 @@ export default function RegistrationsTable({
         initialPageSize={25}
         paging="infinite"
         rowUnit="registrations"
+        cellAlign="top"
         searchPlaceholder="Search registrations"
         emptyMessage="No registrations yet."
         columnsStorageKey="balancer-registrations-table-columns"
