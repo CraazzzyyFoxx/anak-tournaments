@@ -28,6 +28,7 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import UserRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
 from src import models, schemas
@@ -71,6 +72,26 @@ def _serialize_result(encounter: models.Encounter) -> dict:
     ).model_dump(mode="json")
 
 
+_user_repo = UserRepository()
+
+
+async def _actor_player_id(session: Any, user: models.AuthUser) -> int | None:
+    """Translate the caller's auth id into the ``players.user`` id the audit stores.
+
+    ``EncounterResultAudit.actor_user_id`` is a FK to ``players.user``, not to
+    ``auth.user``. Passing ``user.id`` straight through wrote an id from the wrong
+    space, and the name join then resolved to whichever unrelated player happened
+    to hold that number -- "confirmed by craazzzyyfoxx" (auth 7) read as
+    "Hardstylerz#21775" (player 7). The captain paths already store the linked
+    player id (``_resolve_captain_identity``); this is the same translation at the
+    admin boundary.
+
+    ``None`` -- an account with no linked player -- reads as a machine actor, which
+    is what an unresolvable actor already displayed as.
+    """
+    return await _user_repo.get_id_by_auth_user_id(session, user.id)
+
+
 def register(broker: Any, logger: Any) -> None:
     # ── encounters ────────────────────────────────────────────────────────
 
@@ -111,7 +132,7 @@ def register(broker: Any, logger: Any) -> None:
             encounter = await captain_service.set_encounter_result(
                 session,
                 encounter_id,
-                actor_user_id=user.id,
+                actor_user_id=await _actor_player_id(session, user),
                 home_score=body.home_score,
                 away_score=body.away_score,
                 closeness=body.closeness,
@@ -128,7 +149,9 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            encounter = await captain_service.reopen_encounter_result(session, encounter_id, actor_user_id=user.id)
+            encounter = await captain_service.reopen_encounter_result(
+                session, encounter_id, actor_user_id=await _actor_player_id(session, user)
+            )
             return _serialize_result(encounter)
 
         return await _run(logger, op)

@@ -578,7 +578,7 @@ class CaptainService:
         session: AsyncSession,
         encounter_id: int,
         *,
-        actor_user_id: int,
+        actor_user_id: int | None,
         home_score: int | None = None,
         away_score: int | None = None,
         closeness: int | None = None,
@@ -692,7 +692,7 @@ class CaptainService:
         session: AsyncSession,
         encounter_id: int,
         *,
-        actor_user_id: int,
+        actor_user_id: int | None,
     ) -> models.Encounter:
         """Un-confirm an encounter so it can be played or reported again.
 
