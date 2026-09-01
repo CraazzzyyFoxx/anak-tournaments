@@ -462,8 +462,9 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace()
         user = SimpleNamespace(id=42)
         team = SimpleNamespace(id=9)
-        encounter_a = SimpleNamespace(id=101)
-        encounter_b = SimpleNamespace(id=102)
+        # `encounter_play_key` sorts on these; undated rows fall back to id order.
+        encounter_a = SimpleNamespace(id=101, ended_at=None, confirmed_at=None, started_at=None, created_at=None)
+        encounter_b = SimpleNamespace(id=102, ended_at=None, confirmed_at=None, started_at=None, created_at=None)
         match_1 = SimpleNamespace(id=201)
         match_2 = SimpleNamespace(id=202)
 
@@ -473,7 +474,8 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             (team, encounter_b, None, None, None, None, None, None, None),
         ]
         repo_mock = AsyncMock(return_value=rows)
-        match_mapper = Mock(side_effect=lambda match, **kwargs: SimpleNamespace(id=match.id))
+        # `sort_user_matches` reads `map_index` off every mapped match.
+        match_mapper = Mock(side_effect=lambda match, **kwargs: SimpleNamespace(id=match.id, map_index=None))
         encounter_mapper = Mock(
             side_effect=lambda encounter, matches, **kwargs: SimpleNamespace(id=encounter.id, matches=matches)
         )
@@ -481,6 +483,8 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         with (
             patch.object(user_flows.users, "get", AsyncMock(return_value=user)),
             patch.object(user_flows.users.encounters, "get_user_encounter_matches_unpaginated", repo_mock),
+            # Pick-ban map order: a real query, and this session is a stub.
+            patch.object(user_flows.users.encounters, "get_settled_map_ids", AsyncMock(return_value={})),
             patch.object(user_flows._mappers, "to_match_with_user_stats", match_mapper),
             patch.object(user_flows._mappers, "to_encounter_with_user_stats", encounter_mapper),
         ):

@@ -48,7 +48,6 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     round: 1,
     best_of: 2,
     tournament_id: 7,
-    tournament_group_id: null,
     stage_id: 1,
     stage_item_id: 1,
     challonge_id: null,
@@ -67,7 +66,6 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     tournament: null as never,
     stage: null,
     stage_item: null,
-    tournament_group: null,
     ...overrides
   };
 }

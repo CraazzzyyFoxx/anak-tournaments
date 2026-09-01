@@ -484,13 +484,6 @@ export const domains: DiagramDomain[] = [
         int division_grid_version_id FK "nullable"
         bool is_finished
     }
-    TOURNAMENT_GROUP {
-        int id PK
-        int tournament_id FK
-        int stage_id FK "nullable (legacy → Stage)"
-        string name
-        bool is_groups
-    }
     STAGE {
         int id PK
         int tournament_id FK
@@ -549,7 +542,6 @@ export const domains: DiagramDomain[] = [
         int team_id FK
         int stage_id FK "nullable"
         int stage_item_id FK "nullable"
-        int group_id FK "nullable (legacy)"
         int position
         int overall_position
         float points
@@ -566,9 +558,7 @@ export const domains: DiagramDomain[] = [
 
     WORKSPACE ||--o{ TOURNAMENT : "проводит"
     TOURNAMENT ||--o{ STAGE : "стадии"
-    TOURNAMENT ||--o{ TOURNAMENT_GROUP : "группы (legacy)"
     STAGE ||--o{ STAGE_ITEM : "элементы"
-    STAGE ||--o{ TOURNAMENT_GROUP : "новая стадия ↔ legacy-группа"
     STAGE_ITEM ||--o{ STAGE_ITEM_INPUT : "слоты входа"
     TOURNAMENT_TEAM |o--o{ STAGE_ITEM_INPUT : "посев команды"
     STAGE_ITEM |o--o{ STAGE_ITEM_INPUT : "источник (advance)"
@@ -597,7 +587,6 @@ export const domains: DiagramDomain[] = [
     ENCOUNTER {
         int id PK
         int tournament_id FK
-        int tournament_group_id FK "nullable"
         int stage_id FK "nullable"
         int stage_item_id FK "nullable"
         int home_team_id FK "nullable"
@@ -1518,8 +1507,8 @@ export const readingNotes: DocEntry[] = [
     body: "`auth.user` (вход) и `players.user` (игрок) — разные таблицы, связь `1:0..1`. Ростер (`tournament.player`), регистрации (`balancer.registration`), драфт (`draft_*`) и достижения (`evaluation_result`/`override`) якорятся на `workspace_member` (= уникальность `workspace_id + player_id`), что и есть суть identity/workspace-рефактора. Денормализованной роли на `workspace_member` нет — роль выводится из RBAC."
   },
   {
-    term: "Единственный legacy",
-    body: "Осталась только `tournament.group` (→ `stage`). `achievements.achievement`/`achievements.user` и `analytics.predictions` (v1) — удалены (см. «История изменений схемы»)."
+    term: "Legacy не осталось",
+    body: "`tournament.group` снесена миграцией `dropgrp01` (группы = `stage_item` типа GROUP). `achievements.achievement`/`achievements.user` и `analytics.predictions` (v1) — удалены (см. «История изменений схемы»)."
   },
   {
     term: "Циклические FK",

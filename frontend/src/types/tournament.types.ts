@@ -19,18 +19,12 @@ export type StageItemInputType = "final" | "tentative" | "empty";
 export type EncounterResultStatus = "none" | "pending_confirmation" | "confirmed" | "disputed";
 
 
-// ─── Legacy (kept for backward compat) ──────────────────────────────────────
+// ─── Team group ─────────────────────────────────────────────────────────────
 
-export interface TournamentGroup {
+/** The group a team played in: a `StageItem` of type `group`, name only. */
+export interface TeamGroup {
   id: number;
-  created_at: Date;
-  updated_at: Date | null;
   name: string;
-  description: string | null;
-  is_groups: boolean;
-  challonge_id: number | null;
-  challonge_slug: string | null;
-  stage_id: number | null;
 }
 
 // ─── Stage Model ────────────────────────────────────────────────────────────
@@ -109,7 +103,6 @@ export interface Tournament {
   loss_points: number;
 
   stages: StageSummary[];
-  groups?: TournamentGroup[];
   participants_count: number | null;
   registrations_count: number | null;
   teams_count: number | null;
@@ -227,8 +220,6 @@ export interface Standings {
   tournament: Tournament | null;
   stage: Stage | null;
   stage_item: StageItem | null;
-  group?: TournamentGroup | null;
-  group_id?: number;
   matches_history: Encounter[];
 }
 

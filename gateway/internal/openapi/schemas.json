@@ -9658,7 +9658,7 @@
         "group": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/analytics.TournamentGroupMin"
+              "$ref": "#/components/schemas/analytics.TeamGroupMin"
             },
             {
               "type": "null"
@@ -9801,6 +9801,25 @@
       "title": "TeamAnalytics",
       "type": "object"
     },
+    "analytics.TeamGroupMin": {
+      "description": "The group a team played in: a ``StageItem`` of type GROUP, name only.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "TeamGroupMin",
+      "type": "object"
+    },
     "analytics.TournamentAnalytics": {
       "properties": {
         "summary": {
@@ -9875,48 +9894,6 @@
         "avg_placement_delta"
       ],
       "title": "TournamentAnalyticsSummary",
-      "type": "object"
-    },
-    "analytics.TournamentGroupMin": {
-      "properties": {
-        "created_at": {
-          "format": "date-time",
-          "title": "Created At",
-          "type": "string"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
-        },
-        "updated_at": {
-          "anyOf": [
-            {
-              "format": "date-time",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Updated At"
-        }
-      },
-      "required": [
-        "id",
-        "created_at",
-        "name",
-        "tournament_id"
-      ],
-      "title": "TournamentGroupMin",
       "type": "object"
     },
     "analytics.TournamentMin": {
@@ -19754,6 +19731,66 @@
           "default": null,
           "title": "Max Total Rating Gap"
         },
+        "mix_balancer_fairness": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mix Balancer Fairness"
+        },
+        "mix_balancer_quality_total": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mix Balancer Quality Total"
+        },
+        "mix_balancer_role_fairness": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mix Balancer Role Fairness"
+        },
+        "mix_balancer_role_points": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mix Balancer Role Points"
+        },
+        "mix_balancer_uniformity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mix Balancer Uniformity"
+        },
         "mmr_std_dev": {
           "title": "Mmr Std Dev",
           "type": "number"
@@ -20275,6 +20312,14 @@
           "title": "Name",
           "type": "string"
         },
+        "owner_id": {
+          "title": "Owner Id",
+          "type": "integer"
+        },
+        "owner_username": {
+          "title": "Owner Username",
+          "type": "string"
+        },
         "public_id": {
           "title": "Public Id",
           "type": "string"
@@ -20322,6 +20367,8 @@
         "name",
         "workspace_id",
         "public_id",
+        "owner_id",
+        "owner_username",
         "created_at"
       ],
       "title": "ApiKeyRead",
@@ -22333,7 +22380,7 @@
       "type": "object"
     },
     "identity.TokenApiKeyInfo": {
-      "description": "API key metadata returned by token validation for downstream services.",
+      "description": "API key metadata returned by token validation for downstream services.\n\n``limits`` / ``config_policy`` are optional snapshots. Empty means the\nconsumer applies its own defaults (gateway rate, balancer job caps).\nNew keys are issued empty; older keys may still carry a frozen copy.",
       "properties": {
         "config_policy": {
           "additionalProperties": true,
@@ -38045,6 +38092,25 @@
       "title": "TeamFilterQueryParams",
       "type": "object"
     },
+    "tournament.TeamGroupRead": {
+      "description": "The group a team played in: a ``StageItem`` of type GROUP, name only.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "TeamGroupRead",
+      "type": "object"
+    },
     "tournament.TeamRead": {
       "properties": {
         "avg_sr": {
@@ -38075,7 +38141,7 @@
         "group": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/tournament.TournamentGroupRead"
+              "$ref": "#/components/schemas/tournament.TeamGroupRead"
             },
             {
               "type": "null"
@@ -38228,7 +38294,7 @@
         "group": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/tournament.TournamentGroupRead"
+              "$ref": "#/components/schemas/tournament.TeamGroupRead"
             },
             {
               "type": "null"
@@ -38598,65 +38664,6 @@
         "end_date"
       ],
       "title": "TournamentCreate",
-      "type": "object"
-    },
-    "tournament.TournamentGroupRead": {
-      "properties": {
-        "challonge_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Challonge Id"
-        },
-        "challonge_slug": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Challonge Slug"
-        },
-        "description": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Description"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "is_groups": {
-          "title": "Is Groups",
-          "type": "boolean"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "description",
-        "is_groups",
-        "challonge_id",
-        "challonge_slug"
-      ],
-      "title": "TournamentGroupRead",
       "type": "object"
     },
     "tournament.TournamentLinkCreate": {

@@ -5,7 +5,6 @@ import {
   Stage,
   StageItem,
   Tournament,
-  TournamentGroup,
 } from "@/types/tournament.types";
 
 export interface Score {
@@ -36,7 +35,6 @@ export interface Encounter {
   round: number;
   best_of: number;
   tournament_id: number;
-  tournament_group_id?: number | null;
   stage_id: number | null;
   stage_item_id: number | null;
   challonge_id: number | null;
@@ -60,7 +58,6 @@ export interface Encounter {
   tournament: Tournament;
   stage?: Stage | null;
   stage_item?: StageItem | null;
-  tournament_group?: TournamentGroup | null;
 }
 
 interface CaptainMapCode {

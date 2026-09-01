@@ -82,7 +82,6 @@ TABLE_NAMES = (
     "tournament.team",
     "tournament.player",
     "tournament.encounter",
-    "tournament.group",
     "tournament.standing",
     "matches.match",
     "matches.statistics",

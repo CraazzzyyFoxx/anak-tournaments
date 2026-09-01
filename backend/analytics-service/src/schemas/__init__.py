@@ -12,8 +12,8 @@ from .analytics_read import (
 from .base import (
     BaseRead,
     PlayerRead,
+    TeamGroupMin,
     TeamRead,
-    TournamentGroupMin,
     TournamentMin,
     UserReadMin,
 )
@@ -55,10 +55,10 @@ __all__ = (
     "PredictedDirection",
     "StandingsRow",
     "TeamAnalytics",
+    "TeamGroupMin",
     "TeamRead",
     "TournamentAnalytics",
     "TournamentAnalyticsSummary",
-    "TournamentGroupMin",
     "TournamentMin",
     "TrainRequestBody",
     "UserReadMin",

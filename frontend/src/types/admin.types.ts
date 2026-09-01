@@ -738,7 +738,6 @@ export interface AdminMatchesQuery {
 
 export interface EncounterCreateInput {
   tournament_id: number;
-  tournament_group_id?: number | null;
   stage_id: number | null;
   stage_item_id: number | null;
   home_team_id: number | null;
@@ -753,7 +752,6 @@ export interface EncounterCreateInput {
 }
 
 export interface EncounterUpdateInput {
-  tournament_group_id?: number | null;
   stage_id?: number | null;
   stage_item_id?: number | null;
   home_team_id?: number | null;

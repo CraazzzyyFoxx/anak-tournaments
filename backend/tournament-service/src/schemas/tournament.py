@@ -14,7 +14,6 @@ from src.schemas.stage import StageSummaryRead
 
 __all__ = (
     "TournamentRead",
-    "TournamentGroupRead",
     "TournamentPhaseScheduleRead",
     "OwalStanding",
     "OwalStandingDay",
@@ -23,14 +22,6 @@ __all__ = (
     "TournamentPaginationSortSearchParams",
     "LeaguePlayerStack",
 )
-
-
-class TournamentGroupRead(BaseRead):
-    name: str
-    description: str | None
-    is_groups: bool
-    challonge_id: int | None
-    challonge_slug: str | None
 
 
 class TournamentPhaseScheduleRead(BaseModel):

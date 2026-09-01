@@ -9,7 +9,7 @@ from shared.services.challonge_refs import (
 )
 from src import models, schemas
 from src.core import errors
-from src.domain.tournament_groups import _apply_stage_challonge
+from src.domain.stage_challonge import _apply_stage_challonge
 
 from . import service
 

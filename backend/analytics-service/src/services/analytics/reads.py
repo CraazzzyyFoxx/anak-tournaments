@@ -72,16 +72,10 @@ def _tournament_to_pydantic(t: models.Tournament | None) -> schemas.TournamentMi
     )
 
 
-def _group_to_pydantic(item, tournament_id: int) -> schemas.TournamentGroupMin | None:
+def _group_to_pydantic(item) -> schemas.TeamGroupMin | None:
     if item is None:
         return None
-    return schemas.TournamentGroupMin(
-        id=item.id,
-        created_at=item.created_at,
-        updated_at=item.updated_at,
-        name=item.name,
-        tournament_id=tournament_id,
-    )
+    return schemas.TeamGroupMin(id=item.id, name=item.name)
 
 
 def _resolve_placement(team: models.Team) -> int | None:
@@ -108,7 +102,7 @@ def _team_to_pydantic(team: models.Team, *, include_tournament: bool = True) -> 
         placement=_resolve_placement(team),
         group=next(
             (
-                _group_to_pydantic(standing.stage_item, team.tournament_id)
+                _group_to_pydantic(standing.stage_item)
                 for standing in getattr(team, "standings", []) or []
                 if getattr(standing, "stage_item", None) is not None
                 and getattr(standing.stage_item, "type", None) == enums.StageItemType.GROUP

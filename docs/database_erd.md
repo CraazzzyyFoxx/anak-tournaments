@@ -429,13 +429,6 @@ erDiagram
         int division_grid_version_id FK "nullable"
         bool is_finished
     }
-    TOURNAMENT_GROUP {
-        int id PK
-        int tournament_id FK
-        int stage_id FK "nullable (legacy → Stage)"
-        string name
-        bool is_groups
-    }
     STAGE {
         int id PK
         int tournament_id FK
@@ -494,7 +487,6 @@ erDiagram
         int team_id FK
         int stage_id FK "nullable"
         int stage_item_id FK "nullable"
-        int group_id FK "nullable (legacy)"
         int position
         int overall_position
         float points
@@ -511,9 +503,7 @@ erDiagram
 
     WORKSPACE ||--o{ TOURNAMENT : "проводит"
     TOURNAMENT ||--o{ STAGE : "стадии"
-    TOURNAMENT ||--o{ TOURNAMENT_GROUP : "группы (legacy)"
     STAGE ||--o{ STAGE_ITEM : "элементы"
-    STAGE ||--o{ TOURNAMENT_GROUP : "новая стадия ↔ legacy-группа"
     STAGE_ITEM ||--o{ STAGE_ITEM_INPUT : "слоты входа"
     TOURNAMENT_TEAM |o--o{ STAGE_ITEM_INPUT : "посев команды"
     STAGE_ITEM |o--o{ STAGE_ITEM_INPUT : "источник (advance)"
@@ -545,16 +535,14 @@ dbarch05). Плюс мост к Challonge (source/participant/match mapping + ж
 > `encounter.challonge_id`, а также таблица `challonge_team` — **удалены**.
 > Единственный источник правды: `challonge_source` +
 > `challonge_participant_mapping` + `challonge_match_mapping` +
-> `challonge_sync_log`. Исключение — `tournament.group.challonge_id` /
-> `challonge_slug` **оставлены**: они хранят Challonge-значение маршрутизации
-> `match.group_id` по группам (не покрывается source-моделью).
+> `challonge_sync_log`. Группа Challonge связывается со стадией через
+> `stage.settings_json.challonge_group_id` — по нему и роутится `match.group_id`.
 
 ```mermaid
 erDiagram
     ENCOUNTER {
         int id PK
         int tournament_id FK
-        int tournament_group_id FK "nullable"
         int stage_id FK "nullable"
         int stage_item_id FK "nullable"
         int home_team_id FK "nullable"
@@ -1565,9 +1553,10 @@ erDiagram
   (= уникальность `workspace_id + player_id`), что и есть суть
   identity/workspace-рефактора. Денормализованной роли на `workspace_member`
   нет — роль выводится из RBAC.
-- **Единственный legacy.** Осталась только `tournament.group` (→ `stage`).
-  `achievements.achievement`/`achievements.user` и `analytics.predictions`
-  (v1) — **удалены** (см. «История изменений схемы»).
+- **Legacy не осталось.** `tournament.group` снесена миграцией `dropgrp01`
+  (группы = `stage_item` типа GROUP). `achievements.achievement`/
+  `achievements.user` и `analytics.predictions` (v1) — **удалены**
+  (см. «История изменений схемы»).
 - **Циклические FK.** `draft_session.current_pick_id ↔ draft_pick.session_id`
   (создаётся с `use_alter`); `division_grid_version.created_from_version_id` и
   `tournament.player.related_player_id` — само-ссылки.
@@ -1595,9 +1584,10 @@ erDiagram
   `tournament.stage.challonge_id`/`challonge_slug`,
   `tournament.encounter.challonge_id` и таблица `tournament.challonge_team`.
   Источник правды — `challonge_source` + `challonge_participant_mapping` +
-  `challonge_match_mapping` + `challonge_sync_log`. **Оставлены**
-  `tournament.group.challonge_id`/`challonge_slug` (routing-значение
-  `match.group_id` по группам).
+  `challonge_match_mapping` + `challonge_sync_log`. Таблица `tournament.group`
+  (вместе со своими `challonge_id`/`challonge_slug`) снесена миграцией
+  `dropgrp01`; группа Challonge связывается со стадией только через
+  `stage.settings_json.challonge_group_id`.
 - **JSON-нормализация (dbarch05).** `map_veto_config.map_pool_ids` (JSON) →
   дочерняя `map_veto_config_map`; `veto_sequence_json` остался JSON.
 - **Draft-нормализация (dbarch03).** `draft_player.role_ranks`/`role_top_heroes`/

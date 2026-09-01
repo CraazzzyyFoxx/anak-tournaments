@@ -6,7 +6,7 @@ from pydantic import UUID4, BaseModel, Field
 from shared.domain.roster_shape import RosterSlotCode
 from src.core import enums, pagination
 from src.schemas import BaseRead, HeroRead
-from src.schemas.tournament import TournamentGroupRead, TournamentRead
+from src.schemas.tournament import TournamentRead
 from src.schemas.user_base import UserRead
 
 __all__ = (
@@ -14,7 +14,7 @@ __all__ = (
     "BalancerTeam",
     "TeamRead",
     "PlayerRead",
-    "ChallongeTeam",
+    "TeamGroupRead",
     "TeamFilterQueryParams",
     "TeamFilterParams",
     "PlayerFilterQueryParams",
@@ -61,6 +61,13 @@ class PlayerRead(BaseRead):
     user: UserRead | None
 
 
+class TeamGroupRead(BaseModel):
+    """The group a team played in: a ``StageItem`` of type GROUP, name only."""
+
+    id: int
+    name: str
+
+
 class TeamRead(BaseRead):
     name: str
     image_url: str | None = None
@@ -72,18 +79,7 @@ class TeamRead(BaseRead):
     players: list[PlayerRead]
     captain: UserRead | None
     placement: int | None
-    group: TournamentGroupRead | None
-
-
-class ChallongeTeam(BaseModel):
-    challonge_id: int
-    team_id: int
-    group_id: int | None
-    tournament_id: int
-
-    team: TeamRead | None
-    group: TournamentGroupRead | None
-    tournament: TournamentRead | None
+    group: TeamGroupRead | None
 
 
 class TeamFilterQueryParams(pagination.PaginationSortQueryParams):
