@@ -14,12 +14,18 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const listAdminMatches = vi.fn();
+const mapsLookup = vi.fn();
 
 vi.mock("@/services/admin.service", () => ({
   default: {
     listAdminMatches: (...args: unknown[]) => listAdminMatches(...args),
     getAdminMatch: vi.fn()
   }
+}));
+
+// The map header filter's options come from the global map catalogue.
+vi.mock("@/services/map.service", () => ({
+  default: { lookup: (...args: unknown[]) => mapsLookup(...args) }
 }));
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/admin/matches" }));
@@ -74,6 +80,17 @@ async function click(element: Element | null | undefined) {
 function button(scope: ParentNode, text: string) {
   return Array.from(scope.querySelectorAll("button")).find(
     (element) => element.textContent?.trim() === text
+  );
+}
+
+function funnel(scope: ParentNode, label: string) {
+  return scope.querySelector<HTMLButtonElement>(`button[aria-label^="${label}"]`);
+}
+
+/** The popover portals out of the table, so its options are looked up document-wide. */
+function option(label: string) {
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find(
+    (item) => item.textContent?.trim() === label
   );
 }
 
@@ -136,6 +153,11 @@ describe("ParsedMatchesBrowser", () => {
   beforeEach(() => {
     listAdminMatches.mockReset();
     listAdminMatches.mockResolvedValue(pageOf([row()]));
+    mapsLookup.mockReset();
+    mapsLookup.mockResolvedValue([
+      { id: 5, name: "Ilios" },
+      { id: 6, name: "Nepal" }
+    ]);
     window.history.replaceState(null, "", "/admin/matches");
     document.body.innerHTML = "";
   });
@@ -160,21 +182,45 @@ describe("ParsedMatchesBrowser", () => {
     expect(lastQuery().tournament_id).toBe(9);
   });
 
-  it("maps each chip to exactly one server filter", async () => {
+  it("maps the toolbar chip to the one filter the header cannot carry", async () => {
     const container = await mount(<ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
-    await click(button(container, "Ingestion failed"));
-    expect(lastQuery().log_status).toEqual(["failed"]);
-    expect(lastQuery().unlinked_only).toBeUndefined();
-
+    // `unlinked_only` is a second query param, and one column filter carries
+    // one param, so the provenance column's `log_status` cannot express it.
     await click(button(container, "Provenance unresolved"));
     expect(lastQuery().unlinked_only).toBe(true);
     expect(lastQuery().log_status).toBeUndefined();
 
     await click(button(container, "All"));
-    expect(lastQuery().log_status).toBeUndefined();
     expect(lastQuery().unlinked_only).toBeUndefined();
+    expect(lastQuery().log_status).toBeUndefined();
+  });
+
+  it("sends a checked provenance status as the endpoint's log_status", async () => {
+    const container = await mount(<ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
+
+    await click(funnel(container, "Filter by ingestion status"));
+    await click(await waitFor(() => option("Failed"), "the Failed option"));
+
+    // The chip that used to be the only way here is gone: the column that
+    // prints the status owns filtering by it, and all four are now reachable.
+    expect(lastQuery().log_status).toEqual(["failed"]);
+    expect(lastQuery().unlinked_only).toBeUndefined();
+    expect(new URLSearchParams(window.location.search).getAll("log_status")).toEqual(["failed"]);
+  });
+
+  it("sends a map picked from the catalogue as map_id", async () => {
+    const container = await mount(<ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
+
+    await click(funnel(container, "Filter by map"));
+    await click(await waitFor(() => option("Nepal"), "the Nepal option"));
+
+    // The endpoint's free-text search covers log name, match code and team
+    // names — never the map — so this filter is the only way to one map.
+    expect(lastQuery().map_id).toBe(6);
   });
 
   it("exposes the selected chip to assistive tech as a pressed grouped button", async () => {
@@ -184,9 +230,9 @@ describe("ParsedMatchesBrowser", () => {
     expect(group?.getAttribute("aria-label")).toBe("Filter parsed matches");
     expect(button(container, "All")?.getAttribute("aria-pressed")).toBe("true");
 
-    await click(button(container, "Ingestion failed"));
+    await click(button(container, "Provenance unresolved"));
 
-    expect(button(container, "Ingestion failed")?.getAttribute("aria-pressed")).toBe("true");
+    expect(button(container, "Provenance unresolved")?.getAttribute("aria-pressed")).toBe("true");
     expect(button(container, "All")?.getAttribute("aria-pressed")).toBe("false");
   });
 
@@ -202,7 +248,7 @@ describe("ParsedMatchesBrowser", () => {
     await click(second);
     expect(lastQuery().page).toBe(2);
 
-    await click(button(container, "Ingestion failed"));
+    await click(button(container, "Provenance unresolved"));
 
     // Without the reset, a narrower filter lands on a page that no longer exists.
     expect(lastQuery().page).toBe(1);
@@ -213,7 +259,7 @@ describe("ParsedMatchesBrowser", () => {
     const container = await mount(<ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
     await waitFor(() => bodyText(container).includes("Ilios"), "the parsed map row");
 
-    // Scoped to the rows: "Ingestion failed" is also a chip label in the toolbar.
+    // Scoped to the rows: "Failed" is also a header-filter option label.
     expect(bodyText(container)).toContain("unresolved");
     expect(bodyText(container)).not.toContain("failed");
   });

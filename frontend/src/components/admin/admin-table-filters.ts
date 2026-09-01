@@ -55,8 +55,14 @@ export function parseFiltersFromParams(
 ): AdminTableFilters {
   const filters: AdminTableFilters = {};
   for (const spec of specs) {
+    // A catalogue-backed filter (roles, gamemodes) has no options on the first
+    // render, and the URL is read once on mount. Validating against an empty
+    // option set there would drop `?role=support` from every deep link and
+    // reload, so an option-less spec takes the URL at its word — the endpoint
+    // validates it anyway.
     const allowed = new Set(spec.options.map((option) => option.value));
-    const values = params.getAll(spec.param).filter((value) => allowed.has(value));
+    const raw = params.getAll(spec.param);
+    const values = allowed.size === 0 ? raw : raw.filter((value) => allowed.has(value));
     if (values.length === 0) continue;
     filters[spec.param] = spec.mode === "multi" ? values : [values[0]];
   }

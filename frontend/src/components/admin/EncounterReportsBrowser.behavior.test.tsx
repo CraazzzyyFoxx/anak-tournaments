@@ -70,7 +70,7 @@ async function mount(node: ReactNode) {
 async function click(element: Element | null | undefined) {
   expect(element).toBeTruthy();
   await act(async () => {
-    (element as HTMLElement).click();
+    element!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await tick();
 }
@@ -79,6 +79,29 @@ function button(scope: ParentNode, text: string) {
   return Array.from(scope.querySelectorAll("button")).find(
     (element) => element.textContent?.trim() === text
   );
+}
+
+/** A column's header funnel, found by the accessible name its spec declares. */
+function funnel(scope: ParentNode, label: string) {
+  return scope.querySelector<HTMLButtonElement>(`button[aria-label^="${label}"]`);
+}
+
+/** Popover options render into a portal on `document.body`, not the container. */
+function filterOption(label: string) {
+  return [...document.querySelectorAll('[cmdk-item=""]')].find(
+    (item) => item.textContent?.trim() === label
+  );
+}
+
+/**
+ * Open a header funnel, toggle one option, close it again. Closing matters:
+ * the popover stays open after a pick, and two open popovers would put two
+ * option lists in the document at once.
+ */
+async function pickFilter(scope: ParentNode, funnelLabel: string, optionLabel: string) {
+  await click(funnel(scope, funnelLabel));
+  await click(filterOption(optionLabel));
+  await click(funnel(scope, funnelLabel));
 }
 
 function dataRows(scope: ParentNode) {
@@ -172,33 +195,56 @@ describe("EncounterReportsBrowser", () => {
     expect(text).toContain("captain-alpha");
   });
 
-  it("maps each chip to exactly one server filter", async () => {
+  it("sends each header filter to the endpoint under its own query param", async () => {
     const container = await mount(
       <EncounterReportsBrowser tournamentId={null} workspaceId={4} canUpdateEncounter />
     );
     await waitFor(() => listEncounterReports.mock.calls.length > 0, "the list request");
 
-    await click(button(container, "Disputed"));
+    await pickFilter(container, "Filter by result", "Disputed");
+    expect(lastQuery().result_status).toEqual(["disputed"]);
+    // The param is the endpoint's own name, not one the table invented, and it
+    // survives in the URL so a narrowed list is linkable.
+    expect(new URLSearchParams(window.location.search).get("result_status")).toBe("disputed");
+
+    await pickFilter(container, "Filter by reports filed", "Awaiting second");
+    expect(lastQuery().reported_count).toBe(1);
+    // Two columns, two params: narrowing one must not silently drop the other.
     expect(lastQuery().result_status).toEqual(["disputed"]);
 
-    await click(button(container, "Reports disagree"));
-    expect(lastQuery().mismatch_only).toBe(true);
-    expect(lastQuery().result_status).toBeUndefined();
-
-    await click(button(container, "Awaiting second"));
-    expect(lastQuery().reported_count).toBe(1);
-    expect(lastQuery().mismatch_only).toBeUndefined();
-
-    await click(button(container, "No reports"));
+    // Zero is a value, not "unset" — "nobody reported" is the whole point of
+    // this option and a falsy guard would swallow it.
+    await pickFilter(container, "Filter by reports filed", "No reports");
     expect(lastQuery().reported_count).toBe(0);
 
-    await click(button(container, "All"));
-    expect(lastQuery().result_status).toBeUndefined();
-    expect(lastQuery().mismatch_only).toBeUndefined();
+    // Unchecking is how "all" is spelled now that the chips are gone.
+    await pickFilter(container, "Filter by reports filed", "No reports");
+    await pickFilter(container, "Filter by result", "Disputed");
     expect(lastQuery().reported_count).toBeUndefined();
+    expect(lastQuery().result_status).toBeUndefined();
   });
 
-  it("keeps the counters on the scope, so chips do not move the numbers", async () => {
+  it("keeps the disagreement filter in the toolbar, where a bare boolean belongs", async () => {
+    const container = await mount(
+      <EncounterReportsBrowser tournamentId={null} workspaceId={4} canUpdateEncounter />
+    );
+    await waitFor(() => listEncounterReports.mock.calls.length > 0, "the list request");
+
+    expect(button(container, "Reports disagree")?.getAttribute("aria-pressed")).toBe("false");
+
+    await click(button(container, "Reports disagree"));
+
+    expect(lastQuery().mismatch_only).toBe(true);
+    expect(button(container, "Reports disagree")?.getAttribute("aria-pressed")).toBe("true");
+
+    await click(button(container, "Reports disagree"));
+
+    // Off is "no filter", not "reports agree": `mismatch_only=false` selects
+    // nothing on the server, so sending it would be a lie.
+    expect(lastQuery().mismatch_only).toBeUndefined();
+  });
+
+  it("keeps the counters on the scope, so filters do not move the numbers", async () => {
     const container = await mount(
       <EncounterReportsBrowser tournamentId={7} workspaceId={4} canUpdateEncounter />
     );
@@ -207,13 +253,14 @@ describe("EncounterReportsBrowser", () => {
     const scope = getEncounterReportStats.mock.calls[0][0] as EncounterReportsQuery;
     expect(scope.workspace_id).toBe(4);
     expect(scope.tournament_id).toBe(7);
-    // A counter narrowed by the current chip would report what is already on
+    // A counter narrowed by the current filter would report what is already on
     // screen instead of how much the scope still has to settle.
     expect(scope.result_status).toBeUndefined();
     expect(scope.mismatch_only).toBeUndefined();
     expect(scope.query).toBeUndefined();
 
-    await click(button(container, "Disputed"));
+    await pickFilter(container, "Filter by result", "Disputed");
+    await click(button(container, "Reports disagree"));
 
     expect(getEncounterReportStats).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("Reports disagree");

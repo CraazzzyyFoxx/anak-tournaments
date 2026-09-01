@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Check, ChevronsUpDown, Trash2, UserPlus, Wand2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -91,7 +92,6 @@ export default function WorkspaceMembersPage() {
   const workspace = getCurrentWorkspace();
 
   const [addOpen, setAddOpen] = useState(false);
-  const [roleFilter, setRoleFilter] = useState<string>("all");
   const [pendingRemoval, setPendingRemoval] = useState<WorkspaceMember | null>(null);
 
   const canCreateMembers =
@@ -123,6 +123,13 @@ export default function WorkspaceMembersPage() {
   );
   const customScopedRoles: RbacRole[] = useMemo(
     () => (scopedRoles ?? []).filter((role) => !isSystemRoleName(role.name)),
+    [scopedRoles]
+  );
+
+  // The role header filter's options: every role scoped to this workspace,
+  // system and custom alike, keyed by the `role_id` the members endpoint takes.
+  const roleFilterOptions = useMemo(
+    () => (scopedRoles ?? []).map((role) => ({ value: String(role.id), label: role.name })),
     [scopedRoles]
   );
 
@@ -225,6 +232,11 @@ export default function WorkspaceMembersPage() {
         header: "Role",
         size: 340,
         enableSorting: true,
+        // Declared even while `roleFilterOptions` is still empty: the spec has to
+        // exist on mount for `?role_id=` in the URL to be picked up at all.
+        meta: adminColumnMeta<WorkspaceMember>({
+          filter: { param: "role_id", label: "Filter by role", options: roleFilterOptions }
+        }),
         cell: ({ row }) => {
           const member = row.original;
           const customCount = memberCustomRoleIds(member).length;
@@ -348,7 +360,14 @@ export default function WorkspaceMembersPage() {
       });
     }
     return cols;
-  }, [canUpdateMembers, canDeleteMembers, customScopedRoles, changePrimaryRole, toggleCustomRole]);
+  }, [
+    canUpdateMembers,
+    canDeleteMembers,
+    customScopedRoles,
+    roleFilterOptions,
+    changePrimaryRole,
+    toggleCustomRole
+  ]);
 
   // Exclusive branch: no workspace selected means the table below never renders,
   // so this header is the page's only `<h1>`.
@@ -363,26 +382,8 @@ export default function WorkspaceMembersPage() {
     );
   }
 
-  const filterRoles = scopedRoles ?? [];
   const tableActions = (
     <>
-      {filterRoles.length > 0 ? (
-        <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="h-9 w-36 text-sm" aria-label="Filter by role">
-            <SelectValue placeholder="All roles" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-sm">
-              All roles
-            </SelectItem>
-            {filterRoles.map((role) => (
-              <SelectItem key={role.id} value={String(role.id)} className="text-sm">
-                {role.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : null}
       {canUpdateMembers ? (
         <Button
           variant="outline"
@@ -412,17 +413,17 @@ export default function WorkspaceMembersPage() {
       />
 
       <AdminDataTable<WorkspaceMember>
-        queryKey={(page, search, pageSize, sortField, sortDir) => [
+        queryKey={(page, search, pageSize, sortField, sortDir, filters) => [
           "workspace-members",
           currentWorkspaceId,
-          { page, search, pageSize, sortField, sortDir, roleFilter }
+          { page, search, pageSize, sortField, sortDir, roleId: filters.role_id?.[0] ?? null }
         ]}
-        queryFn={(page, search, pageSize, sortField, sortDir) =>
+        queryFn={(page, search, pageSize, sortField, sortDir, filters) =>
           workspaceService.getMembers(currentWorkspaceId, {
             page,
             per_page: pageSize,
             search,
-            role_id: roleFilter !== "all" ? Number(roleFilter) : null,
+            role_id: filters.role_id?.[0] ? Number(filters.role_id[0]) : null,
             sort: sortField === "role" ? "role" : "username",
             order: sortDir
           })

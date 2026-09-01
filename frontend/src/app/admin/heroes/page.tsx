@@ -9,6 +9,7 @@ import { AssetPreview } from "@/components/admin/AssetPreview";
 import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
 import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { createAliasesColumn, createEntityActionsColumn } from "@/components/admin/catalog-table-columns";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Input } from "@/components/ui/input";
@@ -112,20 +113,19 @@ export default function HeroesAdminPage() {
     },
     {
       id: "icon",
-      header: () => <div className="text-center">Icon</div>,
+      header: "Icon",
       size: 52,
+      meta: adminColumnMeta<Hero>({ align: "center" }),
       cell: ({ row }) => {
         const hero = row.original;
         return (
-          <div className="flex justify-center">
-            <AssetPreview
-              imagePath={hero.image_path}
-              name={hero.name}
-              assetLabel="hero icon"
-              shape="circle"
-              className="h-10 w-10"
-            />
-          </div>
+          <AssetPreview
+            imagePath={hero.image_path}
+            name={hero.name}
+            assetLabel="hero icon"
+            shape="circle"
+            className="mx-auto h-10 w-10"
+          />
         );
       },
     },
@@ -153,16 +153,22 @@ export default function HeroesAdminPage() {
     },
     {
       id: "role",
-      header: () => <div className="text-center">Role</div>,
+      header: "Role",
       size: 48,
+      meta: adminColumnMeta<Hero>({
+        align: "center",
+        filter: {
+          param: "role",
+          label: "Filter by role",
+          options: HERO_ROLES.map((role) => ({ value: role, label: role })),
+        },
+      }),
       cell: ({ row }) => {
         const role = getHeroRoleValue(row.original);
         return (
-          <div className="flex justify-center">
-            <div title={role}>
-              <PlayerRoleIcon role={role} size={22} decorative />
-              <span className="sr-only">{role}</span>
-            </div>
+          <div title={role}>
+            <PlayerRoleIcon role={role} size={22} decorative />
+            <span className="sr-only">{role}</span>
           </div>
         );
       },
@@ -195,9 +201,16 @@ export default function HeroesAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["admin", "heroes", page, search, pageSize, sortField, sortDir]}
-        queryFn={(page, search, pageSize, sortField, sortDir) =>
-          adminService.getHeroes({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
+        queryKey={(page, search, pageSize, sortField, sortDir, filters) => ["admin", "heroes", page, search, pageSize, sortField, sortDir, filters]}
+        queryFn={(page, search, pageSize, sortField, sortDir, filters) =>
+          adminService.getHeroes({
+            page,
+            search,
+            per_page: pageSize,
+            role: filters.role?.[0],
+            sort: sortField ?? undefined,
+            order: sortDir,
+          })
         }
         columns={columns}
         searchPlaceholder="Search heroes…"

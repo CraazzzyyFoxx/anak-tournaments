@@ -5,8 +5,8 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ClipboardCheck, Clock3, ScrollText } from "lucide-react";
 
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { AdminFilterChips, type AdminFilterChipOption } from "@/components/admin/AdminFilterChips";
 import { AdminReportPairCell } from "@/components/admin/AdminReportPairCell";
 import { ResolveResultDialog } from "@/components/admin/ResolveResultDialog";
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
@@ -19,39 +19,6 @@ import type { EncounterReportsQuery, EncounterReportsRow } from "@/types/admin.t
 import { invalidateTournamentWorkspace } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
 
 const PAGE_SIZE = 25;
-
-/**
- * Chips are mutually exclusive and each maps to exactly one server filter.
- *
- * `disputed` and `mismatch` look alike but are not: `disputed` is the recorded
- * result state, `mismatch` is the live disagreement between two reports. An
- * encounter can be one without the other — a dispute an admin already settled
- * still has two divergent reports on file.
- */
-type Chip = "all" | "disputed" | "mismatch" | "awaiting" | "unreported";
-
-const CHIP_OPTIONS: readonly AdminFilterChipOption<Chip>[] = [
-  { value: "all", label: "All" },
-  { value: "disputed", label: "Disputed" },
-  { value: "mismatch", label: "Reports disagree" },
-  { value: "awaiting", label: "Awaiting second" },
-  { value: "unreported", label: "No reports" }
-];
-
-function chipFilters(chip: Chip): Partial<EncounterReportsQuery> {
-  switch (chip) {
-    case "disputed":
-      return { result_status: ["disputed"] };
-    case "mismatch":
-      return { mismatch_only: true };
-    case "awaiting":
-      return { reported_count: 1 };
-    case "unreported":
-      return { reported_count: 0 };
-    default:
-      return {};
-  }
-}
 
 /**
  * Captain reports, for one tournament or for the whole workspace.
@@ -80,7 +47,7 @@ export function EncounterReportsBrowser({
 }>) {
   const queryClient = useQueryClient();
   const [resolving, setResolving] = useState<EncounterReportsRow | null>(null);
-  const [chip, setChip] = useState<Chip>("all");
+  const [mismatchOnly, setMismatchOnly] = useState(false);
   const showTournament = tournamentId == null;
 
   const scopeParams = useMemo<EncounterReportsQuery | null>(
@@ -91,10 +58,10 @@ export function EncounterReportsBrowser({
     [workspaceId, tournamentId]
   );
 
-  // Counters take the scope alone — not the chip, and not the search box. The
-  // numbers answer "how much in this scope needs attention", so they stay put
-  // while the admin clicks between chips or looks one encounter up, instead of
-  // collapsing to whatever is currently on screen.
+  // Counters take the scope alone — not the header filters, not the toolbar
+  // toggle, not the search box. The numbers answer "how much in this scope
+  // needs attention", so they stay put while the admin narrows the list or
+  // looks one encounter up, instead of collapsing to what is on screen.
   const statsQuery = useQuery({
     queryKey: ["encounter-reports", "stats", scopeParams],
     queryFn: () => adminService.getEncounterReportStats(scopeParams!),
@@ -139,6 +106,19 @@ export function EncounterReportsBrowser({
         header: "Captain reports",
         size: 320,
         enableSorting: false,
+        // `reported_count` is a scalar on the endpoint, so this is single
+        // select: "0 or 2" is not a question the query param can ask.
+        meta: adminColumnMeta<EncounterReportsRow>({
+          filter: {
+            param: "reported_count",
+            label: "Filter by reports filed",
+            options: [
+              { value: "0", label: "No reports" },
+              { value: "1", label: "Awaiting second" },
+              { value: "2", label: "Both reported" }
+            ]
+          }
+        }),
         cell: ({ row }) => (
           <AdminReportPairCell
             homeReport={row.original.home_report}
@@ -153,6 +133,27 @@ export function EncounterReportsBrowser({
         header: "Result",
         size: 132,
         enableSorting: false,
+        // Closed backend enum (EncounterResultStatus), so the options are
+        // literal rather than fetched. Multi: the endpoint's field is a list and
+        // the service repeats the param once per checked value.
+        //
+        // `disputed` here and the toolbar's `mismatch_only` look alike but are
+        // not: this is the recorded result state, that is the live disagreement
+        // between two reports. A dispute an admin already settled still has two
+        // divergent reports on file, which is why they are two filters.
+        meta: adminColumnMeta<EncounterReportsRow>({
+          filter: {
+            param: "result_status",
+            mode: "multi",
+            label: "Filter by result",
+            options: [
+              { value: "none", label: "None" },
+              { value: "pending_confirmation", label: "Pending confirmation" },
+              { value: "confirmed", label: "Confirmed" },
+              { value: "disputed", label: "Disputed" }
+            ]
+          }
+        }),
         cell: ({ row }) => (
           <div className="space-y-1">
             <Badge
@@ -244,31 +245,46 @@ export function EncounterReportsBrowser({
 
       <AdminDataTable
         columns={columns}
-        filterKey={chip}
+        // The header filters reset paging themselves; this covers the one filter
+        // the table does not own.
+        filterKey={mismatchOnly ? "mismatch" : "all"}
         initialPageSize={PAGE_SIZE}
         searchPlaceholder="Search team or encounter"
         emptyMessage={
-          chip === "all" ? "No encounters here yet." : "No encounters match this filter."
+          mismatchOnly ? "No encounters match this filter." : "No encounters here yet."
         }
         actions={
-          <AdminFilterChips
-            label="Filter captain reports"
-            options={CHIP_OPTIONS}
-            value={chip}
-            onChange={setChip}
-          />
+          // Stays out of the header: the reports column's funnel is spent on
+          // `reported_count`, and this is a bare boolean the endpoint reads as
+          // "narrow" or "no filter" — a two-option funnel would imply a
+          // "reports agree" value the param cannot send.
+          <Button
+            type="button"
+            size="sm"
+            variant={mismatchOnly ? "secondary" : "outline"}
+            aria-pressed={mismatchOnly}
+            onClick={() => setMismatchOnly((on) => !on)}
+          >
+            Reports disagree
+          </Button>
         }
         onRowClick={canUpdateEncounter ? (row) => setResolving(row.original) : undefined}
-        queryKey={(page, search, pageSize) => [
+        queryKey={(page, search, pageSize, _sortField, _sortDir, filters) => [
           "encounter-reports",
-          { workspaceId, tournamentId, chip, page, search, pageSize }
+          { workspaceId, tournamentId, mismatchOnly, page, search, pageSize, filters }
         ]}
-        queryFn={(page, search, pageSize) =>
+        queryFn={(page, search, pageSize, _sortField, _sortDir, filters) =>
           adminService.listEncounterReports({
             workspace_id: workspaceId,
             tournament_id: tournamentId ?? undefined,
             query: search || undefined,
-            ...chipFilters(chip),
+            result_status: filters.result_status?.length ? filters.result_status : undefined,
+            // Zero is a real value here ("neither captain reported"), so the
+            // guard is on the array, never on the number.
+            reported_count: filters.reported_count?.length
+              ? Number(filters.reported_count[0])
+              : undefined,
+            mismatch_only: mismatchOnly || undefined,
             page,
             per_page: pageSize
           })

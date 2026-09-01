@@ -894,6 +894,7 @@ class AdminService {
       per_page?: number;
       search?: string;
       gamemode_id?: number;
+      in_competitive?: boolean;
       sort?: string;
       order?: string;
     } = {}
@@ -904,6 +905,8 @@ class AdminService {
         ...(params.per_page != null && { per_page: params.per_page }),
         ...(params.search && { search: params.search }),
         ...(params.gamemode_id != null && { gamemode_id: params.gamemode_id }),
+        // `!= null`, not truthiness: `false` is a real filter value (casual pool).
+        ...(params.in_competitive != null && { in_competitive: params.in_competitive }),
         ...(params.sort && { sort: params.sort }),
         ...(params.order && { order: params.order })
       }

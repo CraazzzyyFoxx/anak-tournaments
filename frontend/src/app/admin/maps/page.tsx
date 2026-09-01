@@ -1,7 +1,6 @@
 "use client";
 
 import { useId } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
 
@@ -11,6 +10,7 @@ import { AssetPreview } from "@/components/admin/AssetPreview";
 import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
 import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { createAliasesColumn, createEntityActionsColumn } from "@/components/admin/catalog-table-columns";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
@@ -54,25 +54,14 @@ function getMapForm(map: MapRead | null): MapCreateInput | MapUpdateInput {
   };
 }
 
-const GAMEMODE_QUERY_PARAM = "gamemode_id";
-function parseGamemodeQueryParam(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
 export default function MapsAdminPage() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const { isSuperuser } = usePermissions();
   const formId = useId();
   const nameFieldId = `${formId}-name`;
   const gamemodeFieldId = `${formId}-gamemode`;
   const aliasesFieldId = `${formId}-aliases`;
-  const selectedGamemodeId = parseGamemodeQueryParam(searchParams.get(GAMEMODE_QUERY_PARAM));
 
-  // Fetch gamemodes for selector
+  // Gamemodes back both the create/edit dialog select and the header filter.
   const { data: gamemodesData } = useQuery({
     queryKey: ["gamemodes"],
     queryFn: async () => {
@@ -110,19 +99,6 @@ export default function MapsAdminPage() {
     },
   });
 
-  const handleGamemodeFilterChange = (value: string) => {
-    const nextParams = new URLSearchParams(searchParams.toString());
-    if (value === "all") {
-      nextParams.delete(GAMEMODE_QUERY_PARAM);
-    } else {
-      nextParams.set(GAMEMODE_QUERY_PARAM, value);
-    }
-    nextParams.delete("page");
-
-    const query = nextParams.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  };
-
   const columns: ColumnDef<MapRead>[] = [
     {
       accessorKey: "id",
@@ -132,19 +108,18 @@ export default function MapsAdminPage() {
     },
     {
       id: "image",
-      header: () => <div className="text-center">Image</div>,
+      header: "Image",
       size: 96,
+      meta: adminColumnMeta<MapRead>({ align: "center" }),
       cell: ({ row }) => {
         const map = row.original;
         return (
-          <div className="flex justify-center">
-            <AssetPreview
-              imagePath={map.image_path}
-              name={map.name}
-              assetLabel="map image"
-              className="h-12 w-24"
-            />
-          </div>
+          <AssetPreview
+            imagePath={map.image_path}
+            name={map.name}
+            assetLabel="map image"
+            className="mx-auto h-12 w-24"
+          />
         );
       },
     },
@@ -158,6 +133,16 @@ export default function MapsAdminPage() {
       header: "Gamemode",
       size: 112,
       enableSorting: false,
+      meta: adminColumnMeta<MapRead>({
+        filter: {
+          param: "gamemode_id",
+          label: "Filter by gamemode",
+          options: (gamemodesData ?? []).map((gamemode) => ({
+            value: gamemode.id.toString(),
+            label: gamemode.name,
+          })),
+        },
+      }),
       cell: ({ row }) => {
         const map = row.original;
         return map.gamemode ? (
@@ -171,6 +156,16 @@ export default function MapsAdminPage() {
       accessorKey: "in_competitive",
       header: "Mode Pool",
       size: 120,
+      meta: adminColumnMeta<MapRead>({
+        filter: {
+          param: "in_competitive",
+          label: "Filter by mode pool",
+          options: [
+            { value: "true", label: "Competitive" },
+            { value: "false", label: "Casual" },
+          ],
+        },
+      }),
       cell: ({ row }) => {
         const map = row.original;
         return map.in_competitive !== false ? (
@@ -212,48 +207,32 @@ export default function MapsAdminPage() {
       />
 
       <AdminDataTable
-        key={`maps-table-${selectedGamemodeId ?? "all"}`}
-        queryKey={(page, search, pageSize, sortField, sortDir) => [
+        queryKey={(page, search, pageSize, sortField, sortDir, filters) => [
           "admin",
           "maps",
-          selectedGamemodeId,
           page,
           search,
           pageSize,
           sortField,
           sortDir,
+          filters,
         ]}
-        queryFn={(page, search, pageSize, sortField, sortDir) =>
-          adminService.getMaps({
+        queryFn={(page, search, pageSize, sortField, sortDir, filters) => {
+          const gamemodeId = filters.gamemode_id?.[0];
+          const competitive = filters.in_competitive?.[0];
+          return adminService.getMaps({
             page,
             search,
             per_page: pageSize,
-            gamemode_id: selectedGamemodeId ?? undefined,
+            gamemode_id: gamemodeId ? Number(gamemodeId) : undefined,
+            in_competitive: competitive ? competitive === "true" : undefined,
             sort: sortField ?? undefined,
             order: sortDir,
-          })
-        }
+          });
+        }}
         columns={columns}
         searchPlaceholder="Search maps…"
         emptyMessage="No maps yet. Use “Create map” to add the first one."
-        actions={
-          <Select
-            value={selectedGamemodeId?.toString() ?? "all"}
-            onValueChange={handleGamemodeFilterChange}
-          >
-            <SelectTrigger aria-label="Filter maps by gamemode" className="w-[220px]">
-              <SelectValue placeholder="Filter by gamemode" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All gamemodes</SelectItem>
-              {gamemodesData?.map((gamemode) => (
-                <SelectItem key={gamemode.id} value={gamemode.id.toString()}>
-                  {gamemode.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        }
         onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
       />
 

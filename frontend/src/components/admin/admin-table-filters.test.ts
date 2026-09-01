@@ -40,6 +40,12 @@ describe("parseFiltersFromParams", () => {
     const params = new URLSearchParams("kind=a&kind=b");
     expect(parseFiltersFromParams([entitiesSpec], params)).toEqual({ kind: ["a", "b"] });
   });
+
+  it("keeps the URL value while a catalogue-backed filter has no options yet", () => {
+    const loading: AdminColumnFilterSpec = { param: "role", options: [] };
+    const params = new URLSearchParams("role=support");
+    expect(parseFiltersFromParams([loading], params)).toEqual({ role: ["support"] });
+  });
 });
 
 describe("writeFiltersToParams", () => {

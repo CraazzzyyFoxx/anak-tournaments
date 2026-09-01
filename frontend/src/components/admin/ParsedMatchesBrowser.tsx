@@ -1,16 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminFilterChips, type AdminFilterChipOption } from "@/components/admin/AdminFilterChips";
 import { ParsedMatchSheet } from "@/components/admin/ParsedMatchSheet";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { TONE_CLASS, type Tone } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
-import type { AdminMatchRow, AdminMatchesQuery, LogProcessingStatus } from "@/types/admin.types";
+import mapService from "@/services/map.service";
+import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
 
 const PAGE_SIZE = 25;
 
@@ -22,30 +25,35 @@ const STATUS_TONE: Record<LogProcessingStatus, Tone> = {
 };
 
 /**
- * Chips are mutually exclusive and each maps to one server filter.
+ * Every ingestion status a provenance cell can print, offered on that column's
+ * own header filter as a repeated `log_status`.
+ *
+ * `unresolved` is deliberately absent. It is not a status but the absence of an
+ * ingestion record, and the endpoint selects it with `unlinked_only` — another
+ * query parameter, which one column filter cannot also carry. It stays a chip.
+ */
+const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "processing", label: "Processing" },
+  { value: "done", label: "Done" },
+  { value: "failed", label: "Failed" }
+];
+
+/**
+ * The one filter left in the toolbar, because it is the one the provenance
+ * column's header filter cannot express.
  *
  * `unresolved` is not a failure bucket. It selects maps with no ingestion
- * record at all, which is most of the archive; `failed` selects the ones whose
- * ingestion actually broke. Merging them would drown the real failures.
+ * record at all, which is most of the archive; the header filter's `failed`
+ * selects the ones whose ingestion actually broke. Merging them would drown the
+ * real failures.
  */
-type Chip = "all" | "failed" | "unresolved";
+type Chip = "all" | "unresolved";
 
 const CHIP_OPTIONS: readonly AdminFilterChipOption<Chip>[] = [
   { value: "all", label: "All" },
-  { value: "failed", label: "Ingestion failed" },
   { value: "unresolved", label: "Provenance unresolved" }
 ];
-
-function chipFilters(chip: Chip): Partial<AdminMatchesQuery> {
-  switch (chip) {
-    case "failed":
-      return { log_status: ["failed"] };
-    case "unresolved":
-      return { unlinked_only: true };
-    default:
-      return {};
-  }
-}
 
 /**
  * Parsed matches — one row per played map — for one tournament or the whole
@@ -73,11 +81,37 @@ export function ParsedMatchesBrowser({
   const [inspecting, setInspecting] = useState<AdminMatchRow | null>(null);
   const showTournament = tournamentId == null;
 
+  // Map options come from the global catalogue, not from the page of rows: a
+  // header filter has to offer maps that this page happens not to show. The
+  // list arrives a beat after the first render, and the table takes a `map_id`
+  // already in the URL at face value until it does.
+  const mapsQuery = useQuery({
+    queryKey: ["maps-lookup"],
+    queryFn: () => mapService.lookup(),
+    staleTime: 5 * 60 * 1000,
+    enabled: workspaceId != null
+  });
+  const mapOptions = useMemo(
+    () => (mapsQuery.data ?? []).map((entry) => ({ value: String(entry.id), label: entry.name })),
+    [mapsQuery.data]
+  );
+
   const columns = useMemo<ColumnDef<AdminMatchRow>[]>(
     () => [
       {
         id: "map",
         header: "Map",
+        meta: adminColumnMeta<AdminMatchRow>({
+          filter: {
+            param: "map_id",
+            label: "Filter by map",
+            options: mapOptions,
+            // Pinned on rather than left to the option-count default: the
+            // catalogue is well past the threshold, but it is empty on the
+            // first render and the search box must not pop in behind it.
+            searchable: true
+          }
+        }),
         // The server sorts none of these, so offering a sort control would be a
         // lie the header cannot honour.
         enableSorting: false,
@@ -127,6 +161,14 @@ export function ParsedMatchesBrowser({
       {
         id: "provenance",
         header: "Provenance",
+        meta: adminColumnMeta<AdminMatchRow>({
+          filter: {
+            param: "log_status",
+            mode: "multi",
+            label: "Filter by ingestion status",
+            options: LOG_STATUS_OPTIONS
+          }
+        }),
         size: 148,
         enableSorting: false,
         cell: ({ row }) =>
@@ -141,7 +183,7 @@ export function ParsedMatchesBrowser({
           )
       }
     ],
-    [showTournament]
+    [showTournament, mapOptions]
   );
 
   if (workspaceId == null) {
@@ -165,7 +207,9 @@ export function ParsedMatchesBrowser({
         initialPageSize={PAGE_SIZE}
         searchPlaceholder="Search log name, code or team"
         emptyMessage={
-          chip === "all" ? "No parsed maps here yet." : "No parsed maps match this filter."
+          chip === "all"
+            ? "No parsed maps here yet."
+            : "No parsed maps with unresolved provenance."
         }
         actions={
           <AdminFilterChips
@@ -176,20 +220,27 @@ export function ParsedMatchesBrowser({
           />
         }
         onRowClick={(row) => setInspecting(row.original)}
-        queryKey={(page, search, pageSize) => [
+        queryKey={(page, search, pageSize, _sortField, _sortDir, filters) => [
           "admin-matches",
-          { workspaceId, tournamentId, chip, page, search, pageSize }
+          { workspaceId, tournamentId, chip, page, search, pageSize, filters }
         ]}
-        queryFn={(page, search, pageSize) =>
-          adminService.listAdminMatches({
+        queryFn={(page, search, pageSize, _sortField, _sortDir, filters) => {
+          const mapId = filters.map_id?.[0];
+          return adminService.listAdminMatches({
             workspace_id: workspaceId,
             tournament_id: tournamentId ?? undefined,
             query: search || undefined,
-            ...chipFilters(chip),
+            map_id: mapId ? Number(mapId) : undefined,
+            // Every value the spec declares is a real status and the table hands
+            // back nothing it did not declare, so widening to the enum is safe.
+            log_status: filters.log_status?.length
+              ? (filters.log_status as LogProcessingStatus[])
+              : undefined,
+            ...(chip === "unresolved" && { unlinked_only: true }),
             page,
             per_page: pageSize
-          })
-        }
+          });
+        }}
       />
 
       <ParsedMatchSheet
