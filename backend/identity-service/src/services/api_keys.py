@@ -39,31 +39,17 @@ def _isoformat(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
 
+def _scope_names(row: models.ApiKey) -> list[str]:
+    return [item.scope for item in row.scopes]
+
+
+def _owner_username(row: models.ApiKey, owner: models.AuthUser | None = None) -> str:
+    person = owner if owner is not None else getattr(row, "user", None)
+    return person.username if person is not None else ""
+
+
 class ApiKeyService:
     PREFIX = "aqt_sk"
-    DEFAULT_LIMITS: dict[str, int] = {
-        "requests_per_minute": 60,
-        "jobs_per_day": 100,
-        "concurrent_jobs": 2,
-        "max_upload_bytes": 10 * 1024 * 1024,
-        "max_players": 500,
-    }
-    DEFAULT_CONFIG_POLICY: dict[str, Any] = {
-        "allowed_keys": [
-            "algorithm",
-            "role_mask",
-            "population_size",
-            "generation_count",
-            "use_captains",
-            "max_result_variants",
-        ],
-        "allowed_algorithms": ["moo"],
-        "max_values": {
-            "population_size": 150,
-            "generation_count": 500,
-            "max_result_variants": 10,
-        },
-    }
 
     def __init__(
         self,
@@ -116,13 +102,15 @@ class ApiKeyService:
     # -- serialization -----------------------------------------------------
 
     @staticmethod
-    def describe(row: models.ApiKey) -> schemas.ApiKeyRead:
+    def describe(row: models.ApiKey, *, owner: models.AuthUser | None = None) -> schemas.ApiKeyRead:
         return schemas.ApiKeyRead(
             id=row.id,
             name=row.name,
             workspace_id=row.workspace_id,
             public_id=row.public_id,
-            scopes=list(row.scopes_json or []),
+            owner_id=row.auth_user_id,
+            owner_username=_owner_username(row, owner),
+            scopes=_scope_names(row),
             limits=dict(row.limits_json or {}),
             config_policy=dict(row.config_policy_json or {}),
             expires_at=row.expires_at,
@@ -241,13 +229,10 @@ class ApiKeyService:
         self,
         session: AsyncSession,
         *,
-        auth_user_id: int,
         workspace_id: int,
     ) -> schemas.ApiKeyStatusCounts:
-        """Workspace-wide (current user's) API-key tallies by derived status."""
         tally = await self.keys.status_counts(
             session,
-            auth_user_id=auth_user_id,
             workspace_id=workspace_id,
             now=_now(),
         )
@@ -265,7 +250,7 @@ class ApiKeyService:
         user: models.AuthUser,
         params: schemas.ApiKeyListParams,
     ) -> dict:
-        """Paginated list of the current user's API keys for a workspace, plus status counts."""
+        """Paginated list of every API key in a workspace, plus status counts."""
         if params.workspace_id is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -276,11 +261,10 @@ class ApiKeyService:
         rows, total = await self.keys.list_page(
             session,
             params,
-            auth_user_id=user.id,
             workspace_id=params.workspace_id,
             search=params.search,
         )
-        counts = await self._status_counts(session, auth_user_id=user.id, workspace_id=params.workspace_id)
+        counts = await self._status_counts(session, workspace_id=params.workspace_id)
         available = await self.grantable_scopes(session, user=user, workspace_id=params.workspace_id)
         return {
             **paginated_dict([self.describe(row) for row in rows], total, params),
@@ -294,7 +278,7 @@ class ApiKeyService:
         No ownership check: the id arrives from a credential this service has
         already verified, so the caller is the key by definition.
         """
-        row = await self.keys.get(session, api_key_id)
+        row = await self.keys.get_with_owner(session, api_key_id)
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
         return self.describe(row)
@@ -340,9 +324,9 @@ class ApiKeyService:
             public_id=public_id,
             secret_hash=self._hash_secret(secret),
             name=self._clean_name(payload.name),
-            scopes_json=list(scopes),
-            limits_json=dict(self.DEFAULT_LIMITS),
-            config_policy_json=dict(self.DEFAULT_CONFIG_POLICY),
+            scopes=[models.ApiKeyScope(scope=name) for name in scopes],
+            limits_json={},
+            config_policy_json={},
             expires_at=payload.expires_at,
         )
         await self.keys.create(session, row)
@@ -360,7 +344,7 @@ class ApiKeyService:
             entity_label=row.name,
             after={
                 "name": row.name,
-                "scopes_json": list(row.scopes_json),
+                "scopes": list(scopes),
                 "expires_at": _isoformat(row.expires_at),
             },
             ip_address=ip_address,
@@ -368,7 +352,7 @@ class ApiKeyService:
         )
         await session.commit()
         await session.refresh(row)
-        return schemas.ApiKeyCreateResponse(api_key=self.describe(row), key=full_key)
+        return schemas.ApiKeyCreateResponse(api_key=self.describe(row, owner=user), key=full_key)
 
     async def update(
         self,
@@ -380,8 +364,8 @@ class ApiKeyService:
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> schemas.ApiKeyRead:
-        row = await self.keys.get(session, api_key_id)
-        if row is None or row.auth_user_id != user.id:
+        row = await self.keys.get_with_owner(session, api_key_id)
+        if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
         await self.ensure_can_manage(session, user=user, workspace_id=row.workspace_id)
         before_name = row.name
@@ -414,8 +398,8 @@ class ApiKeyService:
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> None:
-        row = await self.keys.get(session, api_key_id)
-        if row is None or row.auth_user_id != user.id:
+        row = await self.keys.get_with_owner(session, api_key_id)
+        if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
         await self.ensure_can_manage(session, user=user, workspace_id=row.workspace_id)
         if row.revoked_at is None:
@@ -480,7 +464,7 @@ class ApiKeyService:
         if not owner.is_workspace_member(api_key.workspace_id):
             return None
 
-        scopes = normalize_scopes(api_key.scopes_json or [])
+        scopes = normalize_scopes(_scope_names(api_key))
         granted = [
             {"resource": resource, "action": action}
             for resource, action in scope_pairs(scopes)

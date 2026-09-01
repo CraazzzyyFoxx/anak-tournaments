@@ -125,7 +125,11 @@ def test_create_api_key_returns_secret_once_and_stores_only_hash(monkeypatch: py
     assert stored.name == "Balancer API"
     assert "secret" not in response.api_key.model_dump()
     # No implicit grant: a key nobody scoped authenticates and authorizes nothing.
-    assert stored.scopes_json == []
+    assert [item.scope for item in stored.scopes] == []
+    # Balancer quotas are not an identity concern; empty JSON lets each
+    # consumer apply its own defaults (gateway rate, balancer job caps).
+    assert stored.limits_json == {}
+    assert stored.config_policy_json == {}
     assert session.flush_calls == 1
     assert session.commit_calls == 1
     assert session.refresh_calls == 1
@@ -192,7 +196,7 @@ def test_create_api_key_stores_normalized_scopes(monkeypatch: pytest.MonkeyPatch
     )
 
     # The legacy alias collapses onto the permission it always meant, deduped.
-    assert session.added[0].scopes_json == ["team.create"]
+    assert [item.scope for item in session.added[0].scopes] == ["team.create"]
 
 
 def test_is_api_key_recognizes_only_the_prefixed_form() -> None:
@@ -470,12 +474,12 @@ def test_list_api_keys_returns_page_and_workspace_wide_status_counts(monkeypatch
     async def allow_manage(*args, **kwargs) -> None:
         return None
 
-    async def list_page(_session, _params, *, auth_user_id: int, workspace_id: int, search: str | None):
-        assert (auth_user_id, workspace_id, search) == (7, 11, None)
+    async def list_page(_session, _params, *, workspace_id: int, search: str | None):
+        assert (workspace_id, search) == (11, None)
         return [_api_key_row()], 4
 
-    async def status_counts(_session, *, auth_user_id: int, workspace_id: int, now) -> dict[str, int]:
-        assert (auth_user_id, workspace_id) == (7, 11)
+    async def status_counts(_session, *, workspace_id: int, now) -> dict[str, int]:
+        assert workspace_id == 11
         # ``expired`` deliberately absent: the tally query omits empty buckets.
         return {"active": 3, "revoked": 1}
 
@@ -492,6 +496,7 @@ def test_list_api_keys_returns_page_and_workspace_wide_status_counts(monkeypatch
 
     assert result["total"] == 4
     assert [row.id for row in result["results"]] == [123]
+    assert result["results"][0].owner_username == "ada"
     counts = result["counts"]
     assert (counts.total, counts.active, counts.expired, counts.revoked) == (4, 3, 0, 1)
     # Sorted so the create form renders deterministically.

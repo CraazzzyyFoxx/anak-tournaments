@@ -40,6 +40,8 @@ class ApiKeyRead(BaseModel):
     name: str
     workspace_id: int
     public_id: str
+    owner_id: int
+    owner_username: str
     scopes: list[str] = Field(default_factory=list)
     limits: dict[str, Any] = Field(default_factory=dict)
     config_policy: dict[str, Any] = Field(default_factory=dict)

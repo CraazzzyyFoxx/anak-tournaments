@@ -175,9 +175,12 @@ erDiagram
         int workspace_id FK
         string public_id UK
         string secret_hash
-        json scopes_json
         timestamp expires_at
         timestamp revoked_at
+    }
+    AUTH_API_KEY_SCOPE {
+        int api_key_id PK
+        string scope PK
     }
     AUTH_ROLE {
         int id PK
@@ -216,6 +219,7 @@ erDiagram
     AUTH_USER ||--o{ AUTH_REFRESH_TOKEN : "сессии"
     AUTH_USER ||--o{ AUTH_OAUTH_CONNECTION : "логинится через"
     AUTH_USER ||--o{ AUTH_API_KEY : "владеет"
+    AUTH_API_KEY ||--o{ AUTH_API_KEY_SCOPE : "scopes"
     AUTH_USER ||--o{ AUTH_USER_ROLE : "назначены роли"
     AUTH_ROLE ||--o{ AUTH_USER_ROLE : "назначена кому"
     AUTH_ROLE ||--o{ AUTH_ROLE_PERMISSION : "даёт"

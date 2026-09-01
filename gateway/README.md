@@ -102,11 +102,12 @@ connects anonymously and cannot subscribe to auth-gated topics.
 
 ### Rate limits
 
-The gateway's own limiter is per-IP (`internal/ratelimit`) and does not know about keys.
-Per-key quotas — `requests_per_minute`, `jobs_per_day`, `concurrent_jobs`, `max_upload_bytes`,
-stored on the key and carried in the token payload — are enforced by `balancer-service`
-(`src/core/security/api_key_limiter.py`) on the balancer job paths that consume them; exceeding
-one returns 429 with `Retry-After`.
+Anonymous traffic is metered per-IP (`internal/ratelimit`). API keys are metered
+per key against `requests_per_minute` when the credential carries one, otherwise
+`GATEWAY_API_KEY_RATE_LIMIT` (default 60/min). Balancer job quotas — `jobs_per_day`,
+`concurrent_jobs`, `max_upload_bytes`, `max_players`, solver `config_policy` — live
+in `balancer-service` (`src/core/security/api_key_limiter.py` / `api_key_policy.py`)
+and are not identity defaults. Exceeding a quota returns 429 with `Retry-After`.
 
 ## Internal packages
 

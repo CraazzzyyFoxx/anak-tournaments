@@ -52,7 +52,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { AccountApiKey, ApiKeyConfigPolicy, ApiKeyLimits } from "@/types/auth.types";
+import type { AccountApiKey } from "@/types/auth.types";
 
 const PAGE_SIZE = 20;
 
@@ -65,29 +65,6 @@ const FULL_ACCESS_SCOPE = "admin.*";
 
 /** Scope chips rendered inline in the table before collapsing into a `+N` count. */
 const SCOPE_PREVIEW_COUNT = 2;
-
-const DEFAULT_LIMITS: ApiKeyLimits = {
-  requests_per_minute: 60,
-  jobs_per_day: 100,
-  concurrent_jobs: 2,
-  max_upload_bytes: 10 * 1024 * 1024,
-  max_players: 500
-};
-
-const DEFAULT_POLICY: ApiKeyConfigPolicy = {
-  allowed_keys: [
-    "role_mask",
-    "population_size",
-    "generation_count",
-    "use_captains",
-    "max_result_variants"
-  ],
-  max_values: {
-    population_size: 150,
-    generation_count: 500,
-    max_result_variants: 10
-  }
-};
 
 const EMPTY_COUNTS: AccountApiKeyStatusCounts = { total: 0, active: 0, expired: 0, revoked: 0 };
 
@@ -106,12 +83,6 @@ function formatTimestamp(format: AdminDateFormatter, value: string | null | unde
     dateStyle: "medium",
     timeStyle: "short"
   });
-}
-
-function formatBytes(value: number): string {
-  if (value >= 1024 * 1024) return `${Math.round(value / (1024 * 1024))} MiB`;
-  if (value >= 1024) return `${Math.round(value / 1024)} KiB`;
-  return `${value} B`;
 }
 
 function isPastTimestamp(value: string | null | undefined): boolean {
@@ -337,51 +308,6 @@ function ScopePicker({
   );
 }
 
-function LimitsText({ limits }: Readonly<{ limits: Partial<ApiKeyLimits> | undefined }>) {
-  const merged: ApiKeyLimits = { ...DEFAULT_LIMITS, ...(limits ?? {}) };
-
-  return (
-    <span className="text-xs tabular-nums text-muted-foreground">
-      {merged.requests_per_minute}/min · {merged.jobs_per_day}/day · {merged.concurrent_jobs}{" "}
-      concurrent · {formatBytes(merged.max_upload_bytes)}
-    </span>
-  );
-}
-
-function PolicyText({ policy }: Readonly<{ policy: Partial<ApiKeyConfigPolicy> | undefined }>) {
-  const merged = {
-    allowed_keys: policy?.allowed_keys ?? DEFAULT_POLICY.allowed_keys,
-    max_values: policy?.max_values ?? DEFAULT_POLICY.max_values
-  };
-  const caps = Object.entries(merged.max_values ?? {});
-  const capSummary =
-    caps.length > 0 ? caps.map(([field, cap]) => `${field} ≤ ${cap}`).join(", ") : "No caps";
-
-  return (
-    <div className="max-w-72 text-xs text-muted-foreground">
-      <p className="truncate">Allowed: {merged.allowed_keys.join(", ") || "None"}</p>
-      <p className="truncate tabular-nums">{capSummary}</p>
-    </div>
-  );
-}
-
-function DefaultPolicyPreview() {
-  return (
-    <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-      <div className="rounded-md border border-border/60 bg-muted/20 p-2">
-        <p className="font-medium text-foreground">Limits</p>
-        <p className="mt-1 tabular-nums">
-          {DEFAULT_LIMITS.requests_per_minute}/min · {DEFAULT_LIMITS.jobs_per_day}/day ·{" "}
-          {DEFAULT_LIMITS.concurrent_jobs} concurrent
-        </p>
-      </div>
-      <div className="rounded-md border border-border/60 bg-muted/20 p-2">
-        <p className="font-medium text-foreground">Policy</p>
-        <p className="mt-1">Allowed keys: {DEFAULT_POLICY.allowed_keys.join(", ")}</p>
-      </div>
-    </div>
-  );
-}
 
 export default function AccessAdminApiKeysPage() {
   const format = useFormatter();
@@ -391,7 +317,7 @@ export default function AccessAdminApiKeysPage() {
   const { hasWorkspacePermission, isSuperuser, isWorkspaceAdmin } = usePermissions();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<number | null>(currentWorkspaceId);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createName, setCreateName] = useState("Balancer API");
+  const [createName, setCreateName] = useState("");
   const [createWorkspaceId, setCreateWorkspaceId] = useState<number | null>(currentWorkspaceId);
   const [createExpiresAt, setCreateExpiresAt] = useState("");
   const [createScopes, setCreateScopes] = useState<string[]>([]);
@@ -472,7 +398,7 @@ export default function AccessAdminApiKeysPage() {
   const handleCreate = () => {
     if (createName.trim().length === 0) {
       notify.error("Name the key before creating it.", {
-        description: 'Use something that says where it is used, such as "Balancer API".'
+        description: "Use something that says where it is used, such as a bot or CI job."
       });
       return;
     }
@@ -504,7 +430,7 @@ export default function AccessAdminApiKeysPage() {
           setSelectedWorkspaceId(result.api_key.workspace_id);
           setCreateWorkspaceId(result.api_key.workspace_id);
           setCreateExpiresAt("");
-          setCreateName("Balancer API");
+          setCreateName("");
           setCreateScopes([]);
           setIsCreateOpen(false);
           notify.success("API key created", {
@@ -576,6 +502,14 @@ export default function AccessAdminApiKeysPage() {
       }
     },
     {
+      id: "owner",
+      header: "Owner",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <span className="truncate text-sm text-foreground">{row.original.owner_username}</span>
+      )
+    },
+    {
       id: "status",
       header: "Status",
       enableSorting: false,
@@ -613,18 +547,6 @@ export default function AccessAdminApiKeysPage() {
           {formatTimestamp(format, row.original.expires_at)}
         </span>
       )
-    },
-    {
-      id: "limits",
-      header: "Limits",
-      enableSorting: false,
-      cell: ({ row }) => <LimitsText limits={row.original.limits} />
-    },
-    {
-      id: "policy",
-      header: "Policy",
-      enableSorting: false,
-      cell: ({ row }) => <PolicyText policy={row.original.config_policy} />
     },
     {
       id: "actions",
@@ -667,7 +589,7 @@ export default function AccessAdminApiKeysPage() {
       <div className="space-y-4">
         <AdminPageHeader
           title="API keys"
-          description="Manage workspace-scoped credentials for the balancer public API."
+          description="Manage workspace-scoped credentials. Authority is the scopes you grant, never more than you hold."
         />
         <div className="rounded-lg border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
           API keys are scoped to a workspace, and you do not administer one yet. Ask a superuser for
@@ -681,7 +603,7 @@ export default function AccessAdminApiKeysPage() {
     <div className="space-y-4">
       <AdminPageHeader
         title="API keys"
-        description="Manage workspace-scoped credentials for the balancer public API."
+        description="Manage workspace-scoped credentials. Authority is the scopes you grant, never more than you hold."
         actions={
           <Button onClick={() => setIsCreateOpen(true)}>
             <Plus aria-hidden className="size-4" />
@@ -878,7 +800,6 @@ export default function AccessAdminApiKeysPage() {
               minDate={new Date()}
               disabled={createMutation.isPending}
             />
-            <DefaultPolicyPreview />
           </div>
           <DialogFooter>
             <Button

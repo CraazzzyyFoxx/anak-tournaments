@@ -54,11 +54,8 @@ constructor call.
 
 ``make_api_key_row`` was hand-rolled three times (``test_api_key_credential.py``,
 ``test_api_key_service.py``, ``test_audit_identity.py``) at three different
-levels of parameterization; two of the three even hardcoded
-``limits_json``/``config_policy_json`` values that happen to equal
-``ApiKeyService.DEFAULT_LIMITS``/``DEFAULT_CONFIG_POLICY`` instead of
-referencing them, which would have silently drifted out of sync with the
-service the moment either default changed.
+levels of parameterization. Limits and config policy are balancer-owned
+quotas, not identity defaults: rows start with empty JSON like ``create``.
 """
 
 from __future__ import annotations
@@ -299,6 +296,7 @@ def make_api_key_row(
     user: models.AuthUser | None = None,
     workspace: models.Workspace | None = None,
 ) -> models.ApiKey:
+    scope_names = ["team.create"] if scopes is None else list(scopes)
     return models.ApiKey(
         id=123,
         auth_user_id=7,
@@ -306,9 +304,9 @@ def make_api_key_row(
         public_id="publicid",
         secret_hash=secret_hash if secret_hash is not None else api_keys._hash_secret(secret),
         name="Balancer API",
-        scopes_json=["team.create"] if scopes is None else list(scopes),
-        limits_json=dict(api_keys.DEFAULT_LIMITS),
-        config_policy_json=dict(api_keys.DEFAULT_CONFIG_POLICY),
+        scopes=[models.ApiKeyScope(scope=name) for name in scope_names],
+        limits_json={},
+        config_policy_json={},
         expires_at=expires_at,
         revoked_at=revoked_at,
         last_used_at=None,

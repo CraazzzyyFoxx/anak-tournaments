@@ -99,7 +99,12 @@ class WorkspaceMembership(BaseModel):
 
 
 class TokenApiKeyInfo(BaseModel):
-    """API key metadata returned by token validation for downstream services."""
+    """API key metadata returned by token validation for downstream services.
+
+    ``limits`` / ``config_policy`` are optional snapshots. Empty means the
+    consumer applies its own defaults (gateway rate, balancer job caps).
+    New keys are issued empty; older keys may still carry a frozen copy.
+    """
 
     id: int
     public_id: str

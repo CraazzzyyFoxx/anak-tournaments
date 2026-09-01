@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from shared.models.identity.auth_user import AuthUser
     from shared.models.tenancy.workspace import Workspace
 
-__all__ = ("ApiKey",)
+__all__ = ("ApiKey", "ApiKeyScope")
 
 
 class ApiKey(db.TimeStampIntegerMixin):
@@ -29,7 +29,6 @@ class ApiKey(db.TimeStampIntegerMixin):
     public_id: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
     secret_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    scopes_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
     limits_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     config_policy_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     expires_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -38,3 +37,21 @@ class ApiKey(db.TimeStampIntegerMixin):
 
     user: Mapped[AuthUser] = relationship()
     workspace: Mapped[Workspace] = relationship()
+    scopes: Mapped[list[ApiKeyScope]] = relationship(
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="ApiKeyScope.scope",
+    )
+
+
+class ApiKeyScope(db.Base):
+    """One RBAC permission name granted to an API key."""
+
+    __tablename__ = "api_key_scope"
+    __table_args__ = ({"schema": "auth"},)
+
+    api_key_id: Mapped[int] = mapped_column(
+        ForeignKey("auth.api_key.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    scope: Mapped[str] = mapped_column(String(64), primary_key=True)
