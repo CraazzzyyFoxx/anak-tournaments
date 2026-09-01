@@ -1,54 +1,64 @@
+# Editors / IDEs
 .idea/
 .vscode/
+/app/.idea
+/parser/.idea
+
+# Python
 .mypy_cache/
 .pytest_cache/
 __pycache__/
+.coverage
+.coverage*
+.ruff_cache/
+.uv-cache/
+*.egg-info/
+
+# JS / Node
 node_modules/
 /test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+.playwright-mcp/
+
+# Rust
+target/
+debug/
+
+# Secrets and local env
 .env
 backend/env/*.env
 !backend/env/*.env.example
 # Секреты контура бэкапов (root-ключи rustfs обеих площадок, ключ реплики).
 ops/backup/backup.env
 !ops/backup/backup.env.example
-backend/.cache/
-
-.coverage
-.coverage*
-/app/.idea
-/parser/.idea
-logs/
-# `logs/` above is for runtime logs. Any `logs` segment under the Next app tree
-# is a route, not output — this used to name one exact hub path and silently
-# dropped the file the moment that route moved.
-!frontend/src/app/**/logs/
 monitoring/secrets/*
 !monitoring/secrets/.gitkeep
 !monitoring/secrets/*.example
-.kombai/
-.ruff_cache/
-.claude/
 proxy/shadowsocks.json
 !proxy/shadowsocks.json.example
 proxy/xray.json
 !proxy/xray.json.example
 
-*.egg-info/
+# Caches / build artifacts
+backend/.cache/
+.kombai/
+.import_linter_cache/
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
 
-target/
-debug/
-.playwright-mcp/
+# Logs
+logs/
+# `logs/` above is for runtime logs. Any `logs` segment under the Next app tree
+# is a route, not output — this used to name one exact hub path and silently
+# dropped the file the moment that route moved.
+!frontend/src/app/**/logs/
+
+# AI agent tooling
+.claude/
 frontend-redesign/
-
 # Local agent scratch: worktrees, transcripts and one-off deploy helpers. Never
 # belongs in the tree — a committed worktree pointer breaks every other checkout.
 .aislop/
 OWT Design System/
-.import_linter_cache/
-
-# graft's local graph cache — regenerable, not committed (run `graft build`).
-/graft/
-.uv-cache/
