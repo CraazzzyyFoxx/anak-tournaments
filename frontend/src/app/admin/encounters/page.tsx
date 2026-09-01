@@ -13,6 +13,7 @@ import {
   FileCheck2,
   FileX2
 } from "lucide-react";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
@@ -552,6 +553,17 @@ export default function EncountersPage() {
     {
       accessorKey: "status",
       header: "Status",
+      meta: adminColumnMeta<Encounter>({
+        filter: {
+          param: "status",
+          label: "Filter by status",
+          options: [
+            { value: "OPEN", label: "Open" },
+            { value: "PENDING", label: "Pending" },
+            { value: "COMPLETED", label: "Completed" }
+          ]
+        }
+      }),
       cell: ({ row }) => {
         const status = displayEncounterStatus(row.getValue<string>("status"));
 
@@ -567,6 +579,16 @@ export default function EncountersPage() {
     {
       accessorKey: "has_logs",
       header: "Logs",
+      meta: adminColumnMeta<Encounter>({
+        filter: {
+          param: "has_logs",
+          label: "Filter by logs",
+          options: [
+            { value: "true", label: "Logs available" },
+            { value: "false", label: "No logs" }
+          ]
+        }
+      }),
       cell: ({ row }) => {
         const hasLogs = row.getValue<boolean>("has_logs");
         return hasLogs ? (
@@ -613,23 +635,29 @@ export default function EncountersPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => [
+        queryKey={(page, search, pageSize, sortField, sortDir, filters) => [
           "encounters",
           selectedTournamentId,
           page,
           search,
           pageSize,
           sortField,
-          sortDir
+          sortDir,
+          filters
         ]}
-        queryFn={async (page, search, pageSize, sortField, sortDir) => {
+        queryFn={async (page, search, pageSize, sortField, sortDir, filters) => {
           return encounterService.getAll(
             page,
             search,
             selectedTournamentId,
             pageSize,
             sortField,
-            sortDir
+            sortDir,
+            undefined,
+            {
+              status: filters.status?.[0] ?? null,
+              has_logs: filters.has_logs ? filters.has_logs[0] === "true" : null
+            }
           );
         }}
         columns={columns}

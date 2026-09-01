@@ -1,13 +1,23 @@
+import type { FilterFn, Row } from "@tanstack/react-table";
 import { describe, expect, it } from "vitest";
 
+import { readAdminColumnMeta } from "@/components/admin/admin-table-columns";
+import { readAdminColumnFilter } from "@/components/admin/admin-table-filters";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
-import type { CustomFieldDefinition } from "@/types/registration.types";
+import type { CustomFieldDefinition, StatusMeta } from "@/types/registration.types";
 
 import { buildBalancerRegistrationColumns } from "./balancerRegistrationColumns";
 
 const CUSTOM_FIELDS: CustomFieldDefinition[] = [
-  { key: "vk", label: "VK profile", type: "text", required: false, options: null },
-  { key: "rules", label: "Read the rules", type: "checkbox", required: true, options: null },
+  { key: "vk", label: "VK profile", type: "text", required: false, placeholder: null, options: null },
+  {
+    key: "rules",
+    label: "Read the rules",
+    type: "checkbox",
+    required: true,
+    placeholder: null,
+    options: null,
+  },
 ];
 
 function registration(overrides: Partial<AdminRegistration> = {}): AdminRegistration {
@@ -26,12 +36,21 @@ function registration(overrides: Partial<AdminRegistration> = {}): AdminRegistra
   } as unknown as AdminRegistration;
 }
 
+function column(id: string, ...args: Parameters<typeof buildBalancerRegistrationColumns>) {
+  const found = buildBalancerRegistrationColumns(...args).find((candidate) => candidate.id === id);
+  if (!found) {
+    throw new Error(`No "${id}" column was built`);
+  }
+
+  return found;
+}
+
 describe("balancer registration column model", () => {
   it("builds one column per custom-field definition", () => {
     // The admin table rendered no custom fields at all: an organizer could read
     // an answer nowhere and fix it nowhere.
     const ids = buildBalancerRegistrationColumns(undefined, false, false, CUSTOM_FIELDS).map(
-      (column) => column.id,
+      (candidate) => candidate.id,
     );
 
     expect(ids).toContain("custom_vk");
@@ -39,25 +58,52 @@ describe("balancer registration column model", () => {
   });
 
   it("reads the stored answer for its own definition", () => {
-    const [vk] = buildBalancerRegistrationColumns(undefined, false, false, CUSTOM_FIELDS).filter(
-      (column) => column.id === "custom_vk",
-    );
+    const vk = column("custom_vk", undefined, false, false, CUSTOM_FIELDS);
+    const meta = readAdminColumnMeta<AdminRegistration>(vk.meta);
 
-    const value = vk.searchValue?.(registration({ custom_fields_json: { vk: "vk.com/player" } }));
+    const value = meta.searchValue?.(registration({ custom_fields_json: { vk: "vk.com/player" } }));
     expect(value).toBe("vk.com/player");
   });
 
   it("adds no custom columns when the form defines none", () => {
-    const ids = buildBalancerRegistrationColumns().map((column) => column.id);
+    const ids = buildBalancerRegistrationColumns().map((candidate) => candidate.id);
 
-    expect(ids.some((id) => id.startsWith("custom_"))).toBe(false);
+    expect(ids.some((id) => id?.startsWith("custom_"))).toBe(false);
   });
 
   it("searches the participant by every handle, boosty included", () => {
-    const [participant] = buildBalancerRegistrationColumns().filter(
-      (column) => column.id === "participant",
+    const meta = readAdminColumnMeta<AdminRegistration>(column("participant").meta);
+
+    expect(meta.searchValue?.(registration())).toContain("player_boosty");
+  });
+
+  it("offers the status values the caller collected, not a hardcoded list", () => {
+    // Statuses are workspace-configurable, so a literal list in the column would
+    // hide every custom one an organizer added.
+    const statusOptions = [
+      { value: "pending", label: "Pending" },
+      { value: "shortlisted", label: "Shortlisted" },
+    ];
+
+    const filter = readAdminColumnFilter(
+      column("status", undefined, false, false, [], statusOptions).meta,
     );
 
-    expect(participant.searchValue?.(registration())).toContain("player_boosty");
+    expect(filter?.param).toBe("status");
+    expect(filter?.options).toEqual(statusOptions);
+  });
+
+  it("splits the balancer pool from the rows it excludes", () => {
+    const balancer = column("balancer");
+    const filterFn = balancer.filterFn as FilterFn<AdminRegistration>;
+    const excludedRow = {
+      original: registration({
+        balancer_status: "excluded",
+        balancer_status_meta: { excludes_from_balancer: true } as StatusMeta,
+      }),
+    } as Row<AdminRegistration>;
+
+    expect(filterFn(excludedRow, "balancer", ["excluded"], () => {})).toBe(true);
+    expect(filterFn(excludedRow, "balancer", ["included"], () => {})).toBe(false);
   });
 });

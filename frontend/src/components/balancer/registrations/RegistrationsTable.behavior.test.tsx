@@ -42,7 +42,10 @@ vi.mock("@/services/balancer-admin.service", () => ({
 vi.mock("@/services/registration.service", () => ({
   default: { getForm: vi.fn().mockResolvedValue(null) }
 }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams("") }));
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(""),
+  usePathname: () => "/admin/tournaments/80/registration"
+}));
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
     selector({ currentWorkspaceId: 1 })
@@ -158,6 +161,9 @@ function click(node: Element | null | undefined) {
 }
 
 beforeEach(() => {
+  // The table syncs filters, sort and paging into the URL, and jsdom keeps one
+  // location per file — a leftover `?status=pending` would filter the next test.
+  window.history.replaceState(null, "", "/admin/tournaments/80/registration");
   listRegistrations.mockReset().mockResolvedValue(POOL);
   getRegistrationForm.mockReset().mockResolvedValue({ require_open_profile: false });
   listStatusCatalog.mockReset().mockResolvedValue([]);
@@ -167,17 +173,27 @@ beforeEach(() => {
 });
 
 describe("RegistrationsTable toolbar", () => {
-  it("keeps the counts without spending a header row on them", async () => {
+  it("keeps the counts in the toolbar and the footer, never in a header row", async () => {
     const scope = await mount();
+    const headerText = scope.querySelector("thead")?.textContent ?? "";
 
-    expect(scope.textContent).not.toContain("Showing 25 of 25");
+    expect(headerText).not.toContain("25");
     expect(scope.textContent).toContain("1 pending");
     // Unfiltered: a single total, not a redundant "25/25".
     expect(scope.textContent).not.toContain("25/25");
     expect([...scope.querySelectorAll("span")].map((node) => node.textContent)).toContain("25");
+    // Loading progress belongs to the infinite footer.
+    expect(scope.textContent).toContain("Showing 25 of 25 registrations");
   });
 
-  it("turns the pending count into the pending filter", async () => {
+  it("fetches the whole pool once, so the pending count survives filtering", async () => {
+    await mount();
+
+    expect(listRegistrations).toHaveBeenCalledTimes(1);
+    expect(listRegistrations).toHaveBeenLastCalledWith(80, { include_deleted: false });
+  });
+
+  it("turns the pending count into the pending filter, locally", async () => {
     const scope = await mount();
     const chip = [...scope.querySelectorAll("button")].find((node) =>
       node.textContent?.includes("1 pending")
@@ -185,12 +201,55 @@ describe("RegistrationsTable toolbar", () => {
 
     await click(chip);
 
-    expect(listRegistrations).toHaveBeenLastCalledWith(80, {
-      status_filter: "pending",
-      inclusion_filter: undefined,
-      source_filter: undefined,
-      include_deleted: false
-    });
+    // Filtering no longer costs a request: the pool is already in memory.
+    expect(listRegistrations).toHaveBeenCalledTimes(1);
+    expect(chip?.getAttribute("aria-pressed")).toBe("true");
+    expect(new URLSearchParams(window.location.search).get("status")).toBe("pending");
+    // 1 pending row of 25 — the other 24 are approved.
+    expect(scope.querySelectorAll("tbody tr").length).toBe(1);
+  });
+
+  it("keeps the pending row selectable and the approved rows not", async () => {
+    const scope = await mount();
+    const rowCheckboxes = [...scope.querySelectorAll("tbody [role='checkbox']")];
+
+    expect(rowCheckboxes.length).toBe(1);
+  });
+
+  it("keeps the row detail panel behind the leading chevron", async () => {
+    const scope = await mount();
+    const chevron = scope.querySelector("button[aria-label='Expand details']");
+
+    expect(scope.textContent).not.toContain("Rank history");
+    await click(chevron);
+
+    expect(scope.textContent).toContain("Rank history");
+    expect(scope.querySelector("button[aria-label='Collapse details']")).not.toBeNull();
+  });
+
+  it("offers the shared column picker instead of its own", async () => {
+    const scope = await mount();
+    const trigger = [...scope.querySelectorAll("button")].find((node) =>
+      node.textContent?.includes("Columns")
+    );
+
+    await click(trigger);
+
+    expect(document.body.textContent).toContain("Reset to defaults");
+  });
+
+  it("groups the page into labelled sections on demand", async () => {
+    const scope = await mount();
+    const groupSelect = scope.querySelector("[aria-label='Group registrations']");
+
+    await click(groupSelect);
+    const option = [...document.querySelectorAll("[role='option']")].find((node) =>
+      node.textContent?.includes("Group by check-in")
+    );
+    await click(option);
+
+    // Both buckets: the pool has no checked-in rows, so one section holds all 25.
+    expect(scope.textContent).toContain("25 registrations");
   });
 
   it("reaches the form builder and the other advanced tools behind one menu", async () => {

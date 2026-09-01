@@ -5,10 +5,8 @@ interface VisibilityColumn {
   defaultVisible: boolean;
 }
 
-function loadVisibility(
-  storageKey: string,
-): Record<string, boolean> | null {
-  if (typeof window === "undefined") return null;
+function loadVisibility(storageKey: string | null): Record<string, boolean> | null {
+  if (storageKey === null || typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
@@ -18,11 +16,8 @@ function loadVisibility(
   }
 }
 
-function saveVisibility(
-  storageKey: string,
-  visibility: Record<string, boolean>,
-) {
-  if (typeof window === "undefined") return;
+function saveVisibility(storageKey: string | null, visibility: Record<string, boolean>) {
+  if (storageKey === null || typeof window === "undefined") return;
   try {
     localStorage.setItem(storageKey, JSON.stringify(visibility));
   } catch {
@@ -30,8 +25,12 @@ function saveVisibility(
   }
 }
 
+/**
+ * Column visibility, persisted per table. A `null` storage key keeps the
+ * choice in memory only — for a table that does not offer the picker.
+ */
 export function useColumnVisibility<T extends VisibilityColumn>(
-  storageKey: string,
+  storageKey: string | null,
   columns: T[],
 ) {
   const defaults = useMemo(() => {
@@ -57,11 +56,6 @@ export function useColumnVisibility<T extends VisibilityColumn>(
     },
   );
 
-  const visibleColumns = useMemo(
-    () => columns.filter((col) => visibility[col.id] !== false),
-    [columns, visibility],
-  );
-
   const toggleColumn = useCallback(
     (id: string) => {
       setVisibility((prev) => {
@@ -78,5 +72,5 @@ export function useColumnVisibility<T extends VisibilityColumn>(
     saveVisibility(storageKey, defaults);
   }, [storageKey, defaults]);
 
-  return { visibleColumns, visibility, toggleColumn, resetToDefaults };
+  return { visibility, toggleColumn, resetToDefaults };
 }
