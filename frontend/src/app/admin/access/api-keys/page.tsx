@@ -494,7 +494,7 @@ export default function AccessAdminApiKeysPage() {
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-foreground">{apiKey.name}</p>
               <p className="truncate font-mono text-xs text-muted-foreground">
-                aqt_sk_{apiKey.public_id}_…
+                owt_sk_{apiKey.public_id}_…
               </p>
             </div>
           </div>

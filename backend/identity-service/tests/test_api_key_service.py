@@ -119,7 +119,7 @@ def test_create_api_key_returns_secret_once_and_stores_only_hash(monkeypatch: py
     )
 
     stored = session.added[0]
-    assert response.key == "aqt_sk_publicid_secret-token"
+    assert response.key == "owt_sk_publicid_secret-token"
     assert stored.secret_hash == api_keys._hash_secret("secret-token")
     assert stored.secret_hash != "secret-token"
     assert stored.name == "Balancer API"
@@ -199,14 +199,15 @@ def test_create_api_key_stores_normalized_scopes(monkeypatch: pytest.MonkeyPatch
     assert [item.scope for item in session.added[0].scopes] == ["team.create"]
 
 
-def test_is_api_key_recognizes_only_the_prefixed_form() -> None:
+def test_is_api_key_recognizes_the_current_and_legacy_prefixed_forms() -> None:
+    assert api_keys.is_api_key("owt_sk_publicid_secret-token") is True
     assert api_keys.is_api_key("aqt_sk_publicid_secret-token") is True
     assert api_keys.is_api_key("eyJhbGciOiJIUzI1NiJ9.payload.sig") is False
 
 
 @pytest.mark.parametrize(
     "raw_key",
-    ["bad-format", "aqt_sk__secret", "aqt_sk_publicid_", "sk_aqt_publicid_secret", "aqt_sk_publicid_secret_extra"],
+    ["bad-format", "owt_sk__secret", "owt_sk_publicid_", "sk_owt_publicid_secret", "owt_sk_publicid_secret_extra"],
 )
 def test_split_key_rejects_malformed_keys(raw_key: str) -> None:
     assert api_keys._split_key(raw_key) is None

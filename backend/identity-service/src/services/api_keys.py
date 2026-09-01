@@ -49,7 +49,10 @@ def _owner_username(row: models.ApiKey, owner: models.AuthUser | None = None) ->
 
 
 class ApiKeyService:
-    PREFIX = "aqt_sk"
+    PREFIX = "owt_sk"
+    # Keys minted before the owt rebrand still carry this prefix; validation
+    # must keep accepting them until every holder rotates.
+    _LEGACY_PREFIXES = ("aqt_sk",)
 
     def __init__(
         self,
@@ -73,7 +76,9 @@ class ApiKeyService:
     # -- key material ------------------------------------------------------
 
     def is_api_key(self, raw_token: str) -> bool:
-        return raw_token.startswith(f"{self.PREFIX}_")
+        return raw_token.startswith(f"{self.PREFIX}_") or any(
+            raw_token.startswith(f"{prefix}_") for prefix in self._LEGACY_PREFIXES
+        )
 
     def _hash_secret(self, secret: str) -> str:
         """Hash an API-key secret for storage (domain-separated subkey, new writes)."""
@@ -91,7 +96,7 @@ class ApiKeyService:
     @staticmethod
     def _split_key(raw_key: str) -> tuple[str, str] | None:
         parts = raw_key.split("_")
-        if len(parts) != 4 or parts[0] != "aqt" or parts[1] != "sk":
+        if len(parts) != 4 or parts[1] != "sk" or parts[0] not in ("owt", "aqt"):
             return None
         public_id = parts[2].strip()
         secret = parts[3].strip()
