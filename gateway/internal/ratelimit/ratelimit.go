@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apierr"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/clientip"
 )
 
@@ -265,12 +266,17 @@ func (l *Limiter) WrapAPIKey(next http.Handler, quota KeyQuota) http.Handler {
 	})
 }
 
-// tooManyRequests writes the shared 429 response (FastAPI-style detail body).
+// tooManyRequests writes the shared 429: Retry-After plus the same
+// {detail, code} body a worker-side rate limit produces, so a client branches
+// on one `rate_limited` code no matter which layer refused it (per-IP and
+// per-key here, Redis job quotas in balancer-service).
 func tooManyRequests(w http.ResponseWriter, window time.Duration) {
-	w.Header().Set("Retry-After", strconv.Itoa(int(window.Seconds())))
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusTooManyRequests)
-	_, _ = w.Write([]byte(`{"detail":"Too many requests"}`))
+	secs := int(window.Seconds())
+	if secs < 1 {
+		secs = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(secs))
+	apierr.WriteError(w, http.StatusTooManyRequests, "Too many requests", "rate_limited", map[string]any{"retry_after": secs})
 }
 
 // isAnonymous reports whether r carries no usable bearer token. It mirrors

@@ -15,6 +15,7 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
+from shared.core.pagination import paginated_dump
 from shared.rpc.query import build_query_model
 from src import schemas
 from src.core import db
@@ -50,13 +51,7 @@ def register(broker: Any, logger: Any) -> None:
             async def op(session: Any) -> Any:
                 _gate(data)
                 qp = build_query_model(list_qp, data.get("query"))
-                res = await list_fn(session, list_params.from_query_params(qp))
-                return {
-                    "results": [r.model_dump(mode="json") for r in res["results"]],
-                    "total": res["total"],
-                    "page": res["page"],
-                    "per_page": res["per_page"],
-                }
+                return paginated_dump(await list_fn(session, list_params.from_query_params(qp)))
 
             return await c.envelope(logger, f"{prefix}.admin_list", op, session_factory=_SF)
 

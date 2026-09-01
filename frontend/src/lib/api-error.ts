@@ -120,7 +120,8 @@ export async function parseApiError(response: Response): Promise<ApiError> {
         details = [{ msg: "An error occurred", code: "unknown" }];
       }
     } else if (typeof raw === "string") {
-      details = [{ msg: raw, code: "error" }];
+      const code = typeof body?.code === "string" && body.code ? body.code : "error";
+      details = [{ msg: raw, code }];
     } else {
       details = [{ msg: "An error occurred", code: "unknown" }];
     }

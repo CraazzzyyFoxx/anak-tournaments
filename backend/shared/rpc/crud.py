@@ -34,8 +34,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import http_status as status
 from shared.core.db import Base
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import PaginationQueryParams
 from shared.models.identity.auth_user import AuthUser
 from shared.repository.base import BaseRepository
+from shared.rpc.common import http_error, q1, validation_error
 from shared.rpc.identity import MissingIdentityError, ensure_workspace_permission, rehydrate_user
 from shared.schemas.rpc import rpc_error, rpc_ok, status_to_code
 from shared.services.audit import json_safe, record_audit
@@ -53,29 +55,27 @@ WsFromData = Callable[[AsyncSession, dict[str, Any]], Awaitable[int]]
 _ACTION_PERMISSION = {"create": "create", "get": "read", "update": "update", "delete": "delete", "list": "read"}
 
 
-def _validation_detail(exc: ValidationError) -> str:
-    errors = exc.errors()
-    if not errors:
-        return "validation error"
-    first = errors[0]
-    loc = ".".join(str(p) for p in first.get("loc", ()) if p not in ("body", "payload"))
-    msg = first.get("msg", "invalid value")
-    return f"{loc}: {msg}" if loc else msg
+# Where ``page``/``per_page`` fall back to when the request omits them: the same
+# model the paginated list flows validate against, so the two cannot drift apart.
+_PAGE_DEFAULTS = PaginationQueryParams()
 
 
-def _detail_message(exc: HTTPException) -> str:
-    """Flatten an HTTPException detail into a clean string.
+def _paginated(reply: Any, data: dict[str, Any]) -> Any:
+    """Guarantee the four-key list envelope on a generic CRUD list reply.
 
-    ``ApiHTTPException`` normalizes ``detail`` to a ``list[{msg, code}]``; the
-    gateway emits ``{"detail": "<string>"}`` either way, so join the ``msg``
-    fields instead of leaking a Python list repr (the per-item ``code`` is
-    dropped). Plain string details pass through unchanged.
+    ``list_fn`` implementations range from a full ``Paginated.model_dump()`` down
+    to a bare ``{results, total}``; a client should not have to know which entity
+    it asked for to know whether ``page`` is present. Extra keys the service added
+    (``counts``, ``available_scopes``) pass through untouched -- this fills gaps,
+    it does not define the key set. A non-envelope reply (a bare list) is left
+    alone: adding keys there would change the contract, not extend it.
     """
-    detail = exc.detail
-    if isinstance(detail, list):
-        msgs = [str(d.get("msg")) for d in detail if isinstance(d, dict) and d.get("msg")]
-        return "; ".join(msgs) if msgs else "error"
-    return str(detail)
+    if not isinstance(reply, dict) or "results" not in reply:
+        return reply
+    filled = dict(reply)
+    filled.setdefault("page", q1(data, "page", int, _PAGE_DEFAULTS.page))
+    filled.setdefault("per_page", q1(data, "per_page", int, _PAGE_DEFAULTS.per_page))
+    return filled
 
 
 # Fields an entity may carry as its human-readable name, best first. Nothing is
@@ -400,7 +400,7 @@ class CrudDispatcher:
                     )
                 ws_id = await cfg.resolve_ws_for_list(session, data)
                 ensure_workspace_permission(user, ws_id, cfg.permission_resource, _ACTION_PERMISSION["list"])
-            return rpc_ok(await cfg.list_fn(session, data))
+            return rpc_ok(_paginated(await cfg.list_fn(session, data), data))
 
     @staticmethod
     async def _ws_from_id(cfg: EntityConfig, session: AsyncSession, obj_id: int) -> int:
@@ -415,9 +415,11 @@ class CrudDispatcher:
         except MissingIdentityError:
             return rpc_error("unauthorized", "Not authenticated")
         except ValidationError as exc:
-            return rpc_error("unprocessable", _validation_detail(exc))
+            message, details = validation_error(exc)
+            return rpc_error("unprocessable", message, details)
         except HTTPException as exc:
-            return rpc_error(status_to_code(exc.status_code), _detail_message(exc))
+            message, details = http_error(exc)
+            return rpc_error(status_to_code(exc.status_code), message, details)
         except Exception:  # pragma: no cover - defensive worker guard
             logger.exception("crud rpc failed")
             return rpc_error("internal", "internal error")

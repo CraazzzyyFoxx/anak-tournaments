@@ -76,6 +76,20 @@ func TestBuild_TopLevel(t *testing.T) {
 	}
 }
 
+func TestBuild_ErrorSchemaIncludesCode(t *testing.T) {
+	doc := buildDoc(t, sampleGroups())
+	comps := asMap(t, doc["components"], "components")
+	schemas := asMap(t, comps["schemas"], "schemas")
+	errSchema := asMap(t, schemas["Error"], "Error")
+	props := asMap(t, errSchema["properties"], "Error.properties")
+	if _, ok := props["detail"]; !ok {
+		t.Fatal("Error.properties missing detail")
+	}
+	if _, ok := props["code"]; !ok {
+		t.Fatal("Error.properties missing code")
+	}
+}
+
 func TestBuild_PathsAndMethods(t *testing.T) {
 	doc := buildDoc(t, sampleGroups())
 	paths := asMap(t, doc["paths"], "paths")

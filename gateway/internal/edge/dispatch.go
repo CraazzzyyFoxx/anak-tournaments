@@ -7,9 +7,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apierr"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/clientip"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/httplog"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
@@ -120,6 +123,19 @@ func (d *Dispatcher) serve(w http.ResponseWriter, r *http.Request, spec RouteSpe
 				if vs, ok := values[k]; ok && len(vs) > 0 {
 					q[k] = vs
 				}
+			}
+		}
+		// A credential pinned to exactly ONE workspace already names its scope,
+		// but domain reads fail closed without workspace_id
+		// (shared/services/workspace_scope.py) — so an API-key client had to
+		// repeat in the query string what its own token already says, and got a
+		// 400 on every read until it did. Fill it in from the identity instead.
+		// An explicitly sent value always wins, and an ambiguous credential
+		// (two or more workspaces) is left alone: guessing would silently scope
+		// the read to the wrong tenant, so the fail-closed 400 stands.
+		if _, sent := q["workspace_id"]; !sent && (spec.AllQuery || slices.Contains(spec.Query, "workspace_id")) {
+			if id, ok := soleWorkspaceID(data["identity"]); ok {
+				q["workspace_id"] = []string{id}
 			}
 		}
 		if len(q) > 0 {
@@ -264,13 +280,7 @@ func (d *Dispatcher) call(w http.ResponseWriter, r *http.Request, queue string, 
 		return
 	}
 	if !env.OK {
-		status := http.StatusInternalServerError
-		msg := "internal error"
-		if env.Error != nil {
-			status = rpc.StatusForCode(env.Error.Code)
-			msg = env.Error.Message
-		}
-		writeDetail(w, status, msg)
+		apierr.WriteEnvelopeError(w, env.Error)
 		return
 	}
 
@@ -286,9 +296,52 @@ func (d *Dispatcher) call(w http.ResponseWriter, r *http.Request, queue string, 
 	}
 }
 
-// writeDetail emits a FastAPI-style error body: {"detail": "..."}.
-func writeDetail(w http.ResponseWriter, status int, detail string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"detail": detail})
+// writeDetail emits the gateway's error body (see internal/apierr) for the
+// dispatcher's OWN failures. Upstream envelope errors go through
+// apierr.WriteEnvelopeError instead, so their code, structured details and
+// Retry-After survive.
+func writeDetail(w http.ResponseWriter, status int, detail string, code ...string) {
+	c := ""
+	if len(code) > 0 {
+		c = code[0]
+	}
+	apierr.WriteError(w, status, detail, c, nil)
+}
+
+// soleWorkspaceID returns the id of the ONLY workspace an identity payload
+// carries, and false for anything else — anonymous, zero workspaces, or two or
+// more (ambiguous). An API key is always pinned to exactly one workspace, so
+// this is the common case for machine clients; a session user who belongs to
+// one workspace gets the same convenience the frontend already gives itself by
+// injecting workspace_id client-side.
+//
+// It only ever names a workspace the credential already holds, so it cannot
+// widen authority: the worker still runs its own permission check for that
+// workspace.
+func soleWorkspaceID(identity any) (string, bool) {
+	payload, ok := identity.(map[string]any)
+	if !ok {
+		return "", false
+	}
+	list, ok := payload["workspaces"].([]any)
+	if !ok || len(list) != 1 {
+		return "", false
+	}
+	ws, ok := list[0].(map[string]any)
+	if !ok {
+		return "", false
+	}
+	// encoding/json decodes numbers as float64; ids have historically also
+	// arrived stringly-typed, so accept both (mirrors principal.asInt64).
+	switch v := ws["workspace_id"].(type) {
+	case float64:
+		if v > 0 {
+			return strconv.FormatInt(int64(v), 10), true
+		}
+	case string:
+		if v != "" {
+			return v, true
+		}
+	}
+	return "", false
 }

@@ -1,6 +1,9 @@
 package rpc
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // Envelope is the reply shape every identity-svc RPC method returns:
 //
@@ -12,10 +15,39 @@ type Envelope struct {
 	Error *EnvelopeError  `json:"error"`
 }
 
-// EnvelopeError carries a machine code (mapped to an HTTP status) and a message.
+// EnvelopeError carries a machine code (mapped to an HTTP status), a human
+// message, and optional structured Details.
+//
+// Details exists because a worker cannot set HTTP headers or shape the response
+// body: anything richer than one string had to be flattened into Message, and
+// was. Recognized keys: `retry_after` (seconds — becomes the Retry-After
+// header) and `fields` (per-item validation/business detail). Every other key
+// is relayed into the error body verbatim, so a worker can add one without a
+// gateway change.
 type EnvelopeError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string         `json:"code"`
+	Message string         `json:"message"`
+	Details map[string]any `json:"details,omitempty"`
+}
+
+// RetryAfterSeconds returns the Details["retry_after"] budget, if any. JSON
+// numbers decode as float64; a stringly-typed value is tolerated because the
+// worker builds this from an HTTPException header value.
+func (e *EnvelopeError) RetryAfterSeconds() (int, bool) {
+	if e == nil {
+		return 0, false
+	}
+	switch v := e.Details["retry_after"].(type) {
+	case float64:
+		if v >= 1 {
+			return int(v), true
+		}
+	case string:
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			return n, true
+		}
+	}
+	return 0, false
 }
 
 // StatusForCode maps an envelope error code to an HTTP status, preserving the

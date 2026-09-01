@@ -7,6 +7,7 @@ HTTP contract status codes.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 # Error codes -> HTTP status are mapped on the gateway side:
@@ -40,8 +41,22 @@ def rpc_ok(data: Any) -> dict[str, Any]:
     return {"ok": True, "data": data}
 
 
-def rpc_error(code: str, message: str) -> dict[str, Any]:
-    return {"ok": False, "error": {"code": code, "message": message}}
+# Recognized ``details`` keys (anything else the gateway passes through verbatim):
+#   retry_after -> int seconds; the gateway re-emits it as the HTTP Retry-After
+#     header, which a RabbitMQ worker has no way to set itself.
+#   fields -> list of {"field": str|null, "msg": str, "code": str}; the per-item
+#     machine codes that a flattened human ``message`` cannot carry.
+def rpc_error(code: str, message: str, details: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Error envelope. ``message`` stays human; machine data rides ``details``.
+
+    An empty ``details`` is omitted rather than sent as ``{}``/``null``: the
+    gateway reads presence as "there is structured data here", so an always-present
+    empty object would make every plain error look like it carried some.
+    """
+    error: dict[str, Any] = {"code": code, "message": message}
+    if details:
+        error["details"] = dict(details)
+    return {"ok": False, "error": error}
 
 
 def status_to_code(http_status: int) -> str:

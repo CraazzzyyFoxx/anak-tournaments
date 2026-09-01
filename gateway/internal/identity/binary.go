@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apierr"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
 
@@ -134,13 +135,7 @@ func (b *Binary) relayAvatar(w http.ResponseWriter, r *http.Request, queue strin
 		return
 	}
 	if !env.OK {
-		status := http.StatusInternalServerError
-		msg := "internal error"
-		if env.Error != nil {
-			status = rpc.StatusForCode(env.Error.Code)
-			msg = env.Error.Message
-		}
-		writeDetail(w, status, msg)
+		apierr.WriteEnvelopeError(w, env.Error)
 		return
 	}
 

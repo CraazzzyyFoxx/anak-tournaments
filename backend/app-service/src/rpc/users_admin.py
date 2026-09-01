@@ -47,6 +47,7 @@ from faststream.rabbit import RabbitMessage
 
 from shared.clients.s3 import upload_avatar
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import paginated_dump
 from shared.core.social import SOCIAL_PROVIDERS, SocialProvider
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
@@ -149,13 +150,9 @@ def register(broker: Any, logger: Any) -> None:
             res = await admin_users.get_users(
                 session, schemas.UserListParams.from_query_params(qp), workspace_id=workspace_id
             )
-            results = [user_service.to_read(user, _ENTITIES).model_dump(mode="json") for user in res["results"]]
-            return {
-                "results": results,
-                "total": res["total"],
-                "page": res["page"],
-                "per_page": res["per_page"],
-            }
+            return paginated_dump(
+                {**res, "results": [user_service.to_read(user, _ENTITIES) for user in res["results"]]}
+            )
 
         return await c.envelope(logger, "users.admin_list", op, session_factory=_SF)
 
@@ -265,9 +262,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
             user_id = c.require_id(data)
-            await admin_users.verify_social_account(
-                session, user_id=user_id, account_id=int(data["account_id"])
-            )
+            await admin_users.verify_social_account(session, user_id=user_id, account_id=int(data["account_id"]))
             return await _refresh_user(session, user_id)
 
         return await _envelope_and_invalidate(logger, "users.social_verify", op, data)
@@ -277,9 +272,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
             user_id = c.require_id(data)
-            await admin_users.delete_social_account(
-                session, user_id=user_id, account_id=int(data["account_id"])
-            )
+            await admin_users.delete_social_account(session, user_id=user_id, account_id=int(data["account_id"]))
             return await _refresh_user(session, user_id)
 
         return await _envelope_and_invalidate(logger, "users.social_delete", op, data)
@@ -339,9 +332,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _account_gate(data)
             player_id = await admin_users.resolve_my_player_id(session, user.id)
-            await admin_users.set_own_social_primary(
-                session, player_id=player_id, account_id=int(data["account_id"])
-            )
+            await admin_users.set_own_social_primary(session, player_id=player_id, account_id=int(data["account_id"]))
             await user_cache.invalidate_user_caches(player_id)
             return await _refresh_user(session, player_id)
 
@@ -438,4 +429,3 @@ def register(broker: Any, logger: Any) -> None:
             return user_service.to_read(player_user, _ENTITIES)
 
         return await _envelope_and_invalidate(logger, "users.avatar_delete", op, data)
-

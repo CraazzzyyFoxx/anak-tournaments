@@ -13,10 +13,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import paginated_dump
 from src.core import db
 from src.schemas.rpc import rpc_error, rpc_ok, status_to_code
 from src.services.token_validation import token_validation
@@ -150,17 +151,6 @@ def require_int(data: dict, key: str) -> int:
     return value
 
 
-def paginated_dump(res: dict) -> dict:
-    """Serialize a service-layer ``{results, total, page, per_page}`` envelope.
-
-    ``results`` holds Pydantic models; every other key is passed through, with
-    Pydantic values serialized (``counts``) and plain ones copied as-is
-    (``available_scopes``). Enumerating the keys instead cost the api-key list
-    its ``available_scopes``: the service computed it, the wire dropped it, and
-    the create form silently offered no scopes at all.
-    """
-    out: dict[str, Any] = {
-        key: value.model_dump(mode="json") if isinstance(value, BaseModel) else value for key, value in res.items()
-    }
-    out["results"] = [item.model_dump(mode="json") for item in res["results"]]
-    return out
+# ``paginated_dump`` lives in the shared kernel now (app-service and
+# parser-service list handlers repeated the same key-enumeration bug); re-exported
+# here so the identity handlers keep importing it off ``_common``.

@@ -182,6 +182,33 @@ class DispatcherTests(IsolatedAsyncioTestCase):
         res = await dispatcher.do_create({"entity": "team", "identity": SUPERUSER, "payload": {}})  # missing name
         self.assertFalse(res["ok"])
         self.assertEqual(res["error"]["code"], "unprocessable")
+        # The human message stays the one-line summary it has always been, and the
+        # structure a client would otherwise have to parse out of it rides `details`.
+        self.assertEqual(res["error"]["message"], "name: Field required")
+        self.assertEqual(
+            res["error"]["details"]["fields"],
+            [{"field": "name", "msg": "Field required", "code": "missing"}],
+        )
+
+    async def test_http_error_keeps_item_codes_and_retry_after(self) -> None:
+        async def svc_update(session: Any, obj_id: int, payload: _UpdateSchema, data: Any) -> _Dummy:
+            raise HTTPException(
+                status_code=429,
+                detail=[{"msg": "too many", "code": "rate_limited"}, {"msg": "slow down", "code": "cooldown"}],
+                headers={"Retry-After": "30"},
+            )
+
+        dispatcher = self._dispatcher(_team_cfg(service_update=svc_update))
+        res = await dispatcher.do_update({"entity": "team", "id": 5, "identity": SUPERUSER, "payload": {"name": "X"}})
+        self.assertEqual(res["error"]["code"], "rate_limited")
+        self.assertEqual(res["error"]["message"], "too many; slow down")
+        self.assertEqual([f["code"] for f in res["error"]["details"]["fields"]], ["rate_limited", "cooldown"])
+        self.assertEqual(res["error"]["details"]["retry_after"], 30)
+
+    async def test_plain_error_carries_no_details_key(self) -> None:
+        dispatcher = self._dispatcher(_team_cfg())
+        res = await dispatcher.do_update({"entity": "nope", "id": 1, "identity": SUPERUSER, "payload": {}})
+        self.assertNotIn("details", res["error"])
 
     async def test_unknown_entity(self) -> None:
         dispatcher = self._dispatcher(_team_cfg())
@@ -241,7 +268,37 @@ class PublicReadTests(IsolatedAsyncioTestCase):
     async def test_public_list_without_identity_ok(self) -> None:
         dispatcher = self._dispatcher(_hero_cfg())
         res = await dispatcher.do_list({"entity": "hero"})  # no identity
-        self.assertEqual(res, {"ok": True, "data": {"results": [{"id": 1, "name": "hero"}], "total": 1}})
+        self.assertEqual(
+            res,
+            {"ok": True, "data": {"results": [{"id": 1, "name": "hero"}], "total": 1, "page": 1, "per_page": 10}},
+        )
+
+    async def test_list_fills_page_and_per_page_from_request(self) -> None:
+        # The engine, not each list_fn, is what guarantees the four-key envelope:
+        # a client must not have to know which entity it asked for to know whether
+        # `page` is there.
+        dispatcher = self._dispatcher(_hero_cfg())
+        res = await dispatcher.do_list({"entity": "hero", "query": {"page": ["3"], "per_page": ["50"]}})
+        self.assertEqual(res["data"]["page"], 3)
+        self.assertEqual(res["data"]["per_page"], 50)
+
+    async def test_list_preserves_service_pagination_and_extra_keys(self) -> None:
+        async def list_fn(session: Any, data: dict[str, Any]) -> dict[str, Any]:
+            return {"results": [], "total": 0, "page": 2, "per_page": 5, "counts": {"active": 0}}
+
+        dispatcher = self._dispatcher(_hero_cfg(list_fn=list_fn))
+        res = await dispatcher.do_list({"entity": "hero", "query": {"page": ["9"]}})
+        # What the service computed wins over the request echo, and keys the engine
+        # knows nothing about survive untouched.
+        self.assertEqual(res["data"], {"results": [], "total": 0, "page": 2, "per_page": 5, "counts": {"active": 0}})
+
+    async def test_list_leaves_non_envelope_reply_alone(self) -> None:
+        async def list_fn(session: Any, data: dict[str, Any]) -> list[dict[str, Any]]:
+            return [{"id": 1}]
+
+        dispatcher = self._dispatcher(_hero_cfg(list_fn=list_fn))
+        res = await dispatcher.do_list({"entity": "hero"})
+        self.assertEqual(res, {"ok": True, "data": [{"id": 1}]})
 
     async def test_public_get_not_found(self) -> None:
         async def svc_get(session: Any, obj_id: int, data: dict[str, Any]) -> None:

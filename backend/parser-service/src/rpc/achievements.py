@@ -25,6 +25,7 @@ import sqlalchemy as sa
 from faststream.rabbit import RabbitMessage
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import PaginationParams, paginated_dict
 from shared.models.achievements.achievement import (
     AchievementOverride,
     AchievementOverrideAction,
@@ -435,11 +436,8 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
                 .limit(per_page)
             )
             rows = (await session.execute(query)).all()
-            return {
-                "page": page,
-                "per_page": per_page,
-                "total": total,
-                "results": [
+            return paginated_dict(
+                [
                     {
                         "user_id": row[0],
                         "user_name": row[1],
@@ -450,7 +448,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
                     }
                     for row in rows
                 ],
-            }
+                total,
+                PaginationParams(page=page, per_page=per_page),
+            )
 
         return await c.envelope(logger, "ach.rule_users", op, session_factory=_SF)
 
@@ -504,7 +504,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
                 query = query.where(models.Workspace.id.in_(visible_workspace_ids))
             result = await session.execute(query)
             return [
-                schemas.AchievementLibraryWorkspaceRead(id=row.id, slug=row.slug, name=row.name, rules_count=row.rules_count)
+                schemas.AchievementLibraryWorkspaceRead(
+                    id=row.id, slug=row.slug, name=row.name, rules_count=row.rules_count
+                )
                 for row in result
             ]
 

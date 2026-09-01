@@ -130,7 +130,19 @@ const credentialNote = "\n\n## Authentication\n\n" +
 	"`GET /api/auth/api-keys/self` is the inverse: it describes the calling key, so it needs a " +
 	"key. WebSocket connections (`/ws`, `/api/realtime/ws`) accept either credential, but a key " +
 	"only authenticates the socket if it holds at least one grant in its workspace; a " +
-	"zero-scope key connects anonymously and cannot subscribe to auth-gated topics."
+	"zero-scope key connects anonymously and cannot subscribe to auth-gated topics.\n\n" +
+	"## Errors\n\n" +
+	"Failed responses carry the HTTP status plus a single envelope: `detail` is the human " +
+	"message and is always present; `code` is the machine reason (`forbidden`, `not_found`, " +
+	"`rate_limited`, ...); `fields` lists per-item validation/business detail when there is " +
+	"any; `retry_after` (seconds) accompanies 429 and mirrors the `Retry-After` header. " +
+	"Branch on `code`, show `detail`, and never parse `detail` — see the `Error` schema.\n\n" +
+	"## Workspace scope\n\n" +
+	"Workspace-scoped reads take a `workspace_id` query parameter. When the credential is " +
+	"pinned to exactly ONE workspace — always true for an API key — it may be omitted and the " +
+	"gateway fills it in from the credential. An explicit value always wins, and a credential " +
+	"holding several workspaces must send one (the read fails closed rather than guessing a " +
+	"tenant)."
 
 // Build assembles an OpenAPI 3.1.0 document (indented JSON) from the groups.
 // Output is deterministic: encoding/json sorts the paths/methods maps, and the
@@ -353,10 +365,32 @@ func (b *builder) responses(route edge.RouteSpec) map[string]any {
 func (b *builder) components() map[string]any {
 	schemas := map[string]any{
 		"Error": map[string]any{
-			"type":        "object",
-			"description": "FastAPI-style error envelope.",
-			"properties":  map[string]any{"detail": map[string]any{"type": "string"}},
-			"required":    []any{"detail"},
+			"type": "object",
+			"description": "Error envelope. `detail` is the human message and is always present; " +
+				"`code` is the machine reason; `fields` carries per-item validation/business detail; " +
+				"`retry_after` (seconds) accompanies 429 and mirrors the Retry-After header.",
+			"properties": map[string]any{
+				"detail": map[string]any{"type": "string"},
+				"code":   map[string]any{"type": "string"},
+				"retry_after": map[string]any{
+					"type":        "integer",
+					"description": "Seconds to wait before retrying (429 only).",
+				},
+				"fields": map[string]any{
+					"type":        "array",
+					"description": "Per-item detail: which input was rejected and why.",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"field": map[string]any{"type": []any{"string", "null"}},
+							"msg":   map[string]any{"type": "string"},
+							"code":  map[string]any{"type": "string"},
+						},
+						"required": []any{"msg", "code"},
+					},
+				},
+			},
+			"required": []any{"detail"},
 		},
 	}
 	for name := range b.closure() {

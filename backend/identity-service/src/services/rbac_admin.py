@@ -829,7 +829,7 @@ class AuthUserAdminService:
             )
             for conn in connections
         ]
-        return {"results": results, "total": total, "page": params.page, "per_page": params.per_page}
+        return pagination.paginated_dict(results, total, params)
 
     async def delete_oauth_connection(
         self,
