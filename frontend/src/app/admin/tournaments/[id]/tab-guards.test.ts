@@ -1,21 +1,16 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  allowedMatchesSubTab,
   allowedSettingsSection,
   allowedTab,
   allowedTeamsSubTab,
   isLegacyTabSegment,
-  isMatchesSubTab,
   isTabKey,
-  MATCHES_DEFAULT_SUB_TAB,
-  MATCHES_SUB_TAB_KEYS,
   MATCHES_SUB_TABS,
   REGISTRATION_SUB_TABS,
   SETTINGS_SECTIONS,
   TAB_KEYS,
   TEAMS_SUB_TABS,
-  type MatchesSubTab,
   type SettingsSection,
   type TabKey
 } from "./tab-guards";
@@ -92,12 +87,19 @@ describe("isTabKey", () => {
 
   test("names the segments that are routes but no longer tabs", () => {
     // The shell needs these to resolve to "no tab": treated as unknown they
-    // would highlight Overview while rendering the stages page under it.
-    for (const segment of ["stages", "draft", "pickBan", "links", "logs"]) {
+    // would highlight Overview while rendering their page under it.
+    for (const segment of ["logs"]) {
       expect(isLegacyTabSegment(segment), segment).toBe(true);
       expect(isTabKey(segment), segment).toBe(false);
     }
     expect(isLegacyTabSegment("bracket")).toBe(false);
+    // PR-2c moved it: `/teams/draft` is a real sub-tab now, not a stray route.
+    expect(isLegacyTabSegment("draft")).toBe(false);
+    // PR-2e moved it: `/stages` is a 308 to `/bracket`, not a live route.
+    expect(isLegacyTabSegment("stages")).toBe(false);
+    // PR-2f moved them: `/pickBan` and `/links` are 308s into `/settings`.
+    expect(isLegacyTabSegment("pickBan")).toBe(false);
+    expect(isLegacyTabSegment("links")).toBe(false);
   });
 });
 
@@ -183,34 +185,6 @@ describe("settings sections", () => {
         allowedSettingsSection(section, { ...NO_PERMS, canUpdateTournament: true }),
         section
       ).toBe(true);
-    }
-  });
-});
-
-// Transitional: `matches/layout.tsx` still routes on the pre-redesign keys
-// until PR-2d renames them. Deleted with that WU.
-describe("matches sub-tabs (pre-redesign, transitional)", () => {
-  test("lands on results", () => {
-    expect(MATCHES_DEFAULT_SUB_TAB).toBe("results");
-    expect(MATCHES_SUB_TAB_KEYS).toContain(MATCHES_DEFAULT_SUB_TAB);
-  });
-
-  test("accepts only declared keys", () => {
-    for (const key of MATCHES_SUB_TAB_KEYS) {
-      expect(isMatchesSubTab(key)).toBe(true);
-    }
-    expect(isMatchesSubTab("encounters")).toBe(false);
-  });
-
-  test.each<[MatchesSubTab, boolean]>(
-    MATCHES_SUB_TAB_KEYS.map((key) => [key, false] as [MatchesSubTab, boolean])
-  )("without match.read: %s → %s", (tab, expected) => {
-    expect(allowedMatchesSubTab(tab, { canReadMatch: false })).toBe(expected);
-  });
-
-  test("every sub-tab opens with match.read", () => {
-    for (const key of MATCHES_SUB_TAB_KEYS) {
-      expect(allowedMatchesSubTab(key, { canReadMatch: true }), key).toBe(true);
     }
   });
 });

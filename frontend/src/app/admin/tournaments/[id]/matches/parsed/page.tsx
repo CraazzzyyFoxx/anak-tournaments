@@ -3,31 +3,28 @@
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 
-import { usePermissions } from "@/hooks/usePermissions";
 import { tabFallback } from "../../hubQueries";
 import { MatchesView } from "../MatchesView";
 
-const EncounterReportsBrowser = dynamic(
+const ParsedMatchesBrowser = dynamic(
   () =>
-    import("@/components/admin/EncounterReportsBrowser").then((module) => ({
-      default: module.EncounterReportsBrowser
+    import("@/components/admin/ParsedMatchesBrowser").then((module) => ({
+      default: module.ParsedMatchesBrowser
     })),
   { loading: () => tabFallback }
 );
 
-export default function ReportsViewPage() {
+export default function ParsedViewPage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
-  const { canAccessPermission } = usePermissions();
 
   return (
     <MatchesView tournamentId={tournamentId}>
       {({ workspaceId, tournamentName }) => (
-        <EncounterReportsBrowser
+        <ParsedMatchesBrowser
           tournamentId={tournamentId}
           workspaceId={workspaceId}
           tournamentName={tournamentName}
-          canUpdateEncounter={canAccessPermission("match.update", workspaceId)}
         />
       )}
     </MatchesView>

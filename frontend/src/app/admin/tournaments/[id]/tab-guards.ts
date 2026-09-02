@@ -22,14 +22,13 @@ export type TabKey = (typeof TAB_KEYS)[number];
 
 /**
  * Segments that are no longer tabs but whose routes still exist until the WU
- * that moves them lands (`stages` → PR-2e, `draft` → PR-2c, `pickBan`/`links`
- * → PR-2f, `logs` already a matches sub-tab).
+ * that moves them lands (`logs` is already a matches sub-tab).
  *
  * Listed so the shell resolves such a path to "no tab" instead of silently
  * treating it as `overview` and rendering the wrong page under a highlighted
  * Overview tab. Each entry goes with the route it names.
  */
-export const LEGACY_TAB_SEGMENTS = ["stages", "draft", "pickBan", "links", "logs"] as const;
+export const LEGACY_TAB_SEGMENTS = ["logs"] as const;
 
 export type LegacyTabSegment = (typeof LEGACY_TAB_SEGMENTS)[number];
 
@@ -115,35 +114,5 @@ export function allowedSettingsSection(section: SettingsSection, p: TabAccess): 
       return p.canDeleteTournament;
     default:
       return p.canUpdateTournament;
-  }
-}
-
-/**
- * Sub-tabs of the pre-redesign `matches` tab.
- *
- * Transitional: `matches/layout.tsx` still routes on these until PR-2d splits
- * `results` into `encounters` + `standings` and renames `maps` to `parsed`.
- * That WU deletes this block.
- */
-export const MATCHES_SUB_TAB_KEYS = ["results", "reports", "maps", "logs", "report-form"] as const;
-
-export type MatchesSubTab = (typeof MATCHES_SUB_TAB_KEYS)[number];
-
-export const MATCHES_DEFAULT_SUB_TAB: MatchesSubTab = "results";
-
-export function isMatchesSubTab(value: string): value is MatchesSubTab {
-  return (MATCHES_SUB_TAB_KEYS as readonly string[]).includes(value);
-}
-
-export function allowedMatchesSubTab(tab: MatchesSubTab, p: { canReadMatch: boolean }): boolean {
-  switch (tab) {
-    case "results":
-    case "reports":
-    case "maps":
-    case "logs":
-    case "report-form":
-      return p.canReadMatch;
-    default:
-      return false;
   }
 }

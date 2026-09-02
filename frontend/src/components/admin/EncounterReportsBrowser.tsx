@@ -3,18 +3,26 @@
 import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ClipboardCheck, Clock3, ScrollText } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, Clock3, Gavel, ScrollText } from "lucide-react";
 
-import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminReportPairCell } from "@/components/admin/AdminReportPairCell";
 import { ResolveResultDialog } from "@/components/admin/ResolveResultDialog";
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
-import { TONE_CLASS } from "@/components/admin/tone";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { AdminInspector } from "@/components/admin/kit/AdminInspector";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
+import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import {
+  TOURNAMENT_QUERY_PARAM,
+  parseTournamentQueryParam
+} from "@/components/admin/tournament-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
+import tournamentService from "@/services/tournament.service";
 import type { EncounterReportsQuery, EncounterReportsRow } from "@/types/admin.types";
 import { invalidateTournamentWorkspace } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
 
@@ -31,44 +39,140 @@ const PAGE_SIZE = 25;
  * what needs attention and hands each row to the one write surface that can
  * settle it.
  *
- * The rows go through `AdminDataTable`, the same browser every other admin list
- * uses, which is where URL-persisted paging and search, rows-per-page, the
- * numbered pager, the refetch indicator and keyboard row activation come from.
+ * Filters are chips in `AdminFilterBar` and the row detail is `AdminInspector`,
+ * so a narrowed list and the open row both travel in the URL — a disputed
+ * encounter can be pasted to whoever has to settle it.
  */
 export function EncounterReportsBrowser({
   tournamentId,
   workspaceId,
-  canUpdateEncounter
+  canUpdateEncounter,
+  tournamentName
 }: Readonly<{
   /** `null` = every tournament in the workspace. */
   tournamentId: number | null;
   workspaceId: number | null;
   canUpdateEncounter: boolean;
+  /** Names the pinned chip inside a hub; the chip reads `#id` without it. */
+  tournamentName?: string | null;
 }>) {
   const queryClient = useQueryClient();
+  // `id` is the inspector, not a filter: opening a row must not drop its page.
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const openId = searchParams?.get("id") ?? null;
+  const [pageRows, setPageRows] = useState<EncounterReportsRow[]>([]);
   const [resolving, setResolving] = useState<EncounterReportsRow | null>(null);
-  const [mismatchOnly, setMismatchOnly] = useState(false);
   const showTournament = tournamentId == null;
+
+  const chipTournamentId = parseTournamentQueryParam(
+    searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null
+  );
+  const scopeTournamentId = tournamentId ?? chipTournamentId;
 
   const scopeParams = useMemo<EncounterReportsQuery | null>(
     () =>
       workspaceId == null
         ? null
-        : { workspace_id: workspaceId, tournament_id: tournamentId ?? undefined },
-    [workspaceId, tournamentId]
+        : { workspace_id: workspaceId, tournament_id: scopeTournamentId ?? undefined },
+    [workspaceId, scopeTournamentId]
   );
 
-  // Counters take the scope alone — not the header filters, not the toolbar
-  // toggle, not the search box. The numbers answer "how much in this scope
-  // needs attention", so they stay put while the admin narrows the list or
-  // looks one encounter up, instead of collapsing to what is on screen.
+  // Counters take the scope alone — not the chips, not the search box. The
+  // numbers answer "how much in this scope needs attention", so they stay put
+  // while the admin narrows the list or looks one encounter up, instead of
+  // collapsing to what is on screen.
   const statsQuery = useQuery({
     queryKey: ["encounter-reports", "stats", scopeParams],
     queryFn: () => adminService.getEncounterReportStats(scopeParams!),
     enabled: scopeParams != null
   });
 
+  const tournamentsQuery = useQuery({
+    queryKey: ["tournaments"],
+    queryFn: () => tournamentService.getAll(null),
+    enabled: workspaceId != null && tournamentId == null
+  });
+
+  const stagesQuery = useQuery({
+    queryKey: ["admin", "stages", scopeTournamentId],
+    queryFn: () => adminService.getStages(scopeTournamentId!),
+    enabled: scopeTournamentId != null
+  });
+
   const stats = statsQuery.data;
+
+  const defs = useMemo<FilterDef[]>(() => {
+    const list: FilterDef[] = [];
+    if (tournamentId == null) {
+      list.push({
+        key: TOURNAMENT_QUERY_PARAM,
+        label: "Tournament",
+        kind: "single",
+        options: (tournamentsQuery.data?.results ?? []).map((entry) => ({
+          value: String(entry.id),
+          label: entry.name
+        }))
+      });
+    }
+    if ((stagesQuery.data ?? []).length > 0) {
+      list.push({
+        key: "stage",
+        label: "Stage",
+        kind: "single",
+        options: (stagesQuery.data ?? []).map((stage) => ({
+          value: String(stage.id),
+          label: stage.name
+        }))
+      });
+    }
+    list.push(
+      {
+        key: "result_status",
+        label: "Result",
+        // The endpoint's field is a list and the service repeats the param once
+        // per checked value, so this narrows to several states at once.
+        kind: "multi",
+        options: [
+          { value: "none", label: "None" },
+          { value: "pending_confirmation", label: "Pending confirmation" },
+          { value: "confirmed", label: "Confirmed" },
+          { value: "disputed", label: "Disputed" }
+        ]
+      },
+      {
+        key: "reported_count",
+        label: "Reports filed",
+        // `reported_count` is a scalar on the endpoint, so this is single
+        // select: "0 or 2" is not a question the query param can ask.
+        kind: "single",
+        options: [
+          { value: "0", label: "No reports" },
+          { value: "1", label: "Awaiting second" },
+          { value: "2", label: "Both reported" }
+        ]
+      },
+      // Looks like `result_status: disputed` but is not: that is the recorded
+      // result state, this is the live disagreement between two reports. A
+      // dispute an admin already settled still has two divergent reports on
+      // file, which is why they are two filters.
+      { key: "mismatch_only", label: "Reports disagree", kind: "toggle" }
+    );
+    return list;
+  }, [tournamentId, tournamentsQuery.data, stagesQuery.data]);
+
+  const filters = useAdminFilters(defs);
+  const stageFilter = String(filters.values.stage ?? "");
+  const resultStatusFilter = Array.isArray(filters.values.result_status)
+    ? (filters.values.result_status as string[])
+    : [];
+  const reportedCountFilter = String(filters.values.reported_count ?? "");
+  const mismatchOnly = filters.values.mismatch_only === true;
+
+  // The inspector shows a row from the page on screen, so a deep-linked `?id=`
+  // the current chips exclude leaves it closed rather than showing detail for
+  // an encounter the list does not contain.
+  const openRow = pageRows.find((row) => String(row.id) === openId) ?? null;
+  const openIndex = openRow ? pageRows.indexOf(openRow) : -1;
 
   const columns = useMemo<ColumnDef<EncounterReportsRow>[]>(
     () => [
@@ -106,19 +210,6 @@ export function EncounterReportsBrowser({
         header: "Captain reports",
         size: 320,
         enableSorting: false,
-        // `reported_count` is a scalar on the endpoint, so this is single
-        // select: "0 or 2" is not a question the query param can ask.
-        meta: adminColumnMeta<EncounterReportsRow>({
-          filter: {
-            param: "reported_count",
-            label: "Filter by reports filed",
-            options: [
-              { value: "0", label: "No reports" },
-              { value: "1", label: "Awaiting second" },
-              { value: "2", label: "Both reported" }
-            ]
-          }
-        }),
         cell: ({ row }) => (
           <AdminReportPairCell
             homeReport={row.original.home_report}
@@ -133,27 +224,6 @@ export function EncounterReportsBrowser({
         header: "Result",
         size: 132,
         enableSorting: false,
-        // Closed backend enum (EncounterResultStatus), so the options are
-        // literal rather than fetched. Multi: the endpoint's field is a list and
-        // the service repeats the param once per checked value.
-        //
-        // `disputed` here and the toolbar's `mismatch_only` look alike but are
-        // not: this is the recorded result state, that is the live disagreement
-        // between two reports. A dispute an admin already settled still has two
-        // divergent reports on file, which is why they are two filters.
-        meta: adminColumnMeta<EncounterReportsRow>({
-          filter: {
-            param: "result_status",
-            mode: "multi",
-            label: "Filter by result",
-            options: [
-              { value: "none", label: "None" },
-              { value: "pending_confirmation", label: "Pending confirmation" },
-              { value: "confirmed", label: "Confirmed" },
-              { value: "disputed", label: "Disputed" }
-            ]
-          }
-        }),
         cell: ({ row }) => (
           <div className="space-y-1">
             <Badge
@@ -164,38 +234,16 @@ export function EncounterReportsBrowser({
               {row.original.result_status}
             </Badge>
             {row.original.last_resolution ? (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {row.original.last_resolution.action} by{" "}
                 {row.original.last_resolution.actor_name ?? "an automated process"}
               </p>
             ) : null}
           </div>
         )
-      },
-      // Deliberately not the `actions` column id: that one fades in on row hover,
-      // which is right for a secondary icon but wrong for the single action this
-      // whole page exists to offer.
-      {
-        id: "resolve",
-        header: () => <span className="sr-only">Actions</span>,
-        size: 104,
-        enableSorting: false,
-        cell: ({ row }) =>
-          canUpdateEncounter ? (
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                onClick={() => setResolving(row.original)}
-              >
-                {row.original.result_status === "confirmed" ? "Review" : "Resolve"}
-              </Button>
-            </div>
-          ) : null
       }
     ],
-    [showTournament, canUpdateEncounter]
+    [showTournament]
   );
 
   if (workspaceId == null) {
@@ -243,53 +291,155 @@ export function EncounterReportsBrowser({
         marks it disputed.
       </p>
 
-      <AdminDataTable
-        columns={columns}
-        // The header filters reset paging themselves; this covers the one filter
-        // the table does not own.
-        filterKey={mismatchOnly ? "mismatch" : "all"}
-        initialPageSize={PAGE_SIZE}
-        searchPlaceholder="Search team or encounter"
-        emptyMessage={
-          mismatchOnly ? "No encounters match this filter." : "No encounters here yet."
-        }
-        actions={
-          // Stays out of the header: the reports column's funnel is spent on
-          // `reported_count`, and this is a bare boolean the endpoint reads as
-          // "narrow" or "no filter" — a two-option funnel would imply a
-          // "reports agree" value the param cannot send.
-          <Button
-            type="button"
-            size="sm"
-            variant={mismatchOnly ? "secondary" : "outline"}
-            aria-pressed={mismatchOnly}
-            onClick={() => setMismatchOnly((on) => !on)}
-          >
-            Reports disagree
-          </Button>
-        }
-        onRowClick={canUpdateEncounter ? (row) => setResolving(row.original) : undefined}
-        queryKey={(page, search, pageSize, _sortField, _sortDir, filters) => [
-          "encounter-reports",
-          { workspaceId, tournamentId, mismatchOnly, page, search, pageSize, filters }
-        ]}
-        queryFn={(page, search, pageSize, _sortField, _sortDir, filters) =>
-          adminService.listEncounterReports({
-            workspace_id: workspaceId,
-            tournament_id: tournamentId ?? undefined,
-            query: search || undefined,
-            result_status: filters.result_status?.length ? filters.result_status : undefined,
-            // Zero is a real value here ("neither captain reported"), so the
-            // guard is on the array, never on the number.
-            reported_count: filters.reported_count?.length
-              ? Number(filters.reported_count[0])
-              : undefined,
-            mismatch_only: mismatchOnly || undefined,
-            page,
-            per_page: pageSize
-          })
-        }
-      />
+      <div
+        className={cn("grid items-start gap-4", openRow && "lg:grid-cols-[minmax(0,1fr)_380px]")}
+      >
+        <div className="min-w-0">
+          <AdminDataTable<EncounterReportsRow>
+            columns={columns}
+            filterKey={filters.filterKey}
+            initialPageSize={PAGE_SIZE}
+            searchPlaceholder="Search team or encounter"
+            inspectorId={openId}
+            getRowId={(row) => String(row.id)}
+            toolbar={
+              <AdminFilterBar
+                defs={defs}
+                filters={filters}
+                pinned={
+                  tournamentId != null
+                    ? [
+                        {
+                          key: TOURNAMENT_QUERY_PARAM,
+                          label: `Tournament: ${tournamentName ?? `#${tournamentId}`}`
+                        }
+                      ]
+                    : undefined
+                }
+              />
+            }
+            emptyMessage="No encounters match this filter."
+            onRowClick={(row) => setParams({ id: String(row.original.id) })}
+            renderMobileCard={(row) => (
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{row.original.name}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {row.original.home_team?.name ?? "?"} vs {row.original.away_team?.name ?? "?"} ·{" "}
+                  {row.original.reported_count}/2 reported
+                </p>
+                <p className="text-xs text-muted-foreground">{row.original.result_status}</p>
+              </div>
+            )}
+            queryKey={(page, search, pageSize) => [
+              "encounter-reports",
+              {
+                workspaceId,
+                tournamentId: scopeTournamentId,
+                mismatchOnly,
+                page,
+                search,
+                pageSize,
+                filters: {
+                  stage: stageFilter,
+                  result_status: resultStatusFilter,
+                  reported_count: reportedCountFilter
+                }
+              }
+            ]}
+            queryFn={async (page, search, pageSize) => {
+              const result = await adminService.listEncounterReports({
+                workspace_id: workspaceId,
+                tournament_id: scopeTournamentId ?? undefined,
+                stage_id: stageFilter ? Number(stageFilter) : undefined,
+                query: search || undefined,
+                result_status: resultStatusFilter.length ? resultStatusFilter : undefined,
+                // Zero is a real value here ("neither captain reported"), so the
+                // guard is on the string, never on the number.
+                reported_count: reportedCountFilter ? Number(reportedCountFilter) : undefined,
+                mismatch_only: mismatchOnly || undefined,
+                page,
+                per_page: pageSize
+              });
+              // The inspector pages through the rows on screen, and the table
+              // owns the fetch, so this is where that page is observed.
+              setPageRows(result.results);
+              return result;
+            }}
+          />
+        </div>
+
+        <AdminInspector
+          openId={openRow ? openId : null}
+          onClose={() => setParams({ id: null })}
+          title={openRow ? openRow.name : ""}
+          subtitle={
+            openRow
+              ? `${showTournament ? `${openRow.tournament_name ?? "Unknown tournament"} · ` : ""}${openRow.stage_name ?? "Unassigned"} · Round ${openRow.round} · BO${openRow.best_of}`
+              : undefined
+          }
+          onPrev={
+            openIndex > 0 ? () => setParams({ id: String(pageRows[openIndex - 1].id) }) : undefined
+          }
+          onNext={
+            openIndex >= 0 && openIndex < pageRows.length - 1
+              ? () => setParams({ id: String(pageRows[openIndex + 1].id) })
+              : undefined
+          }
+          actions={
+            openRow && canUpdateEncounter ? (
+              <Button type="button" size="sm" variant="secondary" onClick={() => setResolving(openRow)}>
+                <Gavel aria-hidden className="size-3.5" />
+                {openRow.result_status === "confirmed" ? "Review result" : "Resolve result"}
+              </Button>
+            ) : null
+          }
+        >
+          {openRow ? (
+            <div className="space-y-4">
+              <AdminReportPairCell
+                homeReport={openRow.home_report}
+                awayReport={openRow.away_report}
+                scoresMatch={openRow.scores_match}
+                seriesScoreValid={openRow.series_score_valid}
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="min-w-0">
+                  <p className={EYEBROW_CLASS}>Recorded teams</p>
+                  <p className="truncate text-sm">
+                    {openRow.home_team?.name ?? "?"} vs {openRow.away_team?.name ?? "?"}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className={EYEBROW_CLASS}>Result</p>
+                  <p className="truncate text-sm">{openRow.result_status}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className={EYEBROW_CLASS}>Encounter status</p>
+                  <p className="truncate text-sm">{openRow.status}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className={EYEBROW_CLASS}>Reports filed</p>
+                  <p className="truncate text-sm tabular-nums">{openRow.reported_count}/2</p>
+                </div>
+              </div>
+
+              {openRow.last_resolution ? (
+                <section className="rounded-xl border border-border/60 p-3">
+                  <p className={EYEBROW_CLASS}>Last resolution</p>
+                  <p className="mt-1 text-sm">
+                    {openRow.last_resolution.action} by{" "}
+                    {openRow.last_resolution.actor_name ?? "an automated process"}
+                  </p>
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    {new Date(openRow.last_resolution.created_at).toLocaleString()}
+                  </p>
+                </section>
+              ) : null}
+            </div>
+          ) : null}
+        </AdminInspector>
+      </div>
 
       <ResolveResultDialog
         row={resolving}
@@ -304,10 +454,10 @@ export function EncounterReportsBrowser({
           void queryClient.invalidateQueries({ queryKey: ["encounters"] });
           void queryClient.invalidateQueries({ queryKey: ["admin-matches"] });
           void queryClient.invalidateQueries({
-            queryKey: tournamentId == null ? ["standings"] : ["standings", tournamentId]
+            queryKey: scopeTournamentId == null ? ["standings"] : ["standings", scopeTournamentId]
           });
-          if (tournamentId != null) {
-            invalidateTournamentWorkspace(queryClient, tournamentId, workspaceId);
+          if (scopeTournamentId != null) {
+            invalidateTournamentWorkspace(queryClient, scopeTournamentId, workspaceId);
           }
         }}
       />

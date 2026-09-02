@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act, useState, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -31,6 +31,20 @@ vi.mock("@/services/admin.service", () => ({
 vi.mock("@/hooks/useRealtimeTopic", () => ({ useRealtimeTopic: () => {} }));
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
+}));
+
+/** The status chip lives in the URL now, so the console needs a router. */
+const replace = vi.fn((url: string) => {
+  window.history.replaceState(null, "", url);
+  rerender?.();
+});
+
+let rerender: (() => void) | null = null;
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/tournaments/78/matches/logs",
+  useRouter: () => ({ replace, push: replace }),
+  useSearchParams: () => new URLSearchParams(window.location.search)
 }));
 
 const STATS: LogProcessingStats = {
@@ -79,9 +93,30 @@ const FIRST_PAGE: LogHistoryResponse = {
 // `ReferenceError: window is not defined` that fails the whole run while every
 // test still reports green. It only shows up under CI timing, which is why it
 // surfaced the first time this suite ran there.
-const mounted: { root: ReturnType<typeof createRoot>; container: HTMLElement }[] = [];
+const mounted: { root: Root; container: HTMLElement }[] = [];
 
-async function mount() {
+async function settle(turns = 5) {
+  for (let turn = 0; turn < turns; turn += 1) {
+    await act(async () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 0);
+      await promise;
+    });
+  }
+}
+
+/**
+ * Renders through a factory: React bails out of re-rendering a child whose
+ * element is referentially identical, so a URL-driven re-render would never
+ * reach the console under test.
+ */
+function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
+  const [, force] = useState(0);
+  rerender = () => force((value) => value + 1);
+  return <>{render()}</>;
+}
+
+async function mount(tournamentId: number | null = 78) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -90,28 +125,50 @@ async function mount() {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <TournamentLogsTab
-          tournamentId={78}
-          workspaceId={1}
-          encounters={[]}
-          canUploadLogs={false}
-          enabled
+        <Harness
+          render={() => (
+            <TournamentLogsTab
+              tournamentId={tournamentId}
+              workspaceId={1}
+              encounters={[]}
+              canUploadLogs={false}
+              enabled
+            />
+          )}
         />
       </QueryClientProvider>
     );
   });
-  // React Query resolves through both microtasks and timers before committing.
-  for (let turn = 0; turn < 5; turn += 1) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  }
+  await settle();
   return container;
+}
+
+async function click(element: Element | null | undefined) {
+  expect(element).toBeTruthy();
+  await act(async () => {
+    (element as HTMLElement).dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    element!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(2);
+}
+
+function button(scope: ParentNode, text: string) {
+  return Array.from(scope.querySelectorAll("button")).find(
+    (element) => element.textContent?.trim() === text
+  );
+}
+
+function commandItem(label: string) {
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find(
+    (item) => item.textContent?.trim().startsWith(label)
+  );
 }
 
 beforeEach(() => {
   getLogStats.mockReset().mockResolvedValue(STATS);
   getLogHistory.mockReset().mockResolvedValue(FIRST_PAGE);
+  replace.mockClear();
+  window.history.replaceState(null, "", "/admin/tournaments/78/matches/logs");
 });
 
 afterEach(async () => {
@@ -121,20 +178,24 @@ afterEach(async () => {
       container.remove();
     }
   });
+  document.body.innerHTML = "";
 });
 
 describe("TournamentLogsTab", () => {
-  it("labels each status filter with the scope-wide count, not the loaded rows", async () => {
+  it("labels each status option with the scope-wide count, not the loaded rows", async () => {
     const scope = await mount();
 
-    // Two rows are loaded, yet every count describes all 128 records.
-    const filters = [...scope.querySelectorAll("[role='radio']")]
+    // Two interesting rows are loaded, yet every count describes all 128
+    // records — the aggregate, not the page.
+    await click(scope.querySelector('button[aria-label="Add filter"]'));
+    await click(commandItem("Status"));
+
+    const options = Array.from(document.querySelectorAll('[cmdk-item=""]'))
       .map((node) => node.textContent)
       .join("|");
-
-    expect(filters).toContain("All128");
-    expect(filters).toContain("Failed3");
-    expect(filters).toContain("Queued4");
+    expect(options).toContain("Failed3");
+    expect(options).toContain("Queued4");
+    expect(scope.textContent).toContain("128 logs");
     expect(getLogStats).toHaveBeenCalledWith(78);
   });
 
@@ -146,6 +207,50 @@ describe("TournamentLogsTab", () => {
       offset: 0,
       status: undefined,
       search: ""
+    });
+  });
+
+  it("puts the picked status in the URL and sends it to the server", async () => {
+    // The old toggle group kept this in component state, so "show me the
+    // failures" could not be linked to anyone.
+    const scope = await mount();
+
+    await click(button(scope, "Show failed"));
+
+    expect(new URLSearchParams(window.location.search).get("status")).toBe("failed");
+    await settle();
+    expect(getLogHistory).toHaveBeenLastCalledWith(78, {
+      limit: 25,
+      offset: 0,
+      status: "failed",
+      search: ""
+    });
+  });
+
+  it("restores the status from the URL on load", async () => {
+    window.history.replaceState(null, "", "/admin/tournaments/78/matches/logs?status=failed");
+    await mount();
+
+    expect(getLogHistory).toHaveBeenCalledWith(78, {
+      limit: 25,
+      offset: 0,
+      status: "failed",
+      search: ""
+    });
+  });
+
+  it("reads the workspace when no tournament scopes it", async () => {
+    // The same console backs `/admin/matches?view=logs`, where there is no
+    // tournament to scope by — both endpoints take the workspace instead.
+    await mount(null);
+
+    expect(getLogStats).toHaveBeenCalledWith(undefined, { workspaceId: 1 });
+    expect(getLogHistory).toHaveBeenCalledWith(undefined, {
+      limit: 25,
+      offset: 0,
+      status: undefined,
+      search: "",
+      workspaceId: 1
     });
   });
 

@@ -5,14 +5,21 @@ import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { AdminFilterChips, type AdminFilterChipOption } from "@/components/admin/AdminFilterChips";
-import { ParsedMatchSheet } from "@/components/admin/ParsedMatchSheet";
-import { adminColumnMeta } from "@/components/admin/admin-table-columns";
+import { ParsedMatchDetail } from "@/components/admin/ParsedMatchDetail";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { AdminInspector } from "@/components/admin/kit/AdminInspector";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
 import { TONE_CLASS, type Tone } from "@/components/admin/tone";
+import {
+  TOURNAMENT_QUERY_PARAM,
+  parseTournamentQueryParam
+} from "@/components/admin/tournament-filter";
 import { Badge } from "@/components/ui/badge";
+import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import mapService from "@/services/map.service";
+import tournamentService from "@/services/tournament.service";
 import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
 
 const PAGE_SIZE = 25;
@@ -25,12 +32,11 @@ const STATUS_TONE: Record<LogProcessingStatus, Tone> = {
 };
 
 /**
- * Every ingestion status a provenance cell can print, offered on that column's
- * own header filter as a repeated `log_status`.
+ * Every ingestion status a provenance cell can print.
  *
  * `unresolved` is deliberately absent. It is not a status but the absence of an
- * ingestion record, and the endpoint selects it with `unlinked_only` — another
- * query parameter, which one column filter cannot also carry. It stays a chip.
+ * ingestion record, and the endpoint selects it with `unlinked_only` — a
+ * different query parameter, which is why it is a chip of its own below.
  */
 const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: string }[] = [
   { value: "pending", label: "Pending" },
@@ -40,78 +46,110 @@ const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: string }
 ];
 
 /**
- * The one filter left in the toolbar, because it is the one the provenance
- * column's header filter cannot express.
- *
- * `unresolved` is not a failure bucket. It selects maps with no ingestion
- * record at all, which is most of the archive; the header filter's `failed`
- * selects the ones whose ingestion actually broke. Merging them would drown the
- * real failures.
- */
-type Chip = "all" | "unresolved";
-
-const CHIP_OPTIONS: readonly AdminFilterChipOption<Chip>[] = [
-  { value: "all", label: "All" },
-  { value: "unresolved", label: "Provenance unresolved" }
-];
-
-/**
  * Parsed matches — one row per played map — for one tournament or the whole
  * workspace.
  *
- * Until now `Encounter.has_logs` was the only admin-visible sign that any of
- * this existed: a boolean on the encounter that could not say which upload
- * produced which map, or whether a map had been parsed at all.
+ * Until `mtchlog001` `Encounter.has_logs` was the only admin-visible sign that
+ * any of this existed: a boolean on the encounter that could not say which
+ * upload produced which map, or whether a map had been parsed at all.
  *
- * The rows go through `AdminDataTable` rather than a hand-rolled list, which is
- * what every other admin browser uses. That is not only cosmetic: it is where
- * URL-persisted paging and search, rows-per-page, the numbered pager, the
- * refetch indicator and keyboard row activation come from. This page shipped
- * with none of them.
+ * Filtering lives in `AdminFilterBar` and row detail in `AdminInspector`, the
+ * two surfaces every admin browser uses, so what an admin narrowed to travels
+ * in the URL and the table stays visible beside the map being investigated.
  */
 export function ParsedMatchesBrowser({
   tournamentId,
-  workspaceId
+  workspaceId,
+  tournamentName
 }: Readonly<{
   /** `null` = every tournament in the workspace. */
   tournamentId: number | null;
   workspaceId: number | null;
+  /** Names the pinned chip inside a hub; the chip reads `#id` without it. */
+  tournamentName?: string | null;
 }>) {
-  const [chip, setChip] = useState<Chip>("all");
-  const [inspecting, setInspecting] = useState<AdminMatchRow | null>(null);
+  // `id` is the inspector, not a filter: opening a map must not drop the page
+  // it sits on.
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const openId = searchParams?.get("id") ?? null;
+  const [pageRows, setPageRows] = useState<AdminMatchRow[]>([]);
   const showTournament = tournamentId == null;
 
-  // Map options come from the global catalogue, not from the page of rows: a
-  // header filter has to offer maps that this page happens not to show. The
-  // list arrives a beat after the first render, and the table takes a `map_id`
-  // already in the URL at face value until it does.
+  const chipTournamentId = parseTournamentQueryParam(
+    searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null
+  );
+  const scopeTournamentId = tournamentId ?? chipTournamentId;
+
+  // Map options come from the global catalogue, not from the page of rows: the
+  // filter has to offer maps that this page happens not to show.
   const mapsQuery = useQuery({
     queryKey: ["maps-lookup"],
     queryFn: () => mapService.lookup(),
     staleTime: 5 * 60 * 1000,
     enabled: workspaceId != null
   });
-  const mapOptions = useMemo(
-    () => (mapsQuery.data ?? []).map((entry) => ({ value: String(entry.id), label: entry.name })),
-    [mapsQuery.data]
-  );
+
+  const tournamentsQuery = useQuery({
+    queryKey: ["tournaments"],
+    queryFn: () => tournamentService.getAll(null),
+    enabled: workspaceId != null && tournamentId == null
+  });
+
+  const defs = useMemo<FilterDef[]>(() => {
+    const list: FilterDef[] = [];
+    if (tournamentId == null) {
+      list.push({
+        key: TOURNAMENT_QUERY_PARAM,
+        label: "Tournament",
+        kind: "single",
+        options: (tournamentsQuery.data?.results ?? []).map((entry) => ({
+          value: String(entry.id),
+          label: entry.name
+        }))
+      });
+    }
+    list.push(
+      {
+        key: "map_id",
+        label: "Map",
+        kind: "single",
+        options: (mapsQuery.data ?? []).map((entry) => ({
+          value: String(entry.id),
+          label: entry.name
+        }))
+      },
+      {
+        key: "log_status",
+        label: "Ingestion status",
+        kind: "multi",
+        options: LOG_STATUS_OPTIONS.map((option) => ({ ...option }))
+      },
+      // Not a status: this selects maps with no ingestion record at all, which
+      // is most of the archive, while `failed` selects the ones whose ingestion
+      // actually broke. Merging them would drown the real failures.
+      { key: "unlinked_only", label: "Provenance unresolved", kind: "toggle" }
+    );
+    return list;
+  }, [tournamentId, tournamentsQuery.data, mapsQuery.data]);
+
+  const filters = useAdminFilters(defs);
+  const mapFilter = String(filters.values.map_id ?? "");
+  const statusFilter = Array.isArray(filters.values.log_status)
+    ? (filters.values.log_status as LogProcessingStatus[])
+    : [];
+  const unlinkedOnly = filters.values.unlinked_only === true;
+
+  // The inspector shows a row from the page on screen, so a deep-linked `?id=`
+  // the current chips exclude leaves it closed rather than showing detail for a
+  // map the list does not contain.
+  const openRow = pageRows.find((row) => String(row.id) === openId) ?? null;
+  const openIndex = openRow ? pageRows.indexOf(openRow) : -1;
 
   const columns = useMemo<ColumnDef<AdminMatchRow>[]>(
     () => [
       {
         id: "map",
         header: "Map",
-        meta: adminColumnMeta<AdminMatchRow>({
-          filter: {
-            param: "map_id",
-            label: "Filter by map",
-            options: mapOptions,
-            // Pinned on rather than left to the option-count default: the
-            // catalogue is well past the threshold, but it is empty on the
-            // first render and the search box must not pop in behind it.
-            searchable: true
-          }
-        }),
         // The server sorts none of these, so offering a sort control would be a
         // lie the header cannot honour.
         enableSorting: false,
@@ -161,14 +199,6 @@ export function ParsedMatchesBrowser({
       {
         id: "provenance",
         header: "Provenance",
-        meta: adminColumnMeta<AdminMatchRow>({
-          filter: {
-            param: "log_status",
-            mode: "multi",
-            label: "Filter by ingestion status",
-            options: LOG_STATUS_OPTIONS
-          }
-        }),
         size: 148,
         enableSorting: false,
         cell: ({ row }) =>
@@ -183,7 +213,7 @@ export function ParsedMatchesBrowser({
           )
       }
     ],
-    [showTournament, mapOptions]
+    [showTournament]
   );
 
   if (workspaceId == null) {
@@ -201,54 +231,103 @@ export function ParsedMatchesBrowser({
         map came from.
       </p>
 
-      <AdminDataTable
-        columns={columns}
-        filterKey={chip}
-        initialPageSize={PAGE_SIZE}
-        searchPlaceholder="Search log name, code or team"
-        emptyMessage={
-          chip === "all"
-            ? "No parsed maps here yet."
-            : "No parsed maps with unresolved provenance."
-        }
-        actions={
-          <AdminFilterChips
-            label="Filter parsed matches"
-            options={CHIP_OPTIONS}
-            value={chip}
-            onChange={setChip}
+      <div
+        className={cn("grid items-start gap-4", openRow && "lg:grid-cols-[minmax(0,1fr)_380px]")}
+      >
+        <div className="min-w-0">
+          <AdminDataTable<AdminMatchRow>
+            columns={columns}
+            filterKey={filters.filterKey}
+            initialPageSize={PAGE_SIZE}
+            searchPlaceholder="Search log name, code or team"
+            inspectorId={openId}
+            getRowId={(row) => String(row.id)}
+            toolbar={
+              <AdminFilterBar
+                defs={defs}
+                filters={filters}
+                pinned={
+                  tournamentId != null
+                    ? [
+                        {
+                          key: TOURNAMENT_QUERY_PARAM,
+                          label: `Tournament: ${tournamentName ?? `#${tournamentId}`}`
+                        }
+                      ]
+                    : undefined
+                }
+              />
+            }
+            emptyMessage={
+              unlinkedOnly
+                ? "No parsed maps with unresolved provenance."
+                : "No parsed maps here yet."
+            }
+            onRowClick={(row) => setParams({ id: String(row.original.id) })}
+            renderMobileCard={(row) => (
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{row.original.map_name}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {row.original.encounter_name} ·{" "}
+                  <span className="font-mono tabular-nums">
+                    {row.original.home_score}&ndash;{row.original.away_score}
+                  </span>
+                </p>
+                <p className="truncate font-mono text-xs text-muted-foreground">
+                  {row.original.log_record?.status ?? "unresolved"}
+                </p>
+              </div>
+            )}
+            queryKey={(page, search, pageSize) => [
+              "admin-matches",
+              {
+                workspaceId,
+                tournamentId: scopeTournamentId,
+                chip: unlinkedOnly ? "unresolved" : "all",
+                page,
+                search,
+                pageSize,
+                filters: { map_id: mapFilter, log_status: statusFilter }
+              }
+            ]}
+            queryFn={async (page, search, pageSize) => {
+              const result = await adminService.listAdminMatches({
+                workspace_id: workspaceId,
+                tournament_id: scopeTournamentId ?? undefined,
+                query: search || undefined,
+                map_id: mapFilter ? Number(mapFilter) : undefined,
+                log_status: statusFilter.length ? statusFilter : undefined,
+                ...(unlinkedOnly && { unlinked_only: true }),
+                page,
+                per_page: pageSize
+              });
+              // The inspector pages through the rows on screen, and the table
+              // owns the fetch, so this is where that page is observed.
+              setPageRows(result.results);
+              return result;
+            }}
           />
-        }
-        onRowClick={(row) => setInspecting(row.original)}
-        queryKey={(page, search, pageSize, _sortField, _sortDir, filters) => [
-          "admin-matches",
-          { workspaceId, tournamentId, chip, page, search, pageSize, filters }
-        ]}
-        queryFn={(page, search, pageSize, _sortField, _sortDir, filters) => {
-          const mapId = filters.map_id?.[0];
-          return adminService.listAdminMatches({
-            workspace_id: workspaceId,
-            tournament_id: tournamentId ?? undefined,
-            query: search || undefined,
-            map_id: mapId ? Number(mapId) : undefined,
-            // Every value the spec declares is a real status and the table hands
-            // back nothing it did not declare, so widening to the enum is safe.
-            log_status: filters.log_status?.length
-              ? (filters.log_status as LogProcessingStatus[])
-              : undefined,
-            ...(chip === "unresolved" && { unlinked_only: true }),
-            page,
-            per_page: pageSize
-          });
-        }}
-      />
+        </div>
 
-      <ParsedMatchSheet
-        row={inspecting}
-        workspaceId={workspaceId}
-        open={inspecting != null}
-        onOpenChange={(next) => setInspecting(next ? inspecting : null)}
-      />
+        <AdminInspector
+          openId={openRow ? openId : null}
+          onClose={() => setParams({ id: null })}
+          title={openRow?.map_name ?? ""}
+          subtitle={
+            openRow ? `${openRow.encounter_name} · ${openRow.tournament_name}` : undefined
+          }
+          onPrev={
+            openIndex > 0 ? () => setParams({ id: String(pageRows[openIndex - 1].id) }) : undefined
+          }
+          onNext={
+            openIndex >= 0 && openIndex < pageRows.length - 1
+              ? () => setParams({ id: String(pageRows[openIndex + 1].id) })
+              : undefined
+          }
+        >
+          {openRow ? <ParsedMatchDetail row={openRow} workspaceId={workspaceId} /> : null}
+        </AdminInspector>
+      </div>
     </div>
   );
 }

@@ -2,10 +2,9 @@
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { NextIntlClientProvider } from "next-intl";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ParsedMatchSheet } from "@/components/admin/ParsedMatchSheet";
+import { ParsedMatchDetail } from "@/components/admin/ParsedMatchDetail";
 import type { AdminMatchRow, LogRecordRef } from "@/types/admin.types";
 
 declare global {
@@ -26,19 +25,16 @@ async function mount(node: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRoot(container);
   await act(async () => {
-    root.render(
-      <NextIntlClientProvider locale="en" messages={{}}>
-        <QueryClientProvider client={client}>{node}</QueryClientProvider>
-      </NextIntlClientProvider>
-    );
+    root.render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
   });
   for (let turn = 0; turn < 5; turn += 1) {
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 0);
+      await promise;
     });
   }
-  // Radix renders the sheet into a portal on document.body.
-  return document.body;
+  return container;
 }
 
 function record(overrides: Partial<LogRecordRef> = {}): LogRecordRef {
@@ -79,7 +75,7 @@ function row(overrides: Partial<AdminMatchRow> = {}): AdminMatchRow {
   };
 }
 
-describe("ParsedMatchSheet", () => {
+describe("ParsedMatchDetail", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     getAdminMatch.mockReset().mockResolvedValue({
@@ -94,51 +90,48 @@ describe("ParsedMatchSheet", () => {
   it("calls an unlinked map unresolved, never failed", async () => {
     // Most of the archive predates the ingestion table. Presenting that as a
     // failure would bury the maps whose ingestion actually broke.
-    const body = await mount(
-      <ParsedMatchSheet row={row({ log_record: null })} workspaceId={1} open onOpenChange={() => {}} />
+    const scope = await mount(
+      <ParsedMatchDetail row={row({ log_record: null })} workspaceId={1} />
     );
-    expect(body.textContent).toContain("Provenance unresolved");
-    expect(body.textContent).not.toContain("failed");
+    expect(scope.textContent).toContain("Provenance unresolved");
+    expect(scope.textContent).not.toContain("failed");
   });
 
   it("still shows the log name when provenance is unresolved", async () => {
     // The S3 key is built from log_name, so the log stays downloadable even
     // with no record — the admin needs to see which file it is.
-    const body = await mount(
-      <ParsedMatchSheet row={row({ log_record: null })} workspaceId={1} open onOpenChange={() => {}} />
+    const scope = await mount(
+      <ParsedMatchDetail row={row({ log_record: null })} workspaceId={1} />
     );
-    expect(body.textContent).toContain("Log-2026-04-20.txt");
+    expect(scope.textContent).toContain("Log-2026-04-20.txt");
   });
 
   it("names the record and its state when provenance resolves", async () => {
-    const body = await mount(
-      <ParsedMatchSheet row={row()} workspaceId={1} open onOpenChange={() => {}} />
-    );
-    expect(body.textContent).toContain("#77");
-    expect(body.textContent).toContain("done");
-    expect(body.textContent).not.toContain("Provenance unresolved");
+    const scope = await mount(<ParsedMatchDetail row={row()} workspaceId={1} />);
+    expect(scope.textContent).toContain("#77");
+    expect(scope.textContent).toContain("done");
+    expect(scope.textContent).not.toContain("Provenance unresolved");
   });
 
   it("surfaces the ingestion error verbatim", async () => {
     // A parser error is the one field an admin cannot reconstruct elsewhere.
-    const body = await mount(
-      <ParsedMatchSheet
+    const scope = await mount(
+      <ParsedMatchDetail
         row={row({ log_record: record({ status: "failed", error_message: "log_not_found" }) })}
         workspaceId={1}
-        open
-        onOpenChange={() => {}}
       />
     );
-    expect(body.textContent).toContain("log_not_found");
+    expect(scope.textContent).toContain("log_not_found");
   });
 
-  it("fetches the aggregates only once the sheet is open", async () => {
-    await mount(
-      <ParsedMatchSheet row={row()} workspaceId={1} open={false} onOpenChange={() => {}} />
-    );
+  it("fetches the aggregates for the open row, and only with a workspace", async () => {
+    // The inspector mounts this only while a row is open, so "open" is no
+    // longer a prop — but the aggregates must still be scoped to a workspace,
+    // never requested without one.
+    await mount(<ParsedMatchDetail row={row()} workspaceId={null} />);
     expect(getAdminMatch).not.toHaveBeenCalled();
 
-    await mount(<ParsedMatchSheet row={row()} workspaceId={1} open onOpenChange={() => {}} />);
+    await mount(<ParsedMatchDetail row={row()} workspaceId={1} />);
     expect(getAdminMatch).toHaveBeenCalledWith(100, 1);
   });
 
@@ -152,9 +145,7 @@ describe("ParsedMatchSheet", () => {
       kill_feed_count: 0,
       event_count: 0
     });
-    const body = await mount(
-      <ParsedMatchSheet row={row()} workspaceId={1} open onOpenChange={() => {}} />
-    );
-    expect(body.textContent).toContain("No player statistics were written");
+    const scope = await mount(<ParsedMatchDetail row={row()} workspaceId={1} />);
+    expect(scope.textContent).toContain("No player statistics were written");
   });
 });
