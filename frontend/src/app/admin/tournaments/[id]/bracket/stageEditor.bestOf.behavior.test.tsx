@@ -12,6 +12,11 @@
 // The rows here are pinned against `double_elimination.generate`: an 8-team
 // bracket really does emit upper 1..3, lower -1..-4 and round 4 for the grand
 // final.
+//
+// Carried over from `stageManager.bestOf.behavior.test.tsx` when PR-2e split
+// `StageManager` into the Bracket tab: same claims, now driven through
+// `?stage=&section=best-of` and saved by `SaveBar` instead of the "Advanced"
+// disclosure and its "Save override" button.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -21,7 +26,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
 import type { Stage } from "@/types/tournament.types";
 
-import { StageManager } from "./StageManager";
+import BracketTabPage from "./page";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -40,31 +45,41 @@ vi.mock("@/services/admin.service", () => ({
     getTournament: (...args: unknown[]) => getTournament(...args),
     getStagesProgress: (...args: unknown[]) => getStagesProgress(...args),
     updateStage: (...args: unknown[]) => updateStage(...args),
-    applyStageBestOf: vi.fn(),
-  },
+    applyStageBestOf: vi.fn()
+  }
 }));
 
 vi.mock("@/services/team.service", () => ({
-  default: { getAll: (...args: unknown[]) => getTeams(...args) },
+  default: { getAll: (...args: unknown[]) => getTeams(...args) }
 }));
 
 vi.mock("@/hooks/usePermissions", () => ({
-  usePermissions: () => ({ isSuperuser: true }),
+  usePermissions: () => ({ isSuperuser: true })
 }));
 
 vi.mock("@/lib/notify", () => ({
-  notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() },
-}));
-// `EntityFormDialog` (the create-stage dialog) guards navigation with the app
-// router, which no test tree mounts.
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-  usePathname: () => "/admin/tournaments/84",
-  useSearchParams: () => new URLSearchParams(),
+  notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 
-vi.mock("./tournamentWorkspace.queryKeys", () => ({
-  invalidateTournamentWorkspace: vi.fn(),
+// `SaveBar` and `EntityFormDialog` guard navigation with the app router, and
+// `AdminTabs` renders `next/link` — neither context exists in a test tree.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  usePathname: () => "/admin/tournaments/84/bracket",
+  useParams: () => ({ id: "84" }),
+  useSearchParams: () => new URLSearchParams("stage=10&section=best-of")
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: unknown }) => (
+    <a href={href} {...rest}>
+      {children as never}
+    </a>
+  )
+}));
+
+vi.mock("../components/tournamentWorkspace.queryKeys", () => ({
+  invalidateTournamentWorkspace: vi.fn()
 }));
 
 /** An 8-team double elimination in one `single_bracket` item — the reported setup. */
@@ -99,10 +114,10 @@ function singleBracketStage(seededTeams = 8): Stage {
           team_id: index + 1,
           winner_from_stage_item_id: null,
           winner_position: null,
-          team: null,
-        })),
-      },
-    ],
+          team: null
+        }))
+      }
+    ]
   } as unknown as Stage;
 }
 
@@ -134,7 +149,7 @@ async function mount(stage: Stage) {
         <QueryClientProvider
           client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
         >
-          <StageManager tournamentId={84} />
+          <BracketTabPage />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -156,7 +171,7 @@ for (const [name, value] of Object.entries({
   hasPointerCapture: () => false,
   setPointerCapture: () => undefined,
   releasePointerCapture: () => undefined,
-  scrollIntoView: () => undefined,
+  scrollIntoView: () => undefined
 })) {
   if (!(name in Element.prototype)) {
     Object.defineProperty(Element.prototype, name, { value, writable: true });
@@ -185,23 +200,23 @@ function only(name: string): HTMLElement {
   return matches[0];
 }
 
-/** The best-of block, addressed by its heading. */
+/** The best-of section, addressed by its heading. */
 function bestOfPanel(): HTMLElement {
-  const heading = [...container.querySelectorAll("h4")].find(
+  const heading = [...container.querySelectorAll("h3")].find(
     (element) => (element.textContent ?? "").trim() === "Best-of per round"
   );
   const found = heading?.parentElement?.parentElement;
-  if (!(found instanceof HTMLElement)) throw new Error("best-of panel is not open");
+  if (!(found instanceof HTMLElement)) throw new Error("best-of section is not rendered");
   return found;
 }
 
-/** Section heading -> the round labels it offers, in order. */
+/** Bracket heading -> the round labels it offers, in order. */
 function roundLabelsBySection(): Record<string, string[]> {
   const sections: Record<string, string[]> = {};
-  for (const heading of bestOfPanel().querySelectorAll("h5")) {
+  for (const heading of bestOfPanel().querySelectorAll("h4")) {
     const grid = heading.nextElementSibling;
     sections[(heading.textContent ?? "").trim()] = [
-      ...(grid?.querySelectorAll("label") ?? []),
+      ...(grid?.querySelectorAll("label") ?? [])
     ].map((label) => (label.textContent ?? "").trim());
   }
   return sections;
@@ -217,10 +232,6 @@ function roundSelect(label: string): HTMLElement {
   return trigger;
 }
 
-async function openAdvanced() {
-  await click(only("Advanced"));
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   if (root) {
@@ -229,23 +240,21 @@ beforeEach(() => {
     act(() => root.unmount());
     container.remove();
   }
-  updateStage.mockResolvedValue({ id: 10 });
+  updateStage.mockResolvedValue(singleBracketStage());
 });
 
-describe("StageManager best-of, double elimination", () => {
+describe("Stage editor best-of, double elimination", () => {
   it("groups the rounds by bracket instead of one flat list", async () => {
     await mount(singleBracketStage());
-    await openAdvanced();
 
     expect(roundLabelsBySection()).toEqual({
       "Upper bracket": ["UB Round 1", "UB Semifinal", "UB Final"],
-      "Lower bracket": ["LB Round 1", "LB Round 2", "LB Round 3", "LB Final"],
+      "Lower bracket": ["LB Round 1", "LB Round 2", "LB Round 3", "LB Final"]
     });
   });
 
   it("names the grand final knob so it is not read as 'the last round of both'", async () => {
     await mount(singleBracketStage());
-    await openAdvanced();
 
     const labels = [...bestOfPanel().querySelectorAll("label")].map((element) =>
       (element.textContent ?? "").trim()
@@ -256,7 +265,6 @@ describe("StageManager best-of, double elimination", () => {
 
   it("writes upper-bracket rounds and the grand final without touching the lower bracket", async () => {
     await mount(singleBracketStage());
-    await openAdvanced();
 
     // The reported ask: Bo5 in upper rounds 2 and 3 and the grand final, lower
     // bracket untouched.
@@ -266,12 +274,12 @@ describe("StageManager best-of, double elimination", () => {
     }
     await click(roundSelect("Grand Final"));
     await choose("Bo5");
-    await click(only("Save override"));
+    await click(only("Save changes"));
 
     expect(updateStage).toHaveBeenCalledTimes(1);
     const [stageId, payload] = updateStage.mock.calls[0] as [
       number,
-      { settings_json: { best_of: { by_round?: Record<string, number>; final?: number } } },
+      { settings_json: { best_of: { by_round?: Record<string, number>; final?: number } } }
     ];
     expect(stageId).toBe(10);
     // Upper rounds 2 and 3 by number; the grand final via `final`, which the
@@ -285,15 +293,14 @@ describe("StageManager best-of, double elimination", () => {
 
   it("reaches a lower-bracket round, which a positive-only list could not address", async () => {
     await mount(singleBracketStage());
-    await openAdvanced();
 
     await click(roundSelect("LB Final"));
     await choose("Bo5");
-    await click(only("Save override"));
+    await click(only("Save changes"));
 
     const [, payload] = updateStage.mock.calls[0] as [
       number,
-      { settings_json: { best_of: { by_round?: Record<string, number> } } },
+      { settings_json: { best_of: { by_round?: Record<string, number> } } }
     ];
     // LB Final is round -4 in an 8-team bracket, per `double_elimination.generate`.
     expect(payload.settings_json.best_of.by_round).toEqual({ "-4": 5 });
@@ -301,7 +308,6 @@ describe("StageManager best-of, double elimination", () => {
 
   it("offers the bracket it is about to build before any team is seeded", async () => {
     await mount(singleBracketStage(0));
-    await openAdvanced();
 
     // No seeds means no team count to derive from, so the rows fall back to
     // max_rounds (5, which counts the grand final) rather than disappearing.
@@ -309,7 +315,7 @@ describe("StageManager best-of, double elimination", () => {
       "UB Round 1",
       "UB Round 2",
       "UB Semifinal",
-      "UB Final",
+      "UB Final"
     ]);
   });
 });
