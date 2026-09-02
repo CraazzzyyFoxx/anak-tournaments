@@ -202,7 +202,7 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<Adm
           Skip to content
         </a>
         <AdminSidebar />
-        <SidebarInset className="min-h-svh min-w-0 bg-background/95 md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl md:peer-data-[variant=inset]:shadow-black/10">
+        <SidebarInset className="min-w-0 bg-background/95 md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl md:peer-data-[variant=inset]:shadow-black/10">
           <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-5">
             <SidebarTrigger className="size-8 rounded-lg border border-border/60" />
             <Separator orientation="vertical" className="h-5" />
