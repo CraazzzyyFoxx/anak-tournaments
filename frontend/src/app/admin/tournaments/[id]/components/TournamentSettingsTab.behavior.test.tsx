@@ -62,6 +62,10 @@ const TOURNAMENT: Tournament = {
   updated_at: null,
   workspace_id: 1,
   name: "OWT 64",
+  // Required on `Tournament`, and read unguarded by `normalizeTournamentFormValues`.
+  // Absent until a test actually submitted the form: `tsconfig.json` does not
+  // typecheck this file, so the missing field never surfaced.
+  slug: "owt-64",
   start_date: new Date("2026-04-18T00:00:00Z"),
   end_date: new Date("2026-04-19T00:00:00Z"),
   description: null,
@@ -181,6 +185,52 @@ afterEach(() => {
     act(() => mounted.root.unmount());
     mounted.container.remove();
   }
+});
+
+describe("Allow late registration", () => {
+  function toggle(scope: Element) {
+    const node = scope.querySelector("#settings-allow-late-registration");
+    if (!node) throw new Error("late-registration toggle not rendered");
+    return node;
+  }
+
+  it("is labelled, and reaches the update payload when flipped", async () => {
+    const scope = await mount();
+
+    // A control the organizer can find and a label a screen reader can read:
+    // the flag spent a release editable only through the raw admin API.
+    expect(scope.querySelector("label[for='settings-allow-late-registration']")?.textContent).toBe(
+      "Allow late registration"
+    );
+    expect(toggle(scope).getAttribute("aria-checked")).toBe("false");
+
+    await act(async () => {
+      click(toggle(scope));
+    });
+    await settle();
+    expect(toggle(scope).getAttribute("aria-checked")).toBe("true");
+
+    const form = scope.querySelector("form");
+    if (!form) throw new Error("settings form not rendered");
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await settle();
+
+    expect(updateTournament).toHaveBeenCalledWith(
+      64,
+      expect.objectContaining({ allow_late_registration: true })
+    );
+  });
+
+  it("warns that it is a no-op while the registration window is open-ended", async () => {
+    // `TOURNAMENT.phase_schedule` is empty, so the registration row carries no
+    // `ends_at` — there is nothing for the override to lift, and saying so here
+    // is the whole point: a switch that appears to do nothing is what this
+    // feature was before.
+    const scope = await mount();
+    expect(scope.textContent).toContain("this changes nothing");
+  });
 });
 
 describe("TournamentSettingsTab integrations card", () => {

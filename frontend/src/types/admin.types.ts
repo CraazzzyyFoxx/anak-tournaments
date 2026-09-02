@@ -300,6 +300,7 @@ export interface TournamentUpdateInput {
   start_date?: string;
   end_date?: string;
   auto_transitions_enabled?: boolean;
+  allow_late_registration?: boolean;
   win_points?: number;
   draw_points?: number;
   loss_points?: number;

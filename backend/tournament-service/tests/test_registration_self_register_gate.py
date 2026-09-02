@@ -405,8 +405,10 @@ def test_registration_needs_a_schedule_row_at_all() -> None:
 def test_registration_open_inside_the_window_regardless_of_phase() -> None:
     """Phase no longer participates: an open window means open, even at LIVE.
 
-    This is what replaces ``allow_late_registration`` — late registration is now
-    expressed as an ``ends_at`` that extends past the LIVE start.
+    Distinct from ``allow_late_registration``, which is back but narrower: an
+    ``ends_at`` past the LIVE start keeps registration open with no flag at all,
+    while the flag exists for the organizer who wants to keep the advertised
+    closing date on the page and still admit latecomers.
     """
     now = datetime.now(UTC)
     for status in (
@@ -444,6 +446,37 @@ def test_registration_closed_outside_registration_row_window() -> None:
                 ends_at=now - timedelta(hours=1),
             )
         ],
+    )
+    assert windows.is_registration_open(tournament, now=now) is False
+
+
+def test_allow_late_registration_reopens_an_ended_window() -> None:
+    """The flag reads off the ``Tournament`` here, not off a projection — this is
+    the wiring ``windows.is_registration_open`` owns, and the reason the shared
+    predicate takes ``allow_late`` as a required argument."""
+    now = datetime.now(UTC)
+    ended = [
+        _schedule_row(
+            enums.TournamentStatus.REGISTRATION,
+            starts_at=now - timedelta(hours=2),
+            ends_at=now - timedelta(hours=1),
+        )
+    ]
+    tournament = _gate_tournament(
+        enums.TournamentStatus.LIVE,
+        schedule=ended,
+        allow_late_registration=True,
+    )
+    assert windows.is_registration_open(tournament, now=now) is True
+
+
+def test_allow_late_registration_does_not_open_a_tournament_with_no_row() -> None:
+    """The override lifts ``ends_at`` only. Opening a row-less tournament would
+    flip the freshly-created default from closed to open."""
+    now = datetime.now(UTC)
+    tournament = _gate_tournament(
+        enums.TournamentStatus.REGISTRATION,
+        allow_late_registration=True,
     )
     assert windows.is_registration_open(tournament, now=now) is False
 

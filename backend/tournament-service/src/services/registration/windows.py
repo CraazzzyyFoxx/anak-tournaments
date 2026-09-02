@@ -45,16 +45,22 @@ def is_registration_open(
 ) -> bool:
     """Whether self-service registration is currently open.
 
-    The tournament's REGISTRATION schedule window is the only switch: no row
-    means closed, COMPLETED/ARCHIVED is always closed, and late registration is
-    an ``ends_at`` that extends past the LIVE start. The former
-    ``BalancerRegistrationForm.is_open`` kill switch and
-    ``Tournament.allow_late_registration`` are gone — one question, one answer.
+    The tournament's REGISTRATION schedule window plus one override: no row means
+    closed, COMPLETED/ARCHIVED is always closed, and ``allow_late_registration``
+    lifts the window's ``ends_at`` so latecomers can be admitted without editing
+    away the intended closing time. The former
+    ``BalancerRegistrationForm.is_open`` kill switch is gone, and the tournament's
+    own phase no longer participates.
 
     ``form`` is no longer a parameter: keeping it would imply the form still has
     a say.
     """
-    return is_registration_window_open(tournament.status, tournament.phase_schedule, now)
+    return is_registration_window_open(
+        tournament.status,
+        tournament.phase_schedule,
+        now,
+        allow_late=tournament.allow_late_registration,
+    )
 
 
 class RegistrationWindowService:

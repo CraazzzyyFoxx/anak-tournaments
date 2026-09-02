@@ -97,6 +97,12 @@ export interface Tournament {
   team_formation: string;
   status: TournamentStatus;
   auto_transitions_enabled: boolean;
+  /**
+   * Admits latecomers past the REGISTRATION window's `ends_at`, so an organizer
+   * can keep the advertised closing date on the page instead of erasing it by
+   * pushing `ends_at` out. Lifts `ends_at` ONLY — see `isRegistrationOpen`.
+   */
+  allow_late_registration: boolean;
   phase_schedule: TournamentPhaseSchedule[];
   win_points: number;
   draw_points: number;

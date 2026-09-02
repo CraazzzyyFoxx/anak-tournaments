@@ -154,6 +154,9 @@ export default defineConfig({
       "src/lib/draft-workspace-model.test.ts",
       "src/lib/stream-platform.test.ts",
       "src/lib/image-capture.test.ts",
+      // Was in the same unrun state when the register-button gate got its first
+      // real test: the stream-visibility cases in it had never executed either.
+      "src/lib/tournament-status.test.ts",
       "src/components/Header.mobile-layout.test.ts",
       "src/components/WorkspaceBootstrap.helpers.test.ts",
       // File-level: `src/components` holds both runners' tests, so a directory

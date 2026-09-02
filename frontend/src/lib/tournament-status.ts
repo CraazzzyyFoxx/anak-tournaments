@@ -149,18 +149,22 @@ export function isPhaseWindowActive(
 }
 
 /**
- * Mirrors the backend registration gate: the tournament's REGISTRATION phase
- * window is the only switch.
+ * Mirrors the backend registration gate (`shared.services.registration_window`):
+ * the REGISTRATION phase window plus one override.
  *
  * A MISSING row means closed — deliberately the opposite of
  * `isPhaseWindowActive` above, whose "no row spans the whole phase" rule stays
- * as-is for check-in. The tournament's own phase does not participate: late
- * registration is an `ends_at` that reaches past the LIVE start, which is what
- * replaced the old `allow_late_registration` flag and the form's `is_open`
- * kill switch.
+ * as-is for check-in. The tournament's own phase does not participate: an
+ * `ends_at` reaching past the LIVE start keeps registration open by itself.
+ *
+ * `allow_late_registration` lifts `ends_at` and NOTHING else — it cannot open a
+ * tournament with no row, one whose window has not started, or a finished one.
+ * Keep this in lockstep with the backend predicate: this function only decides
+ * whether to render the register button, and a client that disagrees with the
+ * server either hides a working button or offers one that 400s.
  */
 export function isRegistrationOpen(
-  tournament: Pick<Tournament, "status" | "phase_schedule">,
+  tournament: Pick<Tournament, "status" | "phase_schedule" | "allow_late_registration">,
   now: number = Date.now()
 ) {
   if (tournament.status === "completed" || tournament.status === "archived") return false;
@@ -169,8 +173,10 @@ export function isRegistrationOpen(
   if (!row) return false;
 
   const startsAt = new Date(row.starts_at).getTime();
+  if (startsAt > now) return false;
+
   const endsAt = row.ends_at ? new Date(row.ends_at).getTime() : null;
-  return startsAt <= now && (endsAt === null || now <= endsAt);
+  return endsAt === null || tournament.allow_late_registration === true || now <= endsAt;
 }
 
 /**

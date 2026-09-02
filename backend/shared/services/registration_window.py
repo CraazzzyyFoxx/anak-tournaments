@@ -7,13 +7,17 @@ Registration openness used to be a conjunction of three knobs across two owners:
     AND ( (status == REGISTRATION AND is_within_phase_window(REGISTRATION, ...))
           OR tournament.allow_late_registration )  # Tournament
 
-It is now one: the ``REGISTRATION`` row of ``tournament_phase_schedule``. Opening,
-extending and closing registration are all edits to that row's window, and the
-tournament's own phase no longer participates — late registration is expressed by
-an ``ends_at`` beyond the LIVE start rather than by a separate boolean.
+Two of those three are gone. ``form.is_open`` was a second open/closed switch
+standing beside the schedule, and the tournament's own *phase* no longer
+participates at all: a window reaching past the LIVE start keeps registration
+open by itself, so openness never has to consult ``status`` except as a floor.
 
-Two deliberate properties
--------------------------
+What remains is the ``REGISTRATION`` row of ``tournament_phase_schedule`` plus one
+override: ``Tournament.allow_late_registration``, which lifts ``ends_at`` and
+nothing else.
+
+Three deliberate properties
+---------------------------
 **A missing row means CLOSED.** This inverts
 ``tournament_state.is_within_phase_window``, whose documented contract is that a
 missing row "spans the whole phase". That contract is load-bearing for
@@ -25,6 +29,18 @@ would accept registrations before its form was configured.
 **Terminal statuses are a floor, not a knob.** COMPLETED/ARCHIVED is always
 closed regardless of the window, so a mis-set ``ends_at`` can never reopen an
 archived tournament.
+
+**The late-registration override lifts ``ends_at`` ONLY.** It is deliberately the
+narrowest knob that still does the job — admit latecomers without editing away
+the intended closing time, which is the one thing an ``ends_at`` edit cannot do
+(it destroys the very date the organizer wants to keep on the page). It therefore
+does NOT open a tournament with no REGISTRATION row (that would flip a fresh
+tournament's default to open and defeat the inversion above), does NOT open one
+whose window has not started yet (*late* means after the end, never before the
+start), and cannot beat the terminal floor. ``allow_late`` is a REQUIRED argument
+rather than a defaulted one: a caller holding only ``(status, schedule)`` cannot
+know the flag, and defaulting it to ``False`` would silently answer "closed" for
+exactly the tournaments this override exists to keep open.
 
 Both a Python predicate and a SQL clause are provided because openness is read
 both per-tournament and inside aggregate queries in three different services
@@ -50,12 +66,14 @@ def is_registration_window_open(
     status: TournamentStatus,
     schedule: Iterable[PhaseScheduleEntry],
     now: datetime | None = None,
+    *,
+    allow_late: bool,
 ) -> bool:
     """``True`` while ``now`` is inside the REGISTRATION row's window.
 
-    Deliberately takes the status and schedule rather than a ``Tournament`` so it
-    can be unit-tested without a mapped instance, and so callers holding only a
-    projection can use it.
+    Deliberately takes the status, schedule and flag rather than a ``Tournament``
+    so it can be unit-tested without a mapped instance, and so callers holding
+    only a projection can use it.
     """
     if is_finished_for_status(status):
         return False
@@ -69,7 +87,9 @@ def is_registration_window_open(
     starts_at = _as_utc(entry.starts_at)
     if starts_at > moment:
         return False
-    return entry.ends_at is None or moment <= _as_utc(entry.ends_at)
+    if entry.ends_at is None or allow_late:
+        return True
+    return moment <= _as_utc(entry.ends_at)
 
 
 def registration_open_clause(now: datetime | None = None) -> sa.ColumnElement[bool]:
@@ -80,7 +100,11 @@ def registration_open_clause(now: datetime | None = None) -> sa.ColumnElement[bo
         sa.select(sa.func.count(Tournament.id)).where(registration_open_clause())
 
     Mirrors the Python predicate exactly, including "missing row => closed"
-    (``EXISTS`` fails when there is no row) and the terminal-status floor.
+    (``EXISTS`` fails when there is no row), the terminal-status floor, and the
+    ``allow_late_registration`` override of ``ends_at``. The override is a
+    correlated reference to the outer ``Tournament`` — it sits INSIDE the
+    ``EXISTS`` next to the ``ends_at`` test on purpose, because lifting it to the
+    top level would also bypass "missing row => closed" and ``starts_at``.
     """
     moment = now or datetime.now(UTC)
     window = (
@@ -93,6 +117,7 @@ def registration_open_clause(now: datetime | None = None) -> sa.ColumnElement[bo
             sa.or_(
                 TournamentPhaseSchedule.ends_at.is_(None),
                 TournamentPhaseSchedule.ends_at >= moment,
+                Tournament.allow_late_registration.is_(True),
             ),
         )
         .exists()

@@ -634,10 +634,34 @@ export function TournamentSettingsTab({
                 />
               </div>
 
-              {/* "Allow late registration" is gone: registration openness is the
-                  REGISTRATION row of the phase schedule below, and late
-                  registration is an `ends_at` that reaches past the LIVE start.
-                  One question, one answer, one place to change it. */}
+              <div className="flex items-center justify-between gap-4 border-t border-border/50 pt-4">
+                <div className="space-y-0.5">
+                  <Label
+                    htmlFor="settings-allow-late-registration"
+                    className="cursor-pointer text-sm font-medium"
+                  >
+                    Allow late registration
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Keeps sign-ups open past the registration window&apos;s end time, so the
+                    advertised closing date stays on the page. Does not open registration that
+                    never started, and never reopens a finished tournament.
+                  </p>
+                  {!formData.phase_schedule.registration.ends_at && (
+                    <p className="text-xs text-warning">
+                      No end time is set on the registration window above, so registration is
+                      already open-ended and this changes nothing.
+                    </p>
+                  )}
+                </div>
+                <Switch
+                  id="settings-allow-late-registration"
+                  checked={formData.allow_late_registration}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, allow_late_registration: checked })
+                  }
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
