@@ -53,6 +53,7 @@ import { CategorizedColumnPicker } from "@/components/ui/categorized-column-pick
 import { Checkbox } from "@/components/ui/checkbox";
 import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
 import { useColumnVisibility } from "@/hooks/useColumnVisibility";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const ADMIN_ACTION_COLUMN_ID = "actions";
 const ADMIN_ACTION_COLUMN_MIN_WIDTH = 80;
@@ -113,6 +114,11 @@ export interface AdminDataTableProps<TData> {
   isLoading?: boolean;
 
   columns: ColumnDef<TData>[];
+  /**
+   * Label and placeholder for the built-in search box. Omit it together with
+   * a `toolbar` that carries its own search, and this one is not rendered —
+   * two search fields over one table is the bug, not the feature.
+   */
   searchPlaceholder?: string;
   emptyMessage?: string;
   initialPageSize?: number;
@@ -179,6 +185,31 @@ export interface AdminDataTableProps<TData> {
   onRowClick?: (row: Row<TData>) => void;
   onRowDoubleClick?: (row: Row<TData>) => void;
   actions?: React.ReactNode;
+
+  /**
+   * Rendered in its own row above the table: this is where `AdminFilterBar`
+   * goes. Unlike `actions` (a cluster to the right of the search box) it owns
+   * the full width, because a chip row wraps.
+   */
+  toolbar?: React.ReactNode;
+
+  /**
+   * Row currently open in the inspector (`?id=`). That row is marked
+   * `aria-current="true"` and tinted.
+   *
+   * NOT `aria-selected`: inside `role="table"` that attribute is not allowed
+   * on a row (only `grid`/`treegrid` support it), so it would be an ARIA
+   * violation rather than a state announcement. `aria-current` is the
+   * "current item in a set" primitive and is valid on any element.
+   */
+  inspectorId?: string | null;
+
+  /**
+   * Below `md` the table becomes a list of cards. Without this, a card shows
+   * the first three visible columns; pass it when those three are the wrong
+   * three (F18 ·1).
+   */
+  renderMobileCard?: (row: Row<TData>) => React.ReactNode;
 }
 
 export function AdminDataTable<TData>({
@@ -187,7 +218,7 @@ export function AdminDataTable<TData>({
   rows,
   isLoading = false,
   columns,
-  searchPlaceholder = "Search…",
+  searchPlaceholder,
   emptyMessage = "No records to show yet.",
   onRowClick,
   onRowDoubleClick,
@@ -207,11 +238,15 @@ export function AdminDataTable<TData>({
   paging = "pages",
   rowUnit = "rows",
   cellAlign = "middle",
+  toolbar,
+  inspectorId,
+  renderMobileCard,
 }: Readonly<AdminDataTableProps<TData>>) {
   const isClientMode = rows !== undefined;
   // Server mode has no accumulating query to grow, so it always paginates.
   const isInfinite = isClientMode && paging === "infinite";
   const pathname = usePathname();
+  const isMobile = useIsMobile();
   const searchInputId = useId();
   const rowHintId = useId();
   const [searchValue, setSearchValue] = useState("");
@@ -636,57 +671,158 @@ export function AdminDataTable<TData>({
     </TableCell>
   );
 
+  /**
+   * The built-in search box stays unless a `toolbar` was handed in without a
+   * `searchPlaceholder` — that is the screen saying "my filter bar owns the
+   * search". Passing both keeps the table's own box, for a toolbar that is
+   * only chips.
+   */
+  const showSearch = searchPlaceholder !== undefined || toolbar === undefined;
+  const searchLabel = searchPlaceholder ?? "Search…";
+  const hasToolbarTrailing =
+    Boolean(actions) ||
+    Boolean(columnsStorageKey) ||
+    isRefreshing ||
+    Boolean(bulkActions && selectedRows.length > 0);
+
+  const emptyState = (
+    <div className="flex flex-col items-center justify-center gap-2">
+      <CircleMinus aria-hidden className="size-5 text-muted-foreground/40" />
+      <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+      {searchValue || serializedFilters ? (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Nothing matches the current {searchValue && serializedFilters ? "search and filters" : searchValue ? "search" : "filters"}.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => { setSearchValue(""); setFilters({}); }}
+          >
+            {searchValue && serializedFilters ? "Clear search and filters" : searchValue ? "Clear search" : "Clear filters"}
+          </Button>
+        </>
+      ) : null}
+    </div>
+  );
+
+  /**
+   * Below `md` a wide table either scrolls sideways past the point of use or
+   * hides its columns, so the rows become cards instead (F18 ·1). Three
+   * columns is what fits a phone row; a screen whose three most important
+   * columns are not the first three passes `renderMobileCard`.
+   */
+  const mobileCardColumns = table
+    .getVisibleLeafColumns()
+    .filter((column) => column.id !== ADMIN_ACTION_COLUMN_ID)
+    .slice(0, 3);
+
+  const renderMobileRow = (row: Row<TData>) => {
+    const cells = row.getVisibleCells();
+    const actionCell = cells.find((cell) => cell.column.id === ADMIN_ACTION_COLUMN_ID);
+    const body = renderMobileCard ? (
+      renderMobileCard(row)
+    ) : (
+      <>
+        {mobileCardColumns.map((column) => {
+          const cell = cells.find((candidate) => candidate.column.id === column.id);
+          if (!cell) return null;
+          return (
+            <div key={column.id} className="truncate text-sm">
+              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+            </div>
+          );
+        })}
+      </>
+    );
+
+    return (
+      <li
+        key={row.id}
+        aria-current={row.id === inspectorId ? "true" : undefined}
+        className={cn(
+          "flex items-start gap-2 border-b border-border/30 px-4 py-3 last:border-b-0",
+          row.id === inspectorId && "bg-primary/10",
+        )}
+      >
+        {onRowClick ? (
+          <button
+            type="button"
+            onClick={() => onRowClick(row)}
+            className="min-w-0 flex-1 space-y-0.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {body}
+          </button>
+        ) : (
+          <div className="min-w-0 flex-1 space-y-0.5">{body}</div>
+        )}
+        {actionCell ? (
+          <div className="shrink-0">
+            {flexRender(actionCell.column.columnDef.cell, actionCell.getContext())}
+          </div>
+        ) : null}
+      </li>
+    );
+  };
+
   return (
     <div className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
-      {/* ── TOOLBAR: search + actions ──────────────────── */}
-      <div className="flex items-center justify-between gap-3 border-b border-border/40 px-4 py-2.5">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          {/* Search */}
-          <div className="relative w-full max-w-xs">
-            <Label htmlFor={searchInputId} className="sr-only">{searchPlaceholder}</Label>
-            <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id={searchInputId}
-              autoComplete="off"
-              className="h-9 border-border bg-muted/30 pl-9 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring"
-              name="admin-table-search"
-              placeholder={searchPlaceholder}
-              value={searchValue}
-              onChange={(event) => setSearchValue(event.target.value)}
-            />
+      {/* ── TOOLBAR ─────────────────────────────────────── */}
+      {toolbar ? (
+        <div className="border-b border-border/40 px-4 py-2.5">{toolbar}</div>
+      ) : null}
+      {showSearch || hasToolbarTrailing ? (
+        <div className="flex items-center justify-between gap-3 border-b border-border/40 px-4 py-2.5">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            {showSearch ? (
+              <div className="relative w-full max-w-xs">
+                <Label htmlFor={searchInputId} className="sr-only">{searchLabel}</Label>
+                <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id={searchInputId}
+                  autoComplete="off"
+                  className="h-9 border-border bg-muted/30 pl-9 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring"
+                  name="admin-table-search"
+                  placeholder={searchLabel}
+                  value={searchValue}
+                  onChange={(event) => setSearchValue(event.target.value)}
+                />
+              </div>
+            ) : null}
+
+            {isRefreshing ? (
+              <output className="flex shrink-0 items-center text-muted-foreground">
+                <LoaderCircle aria-hidden className="size-3 animate-spin" />
+                <span className="sr-only">Refreshing results…</span>
+              </output>
+            ) : null}
           </div>
 
-          {isRefreshing ? (
-            <output className="flex shrink-0 items-center text-muted-foreground">
-              <LoaderCircle aria-hidden className="size-3 animate-spin" />
-              <span className="sr-only">Refreshing results…</span>
-            </output>
-          ) : null}
+          <div className="flex items-center gap-2 shrink-0">
+            {bulkActions && selectedRows.length > 0
+              ? bulkActions(
+                  selectedRows.map((row) => row.original),
+                  () => setRowSelection({})
+                )
+              : null}
+            {columnsStorageKey ? (
+              <CategorizedColumnPicker<AdminColumnCategory, (typeof pickerColumns)[number]>
+                columns={pickerColumns}
+                categories={["core", "meta", "admin"]}
+                categoryLabel={(category) => COLUMN_CATEGORY_LABELS[category]}
+                visibility={visibility}
+                onToggle={toggleColumn}
+                onReset={resetToDefaults}
+                triggerLabel="Columns"
+                resetLabel="Reset to defaults"
+                isMandatory={(id) => pickerColumns.some((column) => column.id === id && column.mandatory)}
+              />
+            ) : null}
+            {actions}
+          </div>
         </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {bulkActions && selectedRows.length > 0
-            ? bulkActions(
-                selectedRows.map((row) => row.original),
-                () => setRowSelection({})
-              )
-            : null}
-          {columnsStorageKey ? (
-            <CategorizedColumnPicker<AdminColumnCategory, (typeof pickerColumns)[number]>
-              columns={pickerColumns}
-              categories={["core", "meta", "admin"]}
-              categoryLabel={(category) => COLUMN_CATEGORY_LABELS[category]}
-              visibility={visibility}
-              onToggle={toggleColumn}
-              onReset={resetToDefaults}
-              triggerLabel="Columns"
-              resetLabel="Reset to defaults"
-              isMandatory={(id) => pickerColumns.some((column) => column.id === id && column.mandatory)}
-            />
-          ) : null}
-          {actions}
-        </div>
-      </div>
+      ) : null}
 
       {/* ── TABLE ───────────────────────────────────────── */}
       <div className="overflow-x-auto">
@@ -695,6 +831,13 @@ export function AdminDataTable<TData>({
             Press Enter to open the focused row.
           </p>
         ) : null}
+        {isMobile ? (
+          pageRows.length > 0 ? (
+            <ul aria-label="Rows">{rowGroups.flatMap((group) => group.rows).map(renderMobileRow)}</ul>
+          ) : (
+            <div className="py-8 text-center">{emptyState}</div>
+          )
+        ) : (
         <Table className="min-w-full border-separate border-spacing-0">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -800,9 +943,11 @@ export function AdminDataTable<TData>({
                     <Fragment key={row.id}>
                       <TableRow
                         data-state={row.getIsSelected() && "selected"}
+                        aria-current={row.id === inspectorId ? "true" : undefined}
                         className={cn(
                           "group border-b border-border/30 transition-colors hover:bg-accent/20 data-[state=selected]:bg-accent/30",
                           hasRowAction && "cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:ring-inset",
+                          row.id === inspectorId && "bg-primary/10",
                         )}
                         onClick={(event) => handleRowClick(event, row)}
                         onDoubleClick={(event) => handleRowDoubleClick(event, row)}
@@ -837,7 +982,10 @@ export function AdminDataTable<TData>({
                               style={sticky.style}
                             >
                               {isActionColumn ? (
-                                <div className="flex w-full items-center justify-end opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                                // Always visible: hiding the primary row
+                                // actions behind hover made them unreachable
+                                // without a mouse on every list screen.
+                                <div className="flex w-full items-center justify-end">
                                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                 </div>
                               ) : (
@@ -861,30 +1009,13 @@ export function AdminDataTable<TData>({
             ) : (
               <TableRow>
                 <TableCell colSpan={bodyColumnCount} className="py-8 text-center">
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    <CircleMinus aria-hidden className="size-5 text-muted-foreground/40" />
-                    <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-                    {searchValue || serializedFilters ? (
-                      <>
-                        <p className="text-xs text-muted-foreground">
-                          Nothing matches the current {searchValue && serializedFilters ? "search and filters" : searchValue ? "search" : "filters"}.
-                        </p>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => { setSearchValue(""); setFilters({}); }}
-                        >
-                          {searchValue && serializedFilters ? "Clear search and filters" : searchValue ? "Clear search" : "Clear filters"}
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
+                  {emptyState}
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
+        )}
       </div>
 
       {/* ── FOOTER: pagination ─────────────────────────── */}

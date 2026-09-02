@@ -1,0 +1,79 @@
+"use client";
+
+import { Fragment, type ReactNode } from "react";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
+
+import { TONE_CLASS, type Tone } from "@/components/admin/tone";
+import { cn } from "@/lib/utils";
+
+export interface EntityHubHeaderProps {
+  title: ReactNode;
+  status?: { label: string; tone: Tone };
+  /** Metric/date fragments, joined with a middot. */
+  meta?: ReactNode[];
+  actions?: ReactNode;
+  backHref?: string;
+}
+
+/**
+ * The header of every T3 hub: tournament, person, team, achievement.
+ *
+ * Replaces `TournamentWorkspaceHeader` plus the three hand-rolled entity
+ * headings, so a hub reads the same whatever entity it is about. No `Card`:
+ * per the design book a header is grouped by air and a hairline, not a frame.
+ */
+export function EntityHubHeader({
+  title,
+  status,
+  meta,
+  actions,
+  backHref
+}: Readonly<EntityHubHeaderProps>) {
+  const metaParts = (meta ?? []).filter((part) => part !== null && part !== undefined && part !== false);
+
+  return (
+    <div className="flex flex-wrap items-start gap-3">
+      {backHref ? (
+        <Link
+          href={backHref}
+          aria-label="Back"
+          className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronLeft aria-hidden className="size-4" />
+        </Link>
+      ) : null}
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="min-w-0 truncate font-display text-2xl font-semibold text-foreground">
+            {title}
+          </h1>
+          {status ? (
+            <span
+              className={cn(
+                "shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium",
+                TONE_CLASS[status.tone]
+              )}
+            >
+              {status.label}
+            </span>
+          ) : null}
+        </div>
+
+        {metaParts.length > 0 ? (
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+            {metaParts.map((part, index) => (
+              <Fragment key={index}>
+                {index > 0 ? <span aria-hidden>·</span> : null}
+                <span>{part}</span>
+              </Fragment>
+            ))}
+          </p>
+        ) : null}
+      </div>
+
+      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+    </div>
+  );
+}
