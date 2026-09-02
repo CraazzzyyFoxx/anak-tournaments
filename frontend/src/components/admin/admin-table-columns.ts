@@ -19,6 +19,13 @@ export interface AdminColumnMeta<TData = unknown> {
   /** Never hideable — rendered checked and disabled in the picker. */
   mandatory?: boolean;
   responsive?: AdminColumnResponsive;
+  /**
+   * Pin this column to the left edge while the table scrolls sideways. Only a
+   * left-edge prefix of the visible columns can be pinned, and every pinned
+   * column but the first must declare `size` — the offsets are arithmetic, not
+   * measured.
+   */
+  sticky?: boolean;
   align?: "left" | "center" | "right";
   /** Extra classes for this column's `<th>` and `<td>`s (widths, min-widths). */
   className?: string;

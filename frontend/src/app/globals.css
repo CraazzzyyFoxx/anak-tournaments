@@ -3763,6 +3763,40 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   Sticky admin-table columns (AdminDataTable, column `meta.sticky`).
+   A pinned cell sits ON TOP of the columns scrolling past it, so it needs an
+   OPAQUE background — the table's own `bg-card/50` is see-through and would
+   show two rows of text at once. --admin-sticky-bg is that translucent card
+   layer flattened over the page background; the rules below flatten the
+   header / hover / selected tints over the same base.
+   ═══════════════════════════════════════════════════════════════════════ */
+.admin-sticky-col {
+  --admin-sticky-bg: color-mix(in srgb, hsl(var(--card)) 50%, hsl(var(--background)));
+  position: sticky;
+  z-index: 2;
+  background-color: var(--admin-sticky-bg);
+}
+
+/* Headers outrank body cells: they hold both axes at the corner. */
+th.admin-sticky-col {
+  z-index: 3;
+  background-color: color-mix(in srgb, hsl(var(--muted)) 20%, var(--admin-sticky-bg));
+}
+
+tbody tr:hover > .admin-sticky-col {
+  background-color: color-mix(in srgb, hsl(var(--accent)) 20%, var(--admin-sticky-bg));
+}
+
+tbody tr[data-state="selected"] > .admin-sticky-col {
+  background-color: color-mix(in srgb, hsl(var(--accent)) 30%, var(--admin-sticky-bg));
+}
+
+/* Right edge of the pinned block — the only cue that the rest scrolls under. */
+.admin-sticky-col-edge {
+  box-shadow: inset -1px 0 0 hsl(var(--border));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    Reduced motion. Everything animated in this stylesheet is decorative:
    under `prefers-reduced-motion` the static cue (color, border, label)
    always remains, so suppressing motion never removes information.

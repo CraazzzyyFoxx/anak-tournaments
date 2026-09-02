@@ -372,6 +372,7 @@ export function buildBalancerRegistrationColumns(
         category: "core",
         defaultHidden: false,
         responsive: "always",
+        sticky: true,
         className: "min-w-[240px]",
         searchValue: (registration) =>
           [

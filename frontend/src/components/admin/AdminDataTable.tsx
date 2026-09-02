@@ -56,6 +56,8 @@ import { useColumnVisibility } from "@/hooks/useColumnVisibility";
 
 const ADMIN_ACTION_COLUMN_ID = "actions";
 const ADMIN_ACTION_COLUMN_MIN_WIDTH = 80;
+/** Width of the select/expand column — keep in sync with its `w-10` class. */
+const ADMIN_LEADING_COLUMN_WIDTH = 40;
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 25, 50, 100];
 const COLUMN_CATEGORY_LABELS: Record<AdminColumnCategory, string> = {
   core: "Core",
@@ -551,13 +553,43 @@ export function AdminDataTable<TData>({
   const hasLeadingColumn = Boolean(enableRowSelection || renderExpanded);
   const leadingColumnCount = hasLeadingColumn ? 1 : 0;
   const bodyColumnCount = table.getVisibleLeafColumns().length + leadingColumnCount;
+
+  // Sticky pins a left-edge PREFIX of the visible columns: a pinned column with
+  // scrolling ones in front of it would park itself over the wrong neighbours.
+  // Offsets are summed from declared sizes rather than measured, so every
+  // pinned column after the first must set `size`.
+  const stickyLeft = new Map<string, number>();
+  let stickyOffset = hasLeadingColumn ? ADMIN_LEADING_COLUMN_WIDTH : 0;
+  for (const column of table.getVisibleLeafColumns()) {
+    if (!readAdminColumnMeta<TData>(column.columnDef.meta).sticky) break;
+    stickyLeft.set(column.id, stickyOffset);
+    stickyOffset += typeof column.columnDef.size === "number" ? column.getSize() : 0;
+  }
+  const lastStickyId = [...stickyLeft.keys()].pop() ?? null;
+
+  /** Sticky class + `left` for a data cell, or nothing when it is not pinned. */
+  const stickyCell = (columnId: string, style?: React.CSSProperties) => {
+    const left = stickyLeft.get(columnId);
+    if (left === undefined) return { className: undefined, style };
+    return {
+      className: cn("admin-sticky-col", columnId === lastStickyId && "admin-sticky-col-edge"),
+      style: { ...style, left }
+    };
+  };
   const pageRows = table.getRowModel().rows;
   const rowGroups = groupRows
     ? groupRows(pageRows)
     : [{ key: "all", label: null, rows: pageRows }];
 
   const renderLeadingCell = (row: Row<TData>) => (
-    <TableCell className={cn("w-10 py-2.5 pl-4", cellAlign === "top" ? "align-top" : "align-middle")}>
+    <TableCell
+      className={cn(
+        "w-10 py-2.5 pl-4",
+        cellAlign === "top" ? "align-top" : "align-middle",
+        stickyLeft.size > 0 && "admin-sticky-col"
+      )}
+      style={stickyLeft.size > 0 ? { left: 0 } : undefined}
+    >
       <div className="flex items-center gap-1.5">
         {renderExpanded ? (
           <button
@@ -649,7 +681,13 @@ export function AdminDataTable<TData>({
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="hover:bg-transparent">
                 {hasLeadingColumn ? (
-                  <TableHead className="h-9 w-10 border-b border-border/40 bg-muted/20 pl-4 text-left">
+                  <TableHead
+                    className={cn(
+                      "h-9 w-10 border-b border-border/40 pl-4 text-left",
+                      stickyLeft.size > 0 ? "admin-sticky-col" : "bg-muted/20"
+                    )}
+                    style={stickyLeft.size > 0 ? { left: 0 } : undefined}
+                  >
                     {enableRowSelection ? (
                       <Checkbox
                         checked={
@@ -674,20 +712,22 @@ export function AdminDataTable<TData>({
                   const columnMeta = readAdminColumnMeta<TData>(header.column.columnDef.meta);
                   const align = columnMeta.align ?? (isActionColumn ? "right" : "left");
                   const filterSpec = readAdminColumnFilter(header.column.columnDef.meta);
+                  const sticky = stickyCell(header.column.id, getColumnStyle(header.column));
 
                   return (
                     <TableHead
                       key={header.id}
                       aria-sort={canSort ? ariaSortValue(sorted) : undefined}
                       className={cn(
-                        "h-9 border-b border-border/40 bg-muted/20 text-xs font-medium text-muted-foreground",
+                        "h-9 border-b border-border/40 text-xs font-medium text-muted-foreground",
+                        sticky.className ?? "bg-muted/20",
                         isFirstColumn && "pl-4",
                         isLastColumn && "pr-4",
                         ALIGN_CLASS[align],
                         RESPONSIVE_CLASS[columnMeta.responsive ?? "always"],
                         columnMeta.className,
                       )}
-                      style={getColumnStyle(header.column)}
+                      style={sticky.style}
                     >
                       {header.isPlaceholder ? null : (
                         <span className={cn("inline-flex w-full items-center gap-1", ALIGN_FLEX_CLASS[align])}>
@@ -758,6 +798,7 @@ export function AdminDataTable<TData>({
                           const isLastColumn = index === row.getVisibleCells().length - 1;
                           const columnMeta = readAdminColumnMeta<TData>(cell.column.columnDef.meta);
                           const align = columnMeta.align ?? (isActionColumn ? "right" : "left");
+                          const sticky = stickyCell(cell.column.id, getColumnStyle(cell.column));
 
                           return (
                             <TableCell
@@ -772,8 +813,9 @@ export function AdminDataTable<TData>({
                                 ALIGN_CLASS[align],
                                 RESPONSIVE_CLASS[columnMeta.responsive ?? "always"],
                                 columnMeta.className,
+                                sticky.className,
                               )}
-                              style={getColumnStyle(cell.column)}
+                              style={sticky.style}
                             >
                               {isActionColumn ? (
                                 <div className="flex w-full items-center justify-end opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
