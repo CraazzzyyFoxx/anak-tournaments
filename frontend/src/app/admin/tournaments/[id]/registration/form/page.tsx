@@ -19,7 +19,7 @@ export default function RegistrationFormSubRoutePage() {
   return (
     <RegistrationFormBuilder
       tournamentId={Number.isFinite(tournamentId) && tournamentId > 0 ? tournamentId : null}
-      basePath={`/admin/tournaments/${params.id}/registration`}
+      basePath={`/admin/tournaments/${params.id}/registration/entries`}
     />
   );
 }

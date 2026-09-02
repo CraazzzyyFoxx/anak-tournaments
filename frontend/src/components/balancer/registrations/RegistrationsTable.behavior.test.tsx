@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, useState } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuditTrailProvider } from "@/components/admin/AuditTrailSheet";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
@@ -42,9 +42,22 @@ vi.mock("@/services/balancer-admin.service", () => ({
 vi.mock("@/services/registration.service", () => ({
   default: { getForm: vi.fn().mockResolvedValue(null) }
 }));
+
+// The chips are URL-backed now, so the router mock has to actually move the
+// location and re-render — a `vi.fn()` that swallows the write would make every
+// filter assertion pass against a component that never saw the new value.
+let currentSearch = "";
+let rerender: (() => void) | null = null;
+const replace = vi.fn((url: string) => {
+  window.history.replaceState(null, "", url);
+  currentSearch = new URL(url, "http://localhost").search;
+  rerender?.();
+});
+
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(""),
-  usePathname: () => "/admin/tournaments/80/registration"
+  useSearchParams: () => new URLSearchParams(currentSearch),
+  usePathname: () => "/admin/tournaments/80/registration/entries",
+  useRouter: () => ({ replace, push: replace })
 }));
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
@@ -135,11 +148,22 @@ function tick() {
   return promise;
 }
 
-async function mount() {
+function Harness() {
+  const [, force] = useState(0);
+  rerender = () => force((value) => value + 1);
+  return <RegistrationsTable tournamentId={80} />;
+}
+
+const mounted: Root[] = [];
+
+async function mount(search = "") {
+  currentSearch = search;
+  window.history.replaceState(null, "", `/admin/tournaments/80/registration/entries${search}`);
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const root = createRoot(container);
+  mounted.push(root);
   await act(async () => {
     root.render(
       <NextIntlClientProvider locale="en" messages={{}}>
@@ -147,7 +171,7 @@ async function mount() {
           {/* Each row's "Change history" action opens the shared audit drawer,
               which the admin layout mounts in the real app. */}
           <AuditTrailProvider>
-            <RegistrationsTable tournamentId={80} basePath="/admin/tournaments/80/registration" />
+            <Harness />
           </AuditTrailProvider>
         </QueryClientProvider>
       </NextIntlClientProvider>
@@ -171,10 +195,23 @@ function click(node: Element | null | undefined) {
   });
 }
 
+// An open Radix menu puts `pointer-events: none` on the body; left behind, it
+// swallows the next test's first click.
+afterEach(async () => {
+  await act(async () => {
+    for (const root of mounted.splice(0)) root.unmount();
+  });
+  document.body.innerHTML = "";
+  document.body.style.pointerEvents = "";
+});
+
 beforeEach(() => {
   // The table syncs filters, sort and paging into the URL, and jsdom keeps one
   // location per file — a leftover `?status=pending` would filter the next test.
-  window.history.replaceState(null, "", "/admin/tournaments/80/registration");
+  window.history.replaceState(null, "", "/admin/tournaments/80/registration/entries");
+  currentSearch = "";
+  rerender = null;
+  replace.mockClear();
   listRegistrations.mockReset().mockResolvedValue(POOL);
   getRegistrationForm.mockReset().mockResolvedValue({ require_open_profile: false });
   listStatusCatalog.mockReset().mockResolvedValue([]);
@@ -204,7 +241,7 @@ describe("RegistrationsTable toolbar", () => {
     expect(listRegistrations).toHaveBeenLastCalledWith(80, { include_deleted: false });
   });
 
-  it("turns the pending count into the pending filter, locally", async () => {
+  it("turns the pending count into the pending filter, in the URL", async () => {
     const scope = await mount();
     const chip = [...scope.querySelectorAll("button")].find((node) =>
       node.textContent?.includes("1 pending")
@@ -214,10 +251,22 @@ describe("RegistrationsTable toolbar", () => {
 
     // Filtering no longer costs a request: the pool is already in memory.
     expect(listRegistrations).toHaveBeenCalledTimes(1);
-    expect(chip?.getAttribute("aria-pressed")).toBe("true");
     expect(new URLSearchParams(window.location.search).get("status")).toBe("pending");
     // 1 pending row of 25 — the other 24 are approved.
     expect(scope.querySelectorAll("tbody tr").length).toBe(1);
+  });
+
+  it("hides withdrawn registrations until the chip asks for them", async () => {
+    listRegistrations.mockResolvedValue([
+      registration(1),
+      registration(2, { status: "withdrawn" })
+    ]);
+
+    const withoutWithdrawn = await mount();
+    expect(withoutWithdrawn.querySelectorAll("tbody tr").length).toBe(1);
+
+    const withWithdrawn = await mount("?withdrawn=1");
+    expect(withWithdrawn.querySelectorAll("tbody tr").length).toBe(2);
   });
 
   it("keeps the pending row selectable and the approved rows not", async () => {
@@ -227,15 +276,16 @@ describe("RegistrationsTable toolbar", () => {
     expect(rowCheckboxes.length).toBe(1);
   });
 
-  it("keeps the row detail panel behind the leading chevron", async () => {
+  it("puts every row action behind one kebab menu", async () => {
     const scope = await mount();
-    const chevron = scope.querySelector("button[aria-label='Expand details']");
+    const trigger = scope.querySelector("[aria-label='Actions for Player1#1234']");
 
-    expect(scope.textContent).not.toContain("Rank history");
-    await click(chevron);
+    await click(trigger);
 
-    expect(scope.textContent).toContain("Rank history");
-    expect(scope.querySelector("button[aria-label='Collapse details']")).not.toBeNull();
+    const menu = document.body.textContent ?? "";
+    expect(menu).toContain("Approve");
+    expect(menu).toContain("Reject");
+    expect(menu).toContain("Delete");
   });
 
   it("offers the shared column picker instead of its own", async () => {
@@ -263,24 +313,14 @@ describe("RegistrationsTable toolbar", () => {
     expect(scope.textContent).toContain("25 registrations");
   });
 
-  it("reaches the form builder and the other advanced tools behind one menu", async () => {
-    const scope = await mount();
-    const trigger = scope.querySelector("[aria-label='Advanced registration actions']");
-
-    await click(trigger);
-
-    const hrefs = [...document.querySelectorAll("a")].map((node) => node.getAttribute("href"));
-    expect(hrefs).toContain("/admin/tournaments/80/registration/form");
-    expect(hrefs).toContain("/admin/tournaments/80/registration/feed");
-    expect(hrefs).toContain("/admin/tournaments/80/registration/rank-autofill");
-    expect(document.body.textContent).toContain("Export to analytics");
-  });
-
   it("summarises the whole pool's admission reasons, organizer-actionable first", async () => {
     // Forty unresolved rows are either forty players to chase one at a time or
     // one setting to fix once. Before this line, the only way to tell was to
     // open the OW-Profile and Subscriptions screens row by row.
-    const unresolved = (code: string, actor: "player" | "organizer"): AdminRegistration["admission"] => ({
+    const unresolved = (
+      code: string,
+      actor: "player" | "organizer"
+    ): AdminRegistration["admission"] => ({
       decision: "pending_check_in",
       requirements: [
         {

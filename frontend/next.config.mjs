@@ -49,12 +49,11 @@ const nextConfig = {
     // link checker sees a successful empty page instead of a moved one.
     return [
       {
-        // `/matches` is a container, not a view: its content is now the
-        // `results` sub-tab. Temporary, because the landing sub-tab is a UI
-        // decision we may revisit.
+        // `/matches` is a container, not a view: its content is the
+        // `encounters` sub-tab. Settled by the IA move, so 308.
         source: "/admin/tournaments/:id/matches",
-        destination: "/admin/tournaments/:id/matches/results",
-        permanent: false,
+        destination: "/admin/tournaments/:id/matches/encounters",
+        permanent: true,
       },
       {
         // Logs stopped being a top-level tab. This move is settled, so 308.
@@ -65,40 +64,39 @@ const nextConfig = {
 
       // ── Admin IA move (docs/admin-redesign/01-ia.md §3.2) ──────────────
       //
-      // Authored here in one pass (PR-1) so the map lives in one place, but
-      // COMMENTED: a redirect whose destination does not exist yet is a 404
-      // with extra steps. Each WU-PR uncomments its own block in the same
-      // commit that creates the target route, and deletes the old page.
-      // Keep the WU tags — they are the checklist.
+      // Authored here in one pass (PR-1) so the map lives in one place. A line
+      // stays COMMENTED until its destination exists — a redirect to a route
+      // that has not been built is a 404 with extra steps — and the WU that
+      // creates the target uncomments it in the same commit that deletes the
+      // old page. Keep the WU tags: they are the checklist.
       //
-      // PR-2e  bracket (owns the destination, so it owns this line)
-      // { source: "/admin/tournaments/:id/stages", destination: "/admin/tournaments/:id/bracket", permanent: true },
-      //
+      // PR-2e  bracket
+      { source: "/admin/tournaments/:id/stages", destination: "/admin/tournaments/:id/bracket", permanent: true },
+
       // PR-2b  registration sub-tabs
-      // { source: "/admin/tournaments/:id/registration", destination: "/admin/tournaments/:id/registration/entries", permanent: true },
-      //
-      // PR-2c  teams + draft
-      // { source: "/admin/tournaments/:id/teams", destination: "/admin/tournaments/:id/teams/roster", permanent: true },
-      // { source: "/admin/tournaments/:id/draft", destination: "/admin/tournaments/:id/teams/draft", permanent: true },
-      //
-      // PR-2d  matches sub-tabs + /admin/matches browser. The `/matches`
-      //        container redirect above is retargeted to `encounters` and
-      //        becomes permanent in the same commit.
-      // { source: "/admin/tournaments/:id/matches/results", destination: "/admin/tournaments/:id/matches/encounters", permanent: true },
-      // { source: "/admin/tournaments/:id/matches/maps", destination: "/admin/tournaments/:id/matches/parsed", permanent: true },
-      // { source: "/admin/encounters", destination: "/admin/matches?view=encounters", permanent: true },
-      // { source: "/admin/match-reports", destination: "/admin/matches?view=reports", permanent: true },
-      // { source: "/admin/standings", destination: "/admin/matches?view=standings", permanent: true },
-      // // `missing` keeps the new browser's own `?view=` links from looping:
-      // // only a bare /admin/matches (the old parsed-maps bookmark) is moved.
-      // { source: "/admin/matches", missing: [{ type: "query", key: "view" }], destination: "/admin/matches?view=parsed", permanent: true },
-      //
+      { source: "/admin/tournaments/:id/registration", destination: "/admin/tournaments/:id/registration/entries", permanent: true },
+
+      // PR-2c  teams + draft. Next carries the unmatched query through, so the
+      // Integrations card's `?challongeSync=1` deep link survives the hop.
+      { source: "/admin/tournaments/:id/teams", destination: "/admin/tournaments/:id/teams/roster", permanent: true },
+      { source: "/admin/tournaments/:id/draft", destination: "/admin/tournaments/:id/teams/draft", permanent: true },
+
+      // PR-2d  matches sub-tabs + the /admin/matches browser
+      { source: "/admin/tournaments/:id/matches/results", destination: "/admin/tournaments/:id/matches/encounters", permanent: true },
+      { source: "/admin/tournaments/:id/matches/maps", destination: "/admin/tournaments/:id/matches/parsed", permanent: true },
+      { source: "/admin/encounters", destination: "/admin/matches?view=encounters", permanent: true },
+      { source: "/admin/match-reports", destination: "/admin/matches?view=reports", permanent: true },
+      { source: "/admin/standings", destination: "/admin/matches?view=standings", permanent: true },
+      // `missing` keeps the new browser's own `?view=` links from looping:
+      // only a bare /admin/matches (the old parsed-maps bookmark) is moved.
+      { source: "/admin/matches", missing: [{ type: "query", key: "view" }], destination: "/admin/matches?view=parsed", permanent: true },
+
       // PR-2f  tournament settings sections
-      // { source: "/admin/tournaments/:id/settings", destination: "/admin/tournaments/:id/settings/general", permanent: true },
-      // { source: "/admin/tournaments/:id/pickBan", destination: "/admin/tournaments/:id/settings/pre-game", permanent: true },
-      // { source: "/admin/tournaments/:id/links", destination: "/admin/tournaments/:id/settings/links", permanent: true },
-      // { source: "/admin/tournaments/:id/matches/report-form", destination: "/admin/tournaments/:id/settings/report-form", permanent: true },
-      //
+      { source: "/admin/tournaments/:id/settings", destination: "/admin/tournaments/:id/settings/general", permanent: true },
+      { source: "/admin/tournaments/:id/pickBan", destination: "/admin/tournaments/:id/settings/pre-game", permanent: true },
+      { source: "/admin/tournaments/:id/links", destination: "/admin/tournaments/:id/settings/links", permanent: true },
+      { source: "/admin/tournaments/:id/matches/report-form", destination: "/admin/tournaments/:id/settings/report-form", permanent: true },
+
       // PR-3a  people
       // { source: "/admin/users", destination: "/admin/people", permanent: true },
       // { source: "/admin/players", destination: "/admin/people", permanent: true },

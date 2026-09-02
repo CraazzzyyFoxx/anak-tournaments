@@ -1,8 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef, Row } from "@tanstack/react-table";
 import { useTranslations } from "next-intl";
@@ -10,18 +8,20 @@ import {
   AlertTriangle,
   Check,
   Clock,
-  FileCog,
+  History,
   Loader2,
-  MoreHorizontal,
-  Sheet,
-  Sparkles,
+  Pencil,
+  ShieldX,
+  Trash2,
+  Undo2,
   Upload,
-  UserPlus
+  UserPlus,
+  X
 } from "lucide-react";
 
 import UnifiedRegistrationForm from "@/components/registration/UnifiedRegistrationForm";
-import RegistrationRowActions from "@/components/balancer/registrations/_components/RegistrationRowActions";
 import RankHistory from "@/components/RankHistory";
+import { renderCustomFieldValue } from "@/components/registration/customFieldValue";
 import { buildBalancerRegistrationColumns } from "@/components/balancer/registrations/_components/balancerRegistrationColumns";
 import {
   type RegistrationGroupingMode,
@@ -29,8 +29,19 @@ import {
   normalizeRegistrationGroupingMode
 } from "@/components/balancer/registrations/_components/registrationGrouping";
 import { AdminDataTable, type AdminDataTableGroup } from "@/components/admin/AdminDataTable";
-import { adminColumnMeta } from "@/components/admin/admin-table-columns";
+import { useAuditTrail } from "@/components/admin/AuditTrailSheet";
+import { BulkBar } from "@/components/admin/BulkBar";
 import type { AdminTableFilters } from "@/components/admin/admin-table-filters";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { AdminInspector } from "@/components/admin/kit/AdminInspector";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
+import { createKebabColumn, type KebabAction } from "@/components/admin/kit/kebab-column";
+import {
+  useAdminFilters,
+  type FilterDef,
+  type FilterValue
+} from "@/components/admin/kit/useAdminFilters";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,23 +52,21 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { useQueryParams } from "@/hooks/useQueryParams";
+import { usePermissions } from "@/hooks/usePermissions";
 import { mergeStatusOptions } from "@/lib/balancer-statuses";
 import { notify } from "@/lib/notify";
-import { formatAdmissionReason, tallyAdmissionReasons } from "@/lib/admission";
+import {
+  formatAdmissionReason,
+  tallyAdmissionReasons,
+  type AdmissionTranslator
+} from "@/lib/admission";
 import { ROLE_LABELS, getSubroleLabel } from "@/lib/roles";
 import balancerAdminService from "@/services/balancer-admin.service";
 import registrationService from "@/services/registration.service";
@@ -66,6 +75,7 @@ import type {
   AdminRegistrationCreateInput,
   AdminRegistrationUpdateInput
 } from "@/types/balancer-admin.types";
+import type { AdmissionDecision } from "@/types/registration.types";
 import type { RegistrationForm, SubroleCatalog } from "@/types/registration.types";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -84,6 +94,28 @@ const ADMIN_ROLE_FORM: RegistrationForm = {
   custom_fields: []
 };
 
+const ADMISSION_LABELS: Record<AdmissionDecision, string> = {
+  admitted: "Admitted",
+  pending_check_in: "Check-in pending",
+  not_admitted: "Not admitted"
+};
+
+const SUBSCRIPTION_LABELS = {
+  satisfied: "Satisfied",
+  refused: "Refused",
+  undetermined: "Undetermined"
+} as const;
+
+/**
+ * Chip keys the TABLE resolves, because a column declares them as a header
+ * filter. The remaining chips narrow `visibleRegistrations` below instead:
+ * `AdminDataTable` can only apply a filter some column has declared, and
+ * neither "which role" nor "include withdrawn" is a column value to match
+ * against. Both halves read the same URL-backed `useAdminFilters` store, so
+ * there is still exactly one place a filter lives.
+ */
+const COLUMN_FILTER_KEYS = ["status", "inclusion", "source"] as const;
+
 function formatSubmittedAt(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -97,71 +129,68 @@ function RolesCell({
   roles: AdminRegistration["roles"];
   catalog?: SubroleCatalog;
 }>) {
-  if (roles.length === 0) {
-    return <span className="text-muted-foreground">-</span>;
+  const active = roles.filter((role) => role.is_active);
+  if (active.length === 0) {
+    return <span className="text-muted-foreground">—</span>;
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {roles
+    <span className="flex flex-wrap gap-1.5">
+      {active
         .slice()
         .sort((left, right) => left.priority - right.priority)
         .map((role) => {
-          const roleLabel = ROLE_LABELS[role.role] ?? role.role;
           const subroleLabel = role.subrole
             ? getSubroleLabel(catalog, role.role, role.subrole)
             : null;
           return (
-            <div
-              key={`${role.role}-${role.priority}`}
-              className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs"
-              title={[
-                roleLabel,
-                subroleLabel,
-                role.rank_value != null ? `${role.rank_value}` : null
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+            <span
+              key={`${role.role}-${role.subrole ?? "base"}-${role.priority}`}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs"
             >
-              <span>{roleLabel}</span>
-              {subroleLabel ? <span className="text-muted-foreground">{subroleLabel}</span> : null}
-              {role.rank_value != null ? (
-                <span className="text-muted-foreground">{role.rank_value}</span>
+              <span className={cn(role.is_primary && "font-medium text-foreground")}>
+                {ROLE_LABELS[role.role] ?? role.role}
+              </span>
+              {subroleLabel ? (
+                <span className="text-muted-foreground">{subroleLabel}</span>
               ) : null}
-            </div>
+              {role.rank_value != null ? (
+                <span className="tabular-nums text-muted-foreground">{role.rank_value}</span>
+              ) : null}
+            </span>
           );
         })}
-    </div>
+    </span>
   );
 }
 
 export default function RegistrationsTable({
-  tournamentId,
-  basePath
+  tournamentId
 }: Readonly<{
   tournamentId: number | null;
-  basePath: string;
 }>) {
   const queryClient = useQueryClient();
   // The only translated strings on this screen: reason codes are shared with the
   // public participants page, so they live in the message catalogue rather than
   // as English literals like the rest of this admin table.
   const t = useTranslations();
-  const searchParams = useSearchParams();
+  // `id` (the inspector) is navigation, not narrowing: it must not drop `page`
+  // the way a filter change does, or opening a row would rewind an infinite
+  // list to its first batch.
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { canAccessPermission } = usePermissions();
+  const { open: openAuditTrail } = useAuditTrail();
   // D25: status/sub-role catalogs are read from the workspace store. In the hub
   // the store is already aligned to the tournament's workspace by
   // useSyncActiveWorkspace, so no extra wiring is needed here.
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
 
-  // Header filters live in the table, which owns their URL params. They are
-  // controlled here only because the "N pending" chip sets one from outside the
-  // header.
-  const [filters, setFilters] = useState<AdminTableFilters>({});
   const [groupBy, setGroupBy] = useState<RegistrationGroupingMode>(
-    normalizeRegistrationGroupingMode(searchParams.get("group"))
+    normalizeRegistrationGroupingMode(searchParams?.get("group") ?? null)
   );
   const [createOpen, setCreateOpen] = useState(false);
   const [editingRegistration, setEditingRegistration] = useState<AdminRegistration | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<AdminRegistration | null>(null);
 
   // The whole pool in one request: a tournament's registrations are a few
   // hundred rows at most, and filtering them locally keeps the pending count
@@ -215,6 +244,126 @@ export default function RegistrationsTable({
         label: option.name
       })),
     [registrationStatusOptions]
+  );
+
+  const registrations = useMemo(() => registrationsQuery.data ?? [], [registrationsQuery.data]);
+
+  // Options are read off the pool rather than hard-coded: a workspace's roles
+  // are configuration, and a chip offering a value no row has is a dead end.
+  //
+  // No Division chip (F4 lists one): `AdminRegistrationRole` carries a rank,
+  // not a division, and turning one into the other needs the workspace division
+  // grid — a query the hub deliberately does not run on every page load.
+  const roleOptions = useMemo(() => {
+    const codes = new Set<string>();
+    for (const registration of registrations) {
+      for (const role of registration.roles) {
+        if (role.is_active) codes.add(role.role);
+      }
+    }
+    return [...codes]
+      .sort((left, right) => left.localeCompare(right))
+      .map((code) => ({ value: code, label: ROLE_LABELS[code] ?? code }));
+  }, [registrations]);
+
+  const admissionOptions = useMemo(() => {
+    const counts = new Map<AdmissionDecision, number>();
+    for (const registration of registrations) {
+      const decision = registration.admission.decision;
+      counts.set(decision, (counts.get(decision) ?? 0) + 1);
+    }
+    return (Object.keys(ADMISSION_LABELS) as AdmissionDecision[]).map((decision) => ({
+      value: decision,
+      label: ADMISSION_LABELS[decision],
+      count: counts.get(decision) ?? 0
+    }));
+  }, [registrations]);
+
+  const filterDefs: FilterDef[] = useMemo(
+    () => [
+      { key: "admission", label: "Admission", kind: "single", options: admissionOptions },
+      { key: "role", label: "Role", kind: "single", options: roleOptions },
+      ...(requireSubscription
+        ? [
+            {
+              key: "subscription",
+              label: "Subscription",
+              kind: "single" as const,
+              options: (
+                Object.keys(SUBSCRIPTION_LABELS) as (keyof typeof SUBSCRIPTION_LABELS)[]
+              ).map((value) => ({ value, label: SUBSCRIPTION_LABELS[value] }))
+            }
+          ]
+        : []),
+      { key: "withdrawn", label: "Include withdrawn", kind: "toggle" },
+      { key: "status", label: "Status", kind: "multi", options: statusFilterOptions },
+      {
+        key: "inclusion",
+        label: "Participation",
+        kind: "single",
+        options: [
+          { value: "included", label: "Included" },
+          { value: "excluded", label: "Excluded" }
+        ]
+      },
+      {
+        key: "source",
+        label: "Source",
+        kind: "single",
+        options: [
+          { value: "manual", label: "Manual" },
+          { value: "google_sheets", label: "Google Sheets" }
+        ]
+      }
+    ],
+    [admissionOptions, roleOptions, requireSubscription, statusFilterOptions]
+  );
+
+  const filters = useAdminFilters(filterDefs);
+  const tableFilters = filters.toTableFilters();
+
+  // The header funnels are the only other writer of the three column-declared
+  // params. Routing them back through `useAdminFilters` keeps ONE store for
+  // filter state (the URL) instead of a controlled prop that would silently
+  // lose whatever the funnel set.
+  const handleTableFiltersChange = (next: AdminTableFilters) => {
+    const patch: Record<string, FilterValue | null> = {};
+    for (const key of COLUMN_FILTER_KEYS) {
+      const nextValue = next[key] ?? [];
+      const currentValue = tableFilters[key] ?? [];
+      if (nextValue.join(",") === currentValue.join(",")) continue;
+      patch[key] = key === "status" ? nextValue : (nextValue[0] ?? null);
+    }
+    if (Object.keys(patch).length > 0) filters.setMany(patch);
+  };
+
+  const admissionFilter = String(filters.values.admission ?? "");
+  const roleFilter = String(filters.values.role ?? "");
+  const subscriptionFilter = String(filters.values.subscription ?? "");
+  const includeWithdrawn = filters.values.withdrawn === true;
+
+  // Withdrawn rows are out by default (F4): they are the pool's history, and an
+  // organizer reading "38 entries" means the 38 who are still in.
+  const visibleRegistrations = useMemo(
+    () =>
+      registrations.filter((registration) => {
+        if (!includeWithdrawn && registration.status === "withdrawn") return false;
+        if (admissionFilter && registration.admission.decision !== admissionFilter) return false;
+        if (
+          roleFilter &&
+          !registration.roles.some((role) => role.is_active && role.role === roleFilter)
+        ) {
+          return false;
+        }
+        if (
+          subscriptionFilter &&
+          (registration.subscription_outcome ?? "undetermined") !== subscriptionFilter
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [registrations, includeWithdrawn, admissionFilter, roleFilter, subscriptionFilter]
   );
 
   // Patch a single row across every cached filter variant. The PATCH endpoints
@@ -310,6 +459,7 @@ export default function RegistrationsTable({
     mutationFn: (registrationId: number) => balancerAdminService.deleteRegistration(registrationId),
     onSuccess: (_, registrationId) => {
       removeRegistrationFromCache(registrationId);
+      setPendingDelete(null);
       notify.success("Registration deleted");
       revalidateRegistrations();
     }
@@ -364,11 +514,13 @@ export default function RegistrationsTable({
     }
   });
 
-  const registrations = registrationsQuery.data ?? [];
   const pendingCount = registrations.filter(
     (registration) => registration.status === "pending"
   ).length;
-  const isPendingFilterOn = filters.status?.includes("pending") ?? false;
+  const statusFilterValue = filters.values.status;
+  const isPendingFilterOn = Array.isArray(statusFilterValue)
+    ? statusFilterValue.includes("pending")
+    : false;
   // Over the WHOLE pool, not the current page or filter: the point of the line
   // is to answer "is this forty players to chase or one thing to fix", and a
   // tally that moved with the header filters could not.
@@ -383,63 +535,107 @@ export default function RegistrationsTable({
   const reject = rejectMutation.mutate;
   const withdraw = withdrawMutation.mutate;
   const restore = restoreMutation.mutate;
-  const remove = deleteMutation.mutate;
   const setBalancerInclusion = balancerInclusionMutation.mutate;
   const setCheckIn = checkInMutation.mutate;
 
-  const columns: ColumnDef<AdminRegistration>[] = useMemo(
-    () => [
+  const columns: ColumnDef<AdminRegistration>[] = useMemo(() => {
+    const rowActions = (registration: AdminRegistration): KebabAction[] => {
+      const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
+      const isWithdrawn = registration.status === "withdrawn";
+      const isPending = registration.status === "pending";
+      // A custom status is organizer-defined and behaves like `approved` for
+      // balancer inclusion, which is why both reach the same two actions.
+      const isManageable =
+        registration.status === "approved" || registration.status_meta.kind === "custom";
+
+      return [
+        {
+          label: "Edit",
+          icon: Pencil,
+          hidden: isWithdrawn,
+          onSelect: () => setEditingRegistration(registration)
+        },
+        {
+          label: "Change history",
+          icon: History,
+          // The row carries its own workspace, which is the scope its edits were
+          // authorized against — closer to the truth than the ambient selection.
+          hidden: !canAccessPermission("audit.read", registration.workspace_id),
+          onSelect: () =>
+            openAuditTrail({
+              entityType: "registration",
+              entityId: registration.id,
+              workspaceId: registration.workspace_id
+            })
+        },
+        {
+          label: "Approve",
+          icon: Check,
+          hidden: !isPending,
+          onSelect: () => approve(registration.id)
+        },
+        { label: "Reject", icon: X, hidden: !isPending, onSelect: () => reject(registration.id) },
+        {
+          label: inBalancer ? "Remove from balancer" : "Add to balancer",
+          icon: inBalancer ? ShieldX : Check,
+          hidden: !isManageable,
+          onSelect: () =>
+            setBalancerInclusion({ registrationId: registration.id, include: !inBalancer })
+        },
+        {
+          label: registration.checked_in ? "Uncheck-in" : "Check-in",
+          icon: Check,
+          hidden: !isManageable,
+          onSelect: () =>
+            setCheckIn({ registrationId: registration.id, checkedIn: !registration.checked_in })
+        },
+        {
+          label: "Restore",
+          icon: Undo2,
+          hidden: !isWithdrawn,
+          onSelect: () => restore(registration.id)
+        },
+        {
+          label: "Withdraw",
+          icon: Undo2,
+          hidden: isWithdrawn,
+          onSelect: () => withdraw(registration.id)
+        },
+        {
+          label: "Delete",
+          icon: Trash2,
+          destructive: true,
+          onSelect: () => setPendingDelete(registration)
+        }
+      ];
+    };
+
+    return [
       ...buildBalancerRegistrationColumns(
         subroleCatalog,
         requireSubscription,
         customFields,
         statusFilterOptions
       ),
-      {
-        id: "actions",
-        header: "Actions",
-        enableSorting: false,
-        size: 112,
-        meta: adminColumnMeta<AdminRegistration>({ align: "right" }),
-        cell: ({ row }) => (
-          <RegistrationRowActions
-            registration={row.original}
-            onEdit={(selectedRegistration) => setEditingRegistration(selectedRegistration)}
-            onApprove={approve}
-            onReject={reject}
-            onToggleBalancer={(selectedRegistration) =>
-              setBalancerInclusion({
-                registrationId: selectedRegistration.id,
-                include: selectedRegistration.balancer_status_meta.excludes_from_balancer
-              })
-            }
-            onToggleCheckIn={(selectedRegistration) =>
-              setCheckIn({
-                registrationId: selectedRegistration.id,
-                checkedIn: !selectedRegistration.checked_in
-              })
-            }
-            onWithdraw={withdraw}
-            onRestore={restore}
-            onDelete={remove}
-          />
-        )
-      }
-    ],
-    [
-      subroleCatalog,
-      requireSubscription,
-      customFields,
-      statusFilterOptions,
-      approve,
-      reject,
-      withdraw,
-      restore,
-      remove,
-      setBalancerInclusion,
-      setCheckIn
-    ]
-  );
+      createKebabColumn<AdminRegistration>(rowActions, {
+        rowLabel: (registration) =>
+          registration.battle_tag ?? registration.display_name ?? `registration ${registration.id}`
+      })
+    ];
+  }, [
+    subroleCatalog,
+    requireSubscription,
+    customFields,
+    statusFilterOptions,
+    approve,
+    reject,
+    withdraw,
+    restore,
+    setBalancerInclusion,
+    setCheckIn,
+    canAccessPermission,
+    openAuditTrail
+  ]);
 
   const groupPageRows = (
     pageRows: Row<AdminRegistration>[]
@@ -466,84 +662,10 @@ export default function RegistrationsTable({
     }));
   };
 
-  const renderRegistrationDetails = (row: Row<AdminRegistration>) => {
-    const registration = row.original;
-    return (
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="space-y-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Rank history
-          </div>
-          {registration.user_id != null ? (
-            <RankHistory userId={registration.user_id} />
-          ) : (
-            <RankHistory battleTag={registration.battle_tag} />
-          )}
-        </div>
-        <dl className="space-y-2 text-xs text-muted-foreground">
-          <div className="text-[11px] font-semibold uppercase tracking-wider">Details</div>
-          <div>
-            <dt className="mb-1">Declared roles</dt>
-            <dd>
-              <RolesCell roles={registration.roles} catalog={subroleCatalog} />
-            </dd>
-          </div>
-          {(registration.smurf_tags_json?.length ?? 0) > 0 ? (
-            <div className="flex justify-between gap-3">
-              <dt>Smurfs</dt>
-              <dd className="text-right">{registration.smurf_tags_json?.join(", ")}</dd>
-            </div>
-          ) : null}
-          {registration.discord_nick || registration.twitch_nick || registration.boosty_nick ? (
-            <div className="flex justify-between gap-3">
-              <dt>Contact</dt>
-              <dd className="text-right">
-                {[registration.discord_nick, registration.twitch_nick, registration.boosty_nick]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </dd>
-            </div>
-          ) : null}
-          <div className="flex justify-between gap-3">
-            <dt>Source</dt>
-            <dd className="text-right">{registration.source}</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt>Submitted</dt>
-            <dd className="text-right">{formatSubmittedAt(registration.submitted_at)}</dd>
-          </div>
-          {registration.reviewed_at ? (
-            <div className="flex justify-between gap-3">
-              <dt>Reviewed</dt>
-              <dd className="text-right">
-                {formatSubmittedAt(registration.reviewed_at)}
-                {registration.reviewed_by_username
-                  ? ` · ${registration.reviewed_by_username}`
-                  : ""}
-              </dd>
-            </div>
-          ) : null}
-          {registration.notes ? (
-            <div>
-              <dt>Notes</dt>
-              <dd className="mt-0.5">{registration.notes}</dd>
-            </div>
-          ) : null}
-          {registration.admin_notes ? (
-            <div>
-              <dt>Admin notes</dt>
-              <dd className="mt-0.5">{registration.admin_notes}</dd>
-            </div>
-          ) : null}
-        </dl>
-      </div>
-    );
-  };
-
-  // Sub-route links keep the current query string so the legacy balancer route
-  // (tournament id in the query) still resolves after navigating.
-  const queryString = searchParams.toString();
-  const withSearchParams = (path: string) => (queryString ? `${path}?${queryString}` : path);
+  const openId = searchParams?.get("id") ?? null;
+  const inspected = openId
+    ? (registrations.find((registration) => String(registration.id) === openId) ?? null)
+    : null;
 
   if (!tournamentId) {
     return (
@@ -557,161 +679,59 @@ export default function RegistrationsTable({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
-      {reasonTally.length > 0 ? (
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {reasonTally.map((entry) => (
-            <span key={entry.code} className="inline-flex items-center gap-1">
-              {/* Organizer-actionable entries are marked, not just sorted first:
-                  they are the ones where the fix is a setting on this site
-                  rather than a message to a player. */}
-              {entry.actor === "organizer" ? (
-                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-hidden />
-              ) : null}
-              <span className="tabular-nums">{entry.count}</span>
-              {formatAdmissionReason(t, { code: entry.code, actor: entry.actor })}
-            </span>
-          ))}
-        </p>
-      ) : null}
-      <AdminDataTable<AdminRegistration>
-        rows={registrations}
-        isLoading={registrationsQuery.isFetching}
-        columns={columns}
-        getRowId={(registration) => String(registration.id)}
-        filters={filters}
-        onFiltersChange={setFilters}
-        initialSort={{ field: "submitted", dir: "desc" }}
-        initialPageSize={25}
-        paging="infinite"
-        rowUnit="registrations"
-        cellAlign="top"
-        searchPlaceholder="Search registrations"
-        emptyMessage="No registrations yet."
-        columnsStorageKey="balancer-registrations-table-columns"
-        enableRowSelection={(row) => row.original.status === "pending"}
-        renderExpanded={renderRegistrationDetails}
-        groupRows={groupBy === "none" ? undefined : groupPageRows}
-        bulkActions={(selected, clearSelection) => (
-          <>
-            <Button
-              onClick={() => {
-                bulkApproveMutation.mutate(
-                  selected.map((registration) => registration.id),
-                  { onSuccess: clearSelection }
-                );
-              }}
-              disabled={bulkApproveMutation.isPending}
-            >
-              {bulkApproveMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Check className="mr-2 h-4 w-4" />
-              )}
-              Approve {selected.length}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                bulkAddToBalancerMutation.mutate(
-                  selected.map((registration) => registration.id),
-                  { onSuccess: clearSelection }
-                );
-              }}
-              disabled={bulkAddToBalancerMutation.isPending}
-            >
-              {bulkAddToBalancerMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Check className="mr-2 h-4 w-4" />
-              )}
-              Add to Balancer {selected.length}
-            </Button>
-          </>
-        )}
-        actions={
-          <>
-            <span
-              className="shrink-0 text-xs tabular-nums text-muted-foreground"
-              title={`${registrations.length} registrations`}
-            >
-              {registrations.length}
-            </span>
-            {pendingCount > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn("shrink-0 gap-1.5 text-amber-500")}
-                aria-pressed={isPendingFilterOn}
-                onClick={() =>
-                  setFilters(
-                    isPendingFilterOn
-                      ? { ...filters, status: [] }
-                      : { ...filters, status: ["pending"] }
-                  )
-                }
-                title={
-                  isPendingFilterOn
-                    ? "Clear the pending filter"
-                    : `Show only the ${pendingCount} pending registrations`
-                }
-              >
-                <Clock className="h-3.5 w-3.5" aria-hidden />
-                {pendingCount} pending
-              </Button>
-            ) : null}
-            <Select
-              value={groupBy}
-              onValueChange={(value) => setGroupBy(value as RegistrationGroupingMode)}
-            >
-              <SelectTrigger className="w-[160px]" aria-label="Group registrations">
-                <SelectValue placeholder="Group by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No grouping</SelectItem>
-                <SelectItem value="check_in">Group by check-in</SelectItem>
-                <SelectItem value="balancer_status">Group by balancer</SelectItem>
-                <SelectItem value="admission">Group by admission</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" onClick={() => setCreateOpen(true)}>
-              <UserPlus className="mr-2 h-4 w-4" />
-              Create registration
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label="Advanced registration actions">
-                  <MoreHorizontal className="h-4 w-4" aria-hidden />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Registration setup</DropdownMenuLabel>
-                <DropdownMenuItem asChild>
-                  <Link href={withSearchParams(`${basePath}/form`)}>
-                    <FileCog className="mr-2 h-4 w-4" aria-hidden />
-                    Form settings
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href={withSearchParams(`${basePath}/feed`)}>
-                    <Sheet className="mr-2 h-4 w-4" aria-hidden />
-                    Google Sheets feed
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Bulk tools</DropdownMenuLabel>
-                <DropdownMenuItem asChild>
-                  <Link href={withSearchParams(`${basePath}/rank-autofill`)}>
-                    <Sparkles className="mr-2 h-4 w-4" aria-hidden />
-                    Autofill ranks
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem
+    <div
+      className={cn(
+        "grid min-w-0 items-start gap-4",
+        inspected && "lg:grid-cols-[minmax(0,1fr)_380px]"
+      )}
+    >
+      <div className="flex min-h-0 min-w-0 flex-col gap-4">
+        {reasonTally.length > 0 ? (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {reasonTally.map((entry) => (
+              <span key={entry.code} className="inline-flex items-center gap-1">
+                {/* Organizer-actionable entries are marked, not just sorted first:
+                    they are the ones where the fix is a setting on this site
+                    rather than a message to a player. */}
+                {entry.actor === "organizer" ? (
+                  <AlertTriangle className="h-3.5 w-3.5 text-warning" aria-hidden />
+                ) : null}
+                <span className="tabular-nums">{entry.count}</span>
+                {formatAdmissionReason(t, { code: entry.code, actor: entry.actor })}
+              </span>
+            ))}
+          </p>
+        ) : null}
+        <AdminDataTable<AdminRegistration>
+          rows={visibleRegistrations}
+          isLoading={registrationsQuery.isFetching}
+          columns={columns}
+          getRowId={(registration) => String(registration.id)}
+          filters={tableFilters}
+          onFiltersChange={handleTableFiltersChange}
+          filterKey={filters.filterKey}
+          initialSort={{ field: "submitted", dir: "desc" }}
+          initialPageSize={25}
+          paging="infinite"
+          rowUnit="registrations"
+          cellAlign="top"
+          searchPlaceholder="Search registrations"
+          emptyMessage="No registrations yet."
+          columnsStorageKey="balancer-registrations-table-columns"
+          enableRowSelection={(row) => row.original.status === "pending"}
+          inspectorId={openId}
+          onRowClick={(row) => setParams({ id: String(row.original.id) })}
+          groupRows={groupBy === "none" ? undefined : groupPageRows}
+          toolbar={
+            <AdminFilterBar
+              defs={filterDefs}
+              filters={filters}
+              trailing={
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={exportToUsersMutation.isPending}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    exportToUsersMutation.mutate();
-                  }}
+                  onClick={() => exportToUsersMutation.mutate()}
                 >
                   {exportToUsersMutation.isPending ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
@@ -719,12 +739,116 @@ export default function RegistrationsTable({
                     <Upload className="mr-2 h-4 w-4" aria-hidden />
                   )}
                   Export to analytics
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
+                </Button>
+              }
+            />
+          }
+          bulkActions={(selected, clearSelection) => (
+            <BulkBar count={selected.length} unit="registrations" onClear={clearSelection}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  bulkApproveMutation.mutate(
+                    selected.map((registration) => registration.id),
+                    { onSuccess: clearSelection }
+                  );
+                }}
+                disabled={bulkApproveMutation.isPending}
+              >
+                {bulkApproveMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Check className="mr-2 h-4 w-4" aria-hidden />
+                )}
+                Approve {selected.length}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  bulkAddToBalancerMutation.mutate(
+                    selected.map((registration) => registration.id),
+                    { onSuccess: clearSelection }
+                  );
+                }}
+                disabled={bulkAddToBalancerMutation.isPending}
+              >
+                {bulkAddToBalancerMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Check className="mr-2 h-4 w-4" aria-hidden />
+                )}
+                Add to Balancer {selected.length}
+              </Button>
+            </BulkBar>
+          )}
+          actions={
+            <>
+              <span
+                className="shrink-0 text-xs tabular-nums text-muted-foreground"
+                title={`${registrations.length} registrations`}
+              >
+                {registrations.length}
+              </span>
+              {pendingCount > 0 ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 gap-1.5 text-warning"
+                  aria-pressed={isPendingFilterOn}
+                  onClick={() => filters.set("status", isPendingFilterOn ? [] : ["pending"])}
+                  title={
+                    isPendingFilterOn
+                      ? "Clear the pending filter"
+                      : `Show only the ${pendingCount} pending registrations`
+                  }
+                >
+                  <Clock className="h-3.5 w-3.5" aria-hidden />
+                  {pendingCount} pending
+                </Button>
+              ) : null}
+              <Select
+                value={groupBy}
+                onValueChange={(value) => setGroupBy(value as RegistrationGroupingMode)}
+              >
+                <SelectTrigger className="w-[160px]" aria-label="Group registrations">
+                  <SelectValue placeholder="Group by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No grouping</SelectItem>
+                  <SelectItem value="check_in">Group by check-in</SelectItem>
+                  <SelectItem value="balancer_status">Group by balancer</SelectItem>
+                  <SelectItem value="admission">Group by admission</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" onClick={() => setCreateOpen(true)}>
+                <UserPlus className="mr-2 h-4 w-4" aria-hidden />
+                Create registration
+              </Button>
+            </>
+          }
+        />
+      </div>
+
+      <AdminInspector
+        openId={inspected ? openId : null}
+        onClose={() => setParams({ id: null })}
+        title={inspected?.battle_tag ?? inspected?.display_name ?? "Registration"}
+        subtitle={
+          inspected
+            ? `${inspected.status} · ${ADMISSION_LABELS[inspected.admission.decision]}`
+            : undefined
         }
-      />
+      >
+        {inspected ? (
+          <RegistrationInspectorBody
+            registration={inspected}
+            catalog={subroleCatalog}
+            customFields={customFields}
+            t={t}
+          />
+        ) : null}
+      </AdminInspector>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-3xl gap-0 overflow-hidden border-border bg-popover p-0 text-[color:var(--aqt-fg)] shadow-2xl shadow-black/50 sm:rounded-xl">
@@ -793,6 +917,143 @@ export default function RegistrationsTable({
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => (open ? undefined : setPendingDelete(null))}
+        intent={{
+          title: "Delete this registration?",
+          description: `${pendingDelete?.battle_tag ?? pendingDelete?.display_name ?? "The registration"} is removed from the pool. Withdraw instead to keep the record.`,
+          confirmLabel: "Delete registration",
+          tone: "danger"
+        }}
+        pending={deleteMutation.isPending}
+        onConfirm={() => {
+          if (pendingDelete) deleteMutation.mutate(pendingDelete.id);
+        }}
+      />
+    </div>
+  );
+}
+
+/** Everything about one row that the table has no column for. */
+function RegistrationInspectorBody({
+  registration,
+  catalog,
+  customFields,
+  t
+}: Readonly<{
+  registration: AdminRegistration;
+  catalog?: SubroleCatalog;
+  customFields: RegistrationForm["custom_fields"];
+  t: AdmissionTranslator;
+}>) {
+  const answers = customFields.filter(
+    (field) => (registration.custom_fields_json?.[field.key] ?? null) !== null
+  );
+  const blockers = registration.admission.blockers.flatMap(
+    (requirement) => requirement.reasons
+  );
+
+  return (
+    <div className="space-y-5 text-sm">
+      <section className="space-y-1.5">
+        <h3 className={EYEBROW_CLASS}>Admission</h3>
+        <p className="text-foreground">{ADMISSION_LABELS[registration.admission.decision]}</p>
+        {blockers.length > 0 ? (
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            {blockers.map((reason) => (
+              <li key={`${reason.code}-${reason.actor}`}>{formatAdmissionReason(t, reason)}</li>
+            ))}
+          </ul>
+        ) : null}
+        {registration.subscription_outcome ? (
+          <p className="text-xs text-muted-foreground">
+            Subscription: {SUBSCRIPTION_LABELS[registration.subscription_outcome]}
+          </p>
+        ) : null}
+      </section>
+
+      <section className="space-y-1.5">
+        <h3 className={EYEBROW_CLASS}>Declared roles</h3>
+        <RolesCell roles={registration.roles} catalog={catalog} />
+      </section>
+
+      {answers.length > 0 ? (
+        <section className="space-y-1.5">
+          <h3 className={EYEBROW_CLASS}>Questionnaire</h3>
+          <dl className="space-y-2 text-xs">
+            {answers.map((field) => (
+              <div key={field.key}>
+                <dt className="text-muted-foreground">{field.label}</dt>
+                <dd className="mt-0.5 text-foreground">
+                  {renderCustomFieldValue(field, registration.custom_fields_json?.[field.key])}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : null}
+
+      <section className="space-y-1.5">
+        <h3 className={EYEBROW_CLASS}>Details</h3>
+        <dl className="space-y-2 text-xs text-muted-foreground">
+          {(registration.smurf_tags_json?.length ?? 0) > 0 ? (
+            <div className="flex justify-between gap-3">
+              <dt>Smurfs</dt>
+              <dd className="text-right">{registration.smurf_tags_json?.join(", ")}</dd>
+            </div>
+          ) : null}
+          {registration.discord_nick || registration.twitch_nick || registration.boosty_nick ? (
+            <div className="flex justify-between gap-3">
+              <dt>Contact</dt>
+              <dd className="text-right">
+                {[registration.discord_nick, registration.twitch_nick, registration.boosty_nick]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </dd>
+            </div>
+          ) : null}
+          <div className="flex justify-between gap-3">
+            <dt>Source</dt>
+            <dd className="text-right">{registration.source}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt>Submitted</dt>
+            <dd className="text-right">{formatSubmittedAt(registration.submitted_at)}</dd>
+          </div>
+          {registration.reviewed_at ? (
+            <div className="flex justify-between gap-3">
+              <dt>Reviewed</dt>
+              <dd className="text-right">
+                {formatSubmittedAt(registration.reviewed_at)}
+                {registration.reviewed_by_username ? ` · ${registration.reviewed_by_username}` : ""}
+              </dd>
+            </div>
+          ) : null}
+          {registration.notes ? (
+            <div>
+              <dt>Notes</dt>
+              <dd className="mt-0.5">{registration.notes}</dd>
+            </div>
+          ) : null}
+          {registration.admin_notes ? (
+            <div>
+              <dt>Admin notes</dt>
+              <dd className="mt-0.5">{registration.admin_notes}</dd>
+            </div>
+          ) : null}
+        </dl>
+      </section>
+
+      <section className="space-y-1.5">
+        <h3 className={EYEBROW_CLASS}>Rank history</h3>
+        {registration.user_id != null ? (
+          <RankHistory userId={registration.user_id} />
+        ) : (
+          <RankHistory battleTag={registration.battle_tag} />
+        )}
+      </section>
     </div>
   );
 }

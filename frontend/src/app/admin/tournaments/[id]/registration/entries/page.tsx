@@ -2,8 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
-import { RegistrationTeamsCard } from "../components/RegistrationTeamsCard";
-import { tabFallback, useHubTournamentQuery } from "../hubQueries";
+import { RegistrationTeamsCard } from "../../components/RegistrationTeamsCard";
+import { tabFallback, useHubTournamentQuery } from "../../hubQueries";
 
 // D25: the registrations table lives in a neutral place and is rendered by both
 // the hub tab (tournament from the path) and the legacy balancer route
@@ -13,7 +13,7 @@ const RegistrationsTable = dynamic(
   { loading: () => tabFallback }
 );
 
-export default function RegistrationTabPage() {
+export default function RegistrationEntriesPage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
   const validTournamentId =
@@ -34,10 +34,7 @@ export default function RegistrationTabPage() {
       {showRegistrationTeams && (
         <RegistrationTeamsCard tournamentId={validTournamentId} workspaceId={workspaceId} />
       )}
-      <RegistrationsTable
-        tournamentId={validTournamentId}
-        basePath={`/admin/tournaments/${params.id}/registration`}
-      />
+      <RegistrationsTable tournamentId={validTournamentId} />
     </div>
   );
 }
