@@ -2948,7 +2948,30 @@
       "summaryOrderCustom": "Custom order",
       "summaryTimerOff": "No turn limit",
       "summaryTimerOn": "{seconds}s per turn",
-      "orderHeroHint": "One round's worth of steps — hero bans repeat for every map of the series, so this list is replayed per map, not spread across it."
+      "orderHeroHint": "One round's worth of steps — hero bans repeat for every map of the series, so this list is replayed per map, not spread across it.",
+      "scopeTreeLabel": "Scope",
+      "scopeState": {
+        "own": "overridden",
+        "redundant": "same as above",
+        "inherited": "inherited",
+        "none": "no rules"
+      },
+      "step": {
+        "pool": "Pool",
+        "sequence": "Sequence",
+        "sides": "Sides"
+      },
+      "stepsLabel": "Configuration steps",
+      "kindLabel": "Rules for",
+      "editingScope": "Editing scope: {scope}",
+      "overridesInherited": "Inherits from {scope} unless overridden here.",
+      "resetToInherited": "Reset to inherited",
+      "resetConfirmAction": "Remove the override",
+      "resetConfirmTitle": "Reset this scope to inherited rules?",
+      "resetConfirmDescription": "The rules saved for “{scope}” are removed, and its matches fall back to {source}.",
+      "pickScopeTitle": "Pick a scope",
+      "pickScopeHint": "Choose the tournament, a stage or a round on the left to see and edit the rules its matches play by.",
+      "orderSlotsMode": "One group per round resolves its own order, so there is no series-wide list of steps to author."
     }
   },
   "users": {
@@ -4037,6 +4060,8 @@
         "order_recalculated": "This round's pick order was recalculated from the live team averages. Review the new order on the board, then resume — captains cannot pick until you do."
       },
       "resolveRoles": "Resolve role shortage",
+      "onTheClock": "On the clock · round {round} · pick {pick}/{total}",
+      "watchPanel": "Feasibility and presence",
       "currentPick": "Current operation",
       "noCurrentPick": "No current pick",
       "currentPickMeta": "Pick #{pick} · round {round} · version {version}",

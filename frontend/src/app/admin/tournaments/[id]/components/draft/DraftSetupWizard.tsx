@@ -1,19 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  ClipboardCheck,
-  ListChecks,
-  Settings2,
-  ShieldCheck,
-  Sparkles,
-  XCircle,
-  UsersRound
-} from "lucide-react";
+import { XCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -28,12 +17,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { HeroFrame } from "@/components/site/PageHero";
+import { WizardShell, type WizardStep } from "@/components/admin/kit/WizardShell";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { notify } from "@/lib/notify";
 import type { RosterShape } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
-import { cn } from "@/lib/utils";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import balancerAdminService from "@/services/balancer-admin.service";
 import draftService from "@/services/draft.service";
 import type {
@@ -54,7 +43,6 @@ import { DraftReadyStep } from "./DraftReadyStep";
 import { DraftReviewStep } from "./DraftReviewStep";
 import {
   canCancelDraftSetup,
-  canNavigateToSetupStep,
   derivePoolReadiness,
   MAX_DRAFT_TEAM_COUNT,
   MIN_DRAFT_TEAM_COUNT,
@@ -72,9 +60,9 @@ interface DraftSetupWizardProps {
   board: DraftBoard | null;
   /** Resolved tournament roster shape; a live session's own shape wins over it. */
   rosterShape: RosterShape;
+  /** Rail slot (F5 ·4): past sessions, secondary to the session being set up. */
+  aside?: ReactNode;
 }
-
-const STEP_ICONS = [Settings2, ListChecks, UsersRound, Sparkles, ClipboardCheck, ShieldCheck];
 
 function configFromSession(session: DraftSession | null, shape: RosterShape): DraftSetupConfig {
   const roundRules = session?.settings_json?.round_rules;
@@ -100,7 +88,12 @@ function createEmptyCaptainSetup(): DraftCaptainSetup {
   };
 }
 
-export function DraftSetupWizard({ tournamentId, board, rosterShape }: Readonly<DraftSetupWizardProps>) {
+export function DraftSetupWizard({
+  tournamentId,
+  board,
+  rosterShape,
+  aside
+}: Readonly<DraftSetupWizardProps>) {
   const t = useTranslations("draftAdmin");
   const queryClient = useQueryClient();
   const boardKey = tournamentQueryKeys.draftBoard(tournamentId);
@@ -384,6 +377,9 @@ export function DraftSetupWizard({ tournamentId, board, rosterShape }: Readonly<
   };
 
   const back = () => {
+    // The rail is an indicator in T6, so this is the only way back and must
+    // not race a mutation that is about to move the step itself.
+    if (pending) return;
     if (step === "review") setPreview(null);
     setStep(previousSetupStep(step));
   };
@@ -393,92 +389,64 @@ export function DraftSetupWizard({ tournamentId, board, rosterShape }: Readonly<
     setPreview(null);
   };
 
+  const wizardSteps: WizardStep[] = SETUP_STEPS.map((entry, index) => ({
+    key: entry,
+    label: t(`steps.${entry}`),
+    state: index < currentIndex ? "done" : index === currentIndex ? "current" : "todo"
+  }));
+
+  const cancelButton = canCancelSetup ? (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      disabled={pending}
+      className="border-[color:var(--aqt-live)]/40 text-[color:var(--aqt-live)] hover:border-[color:var(--aqt-live)] hover:bg-[color:var(--aqt-live)]/10"
+      onClick={() => setCancelDialogOpen(true)}
+    >
+      <XCircle className="mr-2 h-4 w-4" aria-hidden />
+      {session ? t("actions.cancel") : t("discardSetup")}
+    </Button>
+  ) : null;
+
   return (
     <div className="space-y-5 text-[color:var(--aqt-fg)]">
-      <div className="overflow-x-auto pb-1">
-        <ol className="flex min-w-3xl items-center gap-2" aria-label={t("setupSteps")}>
-          {SETUP_STEPS.map((entry, index) => {
-            const Icon = STEP_ICONS[index];
-            const complete = index < currentIndex;
-            const active = entry === step;
-            const reachable = canNavigateToSetupStep(step, entry);
-            return (
-              <li key={entry} className="flex min-w-0 flex-1 items-center gap-2">
-                <button
-                  type="button"
-                  disabled={!reachable || pending}
-                  onClick={() => setStep(entry)}
-                  aria-current={active ? "step" : undefined}
-                  className={cn(
-                    "flex min-w-0 flex-1 items-center gap-2 border-y border-[color:var(--aqt-border)] px-3 py-2.5 text-left transition-colors",
-                    active &&
-                      "border-[color:var(--aqt-teal)] bg-[color:var(--aqt-teal)]/8 text-[color:var(--aqt-teal)]",
-                    complete && !active && "text-[color:var(--aqt-support)]",
-                    !active && !complete && "text-[color:var(--aqt-fg-muted)]",
-                    reachable && "hover:border-[color:var(--aqt-teal)]/50",
-                    !reachable && "cursor-default"
-                  )}
-                >
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[color:var(--aqt-card-2)]">
-                    {complete ? (
-                      <Check className="h-4 w-4 text-[color:var(--aqt-support)]" aria-hidden />
-                    ) : (
-                      <Icon className="h-4 w-4" aria-hidden />
-                    )}
-                  </span>
-                  <span className="truncate text-xs font-medium tabular-nums">
-                    {index + 1}. {t(`steps.${entry}`)}
-                  </span>
-                </button>
-                {index < SETUP_STEPS.length - 1 && (
-                  <ChevronRight
-                    className="h-4 w-4 shrink-0 text-[color:var(--aqt-fg-faint)]"
-                    aria-hidden
-                  />
-                )}
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-
-      <HeroFrame>
-        <div className="border-b border-[color:var(--aqt-border)] px-5 py-5 sm:px-7">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-wider tabular-nums text-[color:var(--aqt-teal)]">
-                {t("stepOf", { current: currentIndex + 1, total: SETUP_STEPS.length })}
-              </p>
-              <h2 className="mt-2 font-onest text-2xl font-semibold">{t(`stepTitles.${step}`)}</h2>
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
-                {t(`stepDescriptions.${step}`)}
-              </p>
-            </div>
-            {(session || canCancelSetup) && (
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                {session && (
-                  <Badge variant="outline" className="tabular-nums">
-                    {t("sessionNumber", { id: session.id })} · v{session.version}
-                  </Badge>
-                )}
-                {canCancelSetup && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={pending}
-                    className="border-[color:var(--aqt-live)]/40 text-[color:var(--aqt-live)] hover:border-[color:var(--aqt-live)] hover:bg-[color:var(--aqt-live)]/10"
-                    onClick={() => setCancelDialogOpen(true)}
-                  >
-                    <XCircle className="mr-2 h-4 w-4" aria-hidden />
-                    {session ? t("actions.cancel") : t("discardSetup")}
-                  </Button>
-                )}
-              </div>
-            )}
+      <WizardShell
+        steps={wizardSteps}
+        aside={aside}
+        footer={
+          // The Ready step carries its own confirmed "Start draft"; a generic
+          // Continue beside it would be a second, unlabelled way to go live.
+          step === "ready"
+            ? { secondary: cancelButton }
+            : {
+                back: step === "config" ? undefined : back,
+                next: {
+                  label: step === "review" ? t("seedDraft") : t("continue"),
+                  onClick: () => void next(),
+                  disabled: pending || (step === "review" && !reviewReady)
+                },
+                secondary: cancelButton
+              }
+        }
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className={EYEBROW_CLASS}>
+              {t("stepOf", { current: currentIndex + 1, total: SETUP_STEPS.length })}
+            </p>
+            <h2 className="mt-2 font-onest text-xl font-semibold">{t(`stepTitles.${step}`)}</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
+              {t(`stepDescriptions.${step}`)}
+            </p>
           </div>
+          {session && (
+            <Badge variant="outline" className="tabular-nums">
+              {t("sessionNumber", { id: session.id })} · v{session.version}
+            </Badge>
+          )}
         </div>
-        <div className="p-4 sm:p-7">
+        <div className="mt-6">
           {step === "config" && (
             <DraftConfigStep
               value={config}
@@ -544,29 +512,7 @@ export function DraftSetupWizard({ tournamentId, board, rosterShape }: Readonly<
             />
           )}
         </div>
-
-        {step !== "ready" && (
-          <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]/95 px-4 py-3 backdrop-blur supports-[padding:max(0px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-7">
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={pending || step === "config"}
-              onClick={back}
-            >
-              <ChevronLeft className="mr-2 h-4 w-4" aria-hidden />
-              {t("back")}
-            </Button>
-            <Button
-              type="button"
-              disabled={pending || (step === "review" && !reviewReady)}
-              onClick={() => void next()}
-            >
-              {step === "review" ? t("seedDraft") : t("continue")}
-              {step !== "review" && <ChevronRight className="ml-2 h-4 w-4" aria-hidden />}
-            </Button>
-          </div>
-        )}
-      </HeroFrame>
+      </WizardShell>
 
       <AlertDialog open={reseedDialogOpen} onOpenChange={setReseedDialogOpen}>
         <AlertDialogContent>

@@ -11,10 +11,17 @@ import {
   useDraftPickOptionsQuery,
   useDraftRealtime
 } from "@/hooks/useDraftData";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
-import { HeroCoord, HeroFrame, HeroStat, HeroStamp } from "@/components/site/PageHero";
+import { HeroCoord, HeroFrame, HeroStamp } from "@/components/site/PageHero";
 import type { DraftBoard } from "@/types/draft.types";
 
+import { captainPresenceRows } from "./admin-control-model";
 import { CaptainPresence } from "./CaptainPresence";
 import { FeasibilityStatus } from "./FeasibilityStatus";
 import { LifecycleControls } from "./LifecycleControls";
@@ -27,6 +34,16 @@ interface AdminControlRoomProps {
 
 const BLOCKED_REASONS = ["role_shortage", "order_recalculated"] as const;
 
+/**
+ * Live draft control room (F6).
+ *
+ * One status strip carries everything the organizer running the draft needs at
+ * a glance — who is on the clock, how long they have, who is connected, and
+ * the lifecycle actions — because that set was previously spread over a hero,
+ * a metric column and a section further down the page. Below it: the pick
+ * detail on the left, observation (feasibility, presence) on the right, which
+ * collapses under the main area on a narrow screen (F18).
+ */
 export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlRoomProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
@@ -46,40 +63,79 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
   // Only translate reasons the messages actually carry; anything else (a newer
   // backend than this build) falls back to the raw code.
   const blockedReason = BLOCKED_REASONS.find((reason) => reason === session.blocked_reason);
+  const captains = captainPresenceRows(board.teams, presence);
+  const captainsOnline = captains.filter((captain) => captain.connected).length;
+
+  // Rendered twice by the responsive split below (only one is ever visible, so
+  // only one is in the accessibility tree). Both are presentational: the
+  // queries and the realtime subscription live here, not in them.
+  const watch = (
+    <>
+      <FeasibilityStatus feasibility={feasibility} loading={feasibilityQuery.isLoading} />
+      {!session.blocked_reason && shouldResolve && (
+        <Button variant="outline" className="w-full" onClick={() => setRoleDialogOpen(true)}>
+          <AlertTriangle className="mr-2 h-4 w-4" aria-hidden />
+          {t("resolveRoles")}
+        </Button>
+      )}
+      <CaptainPresence teams={board.teams} presence={presence} />
+    </>
+  );
 
   return (
     <div className="space-y-5 text-[color:var(--aqt-fg)]">
       <HeroFrame>
-        <div className="grid gap-8 px-6 py-7 lg:grid-cols-[1.35fr_1fr] lg:items-end lg:px-9">
-          <div>
+        <div className="flex flex-col gap-6 px-5 py-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+          <div className="min-w-0">
             <div className="flex flex-wrap gap-4">
               <HeroCoord>{t("adminCoordinate", { id: session.id })}</HeroCoord>
               <HeroCoord>{t(`status.${session.status}`)}</HeroCoord>
             </div>
-            <h2 className="mt-4 font-onest text-3xl font-semibold tracking-tight sm:text-4xl">
-              {t("title")}
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
-              {t("description")}
-            </p>
-            <div className="mt-6 flex flex-wrap gap-7">
-              <HeroStamp label={t("format")} value={session.format} />
-              <HeroStamp label={t("teamSize")} value={session.roster_shape.team_size} />
-              <HeroStamp label={t("connection")} value={t(`connectionState.${connectionState}`)} />
+            {/* The clock is deliberately outside the live region: it ticks four
+                times a second and would re-announce the whole strip with it. */}
+            <div role="status" className="mt-4">
+              <p className="font-mono text-xs uppercase tracking-wider tabular-nums text-[color:var(--aqt-teal)]">
+                {currentPick
+                  ? t("onTheClock", {
+                      round: currentPick.round_no,
+                      pick: currentPick.overall_no,
+                      total: board.picks.length
+                    })
+                  : t("currentPickEmpty")}
+              </p>
+              <h2 className="mt-2 font-onest text-2xl font-semibold tracking-tight sm:text-3xl">
+                {currentTeam?.name ?? t("noCurrentPick")}
+              </h2>
             </div>
+            <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[color:var(--aqt-fg-muted)]">
+              <span>{t(`connectionState.${connectionState}`)}</span>
+              <span aria-hidden>·</span>
+              <span className="tabular-nums">
+                {t("captainPresenceCount", { online: captainsOnline, total: captains.length })}
+              </span>
+              <span aria-hidden>·</span>
+              <span className="tabular-nums">
+                {presence.anonymous_viewer_count} {t("viewers")}
+              </span>
+            </p>
           </div>
-          <div className="grid grid-cols-3 gap-5 border-t border-[color:var(--aqt-border)] pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
-            <HeroStat label={t("pickProgress")} value={`${completed}/${board.picks.length}`} />
-            <HeroStat label={t("round")} value={currentPick?.round_no ?? "—"} />
-            <HeroStat
-              label={t("clock")}
-              value={
+          <div className="flex shrink-0 flex-col gap-5 lg:items-end">
+            <div className="lg:text-right">
+              <HeroCoord>{t("clock")}</HeroCoord>
+              <div className="mt-1 font-onest text-4xl font-semibold">
+                {/* compact: at this size the long forms ("autopicking…") wrap
+                    the strip on a phone, and PAUSE/AUTO say the same thing. */}
                 <DraftClock
                   expiresAt={currentPick?.clock_expires_at ?? null}
                   paused={session.status === "paused"}
                   compact
                 />
-              }
+              </div>
+            </div>
+            <LifecycleControls
+              tournamentId={tournamentId}
+              board={board}
+              options={optionsQuery.data ?? null}
             />
           </div>
         </div>
@@ -106,16 +162,13 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
         </div>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
-        <main className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[7fr_3fr]">
+        <main className="min-w-0 space-y-5">
           <section className="border-b border-[color:var(--aqt-border)] pb-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div role="status">
+              <div className="min-w-0">
                 <HeroCoord>{t("currentPick")}</HeroCoord>
-                <h3 className="mt-2 font-onest text-2xl font-semibold">
-                  {currentTeam?.name ?? t("noCurrentPick")}
-                </h3>
-                <p className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
+                <p className="mt-2 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
                   {currentPick
                     ? t("currentPickMeta", {
                         pick: currentPick.overall_no,
@@ -132,12 +185,11 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
                 </Link>
               </Button>
             </div>
-            <div className="mt-5">
-              <LifecycleControls
-                tournamentId={tournamentId}
-                board={board}
-                options={optionsQuery.data ?? null}
-              />
+            <div className="mt-5 flex flex-wrap gap-7">
+              <HeroStamp label={t("format")} value={session.format} />
+              <HeroStamp label={t("teamSize")} value={session.roster_shape.team_size} />
+              <HeroStamp label={t("pickProgress")} value={`${completed}/${board.picks.length}`} />
+              <HeroStamp label={t("round")} value={currentPick?.round_no ?? "—"} />
             </div>
           </section>
 
@@ -152,16 +204,16 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
             />
             <AdminMetric icon={Radio} label={t("viewers")} value={presence.anonymous_viewer_count} />
           </section>
+
+          <Accordion type="single" collapsible className="lg:hidden">
+            <AccordionItem value="watch" className="border-t border-[color:var(--aqt-border)]">
+              <AccordionTrigger>{t("watchPanel")}</AccordionTrigger>
+              <AccordionContent className="space-y-6">{watch}</AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </main>
-        <aside className="space-y-6 border-t border-[color:var(--aqt-border)] pt-5 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
-          <FeasibilityStatus feasibility={feasibility} loading={feasibilityQuery.isLoading} />
-          {!session.blocked_reason && shouldResolve && (
-            <Button variant="outline" className="w-full" onClick={() => setRoleDialogOpen(true)}>
-              <AlertTriangle className="mr-2 h-4 w-4" aria-hidden />
-              {t("resolveRoles")}
-            </Button>
-          )}
-          <CaptainPresence teams={board.teams} presence={presence} />
+        <aside className="hidden space-y-6 border-[color:var(--aqt-border)] lg:block lg:border-l lg:pl-6">
+          {watch}
         </aside>
       </div>
 
@@ -175,7 +227,6 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
     </div>
   );
 }
-
 function AdminMetric({
   icon: Icon,
   label,

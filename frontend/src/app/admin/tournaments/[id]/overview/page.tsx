@@ -95,16 +95,16 @@ export default function OverviewTabPage() {
       ) : null}
       <PhaseStepper tournament={tournament} />
       {draftRunning ? (
-        // "Draft live -> Teams" banner (UA-O9). Phase 1 home of the draft
-        // board is the draft tab; the Phase 2 permanent redirect draft->teams
-        // keeps this link landing on its final address.
+        // "Draft live -> Teams" banner (UA-O9). PR-2c moved the draft board
+        // under the Teams tab, so this links straight at its final address
+        // instead of riding the draft->teams redirect.
         <Card className="border-warning/40 bg-warning/10">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
             <p className="text-sm text-warning">
               Team draft is {draftSessionStatus} — manage it from the draft board.
             </p>
             <Button asChild size="sm" variant="outline">
-              <Link href={`${basePath}/draft`}>Open draft board</Link>
+              <Link href={`${basePath}/teams/draft`}>Open draft board</Link>
             </Button>
           </CardContent>
         </Card>

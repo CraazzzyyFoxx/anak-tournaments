@@ -137,7 +137,10 @@ export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<D
                 {" · "}
                 {t("roundsShort", { rounds: session.rounds })}
               </span>
-              <div className="flex shrink-0 items-center gap-2">
+              {/* Wraps rather than staying on one line: this panel now lives in
+                  the wizard's 220px rail (F5 ·4), where three buttons abreast
+                  would overflow it. */}
+              <div className="flex flex-wrap items-center gap-2">
                 <Button asChild variant="outline" size="sm">
                   <Link href={`/draft/${tournamentId}`} target="_blank">
                     {t("openBoard")}
