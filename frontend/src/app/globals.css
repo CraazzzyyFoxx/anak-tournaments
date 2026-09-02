@@ -162,8 +162,8 @@
    var(--sidebar-*)` emits `background-color: var(--sidebar)`. Never wrap one in
    hsl() — that yields hsl(hsl(…)) and paints the subtree transparent. */
 .dark {
-  /* One step up the surface ladder from the page (--aqt-bg, 5%), so the
-     `variant="inset"` content panel reads as recessed against the rail. */
+  /* One step up the surface ladder from the page (--aqt-bg, 5%), so the rail
+     reads as a distinct surface against the flat content area. */
   --sidebar: var(--aqt-bg-2);
   --sidebar-foreground: var(--aqt-fg);
   --sidebar-primary: var(--aqt-teal);

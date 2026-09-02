@@ -52,7 +52,7 @@ export function AdminSidebar() {
   const activeHref = getActiveAdminNavHref(pathname, allHrefs);
 
   return (
-    <Sidebar collapsible="icon" variant="inset">
+    <Sidebar collapsible="icon">
       {/* ── HEADER: Logo + search hint ─────────────────── */}
       <SidebarHeader className="px-3 pt-3 pb-2 group-data-[collapsible=icon]:px-1">
         <SidebarWorkspaceLogoItem href="/admin" />
