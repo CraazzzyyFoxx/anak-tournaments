@@ -7,10 +7,14 @@
 //     under the endpoint's own param name;
 //  3. a filter change resets to page 1 — narrowing while on page 4 otherwise
 //     lands on a page the new result set does not have;
-//  4. back/forward restores the filter from the URL.
+//  4. back/forward restores the filter from the URL;
+//  5. a deep link's filter survives the load, controlled or not — state set
+//     from the URL lands a render later (and a controlled parent applies it a
+//     render after that), and the URL writer used to overwrite the link with
+//     that stale, empty filter set.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { act } from "react";
+import { act, StrictMode, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -227,5 +231,53 @@ describe("AdminDataTable header filters", () => {
   it("ignores a value the column does not declare", async () => {
     await render("?status=NONSENSE");
     expect(lastCallFilters()).toEqual({});
+  });
+
+  it("keeps a deep link's filter through the load when the caller owns it", async () => {
+    function Controlled() {
+      const [filters, setFilters] = useState<AdminTableFilters>({});
+      return (
+        <AdminDataTable<Row>
+          filters={filters}
+          onFiltersChange={setFilters}
+          queryKey={(page, searchValue, pageSize, sortField, sortDir, tableFilters) => [
+            "rows",
+            page,
+            searchValue,
+            pageSize,
+            sortField,
+            sortDir,
+            tableFilters
+          ]}
+          queryFn={queryFn}
+          columns={columns}
+        />
+      );
+    }
+
+    window.history.replaceState(null, "", "/admin/encounters?status=OPEN");
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <QueryClientProvider client={client}>
+            <Controlled />
+          </QueryClientProvider>
+        </StrictMode>
+      );
+    });
+    for (let turn = 0; turn < 5; turn += 1) {
+      await act(async () => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, 0);
+        await promise;
+      });
+    }
+
+    expect(new URLSearchParams(window.location.search).get("status")).toBe("OPEN");
+    expect(lastCallFilters()).toEqual({ status: ["OPEN"] });
   });
 });

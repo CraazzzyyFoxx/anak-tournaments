@@ -242,6 +242,19 @@ export function AdminDataTable<TData>({
   const rowClickTimeoutRef = useRef<number | null>(null);
   const previousFiltersRef = useRef("");
   const previousUrlStateRef = useRef({ page: 1, search: "", pageSize: initialPageSize, sortField: null as string | null, sortDir: "asc" as SortDir, filters: "" });
+  /**
+   * The filter set the last URL parse asked for, held until state carries it.
+   *
+   * Filters set from the URL land a render later — and for CONTROLLED filters
+   * only once the parent applies them, which a StrictMode remount re-parses in
+   * between — so until then the URL-sync effect below would write the stale
+   * empty set back over the link that was just opened. That is what silently
+   * dropped `?tournament=` (and every other header filter) from every deep
+   * link and reload. Only filters get this hold: every other piece of table
+   * state lives in this component and is set in the same batch, so it lags by
+   * exactly one render and cannot be wedged by a caller.
+   */
+  const pendingUrlFiltersRef = useRef<string | null>(null);
   const safeCurrentPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1;
   const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : initialPageSize;
 
@@ -441,6 +454,7 @@ export function AdminDataTable<TData>({
       previousSortRef.current = { field: nextSortField, dir: nextSortDir };
       previousFiltersRef.current = nextSerializedFilters;
       previousUrlStateRef.current = { page: nextPage, search: nextSearch, pageSize: nextPageSize, sortField: nextSortField, sortDir: nextSortDir, filters: nextSerializedFilters };
+      pendingUrlFiltersRef.current = nextSerializedFilters;
       setCurrentPage(nextPage);
       setSearchValue(nextSearch);
       setPageSize(nextPageSize);
@@ -461,6 +475,11 @@ export function AdminDataTable<TData>({
 
   // URL sync
   useEffect(() => {
+    if (pendingUrlFiltersRef.current !== null) {
+      if (pendingUrlFiltersRef.current !== serializedFilters) return;
+      pendingUrlFiltersRef.current = null;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const prev = previousUrlStateRef.current;
     const searchChanged = prev.search !== debouncedSearchValue;
