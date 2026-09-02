@@ -1,7 +1,6 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import {
@@ -10,18 +9,15 @@ import {
   Sparkles
 } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
+import type { AdminTableFilters } from "@/components/admin/admin-table-filters";
 import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { createRowActionsColumn } from "@/components/admin/row-actions-column";
-import {
-  TOURNAMENT_QUERY_PARAM,
-  parseTournamentQueryParam,
-  nextTournamentFilterQuery,
-  TournamentFilterSelect
-} from "@/components/admin/tournament-filter";
+import { TOURNAMENT_QUERY_PARAM } from "@/components/admin/tournament-filter";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import DivisionIcon from "@/components/DivisionIcon";
@@ -323,9 +319,6 @@ function PlayerSubRoleField({
 }
 
 export default function PlayersPage() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const queryClient = useQueryClient();
@@ -337,7 +330,10 @@ export default function PlayersPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerRow | null>(null);
-  const selectedTournamentId = parseTournamentQueryParam(searchParams.get(TOURNAMENT_QUERY_PARAM));
+  // The table owns the filter and its URL param; the page still needs the value
+  // for the create gate and the create form, so the filter is controlled here.
+  const [filters, setFilters] = useState<AdminTableFilters>({});
+  const selectedTournamentId = Number(filters[TOURNAMENT_QUERY_PARAM]?.[0]) || null;
   const [selectedUserName, setSelectedUserName] = useState("");
   const createHintId = useId();
 
@@ -463,19 +459,6 @@ export default function PlayersPage() {
     }
   };
 
-  const handleTournamentFilterChange = (value: string) => {
-    const nextTournamentId = value === "all" ? null : Number(value);
-    const query = nextTournamentFilterQuery(searchParams.toString(), TOURNAMENT_QUERY_PARAM, value);
-
-    setFormData((current) => ({
-      ...current,
-      tournament_id: nextTournamentId ?? 0,
-      team_id: 0
-    }));
-
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  };
-
   const createFormInitial = getCreatePlayerForm(selectedTournamentId);
   const editFormInitial = selectedPlayer ? getEditPlayerForm(selectedPlayer) : createFormInitial;
   const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
@@ -515,7 +498,46 @@ export default function PlayersPage() {
     {
       accessorKey: "name",
       header: "Name",
+      size: 200,
+      meta: adminColumnMeta<PlayerRow>({ sticky: true }),
       cell: ({ row }) => <div className="font-medium">{row.getValue("name")}</div>
+    },
+    {
+      accessorKey: "team",
+      header: "Team",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const team = row.getValue<Team>("team");
+        return team ? <div className="text-sm">{team.name}</div> : "—";
+      }
+    },
+    {
+      id: "tournament",
+      header: "Tournament",
+      enableSorting: false,
+      meta: adminColumnMeta<PlayerRow>({
+        filter: {
+          // The URL keeps the `tournament` spelling the sibling admin pages
+          // (encounters, teams, standings) already use, so a link that pins a
+          // tournament still opens pinned here. `queryFn` maps it to the
+          // service's `tournamentId`.
+          param: TOURNAMENT_QUERY_PARAM,
+          label: "Filter by tournament",
+          searchable: true,
+          options: (tournamentsData?.results ?? []).map((tournament) => ({
+            value: String(tournament.id),
+            label: tournament.name
+          }))
+        }
+      }),
+      cell: ({ row }) => {
+        const tournament = row.original.team?.tournament;
+        return tournament ? (
+          <div className="text-sm text-muted-foreground">{tournament.name}</div>
+        ) : (
+          "—"
+        );
+      }
     },
     {
       accessorKey: "role",
@@ -530,9 +552,21 @@ export default function PlayersPage() {
       )
     },
     {
+      // Division is derived from rank, so the two ride in one column and sort
+      // by the finer of the pair.
       accessorKey: "rank",
-      header: "Rank",
-      cell: ({ row }) => <div className="tabular-nums">{row.getValue("rank")}</div>
+      header: "Div · Rank",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <DivisionIcon
+            division={row.original.division}
+            tournamentGrid={getPlayerRowDivisionGrid(row.original.team)}
+            width={28}
+            height={28}
+          />
+          <span className="tabular-nums">{row.getValue("rank")}</span>
+        </div>
+      )
     },
     {
       accessorKey: "sub_role",
@@ -540,29 +574,6 @@ export default function PlayersPage() {
       cell: ({ row }) => (
         <div>{formatSubRoleLabel(row.getValue<string | null>("sub_role")) ?? "—"}</div>
       )
-    },
-    {
-      accessorKey: "division",
-      header: "Div",
-      cell: ({ row }) => (
-        <div className="flex justify-start">
-          <DivisionIcon
-            division={row.getValue<number>("division")}
-            tournamentGrid={getPlayerRowDivisionGrid(row.original.team)}
-            width={28}
-            height={28}
-          />
-        </div>
-      )
-    },
-    {
-      accessorKey: "team",
-      header: "Team",
-      enableSorting: false,
-      cell: ({ row }) => {
-        const team = row.getValue<Team>("team");
-        return team ? <div className="text-sm">{team.name}</div> : "—";
-      }
     },
     {
       id: "flags",
@@ -615,17 +626,20 @@ export default function PlayersPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => [
+        filters={filters}
+        onFiltersChange={setFilters}
+        queryKey={(page, search, pageSize, sortField, sortDir, tableFilters) => [
           "players",
-          selectedTournamentId,
           page,
           search,
           pageSize,
           sortField,
-          sortDir
+          sortDir,
+          tableFilters
         ]}
-        queryFn={async (page, search, pageSize, sortField, sortDir) => {
-          const data = await teamService.getAll({ tournamentId: selectedTournamentId });
+        queryFn={async (page, search, pageSize, sortField, sortDir, tableFilters) => {
+          const tournamentId = Number(tableFilters[TOURNAMENT_QUERY_PARAM]?.[0]) || null;
+          const data = await teamService.getAll({ tournamentId });
           const players = buildPlayerRows(data.results);
           const normalizedSearch = search.trim().toLowerCase();
           const filtered = normalizedSearch
@@ -641,13 +655,6 @@ export default function PlayersPage() {
           selectedTournamentId
             ? "No players in this tournament yet. Use “Create player” to add the first one."
             : "No players yet. Pick a tournament to see or create its players."
-        }
-        actions={
-          <TournamentFilterSelect
-            tournaments={tournamentsData?.results ?? []}
-            selectedTournamentId={selectedTournamentId}
-            onValueChange={handleTournamentFilterChange}
-          />
         }
         onRowDoubleClick={canUpdate ? (row) => handleEdit(row.original) : undefined}
       />

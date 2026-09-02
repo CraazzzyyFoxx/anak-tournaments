@@ -49,6 +49,9 @@ export default defineConfig({
       "src/app/admin/tournaments/**/components/*.test.tsx",
       "src/app/admin/tournaments/[id]/tab-guards.test.ts",
       "src/app/admin/players/**/*.test.ts",
+      // Same `.ts`/`.tsx` trap as the pregame/draft entries above: the players
+      // table's render contract is `.tsx` and would silently never run.
+      "src/app/admin/players/**/*.test.tsx",
       "src/app/admin/__tests__/**/*.test.ts",
       // `include` is an allow-list: a test file outside it never runs and the
       // suite still reports green. Both data-browser dirs are listed up front
