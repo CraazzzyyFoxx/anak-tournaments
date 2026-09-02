@@ -52,6 +52,12 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<Adm
     [router, onOpenChange],
   );
 
+  // Only the visible items contribute views: the palette must never offer a
+  // route the sidebar hides.
+  const viewEntries = groups.flatMap((group) =>
+    group.items.flatMap((item) => (item.views ?? []).map((view) => ({ item, view }))),
+  );
+
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <CommandInput aria-label="Search admin pages" placeholder="Search admin pages…" />
@@ -62,7 +68,7 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<Adm
           &ldquo;rank&rdquo;.
         </CommandEmpty>
         {groups.map((group) => (
-          <CommandGroup key={group.title} heading={group.title}>
+          <CommandGroup key={group.title || "primary"} heading={group.title || "Overview"}>
             {group.items.map((item) => (
               <CommandItem
                 key={item.href}
@@ -78,6 +84,27 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<Adm
             ))}
           </CommandGroup>
         ))}
+        {/* Views of the multi-view screens. Collapsing five sidebar entries
+            into one browser would otherwise make "standings" unfindable: the
+            page it lives on is called Matches. */}
+        {viewEntries.length > 0 ? (
+          <CommandGroup heading="Views">
+            {viewEntries.map(({ item, view }) => (
+              <CommandItem
+                key={view.href}
+                value={`${item.title} ${view.label}`}
+                onSelect={() => handleSelect(view.href)}
+              >
+                <item.icon aria-hidden className="size-4 text-muted-foreground" />
+                <span>
+                  {item.title}
+                  <span aria-hidden> › </span>
+                  {view.label}
+                </span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        ) : null}
       </CommandList>
     </CommandDialog>
   );

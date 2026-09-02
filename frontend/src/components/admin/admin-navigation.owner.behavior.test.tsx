@@ -1,17 +1,17 @@
 // @vitest-environment happy-dom
 //
-// The reported bug, end to end: signed in as a *workspace owner*, the
-// "Player identities" entry was absent from the admin sidebar — `globalOnly`
-// demanded a global `user.read`, which an owner never holds (their `admin.*` is
-// workspace-scoped), so the entry was filtered out and the route guard answered
-// UnauthorizedState.
+// The reported bug, end to end: signed in as a *workspace owner*, the player
+// identities entry (now `People`) was absent from the admin sidebar —
+// `globalOnly` demanded a global `user.read`, which an owner never holds
+// (their `admin.*` is workspace-scoped), so the entry was filtered out and the
+// route guard answered UnauthorizedState.
 //
 // This exercises the real composition behind that symptom — profile store ->
 // `usePermissions` -> the exact predicates `AdminSidebar` and
 // `AdminLayoutClient` build — rather than the route table alone, and pins the
 // two halves that must NOT move with it: a workspace grant still buys no write
-// on the global identity, and genuinely global surfaces (/admin/streams) stay
-// hidden.
+// on the global identity, and genuinely global surfaces (the stream poller,
+// superuser game content) stay out of reach.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -66,7 +66,7 @@ function ProbeComponent({ onReady }: { readonly onReady: (probe: Probe) => void 
     }),
   );
 
-  const route = getMatchingAdminRoute("/admin/users");
+  const route = getMatchingAdminRoute("/admin/people");
   onReady({
     navHrefs: groups.flatMap((group) => group.items.map((item) => item.href)),
     canOpenUsersRoute: route
@@ -123,10 +123,10 @@ describe("a workspace owner's admin navigation", () => {
     });
   });
 
-  it("shows Player identities and lets the route open", async () => {
+  it("shows People and lets the route open", async () => {
     const { navHrefs, canOpenUsersRoute, canListWorkspaceIdentities } = await probe();
 
-    expect(navHrefs).toContain("/admin/users");
+    expect(navHrefs).toContain("/admin/people");
     expect(canOpenUsersRoute).toBe(true);
     expect(canListWorkspaceIdentities).toBe(true);
   });
@@ -143,9 +143,11 @@ describe("a workspace owner's admin navigation", () => {
   it("still hides the surfaces that have no workspace dimension", async () => {
     const { navHrefs } = await probe();
 
-    // One poller, one Redis key — `stream.read` is global there.
-    expect(navHrefs).not.toContain("/admin/streams");
-    // Superuser-only game content stays out too.
-    expect(navHrefs).not.toContain("/admin/heroes");
+    // Superuser-only game content stays out.
+    expect(navHrefs).not.toContain("/admin/content/heroes");
+    // Collectors is one OR-list entry now, so an owner reaches it — but the
+    // stream poller behind it stays global-only at the route level: one
+    // poller, one Redis key, no workspace dimension to authorize against.
+    expect(getMatchingAdminRoute("/admin/collectors/streams")?.globalOnly).toBe(true);
   });
 });

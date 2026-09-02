@@ -9,7 +9,7 @@ import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AuditTrailProvider } from "@/components/admin/AuditTrailSheet";
 import { getMatchingAdminRoute } from "@/components/admin/admin-navigation";
 import { adminEntryPermissions } from "@/lib/admin-permissions";
-import { getTournamentWorkspaceQueryKeys } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
+import { getBreadcrumbEntityRef, breadcrumbSegmentLabel } from "@/components/admin/breadcrumb-registry";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -56,35 +56,7 @@ function UnauthorizedState() {
   );
 }
 
-function formatBreadcrumbLabel(segment: string) {
-  const normalized = segment.replace(/-/g, " ");
-  if (/^\d+$/.test(normalized)) {
-    return "Details";
-  }
 
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-/** Detail crumbs whose numeric id segment can be resolved to an entity name
- * from the query cache. The tournament hub shell / team workspace page own
- * these queries; the breadcrumb only READS the cache (skipToken never
- * fetches) and falls back to the generic "Details" label. */
-function getBreadcrumbEntityRef(
-  segments: string[]
-): { queryKey: readonly unknown[]; segmentIndex: number } | null {
-  const [, section, id] = segments;
-  if (!id || !/^\d+$/.test(id)) {
-    return null;
-  }
-  if (section === "tournaments") {
-    return { queryKey: getTournamentWorkspaceQueryKeys(Number(id)).tournament, segmentIndex: 2 };
-  }
-  if (section === "teams") {
-    // Same key as the team workspace query (admin/teams/[id]/page.tsx).
-    return { queryKey: ["admin", "team", Number(id)] as const, segmentIndex: 2 };
-  }
-  return null;
-}
 
 function EntityBreadcrumbName({
   queryKey,
@@ -100,8 +72,9 @@ function EntityBreadcrumbName({
 
 function AdminBreadcrumb() {
   const pathname = usePathname();
+  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const segments = pathname.split("/").filter(Boolean);
-  const entityRef = getBreadcrumbEntityRef(segments);
+  const entityRef = getBreadcrumbEntityRef(segments, currentWorkspaceId);
 
   return (
     <Breadcrumb>
@@ -116,10 +89,10 @@ function AdminBreadcrumb() {
             entityRef && index + 1 === entityRef.segmentIndex ? (
               <EntityBreadcrumbName
                 queryKey={entityRef.queryKey}
-                fallback={formatBreadcrumbLabel(segment)}
+                fallback={breadcrumbSegmentLabel(segment)}
               />
             ) : (
-              formatBreadcrumbLabel(segment)
+              breadcrumbSegmentLabel(segment)
             );
 
           return (
@@ -206,7 +179,7 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<Adm
           <div
             id="admin-content"
             tabIndex={-1}
-            className="flex flex-1 flex-col gap-4 overflow-x-hidden p-4"
+            className="mx-auto flex w-full max-w-[1720px] flex-1 flex-col gap-4 overflow-x-hidden p-4"
           >
             {/* One drawer for the whole panel: every per-entity trail opens
                 here, so no screen mounts its own copy and none can nest. */}

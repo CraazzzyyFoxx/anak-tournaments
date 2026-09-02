@@ -28,7 +28,29 @@ import {
   SidebarUserDropdown,
   SidebarWorkspaceLogoItem
 } from "@/components/admin/sidebar-shared";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
+
+/**
+ * Queue counter beside a nav entry. Renders nothing at zero: a badge is a
+ * "there is work here" signal, and a permanent `0` is noise.
+ */
+function NavBadge({ value, isActive }: Readonly<{ value?: number; isActive: boolean }>) {
+  if (!value) return null;
+
+  return (
+    <span
+      className={cn(
+        "ml-auto shrink-0 rounded-full px-1.5 text-xs tabular-nums group-data-[collapsible=icon]:hidden",
+        isActive
+          ? "bg-sidebar-primary/20 text-sidebar-primary"
+          : "bg-sidebar-accent text-sidebar-foreground/60"
+      )}
+    >
+      {value}
+    </span>
+  );
+}
 
 export function AdminSidebar() {
   const pathname = usePathname();
@@ -44,12 +66,16 @@ export function AdminSidebar() {
       superuserOnly: item.superuserOnly
     })
   );
-  const adminToolsGroup = navigationGroups.find((group) => group.title === "Administration");
-  const primaryGroups = navigationGroups.filter((group) => group.title !== "Administration");
   const { open: commandOpen, setOpen: setCommandOpen } = useCommandPalette();
 
-  const allHrefs = navigationGroups.flatMap((g) => g.items.map((i) => i.href));
-  const activeHref = getActiveAdminNavHref(pathname, allHrefs);
+  // Every group lives in the scrolling content now. The old split, which
+  // pushed the "Administration" group into the footer at half opacity, was
+  // what made two of its seven entries read as afterthoughts; PLATFORM is a
+  // labelled group like the others (F1 ·1).
+  const activeHref = getActiveAdminNavHref(
+    pathname,
+    navigationGroups.flatMap((group) => group.items),
+  );
 
   return (
     <Sidebar collapsible="icon">
@@ -80,19 +106,22 @@ export function AdminSidebar() {
 
       {/* ── NAVIGATION ─────────────────────────────────── */}
       <SidebarContent className="px-2 pt-1 group-data-[collapsible=icon]:px-1">
-        {primaryGroups.map((group, groupIndex) => (
-          <SidebarGroup key={group.title} className="px-0 py-0">
+        {navigationGroups.map((group, groupIndex) => (
+          <SidebarGroup key={group.title || "primary"} className="px-0 py-0">
             {/* Group divider — thin line between groups, not before first */}
             {groupIndex > 0 && (
               <div className="mx-2 my-2 h-px bg-sidebar-border/40 group-data-[collapsible=icon]:mx-1" />
             )}
 
-            {/* Group label — subtle, sentence case */}
-            <div className="flex items-center gap-2 px-3 py-1.5 group-data-[collapsible=icon]:hidden">
-              <span className="text-xs font-medium text-sidebar-foreground/30">
-                {group.title}
-              </span>
-            </div>
+            {/* Group label — mono uppercase eyebrow, the design book's label
+                register, tinted to the sidebar ramp rather than the page one. */}
+            {group.title ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 group-data-[collapsible=icon]:hidden">
+                <span className={cn(EYEBROW_CLASS, "font-mono text-sidebar-foreground/40")}>
+                  {group.title}
+                </span>
+              </div>
+            ) : null}
 
             <SidebarGroupContent>
               <SidebarMenu>
@@ -123,7 +152,8 @@ export function AdminSidebar() {
                               isActive ? "text-sidebar-primary" : "text-sidebar-foreground/40"
                             )}
                           />
-                          <span>{item.title}</span>
+                          <span className="flex-1 truncate">{item.title}</span>
+                          <NavBadge value={item.badge?.()} isActive={isActive} />
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -137,48 +167,6 @@ export function AdminSidebar() {
 
       {/* ── FOOTER: Admin tools + user ─────────────────── */}
       <SidebarFooter className="px-2 pb-2 pt-0 group-data-[collapsible=icon]:px-1">
-        {/* Administration links — compact, dimmer */}
-        {adminToolsGroup && (
-          <>
-            <div className="mx-2 mb-1.5 h-px bg-sidebar-border/40" />
-            <SidebarMenu>
-              {adminToolsGroup.items.map((item) => {
-                const isActive = item.href === activeHref;
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      isActive={isActive}
-                      tooltip={item.title}
-                      className={cn(
-                        "relative h-7 rounded-md px-2.5 text-sm",
-                        "text-sidebar-foreground/40 hover:text-sidebar-foreground/70 hover:bg-sidebar-accent/40",
-                        isActive && [
-                          "bg-sidebar-accent/60 text-sidebar-foreground/80 font-medium",
-                          "before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2",
-                          "before:h-3 before:w-0.5 before:rounded-full before:bg-sidebar-primary/70"
-                        ]
-                      )}
-                    >
-                      <Link href={item.href} aria-current={isActive ? "page" : undefined}>
-                        <item.icon
-                          aria-hidden
-                          className={cn(
-                            "size-4",
-                            isActive ? "text-sidebar-primary/70" : "text-sidebar-foreground/30"
-                          )}
-                        />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </>
-        )}
-
         <SidebarBackToSite />
         <SidebarUserDropdown />
       </SidebarFooter>

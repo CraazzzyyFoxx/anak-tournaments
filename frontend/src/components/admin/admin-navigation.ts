@@ -1,22 +1,14 @@
 import {
   Activity,
   Award,
-  BadgeCheck,
-  BarChart3,
   Building2,
-  ClipboardCheck,
   Gamepad2,
   History,
-  Layers,
   LayoutDashboard,
-  Map,
   type LucideIcon,
-  Radio,
   Settings2,
-  Shapes,
   Shield,
   Swords,
-  Tags,
   Trophy,
   UserCircle,
   UserCog,
@@ -34,13 +26,37 @@ import {
   overviewPermissions,
 } from "@/lib/admin-permissions";
 
+/** One view of a multi-view browser, offered by the command palette (P1-5). */
+export type AdminNavView = {
+  key: string;
+  label: string;
+  href: string;
+};
+
 export type AdminNavItem = {
   title: string;
   href: string;
+  /**
+   * Path prefix that marks this entry active, when `href` points deeper than
+   * the section it owns (`/admin/settings/general` is the landing section of
+   * `/admin/settings`, and `/admin/settings/divisions` must still light it up).
+   */
+  activePrefix?: string;
   icon: LucideIcon;
   description: string;
   /** Extra search terms for the command palette (D11). */
   aliases?: string[];
+  /** Views of a `?view=`/sub-route browser, listed separately in the palette. */
+  views?: AdminNavView[];
+  /**
+   * Queue size shown beside the entry (unresolved names, disputed reports).
+   *
+   * A function, so the count can be read at render time rather than frozen
+   * into this static config. It runs inside a `.map()` over the items, so it
+   * MUST NOT call hooks — read the query cache (`queryClient.getQueryData`)
+   * or a store's `getState()`. Returning `undefined` renders no badge.
+   */
+  badge?: () => number | undefined;
   permissions?: AppPermission[];
   superuserOnly?: boolean;
   workspaceAdminVisible?: boolean;
@@ -48,14 +64,29 @@ export type AdminNavItem = {
 };
 
 export type AdminNavGroup = {
+  /** Eyebrow above the group. Empty for the leading, unlabelled group. */
   title: string;
   items: AdminNavItem[];
   superuserOnly?: boolean;
 };
 
+/**
+ * The sidebar: 13 entries in four groups (`01-ia.md` §3.1).
+ *
+ * Three contexts of work instead of six catalogues: what happens in the
+ * community (DATA), how the community is configured (WORKSPACE), and the
+ * platform itself (PLATFORM). Tournaments sit at the root because they are
+ * most of the daily work.
+ *
+ * An entry that used to be its own page is now a view of one browser
+ * (`Matches` swallowed encounters/reports/parsed/standings) or a section of
+ * one settings hub (`Settings` swallowed divisions/statuses/sub-roles). Every
+ * alias those pages carried is re-homed here, so a palette query that used to
+ * find them still lands on the screen that absorbed them.
+ */
 export const adminNavigationGroups: AdminNavGroup[] = [
   {
-    title: "Overview",
+    title: "",
     items: [
       {
         title: "Dashboard",
@@ -65,11 +96,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         permissions: overviewPermissions,
         workspaceAdminVisible: true,
       },
-    ],
-  },
-  {
-    title: "Tournaments",
-    items: [
       {
         title: "Tournaments",
         href: "/admin/tournaments",
@@ -80,8 +106,24 @@ export const adminNavigationGroups: AdminNavGroup[] = [
     ],
   },
   {
-    title: "Data browser",
+    title: "DATA",
     items: [
+      {
+        title: "People",
+        href: "/admin/people",
+        icon: UserCircle,
+        description: "Player identities, their accounts and their participations.",
+        // `player.read`'s cross-tournament table became the Participations tab
+        // of a person's card, so the old /admin/players aliases live here now.
+        aliases: ["identities", "discord", "battletag", "twitch", "players", "participations"],
+        permissions: ["user.read"],
+        // Workspace-grantable read: `user.read` is in the workspace catalog (a
+        // workspace `member` holds it, `admin`/`owner` hold all of `user.*`), and
+        // the backend list gate takes `workspace_id` as both the authorization
+        // scope and the row filter (`users_admin._scope`), so an owner sees their
+        // own roster's identities. Writes to the global identity still demand a
+        // GLOBAL grant, which is why the page gates its actions on `hasPermission`.
+      },
       {
         title: "Teams",
         href: "/admin/teams",
@@ -90,66 +132,20 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         permissions: ["team.read"],
       },
       {
-        title: "Players",
-        href: "/admin/players",
-        icon: UserCircle,
-        description: "Inspect player records and competitive data.",
-        permissions: ["player.read"],
-      },
-      {
-        title: "Encounters",
-        href: "/admin/encounters",
-        icon: Swords,
-        description: "Track matches, logs, and sync coverage.",
-        permissions: ["match.read"],
-      },
-      {
-        title: "Match reports",
-        href: "/admin/match-reports",
-        icon: ClipboardCheck,
-        description: "Captain-submitted results and the disputes between them.",
-        permissions: ["match.read"],
-      },
-      {
-        title: "Parsed matches",
+        title: "Matches",
         href: "/admin/matches",
-        icon: Map,
-        description: "Played maps from the log parser, and the upload each came from.",
+        icon: Swords,
+        description:
+          "Encounters, standings, captain reports, parsed maps and logs across the workspace.",
+        aliases: ["encounters", "match reports", "parsed maps", "logs", "results"],
+        views: [
+          { key: "encounters", label: "Encounters", href: "/admin/matches?view=encounters" },
+          { key: "standings", label: "Standings", href: "/admin/matches?view=standings" },
+          { key: "reports", label: "Reports", href: "/admin/matches?view=reports" },
+          { key: "parsed", label: "Parsed maps", href: "/admin/matches?view=parsed" },
+          { key: "logs", label: "Logs", href: "/admin/matches?view=logs" },
+        ],
         permissions: ["match.read"],
-      },
-      {
-        title: "Standings",
-        href: "/admin/standings",
-        icon: BarChart3,
-        description: "Audit bracket health and ranking outputs.",
-        permissions: ["standing.read"],
-      },
-    ],
-  },
-  {
-    title: "Workspace",
-    items: [
-      {
-        title: "Divisions",
-        href: "/admin/divisions",
-        icon: Layers,
-        description: "Configure division grids and rank thresholds per workspace.",
-        workspaceAdminVisible: true,
-      },
-      {
-        title: "Balancer statuses",
-        href: "/admin/balancer",
-        icon: Settings2,
-        description: "Manage workspace-specific registration and balancer statuses.",
-        permissions: ["team.read"],
-      },
-      {
-        title: "Sub-roles",
-        href: "/admin/sub-roles",
-        icon: Shapes,
-        description: "Manage the workspace sub-role catalog used by forms, rosters, and balancer.",
-        aliases: ["subroles", "main tank", "off tank", "flex"],
-        permissions: ["player.read"],
       },
       {
         title: "Achievements",
@@ -158,9 +154,48 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         description: "Manage achievements with condition tree evaluation engine.",
         permissions: ["achievement.read"],
       },
+    ],
+  },
+  {
+    title: "WORKSPACE",
+    items: [
+      {
+        title: "Settings",
+        href: "/admin/settings/general",
+        activePrefix: "/admin/settings",
+        icon: Settings2,
+        description:
+          "Workspace identity, branding, divisions, balancer statuses, sub-roles and entitlements.",
+        aliases: [
+          "divisions",
+          "balancer",
+          "statuses",
+          "subroles",
+          "sub-roles",
+          "main tank",
+          "off tank",
+          "flex",
+          "branding",
+          "domain",
+          "entitlements",
+          "subscription providers",
+        ],
+        views: [
+          { key: "general", label: "General", href: "/admin/settings/general" },
+          { key: "branding", label: "Branding", href: "/admin/settings/branding" },
+          { key: "visibility", label: "Visibility & SEO", href: "/admin/settings/visibility" },
+          { key: "domain", label: "Domain", href: "/admin/settings/domain" },
+          { key: "discord", label: "Discord", href: "/admin/settings/discord" },
+          { key: "divisions", label: "Divisions", href: "/admin/settings/divisions" },
+          { key: "statuses", label: "Balancer statuses", href: "/admin/settings/statuses" },
+          { key: "sub-roles", label: "Sub-roles", href: "/admin/settings/sub-roles" },
+          { key: "subscriptions", label: "Subscriptions", href: "/admin/settings/subscriptions" },
+        ],
+        workspaceAdminVisible: true,
+      },
       {
         title: "Members",
-        href: "/admin/workspaces/members",
+        href: "/admin/members",
         icon: UserCog,
         description: "Manage workspace member access and roles.",
         workspaceAdminVisible: true,
@@ -168,96 +203,67 @@ export const adminNavigationGroups: AdminNavGroup[] = [
     ],
   },
   {
-    title: "Game content",
+    title: "PLATFORM",
     items: [
       {
-        title: "Heroes",
-        href: "/admin/heroes",
-        icon: Shield,
-        description: "Curate hero inventory used by analytics and admin tools.",
-        superuserOnly: true,
-      },
-      {
-        title: "Gamemodes",
-        href: "/admin/gamemodes",
+        title: "Game content",
+        href: "/admin/content/heroes",
+        activePrefix: "/admin/content",
         icon: Gamepad2,
-        description: "Maintain mode metadata and competitive rulesets.",
+        description: "Heroes, maps, gamemodes, and the queue of unresolved log names.",
+        aliases: [
+          "heroes",
+          "maps",
+          "gamemodes",
+          "unresolved names",
+          "log names",
+          "translations",
+          "alias queue",
+        ],
+        views: [
+          { key: "heroes", label: "Heroes", href: "/admin/content/heroes" },
+          { key: "maps", label: "Maps", href: "/admin/content/maps" },
+          { key: "gamemodes", label: "Gamemodes", href: "/admin/content/gamemodes" },
+          { key: "unresolved", label: "Unresolved names", href: "/admin/content/unresolved" },
+        ],
         superuserOnly: true,
       },
       {
-        title: "Maps",
-        href: "/admin/maps",
-        icon: Map,
-        description: "Manage map pool coverage for tournaments and stats.",
-        superuserOnly: true,
+        title: "Collectors",
+        href: "/admin/collectors/rank",
+        activePrefix: "/admin/collectors",
+        icon: Activity,
+        description: "Rank, subscription and stream collection health, history and configuration.",
+        // `canAccessAdminRoute` treats a permission list as OR
+        // (`permissions.some`, `hooks/usePermissions.ts`), so one entry covers
+        // all three collectors. `globalOnly` belongs to the streams prefix in
+        // `adminRoutePermissions`, not to this menu entry: a workspace-scoped
+        // `rank.read` holder still has a collector to look at.
+        aliases: ["rank", "subscriptions", "boosty", "streams", "poller", "live", "overfast"],
+        views: [
+          { key: "rank", label: "Rank", href: "/admin/collectors/rank" },
+          { key: "subscriptions", label: "Subscriptions", href: "/admin/collectors/subscriptions" },
+          { key: "streams", label: "Streams", href: "/admin/collectors/streams" },
+        ],
+        permissions: ["rank.read", "subscription.read", "stream.read"],
       },
       {
-        title: "Aliases",
-        href: "/admin/aliases",
-        icon: Tags,
-        description: "Attach unresolved match-log names to the hero, map or mode they mean.",
-        aliases: ["unresolved names", "log names", "translations", "alias queue"],
-        superuserOnly: true,
-      },
-    ],
-  },
-  {
-    title: "Administration",
-    items: [
-      {
-        title: "Staff access",
-        href: "/admin/access",
+        title: "Access",
+        href: "/admin/access/accounts",
+        activePrefix: "/admin/access",
         icon: Shield,
-        description: "Staff accounts, roles, permissions, API keys, and sessions.",
+        description: "Staff accounts, roles, permissions, API keys, OAuth and sessions.",
+        aliases: ["staff", "roles", "permissions", "api keys", "sessions", "oauth", "accounts"],
+        views: [
+          { key: "accounts", label: "Accounts", href: "/admin/access/accounts" },
+          { key: "roles", label: "Roles", href: "/admin/access/roles" },
+          { key: "permissions", label: "Permissions", href: "/admin/access/permissions" },
+          { key: "api-keys", label: "API keys", href: "/admin/access/api-keys" },
+          { key: "oauth", label: "OAuth", href: "/admin/access/oauth" },
+          { key: "sessions", label: "Sessions", href: "/admin/access/sessions" },
+        ],
         permissions: accessAdminPermissions,
         workspaceAdminVisible: true,
-        aliases: ["staff", "roles", "permissions", "api keys", "sessions"],
-      },
-      {
-        title: "Player identities",
-        href: "/admin/users",
-        icon: UserCircle,
-        description: "Resolve Discord, BattleTag, and Twitch identities.",
-        permissions: ["user.read"],
-        // Workspace-grantable read: `user.read` is in the workspace catalog (a
-        // workspace `member` holds it, `admin`/`owner` hold all of `user.*`), and
-        // the backend list gate takes `workspace_id` as both the authorization
-        // scope and the row filter (`users_admin._scope`), so an owner sees their
-        // own roster's identities. Writes to the global identity still demand a
-        // GLOBAL grant, which is why the page gates its actions on `hasPermission`.
-        aliases: ["identities", "discord", "battletag", "twitch"],
-      },
-      {
-        title: "Rank collection",
-        href: "/admin/rank",
-        icon: Activity,
-        description: "OverFast rank collection status and manual re-fetch per player.",
-        permissions: ["rank.read"],
-        aliases: ["settings"],
-      },
-      {
-        title: "Subscription collection",
-        href: "/admin/subscriptions",
-        icon: BadgeCheck,
-        description: "Boosty/Twitch subscription check health, history and per-player re-check.",
-        permissions: ["subscription.read"],
-        // `twitch` deliberately omitted: /admin/users already claims it, and the
-        // palette requires every alias to resolve to exactly one entry.
-        aliases: ["subscriptions", "boosty", "entitlements"],
-      },
-      {
-        title: "Stream collection",
-        href: "/admin/streams",
-        icon: Radio,
-        description: "Twitch live-status poller health and its runtime configuration.",
-        permissions: ["stream.read"],
-        // One poller, one Redis key: `GET /api/streams/health` authorizes against
-        // a GLOBAL `stream.read`. Without `globalOnly` a workspace-scoped holder
-        // would see the link and 403 on the only request behind it.
-        globalOnly: true,
-        // `twitch` deliberately omitted: /admin/users already claims it, and the
-        // palette requires every alias to resolve to exactly one entry.
-        aliases: ["streams", "poller", "live"],
       },
       {
         title: "Workspaces",
@@ -270,15 +276,30 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "Audit log",
         href: "/admin/audit",
         icon: History,
-        description: "Who changed what, and when — roles, API keys, tournaments, workspace settings.",
+        description:
+          "Who changed what, and when — roles, API keys, tournaments, workspace settings.",
+        aliases: ["audit", "who changed this", "change log", "trail"],
         permissions: ["audit.read"],
         workspaceAdminVisible: true,
-        aliases: ["audit", "who changed this", "change log", "trail"],
       },
     ],
   },
 ];
 
+/**
+ * Per-prefix gate for the route guard in `AdminLayoutClient`.
+ *
+ * Denser than the menu: one menu entry can own several routes with different
+ * gates (Collectors' `streams` is global, its siblings are workspace-scoped).
+ * First match wins and matching is exact-or-slash, so a more specific prefix
+ * MUST precede the section it lives in.
+ *
+ * Both the new prefixes (`01-ia.md` §3.2) and the ones they replace are listed:
+ * the old screens still exist until their own WU deletes them, and dropping
+ * their prefix early would silently hand them the `/admin` catch-all gate —
+ * `/admin/heroes` would lose `superuserOnly`. Each WU-PR removes the old rows
+ * it makes unreachable.
+ */
 const adminRoutePermissions: Array<{
   prefix: string;
   permissions: AppPermission[];
@@ -286,6 +307,8 @@ const adminRoutePermissions: Array<{
   workspaceAdminVisible?: boolean;
   globalOnly?: boolean;
 }> = [
+  // ── Access (per-tab gates; `accounts` replaces `users`) ──
+  { prefix: "/admin/access/accounts", permissions: accessUsersPermissions, globalOnly: true },
   { prefix: "/admin/access/users", permissions: accessUsersPermissions, globalOnly: true },
   { prefix: "/admin/access/roles", permissions: accessRolesPermissions, workspaceAdminVisible: true },
   { prefix: "/admin/access/oauth", permissions: accessUsersPermissions, globalOnly: true },
@@ -293,30 +316,52 @@ const adminRoutePermissions: Array<{
   { prefix: "/admin/access/sessions", permissions: [], superuserOnly: true },
   { prefix: "/admin/access/permissions", permissions: accessPermissionsPermissions, globalOnly: true },
   { prefix: "/admin/access", permissions: accessAdminPermissions, workspaceAdminVisible: true },
-  { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },
-  { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
-  { prefix: "/admin/balancer", permissions: ["team.read"] },
 
+  // ── Workspace settings hub (sections keep the gate of the screen they replace) ──
+  { prefix: "/admin/settings/statuses", permissions: ["team.read"] },
+  { prefix: "/admin/settings/sub-roles", permissions: ["player.read"] },
+  { prefix: "/admin/settings", permissions: [], workspaceAdminVisible: true },
+  { prefix: "/admin/members", permissions: [], workspaceAdminVisible: true },
+
+  // ── Platform ──
+  { prefix: "/admin/content", permissions: [], superuserOnly: true },
+  // One poller, one Redis key: `GET /api/streams/health` authorizes against a
+  // GLOBAL `stream.read`, so a workspace-scoped holder must not reach it.
+  { prefix: "/admin/collectors/streams", permissions: ["stream.read"], globalOnly: true },
+  { prefix: "/admin/collectors/subscriptions", permissions: ["subscription.read"] },
+  { prefix: "/admin/collectors/rank", permissions: ["rank.read"] },
+  {
+    prefix: "/admin/collectors",
+    permissions: ["rank.read", "subscription.read", "stream.read"],
+  },
+
+  // ── Data browsers ──
+  { prefix: "/admin/people", permissions: ["user.read"] },
   { prefix: "/admin/tournaments", permissions: ["tournament.read"] },
   { prefix: "/admin/teams", permissions: ["team.read"] },
+  { prefix: "/admin/matches", permissions: ["match.read"] },
+  { prefix: "/admin/achievements", permissions: ["achievement.read"] },
+  { prefix: "/admin/audit", permissions: ["audit.read"], workspaceAdminVisible: true },
+  { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },
+  { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
+
+  // ── Screens awaiting their WU (removed with the route they gate) ──
   { prefix: "/admin/players", permissions: ["player.read"] },
+  { prefix: "/admin/users", permissions: ["user.read"] },
   { prefix: "/admin/sub-roles", permissions: ["player.read"] },
+  { prefix: "/admin/balancer", permissions: ["team.read"] },
+  { prefix: "/admin/divisions", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/encounters", permissions: ["match.read"] },
   { prefix: "/admin/match-reports", permissions: ["match.read"] },
-  { prefix: "/admin/matches", permissions: ["match.read"] },
   { prefix: "/admin/standings", permissions: ["standing.read"] },
-  { prefix: "/admin/users", permissions: ["user.read"] },
   { prefix: "/admin/rank", permissions: ["rank.read"] },
   { prefix: "/admin/subscriptions", permissions: ["subscription.read"] },
-  // Global, not workspace-scoped: there is one poller behind this page.
   { prefix: "/admin/streams", permissions: ["stream.read"], globalOnly: true },
   { prefix: "/admin/heroes", permissions: [], superuserOnly: true },
   { prefix: "/admin/gamemodes", permissions: [], superuserOnly: true },
   { prefix: "/admin/maps", permissions: [], superuserOnly: true },
   { prefix: "/admin/aliases", permissions: [], superuserOnly: true },
-  { prefix: "/admin/achievements", permissions: ["achievement.read"] },
-  { prefix: "/admin/divisions", permissions: [], workspaceAdminVisible: true },
-  { prefix: "/admin/audit", permissions: ["audit.read"], workspaceAdminVisible: true },
+
   { prefix: "/admin", permissions: adminEntryPermissions, workspaceAdminVisible: true },
 ];
 
@@ -331,24 +376,29 @@ export function getMatchingAdminRoute(pathname: string) {
 }
 
 /**
- * Given all nav hrefs, returns the one that best matches the pathname
- * (longest prefix). This prevents parent routes from being active when
- * a more specific child route matches.
+ * Given the visible nav items, returns the href of the one that best matches
+ * the pathname (longest prefix). This prevents parent routes from being active
+ * when a more specific child route matches. An item whose `href` points at a
+ * landing section is matched on its `activePrefix` instead.
  */
-export function getActiveAdminNavHref(pathname: string, allHrefs: string[]): string | null {
-  let best: string | null = null;
-  for (const href of allHrefs) {
-    if (href === "/admin") {
-      if (pathname === "/admin") best = href;
+export function getActiveAdminNavHref(
+  pathname: string,
+  items: ReadonlyArray<Pick<AdminNavItem, "href" | "activePrefix">>,
+): string | null {
+  let best: { href: string; length: number } | null = null;
+  for (const item of items) {
+    const prefix = item.activePrefix ?? item.href;
+    if (prefix === "/admin") {
+      if (pathname === "/admin") best = { href: item.href, length: prefix.length };
       continue;
     }
-    if (pathname === href || pathname.startsWith(`${href}/`)) {
-      if (!best || href.length > best.length) {
-        best = href;
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+      if (!best || prefix.length > best.length) {
+        best = { href: item.href, length: prefix.length };
       }
     }
   }
-  return best;
+  return best?.href ?? null;
 }
 
 export function getVisibleAdminNavigationGroups(
