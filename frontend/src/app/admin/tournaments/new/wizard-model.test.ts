@@ -6,7 +6,6 @@ import {
   buildDraftCreateInput,
   buildDraftUpdateInput,
   canCreateNow,
-  canNavigateToWizardStep,
   findResumableDraft,
   isWizardStepRequired,
   nextWizardStep,
@@ -72,10 +71,8 @@ describe("tournament creation wizard model", () => {
     expect(visibleWizardSteps(true)).toEqual(WIZARD_STEPS);
   });
 
-  it("navigation is back-only and skips hidden steps", () => {
+  it("navigation skips hidden steps", () => {
     const steps = visibleWizardSteps(false);
-    expect(canNavigateToWizardStep(steps, "rules", "basics")).toBe(true);
-    expect(canNavigateToWizardStep(steps, "rules", "review")).toBe(false);
     expect(nextWizardStep(steps, "rules")).toBe("review");
     expect(previousWizardStep(steps, "review")).toBe("rules");
     expect(previousWizardStep(steps, "basics")).toBe("basics");

@@ -1,24 +1,21 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  CalendarDays,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  ClipboardCheck,
-  ClipboardList,
-  UsersRound,
-  Wrench
-} from "lucide-react";
+import { Download, PenLine } from "lucide-react";
 
 import {
   getPhaseSchedulePayload,
   SCHEDULABLE_PHASES
 } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import {
+  WizardShell,
+  type WizardStep as WizardRailStep
+} from "@/components/admin/kit/WizardShell";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,12 +27,12 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useQueryParams } from "@/hooks/useQueryParams";
 import { normalizeChallongeSlug } from "@/lib/challonge";
 import { notify } from "@/lib/notify";
 import { DEFAULT_WORKSPACE_TIMEZONE } from "@/lib/timezone";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import tournamentService from "@/services/tournament.service";
@@ -52,7 +49,6 @@ import { ScheduleStep } from "./steps/ScheduleStep";
 import {
   buildDraftCreateInput,
   buildDraftUpdateInput,
-  canNavigateToWizardStep,
   findResumableDraft,
   nextWizardStep,
   previousWizardStep,
@@ -68,34 +64,26 @@ import {
   type WizardStep
 } from "./wizard-model";
 
-const STEP_META: Record<
-  WizardStep,
-  { label: string; description: string; icon: typeof ClipboardList }
-> = {
+const STEP_META: Record<WizardStep, { label: string; description: string }> = {
   basics: {
     label: "Basics",
-    description: "Name the tournament and pick its dates, or import from Challonge.",
-    icon: ClipboardList
+    description: "Name the tournament and pick its dates."
   },
   schedule: {
     label: "Schedule",
-    description: "Optional phase schedule and automatic transitions.",
-    icon: CalendarDays
+    description: "Optional phase schedule and automatic transitions."
   },
   rules: {
     label: "Rules",
-    description: "Team formation, division grid, and scoring points.",
-    icon: Wrench
+    description: "Team formation, division grid, and scoring points."
   },
   registration: {
     label: "Registration",
-    description: "How players sign up. The full form builder opens after creation.",
-    icon: UsersRound
+    description: "How players sign up. The full form builder opens after creation."
   },
   review: {
     label: "Review & create",
-    description: "Check the configuration and create the tournament.",
-    icon: ClipboardCheck
+    description: "Check the configuration and create the tournament."
   }
 };
 
@@ -134,11 +122,21 @@ export default function NewTournamentPage() {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const timezone =
     workspaces.find((ws) => ws.id === currentWorkspaceId)?.timezone ?? DEFAULT_WORKSPACE_TIMEZONE;
+  const canCreate = canAccessPermission("tournament.create", currentWorkspaceId);
   const canTeamImport = canAccessPermission("team.create", currentWorkspaceId);
   const steps = useMemo(() => visibleWizardSteps(canTeamImport), [canTeamImport]);
 
-  const [step, setStep] = useState<WizardStep>("basics");
-  const [source, setSource] = useState<WizardSource>("manual");
+  // Step and source live in the URL: the step so a reload keeps the place, the
+  // source so "import from Challonge" is a linkable entry to this same wizard.
+  // `push`, not `replace` — the browser Back button should step back a step.
+  const { searchParams, setParams } = useQueryParams({ mode: "push" });
+  const requestedStep = searchParams?.get("step");
+  // The registration step can disappear while active (the permission profile
+  // loads in), and `?step=` is user-supplied — both fall back to step 1.
+  const activeStep = steps.find((entry) => entry === requestedStep) ?? "basics";
+  const activeIndex = steps.indexOf(activeStep);
+  const source: WizardSource = searchParams?.get("source") === "challonge" ? "challonge" : "manual";
+
   const [challongeSlug, setChallongeSlug] = useState("");
   const [form, setForm] = useState<WizardFormData>(emptyForm);
   const [schedule, setSchedule] = useState<WizardScheduleState>(emptySchedule);
@@ -155,10 +153,6 @@ export default function NewTournamentPage() {
   const draftRef = useRef<Tournament | null>(null);
   const draftPromiseRef = useRef<Promise<Tournament> | null>(null);
   const [resumeDismissed, setResumeDismissed] = useState(false);
-
-  // The registration step can disappear while active (permission profile loads in).
-  const activeStep = steps.includes(step) ? step : "basics";
-  const activeIndex = steps.indexOf(activeStep);
 
   const divisionGridsQuery = useQuery({
     queryKey: ["admin", "tournaments", "create", "division-grids", currentWorkspaceId],
@@ -199,9 +193,11 @@ export default function NewTournamentPage() {
     setDraft(tournament);
   };
 
+  const goToStep = (target: WizardStep) => setParams({ step: target });
+
   const resumeDraft = (candidate: Tournament) => {
     const prefill = wizardStateFromDraft(candidate, timezone);
-    setSource("manual");
+    setParams({ step: "basics", source: null });
     setChallongeSlug(candidate.challonge_slug ?? "");
     setForm(prefill.form);
     setSchedule(prefill.schedule);
@@ -297,16 +293,16 @@ export default function NewTournamentPage() {
     onError: (error) => notify.apiError(error, { title: "Could not create the tournament" })
   });
 
-  const createTournament = (publish: boolean) => finishMutation.mutate(publish);
-
-  // Validation runs on submit, so every action stays reachable and explains itself.
-  const saveAsDraft = () => {
+  /** Validation runs on submit, so every action stays reachable and explains
+   * itself. Both writes go through here — the step is in the URL, so review is
+   * reachable by a pasted link that never passed a Continue. */
+  const createTournament = (publish: boolean) => {
     const problems = validateWizardStep("basics", basics);
     if (problems.length > 0) {
       notify.warning(problems.map((code) => BASICS_ERRORS[code] ?? code).join(" "));
       return;
     }
-    createTournament(false);
+    finishMutation.mutate(publish);
   };
 
   const next = () => {
@@ -323,8 +319,36 @@ export default function NewTournamentPage() {
         notify.apiError(error, { title: "Could not create the draft" })
       );
     }
-    setStep(target);
+    goToStep(target);
   };
+
+  const rail: WizardRailStep[] = steps.map((entry, index) => ({
+    key: entry,
+    label: STEP_META[entry].label,
+    state: index === activeIndex ? "current" : index < activeIndex ? "done" : "todo"
+  }));
+
+  // Keeps `step` when flipping the source, so the link never resets the wizard.
+  const sourceHref = useMemo(() => {
+    const query = new URLSearchParams(searchParams?.toString() ?? "");
+    if (source === "challonge") query.delete("source");
+    else query.set("source", "challonge");
+    const search = query.toString();
+    return search ? `/admin/tournaments/new?${search}` : "/admin/tournaments/new";
+  }, [searchParams, source]);
+
+  if (!canCreate) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Unauthorized</CardTitle>
+          <CardDescription>
+            You do not have permission to create tournaments in this workspace.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -353,65 +377,63 @@ export default function NewTournamentPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="overflow-x-auto pb-1">
-        <ol className="flex min-w-[640px] items-center gap-2" aria-label="Tournament setup steps">
-          {steps.map((entry, index) => {
-            const Icon = STEP_META[entry].icon;
-            const complete = index < activeIndex;
-            const active = entry === activeStep;
-            const reachable = canNavigateToWizardStep(steps, activeStep, entry);
-            return (
-              <li key={entry} className="flex min-w-0 flex-1 items-center gap-2">
-                <button
-                  type="button"
-                  disabled={!reachable}
-                  onClick={() => setStep(entry)}
-                  aria-current={active ? "step" : undefined}
-                  className={cn(
-                    "flex min-w-0 flex-1 items-center gap-2 border-y border-border/40 px-3 py-2.5 text-left transition-colors",
-                    active && "border-primary bg-primary/10 text-primary",
-                    complete && !active && "text-foreground",
-                    !active && !complete && "text-muted-foreground",
-                    reachable && !active && "hover:border-primary/50",
-                    !reachable && "cursor-default"
-                  )}
-                >
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted/40">
-                    {complete ? (
-                      <Check className="h-4 w-4" aria-hidden />
-                    ) : (
-                      <Icon className="h-4 w-4" aria-hidden />
-                    )}
-                  </span>
-                  <span className="truncate text-xs font-medium">
-                    {index + 1}. {STEP_META[entry].label}
-                  </span>
-                </button>
-                {index < steps.length - 1 && (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                )}
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-
-      <Card className="border-border/40 bg-card/50 overflow-hidden py-0">
-        <div className="border-b border-border/40 px-5 py-5 sm:px-7">
-          <p className="font-mono text-xs font-semibold uppercase tracking-wider tabular-nums text-primary">
+      <WizardShell
+        steps={rail}
+        aside={
+          <Link
+            href={sourceHref}
+            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
+          >
+            {source === "challonge" ? (
+              <PenLine aria-hidden className="size-4 shrink-0" />
+            ) : (
+              <Download aria-hidden className="size-4 shrink-0" />
+            )}
+            {source === "challonge"
+              ? "Enter the details manually instead"
+              : "Import from Challonge instead"}
+          </Link>
+        }
+        footer={{
+          back: activeIndex > 0 ? () => goToStep(previousWizardStep(steps, activeStep)) : undefined,
+          secondary:
+            activeStep === "review" ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={finishMutation.isPending}
+                onClick={() => createTournament(false)}
+              >
+                {finishMutation.isPending ? "Saving…" : "Save as draft"}
+              </Button>
+            ),
+          next:
+            activeStep === "review"
+              ? {
+                  label: finishMutation.isPending ? "Creating…" : "Create tournament",
+                  onClick: () => createTournament(true),
+                  disabled: finishMutation.isPending
+                }
+              : { label: "Continue", onClick: next }
+        }}
+      >
+        <div className="space-y-1">
+          <p className={`${EYEBROW_CLASS} tabular-nums`}>
             Step {activeIndex + 1} of {steps.length}
           </p>
-          <h2 className="mt-2 text-2xl font-semibold">{STEP_META[activeStep].label}</h2>
-          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+          <h2 className="font-display text-xl font-semibold text-foreground">
+            {STEP_META[activeStep].label}
+          </h2>
+          <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
             {STEP_META[activeStep].description}
           </p>
         </div>
 
-        <div className="p-4 sm:p-7">
+        <Card className="mt-5 p-4 sm:p-6">
           {activeStep === "basics" && (
             <BasicsStep
               source={source}
-              onSourceChange={setSource}
               value={form}
               onChange={setForm}
               challongeSlug={challongeSlug}
@@ -436,7 +458,11 @@ export default function NewTournamentPage() {
             />
           )}
           {activeStep === "registration" && (
-            <RegistrationStep value={registration} onChange={setRegistration} draftId={draft?.id ?? null} />
+            <RegistrationStep
+              value={registration}
+              onChange={setRegistration}
+              draftId={draft?.id ?? null}
+            />
           )}
           {activeStep === "review" && (
             <ReviewStep
@@ -450,46 +476,8 @@ export default function NewTournamentPage() {
               subscriptionRequirement={subscriptionRequirementQuery.data?.requirement}
             />
           )}
-        </div>
-
-        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-border/40 bg-background/95 px-4 py-3 backdrop-blur supports-[padding:max(0px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-7">
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={activeIndex === 0}
-            onClick={() => setStep(previousWizardStep(steps, activeStep))}
-          >
-            <ChevronLeft className="mr-2 h-4 w-4" aria-hidden />
-            Back
-          </Button>
-          <div className="flex items-center gap-2">
-            {activeStep !== "review" && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={finishMutation.isPending}
-                onClick={saveAsDraft}
-              >
-                {finishMutation.isPending ? "Saving…" : "Save as draft"}
-              </Button>
-            )}
-            {activeStep === "review" ? (
-              <Button
-                type="button"
-                disabled={finishMutation.isPending}
-                onClick={() => createTournament(true)}
-              >
-                {finishMutation.isPending ? "Creating…" : "Create tournament"}
-              </Button>
-            ) : (
-              <Button type="button" onClick={next}>
-                Continue
-                <ChevronRight className="ml-2 h-4 w-4" aria-hidden />
-              </Button>
-            )}
-          </div>
-        </div>
-      </Card>
+        </Card>
+      </WizardShell>
     </div>
   );
 }

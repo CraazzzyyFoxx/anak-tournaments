@@ -1,14 +1,12 @@
 "use client";
 
 import { TournamentFormFields } from "@/components/admin/tournaments/TournamentFormFields";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import type { WizardFormData, WizardSource } from "../wizard-model";
 
 interface BasicsStepProps {
   source: WizardSource;
-  onSourceChange: (source: WizardSource) => void;
   value: WizardFormData;
   onChange: (next: WizardFormData) => void;
   challongeSlug: string;
@@ -17,9 +15,13 @@ interface BasicsStepProps {
   divisionGridLoading: boolean;
 }
 
+/**
+ * Step 1. The source is picked by the `?source=` link in the wizard's `aside`
+ * (F16), not by tabs inside the step: importing from Challonge is an
+ * alternative entry to this same wizard, so it must be linkable.
+ */
 export function BasicsStep({
   source,
-  onSourceChange,
   value,
   onChange,
   challongeSlug,
@@ -27,34 +29,17 @@ export function BasicsStep({
   divisionGridVersions,
   divisionGridLoading
 }: Readonly<BasicsStepProps>) {
+  const challonge = source === "challonge";
   return (
-    <Tabs value={source} onValueChange={(next) => onSourceChange(next as WizardSource)}>
-      <TabsList className="mb-4" aria-label="Tournament source">
-        <TabsTrigger value="manual">Manual</TabsTrigger>
-        <TabsTrigger value="challonge">From Challonge</TabsTrigger>
-      </TabsList>
-      <TabsContent value="manual">
-        <TournamentFormFields
-          idPrefix="wizard-manual"
-          mode="manual-create"
-          value={value}
-          onChange={onChange}
-          divisionGridVersions={divisionGridVersions}
-          divisionGridLoading={divisionGridLoading}
-        />
-      </TabsContent>
-      <TabsContent value="challonge">
-        <TournamentFormFields
-          idPrefix="wizard-challonge"
-          mode="challonge-create"
-          value={value}
-          onChange={onChange}
-          challongeSlugValue={challongeSlug}
-          onChallongeSlugValueChange={onChallongeSlugChange}
-          divisionGridVersions={divisionGridVersions}
-          divisionGridLoading={divisionGridLoading}
-        />
-      </TabsContent>
-    </Tabs>
+    <TournamentFormFields
+      idPrefix="wizard"
+      mode={challonge ? "challonge-create" : "manual-create"}
+      value={value}
+      onChange={onChange}
+      challongeSlugValue={challonge ? challongeSlug : undefined}
+      onChallongeSlugValueChange={challonge ? onChallongeSlugChange : undefined}
+      divisionGridVersions={divisionGridVersions}
+      divisionGridLoading={divisionGridLoading}
+    />
   );
 }
