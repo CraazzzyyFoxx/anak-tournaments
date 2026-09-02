@@ -1,5 +1,6 @@
 import type { Encounter } from "@/types/encounter.types";
-import type { Stage, Standings, Tournament } from "@/types/tournament.types";
+import type { Stage, Standings, Tournament, TournamentStatus } from "@/types/tournament.types";
+import type { Tone } from "@/components/admin/tone";
 import type { TournamentPhaseScheduleEntryInput, TournamentUpdateInput } from "@/types/admin.types";
 import { utcToZonedInput, zonedInputToUtc } from "@/lib/timezone";
 import type { RosterSlotMap } from "@/lib/roster-shape";
@@ -87,6 +88,29 @@ export const TOURNAMENT_DETAIL_PREVIEW_LIMIT = 8;
 export function formatDate(value?: Date | string | null) {
   if (!value) return "-";
   return new Date(value).toLocaleDateString();
+}
+
+/**
+ * Tone of the hub header's status pill.
+ *
+ * Statuses are not qualities, so this is not a good/bad scale: `live` is the
+ * one that wants attention, a finished tournament is neutral, everything
+ * before kickoff is informational.
+ */
+export function tournamentStatusTone(status: TournamentStatus): Tone {
+  switch (status) {
+    case "live":
+    case "playoffs":
+      return "danger";
+    case "registration":
+    case "check_in":
+    case "draft":
+      return "info";
+    case "completed":
+      return "success";
+    default:
+      return "neutral";
+  }
 }
 
 function toDateInput(value?: Date | string | null) {

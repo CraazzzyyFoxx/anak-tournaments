@@ -71,7 +71,7 @@ const nextConfig = {
       // commit that creates the target route, and deletes the old page.
       // Keep the WU tags — they are the checklist.
       //
-      // PR-2a  hub shell
+      // PR-2e  bracket (owns the destination, so it owns this line)
       // { source: "/admin/tournaments/:id/stages", destination: "/admin/tournaments/:id/bracket", permanent: true },
       //
       // PR-2b  registration sub-tabs

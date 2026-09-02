@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AdminTabs, type AdminTabItem } from "@/components/admin/kit/AdminTabs";
+import { EntityHubHeader } from "@/components/admin/kit/EntityHubHeader";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useRealtimeCoalescedRefetch } from "@/hooks/useRealtimeCoalescedRefetch";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
@@ -15,7 +15,8 @@ import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
-import { TournamentWorkspaceHeader } from "./components/TournamentWorkspaceHeader";
+import { TournamentHubActions } from "./components/TournamentHubActions";
+import { formatDate, tournamentStatusTone } from "./components/tournamentWorkspace.helpers";
 import { getTournamentWorkspaceQueryKeys } from "./components/tournamentWorkspace.queryKeys";
 import {
   TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
@@ -23,34 +24,23 @@ import {
   useHubStandingsQuery,
   useHubTournamentQuery
 } from "./hubQueries";
-import { allowedTab, isTabKey, type TabKey } from "./tab-guards";
+import { allowedTab, isLegacyTabSegment, isTabKey, TAB_KEYS, type TabKey } from "./tab-guards";
 
 /**
- * Hub tab bar (D2, D20). `draft` is transitional and retires in Phase 2 with
- * a permanent redirect.
+ * Hub tabs are the tournament's lifecycle, in the order it happens (§5).
  *
- * `logs` is absent on purpose: it became a sub-tab of Play & Results and its old
- * top-level path now 308s. The key stays in `TAB_KEYS` so the shell still
- * resolves that path to a real tab while the redirect runs, instead of flashing
- * the overview guard on the way through.
- *
- * `pickBan` covers both map and hero pick-ban configuration (the map-veto
- * cutover onto the generic PickBanConfig engine, 2026-08-10) — one guided
- * editor, labelled "Pre-game Phase" rather than either catalog's name.
+ * Four entries left the bar: `stages` became `bracket`, `draft` a sub-tab of
+ * `teams`, and `pickBan`/`links` sections of `settings` — configuration is not
+ * a phase, and the bar was nine items wide because it pretended otherwise.
  */
-const TAB_BAR: ReadonlyArray<{ key: TabKey; label: string }> = [
-  { key: "overview", label: "Overview" },
-  { key: "registration", label: "Registration" },
-  { key: "teams", label: "Teams" },
-  { key: "stages", label: "Stages" },
-  { key: "matches", label: "Play & Results" },
-  { key: "draft", label: "Draft" },
-  { key: "pickBan", label: "Pre-game Phase" },
-  // Label only, no icon: every other entry here is text, and lucide's `Link`
-  // would also collide with the `next/link` import above.
-  { key: "links", label: "Links" },
-  { key: "settings", label: "Settings" }
-];
+const TAB_LABELS: Record<TabKey, string> = {
+  overview: "Overview",
+  registration: "Registration",
+  teams: "Teams",
+  bracket: "Bracket",
+  matches: "Matches",
+  settings: "Settings"
+};
 
 // Trailing debounce for readiness invalidations (§3): bulk registration edits
 // emit one balancer event per row — a burst must cost one readiness refetch,
@@ -77,11 +67,14 @@ export function TournamentHubShell({
   const { canAccessPermission, isLoaded: permissionsLoaded, isSuperuser } = usePermissions();
 
   const basePath = `/admin/tournaments/${tournamentId}`;
-  // Segment right after the id is the tab; deeper segments (future sub-routes
-  // like registration/form) still resolve to their parent tab.
+  // Segment right after the id is the tab; deeper segments (sub-tabs like
+  // registration/entries) still resolve to their parent tab. A segment that
+  // used to be a tab and has not moved yet highlights nothing rather than
+  // pretending to be Overview.
   const tabSegment = pathname.startsWith(basePath)
     ? (pathname.slice(basePath.length).split("/").find(Boolean) ?? "overview")
     : "overview";
+  const isLegacySegment = isLegacyTabSegment(tabSegment);
   const activeTab: TabKey = isTabKey(tabSegment) ? tabSegment : "overview";
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
@@ -203,9 +196,12 @@ export function TournamentHubShell({
     canUpdateEncounter,
     canTeamRead,
     canReadTournamentLink,
+    canDeleteTournament,
     teamFormation
   };
-  const activeTabAllowed = allowedTab(activeTab, tabAccess);
+  // A segment awaiting its WU is not a tab, so it has no tab gate to fail —
+  // its own page keeps gating itself until the move.
+  const activeTabAllowed = isLegacySegment || allowedTab(activeTab, tabAccess);
 
   // Route guard (D2): a direct hit on a tab the caller may not open bounces
   // back to overview. Only decide once permissions and the tournament are in.
@@ -280,30 +276,53 @@ export function TournamentHubShell({
     );
   }
 
+  const tabItems: AdminTabItem[] = TAB_KEYS.map((key) => ({
+    key,
+    label: TAB_LABELS[key],
+    href: `${basePath}/${key}`,
+    hidden: !allowedTab(key, tabAccess)
+  }));
+
   return (
     <div className="space-y-4">
-      <TournamentWorkspaceHeader
-        tournament={tournament}
-        tournamentId={tournamentId}
-        teamsCount={teamsCount}
-        teamsCountLoading={teamsCount == null && teamsCountQuery.isLoading}
-        encountersCount={encountersCount}
-        encountersCountLoading={encountersCount == null && encountersCountQuery.isLoading}
-        standingsCount={standingsCount}
-        standingsCountLoading={standingsCount == null && standingsQuery.isLoading}
-        canReadAnalytics={canReadAnalytics}
-        canToggleFinished={canUpdateTournament && isSuperuser}
+      <EntityHubHeader
+        title={tournament.name}
+        status={{
+          label: tournament.status.replace(/_/g, " "),
+          tone: tournamentStatusTone(tournament.status)
+        }}
+        meta={[
+          <span key="dates" className="tabular-nums">
+            {formatDate(tournament.start_date)} — {formatDate(tournament.end_date)}
+          </span>,
+          tournament.is_league ? "League" : null,
+          <span key="teams" className="tabular-nums">
+            {formatMetric(teamsCount, teamsCountQuery.isLoading)} teams
+          </span>,
+          <span key="encounters" className="tabular-nums">
+            {formatMetric(encountersCount, encountersCountQuery.isLoading)} encounters
+          </span>,
+          <span key="standings" className="tabular-nums">
+            {formatMetric(standingsCount, standingsQuery.isLoading)} standings
+          </span>
+        ]}
+        actions={
+          <TournamentHubActions
+            tournament={tournament}
+            tournamentId={tournamentId}
+            canReadAnalytics={canReadAnalytics}
+            canToggleFinished={canUpdateTournament && isSuperuser}
+          />
+        }
       />
-      <Tabs value={activeTab} className="space-y-4">
-        <TabsList className="h-auto flex-wrap justify-start">
-          {TAB_BAR.filter((tab) => allowedTab(tab.key, tabAccess)).map((tab) => (
-            <TabsTrigger key={tab.key} value={tab.key} asChild>
-              <Link href={`${basePath}/${tab.key}`}>{tab.label}</Link>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        {activeTabAllowed ? children : null}
-      </Tabs>
+      <AdminTabs items={tabItems} activeKey={isLegacySegment ? "" : activeTab} ariaLabel="Tournament sections" />
+      {activeTabAllowed ? children : null}
     </div>
   );
+}
+
+/** `12`, `…` while loading, `—` when the count is unavailable. */
+function formatMetric(value: number | null, isLoading: boolean) {
+  if (typeof value === "number") return String(value);
+  return isLoading ? "…" : "—";
 }

@@ -2,13 +2,21 @@ import { describe, expect, test } from "vitest";
 
 import {
   allowedMatchesSubTab,
+  allowedSettingsSection,
   allowedTab,
+  allowedTeamsSubTab,
+  isLegacyTabSegment,
   isMatchesSubTab,
   isTabKey,
   MATCHES_DEFAULT_SUB_TAB,
   MATCHES_SUB_TAB_KEYS,
+  MATCHES_SUB_TABS,
+  REGISTRATION_SUB_TABS,
+  SETTINGS_SECTIONS,
   TAB_KEYS,
+  TEAMS_SUB_TABS,
   type MatchesSubTab,
+  type SettingsSection,
   type TabKey
 } from "./tab-guards";
 
@@ -17,6 +25,7 @@ const NO_PERMS = {
   canUpdateEncounter: false,
   canTeamRead: false,
   canReadTournamentLink: false,
+  canDeleteTournament: false,
   teamFormation: "balancer"
 } as const;
 
@@ -25,31 +34,38 @@ const ALL_PERMS = {
   canUpdateEncounter: true,
   canTeamRead: true,
   canReadTournamentLink: true,
+  canDeleteTournament: true,
   teamFormation: "draft"
 } as const;
 
-describe("allowedTab", () => {
-  // Table derived from the pre-T5 conditional tab render of [id]/page.tsx:
-  // settings ← canUpdateTournament, pickBan ← canUpdateEncounter,
-  // draft ← team_formation === "draft"; registration ← team.read (D16).
+describe("hub tabs", () => {
+  test("is the lifecycle, six entries, in the order it happens", () => {
+    expect(TAB_KEYS).toEqual([
+      "overview",
+      "registration",
+      "teams",
+      "bracket",
+      "matches",
+      "settings"
+    ]);
+  });
+
+  // Configuration used to be three tabs of its own; the gates it carried moved
+  // to `allowedSettingsSection`, so only two tabs still gate themselves.
   test.each<[TabKey, boolean]>([
     ["overview", true],
-    ["teams", true],
-    ["stages", true],
-    ["matches", true],
-    ["logs", true],
-    ["settings", false],
-    ["pickBan", false],
     ["registration", false],
-    ["draft", false],
-    ["links", false]
+    ["teams", true],
+    ["bracket", true],
+    ["matches", true],
+    ["settings", false]
   ])("without permissions: %s → %s", (tab, expected) => {
     expect(allowedTab(tab, NO_PERMS)).toBe(expected);
   });
 
-  test("every tab is allowed with full permissions on a draft tournament", () => {
+  test("every tab is allowed with full permissions", () => {
     for (const tab of TAB_KEYS) {
-      expect(allowedTab(tab, ALL_PERMS)).toBe(true);
+      expect(allowedTab(tab, ALL_PERMS), tab).toBe(true);
     }
   });
 
@@ -58,80 +74,143 @@ describe("allowedTab", () => {
     expect(allowedTab("settings", { ...ALL_PERMS, canUpdateTournament: false })).toBe(false);
   });
 
-  test("pickBan follows canUpdateEncounter alone", () => {
-    expect(allowedTab("pickBan", { ...NO_PERMS, canUpdateEncounter: true })).toBe(true);
-    expect(allowedTab("pickBan", { ...ALL_PERMS, canUpdateEncounter: false })).toBe(false);
-  });
-
   test("registration follows canTeamRead alone", () => {
     expect(allowedTab("registration", { ...NO_PERMS, canTeamRead: true })).toBe(true);
     expect(allowedTab("registration", { ...ALL_PERMS, canTeamRead: false })).toBe(false);
   });
-
-  // Without its own `case` the tab would fall into `default: return true` and
-  // be visible to every hub visitor — a leak, not a cosmetic slip.
-  test("links follows canReadTournamentLink alone", () => {
-    expect(allowedTab("links", { ...NO_PERMS, canReadTournamentLink: true })).toBe(true);
-    expect(allowedTab("links", { ...ALL_PERMS, canReadTournamentLink: false })).toBe(false);
-  });
-
-  test("draft follows team formation, not permissions", () => {
-    expect(allowedTab("draft", { ...NO_PERMS, teamFormation: "draft" })).toBe(true);
-    expect(allowedTab("draft", { ...ALL_PERMS, teamFormation: "balancer" })).toBe(false);
-  });
 });
 
 describe("isTabKey", () => {
-  test("accepts known tabs and rejects arbitrary segments", () => {
-    expect(isTabKey("overview")).toBe(true);
-    expect(isTabKey("settings")).toBe(true);
-    expect(isTabKey("links")).toBe(true);
-    expect(isTabKey("rank-autofill")).toBe(false);
+  test("accepts every declared key and nothing else", () => {
+    for (const key of TAB_KEYS) {
+      expect(isTabKey(key)).toBe(true);
+    }
+    expect(isTabKey("stages")).toBe(false);
+    expect(isTabKey("pickBan")).toBe(false);
     expect(isTabKey("")).toBe(false);
+  });
+
+  test("names the segments that are routes but no longer tabs", () => {
+    // The shell needs these to resolve to "no tab": treated as unknown they
+    // would highlight Overview while rendering the stages page under it.
+    for (const segment of ["stages", "draft", "pickBan", "links", "logs"]) {
+      expect(isLegacyTabSegment(segment), segment).toBe(true);
+      expect(isTabKey(segment), segment).toBe(false);
+    }
+    expect(isLegacyTabSegment("bracket")).toBe(false);
   });
 });
 
-describe("matches sub-tabs", () => {
-  test("the landing segment is a real sub-tab", () => {
-    // The bare /matches path and every rejected segment redirect here, so a
-    // typo in the constant would send both into a 404 loop.
+describe("sub-tabs", () => {
+  test("registration lands on entries", () => {
+    expect(REGISTRATION_SUB_TABS[0]).toBe("entries");
+    expect(REGISTRATION_SUB_TABS).toEqual(["entries", "form", "feed", "rank-autofill"]);
+  });
+
+  test("teams offers draft only when the tournament drafts", () => {
+    expect(TEAMS_SUB_TABS).toEqual(["roster", "draft"]);
+    expect(allowedTeamsSubTab("roster", NO_PERMS)).toBe(true);
+    expect(allowedTeamsSubTab("draft", NO_PERMS)).toBe(false);
+    expect(allowedTeamsSubTab("draft", ALL_PERMS)).toBe(true);
+  });
+
+  test("matches splits results into encounters and standings", () => {
+    expect(MATCHES_SUB_TABS).toEqual([
+      "encounters",
+      "standings",
+      "reports",
+      "parsed",
+      "logs"
+    ]);
+    // `report-form` is gone: it configures the report, it does not report.
+    expect(MATCHES_SUB_TABS as readonly string[]).not.toContain("report-form");
+  });
+});
+
+describe("settings sections", () => {
+  test("carries the eleven sections in navigation order", () => {
+    expect(SETTINGS_SECTIONS).toEqual([
+      "general",
+      "rules",
+      "schedule",
+      "roster",
+      "pre-game",
+      "report-form",
+      "links",
+      "challonge",
+      "discord",
+      "preview",
+      "danger"
+    ]);
+  });
+
+  // Each of these three inherits the gate of the tab it came from. Without its
+  // own case it would fall into `default` and only need `tournament.update`,
+  // which is a widening, not a cosmetic slip.
+  test("pre-game follows canUpdateEncounter", () => {
+    expect(allowedSettingsSection("pre-game", { ...ALL_PERMS, canUpdateEncounter: false })).toBe(
+      false
+    );
+    expect(
+      allowedSettingsSection("pre-game", { ...NO_PERMS, canUpdateEncounter: true })
+    ).toBe(true);
+  });
+
+  test("links follows canReadTournamentLink", () => {
+    expect(
+      allowedSettingsSection("links", { ...ALL_PERMS, canReadTournamentLink: false })
+    ).toBe(false);
+    expect(allowedSettingsSection("links", { ...NO_PERMS, canReadTournamentLink: true })).toBe(
+      true
+    );
+  });
+
+  test("danger follows canDeleteTournament", () => {
+    expect(
+      allowedSettingsSection("danger", { ...ALL_PERMS, canDeleteTournament: false })
+    ).toBe(false);
+    expect(allowedSettingsSection("danger", { ...NO_PERMS, canDeleteTournament: true })).toBe(
+      true
+    );
+  });
+
+  test("every other section needs tournament.update", () => {
+    const inherited: SettingsSection[] = ["pre-game", "links", "danger"];
+    for (const section of SETTINGS_SECTIONS) {
+      if (inherited.includes(section)) continue;
+      expect(allowedSettingsSection(section, NO_PERMS), section).toBe(false);
+      expect(
+        allowedSettingsSection(section, { ...NO_PERMS, canUpdateTournament: true }),
+        section
+      ).toBe(true);
+    }
+  });
+});
+
+// Transitional: `matches/layout.tsx` still routes on the pre-redesign keys
+// until PR-2d renames them. Deleted with that WU.
+describe("matches sub-tabs (pre-redesign, transitional)", () => {
+  test("lands on results", () => {
+    expect(MATCHES_DEFAULT_SUB_TAB).toBe("results");
     expect(MATCHES_SUB_TAB_KEYS).toContain(MATCHES_DEFAULT_SUB_TAB);
   });
 
-  test.each<MatchesSubTab>([...MATCHES_SUB_TAB_KEYS])(
-    "%s needs match.read and nothing more",
-    (tab) => {
-      expect(allowedMatchesSubTab(tab, { canReadMatch: true })).toBe(true);
-      expect(allowedMatchesSubTab(tab, { canReadMatch: false })).toBe(false);
+  test("accepts only declared keys", () => {
+    for (const key of MATCHES_SUB_TAB_KEYS) {
+      expect(isMatchesSubTab(key)).toBe(true);
     }
-  );
-
-  test("isMatchesSubTab rejects the parent tab and unknown segments", () => {
-    // "matches" is the parent, not a sub-tab: accepting it would make
-    // /matches/matches resolve instead of redirecting.
-    expect(isMatchesSubTab("matches")).toBe(false);
-    expect(isMatchesSubTab("results")).toBe(true);
-    expect(isMatchesSubTab("reports")).toBe(true);
-    expect(isMatchesSubTab("logs")).toBe(true);
-    expect(isMatchesSubTab("maps")).toBe(true);
-    expect(isMatchesSubTab("report-form")).toBe(true);
-    // The hyphen is part of the segment, not a separator the router splits on.
-    expect(isMatchesSubTab("report")).toBe(false);
-    expect(isMatchesSubTab("reportForm")).toBe(false);
-    expect(isMatchesSubTab("")).toBe(false);
+    expect(isMatchesSubTab("encounters")).toBe(false);
   });
 
-  test("results stays first so the landing segment is also the first tab", () => {
-    // The sub-tab bar renders in key order and `report-form` was appended
-    // rather than inserted; a reorder would move the landing tab.
-    expect(MATCHES_SUB_TAB_KEYS[0]).toBe("results");
-    expect(MATCHES_DEFAULT_SUB_TAB).toBe("results");
+  test.each<[MatchesSubTab, boolean]>(
+    MATCHES_SUB_TAB_KEYS.map((key) => [key, false] as [MatchesSubTab, boolean])
+  )("without match.read: %s → %s", (tab, expected) => {
+    expect(allowedMatchesSubTab(tab, { canReadMatch: false })).toBe(expected);
   });
 
-  test("logs stays a top-level key so its permanent redirect resolves", () => {
-    // It is gone from the tab bar but the old /logs path still exists and 308s;
-    // dropping the key would make the shell bounce that request to overview
-    // before the redirect could run.
-    expect(isTabKey("logs")).toBe(true);
+  test("every sub-tab opens with match.read", () => {
+    for (const key of MATCHES_SUB_TAB_KEYS) {
+      expect(allowedMatchesSubTab(key, { canReadMatch: true }), key).toBe(true);
+    }
   });
 });

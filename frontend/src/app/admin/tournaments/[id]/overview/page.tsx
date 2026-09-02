@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { GitBranch, Link2, MessageSquare } from "lucide-react";
+import { GitBranch, Link2, MessageSquare, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { NextActionHero } from "@/components/admin/kit/NextActionHero";
 import type { Tone } from "@/components/admin/tone";
 import adminService from "@/services/admin.service";
 import { getTournamentWorkspaceQueryKeys } from "../components/tournamentWorkspace.queryKeys";
@@ -59,6 +60,16 @@ export default function OverviewTabPage() {
   const draftSessionStatus = readiness?.draft_session_status;
   const draftRunning = draftSessionStatus === "live" || draftSessionStatus === "paused";
 
+  // F3 ·3: the one thing worth doing next. Same `buildChecklist` the list
+  // below renders — ranked, not a second data source, so the hero and the
+  // checklist can never disagree.
+  const nextAction = checklistItems.find(
+    (item) => (item.state === "warn" || item.state === "todo") && item.href
+  );
+  const logsTotal = readiness?.encounters_total ?? 0;
+  const logsCovered = readiness?.encounters_with_logs ?? 0;
+  const logCoverage = logsTotal > 0 ? Math.round((logsCovered / logsTotal) * 100) : null;
+
   // Read-only integration state. Configuring these lives on the Settings tab —
   // Overview answers "where is this tournament", not "how is it wired".
   const discordChannel = discordChannelQuery.data;
@@ -74,6 +85,14 @@ export default function OverviewTabPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {nextAction ? (
+        <NextActionHero
+          eyebrow="Next action"
+          title={nextAction.detail ? `${nextAction.label} — ${nextAction.detail}` : nextAction.label}
+          href={nextAction.href!}
+          cta="Open"
+        />
+      ) : null}
       <PhaseStepper tournament={tournament} />
       {draftRunning ? (
         // "Draft live -> Teams" banner (UA-O9). Phase 1 home of the draft
@@ -91,7 +110,7 @@ export default function OverviewTabPage() {
         </Card>
       ) : null}
       <LifecycleChecklist items={checklistItems} isLoading={readinessQuery.isLoading} />
-      <StatTileGrid className="xl:grid-cols-3">
+      <StatTileGrid className="xl:grid-cols-4">
         <StatTile
           label="Stages"
           value={stages.length === 0 ? "None yet" : `${stages.length} configured`}
@@ -128,6 +147,17 @@ export default function OverviewTabPage() {
           detail={discordChannel?.channel_name ?? "Match log intake"}
           tone={discordTone}
           icon={MessageSquare}
+        />
+        <StatTile
+          label="Log coverage"
+          value={logCoverage === null ? "—" : `${logCoverage}%`}
+          detail={
+            logsTotal === 0
+              ? "No encounters yet"
+              : `${logsCovered}/${logsTotal} encounters with logs`
+          }
+          tone={logCoverage === null ? "neutral" : logCoverage >= 90 ? "success" : "warning"}
+          icon={ScrollText}
         />
       </StatTileGrid>
     </div>
