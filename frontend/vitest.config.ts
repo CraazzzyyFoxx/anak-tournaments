@@ -32,6 +32,14 @@ export default defineConfig({
     server: { deps: { inline: ["@tanstack/react-table", "cmdk"] } },
     environment: "node",
     include: [
+      // The whole admin tree, both extensions. `src/app/admin` holds no
+      // `bun:test` file — the mixed-runner problem that forces file-level
+      // entries elsewhere in this list does not exist here — so one glob is
+      // safe and every test added under a new admin route runs without another
+      // edit to this allow-list. The narrower admin entries below are kept
+      // where they document a specific trap.
+      "src/app/admin/**/*.test.ts",
+      "src/app/admin/**/*.test.tsx",
       "src/app/**/tournaments/**/draft/**/*.test.ts",
       "src/app/**/tournaments/**/pregame/**/*.test.ts",
       // `.tsx` needs its own entry: the line above ends in `.test.ts`, so the
