@@ -1,101 +1,192 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+import { NextIntlClientProvider } from "next-intl";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { isAdmitted } from "@/components/status/RegistrationBadges";
+import { AdmissionStatusBadge } from "@/components/status/RegistrationBadges";
+import en from "@/i18n/messages/en.json";
+import type { Admission, RequirementVerdict } from "@/types/registration.types";
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 /**
- * `isAdmitted` is the client mirror of the server's admission rule. The property
- * that matters: only a *confirmed* refusal blocks. An outage, an unlinked
- * account, or a token missing the new Twitch scope all resolve to
- * `undetermined`, and must fail open exactly as the check-in gate does — a
- * provider going down mid-tournament cannot be allowed to un-admit players.
+ * `AdmissionStatusBadge` no longer decides anything.
+ *
+ * It used to take five raw fields plus two requirement flags and re-derive the
+ * verdict twice over — once in an exported `isAdmitted` and once inline — which
+ * is why a player an organizer had checked in by hand read as "Not admitted"
+ * forever: the badge kept re-deciding a question check-in had already closed.
+ * These tests pin the projection, not a rule: the same `decision` in must always
+ * produce the same badge out.
  */
-const APPROVED = ["approved", "ready", true] as const;
+const verdict = (overrides: Partial<RequirementVerdict> = {}): RequirementVerdict => ({
+  key: "open_profile",
+  state: "blocked",
+  stage: "check_in",
+  reasons: [{ code: "profile_private", actor: "player", subject: "Player#1" }],
+  detail: {},
+  ...overrides
+});
 
-describe("isAdmitted — baseline", () => {
-  it("requires approved + ready + checked in", () => {
-    expect(isAdmitted(...APPROVED)).toBe(true);
-    expect(isAdmitted("pending", "ready", true)).toBe(false);
-    expect(isAdmitted("approved", "incomplete", true)).toBe(false);
-    expect(isAdmitted("approved", "ready", false)).toBe(false);
+const admission = (overrides: Partial<Admission> = {}): Admission => ({
+  decision: "not_admitted",
+  requirements: [],
+  blockers: [],
+  overridden: [],
+  checked_in: false,
+  ready: false,
+  ...overrides
+});
+
+let container: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  container.remove();
+});
+
+/** The badge is icon-only, so its `aria-label` is the whole rendered message —
+ *  and the only thing assistive tech has to go on. */
+function render(value: Admission): string {
+  act(() => {
+    root.render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <AdmissionStatusBadge admission={value} />
+      </NextIntlClientProvider>
+    );
+  });
+  return container.querySelector('[role="img"]')?.getAttribute("aria-label") ?? "";
+}
+
+describe("AdmissionStatusBadge — one branch per decision", () => {
+  it("renders the three decisions and nothing else", () => {
+    expect(render(admission({ decision: "admitted", checked_in: true, ready: true }))).toBe(
+      en.common.admissionStatus.admitted
+    );
+    expect(render(admission({ decision: "pending_check_in", ready: true }))).toBe(
+      en.common.admissionStatus.pendingCheckIn
+    );
+    expect(render(admission({ decision: "not_admitted" }))).toBe(
+      en.common.admissionStatus.notAdmitted
+    );
+  });
+
+  it("names the blocker instead of only saying no", () => {
+    const label = render(
+      admission({
+        decision: "not_admitted",
+        requirements: [verdict()],
+        blockers: [verdict()]
+      })
+    );
+
+    expect(label).toContain(en.common.admissionStatus.notAdmitted);
+    expect(label).toContain(en.admission.reason.profile_private);
+    // The subject disambiguates WHICH tag: under `scope: "all"` a registrant can
+    // carry three, with exactly one closed.
+    expect(label).toContain("Player#1");
   });
 });
 
-describe("isAdmitted — subscription requirement", () => {
-  it("blocks only a confirmed refusal", () => {
-    expect(
-      isAdmitted(...APPROVED, { requireSubscription: true, subscriptionOutcome: "refused" })
-    ).toBe(false);
+describe("AdmissionStatusBadge — a forced check-in (D4/D5)", () => {
+  it("renders Admitted plus a neutral override marker for a blocked requirement", () => {
+    const label = render(
+      admission({
+        decision: "admitted",
+        requirements: [verdict()],
+        overridden: [verdict()],
+        checked_in: true,
+        ready: true
+      })
+    );
+
+    // Admitted stays first and stays literal: the row IS in.
+    expect(label).toContain(en.common.admissionStatus.admitted);
+    // The unmet requirement stays visible, with its reason.
+    expect(label).toContain(en.common.admissionStatus.overridden);
+    expect(label).toContain(en.admission.reason.profile_private);
   });
 
-  it("admits a satisfied outcome", () => {
-    expect(
-      isAdmitted(...APPROVED, { requireSubscription: true, subscriptionOutcome: "satisfied" })
-    ).toBe(true);
+  it("keeps the override wording free of any claim about who granted it", () => {
+    // The verdicts carry no as-of time, so an organizer's hand check-in and a
+    // subscription that lapsed after a legitimate one are indistinguishable
+    // here. Wording that blamed the organizer would be wrong half the time.
+    const label = render(
+      admission({
+        decision: "admitted",
+        requirements: [verdict()],
+        overridden: [verdict()],
+        checked_in: true,
+        ready: true
+      })
+    ).toLowerCase();
+
+    for (const forbidden of ["manual", "organizer", "admin", "override", "forced", "by hand"]) {
+      expect(label).not.toContain(forbidden);
+    }
   });
 
-  it("fails open on undetermined", () => {
+  it("marks nothing when an admitted row has no unmet requirement", () => {
     expect(
-      isAdmitted(...APPROVED, { requireSubscription: true, subscriptionOutcome: "undetermined" })
-    ).toBe(true);
+      render(
+        admission({
+          decision: "admitted",
+          requirements: [verdict({ state: "satisfied", reasons: [] })],
+          checked_in: true,
+          ready: true
+        })
+      )
+    ).toBe(en.common.admissionStatus.admitted);
   });
 
-  it("fails open on a missing outcome", () => {
-    expect(isAdmitted(...APPROVED, { requireSubscription: true })).toBe(true);
-    expect(
-      isAdmitted(...APPROVED, { requireSubscription: true, subscriptionOutcome: null })
-    ).toBe(true);
-  });
+  it("does not treat an undetermined requirement as a failure", () => {
+    // Fail-open, the invariant this whole layer is built around: a provider
+    // outage or an unfinished rank collection must never un-admit a player. The
+    // server already decided `admitted`; the badge must not add a marker on top
+    // of a requirement that is not blocked.
+    const label = render(
+      admission({
+        decision: "admitted",
+        requirements: [
+          verdict({
+            state: "undetermined",
+            reasons: [{ code: "provider_unavailable", actor: "system", subject: "discord" }]
+          })
+        ],
+        checked_in: true,
+        ready: true
+      })
+    );
 
-  it("ignores the outcome entirely when the tournament does not require one", () => {
-    expect(
-      isAdmitted(...APPROVED, { requireSubscription: false, subscriptionOutcome: "refused" })
-    ).toBe(true);
-    expect(isAdmitted(...APPROVED, { subscriptionOutcome: "refused" })).toBe(true);
+    expect(label).toBe(en.common.admissionStatus.admitted);
+    expect(label).not.toContain(en.admission.reason.provider_unavailable);
   });
 });
 
-describe("isAdmitted — the two gates are independent", () => {
-  it("blocks when only the profile gate fails", () => {
-    expect(
-      isAdmitted(...APPROVED, {
-        requireOpenProfile: true,
-        profilesOpen: false,
-        requireSubscription: true,
-        subscriptionOutcome: "satisfied"
-      })
-    ).toBe(false);
-  });
+describe("AdmissionStatusBadge — unknown reason codes", () => {
+  it("shows the raw code rather than an empty string", () => {
+    // A provider added server-side must stay explainable without a client
+    // deploy, and a blank label reads as "nothing wrong here".
+    const unknown = verdict({
+      reasons: [{ code: "moon_phase_unfavourable", actor: "system", subject: null }]
+    });
 
-  it("blocks when only the subscription gate fails", () => {
     expect(
-      isAdmitted(...APPROVED, {
-        requireOpenProfile: true,
-        profilesOpen: true,
-        requireSubscription: true,
-        subscriptionOutcome: "refused"
-      })
-    ).toBe(false);
-  });
-
-  it("admits when both gates pass", () => {
-    expect(
-      isAdmitted(...APPROVED, {
-        requireOpenProfile: true,
-        profilesOpen: true,
-        requireSubscription: true,
-        subscriptionOutcome: "satisfied"
-      })
-    ).toBe(true);
-  });
-
-  it("admits when both are merely undetermined", () => {
-    expect(
-      isAdmitted(...APPROVED, {
-        requireOpenProfile: true,
-        profilesOpen: null,
-        requireSubscription: true,
-        subscriptionOutcome: "undetermined"
-      })
-    ).toBe(true);
+      render(
+        admission({ decision: "not_admitted", requirements: [unknown], blockers: [unknown] })
+      )
+    ).toContain("moon_phase_unfavourable");
   });
 });

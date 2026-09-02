@@ -142,6 +142,11 @@ export default defineConfig({
       "src/lib/best-of.test.ts",
       "src/lib/roster-shape.test.ts",
       "src/lib/return-to.test.ts",
+      // Same mixed-runner situation, so file-level again: this one pins the
+      // reason-code catalogue against both message files and the organizer-first
+      // ordering of the aggregate. Unrun, a new backend reason code would reach
+      // the UI as raw snake_case with a green suite.
+      "src/lib/admission.test.ts",
       // Added when frontend CI landed: these nine imported `vitest` but matched
       // no pattern above, so the suite reported green without ever running them
       // (the allow-list trap this file warns about three times). `scripts/

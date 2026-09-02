@@ -9,6 +9,7 @@ envelope. This module must NOT import fastapi.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import sqlalchemy as sa
@@ -17,14 +18,18 @@ from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import build_unknown_status_meta
 from shared.division_grid import DivisionGrid, load_runtime_grid
+from shared.domain.member_rank import ResolvedRank
 from shared.hero_catalog import HeroCatalog, resolve_hero_catalog
+from shared.services.admission.requirements.open_profile import KEY as OPEN_PROFILE_KEY
+from shared.services.admission.requirements.subscription import KEY as SUBSCRIPTION_KEY
+from shared.services.admission.types import AdmissionEvaluation
 from shared.services.division_grid.access import (
     get_effective_division_grid_version_ids,
     load_division_grid_snapshots,
     load_division_grid_version_read_payloads,
 )
-from shared.domain.member_rank import ResolvedRank
 from src import models
+from src.schemas.admission import AdmissionRead
 from src.schemas.division_grid import DivisionGridVersionRead
 from src.schemas.registration import (
     RegistrationFormRead,
@@ -33,6 +38,50 @@ from src.schemas.registration import (
     RegistrationTeamBrief,
     TournamentHistoryEntry,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class AdmissionChips:
+    """One evaluation, projected into the four fields a registration read carries.
+
+    The three chip fields are NOT derived from ``decision`` -- they are the raw
+    signals the requirements were evaluated FROM, which is why they stay separate
+    columns on the read. They are lifted out of ``requirements[].detail`` rather
+    than resolved a second time: the batch already paid for the
+    ``battle_tag_state`` row and the entitlement pass, and a second resolution is
+    precisely how the admin column and the player's own card came to disagree.
+
+    Both list handlers -- public participants and admin registrations -- build
+    their reads through here, so the ``detail`` key names live in one place and
+    the two surfaces cannot drift apart.
+    """
+
+    admission: AdmissionRead
+    profiles_open: bool | None = None
+    subscription_outcome: str | None = None
+    subscription_verdicts: dict[str, Any] | None = None
+
+    @classmethod
+    def of(cls, evaluation: AdmissionEvaluation | None) -> AdmissionChips:
+        """Project one evaluation, or the ``unknown`` read when there is none.
+
+        ``.get`` on ``detail``, not ``detail[...]``: a requirement this tournament
+        switched off is present as ``not_applicable`` with an EMPTY detail, and the
+        chips must then read ``None`` -- the value they have carried all along for a
+        tournament that does not require the thing. An empty dict in that slot
+        would make the client render an empty Subscription column instead of no
+        column at all.
+        """
+        if evaluation is None:
+            return cls(admission=AdmissionRead.unknown())
+        profile = evaluation.requirement(OPEN_PROFILE_KEY)
+        subscription = evaluation.requirement(SUBSCRIPTION_KEY)
+        return cls(
+            admission=AdmissionRead.of(evaluation),
+            profiles_open=profile.detail.get("profiles_open") if profile is not None else None,
+            subscription_outcome=subscription.detail.get("outcome") if subscription is not None else None,
+            subscription_verdicts=subscription.detail.get("providers") if subscription is not None else None,
+        )
 
 
 def registration_read_loaders() -> tuple[Any, ...]:
@@ -150,6 +199,7 @@ def _reg_to_read(
     workspace_id: int,
     status_meta_map: dict[str, dict[str, dict[str, object]]] | None = None,
     show_ranks: bool = False,
+    admission: AdmissionRead | None = None,
     profiles_open: bool | None = None,
     subscription_outcome: str | None = None,
     subscription_verdicts: dict[str, Any] | None = None,
@@ -167,6 +217,12 @@ def _reg_to_read(
     the participant-facing "anything you'd like organizers to know" field, and
     declared alternate battle tags are the anti-smurf transparency the roster
     exists to surface.
+
+    ``admission`` defaults to ``AdmissionRead.unknown()`` rather than staying
+    ``None``: the single-registration write paths (create, self-update) return a
+    read the caller refetches anyway, and a nullable object here would put a null
+    branch in every consumer -- which is how the five client-side re-derivations
+    of this answer got started.
     """
     roles = (
         [
@@ -227,6 +283,7 @@ def _reg_to_read(
         )
         or build_unknown_status_meta("balancer", reg.balancer_status),
         checked_in=reg.checked_in,
+        admission=admission if admission is not None else AdmissionRead.unknown(),
         profiles_open=profiles_open,
         subscription_outcome=subscription_outcome,
         subscription_verdicts=subscription_verdicts,

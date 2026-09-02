@@ -1,6 +1,7 @@
 import type { PlayerRoleOption, PlayerRoleSlotCode } from "@/lib/player-role";
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
 import type {
+  Admission,
   BuiltInFieldConfig,
   CustomFieldDefinition,
   FieldValidationConfig,
@@ -433,6 +434,11 @@ export interface AdminRegistration {
    *  the tournament's form requires them. Mutation responses omit them. */
   profiles_open?: boolean | null;
   subscription_outcome?: SubscriptionOutcome | null;
+  /** The composed admission answer, identical in shape and content to the one
+   *  the public participants read sends for the same registration. Required for
+   *  the same reason as there: an optional field would put a defaulting branch
+   *  back into every consumer. */
+  admission: Admission;
 }
 
 export interface AdminRegistrationCreateInput {

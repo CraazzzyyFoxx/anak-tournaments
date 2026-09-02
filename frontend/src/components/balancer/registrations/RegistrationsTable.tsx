@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef, Row } from "@tanstack/react-table";
+import { useTranslations } from "next-intl";
 import {
+  AlertTriangle,
   Check,
   Clock,
   FileCog,
@@ -55,6 +57,7 @@ import {
 } from "@/components/ui/select";
 import { mergeStatusOptions } from "@/lib/balancer-statuses";
 import { notify } from "@/lib/notify";
+import { formatAdmissionReason, tallyAdmissionReasons } from "@/lib/admission";
 import { ROLE_LABELS, getSubroleLabel } from "@/lib/roles";
 import balancerAdminService from "@/services/balancer-admin.service";
 import registrationService from "@/services/registration.service";
@@ -140,6 +143,10 @@ export default function RegistrationsTable({
   basePath: string;
 }>) {
   const queryClient = useQueryClient();
+  // The only translated strings on this screen: reason codes are shared with the
+  // public participants page, so they live in the message catalogue rather than
+  // as English literals like the rest of this admin table.
+  const t = useTranslations();
   const searchParams = useSearchParams();
   // D25: status/sub-role catalogs are read from the workspace store. In the hub
   // the store is already aligned to the tournament's workspace by
@@ -186,7 +193,9 @@ export default function RegistrationsTable({
   const roleForm: RegistrationForm = publicFormQuery.data ?? ADMIN_ROLE_FORM;
   const subroleCatalog = roleForm.subrole_catalog;
 
-  const requireOpenProfile = formQuery.data?.require_open_profile ?? false;
+  // `require_open_profile` is deliberately NOT read here any more: admission is
+  // resolved server-side and travels on each row. This flag survives only
+  // because the Subscription chip column exists or does not exist per tournament.
   const requireSubscription = formQuery.data?.require_subscription ?? false;
   const customFields = roleForm.custom_fields;
 
@@ -360,6 +369,13 @@ export default function RegistrationsTable({
     (registration) => registration.status === "pending"
   ).length;
   const isPendingFilterOn = filters.status?.includes("pending") ?? false;
+  // Over the WHOLE pool, not the current page or filter: the point of the line
+  // is to answer "is this forty players to chase or one thing to fix", and a
+  // tally that moved with the header filters could not.
+  const reasonTally = useMemo(
+    () => tallyAdmissionReasons(registrations.map((registration) => registration.admission)),
+    [registrations]
+  );
 
   // `mutate` is observer-bound and stable across renders; the mutation objects
   // around it are not, so the column memo depends on these rather than on them.
@@ -375,7 +391,6 @@ export default function RegistrationsTable({
     () => [
       ...buildBalancerRegistrationColumns(
         subroleCatalog,
-        requireOpenProfile,
         requireSubscription,
         customFields,
         statusFilterOptions
@@ -413,7 +428,6 @@ export default function RegistrationsTable({
     ],
     [
       subroleCatalog,
-      requireOpenProfile,
       requireSubscription,
       customFields,
       statusFilterOptions,
@@ -433,9 +447,7 @@ export default function RegistrationsTable({
     const rowsById = new Map(pageRows.map((row) => [row.original.id, row]));
     return groupRegistrations(
       pageRows.map((row) => row.original),
-      groupBy,
-      requireOpenProfile,
-      requireSubscription
+      groupBy
     ).map((group) => ({
       key: group.key,
       label: (
@@ -546,6 +558,22 @@ export default function RegistrationsTable({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
+      {reasonTally.length > 0 ? (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {reasonTally.map((entry) => (
+            <span key={entry.code} className="inline-flex items-center gap-1">
+              {/* Organizer-actionable entries are marked, not just sorted first:
+                  they are the ones where the fix is a setting on this site
+                  rather than a message to a player. */}
+              {entry.actor === "organizer" ? (
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-hidden />
+              ) : null}
+              <span className="tabular-nums">{entry.count}</span>
+              {formatAdmissionReason(t, { code: entry.code, actor: entry.actor })}
+            </span>
+          ))}
+        </p>
+      ) : null}
       <AdminDataTable<AdminRegistration>
         rows={registrations}
         isLoading={registrationsQuery.isFetching}

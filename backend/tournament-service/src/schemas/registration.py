@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from shared.core.enums import SubscriptionEnforcementStage
 from shared.services.subscriptions import VERIFICATION_METHODS, VerificationMethod, parse_requirement
+from src.schemas.admission import AdmissionRead
 from src.schemas.division_grid import DivisionGridVersionRead
 
 # ---------------------------------------------------------------------------
@@ -204,6 +205,11 @@ class RegistrationRead(BaseModel):
     balancer_status: str = "not_in_balancer"
     balancer_status_meta: dict[str, Any] | None = None
     checked_in: bool = False
+    # The single admission answer, computed server-side. Never ``None``: a
+    # registration the list did not resolve carries ``AdmissionRead.unknown()``,
+    # so no consumer needs a null branch -- the five client-side re-derivations
+    # this replaced all grew out of per-consumer defaulting.
+    admission: AdmissionRead = Field(default_factory=AdmissionRead.unknown)
     # All-profiles-open verdict when the tournament requires it:
     # True = public, False = closed, None = unknown / not required.
     profiles_open: bool | None = None

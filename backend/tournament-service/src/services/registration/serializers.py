@@ -13,7 +13,9 @@ from shared.balancer_registration_statuses import (
 )
 from shared.domain.member_rank import ResolvedRank
 from src import models, schemas
+from src.schemas.admission import AdmissionRead
 from src.schemas.registration import RegistrationFormRead
+
 
 def loaded_relationship_or_none(instance: object, attribute: str):
     loaded_value = sa.inspect(instance).attrs[attribute].loaded_value
@@ -62,6 +64,7 @@ def serialize_registration(
     workspace_id: int,
     status_meta_map: dict[str, dict[str, StatusMeta]] | None = None,
     ow_ranks_for_user: dict[str, int] | None = None,
+    admission: AdmissionRead | None = None,
     profiles_open: bool | None = None,
     subscription_outcome: str | None = None,
     resolved_ranks: Mapping[str, ResolvedRank] | None = None,
@@ -113,6 +116,7 @@ def serialize_registration(
         reviewed_at=registration.reviewed_at,
         reviewed_by_username=reviewer.username if reviewer is not None else None,
         balancer_profile_overridden_at=registration.balancer_profile_overridden_at,
+        admission=admission if admission is not None else AdmissionRead.unknown(),
         profiles_open=profiles_open,
         subscription_outcome=subscription_outcome,
         roles=[

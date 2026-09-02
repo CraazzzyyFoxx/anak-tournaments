@@ -66,11 +66,19 @@ from src.schemas.registration import (
     SubscriptionProviderConfigUpsert,
     WorkspaceSubscriptionRequirementUpsert,
 )
+from src.schemas.registration_build import AdmissionChips
 from src.schemas.registration_team import RegistrationTeamListResponse
 from src.services.registration import _common as reg_common
 from src.services.registration import audit as reg_audit
 from src.services.registration import export as reg_export
-from src.services.registration import lifecycle, rank_autofill, rank_sources, status_catalog, subscription_config
+from src.services.registration import (
+    lifecycle,
+    rank_autofill,
+    rank_resolution,
+    rank_sources,
+    status_catalog,
+    subscription_config,
+)
 from src.services.registration import service as reg_svc
 from src.services.registration import teams as team_service
 from src.services.registration.realtime import emit_balancer_registrations_changed
@@ -79,7 +87,6 @@ from src.services.registration.serializers import (
     serialize_registration_form,
     serialize_status,
 )
-from src.services.registration import rank_resolution
 from src.services.registration.windows import windows_service
 
 # --- helpers -----------------------------------------------------------------
@@ -430,29 +437,28 @@ def register(broker: Any, logger: Any) -> None:
                 session, registrations, workspace_id=ctx.ws_id, grid=grid
             )
             # Same resolution the public participants list uses, so the admin
-            # Subscription / Profile columns agree with what the player sees.
-            form = await reg_svc.registration_service.get_registration_form(session, ctx.id)
-            profiles_open_map, subscription_reads = await reg_svc.registration_service.resolve_admission_signals(
-                session, registrations, form=form
-            )
-            return [
-                _dump(
-                    serialize_registration(
-                        registration,
-                        workspace_id=ctx.ws_id,
-                        status_meta_map=status_meta_map,
-                        ow_ranks_for_user=ow_ranks.get(registration.id),
-                        profiles_open=profiles_open_map.get(registration.id),
-                        subscription_outcome=(
-                            subscription_reads[registration.id].outcome.value
-                            if registration.id in subscription_reads
-                            else None
-                        ),
-                        resolved_ranks=resolved_by_reg.get(registration.id),
+            # Admission / Subscription / Profile columns are byte-identical to what
+            # the player sees on their own card.
+            form = await reg_common._common_service.get_registration_form(session, ctx.id)
+            admissions = await reg_svc.registration_service.resolve_admission_list(session, registrations, form=form)
+            out = []
+            for registration in registrations:
+                chips = AdmissionChips.of(admissions.get(registration.id))
+                out.append(
+                    _dump(
+                        serialize_registration(
+                            registration,
+                            workspace_id=ctx.ws_id,
+                            status_meta_map=status_meta_map,
+                            ow_ranks_for_user=ow_ranks.get(registration.id),
+                            admission=chips.admission,
+                            profiles_open=chips.profiles_open,
+                            subscription_outcome=chips.subscription_outcome,
+                            resolved_ranks=resolved_by_reg.get(registration.id),
+                        )
                     )
                 )
-                for registration in registrations
-            ]
+            return out
 
         return await _run(logger, op)
 

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef, Row, SortingFn } from "@tanstack/react-table";
-import { useFormatter, type DateTimeFormatOptions } from "next-intl";
+import { useFormatter, useTranslations, type DateTimeFormatOptions } from "next-intl";
 
 import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -13,6 +13,12 @@ import {
   ProfileStatusBadge,
   RegistrationStatusBadge,
 } from "@/components/status/RegistrationBadges";
+import {
+  ADMISSION_ORDER,
+  ADMISSION_SEARCH_TEXT,
+  formatAdmissionReason,
+  primaryAdmissionReason,
+} from "@/lib/admission";
 import { cn } from "@/lib/utils";
 import { ROLE_LABELS, getRoleIconName, getSubroleLabel } from "@/lib/roles";
 import type {
@@ -272,9 +278,40 @@ function ExclusionCell({ registration }: Readonly<{ registration: AdminRegistrat
   );
 }
 
+/**
+ * The reason behind one row's admission verdict.
+ *
+ * Amber for a blocker, muted for a requirement that is merely failing open — the
+ * second is not keeping anybody out today, but it will keep doing so silently
+ * until somebody looks, so it must be visible without reading as a refusal.
+ */
+function AdmissionReasonCell({ registration }: Readonly<{ registration: AdminRegistration }>) {
+  const t = useTranslations();
+  const reason = primaryAdmissionReason(registration.admission);
+  if (!reason) {
+    return <span className="text-[color:var(--aqt-fg-faint)]">—</span>;
+  }
+
+  const text = formatAdmissionReason(t, reason);
+  const isBlocking = registration.admission.blockers.length > 0;
+  return (
+    <span
+      className={cn(
+        "block max-w-[240px] truncate text-[11px]",
+        isBlocking ? "text-[color:var(--aqt-amber)]" : "text-[color:var(--aqt-fg-dim)]",
+      )}
+      title={text}
+    >
+      {text}
+    </span>
+  );
+}
+
 export function buildBalancerRegistrationColumns(
   subroleCatalog?: SubroleCatalog,
-  requireOpenProfile = false,
+  /** Gates the presence of the Subscription chip column only. Admission itself
+   *  is read off each row, so the old `requireOpenProfile` twin of this flag is
+   *  gone: nothing outside that column needed either of them. */
   requireSubscription = false,
   customFields: CustomFieldDefinition[] = [],
   /** Values offered by the `status` header filter, as the endpoint reports them. */
@@ -464,50 +501,50 @@ export function buildBalancerRegistrationColumns(
     {
       id: "admission",
       header: "Admission",
-      // Deliberately blind to the subscription condition the cell renders: the
-      // sort this replaced ignored it too, and organizers read the order as
-      // "approved, ready, profile fine" — changing it silently would reshuffle
-      // every existing view.
-      accessorFn: (registration) => {
-        const isProfileClosed = requireOpenProfile && registration.profiles_open === false;
-        const isApprovedAndReady =
-          registration.status === "approved" &&
-          registration.balancer_status === "ready" &&
-          !isProfileClosed;
-        if (!isApprovedAndReady) return 0;
-        return registration.checked_in ? 2 : 1;
-      },
-      cell: ({ row }) => (
-        <AdmissionStatusBadge
-          registrationStatus={row.original.status}
-          balancerStatus={row.original.balancer_status}
-          checkedIn={row.original.checked_in}
-          requireOpenProfile={requireOpenProfile}
-          profilesOpen={row.original.profiles_open}
-          requireSubscription={requireSubscription}
-          subscriptionOutcome={row.original.subscription_outcome}
-        />
-      ),
+      // D6: the sort is now projected from the same `decision` the cell renders.
+      // The accessor this replaced was deliberately blind to the subscription
+      // condition its own cell showed, so the column could order a refused
+      // subscriber above an admitted one. That divergence existed only because
+      // there was no single source of truth; ordering saved views change, and
+      // that is the accepted cost of a column whose sort matches its contents.
+      accessorFn: (registration) => ADMISSION_ORDER[registration.admission.decision],
+      cell: ({ row }) => <AdmissionStatusBadge admission={row.original.admission} />,
       meta: adminColumnMeta<AdminRegistration>({
         category: "meta",
         defaultHidden: false,
         responsive: "md",
         align: "center",
-        searchValue: (registration) => {
-          const isProfileClosed = requireOpenProfile && registration.profiles_open === false;
-          const isSubscriptionRefused =
-            requireSubscription && registration.subscription_outcome === "refused";
-          const isApprovedAndReady =
-            registration.status === "approved" &&
-            registration.balancer_status === "ready" &&
-            !isProfileClosed &&
-            !isSubscriptionRefused;
-          if (!isApprovedAndReady) return "not admitted";
-          return registration.checked_in ? "admitted" : "check-in pending";
-        },
+        searchValue: (registration) =>
+          ADMISSION_SEARCH_TEXT[registration.admission.decision],
       }),
     },
     {
+      // Why a row is not admitted, or why it is only failing open. The organizer
+      // used to have to open the OW-Profile and Subscriptions screens one row at
+      // a time to learn this, because the badge showed that something was wrong
+      // and never what.
+      id: "reason",
+      header: "Reason",
+      accessorFn: (registration) =>
+        primaryAdmissionReason(registration.admission)?.code ?? "",
+      sortingFn: localeTextSort,
+      cell: ({ row }) => <AdmissionReasonCell registration={row.original} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "meta",
+        defaultHidden: false,
+        responsive: "lg",
+        className: "min-w-[180px]",
+        searchValue: (registration) =>
+          primaryAdmissionReason(registration.admission)?.code ?? null,
+      }),
+    },
+    {
+      // The raw `profiles_open` SIGNAL, not the decision. The comparisons here
+      // and in `searchValue` below are a tri-state chip projection — open /
+      // closed / not checked — and must not be consolidated with the admission
+      // column above: whether the player is in comes from `admission.decision`
+      // and nowhere else, and a closed profile an organizer has already checked
+      // the player in past is still an admitted row.
       id: "profile",
       header: "Profile",
       accessorFn: (registration) =>

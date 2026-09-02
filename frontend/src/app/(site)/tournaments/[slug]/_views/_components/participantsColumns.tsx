@@ -829,17 +829,7 @@ export function buildParticipantColumns(
     responsive: "always",
     align: "center",
     width: "icon",
-    render: (reg) => (
-      <AdmissionStatusBadge
-        registrationStatus={reg.status}
-        balancerStatus={reg.balancer_status}
-        checkedIn={reg.checked_in}
-        requireOpenProfile={form?.require_open_profile ?? false}
-        profilesOpen={reg.profiles_open}
-        requireSubscription={form?.require_subscription ?? false}
-        subscriptionOutcome={reg.subscription_outcome}
-      />
-    ),
+    render: (reg) => <AdmissionStatusBadge admission={reg.admission} />,
   });
 
   return columns;

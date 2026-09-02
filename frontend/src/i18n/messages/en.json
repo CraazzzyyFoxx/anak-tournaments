@@ -163,7 +163,8 @@
     "admissionStatus": {
       "admitted": "Admitted",
       "notAdmitted": "Not Admitted",
-      "pendingCheckIn": "Admitted (Check-in pending)"
+      "pendingCheckIn": "Admitted (Check-in pending)",
+      "overridden": "requirement unmet, admission already granted"
     },
     "yes": "Yes",
     "no": "No",
@@ -5109,6 +5110,40 @@
       "liveCount": "{count} live",
       "channels": "Live channels",
       "play": "Play {name}"
+    }
+  },
+  "admission": {
+    "playerActionable": "This one is yours to clear",
+    "requirement": {
+      "open_profile": "Profile visibility",
+      "subscription": "Subscription"
+    },
+    "reason": {
+      "no_battle_tag": "Add your BattleTag",
+      "never_fetched": "Profile has not been checked yet",
+      "collection_pending": "Profile check in progress",
+      "collection_failed": "Profile check failed",
+      "collection_disabled": "Profile checks are switched off",
+      "profile_private": "Make your Overwatch career profile public",
+      "profile_not_found": "Overwatch profile not found — check the BattleTag",
+      "no_linked_discord_account": "Link your Discord account",
+      "no_linked_twitch_account": "Link your Twitch account",
+      "missing_scope": "Link the account again — the saved permissions are not enough",
+      "not_subscribed": "No active subscription",
+      "not_a_member": "Join the Discord server",
+      "no_mapped_role": "No subscriber role on the Discord server",
+      "no_code_redeemed": "No subscription code entered",
+      "guild_not_configured": "Discord server is not configured",
+      "no_role_tiers_configured": "Subscription tiers are not mapped to Discord roles",
+      "role_mapping_drift": "Role mapping is out of date",
+      "broadcaster_not_configured": "Twitch channel is not configured",
+      "twitch_client_not_configured": "Twitch app credentials are missing",
+      "broadcaster_not_eligible": "Twitch channel cannot have subscribers",
+      "provider_unavailable": "Provider is unavailable",
+      "guild_not_accessible": "Discord server is unreachable",
+      "bot_not_configured": "Discord bot is not deployed",
+      "cache_not_ready": "Subscription data is still loading",
+      "unknown": "Reason unknown"
     }
   }
 }

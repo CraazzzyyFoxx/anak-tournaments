@@ -163,7 +163,8 @@
     "admissionStatus": {
       "admitted": "Допущен",
       "notAdmitted": "Не допущен",
-      "pendingCheckIn": "Допущен (Ожидает чек-ин)"
+      "pendingCheckIn": "Допущен (Ожидает чек-ин)",
+      "overridden": "требование не выполнено — допуск уже подтверждён"
     },
     "yes": "Да",
     "no": "Нет",
@@ -5109,6 +5110,40 @@
       "liveCount": "{count} в эфире",
       "channels": "Каналы в эфире",
       "play": "Включить {name}"
+    }
+  },
+  "admission": {
+    "playerActionable": "Это зависит от вас",
+    "requirement": {
+      "open_profile": "Видимость профиля",
+      "subscription": "Подписка"
+    },
+    "reason": {
+      "no_battle_tag": "Укажите свой BattleTag",
+      "never_fetched": "Профиль ещё не проверялся",
+      "collection_pending": "Профиль проверяется",
+      "collection_failed": "Не удалось проверить профиль",
+      "collection_disabled": "Проверка профилей отключена",
+      "profile_private": "Откройте профиль карьеры Overwatch",
+      "profile_not_found": "Профиль Overwatch не найден — проверьте BattleTag",
+      "no_linked_discord_account": "Привяжите аккаунт Discord",
+      "no_linked_twitch_account": "Привяжите аккаунт Twitch",
+      "missing_scope": "Привяжите аккаунт заново — выданных прав недостаточно",
+      "not_subscribed": "Нет активной подписки",
+      "not_a_member": "Вступите в Discord-сервер",
+      "no_mapped_role": "Нет роли подписчика на Discord-сервере",
+      "no_code_redeemed": "Код подписки не введён",
+      "guild_not_configured": "Discord-сервер не настроен",
+      "no_role_tiers_configured": "Уровни подписки не сопоставлены с ролями Discord",
+      "role_mapping_drift": "Сопоставление ролей устарело",
+      "broadcaster_not_configured": "Канал Twitch не настроен",
+      "twitch_client_not_configured": "Не заданы ключи приложения Twitch",
+      "broadcaster_not_eligible": "У канала Twitch не может быть подписчиков",
+      "provider_unavailable": "Провайдер недоступен",
+      "guild_not_accessible": "Discord-сервер недоступен",
+      "bot_not_configured": "Discord-бот не развёрнут",
+      "cache_not_ready": "Данные подписок ещё загружаются",
+      "unknown": "Причина неизвестна"
     }
   }
 }

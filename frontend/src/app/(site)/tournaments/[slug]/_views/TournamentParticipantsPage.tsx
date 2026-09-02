@@ -40,6 +40,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { cn, hexToRgba } from "@/lib/utils";
+import {
+  activeRequirements,
+  formatAdmissionReason,
+  formatRequirementName
+} from "@/lib/admission";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { isPhaseWindowActive } from "@/lib/tournament-status";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
@@ -199,6 +204,10 @@ interface RegistrationStep {
   key: string;
   label: string;
   tone: RegistrationStepTone;
+  /** The reader is the one who can clear this step. Set only for requirement
+   *  steps whose reason carries `actor: "player"`; an organizer's
+   *  misconfiguration or a provider outage stays plain text. */
+  actionable?: boolean;
 }
 
 /** Statuses that permanently take the registration out of the tournament. */
@@ -282,9 +291,7 @@ function MyRegistrationCard({
   onWithdraw,
   isCheckingIn,
   isWithdrawing,
-  tournament,
-  requireOpenProfile,
-  requireSubscription
+  tournament
 }: Readonly<{
   registration: Registration;
   canCheckIn: boolean;
@@ -293,8 +300,6 @@ function MyRegistrationCard({
   isCheckingIn: boolean;
   isWithdrawing: boolean;
   tournament: Tournament;
-  requireOpenProfile: boolean;
-  requireSubscription: boolean;
 }>) {
   const t = useTranslations();
   const tSlot = useTranslations("rosterShape.slotCodes");
@@ -356,54 +361,55 @@ function MyRegistrationCard({
   // drafted against a confirmed attendee list (backend returns 409 too).
   const canWithdraw =
     !isCheckedIn && (registration.status === "pending" || registration.status === "approved");
-  // "ready" is the terminal balancer state: the organizers added the player to
-  // the pool and assigned a rank. Anything else (not_in_balancer, incomplete,
-  // custom slugs, missing field) means the rank is still pending.
-  const balancerReady = registration.balancer_status === "ready";
+  // D3: `ready` is the server's own "the data is complete" — approved AND holding
+  // a rank in the balancer pool. It is deliberately NOT a requirement and is
+  // never spent by check-in, which is why it travels beside the decision rather
+  // than inside `requirements`. Read from there rather than re-tested against
+  // `balancer_status === "ready"`: that literal was the last raw admission input
+  // this card derived anything from, and it disagreed with the server whenever a
+  // ranked player had not been approved yet.
+  const balancerReady = registration.admission.ready;
 
-  // Registration journey: submitted -> review/approved -> profile visibility
-  // (when required) -> balancing (rank assignment) -> check-in.
-  const profileStep: RegistrationStep | null = requireOpenProfile
-    ? {
-        key: "profile",
-        label:
-          registration.profiles_open === true
-            ? t("common.profileOpen")
-            : registration.profiles_open === false
-              ? t("common.profileClosed")
-              : t("common.profileNotChecked"),
+  // Registration journey: submitted -> review/approved -> one step per active
+  // requirement -> balancing (rank assignment) -> check-in.
+  //
+  // ONE map over what the server sent, not two hand-written blocks behind two
+  // `require_*` flags. Those blocks were the sixth and seventh re-derivations of
+  // the admission rule, and a third requirement would have added an eighth.
+  // `not_applicable` verdicts are dropped here rather than server-side: the list
+  // ships whole so that this is the only place that decides what to show.
+  const requirementSteps: RegistrationStep[] = activeRequirements(registration.admission).map(
+    (requirement) => {
+      // A `satisfied` verdict can still carry reasons — under subscription `any`
+      // mode every losing provider contributes one — so its label must come from
+      // the requirement's name, never from a reason that no longer applies.
+      const reason = requirement.state === "satisfied" ? null : (requirement.reasons[0] ?? null);
+      return {
+        key: `requirement:${requirement.key}`,
+        label: reason
+          ? formatAdmissionReason(t, reason)
+          : formatRequirementName(t, requirement.key),
+        // Only `blocked` is a failure. `undetermined` is the requirement failing
+        // OPEN — a provider outage or an unfinished rank collection — and drawing
+        // it red would tell a player they are out when they are not.
         tone:
-          registration.profiles_open === true
+          requirement.state === "satisfied"
             ? "done"
-            : registration.profiles_open === false
+            : requirement.state === "blocked"
               ? "failed"
               : isTerminal
                 ? "idle"
-                : "active"
-      }
-    : null;
-
-  // Subscription step: only a CONFIRMED refusal is a failure. An undetermined
-  // verdict shows as still-pending, matching the gate that fails open.
-  const subscriptionStep: RegistrationStep | null = requireSubscription
-    ? {
-        key: "subscription",
-        label:
-          registration.subscription_outcome === "satisfied"
-            ? t("common.subscription.satisfied")
-            : registration.subscription_outcome === "refused"
-              ? t("common.subscription.refused")
-              : t("common.subscription.undetermined"),
-        tone:
-          registration.subscription_outcome === "satisfied"
-            ? "done"
-            : registration.subscription_outcome === "refused"
-              ? "failed"
-              : isTerminal
-                ? "idle"
-                : "active"
-      }
-    : null;
+                : "active",
+        // Only the player's own reasons get the call-to-action treatment. An
+        // organizer's misconfiguration or a provider outage is not theirs to fix,
+        // and inviting them to try is worse than saying nothing. The action
+        // itself lives in the copy (the `player` messages are imperative) rather
+        // than in a link: a per-code route map would be twenty-four guesses, and
+        // "make your career profile public" is not even on this site.
+        actionable: reason?.actor === "player"
+      };
+    }
+  );
 
   // Check-in is the one step whose marker has four distinct outcomes, so it is
   // resolved here rather than inline: a completed check-in wins outright, a dead
@@ -438,8 +444,7 @@ function MyRegistrationCard({
             : t("registration.myCard.steps.review"),
       tone: isApproved || isCheckedIn ? "done" : isTerminal ? "failed" : "active"
     },
-    ...(profileStep ? [profileStep] : []),
-    ...(subscriptionStep ? [subscriptionStep] : []),
+    ...requirementSteps,
     {
       key: "balancing",
       label: t("registration.myCard.steps.balancing"),
@@ -641,8 +646,12 @@ function MyRegistrationCard({
                   step.tone === "done" && "text-[color:var(--aqt-emerald)]",
                   step.tone === "active" && "font-medium text-[color:var(--aqt-amber)]",
                   step.tone === "failed" && "text-[color:var(--aqt-rose)]",
-                  step.tone === "idle" && "text-[color:var(--aqt-fg-dim)]"
+                  step.tone === "idle" && "text-[color:var(--aqt-fg-dim)]",
+                  // The affordance for "this one is yours": emphasis plus an
+                  // underline, on a label already phrased as an instruction.
+                  step.actionable && step.tone !== "done" && "font-semibold underline decoration-dotted underline-offset-2"
                 )}
+                title={step.actionable ? t("admission.playerActionable") : undefined}
               >
                 {step.label}
               </span>
@@ -1196,8 +1205,6 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           isCheckingIn={checkInMutation.isPending}
           isWithdrawing={withdrawMutation.isPending}
           tournament={tournament}
-          requireOpenProfile={formQuery.data?.require_open_profile ?? false}
-          requireSubscription={formQuery.data?.require_subscription ?? false}
         />
       )}
 

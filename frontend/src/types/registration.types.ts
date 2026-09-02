@@ -49,6 +49,79 @@ export interface SubroleOption {
 /** Workspace sub-role catalog keyed by registration role code (tank/dps/support). */
 export type SubroleCatalog = Record<string, SubroleOption[]>;
 
+// ---------------------------------------------------------------------------
+// Admission — the server's one answer to "is this player in?"
+// ---------------------------------------------------------------------------
+
+/** Which gate a requirement blocks at. Ordered: `registration` implies
+ *  `check_in` as well, so a registration-stage requirement is checked twice. */
+export type AdmissionStage = "registration" | "check_in";
+
+/** The composed decision. Mirrors `shared.services.admission.AdmissionDecision`.
+ *
+ *  This is the ONLY thing the client may switch on. Five separate re-derivations
+ *  of it used to live in the UI — a badge, a grouping key, a sort ordinal, a
+ *  search string — and two of them silently disagreed with the other three
+ *  because nothing forced them to agree. */
+export type AdmissionDecision = "admitted" | "pending_check_in" | "not_admitted";
+
+/** Per-requirement state. Only `blocked` blocks.
+ *
+ *  `undetermined` fails open by design: a provider outage, an unlinked account
+ *  or a token missing a scope must never un-admit a paying subscriber
+ *  mid-tournament. `not_applicable` means the tournament switched the
+ *  requirement off — such verdicts still ship, because the registrant's
+ *  progress steps are built by walking the whole list. */
+export type RequirementState = "satisfied" | "blocked" | "undetermined" | "not_applicable";
+
+/** Who can fix a reason. This is what makes an aggregate readable: forty
+ *  `undetermined` rows are either forty players who never linked Discord or one
+ *  broken role mapping, and the code alone cannot tell an organizer which. */
+export type ReasonActor = "player" | "organizer" | "system";
+
+export interface AdmissionReason {
+  /** Stable machine code; the UI renders `admission.reason.{code}` and falls
+   *  back to the raw code, so a provider added server-side stays explainable. */
+  code: string;
+  actor: ReasonActor;
+  /** What the reason is about — a provider key, or the BattleTag that failed.
+   *  Under `open_profile_scope: "all"` a registrant may carry three tags with
+   *  exactly one closed, and without this the verdict names none of them. */
+  subject?: string | null;
+}
+
+export interface RequirementVerdict {
+  /** `"open_profile"` | `"subscription"` — open-ended: the registry is
+   *  server-side, so a third requirement must not need a client release. */
+  key: string;
+  state: RequirementState;
+  stage: AdmissionStage;
+  reasons: AdmissionReason[];
+  /** Requirement-shaped extras for the row chips (per-provider verdicts, the
+   *  resolved profile scope). Never a decision input. */
+  detail: Record<string, unknown>;
+}
+
+export interface Admission {
+  decision: AdmissionDecision;
+  /** Every requirement in registry order, including the switched-off ones. */
+  requirements: RequirementVerdict[];
+  /** Blocked requirements whose gate has already arrived. Drives `decision`. */
+  blockers: RequirementVerdict[];
+  /** Blocked requirements the player is admitted DESPITE, because check-in —
+   *  the last gate of every requirement — is already behind them.
+   *
+   *  Word this neutrally: "requirement unmet, admission already granted". It
+   *  cannot distinguish an organizer who checked somebody in by hand from a
+   *  subscription that lapsed a week after a legitimate check-in, because the
+   *  verdicts carry no as-of time. */
+  overridden: RequirementVerdict[];
+  checked_in: boolean;
+  /** `approved` and holding a rank in the balancer pool. Data completeness, not
+   *  a requirement, and never spent by check-in. */
+  ready: boolean;
+}
+
 /** Composed admission answer over the tournament's subscription requirement.
  *  Only `refused` blocks — `undetermined` fails open, exactly like an unknown
  *  `profiles_open`. Mirrors `shared.subscriptions.Outcome` on the backend. */
@@ -246,6 +319,12 @@ export interface Registration {
   profiles_open?: boolean | null;
   subscription_outcome?: SubscriptionOutcome | null;
   subscription_verdicts?: Record<string, SubscriptionProviderVerdict> | null;
+  /** The composed admission answer. REQUIRED, not optional: the server always
+   *  sends it (`AdmissionRead.unknown()` covers a registration nothing was
+   *  resolved for), precisely so no consumer writes a null branch. Optional here
+   *  would reintroduce per-consumer defaulting, which is how the five deleted
+   *  copies of this rule came to exist. */
+  admission: Admission;
   /** The registered team this player belongs to, when the tournament runs team
    *  registration. Carries no invites — the public roster must not leak who was
    *  asked and declined. Feeds the participants table's team column and the

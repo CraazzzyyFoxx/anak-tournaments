@@ -1,34 +1,37 @@
-"""Attach subscription verdicts to registration reads.
+"""Attach subscription verdicts to ONE registration read.
 
-Read-side counterpart of ``subscription_gate``. Two guarantees:
+TRANSITIONAL. ``shared.services.admission`` now owns this: the list paths --
+public participants and admin registrations -- resolve a whole batch through
+``admission.resolve.resolve_admission`` and read the per-provider projection out
+of ``AdmissionEvaluation.requirements[].detail["providers"]``, which is the same
+shape :func:`serialize_verdicts` produces.
 
-- **One pass for the whole list.** Resolving per registration would fan out
-  behind Discord's per-guild rate-limit bucket and make a 200-row participants
-  page unusable. ``force_refresh`` is always ``False`` here; only check-in forces
-  a fresh look, and only for the one acting user.
-- **One pass for both consumers.** The composed ``Outcome`` drives the admin
-  column and ``isAdmitted``; the per-provider verdicts drive the per-row chips.
-  Both come from the same call.
+What is left is kept alive by exactly one caller:
+``src/rpc/public_rpc.py::_reg_pub_get_me`` (:445 and :463), the single-registration
+public read. That handler is being moved onto the admission layer in the same
+pass that rewrites the gates in that file; when it lands, this whole module goes
+with it and the projection exists once.
+
+Until then the two projections MUST stay identical -- the per-row chips render
+from whichever one reached them -- and the shape is asserted against a literal in
+``shared/tests/test_admission_subscription.py``.
+
+The one guarantee still worth stating: ``force_refresh`` is always ``False``
+here. Only check-in forces a fresh look, and only for the one acting user.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared import models
 from shared.services.subscriptions import Outcome, SubscriptionRequirement, SubscriptionVerdict
 
 __all__ = (
     "RegistrationSubscription",
-    "SubscriptionReadsService",
     "build_subscription_reads",
     "serialize_verdicts",
-    "subscription_reads_service",
 )
 
 
@@ -119,35 +122,3 @@ async def build_subscription_reads(
         outcome, verdicts = resolved
         out[reg_id] = RegistrationSubscription(outcome=outcome, verdicts=dict(verdicts))
     return out
-
-
-class SubscriptionReadsService:
-    async def load_auth_user_ids_by_registration(
-        self, session: AsyncSession, registrations: Sequence[Any]
-    ) -> dict[int, int | None]:
-        """Map ``registration.id`` -> ``auth.user.id``.
-
-        Entitlements are keyed on the site account, but a registration only anchors to
-        a ``workspace_member`` -> ``players.user`` -> ``auth_user_id``. A registration
-        with no linked account yields ``None`` and is skipped rather than resolved.
-        """
-        reg_ids = [reg.id for reg in registrations]
-        if not reg_ids:
-            return {}
-        rows = await session.execute(
-            sa.select(models.BalancerRegistration.id, models.User.auth_user_id)
-            .select_from(models.BalancerRegistration)
-            .join(
-                models.WorkspaceMember,
-                models.BalancerRegistration.workspace_member_id == models.WorkspaceMember.id,
-            )
-            .join(models.User, models.WorkspaceMember.player_id == models.User.id)
-            .where(models.BalancerRegistration.id.in_(reg_ids))
-        )
-        # `.tuples()` is what makes this a real 2-tuple: without it a `Row` is not an
-        # `Iterable[tuple[...]]` and `dict()` does not type-check.
-        mapped = dict(rows.tuples().all())
-        return {reg_id: mapped.get(reg_id) for reg_id in reg_ids}
-
-
-subscription_reads_service = SubscriptionReadsService()

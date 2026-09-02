@@ -124,11 +124,13 @@ describe("composeOutcome — missing data", () => {
   });
 });
 
-describe("only a confirmed refusal blocks admission", () => {
+describe("only a confirmed refusal is a refusal", () => {
   it("fails open on undetermined and on a missing outcome", () => {
-    // There is no `blocksAdmission` helper by design; the rule is written inline
-    // as `outcome === "refused"`, mirroring the neighbouring
-    // `profilesOpen === false`. This pins the semantics both call sites rely on.
+    // Reads a SIGNAL, not the decision: admission moved to the server's
+    // `admission.decision`, and the fail-open invariant is pinned against real
+    // code in `lib/admission.test.ts` and `RegistrationBadges.behavior.test.tsx`.
+    // What survives here is the chip contract — three states, only one of them
+    // red — which `SubscriptionStatusBadge` and its column both render.
     const outcomes: Array<[string | null | undefined, boolean]> = [
       ["refused", true],
       ["undetermined", false],

@@ -137,6 +137,19 @@ function makeRegistration(overrides: Partial<Registration> = {}): Registration {
     status: "approved",
     checked_in: false,
     profiles_open: null,
+    // Required on every registration read. Two switched-off requirements is the
+    // shape `FORM` below describes, and the progress chain must skip both.
+    admission: {
+      decision: "pending_check_in",
+      requirements: [
+        { key: "open_profile", state: "not_applicable", stage: "check_in", reasons: [], detail: {} },
+        { key: "subscription", state: "not_applicable", stage: "check_in", reasons: [], detail: {} }
+      ],
+      blockers: [],
+      overridden: [],
+      checked_in: false,
+      ready: true
+    },
     submitted_at: null,
     reviewed_at: null,
     ...overrides
@@ -288,5 +301,145 @@ describe("tournament participants check-in", () => {
     await mount();
     expect(dialog()).toBeNull();
     expect(checkInButton()).toBeNull();
+  });
+});
+
+/**
+ * The registrant's progress chain used to be two hand-written blocks behind two
+ * `require_*` flags, each re-deriving the admission rule from a raw signal. It is
+ * now one walk over `admission.requirements`, and the properties that walk MUST
+ * preserve are the ones a wrong tone gets wrong loudest: a player told they are
+ * out when a provider is merely down, and a player told they are out after an
+ * organizer already let them in.
+ */
+function stepLabels(): { text: string; className: string }[] {
+  return Array.from(container.querySelectorAll("span"))
+    .filter((node) => node.className.includes("text-[11px] leading-tight"))
+    .map((node) => ({ text: node.textContent ?? "", className: node.className }));
+}
+
+function step(text: string): { text: string; className: string } {
+  const found = stepLabels().find((candidate) => candidate.text === text);
+  if (!found) {
+    throw new Error(`No step labelled "${text}" among ${JSON.stringify(stepLabels())}`);
+  }
+  return found;
+}
+
+const requirement = (
+  overrides: Partial<Registration["admission"]["requirements"][number]>
+): Registration["admission"]["requirements"][number] => ({
+  key: "subscription",
+  state: "undetermined",
+  stage: "check_in",
+  reasons: [],
+  detail: {},
+  ...overrides
+});
+
+describe("registration progress steps", () => {
+  it("draws one step per active requirement and skips the switched-off ones", async () => {
+    getMyRegistration.mockResolvedValue(
+      makeRegistration({
+        admission: {
+          decision: "pending_check_in",
+          requirements: [
+            requirement({ key: "open_profile", state: "satisfied" }),
+            requirement({ key: "subscription", state: "not_applicable" })
+          ],
+          blockers: [],
+          overridden: [],
+          checked_in: false,
+          ready: true
+        }
+      })
+    );
+    await mount();
+
+    // Satisfied requirements are named, not explained: a passing verdict can
+    // still carry reasons (subscription `any` mode) and rendering one would
+    // caption a green step with a complaint.
+    expect(step(en.admission.requirement.open_profile).className).toContain("aqt-emerald");
+    expect(stepLabels().map((candidate) => candidate.text)).not.toContain(
+      en.admission.requirement.subscription
+    );
+  });
+
+  it("draws an undetermined requirement as still-running, never as a failure", async () => {
+    // Fail-open. A Discord outage during check-in must not tell a paying
+    // subscriber they are out.
+    getMyRegistration.mockResolvedValue(
+      makeRegistration({
+        admission: {
+          decision: "pending_check_in",
+          requirements: [
+            requirement({
+              reasons: [{ code: "provider_unavailable", actor: "system", subject: "discord" }]
+            })
+          ],
+          blockers: [],
+          overridden: [],
+          checked_in: false,
+          ready: true
+        }
+      })
+    );
+    await mount();
+
+    const pending = step(`${en.admission.reason.provider_unavailable} (discord)`);
+    expect(pending.className).toContain("aqt-amber");
+    expect(pending.className).not.toContain("aqt-rose");
+    // A system reason is not the player's to fix, so it gets no call to action.
+    expect(pending.className).not.toContain("underline");
+  });
+
+  it("marks a blocked requirement as failed and hands the player the action", async () => {
+    getMyRegistration.mockResolvedValue(
+      makeRegistration({
+        admission: {
+          decision: "not_admitted",
+          requirements: [
+            requirement({
+              key: "open_profile",
+              state: "blocked",
+              reasons: [{ code: "profile_private", actor: "player", subject: "Anak#2100" }]
+            })
+          ],
+          blockers: [],
+          overridden: [],
+          checked_in: false,
+          ready: true
+        }
+      })
+    );
+    await mount();
+
+    const failed = step(`${en.admission.reason.profile_private} (Anak#2100)`);
+    expect(failed.className).toContain("aqt-rose");
+    expect(failed.className).toContain("underline");
+  });
+
+  it("leaves an overridden requirement out of the failures once check-in is behind it", async () => {
+    // D2/D4: check-in is the last gate of every requirement. The step stays
+    // visible with its reason, but the player is admitted and the chain must not
+    // read as a refusal.
+    getMyRegistration.mockResolvedValue(
+      makeRegistration({
+        checked_in: true,
+        admission: {
+          decision: "admitted",
+          requirements: [requirement({ key: "open_profile", state: "satisfied" })],
+          blockers: [],
+          overridden: [],
+          checked_in: true,
+          ready: true
+        }
+      })
+    );
+    await mount();
+
+    expect(
+      stepLabels().filter((candidate) => candidate.className.includes("aqt-rose"))
+    ).toHaveLength(0);
   });
 });

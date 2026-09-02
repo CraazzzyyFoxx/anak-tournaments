@@ -7,11 +7,12 @@ import type {
 /**
  * TypeScript port of `shared/services/subscriptions/requirement.py`.
  *
- * IMPORTANT: this is NOT the source of truth for admission. The server sends the
- * composed `subscription_outcome`, and `isAdmitted` uses that. This port exists
- * only for rendering — the per-provider chips and the rule summary line, which
- * the admin form must preview before anything is saved and the registration form
- * needs when it explains *why* a patron is refused.
+ * IMPORTANT: this is NOT the source of truth for admission. That is the server's
+ * `admission.decision`, which every consumer now reads instead of re-deriving —
+ * the `isAdmitted` this comment used to name is gone. This port exists only for
+ * rendering: the per-provider chips and the rule summary line, which the admin
+ * form must preview before anything is saved and the registration form needs
+ * when it explains *why* a patron is refused.
  *
  * Composition is Kleene three-valued logic, and `unknown` must never be coerced
  * to a boolean before combining. Coercing it to false makes
@@ -86,9 +87,10 @@ export function composeOutcome(
  * independent failures, and a patron who satisfies one provider sees a red chip
  * on the other and assumes they are blocked.
  *
- * There is deliberately no `blocksAdmission` helper: the rule is simply
- * `outcome === "refused"`, written inline at its call sites the same way the
- * neighbouring open-profile gate writes `profilesOpen === false`.
+ * There is deliberately no `blocksAdmission` helper here, and never was a place
+ * for one: nothing on the client decides admission. `outcome === "refused"` at
+ * the chip call sites renders a SIGNAL, exactly as the neighbouring open-profile
+ * chip renders `profilesOpen === false`.
  */
 export function requirementClauses(
   requirement: SubscriptionRequirement | undefined | null

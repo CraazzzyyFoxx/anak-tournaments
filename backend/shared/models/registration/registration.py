@@ -63,9 +63,12 @@ class BalancerRegistrationForm(db.TimeStampIntegerMixin):
     # reading a column here.
     #
     # The former ``subscription_requirement_json`` attribute is gone from the mapper
-    # deliberately, and BEFORE ``wsreq0002`` drops the column: SQLAlchemy emits every
-    # mapped column in every SELECT, so leaving it would break every form query the
-    # moment that migration lands.
+    # AND from the schema: ``initial_v6`` squashed the subscription tables, and
+    # ``registration_form`` there goes straight from ``require_subscription`` to
+    # ``subscription_stage``. This comment used to warn that a ``wsreq0002``
+    # migration would drop the column and break every form query while it was
+    # still mapped -- that migration does not exist and will not, so the warning is
+    # recorded here as history rather than left reading like an open task.
     require_subscription: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     #: WHEN the requirement bites, once ``require_subscription`` is on. Ordered, not
     #: a set -- ``registration`` implies check-in as well; see

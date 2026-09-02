@@ -23,6 +23,8 @@ from loguru import logger
 from redis.exceptions import RedisError
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.services.admission import AdmissionConfig, AdmissionStage
+from shared.services.admission.gates import describe_requirement
 from shared.services.subscriptions import (
     Outcome,
     SubscriptionRequirement,
@@ -33,7 +35,6 @@ from src.schemas.registration import (
     SubscriptionProviderVerdictRead,
     SubscriptionStatusRead,
 )
-from src.services.registration.subscription_gate import describe_requirement, enforces_at_registration
 
 __all__ = (
     "REDEEM_ATTEMPT_LIMIT",
@@ -102,8 +103,15 @@ async def subscription_status_for_user(
         # would disable a submit button the server would happily accept. Note this
         # read is non-forcing, so a patron who just subscribed may see a stale block
         # for up to the entitlement TTL; the gate itself re-resolves live.
+        #
+        # The stage comes from ``AdmissionConfig``, the registry's only reader of
+        # that column, rather than from a second parse here. It keeps the
+        # fail-LOOSER rule the deleted ``enforces_at_registration`` had: an absent
+        # or unrecognised value reads as ``check_in``, because an unknown stage is
+        # a config or migration error and a typo must not start refusing sign-ups
+        # nobody asked it to refuse.
         blocks_registration=(
-            enforces_at_registration(form)
+            AdmissionConfig.from_form(form).subscription_stage is AdmissionStage.registration
             and evaluate_requirement(requirement, verdicts, deferred_providers=code_providers).blocks_admission
         ),
         verdicts={

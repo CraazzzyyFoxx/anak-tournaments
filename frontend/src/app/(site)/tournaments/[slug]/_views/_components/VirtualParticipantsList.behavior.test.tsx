@@ -192,6 +192,15 @@ function registration(id: number): Registration {
     notes: null,
     custom_fields_json: null,
     status: "approved",
+    // Sent by the server for every row; the admission column reads it directly.
+    admission: {
+      decision: "admitted",
+      requirements: [],
+      blockers: [],
+      overridden: [],
+      checked_in: true,
+      ready: true
+    },
     submitted_at: null,
     reviewed_at: null
   };

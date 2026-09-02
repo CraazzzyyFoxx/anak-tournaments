@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from shared.domain.roster_shape import RegistrationRoleCode
+from src.schemas.admission import AdmissionRead
 from src.schemas.base import BaseRead
 from src.schemas.registration import SubroleOption
 
@@ -408,10 +409,18 @@ class BalancerRegistrationRead(BaseRead):
     reviewed_at: datetime | None = None
     reviewed_by_username: str | None = None
     balancer_profile_overridden_at: datetime | None = None
-    # Admission signals resolved by the LIST read only, and only when the
-    # tournament's form turns the matching requirement on. Single-registration
-    # mutation responses leave them None -- the table invalidates and refetches
-    # the list, so nothing renders a stale verdict.
+    # The single admission answer, computed server-side and byte-identical to the
+    # one the public participants read carries for the same registration -- that
+    # equality is the point, and there is a test pinning it.
+    #
+    # Resolved by the LIST read only. Single-registration mutation responses
+    # carry ``AdmissionRead.unknown()`` rather than ``None``: the table
+    # invalidates and refetches the list, so nothing renders it, and an absent
+    # object would put a null branch in every consumer.
+    admission: AdmissionRead = Field(default_factory=AdmissionRead.unknown)
+    # Raw signals beside the decision, not duplicates of it: the per-row Profile
+    # and Subscription chips render them directly. Lifted out of
+    # ``admission.requirements[].detail`` by the list handler, never re-resolved.
     # True = public, False = closed, None = unknown / not required.
     profiles_open: bool | None = None
     # Composed subscription verdict ("satisfied"/"refused"/"undetermined");

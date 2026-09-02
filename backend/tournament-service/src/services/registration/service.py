@@ -31,7 +31,8 @@ from shared.repository import (
     get_or_create_workspace_member,
 )
 from shared.services import social_identity
-from shared.services.profile_visibility import resolve_profiles_open
+from shared.services.admission import AdmissionConfig, AdmissionEvaluation
+from shared.services.admission.resolve import resolve_admission
 from shared.services.subscriptions.wiring import build_resolver
 from src import models
 from src.core.broker import optional_broker
@@ -45,6 +46,7 @@ from src.schemas.registration import (
     RegistrationRead,
 )
 from src.schemas.registration_build import (
+    AdmissionChips,
     _build_tournament_history,
     _reg_to_read,
     _resolve_top_heroes_config,
@@ -52,12 +54,11 @@ from src.schemas.registration_build import (
     _resolved_public_ranks,
     registration_read_loaders,
 )
-from src.services.registration._common import FlexRoleMode, apply_all_roles, flex_role_mode
-from src.services.registration.subscription_reads import (
-    RegistrationSubscription,
-    build_subscription_reads,
-    serialize_verdicts,
-    subscription_reads_service,
+from src.services.registration._common import (
+    FlexRoleMode,
+    _common_service,
+    apply_all_roles,
+    flex_role_mode,
 )
 from src.services.registration.validation import validate_registration_input, validation_service
 from src.services.registration.windows import is_check_in_window_active, is_registration_open
@@ -186,7 +187,6 @@ class RegistrationService:
         user_repo: UserRepository = UserRepository(),
         social_account_repo: SocialAccountRepository = SocialAccountRepository(),
         validation: Any = validation_service,
-        subscription_reads: Any = subscription_reads_service,
     ) -> None:
         self.registration_repo = registration_repo
         self.role_repo = role_repo
@@ -195,14 +195,6 @@ class RegistrationService:
         self.user_repo = user_repo
         self.social_account_repo = social_account_repo
         self.validation = validation
-        self.subscription_reads = subscription_reads
-
-    async def get_registration_form(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-    ) -> models.BalancerRegistrationForm | None:
-        return await self.form_repo.get_by_tournament(session, tournament_id)
 
     async def get_registration(
         self,
@@ -762,7 +754,7 @@ class RegistrationService:
         passes it also owns mapping ``IntegrityError`` at its own commit, since that
         now fires outside this function's ``try``.
         """
-        form = await self.get_registration_form(session, tournament_id)
+        form = await _common_service.get_registration_form(session, tournament_id)
         tournament = await self.tournament_repo.get(session, tournament_id)
         # ``form is None`` still gates: a tournament with no registration form has
         # nothing to submit against. Openness itself is now purely the schedule.
@@ -865,44 +857,59 @@ class RegistrationService:
             resolved_ranks=resolved_by_reg.get(registration.id),
         )
 
-    async def resolve_admission_signals(
+    async def resolve_admission_list(
         self,
         session: AsyncSession,
         registrations: Sequence[Any],
         *,
         form: models.BalancerRegistrationForm | None,
-    ) -> tuple[dict[int, bool | None], dict[int, RegistrationSubscription]]:
-        """Profile-open verdicts + subscription reads for a whole registration list.
+    ) -> dict[int, AdmissionEvaluation]:
+        """One admission evaluation per registration, for a whole list.
 
-        Shared by the public participants list and the admin registrations table so
-        both surfaces answer "is this player admitted" from the same resolution.
-        Each half is gated on the form flag that turns the requirement on and costs
-        nothing when it is off. Batched deliberately: resolving per registration
-        would fan out behind Discord's per-guild rate-limit bucket. ``force_refresh``
-        stays False here -- only check-in forces a fresh look.
+        Shared by the public participants list and the admin registrations table,
+        which is the entire point: both surfaces used to ship five raw fields and
+        let the client re-derive "is this player admitted" from them, in five
+        places, two of which deliberately disagreed. They now render the same
+        object.
+
+        The predecessor of this method flattened the profile verdict back to
+        ``bool | None`` and threw the reasons away. Nothing here does: the
+        evaluation carries every requirement, its reasons and the per-provider
+        detail the row chips need, so no consumer has to ask a second time.
+
+        Batched deliberately -- resolving per registration serializes behind
+        Discord's per-guild rate-limit bucket and makes a 200-row page unusable --
+        and ``resolve_admission`` never forces a provider call. ``stage`` stays at
+        its ``check_in`` default: stages are ordered, so the last gate is the only
+        one at which every requirement is in force, and a badge that called a
+        requirement harmless because its gate is still ahead would tell a player
+        they are fine right up until check-in refuses them.
         """
-        profiles_open: dict[int, bool | None] = (
-            await resolve_profiles_open(session, registrations, scope=form.open_profile_scope)
-            if form is not None and form.require_open_profile
-            else {}
+        if not registrations:
+            # Before building the resolver or reading the workspace rule: an empty
+            # list has nothing to resolve, and ``resolve_admission`` would return
+            # ``{}`` after we had already paid for both.
+            return {}
+
+        resolver = build_resolver(
+            session,
+            discord_bot_token=settings.discord_token,
+            twitch_client_id=settings.twitch_client_id,
+            broker=optional_broker(),
+            proxy=settings.proxy_url,
+            redis=get_realtime_redis(),
         )
-        subscriptions = await build_subscription_reads(
-            form=form,
-            auth_user_id_by_registration=await self.subscription_reads.load_auth_user_ids_by_registration(
-                session, registrations
-            )
-            if form is not None and form.require_subscription
-            else {},
-            resolver=build_resolver(
-                session,
-                discord_bot_token=settings.discord_token,
-                twitch_client_id=settings.twitch_client_id,
-                broker=optional_broker(),
-                proxy=settings.proxy_url,
-                redis=get_realtime_redis(),
-            ),
+        # Gated on the form flag, not on ``enforces_subscription``: that property is
+        # derived FROM the rule we are about to load. A tournament with the toggle
+        # off pays nothing, which is the guarantee ``build_subscription_reads``
+        # made with the same cheapest-guard-first ordering.
+        rule = (
+            await resolver.load_requirement(workspace_id=form.workspace_id)
+            if form is not None and form.require_subscription and form.workspace_id is not None
+            else None
         )
-        return profiles_open, subscriptions
+        config = AdmissionConfig.from_form(form, subscription_rule=rule)
+        return await resolve_admission(session, registrations, config=config, resolver=resolver)
 
     async def build_public_registration_list(
         self,
@@ -949,10 +956,8 @@ class RegistrationService:
         registrations = result.scalars().all()
         status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
 
-        form = await self.get_registration_form(session, tournament_id)
-        profiles_open_map, subscription_reads = await self.resolve_admission_signals(
-            session, registrations, form=form
-        )
+        form = await _common_service.get_registration_form(session, tournament_id)
+        admissions = await self.resolve_admission_list(session, registrations, form=form)
         show_ranks = form.show_ranks if form is not None else False
         resolved_by_reg = await _resolved_public_ranks(session, registrations, show_ranks=show_ranks)
 
@@ -963,27 +968,26 @@ class RegistrationService:
             workspace_id,
         )
 
-        registrations_read = [
-            RegistrationListRead(
-                **_reg_to_read(
-                    r,
-                    workspace_id=workspace_id,
-                    status_meta_map=status_meta_map,
-                    show_ranks=show_ranks,
-                    profiles_open=profiles_open_map.get(r.id),
-                    subscription_outcome=(
-                        subscription_reads[r.id].outcome.value if r.id in subscription_reads else None
-                    ),
-                    subscription_verdicts=(
-                        serialize_verdicts(subscription_reads[r.id].verdicts) if r.id in subscription_reads else None
-                    ),
-                    resolved_ranks=resolved_by_reg.get(r.id),
-                ).model_dump(),
-                tournament_history=history_map.get(r.id, []),
-                tournament_history_count=history_count_map.get(r.id, 0),
+        registrations_read = []
+        for r in registrations:
+            chips = AdmissionChips.of(admissions.get(r.id))
+            registrations_read.append(
+                RegistrationListRead(
+                    **_reg_to_read(
+                        r,
+                        workspace_id=workspace_id,
+                        status_meta_map=status_meta_map,
+                        show_ranks=show_ranks,
+                        admission=chips.admission,
+                        profiles_open=chips.profiles_open,
+                        subscription_outcome=chips.subscription_outcome,
+                        subscription_verdicts=chips.subscription_verdicts,
+                        resolved_ranks=resolved_by_reg.get(r.id),
+                    ).model_dump(),
+                    tournament_history=history_map.get(r.id, []),
+                    tournament_history_count=history_count_map.get(r.id, 0),
+                )
             )
-            for r in registrations
-        ]
         return RegistrationListResponse(
             registrations=registrations_read,
             division_grids=division_grids,
@@ -1006,7 +1010,7 @@ class RegistrationService:
         decision; the rule itself belongs to the workspace and is written through
         ``subscription_config.upsert_workspace_requirement``.
         """
-        form = await self.get_registration_form(session, tournament_id)
+        form = await _common_service.get_registration_form(session, tournament_id)
         built_in_fields_json = {key: value.model_dump(exclude_none=True) for key, value in body.built_in_fields.items()}
         custom_fields_json = [field.model_dump(exclude_none=True) for field in body.custom_fields]
 

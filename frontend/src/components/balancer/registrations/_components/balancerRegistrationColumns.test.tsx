@@ -49,7 +49,7 @@ describe("balancer registration column model", () => {
   it("builds one column per custom-field definition", () => {
     // The admin table rendered no custom fields at all: an organizer could read
     // an answer nowhere and fix it nowhere.
-    const ids = buildBalancerRegistrationColumns(undefined, false, false, CUSTOM_FIELDS).map(
+    const ids = buildBalancerRegistrationColumns(undefined, false, CUSTOM_FIELDS).map(
       (candidate) => candidate.id,
     );
 
@@ -58,7 +58,7 @@ describe("balancer registration column model", () => {
   });
 
   it("reads the stored answer for its own definition", () => {
-    const vk = column("custom_vk", undefined, false, false, CUSTOM_FIELDS);
+    const vk = column("custom_vk", undefined, false, CUSTOM_FIELDS);
     const meta = readAdminColumnMeta<AdminRegistration>(vk.meta);
 
     const value = meta.searchValue?.(registration({ custom_fields_json: { vk: "vk.com/player" } }));
@@ -86,7 +86,7 @@ describe("balancer registration column model", () => {
     ];
 
     const filter = readAdminColumnFilter(
-      column("status", undefined, false, false, [], statusOptions).meta,
+      column("status", undefined, false, [], statusOptions).meta,
     );
 
     expect(filter?.param).toBe("status");
