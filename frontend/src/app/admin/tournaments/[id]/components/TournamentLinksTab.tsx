@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
   ArrowUpToLine,
   ExternalLink,
@@ -12,6 +13,9 @@ import {
   Trash2
 } from "lucide-react";
 
+import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
+import { createKebabColumn } from "@/components/admin/kit/kebab-column";
 import {
   entityFormError,
   onEntityDialogClose
@@ -20,7 +24,7 @@ import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -30,15 +34,6 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
 import { ApiError } from "@/lib/api-error";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
@@ -142,11 +137,11 @@ export interface TournamentLinksTabProps {
  * Typed link catalog of one tournament (`tournament.tournament_link`) — the
  * Discord invite, official broadcasts, VODs, the bracket, the rules doc.
  *
- * Deliberately NOT `AdminDataTable`: that component's contract is a
- * `PaginatedResponse` page fetcher, while `GET /admin/tournament-links` returns
- * a flat array — a tournament has a handful of links, not pages of them.
- * Wrapping the array in a fabricated one-page envelope would buy a search box
- * and a pager that can never do anything, so this renders `ui/table` directly.
+ * `AdminDataTable` in client mode: `GET /admin/tournament-links` returns a
+ * flat array rather than a `PaginatedResponse`, and a tournament has a handful
+ * of links, not pages of them — so the rows are handed over whole and the
+ * table sorts and pages them locally. Row actions are the admin's single
+ * convention, `createKebabColumn`.
  */
 export function TournamentLinksTab({
   tournamentId,
@@ -277,14 +272,100 @@ export function TournamentLinksTab({
 
   const hasActiveStreamLink = links.some((link) => link.kind === "stream" && link.is_active);
 
-  // Zipped up front so each row carries the single answer to both halves of the
-  // "Make primary" question: it offers the action iff `primarySortOrder` is a
-  // number, and then sends exactly that number.
-  const rows = useMemo(
-    () =>
-      links.map((link) => ({ link, primarySortOrder: primaryStreamLinkSortOrder(link, links) })),
-    [links]
-  );
+  const columns: ColumnDef<TournamentLink>[] = [
+    {
+      accessorKey: "kind",
+      header: "Kind",
+      size: 112,
+      cell: ({ row }) => (
+        <Badge variant="secondary">{KIND_LABELS[row.original.kind] ?? row.original.kind}</Badge>
+      ),
+      meta: adminColumnMeta<TournamentLink>({
+        searchValue: (link) => KIND_LABELS[link.kind] ?? link.kind
+      })
+    },
+    {
+      accessorKey: "label",
+      header: "Label",
+      cell: ({ row }) => row.original.label ?? <span className="text-muted-foreground">—</span>,
+      meta: adminColumnMeta<TournamentLink>({ className: "max-w-[16rem] truncate" })
+    },
+    {
+      accessorKey: "url",
+      header: "URL",
+      cell: ({ row }) => (
+        <a
+          href={row.original.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex max-w-full items-center gap-1 truncate text-primary underline-offset-4 hover:underline"
+        >
+          <span className="truncate">{row.original.url}</span>
+          <ExternalLink aria-hidden className="size-3.5 shrink-0" />
+        </a>
+      ),
+      meta: adminColumnMeta<TournamentLink>({ className: "max-w-[22rem]" })
+    },
+    {
+      // ponytail: sort order is a plain number field in the edit dialog, not
+      // per-row up/down arrows — no other admin list in this project reorders
+      // inline, and a handful of links does not justify inventing the pattern.
+      // If these lists ever grow past a screenful, lift the arrow + reindex
+      // handling from `StageManager`.
+      accessorKey: "sort_order",
+      header: "Order",
+      size: 80,
+      meta: adminColumnMeta<TournamentLink>({ align: "right", numeric: true })
+    },
+    {
+      id: "state",
+      header: "State",
+      size: 96,
+      enableSorting: false,
+      cell: ({ row }) =>
+        row.original.is_active ? (
+          <Badge variant="outline">Active</Badge>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">
+            Archived
+          </Badge>
+        )
+    },
+    createKebabColumn<TournamentLink>(
+      (link) => {
+        // Absent, not disabled, on rows that cannot be promoted — the same
+        // choice the archive/restore pair makes. `primaryStreamLinkSortOrder`
+        // is null for non-broadcasts, archived rows and the link that already
+        // leads the order, and otherwise IS the number to send.
+        const primarySortOrder = primaryStreamLinkSortOrder(link, links);
+        return [
+          {
+            label: "Make primary broadcast",
+            icon: ArrowUpToLine,
+            hidden: !canUpdate || primarySortOrder === null,
+            onSelect: () =>
+              primarySortOrder !== null &&
+              makePrimaryMutation.mutate({ id: link.id, sortOrder: primarySortOrder })
+          },
+          { label: "Edit", icon: Pencil, hidden: !canUpdate, onSelect: () => openEdit(link) },
+          {
+            label: "Archive",
+            icon: Trash2,
+            destructive: true,
+            hidden: !canDelete || !link.is_active,
+            onSelect: () => setDeletingLink(link)
+          },
+          {
+            label: "Restore",
+            icon: RotateCcw,
+            hidden: !canUpdate || link.is_active,
+            onSelect: () => restoreMutation.mutate(link.id)
+          }
+        ];
+      },
+      { rowLabel: (link) => link.label ?? link.url }
+    )
+  ];
 
   const isDialogOpen = createDialogOpen || !!editingLink;
   const activeError = editingLink ? updateMutation.error : createMutation.error;
@@ -296,12 +377,6 @@ export function TournamentLinksTab({
     ? undefined
     : entityFormError("link", !!editingLink, updateMutation.error, createMutation.error);
   const isFormDirty = isDialogOpen && hasUnsavedChanges(formData, getLinkForm(editingLink));
-  const isMutating =
-    createMutation.isPending ||
-    updateMutation.isPending ||
-    deactivateMutation.isPending ||
-    restoreMutation.isPending ||
-    makePrimaryMutation.isPending;
 
   const openCreate = () => {
     createMutation.reset();
@@ -341,16 +416,10 @@ export function TournamentLinksTab({
 
   return (
     <Card>
+      {/* No title here: the settings section heading above already names this
+          page. The header keeps only what acts on the table. */}
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-        <div className="space-y-1.5">
-          <CardTitle asChild>
-            <h2>Links</h2>
-          </CardTitle>
-          <CardDescription>
-            Discord, broadcasts, VODs, bracket and rules shown on the tournament page. Lower sort
-            order comes first.
-          </CardDescription>
-        </div>
+        <p className="text-sm text-muted-foreground">Lower sort order comes first.</p>
         <div className="flex shrink-0 gap-2">
           {/* Nothing to poll without an official stream link, so the button is
               absent rather than disabled — a disabled control invites a guess
@@ -380,131 +449,18 @@ export function TournamentLinksTab({
       </CardHeader>
 
       <CardContent>
-        {linksQuery.isLoading ? (
-          <Skeleton className="h-40 w-full rounded-md" />
-        ) : linksQuery.isError ? (
-          <p className="rounded-lg border border-dashed border-border/60 p-6 text-sm text-muted-foreground">
+        {linksQuery.isError ? (
+          <p className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
             Could not load the links for this tournament.
           </p>
-        ) : links.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border/60 p-6 text-sm text-muted-foreground">
-            No links yet.{canCreate ? " Use “Add link” to add the first one." : ""}
-          </p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-28">Kind</TableHead>
-                <TableHead>Label</TableHead>
-                <TableHead>URL</TableHead>
-                <TableHead className="w-20 text-right">Order</TableHead>
-                <TableHead className="w-24">State</TableHead>
-                <TableHead className="w-36 text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map(({ link, primarySortOrder }) => (
-                <TableRow key={link.id} className={link.is_active ? undefined : "opacity-60"}>
-                  <TableCell>
-                    <Badge variant="secondary">{KIND_LABELS[link.kind] ?? link.kind}</Badge>
-                  </TableCell>
-                  <TableCell className="max-w-[16rem] truncate">
-                    {link.label ?? <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell className="max-w-[22rem]">
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex max-w-full items-center gap-1 truncate text-primary underline-offset-4 hover:underline"
-                    >
-                      <span className="truncate">{link.url}</span>
-                      <ExternalLink aria-hidden className="h-3.5 w-3.5 shrink-0" />
-                    </a>
-                  </TableCell>
-                  {/* ponytail: sort order is a plain number field in the edit
-                      dialog, not per-row up/down arrows — no other admin list
-                      in this project reorders inline, and a handful of links
-                      does not justify inventing the pattern. If these lists
-                      ever grow past a screenful, lift the arrow + reindex
-                      handling from `StageManager`. */}
-                  <TableCell className="text-right tabular-nums">{link.sort_order}</TableCell>
-                  <TableCell>
-                    {link.is_active ? (
-                      <Badge variant="outline">Active</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-muted-foreground">
-                        Archived
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      {/* Absent, not disabled, on rows that cannot be promoted —
-                          the same choice the archive/restore pair above makes.
-                          `primarySortOrder` is null for non-broadcasts, archived
-                          rows and the link that already leads the order. */}
-                      {canUpdate && primarySortOrder !== null && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Make ${link.label ?? link.url} the primary broadcast`}
-                          disabled={isMutating}
-                          onClick={() =>
-                            makePrimaryMutation.mutate({
-                              id: link.id,
-                              sortOrder: primarySortOrder
-                            })
-                          }
-                        >
-                          <ArrowUpToLine aria-hidden className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {canUpdate && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Edit ${link.label ?? link.url}`}
-                          disabled={isMutating}
-                          onClick={() => openEdit(link)}
-                        >
-                          <Pencil aria-hidden className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {link.is_active
-                        ? canDelete && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="text-destructive"
-                              aria-label={`Archive ${link.label ?? link.url}`}
-                              disabled={isMutating}
-                              onClick={() => setDeletingLink(link)}
-                            >
-                              <Trash2 aria-hidden className="h-4 w-4" />
-                            </Button>
-                          )
-                        : canUpdate && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              aria-label={`Restore ${link.label ?? link.url}`}
-                              disabled={isMutating}
-                              onClick={() => restoreMutation.mutate(link.id)}
-                            >
-                              <RotateCcw aria-hidden className="h-4 w-4" />
-                            </Button>
-                          )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <AdminDataTable
+            rows={links}
+            isLoading={linksQuery.isLoading}
+            columns={columns}
+            getRowId={(link) => String(link.id)}
+            emptyMessage={`No links yet.${canCreate ? " Use “Add link” to add the first one." : ""}`}
+          />
         )}
       </CardContent>
 
