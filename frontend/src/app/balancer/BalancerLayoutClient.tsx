@@ -91,8 +91,8 @@ export function BalancerLayoutClient({ children }: Readonly<BalancerLayoutClient
     // one (create/update/delete) needs the `custom_game` grant, gated inside
     // the mix pages and the balancer-service RPCs themselves.
     //
-    // The tool used to replace the site shell entirely (its own top bar,
-    // `.admin-theme` palette, a fixed full-viewport frame). Hosting a mix is a
+    // The tool used to replace the site shell entirely (its own top bar, a
+    // separate admin palette, a fixed full-viewport frame). Hosting a mix is a
     // member-level grant, read by the same audience as the rest of the site,
     // so it renders as one: the real `Header`/`Footer` on the site's own
     // `--aqt-*` tokens, document flow that scrolls like every other page
@@ -154,7 +154,7 @@ export function BalancerLayoutClient({ children }: Readonly<BalancerLayoutClient
     // sizes itself — can add height to the document. `h-svh` + `overflow-hidden` alone only clip:
     // the shell still occupies flow, and any sibling or mis-sized subtree brings back a page
     // scrollbar on top of the app shell. Below `xl` the tool stacks and scrolls normally.
-    <div className="admin-theme flex min-h-svh flex-col bg-background/95 xl:fixed xl:inset-0 xl:h-svh xl:min-h-0 xl:overflow-hidden">
+    <div className="flex min-h-svh flex-col bg-background/95 xl:fixed xl:inset-0 xl:h-svh xl:min-h-0 xl:overflow-hidden">
       <BalancerToolTopBar summary={summary} />
       <div className="flex flex-1 flex-col gap-4 overflow-x-hidden p-3 xl:min-h-0 xl:overflow-hidden md:p-4">
         <BalancerShell>{children}</BalancerShell>

@@ -238,7 +238,7 @@ export function ChallongeIntegrationSection({
           shows the same problem N times with no hint that the fix is a mapping on
           another tab. */}
       {hasChallongeSource && unmappedParticipantIds.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg border border-dashed border-warning/40 bg-warning/5 p-3">
           <p className="min-w-0 text-xs text-muted-foreground">
             <span className={cn("font-medium", TONE_TEXT.warning)}>
               <span className="tabular-nums">{unmappedParticipantIds.length}</span> Challonge

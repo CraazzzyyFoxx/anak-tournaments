@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
-import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -746,12 +746,22 @@ export default function AdminBalancerPage() {
                                   <div className="flex items-center gap-2">
                                     <span>{statusRow.description ?? "—"}</span>
                                     {statusRow.excludes_from_balancer ? (
-                                      <span className="whitespace-nowrap rounded-full border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 text-[11px] font-medium text-orange-300">
+                                      <span
+                                        className={cn(
+                                          "whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                                          TONE_CLASS.warning
+                                        )}
+                                      >
                                         Excludes pool
                                       </span>
                                     ) : null}
                                     {statusRow.excludes_from_ready ? (
-                                      <span className="whitespace-nowrap rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                                      <span
+                                        className={cn(
+                                          "whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                                          TONE_CLASS.warning
+                                        )}
+                                      >
                                         Blocks ready
                                       </span>
                                     ) : null}

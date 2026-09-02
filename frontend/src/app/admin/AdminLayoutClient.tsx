@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type CSSProperties, type ReactNode, useEffect } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { skipToken, useQuery } from "@tanstack/react-query";
@@ -158,11 +158,6 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<Adm
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const { isLoaded, canAccessAdminRoute } = usePermissions();
 
-  useEffect(() => {
-    document.body.classList.add("admin-theme");
-    return () => document.body.classList.remove("admin-theme");
-  }, []);
-
   if (!isLoaded) {
     return <LoadingState />;
   }
@@ -188,7 +183,6 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<Adm
   return (
     <TooltipProvider delayDuration={300}>
       <SidebarProvider
-        className="admin-theme"
         cookieName={SIDEBAR_COOKIE_NAMES.admin}
         defaultOpen={defaultSidebarOpen}
         style={sidebarShellStyle}

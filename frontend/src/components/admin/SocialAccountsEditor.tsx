@@ -169,7 +169,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8 text-green-500 hover:bg-green-500/10 hover:text-green-400"
+          className="h-8 w-8 text-success hover:bg-success/10 hover:text-success"
           onClick={handleSave}
           disabled={updateMutation.isPending || !editValue.trim()}
           aria-label="Save"
@@ -224,7 +224,10 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
             )
           )}
           {account.is_primary ? (
-            <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400" aria-label="Primary" />
+            <Star
+              className="h-3.5 w-3.5 shrink-0 fill-[color:var(--aqt-amber)] text-[color:var(--aqt-amber)]"
+              aria-label="Primary"
+            />
           ) : (
             canManage && (
               <Button
