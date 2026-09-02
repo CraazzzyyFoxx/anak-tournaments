@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { Plus, Trash2, Users } from "lucide-react";
@@ -11,12 +11,9 @@ import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TeamCreateDialog } from "@/components/admin/teams/TeamCreateDialog";
-import {
-  TOURNAMENT_QUERY_PARAM,
-  parseTournamentQueryParam,
-  nextTournamentFilterQuery,
-  TournamentFilterSelect
-} from "@/components/admin/tournament-filter";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
+import { TOURNAMENT_QUERY_PARAM } from "@/components/admin/tournament-filter";
+import type { AdminTableFilters } from "@/components/admin/admin-table-filters";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
@@ -28,9 +25,7 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { Team } from "@/types/team.types";
 
 export default function TeamsPage() {
-  const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const queryClient = useQueryClient();
@@ -43,7 +38,10 @@ export default function TeamsPage() {
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const createHintId = useId();
 
-  const selectedTournamentId = parseTournamentQueryParam(searchParams.get(TOURNAMENT_QUERY_PARAM));
+  // The table owns the filter and its URL param; the page still needs the value
+  // for the create gate and the create dialog, so the filter is controlled here.
+  const [filters, setFilters] = useState<AdminTableFilters>({});
+  const selectedTournamentId = Number(filters[TOURNAMENT_QUERY_PARAM]?.[0]) || null;
 
   const { data: tournamentsData } = useQuery({
     queryKey: ["tournaments"],
@@ -77,11 +75,6 @@ export default function TeamsPage() {
     if (selectedTeam) {
       deleteMutation.mutate(selectedTeam.id);
     }
-  };
-
-  const handleTournamentFilterChange = (value: string) => {
-    const query = nextTournamentFilterQuery(searchParams.toString(), TOURNAMENT_QUERY_PARAM, value);
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
   const createBlockedReason =
@@ -120,6 +113,21 @@ export default function TeamsPage() {
       accessorKey: "tournament",
       header: "Tournament",
       enableSorting: false,
+      meta: adminColumnMeta<Team>({
+        filter: {
+          // The URL keeps the `tournament` spelling the sibling admin pages
+          // (encounters, players, standings) already use, so a link that pins a
+          // tournament still opens pinned here. `queryFn` maps it to the
+          // service's `tournamentId`.
+          param: TOURNAMENT_QUERY_PARAM,
+          label: "Filter by tournament",
+          searchable: true,
+          options: (tournamentsData?.results ?? []).map((tournament) => ({
+            value: String(tournament.id),
+            label: tournament.name
+          }))
+        }
+      }),
       cell: ({ row }) => {
         const tournament = row.getValue<any>("tournament");
         return tournament ? (
@@ -178,17 +186,20 @@ export default function TeamsPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => [
+        filters={filters}
+        onFiltersChange={setFilters}
+        queryKey={(page, search, pageSize, sortField, sortDir, tableFilters) => [
           "teams",
-          selectedTournamentId,
           page,
           search,
           pageSize,
           sortField,
-          sortDir
+          sortDir,
+          tableFilters
         ]}
-        queryFn={async (page, search, pageSize, sortField, sortDir) => {
-          const data = await teamService.getAll({ tournamentId: selectedTournamentId });
+        queryFn={async (page, search, pageSize, sortField, sortDir, tableFilters) => {
+          const tournamentId = Number(tableFilters[TOURNAMENT_QUERY_PARAM]?.[0]) || null;
+          const data = await teamService.getAll({ tournamentId });
           const filteredTeams = search
             ? data.results.filter((team) => team.name.toLowerCase().includes(search.toLowerCase()))
             : data.results;
@@ -202,13 +213,6 @@ export default function TeamsPage() {
           selectedTournamentId
             ? "No teams in this tournament yet. Use “Create team” to add the first roster."
             : "No teams yet. Pick a tournament to see or create its rosters."
-        }
-        actions={
-          <TournamentFilterSelect
-            tournaments={tournamentsData?.results ?? []}
-            selectedTournamentId={selectedTournamentId}
-            onValueChange={handleTournamentFilterChange}
-          />
         }
         onRowClick={(row) => router.push(`/admin/teams/${row.original.id}`)}
       />

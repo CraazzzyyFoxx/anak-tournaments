@@ -61,6 +61,7 @@ export default defineConfig({
       "src/app/admin/subscriptions/**/*.test.tsx",
       "src/app/admin/workspaces/members/*.test.ts",
       "src/app/admin/workspaces/members/*.test.tsx",
+      "src/app/admin/teams/*.test.tsx",
       "src/app/balancer/components/balance-import.test.ts",
       "src/app/balancer/components/balancer-page-selectors.test.ts",
       "src/app/balancer/components/forced-flex-parity.test.ts",
