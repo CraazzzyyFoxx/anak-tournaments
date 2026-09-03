@@ -7,7 +7,10 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { usePermissions } from "@/hooks/usePermissions";
 
 import { RankHealthDashboard } from "./_components/rank-health";
-import { RankPlayerDetail, RankPlayerSearch } from "./_components/rank-player";
+import {
+  RankPlayerDetail,
+  RankPlayerSearch
+} from "@/components/admin/people/PersonRankPanel";
 import { RankSettingsPanel } from "./_components/rank-settings";
 import { RankTaskHistory } from "./_components/rank-task-history";
 

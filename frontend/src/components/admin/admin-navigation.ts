@@ -342,12 +342,9 @@ const adminRoutePermissions: Array<{
   { prefix: "/admin/matches", permissions: ["match.read"] },
   { prefix: "/admin/achievements", permissions: ["achievement.read"] },
   { prefix: "/admin/audit", permissions: ["audit.read"], workspaceAdminVisible: true },
-  { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
 
   // ── Screens awaiting their WU (removed with the route they gate) ──
-  { prefix: "/admin/players", permissions: ["player.read"] },
-  { prefix: "/admin/users", permissions: ["user.read"] },
   { prefix: "/admin/sub-roles", permissions: ["player.read"] },
   { prefix: "/admin/balancer", permissions: ["team.read"] },
   { prefix: "/admin/divisions", permissions: [], workspaceAdminVisible: true },

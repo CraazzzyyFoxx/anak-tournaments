@@ -98,12 +98,12 @@ const nextConfig = {
       { source: "/admin/tournaments/:id/matches/report-form", destination: "/admin/tournaments/:id/settings/report-form", permanent: true },
 
       // PR-3a  people
-      // { source: "/admin/users", destination: "/admin/people", permanent: true },
-      // { source: "/admin/players", destination: "/admin/people", permanent: true },
-      //
+      { source: "/admin/users", destination: "/admin/people", permanent: true },
+      { source: "/admin/players", destination: "/admin/people", permanent: true },
+
       // PR-3d  members
-      // { source: "/admin/workspaces/members", destination: "/admin/members", permanent: true },
-      //
+      { source: "/admin/workspaces/members", destination: "/admin/members", permanent: true },
+
       // PR-4a  workspace settings hub. The old /admin/settings was already a
       //        page-level redirect to the rank collector's settings tab.
       // { source: "/admin/settings", destination: "/admin/collectors/rank?tab=settings", permanent: true },

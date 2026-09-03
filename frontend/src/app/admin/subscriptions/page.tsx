@@ -15,7 +15,7 @@ import { SubscriptionTaskHistory } from "./_components/subscription-history";
 import {
   SubscriptionPlayerDetail,
   SubscriptionPlayerSearch
-} from "./_components/subscription-player";
+} from "@/components/admin/people/PersonSubscriptionPanel";
 import { SubscriptionSettingsPanel } from "./_components/subscription-settings";
 import { WorkspaceSubscriptionPanel } from "./_components/subscription-workspace";
 

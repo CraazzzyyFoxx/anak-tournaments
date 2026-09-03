@@ -19,7 +19,7 @@ import userService from "@/services/user.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { CurrentRank } from "@/types/rank.types";
 
-import { StatusBadge, formatDate } from "./rank-shared";
+import { StatusBadge, formatDate } from "@/app/admin/rank/_components/rank-shared";
 
 interface SelectUser {
   (userId: number, label: string): void;
@@ -135,15 +135,16 @@ function CurrentRanksSection({ userId }: Readonly<{ userId: number }>) {
   );
 }
 
-// ─── Player detail dialog ─────────────────────────────────────────────────────
+// ─── Per-player rank collection ──────────────────────────────────────────────
 
-interface RankPlayerDetailProps {
-  userId: number;
-  label: string;
-  onClose: () => void;
-}
-
-export function RankPlayerDetail({ userId, label, onClose }: Readonly<RankPlayerDetailProps>) {
+/**
+ * One player's rank collection state, with the re-fetch controls.
+ *
+ * Moved out of the rank collector screen: a person's rank belongs on their
+ * card (People › Identity), and the collector page keeps it only until its own
+ * WU drops the player lookup.
+ */
+export function RankPlayerPanel({ userId }: Readonly<{ userId: number }>) {
   const queryClient = useQueryClient();
   // Scoped server-side to the injected workspace; see `admin.service.ts`.
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -176,100 +177,123 @@ export function RankPlayerDetail({ userId, label, onClose }: Readonly<RankPlayer
     });
 
   return (
+    <div className="space-y-5">
+      <CurrentRanksSection userId={userId} />
+
+      <section className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Collection status</h3>
+          <div className="flex items-center gap-2">
+            {selectedTagIds.size > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={triggerMutation.isPending}
+                onClick={() => triggerMutation.mutate([...selectedTagIds])}
+              >
+                <span className="tabular-nums">Collect selected ({selectedTagIds.size})</span>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              disabled={triggerMutation.isPending}
+              onClick={() => triggerMutation.mutate(null)}
+            >
+              {triggerMutation.isPending ? (
+                <Loader2 aria-hidden className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw aria-hidden className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Collect all
+            </Button>
+          </div>
+        </div>
+
+        {statusQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+            No battle tags linked to this player. Ask them to connect a Battle.net account before
+            rank collection can run.
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8" />
+                <TableHead>Battle tag</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Last checked</TableHead>
+                <TableHead>Last success</TableHead>
+                <TableHead className="text-right">Failures</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.social_account_id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedTagIds.has(row.social_account_id)}
+                      onCheckedChange={() => toggleTag(row.social_account_id)}
+                      aria-label={`Select ${row.battle_tag}`}
+                    />
+                  </TableCell>
+                  <TableCell className="font-medium">{row.battle_tag}</TableCell>
+                  <TableCell title={row.last_error ?? undefined}>
+                    <StatusBadge status={row.status} />
+                  </TableCell>
+                  <TableCell className="text-sm tabular-nums text-muted-foreground">
+                    {formatDate(row.last_checked_at)}
+                  </TableCell>
+                  <TableCell className="text-sm tabular-nums text-muted-foreground">
+                    {formatDate(row.last_success_at)}
+                  </TableCell>
+                  <TableCell className="text-right text-sm tabular-nums">
+                    {row.consecutive_failures || "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={triggerMutation.isPending}
+                      onClick={() => triggerMutation.mutate([row.social_account_id])}
+                      aria-label={`Collect rank for ${row.battle_tag}`}
+                    >
+                      <RefreshCw aria-hidden className="mr-1 h-3 w-3" />
+                      Collect
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </section>
+
+      <RankHistory userId={userId} title="Rank history" />
+    </div>
+  );
+}
+
+// ─── Player detail dialog ─────────────────────────────────────────────────────
+
+interface RankPlayerDetailProps {
+  userId: number;
+  label: string;
+  onClose: () => void;
+}
+
+/** The dialog wrapper the rank collector screen still opens from its lookup. */
+export function RankPlayerDetail({ userId, label, onClose }: Readonly<RankPlayerDetailProps>) {
+  return (
     <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
       <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{label}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5">
-          <CurrentRanksSection userId={userId} />
-
-          <section className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">Collection status</h3>
-              <div className="flex items-center gap-2">
-                {selectedTagIds.size > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={triggerMutation.isPending}
-                    onClick={() => triggerMutation.mutate([...selectedTagIds])}
-                  >
-                    <span className="tabular-nums">
-                      Collect selected ({selectedTagIds.size})
-                    </span>
-                  </Button>
-                )}
-                <Button size="sm" disabled={triggerMutation.isPending} onClick={() => triggerMutation.mutate(null)}>
-                  {triggerMutation.isPending ? (
-                    <Loader2 aria-hidden className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw aria-hidden className="mr-1.5 h-3.5 w-3.5" />
-                  )}
-                  Collect all
-                </Button>
-              </div>
-            </div>
-
-            {statusQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : rows.length === 0 ? (
-              <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
-                No battle tags linked to this player. Ask them to connect a Battle.net account
-                before rank collection can run.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-8" />
-                    <TableHead>Battle tag</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Last checked</TableHead>
-                    <TableHead>Last success</TableHead>
-                    <TableHead className="text-right">Failures</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row) => (
-                    <TableRow key={row.social_account_id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedTagIds.has(row.social_account_id)}
-                          onCheckedChange={() => toggleTag(row.social_account_id)}
-                          aria-label={`Select ${row.battle_tag}`}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">{row.battle_tag}</TableCell>
-                      <TableCell title={row.last_error ?? undefined}>
-                        <StatusBadge status={row.status} />
-                      </TableCell>
-                      <TableCell className="text-sm tabular-nums text-muted-foreground">{formatDate(row.last_checked_at)}</TableCell>
-                      <TableCell className="text-sm tabular-nums text-muted-foreground">{formatDate(row.last_success_at)}</TableCell>
-                      <TableCell className="text-right text-sm tabular-nums">{row.consecutive_failures || "—"}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={triggerMutation.isPending}
-                          onClick={() => triggerMutation.mutate([row.social_account_id])}
-                          aria-label={`Collect rank for ${row.battle_tag}`}
-                        >
-                          <RefreshCw aria-hidden className="mr-1 h-3 w-3" />
-                          Collect
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </section>
-
-          <RankHistory userId={userId} title="Rank history" />
-        </div>
+        <RankPlayerPanel userId={userId} />
       </DialogContent>
     </Dialog>
   );

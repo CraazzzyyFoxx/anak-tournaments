@@ -25,7 +25,7 @@ import {
   StateBadge,
   formatDate,
   formatRelative
-} from "./subscription-shared";
+} from "@/app/admin/subscriptions/_components/subscription-shared";
 
 interface SelectUser {
   (userId: number, label: string): void;
@@ -231,15 +231,19 @@ function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
   );
 }
 
-// ─── Player detail dialog ─────────────────────────────────────────────────────
+// ─── Per-player entitlements ─────────────────────────────────────────────────
 
-interface SubscriptionPlayerDetailProps {
-  userId: number;
-  label: string;
-  onClose: () => void;
-}
-
-export function SubscriptionPlayerDetail({ userId, label, onClose }: Readonly<SubscriptionPlayerDetailProps>) {
+/**
+ * One player's subscription verdicts, with the re-check controls.
+ *
+ * Moved out of the subscription collector screen: a person's entitlements
+ * belong on their card (People › Identity), and the collector page keeps it
+ * only until its own WU drops the player lookup.
+ */
+export function SubscriptionPlayerPanel({
+  userId,
+  label
+}: Readonly<{ userId: number; label: string }>) {
   const queryClient = useQueryClient();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
@@ -267,90 +271,115 @@ export function SubscriptionPlayerDetail({ userId, label, onClose }: Readonly<Su
   });
 
   return (
+    <div className="space-y-5">
+      <section className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Current entitlements</h3>
+          <Button
+            size="sm"
+            disabled={triggerMutation.isPending}
+            onClick={() => triggerMutation.mutate(null)}
+          >
+            {triggerMutation.isPending ? (
+              <Loader2 aria-hidden className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <RefreshCw aria-hidden className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Re-check now
+          </Button>
+        </div>
+
+        {statusQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+            No subscription verdict stored for this player. Either they have no linked auth account,
+            or nothing has ever checked them — subscriptions are only resolved for tournaments whose
+            registration form requires one.
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Workspace</TableHead>
+                <TableHead>Provider</TableHead>
+                <TableHead>State</TableHead>
+                <TableHead>Tier</TableHead>
+                <TableHead>Checked</TableHead>
+                <TableHead>Reason</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={`${row.workspace_id}-${row.provider}`}>
+                  <TableCell className="text-sm">
+                    {row.workspace_name ?? row.workspace_id ?? "—"}
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    {PROVIDER_LABELS[row.provider] ?? row.provider}
+                  </TableCell>
+                  <TableCell title={row.source ?? undefined}>
+                    <StateBadge state={row.state} />
+                  </TableCell>
+                  <TableCell className="text-sm tabular-nums text-muted-foreground">
+                    {row.tier_label ?? (row.tier_rank != null ? `Tier ${row.tier_rank}` : "—")}
+                  </TableCell>
+                  <TableCell
+                    className="text-sm tabular-nums text-muted-foreground"
+                    title={formatDate(row.checked_at)}
+                  >
+                    {formatRelative(row.checked_at)}
+                  </TableCell>
+                  <TableCell className="max-w-40 truncate text-xs text-muted-foreground">
+                    {row.reason ? (REASON_LABELS[row.reason] ?? row.reason) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={triggerMutation.isPending}
+                      onClick={() => triggerMutation.mutate([row.provider])}
+                      aria-label={`Re-check ${PROVIDER_LABELS[row.provider] ?? row.provider} for ${label}`}
+                    >
+                      <RefreshCw aria-hidden className="mr-1 h-3 w-3" />
+                      Re-check
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </section>
+
+      <PlayerCheckTimeline userId={userId} />
+    </div>
+  );
+}
+
+// ─── Player detail dialog ─────────────────────────────────────────────────────
+
+interface SubscriptionPlayerDetailProps {
+  userId: number;
+  label: string;
+  onClose: () => void;
+}
+
+/** The dialog wrapper the subscription collector screen still opens from its lookup. */
+export function SubscriptionPlayerDetail({
+  userId,
+  label,
+  onClose
+}: Readonly<SubscriptionPlayerDetailProps>) {
+  return (
     <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
       <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{label}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5">
-          <section className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">Current entitlements</h3>
-              <Button size="sm" disabled={triggerMutation.isPending} onClick={() => triggerMutation.mutate(null)}>
-                {triggerMutation.isPending ? (
-                  <Loader2 aria-hidden className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-                ) : (
-                  <RefreshCw aria-hidden className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                Re-check now
-              </Button>
-            </div>
-
-            {statusQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : rows.length === 0 ? (
-              <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
-                No subscription verdict stored for this player. Either they have no linked auth
-                account, or nothing has ever checked them — subscriptions are only resolved for
-                tournaments whose registration form requires one.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Workspace</TableHead>
-                    <TableHead>Provider</TableHead>
-                    <TableHead>State</TableHead>
-                    <TableHead>Tier</TableHead>
-                    <TableHead>Checked</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row) => (
-                    <TableRow key={`${row.workspace_id}-${row.provider}`}>
-                      <TableCell className="text-sm">{row.workspace_name ?? row.workspace_id ?? "—"}</TableCell>
-                      <TableCell className="font-medium">
-                        {PROVIDER_LABELS[row.provider] ?? row.provider}
-                      </TableCell>
-                      <TableCell title={row.source ?? undefined}>
-                        <StateBadge state={row.state} />
-                      </TableCell>
-                      <TableCell className="text-sm tabular-nums text-muted-foreground">
-                        {row.tier_label ?? (row.tier_rank != null ? `Tier ${row.tier_rank}` : "—")}
-                      </TableCell>
-                      <TableCell
-                        className="text-sm tabular-nums text-muted-foreground"
-                        title={formatDate(row.checked_at)}
-                      >
-                        {formatRelative(row.checked_at)}
-                      </TableCell>
-                      <TableCell className="max-w-40 truncate text-xs text-muted-foreground">
-                        {row.reason ? (REASON_LABELS[row.reason] ?? row.reason) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={triggerMutation.isPending}
-                          onClick={() => triggerMutation.mutate([row.provider])}
-                          aria-label={`Re-check ${PROVIDER_LABELS[row.provider] ?? row.provider} for ${label}`}
-                        >
-                          <RefreshCw aria-hidden className="mr-1 h-3 w-3" />
-                          Re-check
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </section>
-
-          <PlayerCheckTimeline userId={userId} />
-        </div>
+        <SubscriptionPlayerPanel userId={userId} label={label} />
       </DialogContent>
     </Dialog>
   );
