@@ -111,66 +111,71 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
         ) : null}
       </div>
 
-      <div className="flex flex-1 flex-col gap-2 p-3.5">
-        <div className="tn-name-cell">
-          <span className="nm">
-            {tournament.name}
+      <div className="flex flex-1 flex-col gap-3 p-4">
+        <div className="flex flex-col gap-1.5">
+          <h3 className="flex items-start gap-2 text-[15px] font-semibold leading-snug text-[color:var(--aqt-fg)] transition-colors group-hover:text-[color:var(--aqt-teal)]">
+            <span className="line-clamp-2">{tournament.name}</span>
             {tournament.is_hidden && (
-              <span
-                className="status-pill"
-                style={{
-                  padding: "2px 7px",
-                  background: "hsl(var(--muted) / 0.6)",
-                  color: "hsl(var(--muted-foreground))",
-                  border: "1px solid hsl(var(--border))"
-                }}
-              >
+              <span className="aqt-mono mt-0.5 shrink-0 rounded border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
                 {t("common.previewBadge")}
               </span>
             )}
-          </span>
-          <span className="sub">
-            {formatDateRange(tournament.start_date, tournament.end_date, locale)}
+          </h3>
+          <p className="aqt-mono flex flex-wrap items-center gap-x-2 text-[11px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
+            <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
             {tournament.is_league && (
               <>
-                <span className="sep">·</span>
-                {t("common.league")}
+                <span aria-hidden className="text-[color:var(--aqt-fg-faint)]">/</span>
+                <span>{t("common.league")}</span>
               </>
             )}
             {tournament.team_formation && (
               <>
-                <span className="sep">·</span>
-                {tournament.team_formation === "draft" ? t("common.draft") : t("common.balancer")}
+                <span aria-hidden className="text-[color:var(--aqt-fg-faint)]">/</span>
+                <span className="text-[color:var(--aqt-fg-muted)]">
+                  {tournament.team_formation === "draft" ? t("common.draft") : t("common.balancer")}
+                </span>
               </>
             )}
-          </span>
+          </p>
         </div>
 
-        <div className="tn-stage mt-auto w-full">
-          <span className="stage-label">{stage.label}</span>
-          {/* Inline width: the row view's 80px track is a table-column measure,
-              and a `.aqt-tn`-scoped selector outranks any utility class. */}
-          <div className="progress" style={{ width: "100%" }}>
-            <div
-              className={cn(
-                "fill",
-                stage.fill === "amber" && "amber",
-                stage.fill === "muted" && "muted"
-              )}
-              style={{ width: `${stage.pct}%` }}
-            />
-          </div>
-        </div>
+        {tournament.description ? (
+          <p className="line-clamp-2 text-[12.5px] leading-relaxed text-[color:var(--aqt-fg-muted)]">
+            {tournament.description}
+          </p>
+        ) : null}
 
-        <div className="flex items-center gap-3 text-[11px] text-[color:var(--aqt-fg-dim)]">
-          <span className="tabular-nums">
-            {t("tournamentsList.card.playersCount", { count: players })}
-          </span>
-          {teams != null ? (
-            <span className="tabular-nums">
-              {t("tournamentsList.card.teamsCount", { count: teams })}
+        <div className="mt-auto flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
+          <div className="flex items-baseline justify-between gap-3 text-[11px]">
+            <span className="aqt-mono font-semibold uppercase tracking-[0.08em] text-[color:var(--aqt-fg-muted)]">
+              {stage.label}
             </span>
-          ) : null}
+            <span className="aqt-mono flex items-center gap-1.5 text-[color:var(--aqt-fg-dim)]">
+              <span>{t("tournamentsList.card.playersCount", { count: players })}</span>
+              {teams != null ? (
+                <>
+                  <span aria-hidden className="text-[color:var(--aqt-fg-faint)]">·</span>
+                  <span>{t("tournamentsList.card.teamsCount", { count: teams })}</span>
+                </>
+              ) : null}
+            </span>
+          </div>
+          {/* `tn-stage` only for the fill palette; its 80px track is a table-column
+              measure, so the width is forced inline (a `.aqt-tn`-scoped selector
+              outranks any utility class). */}
+          <div className="tn-stage w-full">
+            <div className="progress" style={{ width: "100%", height: 4 }}>
+              <div
+                className={cn(
+                  "fill",
+                  stage.fill === "amber" && "amber",
+                  stage.fill === "muted" && "muted"
+                )}
+                style={{ width: `${stage.pct}%` }}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </Link>
