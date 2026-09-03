@@ -141,7 +141,14 @@ describe("route gates", () => {
     );
     expect(getMatchingAdminRoute("/admin/settings/branding")?.prefix).toBe("/admin/settings");
     expect(getMatchingAdminRoute("/admin/members")?.prefix).toBe("/admin/members");
-    expect(getMatchingAdminRoute("/admin/match-reports")?.prefix).toBe("/admin/match-reports");
+    // `/admin/matches` must not swallow the collectors' own prefixes, and
+    // `/admin/settings/sub-roles` must not fall back to `/admin/settings`.
+    expect(getMatchingAdminRoute("/admin/settings/sub-roles")?.prefix).toBe(
+      "/admin/settings/sub-roles",
+    );
+    expect(getMatchingAdminRoute("/admin/collectors/streams")?.prefix).toBe(
+      "/admin/collectors/streams",
+    );
   });
 
   it("keeps the old prefixes alive while the old screens exist", () => {
@@ -150,8 +157,7 @@ describe("route gates", () => {
     // the row for the page it deletes.
     expect(getMatchingAdminRoute("/admin/heroes")?.superuserOnly).toBe(true);
     expect(getMatchingAdminRoute("/admin/aliases")?.superuserOnly).toBe(true);
-    expect(getMatchingAdminRoute("/admin/balancer")?.permissions).toEqual(["team.read"]);
-    expect(getMatchingAdminRoute("/admin/standings")?.permissions).toEqual(["standing.read"]);
+    expect(getMatchingAdminRoute("/admin/rank")?.permissions).toEqual(["rank.read"]);
     expect(getMatchingAdminRoute("/admin/streams")?.globalOnly).toBe(true);
     expect(getMatchingAdminRoute("/admin/access/users")?.globalOnly).toBe(true);
   });

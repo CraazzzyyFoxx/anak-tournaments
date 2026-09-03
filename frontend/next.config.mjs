@@ -104,17 +104,19 @@ const nextConfig = {
       // PR-3d  members
       { source: "/admin/workspaces/members", destination: "/admin/members", permanent: true },
 
-      // PR-4a  workspace settings hub. The old /admin/settings was already a
-      //        page-level redirect to the rank collector's settings tab.
-      // { source: "/admin/settings", destination: "/admin/collectors/rank?tab=settings", permanent: true },
-      //
+      // PR-4a  workspace settings hub. NOT redirected: §1.1 sent the old
+      // /admin/settings (itself only a page-level redirect to the rank
+      // collector's settings tab) on to /admin/collectors/rank?tab=settings,
+      // but that path is now the hub's own root and a 308 here would shadow
+      // its index forever. Recorded in §13.
+
       // PR-4b  statuses, sub-roles, subscription providers
-      // { source: "/admin/balancer", destination: "/admin/settings/statuses", permanent: true },
-      // { source: "/admin/sub-roles", destination: "/admin/settings/sub-roles", permanent: true },
-      //
+      { source: "/admin/balancer", destination: "/admin/settings/statuses", permanent: true },
+      { source: "/admin/sub-roles", destination: "/admin/settings/sub-roles", permanent: true },
+
       // PR-4c  divisions
-      // { source: "/admin/divisions", destination: "/admin/settings/divisions", permanent: true },
-      //
+      { source: "/admin/divisions", destination: "/admin/settings/divisions", permanent: true },
+
       // PR-5a  game content
       // { source: "/admin/heroes", destination: "/admin/content/heroes", permanent: true },
       // { source: "/admin/maps", destination: "/admin/content/maps", permanent: true },

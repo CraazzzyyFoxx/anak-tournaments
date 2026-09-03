@@ -345,12 +345,6 @@ const adminRoutePermissions: Array<{
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
 
   // ── Screens awaiting their WU (removed with the route they gate) ──
-  { prefix: "/admin/sub-roles", permissions: ["player.read"] },
-  { prefix: "/admin/balancer", permissions: ["team.read"] },
-  { prefix: "/admin/divisions", permissions: [], workspaceAdminVisible: true },
-  { prefix: "/admin/encounters", permissions: ["match.read"] },
-  { prefix: "/admin/match-reports", permissions: ["match.read"] },
-  { prefix: "/admin/standings", permissions: ["standing.read"] },
   { prefix: "/admin/rank", permissions: ["rank.read"] },
   { prefix: "/admin/subscriptions", permissions: ["subscription.read"] },
   { prefix: "/admin/streams", permissions: ["stream.read"], globalOnly: true },
