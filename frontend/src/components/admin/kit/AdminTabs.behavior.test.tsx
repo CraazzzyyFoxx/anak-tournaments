@@ -39,7 +39,13 @@ const ITEMS: AdminTabItem[] = [
   { key: "registration", label: "Registration", href: "/admin/tournaments/1/registration" },
   { key: "teams", label: "Teams", href: "/admin/tournaments/1/teams", badge: 3 },
   { key: "draft", label: "Draft", href: "/admin/tournaments/1/teams/draft", hidden: true },
-  { key: "matches", label: "Matches", href: "/admin/tournaments/1/matches", badge: 0 }
+  {
+    key: "matches",
+    label: "Matches",
+    href: "/admin/tournaments/1/matches",
+    badge: 0,
+    dot: { tone: "warning", label: "Degraded" }
+  }
 ];
 
 let container: HTMLElement;
@@ -123,6 +129,18 @@ describe("AdminTabs", () => {
     const teams = links().find((link) => link.dataset.adminTab === "teams");
     const matches = links().find((link) => link.dataset.adminTab === "matches");
     expect(teams?.textContent).toContain("3");
-    expect(matches?.textContent?.trim()).toBe("Matches");
+    // The dot's sr-only word rides along; what must be absent is a "0" pill.
+    expect(matches?.textContent?.trim()).toBe("DegradedMatches");
+    expect(matches?.querySelector(".tabular-nums")).toBeNull();
+  });
+
+  it("gives the health dot a word, never colour alone", async () => {
+    await render();
+
+    const matches = links().find((link) => link.dataset.adminTab === "matches");
+    expect(matches?.querySelector("span[aria-hidden]")).not.toBeNull();
+    // The design book bans colour-only encoding: the tone always ships with
+    // the state spelled out for assistive tech.
+    expect(matches?.querySelector(".sr-only")?.textContent).toBe("Degraded");
   });
 });

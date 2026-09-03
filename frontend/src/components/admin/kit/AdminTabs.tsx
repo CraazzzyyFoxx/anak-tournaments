@@ -3,6 +3,7 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import Link from "next/link";
 
+import { TONE_TEXT, type Tone } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
 
 export interface AdminTabItem {
@@ -11,6 +12,13 @@ export interface AdminTabItem {
   href: string;
   /** Queue size (disputed reports, pending logs). A count, never an annotation. */
   badge?: number;
+  /**
+   * Health marker before the label (a collector's poller state, F14).
+   *
+   * `label` is required and rendered `sr-only`: the design book bans
+   * colour-only encoding, so the dot always carries the word too.
+   */
+  dot?: { tone: Tone; label: string };
   hidden?: boolean;
 }
 
@@ -89,6 +97,18 @@ export function AdminTabs({ items, activeKey, level = 1, ariaLabel }: Readonly<A
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 )}
               >
+                {item.dot ? (
+                  <>
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "size-1.5 shrink-0 rounded-full bg-current",
+                        TONE_TEXT[item.dot.tone]
+                      )}
+                    />
+                    <span className="sr-only">{item.dot.label}</span>
+                  </>
+                ) : null}
                 {item.label}
                 {item.badge ? (
                   <span
