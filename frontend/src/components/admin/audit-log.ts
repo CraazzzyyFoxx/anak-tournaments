@@ -50,6 +50,15 @@ const ENTITY_LABELS = {
 export type AuditEntityType = keyof typeof ENTITY_LABELS;
 
 /**
+ * Every entity the feed can be narrowed to, in the order the chip offers them.
+ *
+ * `Object.keys` of the map above rather than a second hand-kept list: a writer
+ * that starts recording a new entity gets its label and its filter option from
+ * the same edit, so the two cannot drift.
+ */
+export const AUDIT_ENTITY_TYPES = Object.keys(ENTITY_LABELS) as AuditEntityType[];
+
+/**
  * `Object.hasOwn`, not `in`: `"toString" in ENTITY_LABELS` is true through the
  * prototype, and a URL carrying `?history=toString:1:1` must not pass for a real
  * entity type.

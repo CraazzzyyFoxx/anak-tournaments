@@ -1,27 +1,36 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Pencil, Trash2, CheckCircle, XCircle } from "lucide-react";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { Badge } from "@/components/ui/badge";
+import type { ColumnDef } from "@tanstack/react-table";
+import { CheckCircle, Pencil, Plus, Trash2, XCircle } from "lucide-react";
+
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { StatusIcon } from "@/components/admin/StatusIcon";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { StatusIcon } from "@/components/admin/StatusIcon";
+import { AdminInspector } from "@/components/admin/kit/AdminInspector";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
+import { createKebabColumn } from "@/components/admin/kit/kebab-column";
+import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { EditableAvatar } from "@/components/ui/editable-avatar";
-import { notify } from "@/lib/notify";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useQueryParams } from "@/hooks/useQueryParams";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { notify } from "@/lib/notify";
+import { paginateResults, sortArray } from "@/lib/paginate-results";
+import { cn } from "@/lib/utils";
 import workspaceService from "@/services/workspace.service";
-import { Workspace } from "@/types/workspace.types";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+import { Workspace } from "@/types/workspace.types";
 
 interface WorkspaceFormData {
   slug: string;
@@ -37,21 +46,69 @@ const emptyForm: WorkspaceFormData = {
 
 const ACCEPTED_IMAGE_TYPES = "image/webp,image/png,image/jpeg,image/gif";
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+const PAGE_SIZE = 15;
 
+function WorkspaceIcon({ workspace }: Readonly<{ workspace: Workspace }>) {
+  if (workspace.icon_url) {
+    return (
+      <img
+        src={workspace.icon_url}
+        alt=""
+        aria-hidden
+        className="size-8 shrink-0 rounded-md border border-border object-cover"
+      />
+    );
+  }
+  return (
+    <div
+      aria-hidden
+      className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-xs font-medium text-muted-foreground"
+    >
+      {workspace.name.charAt(0).toUpperCase()}
+    </div>
+  );
+}
+
+function InspectorField({
+  label,
+  children
+}: Readonly<{ label: string; children: React.ReactNode }>) {
+  return (
+    <div className="min-w-0">
+      <p className={EYEBROW_CLASS}>{label}</p>
+      <p className="mt-0.5 break-words text-sm text-foreground">{children}</p>
+    </div>
+  );
+}
+
+/**
+ * Every workspace on the platform, as a list.
+ *
+ * The list itself is all this screen owns: a workspace's settings are eleven
+ * sections behind `/admin/workspaces/[id]/*` (the same ones `/admin/settings`
+ * mounts for the current workspace), so editing here means going there rather
+ * than reproducing a form the sections already own.
+ */
 export default function WorkspacesPage() {
-  const { isSuperuser, isWorkspaceAdmin } = usePermissions();
-  const router = useRouter();
+  const { isSuperuser, isWorkspaceAdmin, canManageAnyWorkspace, isLoaded } = usePermissions();
   const queryClient = useQueryClient();
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
+  // `id` is the inspector, not a filter: opening a row must not drop the page
+  // the row sits on, so nothing resets here.
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const openId = searchParams?.get("id") ?? null;
 
+  const [pageRows, setPageRows] = useState<Workspace[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selected, setSelected] = useState<Workspace | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null);
   const [formData, setFormData] = useState<WorkspaceFormData>({ ...emptyForm });
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
 
   const invalidate = () => {
+    // `["admin-workspaces"]` is the prefix the workspace settings sections
+    // invalidate too (`workspace-settings/useWorkspaceSettingsForm.ts`), so a
+    // rename made there refreshes this list without a reload.
     queryClient.invalidateQueries({ queryKey: ["admin-workspaces"] });
     fetchWorkspaces();
   };
@@ -84,8 +141,10 @@ export default function WorkspacesPage() {
         if (!r.ok) throw new Error("Failed to delete");
       }),
     onSuccess: () => {
+      const removed = pendingDelete;
       invalidate();
-      setDeleteOpen(false);
+      setPendingDelete(null);
+      if (removed && String(removed.id) === openId) setParams({ id: null });
       notify.success("Workspace deleted");
     }
   });
@@ -102,143 +161,266 @@ export default function WorkspacesPage() {
     setIconPreview(URL.createObjectURL(file));
   };
 
-  const handleDelete = (ws: Workspace) => {
-    setSelected(ws);
-    setDeleteOpen(true);
-  };
-
   const isCreateDirty = createOpen && (hasUnsavedChanges(formData, emptyForm) || iconFile !== null);
 
-  const columns: ColumnDef<Workspace>[] = [
-    {
-      accessorKey: "id",
-      header: "ID",
-      cell: ({ row }) => <div className="font-mono text-xs tabular-nums">{row.getValue("id")}</div>
-    },
-    {
-      id: "icon",
-      header: "Icon",
-      cell: ({ row }) => {
-        const ws = row.original;
-        return ws.icon_url ? (
-          <img src={ws.icon_url} alt="" aria-hidden className="h-8 w-8 rounded-md border object-cover" />
-        ) : (
-          <div className="h-8 w-8 rounded-md border bg-muted flex items-center justify-center text-muted-foreground text-xs font-medium">
-            {ws.name.charAt(0).toUpperCase()}
-          </div>
-        );
-      }
-    },
-    {
-      accessorKey: "slug",
-      header: "Slug",
-      cell: ({ row }) => <code className="text-xs">{row.getValue("slug")}</code>
-    },
-    {
-      accessorKey: "name",
-      header: "Name",
-      cell: ({ row }) => <div className="font-medium">{row.getValue("name")}</div>
-    },
-    {
-      accessorKey: "is_active",
-      header: "Status",
-      cell: ({ row }) =>
-        row.getValue("is_active") ? (
-          <StatusIcon icon={CheckCircle} label="Active" variant="success" />
-        ) : (
-          <StatusIcon icon={XCircle} label="Inactive" variant="muted" />
+  const columns = useMemo<ColumnDef<Workspace>[]>(
+    () => [
+      {
+        accessorKey: "id",
+        header: "#",
+        size: 76,
+        cell: ({ row }) => (
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            {row.original.id}
+          </span>
         )
-    },
-    {
-      accessorKey: "is_hidden",
-      header: "Visibility",
-      cell: ({ row }) =>
-        row.getValue("is_hidden") ? (
-          <Badge variant="outline" className="text-muted-foreground">
-            Hidden
-          </Badge>
-        ) : null
-    },
-    {
-      id: "actions",
-      cell: ({ row }) => {
-        const ws = row.original;
-        const canManage = isSuperuser || isWorkspaceAdmin(ws.id);
-        if (!canManage) return null;
-
-        return (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push(`/admin/workspaces/${ws.id}`)}
-              aria-label={`Edit ${ws.name}`}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-            {isSuperuser ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDelete(ws)}
-                className="text-destructive"
-                aria-label={`Delete ${ws.name}`}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            ) : null}
+      },
+      {
+        accessorKey: "name",
+        header: "Workspace",
+        cell: ({ row }) => (
+          <div className="flex min-w-0 items-center gap-2">
+            <WorkspaceIcon workspace={row.original} />
+            <span className="truncate font-medium" title={row.original.name}>
+              {row.original.name}
+            </span>
           </div>
-        );
-      }
-    }
-  ];
+        )
+      },
+      {
+        accessorKey: "slug",
+        header: "Slug",
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-muted-foreground">{row.original.slug}</span>
+        )
+      },
+      {
+        accessorKey: "is_active",
+        header: "Status",
+        size: 120,
+        cell: ({ row }) =>
+          row.original.is_active ? (
+            <StatusIcon icon={CheckCircle} label="Active" variant="success" />
+          ) : (
+            <StatusIcon icon={XCircle} label="Inactive" variant="muted" />
+          )
+      },
+      {
+        accessorKey: "is_hidden",
+        header: "Visibility",
+        size: 120,
+        cell: ({ row }) =>
+          row.original.is_hidden ? (
+            <Badge variant="outline" className={cn(TONE_CLASS.warning)}>
+              Hidden
+            </Badge>
+          ) : (
+            <span className="text-sm text-muted-foreground">Listed</span>
+          )
+      },
+      createKebabColumn<Workspace>(
+        (row) => [
+          {
+            label: "Edit workspace",
+            icon: Pencil,
+            hidden: !(isSuperuser || isWorkspaceAdmin(row.id)),
+            // The one place a workspace is edited: the settings sections under
+            // `[id]/`, which are the same ones `/admin/settings` mounts.
+            href: `/admin/workspaces/${row.id}/general`
+          },
+          {
+            label: "Delete workspace",
+            icon: Trash2,
+            destructive: true,
+            hidden: !isSuperuser,
+            onSelect: () => setPendingDelete(row)
+          }
+        ],
+        { rowLabel: (row) => row.name }
+      )
+    ],
+    [isSuperuser, isWorkspaceAdmin]
+  );
+
+  if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
+
+  // The same gate `admin-navigation.ts` puts on `/admin/workspaces`: the row
+  // carries no permission, only `workspaceAdminVisible`, which for a null
+  // workspace scope is exactly "administers at least one workspace".
+  if (!canManageAnyWorkspace()) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Unauthorized</CardTitle>
+          <CardDescription>
+            You do not administer any workspace, so there is none to list here.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  const openRow = pageRows.find((row) => String(row.id) === openId) ?? null;
+  const openIndex = openRow ? pageRows.indexOf(openRow) : -1;
+  const canManageOpen = openRow ? isSuperuser || isWorkspaceAdmin(openRow.id) : false;
 
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
         title="Workspaces"
-        description="Manage workspaces for isolated tournament environments"
+        description="Isolated tournament environments. Open one to edit its settings."
         actions={
           isSuperuser ? (
             <Button onClick={handleCreate}>
-              <Plus className="mr-2 h-4 w-4" aria-hidden />
+              <Plus className="size-4" aria-hidden />
               Create workspace
             </Button>
           ) : null
         }
       />
 
-      <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => [
-          "admin-workspaces",
-          isSuperuser,
-          page,
-          search,
-          pageSize,
-          sortField,
-          sortDir
-        ]}
-        queryFn={async () => {
-          const all = await workspaceService.getAll();
-          // Non-superusers only see workspaces they admin
-          const visible = isSuperuser ? all : all.filter((ws) => isWorkspaceAdmin(ws.id));
-          return {
-            results: visible,
-            total: visible.length,
-            page: 1,
-            per_page: visible.length
-          };
-        }}
-        columns={columns}
-        searchPlaceholder="Search workspaces…"
-        emptyMessage={
-          isSuperuser
-            ? "No workspaces yet. Use “Create workspace” to add the first one."
-            : "No workspaces yet. The ones you administer will show up here."
-        }
-      />
+      <div
+        className={cn("grid items-start gap-4", openRow && "lg:grid-cols-[minmax(0,1fr)_380px]")}
+      >
+        <div className="min-w-0">
+          <AdminDataTable<Workspace>
+            columns={columns}
+            initialPageSize={PAGE_SIZE}
+            searchPlaceholder="Search workspaces…"
+            inspectorId={openId}
+            getRowId={(row) => String(row.id)}
+            emptyMessage={
+              isSuperuser
+                ? "No workspaces yet. Use “Create workspace” to add the first one."
+                : "No workspaces yet. The ones you administer will show up here."
+            }
+            onRowClick={(row) => setParams({ id: String(row.original.id) })}
+            renderMobileCard={(row) => (
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <WorkspaceIcon workspace={row.original} />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{row.original.name}</p>
+                  <p className="truncate font-mono text-xs text-muted-foreground">
+                    {row.original.slug}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {row.original.is_active ? "Active" : "Inactive"} ·{" "}
+                    {row.original.is_hidden ? "Hidden" : "Listed"}
+                  </p>
+                </div>
+              </div>
+            )}
+            queryKey={(page, search, pageSize, sortField, sortDir) => [
+              "admin-workspaces",
+              isSuperuser,
+              page,
+              search,
+              pageSize,
+              sortField,
+              sortDir
+            ]}
+            queryFn={async (page, search, pageSize, sortField, sortDir) => {
+              const all = await workspaceService.getAll();
+              // Non-superusers only see workspaces they administer.
+              const visible = isSuperuser ? all : all.filter((ws) => isWorkspaceAdmin(ws.id));
+              const needle = search.trim().toLowerCase();
+              const matching = needle
+                ? visible.filter(
+                    (ws) =>
+                      ws.name.toLowerCase().includes(needle) ||
+                      ws.slug.toLowerCase().includes(needle)
+                  )
+                : visible;
+              const result = paginateResults(
+                sortArray(matching, sortField, sortDir),
+                page,
+                pageSize
+              );
+              // The inspector pages through the rows currently on screen, and
+              // the table owns the fetch, so this is where that page is seen.
+              setPageRows(result.results);
+              return result;
+            }}
+          />
+        </div>
 
-      {/* Create Dialog */}
+        <AdminInspector
+          openId={openRow ? openId : null}
+          onClose={() => setParams({ id: null })}
+          title={openRow?.name ?? ""}
+          subtitle={openRow ? `#${openRow.id} · ${openRow.slug}` : undefined}
+          onPrev={
+            openIndex > 0 ? () => setParams({ id: String(pageRows[openIndex - 1].id) }) : undefined
+          }
+          onNext={
+            openIndex >= 0 && openIndex < pageRows.length - 1
+              ? () => setParams({ id: String(pageRows[openIndex + 1].id) })
+              : undefined
+          }
+          actions={
+            openRow ? (
+              <>
+                {canManageOpen ? (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/admin/workspaces/${openRow.id}/general`}>
+                      <Pencil aria-hidden className="size-3.5" />
+                      Edit
+                    </Link>
+                  </Button>
+                ) : null}
+                {isSuperuser ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-danger"
+                    onClick={() => setPendingDelete(openRow)}
+                  >
+                    <Trash2 aria-hidden className="size-3.5" />
+                    Delete
+                  </Button>
+                ) : null}
+              </>
+            ) : null
+          }
+        >
+          {openRow ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <InspectorField label="Status">
+                  {openRow.is_active ? "Active" : "Inactive"}
+                </InspectorField>
+                <InspectorField label="Visibility">
+                  {openRow.is_hidden ? "Hidden from the public list" : "Listed"}
+                </InspectorField>
+                <InspectorField label="Timezone">{openRow.timezone}</InspectorField>
+                <InspectorField label="Branding">
+                  {openRow.branding_enabled ? "Custom" : "Platform default"}
+                </InspectorField>
+                <InspectorField label="Subdomain">{openRow.subdomain ?? "—"}</InspectorField>
+                <InspectorField label="Custom domain">
+                  {openRow.custom_domain
+                    ? `${openRow.custom_domain}${openRow.custom_domain_verified_at ? "" : " (unverified)"}`
+                    : "—"}
+                </InspectorField>
+                <InspectorField label="Discord guild">
+                  {openRow.discord_guild_id ?? "—"}
+                </InspectorField>
+                <InspectorField label="Newcomers">
+                  {openRow.newcomer_scope === "global" ? "Any workspace" : "This workspace"}
+                </InspectorField>
+              </div>
+
+              <div>
+                <p className={EYEBROW_CLASS}>Description</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {openRow.description || "No description."}
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </AdminInspector>
+      </div>
+
       <EntityFormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
@@ -268,7 +450,7 @@ export default function WorkspacesPage() {
               placeholder="my-workspace"
               required
             />
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="mt-1 text-xs text-muted-foreground">
               URL-safe identifier (a-z, 0-9, -, _)
             </p>
           </div>
@@ -313,24 +495,32 @@ export default function WorkspacesPage() {
                 onError={(message) => notify.error(message)}
               />
             </div>
-            <p className="text-xs text-muted-foreground mt-1">PNG, JPEG, WebP or GIF, max 2 MB</p>
+            <p className="mt-1 text-xs text-muted-foreground">PNG, JPEG, WebP or GIF, max 2 MB</p>
           </div>
         </div>
       </EntityFormDialog>
 
-      {/* Delete Dialog */}
-      <DeleteConfirmDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        onConfirm={() => selected && deleteMutation.mutate(selected.id)}
-        title="Delete workspace"
-        description={`Deleting “${selected?.name}” permanently removes every tournament, team, player, match and member inside it. This cannot be undone.`}
-        cascadeInfo={[
-          "All tournaments in this workspace",
-          "All teams, players, matches, and statistics",
-          "All workspace members"
-        ]}
-        isDeleting={deleteMutation.isPending}
+      <ConfirmDialog
+        open={pendingDelete != null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+        pending={deleteMutation.isPending}
+        intent={{
+          title: "Delete workspace",
+          description: `Deleting “${pendingDelete?.name ?? "this workspace"}” permanently removes every tournament, team, player, match and member inside it. This cannot be undone.`,
+          confirmLabel: "Delete workspace",
+          tone: "danger",
+          cascade: [
+            "All tournaments in this workspace",
+            "All teams, players, matches, and statistics",
+            "All workspace members"
+          ],
+          requireTyped: pendingDelete?.name
+        }}
+        onConfirm={() => {
+          if (pendingDelete) deleteMutation.mutate(pendingDelete.id);
+        }}
       />
     </div>
   );

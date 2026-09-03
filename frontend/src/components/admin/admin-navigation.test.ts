@@ -151,15 +151,33 @@ describe("route gates", () => {
     );
   });
 
-  it("keeps the old prefixes alive while the old screens exist", () => {
-    // Dropping these early hands the surviving pages the `/admin` catch-all —
-    // `/admin/heroes` would silently lose `superuserOnly`. Each WU-PR removes
-    // the row for the page it deletes.
-    expect(getMatchingAdminRoute("/admin/heroes")?.superuserOnly).toBe(true);
-    expect(getMatchingAdminRoute("/admin/aliases")?.superuserOnly).toBe(true);
-    expect(getMatchingAdminRoute("/admin/rank")?.permissions).toEqual(["rank.read"]);
-    expect(getMatchingAdminRoute("/admin/streams")?.globalOnly).toBe(true);
-    expect(getMatchingAdminRoute("/admin/access/users")?.globalOnly).toBe(true);
+  it("carries no row for a route the redesign retired", () => {
+    // The transitional rows are gone now that P5 landed. A prefix that
+    // outlives its screen is not harmless: it is a gate nobody can reach,
+    // and the next reader trusts it.
+    for (const retired of [
+      "/admin/users",
+      "/admin/players",
+      "/admin/balancer",
+      "/admin/sub-roles",
+      "/admin/divisions",
+      "/admin/encounters",
+      "/admin/match-reports",
+      "/admin/standings",
+      "/admin/rank",
+      "/admin/subscriptions",
+      "/admin/streams",
+      "/admin/heroes",
+      "/admin/maps",
+      "/admin/gamemodes",
+      "/admin/aliases",
+      "/admin/access/users",
+      "/admin/workspaces/members"
+    ]) {
+      // They all fall through to the catch-all, which is correct: every one of
+      // them 308s away before a page is ever rendered.
+      expect(getMatchingAdminRoute(retired)?.prefix, retired).not.toBe(retired);
+    }
   });
 
   it("keeps a workspace grant enough for the workspace-scoped surfaces", () => {

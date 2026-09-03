@@ -118,20 +118,21 @@ const nextConfig = {
       { source: "/admin/divisions", destination: "/admin/settings/divisions", permanent: true },
 
       // PR-5a  game content
-      // { source: "/admin/heroes", destination: "/admin/content/heroes", permanent: true },
-      // { source: "/admin/maps", destination: "/admin/content/maps", permanent: true },
-      // { source: "/admin/gamemodes", destination: "/admin/content/gamemodes", permanent: true },
-      // { source: "/admin/aliases", destination: "/admin/content/unresolved", permanent: true },
-      //
+      { source: "/admin/heroes", destination: "/admin/content/heroes", permanent: true },
+      { source: "/admin/maps", destination: "/admin/content/maps", permanent: true },
+      { source: "/admin/gamemodes", destination: "/admin/content/gamemodes", permanent: true },
+      { source: "/admin/aliases", destination: "/admin/content/unresolved", permanent: true },
+
       // PR-5b  collectors
-      // { source: "/admin/rank", destination: "/admin/collectors/rank", permanent: true },
-      // { source: "/admin/subscriptions", destination: "/admin/collectors/subscriptions", permanent: true },
-      // { source: "/admin/streams", destination: "/admin/collectors/streams", permanent: true },
-      //
-      // PR-5c  access
-      // { source: "/admin/access", destination: "/admin/access/accounts", permanent: true },
-      // { source: "/admin/access/users", destination: "/admin/access/accounts", permanent: true },
-      //
+      { source: "/admin/rank", destination: "/admin/collectors/rank", permanent: true },
+      { source: "/admin/subscriptions", destination: "/admin/collectors/subscriptions", permanent: true },
+      { source: "/admin/streams", destination: "/admin/collectors/streams", permanent: true },
+
+      // PR-5c  access. `access/users` first: the matcher is ordered, and
+      // `/admin/access` alone must not swallow its own child.
+      { source: "/admin/access/users", destination: "/admin/access/accounts", permanent: true },
+      { source: "/admin/access", destination: "/admin/access/accounts", permanent: true },
+
       // PR-6   cleanup
       // { source: "/admin/pickup", destination: "/balancer/pickup", permanent: true },
     ];

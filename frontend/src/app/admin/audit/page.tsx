@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
-import { Globe, Lock, X } from "lucide-react";
+import { Globe, Lock } from "lucide-react";
 import { useFormatter } from "next-intl";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AuditFieldDiff } from "@/components/admin/AuditTrail";
 import {
+  AUDIT_ENTITY_TYPES,
   auditDiffRows,
   auditEntityLabel,
   auditHistoryStartQuery,
@@ -22,23 +22,15 @@ import {
   formatAuditTimestamp,
   isMachineActor,
 } from "@/components/admin/audit-log";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { AdminInspector } from "@/components/admin/kit/AdminInspector";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -64,158 +56,124 @@ const SORTABLE: Record<string, AuditSortField> = {
 const SCOPE_PARAM = "scope";
 const ALL_WORKSPACES = "all";
 
-function parseId(value: string | null): number | null {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-/** Everything the row omits, for the reader who clicked it. */
-function AuditEntryDialog({
-  entry,
-  onOpenChange,
-}: Readonly<{
-  entry: AuditLogRead | null;
-  onOpenChange: (open: boolean) => void;
-}>) {
-  // Before the `entry` guard: hooks may not sit behind an early return.
-  const format = useFormatter();
-  if (!entry) return null;
-
-  const action = describeAuditAction(entry.action);
-  const target = formatAuditTarget(entry);
-  const meta: Array<{ label: string; value: string }> = [
-    { label: "Source", value: auditSourceLabel(entry.source) },
-    {
-      label: "Workspace",
-      value: entry.workspace_id == null ? "Platform-level (no workspace)" : `#${entry.workspace_id}`,
-    },
-    ...(entry.ip_address ? [{ label: "IP address", value: entry.ip_address }] : []),
-    ...(entry.user_agent ? [{ label: "User agent", value: entry.user_agent }] : []),
-    ...(entry.correlation_id ? [{ label: "Correlation ID", value: entry.correlation_id }] : []),
-    { label: "Entry", value: `#${entry.id}` },
-  ];
-
-  return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{action.label}</DialogTitle>
-          <DialogDescription>
-            {formatAuditTimestamp(format, entry.created_at)} &middot; by {formatAuditActor(entry)}
-            {target ? ` · ${target}` : ""}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="max-h-[60vh] space-y-4 overflow-y-auto">
-          {entry.reason ? (
-            <div className="space-y-1">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Reason
-              </h3>
-              <p className="text-sm">{entry.reason}</p>
-            </div>
-          ) : null}
-
-          <div className="space-y-1.5">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Changes
-            </h3>
-            <AuditFieldDiff before={entry.before_json} after={entry.after_json} />
-          </div>
-
-          <dl className="grid gap-x-4 gap-y-1.5 border-t border-border/40 pt-3 text-xs sm:grid-cols-2">
-            {meta.map((item) => (
-              <div key={item.label} className="flex min-w-0 items-baseline gap-1.5">
-                <dt className="shrink-0 text-muted-foreground">{item.label}:</dt>
-                <dd className="min-w-0 break-all font-mono text-foreground/80">{item.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /**
  * Who did what, across the workspace.
  *
  * Six existing per-domain journals answer this inside their own domain; this one
  * answers it for role changes, API keys, tournament deletions and workspace
  * settings, which had no trail beyond stdout.
+ *
+ * Two writers used to share the query string — this page merged its filters onto
+ * `window.location.search` by hand while `AdminDataTable` wrote `page`/`search`
+ * through the History API — and a filter change and a page change overwrote each
+ * other depending on which landed last. Now the filters are a `useAdminFilters`
+ * chip set (one `router.replace` per change, which also drops `page` and `id`)
+ * and the table keeps its own five names. Nothing else touches the URL.
  */
 export default function AdminAuditPage() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const { isSuperuser } = usePermissions();
+  const { isSuperuser, canAccessPermission, isLoaded } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-  const [openEntry, setOpenEntry] = useState<AuditLogRead | null>(null);
   const format = useFormatter();
+  // `id` is the inspector, not a filter: opening a row must not drop the page
+  // the row sits on, so nothing resets here.
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const openId = searchParams?.get("id") ?? null;
 
-  // Filters this page owns. The table owns `page`, `search`, `per_page`, `sort`
-  // and `dir` and writes them straight through the History API, so these five
-  // names stay clear of those.
-  const entityType = searchParams.get("entity_type");
-  const entityId = parseId(searchParams.get("entity_id"));
-  const actorUserId = parseId(searchParams.get("actor_user_id"));
-  const action = searchParams.get("action");
+  const [pageRows, setPageRows] = useState<AuditLogRead[]>([]);
+
+  // Read straight off the URL for the chips that have no closed option list:
+  // they arrive from a link ("only this actor", the per-entity trail's "see it
+  // in the feed") and are declared as filters only while they are set, so the
+  // "+ Filter" picker never offers a control whose values it cannot enumerate.
+  const entityIdParam = searchParams?.get("entity_id") ?? "";
+  const actorParam = searchParams?.get("actor_user_id") ?? "";
+  const actionParam = searchParams?.get("action") ?? "";
+
+  const defs = useMemo<FilterDef[]>(() => {
+    const list: FilterDef[] = [
+      {
+        key: "entity_type",
+        label: "Entity",
+        kind: "single",
+        options: AUDIT_ENTITY_TYPES.map((entityType) => ({
+          value: entityType,
+          label: auditEntityLabel(entityType) ?? entityType,
+        })),
+      },
+    ];
+    if (isSuperuser) {
+      // Absent means "this workspace". The one option widens the feed to every
+      // workspace plus the platform-level rows that belong to none.
+      list.push({
+        key: SCOPE_PARAM,
+        label: "Scope",
+        kind: "single",
+        options: [{ value: ALL_WORKSPACES, label: "Every workspace + platform" }],
+      });
+    }
+    if (entityIdParam) {
+      list.push({
+        key: "entity_id",
+        label: "Record",
+        kind: "single",
+        options: [{ value: entityIdParam, label: `#${entityIdParam}` }],
+      });
+    }
+    if (actorParam) {
+      // Named from the rows on screen when they can name them: every row in an
+      // actor-filtered feed has that actor, and "#12" says nothing to the reader
+      // who is about to argue about it.
+      const named = pageRows.find((row) => String(row.actor_auth_user_id) === actorParam);
+      list.push({
+        key: "actor_user_id",
+        label: "Actor",
+        kind: "single",
+        options: [
+          { value: actorParam, label: named ? formatAuditActor(named) : `#${actorParam}` },
+        ],
+      });
+    }
+    if (actionParam) {
+      list.push({
+        key: "action",
+        label: "Action",
+        kind: "single",
+        options: [{ value: actionParam, label: describeAuditAction(actionParam).label }],
+      });
+    }
+    return list;
+  }, [isSuperuser, entityIdParam, actorParam, actionParam, pageRows]);
+
+  const filters = useAdminFilters(defs);
+
+  const entityType = String(filters.values.entity_type ?? "") || null;
+  // `|| null` on the parse, not a guard function: `NaN || null` is `null`, so a
+  // truncated or non-numeric param drops the filter rather than sending garbage.
+  const entityId = Number.parseInt(String(filters.values.entity_id ?? ""), 10) || null;
+  const actorUserId = Number.parseInt(String(filters.values.actor_user_id ?? ""), 10) || null;
+  const action = String(filters.values.action ?? "") || null;
   // A superuser with no workspace picked has no narrower scope to fall back to,
   // so the feed IS platform-wide — the badge and the boundary note below have to
   // say so rather than claim a workspace they are not filtering by.
   const allWorkspaces =
-    isSuperuser && (searchParams.get(SCOPE_PARAM) === ALL_WORKSPACES || workspaceId == null);
+    isSuperuser && (filters.values[SCOPE_PARAM] === ALL_WORKSPACES || workspaceId == null);
+
+  const scopeWorkspaceId = allWorkspaces ? null : workspaceId;
+  const allowed = canAccessPermission("audit.read", scopeWorkspaceId);
 
   /**
-   * `replace`, never `push` — the table pushes only for a page change and
-   * replaces for everything else (`AdminDataTable.tsx:224-228`), and its
-   * `popstate` handler re-reads only its own keys. Pushing here would make Back
-   * behave differently on this page than on the other nineteen.
-   *
-   * Merged onto `window.location.search` rather than onto `searchParams`: the
-   * table's writes go through `history.replaceState`, which Next does not
-   * observe, so the hook's snapshot can be missing a search term or page size
-   * that is live in the URL — and building from it would silently drop them.
-   *
-   * Takes the whole patch rather than one key, because `router.replace` lands
-   * asynchronously: two sequential single-key calls would both read the
-   * pre-navigation URL and the second would overwrite the first.
+   * Filters that narrow *which rows* are in the feed, as opposed to which
+   * workspace it covers. Only these change what an empty result means, so the
+   * scope chip is deliberately not one of them.
    */
-  const setFilters = (patch: Record<string, string | null>) => {
-    const next = new URLSearchParams(window.location.search);
-    for (const [key, value] of Object.entries(patch)) {
-      if (value == null || value === "") next.delete(key);
-      else next.set(key, value);
-    }
-    // A narrower filter invalidates the page number the table is holding; it
-    // resets to 1 itself via `filterKey`, so the stale param has to go too.
-    next.delete("page");
-
-    const query = next.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  };
-
-  const chips: Array<{ key: string; label: string }> = [
-    ...(entityType
-      ? [
-          {
-            key: "entity_type",
-            label: entityId
-              ? `${auditEntityLabel(entityType)} #${entityId}`
-              : `${auditEntityLabel(entityType)}s`,
-          },
-        ]
-      : []),
-    ...(actorUserId ? [{ key: "actor_user_id", label: `Actor #${actorUserId}` }] : []),
-    ...(action ? [{ key: "action", label: describeAuditAction(action).label }] : []),
-  ];
+  const isNarrowed = entityType != null || entityId != null || actorUserId != null || action != null;
 
   // Skipped while a filter is on (only the unfiltered empty states quote the
   // journal's start date) and skipped when there is no scope to ask about, which
   // the endpoint answers with a 422 rather than a wider feed.
   const historyStart = useQuery({
     ...auditHistoryStartQuery({ workspaceId, allWorkspaces }),
-    enabled: chips.length === 0 && (isSuperuser || workspaceId != null),
+    enabled: allowed && !isNarrowed && (isSuperuser || workspaceId != null),
     retry: false,
   });
 
@@ -227,7 +185,7 @@ export default function AdminAuditPage() {
    * feed exists to replace.
    */
   const emptyMessage = (() => {
-    if (chips.length > 0) {
+    if (isNarrowed) {
       return "No entries match these filters. Clear one of the chips above to widen the feed.";
     }
     if (historyStart.data == null) {
@@ -238,144 +196,158 @@ export default function AdminAuditPage() {
     return `No activity recorded${allWorkspaces ? "" : " in this workspace"} since the audit log started on ${formatAuditDate(format, historyStart.data)}. Anything done before that date left no trail — there is no backfill.`;
   })();
 
-  const columns: ColumnDef<AuditLogRead>[] = [
-    {
-      accessorKey: "created_at",
-      header: "When",
-      size: 180,
-      cell: ({ row }) => (
-        <time
-          dateTime={row.original.created_at}
-          className="whitespace-nowrap text-sm tabular-nums text-muted-foreground"
-        >
-          {formatAuditTimestamp(format, row.original.created_at)}
-        </time>
-      ),
-    },
-    {
-      accessorKey: "action",
-      header: "Action",
-      cell: ({ row }) => {
-        const described = describeAuditAction(row.original.action);
-        return (
-          <div className="flex min-w-0 flex-wrap items-baseline gap-1.5">
-            <span
-              className="text-sm font-medium"
-              title={described.recognised ? undefined : described.raw}
-            >
-              {described.label}
-            </span>
-            {described.recognised ? null : (
-              // Never let a phrase we derived from the raw string pass for a
-              // curated one: `action` is written from every service on the
-              // platform, so this dictionary will always trail new call sites.
-              <Badge
-                variant="outline"
-                className="border-border/60 font-normal text-muted-foreground"
-              >
-                unrecognised
-              </Badge>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "actor_label",
-      header: "Actor",
-      cell: ({ row }) => (
-        <div className="min-w-0">
-          {/* A machine actor is a fact, not a missing name (FR3), so it reads as
-              one instead of as an em dash. */}
-          <p
-            className={cn(
-              "truncate text-sm",
-              isMachineActor(row.original) ? "italic text-muted-foreground" : "font-medium",
-            )}
+  const columns = useMemo<ColumnDef<AuditLogRead>[]>(
+    () => [
+      {
+        accessorKey: "created_at",
+        header: "When",
+        size: 180,
+        cell: ({ row }) => (
+          <time
+            dateTime={row.original.created_at}
+            className="whitespace-nowrap text-sm tabular-nums text-muted-foreground"
           >
-            {formatAuditActor(row.original)}
-          </p>
-          {row.original.actor_auth_user_id != null ? (
-            <button
-              type="button"
-              className="text-xs tabular-nums text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-              onClick={() =>
-                setFilters({ actor_user_id: String(row.original.actor_auth_user_id) })
-              }
-            >
-              only this actor
-            </button>
-          ) : null}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "entity_type",
-      header: "Target",
-      cell: ({ row }) => {
-        const target = formatAuditTarget(row.original);
-        if (!target) {
-          return <span className="text-sm text-muted-foreground">&mdash;</span>;
-        }
-        return (
+            {formatAuditTimestamp(format, row.original.created_at)}
+          </time>
+        ),
+      },
+      {
+        accessorKey: "action",
+        header: "Action",
+        cell: ({ row }) => {
+          const described = describeAuditAction(row.original.action);
+          return (
+            <div className="flex min-w-0 flex-wrap items-baseline gap-1.5">
+              <span
+                className="text-sm font-medium"
+                title={described.recognised ? undefined : described.raw}
+              >
+                {described.label}
+              </span>
+              {described.recognised ? null : (
+                // Never let a phrase we derived from the raw string pass for a
+                // curated one: `action` is written from every service on the
+                // platform, so this dictionary will always trail new call sites.
+                <Badge
+                  variant="outline"
+                  className="border-border/60 font-normal text-muted-foreground"
+                >
+                  unrecognised
+                </Badge>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "actor_label",
+        header: "Actor",
+        cell: ({ row }) => (
           <div className="min-w-0">
-            <p className="truncate text-sm" title={target}>
-              {target}
+            {/* A machine actor is a fact, not a missing name (FR3), so it reads as
+                one instead of as an em dash. */}
+            <p
+              className={cn(
+                "truncate text-sm",
+                isMachineActor(row.original) ? "italic text-muted-foreground" : "font-medium",
+              )}
+            >
+              {formatAuditActor(row.original)}
             </p>
-            {row.original.entity_type && row.original.entity_id != null ? (
+            {row.original.actor_auth_user_id != null ? (
               <button
                 type="button"
-                className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                className="text-xs tabular-nums text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 onClick={() =>
-                  setFilters({
-                    entity_type: row.original.entity_type,
-                    entity_id: String(row.original.entity_id),
-                  })
+                  filters.set("actor_user_id", String(row.original.actor_auth_user_id))
                 }
               >
-                only this record
+                only this actor
               </button>
             ) : null}
           </div>
-        );
+        ),
       },
-    },
-    {
-      accessorKey: "source",
-      header: "Source",
-      size: 132,
-      cell: ({ row }) => (
-        <span className="whitespace-nowrap text-sm text-muted-foreground">
-          {auditSourceLabel(row.original.source)}
-        </span>
-      ),
-    },
-    {
-      id: "changes",
-      header: "Changes",
-      enableSorting: false,
-      cell: ({ row }) => {
-        const rows = auditDiffRows(row.original.before_json, row.original.after_json);
-        if (rows.length === 0) {
+      {
+        accessorKey: "entity_type",
+        header: "Target",
+        cell: ({ row }) => {
+          const target = formatAuditTarget(row.original);
+          if (!target) {
+            return <span className="text-sm text-muted-foreground">&mdash;</span>;
+          }
           return (
-            <span className="text-xs text-muted-foreground">
-              {row.original.reason ? "reason only" : "no field detail"}
+            <div className="min-w-0">
+              <p className="truncate text-sm" title={target}>
+                {target}
+              </p>
+              {row.original.entity_type && row.original.entity_id != null ? (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  // The type and the id are one filter in two params, so they go
+                  // in one write — `set` twice would start from the same URL
+                  // snapshot and only the second would survive.
+                  onClick={() =>
+                    filters.setMany({
+                      entity_type: row.original.entity_type ?? null,
+                      entity_id: String(row.original.entity_id),
+                    })
+                  }
+                >
+                  only this record
+                </button>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "source",
+        header: "Source",
+        size: 132,
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap text-sm text-muted-foreground">
+            {auditSourceLabel(row.original.source)}
+          </span>
+        ),
+      },
+      {
+        id: "changes",
+        header: "Changes",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const rows = auditDiffRows(row.original.before_json, row.original.after_json);
+          if (rows.length === 0) {
+            return (
+              <span className="text-xs text-muted-foreground">
+                {row.original.reason ? "reason only" : "no field detail"}
+              </span>
+            );
+          }
+          const named = rows.slice(0, 3).map((diff) => diff.field);
+          return (
+            <span
+              className="text-xs text-muted-foreground"
+              title={rows.map((diff) => diff.field).join(", ")}
+            >
+              <span className="font-mono">{named.join(", ")}</span>
+              {rows.length > named.length ? ` +${rows.length - named.length} more` : ""}
             </span>
           );
-        }
-        const named = rows.slice(0, 3).map((diff) => diff.field);
-        return (
-          <span className="text-xs text-muted-foreground" title={rows.map((d) => d.field).join(", ")}>
-            <span className="font-mono">{named.join(", ")}</span>
-            {rows.length > named.length ? ` +${rows.length - named.length} more` : ""}
-          </span>
-        );
+        },
       },
-    },
-  ];
+    ],
+    // `filters` is a fresh object every render; its two writers are not.
+    [format, filters.set, filters.setMany],
+  );
+
+  if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
 
   // A non-superuser request without a workspace is a 422, not a wider feed, so
-  // there is nothing to ask for until one is picked.
+  // there is nothing to ask for until one is picked. Asked before the permission
+  // gate: without a scope there is no scope to hold a grant in, and "unauthorized"
+  // would be the wrong thing to say to someone who has simply picked nothing.
   if (!isSuperuser && workspaceId == null) {
     return (
       <div className="space-y-6">
@@ -387,6 +359,46 @@ export default function AdminAuditPage() {
       </div>
     );
   }
+
+  // The same grant `AuditTrailButton` asks for, in the scope this feed queries.
+  // The server requires `audit.read` in the requested workspace, so without it
+  // every request on this screen is a 403 — saying so once beats a table of them.
+  if (!allowed) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Unauthorized</CardTitle>
+          <CardDescription>
+            You do not have permission to read the audit log
+            {allWorkspaces ? " across every workspace" : " in this workspace"}.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  const openRow = pageRows.find((row) => String(row.id) === openId) ?? null;
+  const openIndex = openRow ? pageRows.indexOf(openRow) : -1;
+  const openAction = openRow ? describeAuditAction(openRow.action) : null;
+  const openTarget = openRow ? formatAuditTarget(openRow) : null;
+  const openMeta: Array<{ label: string; value: string }> = openRow
+    ? [
+        { label: "Source", value: auditSourceLabel(openRow.source) },
+        {
+          label: "Workspace",
+          value:
+            openRow.workspace_id == null
+              ? "Platform-level (no workspace)"
+              : `#${openRow.workspace_id}`,
+        },
+        ...(openRow.ip_address ? [{ label: "IP address", value: openRow.ip_address }] : []),
+        ...(openRow.user_agent ? [{ label: "User agent", value: openRow.user_agent }] : []),
+        ...(openRow.correlation_id
+          ? [{ label: "Correlation ID", value: openRow.correlation_id }]
+          : []),
+        { label: "Entry", value: `#${openRow.id}` },
+      ]
+    : [];
 
   return (
     <div className="space-y-6">
@@ -401,95 +413,123 @@ export default function AdminAuditPage() {
             </span>
           ) : null
         }
-        footer={
-          chips.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Filtered by</span>
-              {chips.map((chip) => (
-                <Button
-                  key={chip.key}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1 px-2 text-xs"
-                  aria-label={`Remove filter: ${chip.label}`}
-                  onClick={() =>
-                    // The id is meaningless without its type, so they clear together.
-                    setFilters(
-                      chip.key === "entity_type"
-                        ? { entity_type: null, entity_id: null }
-                        : { [chip.key]: null },
-                    )
-                  }
-                >
-                  {chip.label}
-                  <X aria-hidden className="size-3" />
-                </Button>
-              ))}
-            </div>
-          ) : null
-        }
       />
 
-      <AdminDataTable
-        initialPageSize={PAGE_SIZE}
-        pageSizeOptions={PAGE_SIZE_OPTIONS}
-        filterKey={`${allWorkspaces}-${entityType}-${entityId}-${actorUserId}-${action}-${workspaceId}`}
-        queryKey={(page, search, pageSize, sortField, sortDir) => [
-          "admin",
-          "audit",
-          "feed",
-          allWorkspaces ? ALL_WORKSPACES : workspaceId,
-          entityType,
-          entityId,
-          actorUserId,
-          action,
-          page,
-          search,
-          pageSize,
-          sortField,
-          sortDir,
-        ]}
-        queryFn={(page, search, pageSize, sortField, sortDir) =>
-          adminService.listAudit({
-            page,
-            per_page: pageSize,
-            // An unsortable column id would 422; the whitelist gate keeps the
-            // request honest even if a column is added without checking.
-            sort: sortField ? SORTABLE[sortField] : undefined,
-            order: sortDir,
-            search: search || undefined,
-            entity_type: entityType,
-            entity_id: entityId,
-            actor_user_id: actorUserId,
-            action,
-            workspace_id: allWorkspaces ? null : workspaceId,
-            allWorkspaces,
-          })
-        }
-        columns={columns}
-        searchPlaceholder="Search actor, action, source, or target…"
-        emptyMessage={emptyMessage}
-        onRowClick={(row) => setOpenEntry(row.original)}
-        actions={
-          isSuperuser ? (
-            <Select
-              value={allWorkspaces ? ALL_WORKSPACES : "workspace"}
-              onValueChange={(value) =>
-                setFilters({ [SCOPE_PARAM]: value === ALL_WORKSPACES ? ALL_WORKSPACES : null })
-              }
-            >
-              <SelectTrigger className="w-52" aria-label="Audit log scope">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="workspace">This workspace</SelectItem>
-                <SelectItem value={ALL_WORKSPACES}>Every workspace + platform</SelectItem>
-              </SelectContent>
-            </Select>
-          ) : null
-        }
-      />
+      <div
+        className={cn("grid items-start gap-4", openRow && "lg:grid-cols-[minmax(0,1fr)_380px]")}
+      >
+        <div className="min-w-0">
+          <AdminDataTable<AuditLogRead>
+            columns={columns}
+            initialPageSize={PAGE_SIZE}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            initialSort={{ field: "created_at", dir: "desc" }}
+            filterKey={`${filters.filterKey}|${allWorkspaces}|${workspaceId}`}
+            inspectorId={openId}
+            getRowId={(row) => String(row.id)}
+            searchPlaceholder="Search actor, action, source, or target…"
+            emptyMessage={emptyMessage}
+            toolbar={<AdminFilterBar defs={defs} filters={filters} />}
+            onRowClick={(row) => setParams({ id: String(row.original.id) })}
+            renderMobileCard={(row) => (
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">
+                  {describeAuditAction(row.original.action).label}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {formatAuditActor(row.original)}
+                  {formatAuditTarget(row.original) ? ` · ${formatAuditTarget(row.original)}` : ""}
+                </p>
+                <p className="text-xs tabular-nums text-muted-foreground">
+                  {formatAuditTimestamp(format, row.original.created_at)}
+                </p>
+              </div>
+            )}
+            queryKey={(page, search, pageSize, sortField, sortDir) => [
+              "admin",
+              "audit",
+              "feed",
+              allWorkspaces ? ALL_WORKSPACES : workspaceId,
+              entityType,
+              entityId,
+              actorUserId,
+              action,
+              page,
+              search,
+              pageSize,
+              sortField,
+              sortDir,
+            ]}
+            queryFn={async (page, search, pageSize, sortField, sortDir) => {
+              const result = await adminService.listAudit({
+                page,
+                per_page: pageSize,
+                // An unsortable column id would 422; the whitelist gate keeps the
+                // request honest even if a column is added without checking.
+                sort: sortField ? SORTABLE[sortField] : undefined,
+                order: sortDir,
+                search: search || undefined,
+                entity_type: entityType,
+                entity_id: entityId,
+                actor_user_id: actorUserId,
+                action,
+                workspace_id: scopeWorkspaceId,
+                allWorkspaces,
+              });
+              // The inspector pages through the rows currently on screen, and the
+              // table owns the fetch, so this is where that page is observed.
+              setPageRows(result.results);
+              return result;
+            }}
+          />
+        </div>
+
+        <AdminInspector
+          openId={openRow ? openId : null}
+          onClose={() => setParams({ id: null })}
+          title={openAction?.label ?? ""}
+          subtitle={
+            openRow
+              ? `${formatAuditTimestamp(format, openRow.created_at)} · by ${formatAuditActor(openRow)}${openTarget ? ` · ${openTarget}` : ""}`
+              : undefined
+          }
+          onPrev={
+            openIndex > 0 ? () => setParams({ id: String(pageRows[openIndex - 1].id) }) : undefined
+          }
+          onNext={
+            openIndex >= 0 && openIndex < pageRows.length - 1
+              ? () => setParams({ id: String(pageRows[openIndex + 1].id) })
+              : undefined
+          }
+        >
+          {openRow ? (
+            <div className="space-y-4">
+              {openRow.reason ? (
+                <div className="space-y-1">
+                  <h3 className={EYEBROW_CLASS}>Reason</h3>
+                  <p className="text-sm">{openRow.reason}</p>
+                </div>
+              ) : null}
+
+              <div className="space-y-1.5">
+                <h3 className={EYEBROW_CLASS}>Changes</h3>
+                <AuditFieldDiff before={openRow.before_json} after={openRow.after_json} />
+              </div>
+
+              <dl className="grid gap-x-4 gap-y-1.5 border-t border-border/40 pt-3 text-xs">
+                {openMeta.map((item) => (
+                  <div key={item.label} className="flex min-w-0 items-baseline gap-1.5">
+                    <dt className="shrink-0 text-muted-foreground">{item.label}:</dt>
+                    <dd className="min-w-0 break-all font-mono text-foreground/80">
+                      {item.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : null}
+        </AdminInspector>
+      </div>
 
       {/*
         The boundary of the feed, stated in the feed.
@@ -514,13 +554,6 @@ export default function AdminAuditPage() {
           </span>
         )}
       </p>
-
-      <AuditEntryDialog
-        entry={openEntry}
-        onOpenChange={(open) => {
-          if (!open) setOpenEntry(null);
-        }}
-      />
     </div>
   );
 }

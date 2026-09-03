@@ -178,19 +178,12 @@ const ROUTES = {
     "/admin/content/gamemodes",
     "/admin/content/unresolved",
     "/admin/access/sessions",
-    // Still standing until PR-5a deletes them.
-    "/admin/heroes",
-    "/admin/maps",
-    "/admin/gamemodes",
-    "/admin/aliases",
   ],
   globalOnly: [
     "/admin/collectors/streams",
     "/admin/access/accounts",
-    "/admin/access/users",
     "/admin/access/oauth",
     "/admin/access/permissions",
-    "/admin/streams",
   ],
 };
 

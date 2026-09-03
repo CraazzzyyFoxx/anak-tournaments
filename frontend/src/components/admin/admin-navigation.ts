@@ -294,11 +294,11 @@ export const adminNavigationGroups: AdminNavGroup[] = [
  * First match wins and matching is exact-or-slash, so a more specific prefix
  * MUST precede the section it lives in.
  *
- * Both the new prefixes (`01-ia.md` §3.2) and the ones they replace are listed:
- * the old screens still exist until their own WU deletes them, and dropping
- * their prefix early would silently hand them the `/admin` catch-all gate —
- * `/admin/heroes` would lose `superuserOnly`. Each WU-PR removes the old rows
- * it makes unreachable.
+ * Every prefix here names a route that exists. The old ones lived alongside
+ * the new ones through the migration, because dropping a prefix before its
+ * screen would silently hand the surviving page the `/admin` catch-all gate
+ * (`/admin/heroes` would have lost `superuserOnly`); the last of them left
+ * with P5.
  */
 const adminRoutePermissions: Array<{
   prefix: string;
@@ -309,7 +309,6 @@ const adminRoutePermissions: Array<{
 }> = [
   // ── Access (per-tab gates; `accounts` replaces `users`) ──
   { prefix: "/admin/access/accounts", permissions: accessUsersPermissions, globalOnly: true },
-  { prefix: "/admin/access/users", permissions: accessUsersPermissions, globalOnly: true },
   { prefix: "/admin/access/roles", permissions: accessRolesPermissions, workspaceAdminVisible: true },
   { prefix: "/admin/access/oauth", permissions: accessUsersPermissions, globalOnly: true },
   { prefix: "/admin/access/api-keys", permissions: accessApiKeysPermissions, workspaceAdminVisible: true },
@@ -343,15 +342,6 @@ const adminRoutePermissions: Array<{
   { prefix: "/admin/achievements", permissions: ["achievement.read"] },
   { prefix: "/admin/audit", permissions: ["audit.read"], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
-
-  // ── Screens awaiting their WU (removed with the route they gate) ──
-  { prefix: "/admin/rank", permissions: ["rank.read"] },
-  { prefix: "/admin/subscriptions", permissions: ["subscription.read"] },
-  { prefix: "/admin/streams", permissions: ["stream.read"], globalOnly: true },
-  { prefix: "/admin/heroes", permissions: [], superuserOnly: true },
-  { prefix: "/admin/gamemodes", permissions: [], superuserOnly: true },
-  { prefix: "/admin/maps", permissions: [], superuserOnly: true },
-  { prefix: "/admin/aliases", permissions: [], superuserOnly: true },
 
   { prefix: "/admin", permissions: adminEntryPermissions, workspaceAdminVisible: true },
 ];
