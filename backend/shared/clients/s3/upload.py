@@ -55,30 +55,50 @@ def _validate_image(data: bytes, content_type: str, max_size: int) -> str | None
     return None
 
 
+#: Entities whose images live under ``avatars/``. Not a taxonomy — every member
+#: is a table whose rows carry an uploaded image URL.
+AvatarEntityType = Literal["users", "workspaces", "players", "teams", "registration_teams", "tournaments"]
+
+
+def avatar_prefix(entity_type: AvatarEntityType, entity_id: int, variant: str | None = None) -> str:
+    """S3 key prefix holding one entity's avatar files.
+
+    ``variant`` carves out a sub-prefix for entities that carry MORE THAN ONE
+    image (a tournament's cover and its logo). Without it both would share
+    ``avatars/tournaments/{id}/``, and since an upload clears the whole prefix
+    first, uploading one would delete the other. ``None`` keeps the historical
+    single-image layout byte-for-byte, so existing keys are untouched.
+    """
+    base = f"avatars/{entity_type}/{entity_id}/"
+    return f"{base}{variant}/" if variant else base
+
+
 async def upload_avatar(
     s3: S3Client,
     *,
-    entity_type: Literal["users", "workspaces", "players", "teams", "registration_teams"],
+    entity_type: AvatarEntityType,
     entity_id: int,
     file_data: bytes,
     content_type: str,
     max_size: int = MAX_AVATAR_SIZE,
+    variant: str | None = None,
 ) -> UploadResult:
     """Upload an avatar image, returning the UploadResult with the public URL.
 
-    Deletes any previously uploaded avatar for the same entity before uploading.
-    Key format: avatars/{entity_type}/{entity_id}/{content_hash}.{ext}
+    Deletes any previously uploaded avatar for the same entity (and ``variant``,
+    when given) before uploading.
+    Key format: avatars/{entity_type}/{entity_id}/[{variant}/]{content_hash}.{ext}
     """
     error = _validate_image(file_data, content_type, max_size)
     if error:
         return UploadResult(success=False, key="", error=error)
 
     # Delete old avatar(s)
-    await delete_old_avatar(s3, entity_type=entity_type, entity_id=entity_id)
+    await delete_old_avatar(s3, entity_type=entity_type, entity_id=entity_id, variant=variant)
 
     ext = _detect_extension(content_type)
     file_hash = _content_hash(file_data)
-    key = f"avatars/{entity_type}/{entity_id}/{file_hash}.{ext}"
+    key = f"{avatar_prefix(entity_type, entity_id, variant)}{file_hash}.{ext}"
 
     ok = await s3.put_object(key, file_data, content_type, public=True)
     if not ok:
@@ -126,11 +146,12 @@ async def upload_asset(
 async def delete_old_avatar(
     s3: S3Client,
     *,
-    entity_type: Literal["users", "workspaces", "players", "teams", "registration_teams"],
+    entity_type: AvatarEntityType,
     entity_id: int,
+    variant: str | None = None,
 ) -> None:
-    """Delete existing avatar files for an entity."""
-    prefix = f"avatars/{entity_type}/{entity_id}/"
+    """Delete existing avatar files for an entity (optionally one ``variant`` only)."""
+    prefix = avatar_prefix(entity_type, entity_id, variant)
     deleted = await s3.delete_prefix(prefix)
     if deleted > 0:
-        logger.info(f"Deleted {deleted} old avatar(s) for {entity_type}/{entity_id}")
+        logger.info(f"Deleted {deleted} old avatar(s) under {prefix}")
