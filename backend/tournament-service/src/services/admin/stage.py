@@ -145,6 +145,85 @@ class AdminStageService:
         skeleton = placeholder_bracket(stage.stage_type, upper_count, lower_count=lower_count)
         return sorted({pairing.round_number for pairing in skeleton.pairings})
 
+    async def get_bracket_preview(self, session: AsyncSession, stage_id: int) -> dict:
+        """The bracket this stage would generate, as a read-only skeleton.
+
+        Same generator, same seed order and same best-of resolution as
+        ``_generate_bracket_encounters`` -> ``persist_skeleton``; nothing is
+        written. That is the point: a preview drawn from a re-derived shape
+        drifts from the real thing on exactly the cases that matter (byes in a
+        non-power-of-two bracket, the lower bracket's cross-drops), so it is
+        drawn from the generator instead.
+
+        Wired teams come back under their real ids and names; an unseeded playoff
+        falls back to the projected seed counts the way generation does, and every
+        slot comes back TBD.
+
+        ``local_id`` is 1-based and skeleton-local: ``sources`` reference it and
+        not encounter ids, because these matches do not exist yet.
+        """
+        stage = await self.get_stage(session, stage_id)
+        if stage.stage_type not in BRACKET_STAGE_TYPES:
+            return {"matches": []}
+
+        sorted_items = sorted(stage.items, key=lambda item: (item.order, item.id))
+        upper_ids, lower_ids = _bracket_seeds(stage, sorted_items, _lower_bracket_item(stage, sorted_items))
+        upper_ids = await self._rank_seed_ids(session, stage, upper_ids)
+        lower_ids = await self._rank_seed_ids(session, stage, lower_ids)
+        de_include_reset = (
+            stage.stage_type == enums.StageType.DOUBLE_ELIMINATION
+            and (stage.settings_json or {}).get("de_grand_final_type") == "with_reset"
+        )
+
+        if len(upper_ids) + len(lower_ids) < 2:
+            upper_count, lower_count = await self._projected_bracket_seed_counts(session, stage)
+            if upper_count < 2:
+                return {"matches": []}
+            upper_ids = placeholder_seeds(upper_count)
+            lower_ids = placeholder_seeds(lower_count, offset=upper_count)
+
+        skeleton = _resolve_seeds(
+            generate_bracket(
+                stage.stage_type,
+                upper_ids,
+                de_include_reset=de_include_reset,
+                lower_bracket_team_ids=lower_ids,
+            ),
+            {},
+        )
+
+        team_names_by_id = await self._load_team_names(session, upper_ids + lower_ids)
+        best_of_cfg = parse_best_of_config(stage.settings_json)
+        max_round = max((pairing.round_number for pairing in skeleton.pairings), default=0)
+        sources: dict[int, list[dict]] = {}
+        for edge in skeleton.advancement_edges:
+            sources.setdefault(edge.target_local_id, []).append(
+                {"local_id": edge.source_local_id + 1, "role": edge.role, "slot": edge.target_slot}
+            )
+
+        return {
+            "matches": [
+                {
+                    "local_id": pairing.local_id + 1,
+                    "round": pairing.round_number,
+                    "name": build_encounter_name_from_ids(
+                        pairing.home_team_id,
+                        pairing.away_team_id,
+                        team_names_by_id,
+                    ),
+                    "best_of": resolve_best_of(
+                        best_of_cfg,
+                        pairing.round_number,
+                        is_final=pairing.round_number == max_round,
+                    ),
+                    "home_team_id": pairing.home_team_id,
+                    "away_team_id": pairing.away_team_id,
+                    "sources": sources.get(pairing.local_id, []),
+                }
+                for pairing in skeleton.pairings
+            ]
+        }
+
     async def _bracket_seed_counts(self, session: AsyncSession, stage: models.Stage) -> tuple[int, int]:
         """How many teams start in ``stage``'s upper and lower bracket.
 

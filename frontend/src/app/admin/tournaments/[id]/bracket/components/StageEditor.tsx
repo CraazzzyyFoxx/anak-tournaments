@@ -472,10 +472,12 @@ export function StageEditor({
       <div className="p-4">
         {activeSection === "general" ? (
           <GeneralSection
+            stage={stage}
             form={form}
             onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
             isSuperuser={isSuperuser}
             projection={projection}
+            teams={teams}
           />
         ) : null}
 

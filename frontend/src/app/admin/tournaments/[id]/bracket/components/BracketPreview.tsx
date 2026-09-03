@@ -1,12 +1,21 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { EYEBROW_CLASS, TONE_TEXT } from "@/components/admin/tone";
+import { BracketView } from "@/components/BracketView";
+import type { BracketMatch } from "@/components/bracket-view.helpers";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import adminService from "@/services/admin.service";
+import type { StageBracketPreviewMatch } from "@/types/admin.types";
+import type { Team } from "@/types/team.types";
+import type { Stage } from "@/types/tournament.types";
 
-import type { BracketTeamCountSource, StageProjection } from "../projection";
+import { useHubEncountersQuery } from "../../hubQueries";
+import { BRACKET_STAGE_TYPES, type BracketTeamCountSource, type StageProjection } from "../projection";
 
 const COUNT_SOURCE_NOTE: Record<BracketTeamCountSource, string> = {
   seeded: "from the teams already seeded into this stage",
@@ -16,20 +25,63 @@ const COUNT_SOURCE_NOTE: Record<BracketTeamCountSource, string> = {
 };
 
 /**
+ * The generator's skeleton as the bracket view reads it.
+ *
+ * `local_id` becomes the match id, and each source edge points at another row's
+ * `local_id`, so the view's own slot hints ("W M3") come out of the real
+ * advancement edges rather than a shape guessed from round numbers.
+ */
+function toBracketMatches(
+  rows: StageBracketPreviewMatch[],
+  teamById: Map<number, Team>
+): BracketMatch[] {
+  return rows.map((row) => ({
+    id: row.local_id,
+    name: row.name,
+    round: row.round,
+    status: "open",
+    score: { home: 0, away: 0 },
+    best_of: row.best_of,
+    home_team_id: row.home_team_id ?? 0,
+    away_team_id: row.away_team_id ?? 0,
+    home_team: row.home_team_id == null ? null : (teamById.get(row.home_team_id) ?? null),
+    away_team: row.away_team_id == null ? null : (teamById.get(row.away_team_id) ?? null),
+    sources: row.sources.map((source) => ({
+      encounter_id: source.local_id,
+      role: source.role,
+      slot: source.slot
+    }))
+  }));
+}
+
+/**
  * The stage as it would be generated right now — read only.
  *
- * The maths lives in `../projection.ts` (and, under it, in `@/lib/best-of`,
- * mirrored from `services/bracket/*`). This component only renders it, which
- * is why the numbers here and the rows the best-of editor offers cannot drift:
- * both read the same projection.
+ * The bracket itself is the real tree, drawn by the same `BracketView` the
+ * public page uses: once the stage has matches it draws those (scores, live
+ * state and all), and before that it draws the skeleton the backend generator
+ * would produce (`GET /admin/stages/{id}/bracket-preview`). Neither is a
+ * bracket-shaped drawing re-derived here, which is the only way the preview and
+ * the generated bracket cannot disagree about byes and lower-bracket drops.
+ *
+ * The round chips above it stay: they follow the editor's UNSAVED draft (the
+ * maths lives in `../projection.ts`, shared with the best-of editor so the two
+ * cannot drift), while the drawn tree follows the saved stage.
  *
  * Matches are NOT editable here. Editing them is the Matches tab's job, and
  * the Items section carries the cross-link.
  */
 export function BracketPreview({
   projection,
+  stage,
+  teams,
   className
-}: Readonly<{ projection: StageProjection; className?: string }>) {
+}: Readonly<{
+  projection: StageProjection;
+  stage: Stage;
+  teams: Team[];
+  className?: string;
+}>) {
   const { bracketTeams, rounds, unresolved } = projection;
   const sections: { label: string | null; rounds: StageProjection["rounds"] }[] = [];
   for (const round of rounds) {
@@ -37,6 +89,34 @@ export function BracketPreview({
     if (last && last.label === round.section) last.rounds.push(round);
     else sections.push({ label: round.section, rounds: [round] });
   }
+
+  // The hub's shared encounters query: the same cache entry the Matches tab
+  // observes, so this costs nothing extra there and stays invalidated by every
+  // workspace mutation.
+  const encountersQuery = useHubEncountersQuery(stage.tournament_id);
+  const generated = useMemo(
+    () => (encountersQuery.data?.results ?? []).filter((encounter) => encounter.stage_id === stage.id),
+    [encountersQuery.data, stage.id]
+  );
+
+  const isBracket = BRACKET_STAGE_TYPES.includes(stage.stage_type);
+  const previewQuery = useQuery({
+    // The whole stage in the key: the skeleton is a function of the SAVED stage,
+    // so any save that changes its seeds, format or best-of refetches it.
+    queryKey: ["admin", "stage", stage.id, "bracket-preview", stage],
+    queryFn: () => adminService.getStageBracketPreview(stage.id),
+    // A group stage has no bracket to project, so it never asks.
+    enabled: isBracket && !encountersQuery.isPending && generated.length === 0
+  });
+
+  const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
+  const projected = useMemo(
+    () => toBracketMatches(previewQuery.data ?? [], teamById),
+    [previewQuery.data, teamById]
+  );
+
+  const matches = generated.length > 0 ? generated : projected;
+  const isLoading = encountersQuery.isPending || (previewQuery.isPending && previewQuery.isFetching);
 
   return (
     <section
@@ -47,7 +127,9 @@ export function BracketPreview({
         <h3 id="bracket-preview-heading" className="text-sm font-semibold text-foreground">
           Bracket preview
         </h3>
-        <p className={EYEBROW_CLASS}>read-only projection</p>
+        <p className={EYEBROW_CLASS}>
+          {generated.length > 0 ? "generated matches" : "read-only projection"}
+        </p>
       </div>
 
       <p className="mt-1 text-xs text-muted-foreground">
@@ -115,6 +197,24 @@ export function BracketPreview({
             </ul>
           </Fragment>
         ))}
+      </div>
+
+      <div className="mt-4">
+        {isLoading ? (
+          <Skeleton className="h-64 w-full rounded-2xl" />
+        ) : matches.length > 0 ? (
+          <BracketView
+            encounters={matches}
+            type={stage.stage_type}
+            interactive={generated.length > 0}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {isBracket
+              ? "Nothing to draw yet — wire at least two teams, or set the preceding group stage's advancing count."
+              : "A group stage's matches are drawn once they are generated."}
+          </p>
+        )}
       </div>
     </section>
   );

@@ -42,12 +42,19 @@ vi.mock("@/services/admin.service", () => ({
     getTournament: (...args: unknown[]) => getTournament(...args),
     getStagesProgress: (...args: unknown[]) => getStagesProgress(...args),
     deleteStage: (...args: unknown[]) => deleteStage(...args),
-    updateStage: vi.fn()
+    updateStage: vi.fn(),
+    // The Bracket preview draws the generator's own skeleton; this tab's
+    // assertions are about routing and permissions, so it stays empty here.
+    getStageBracketPreview: vi.fn().mockResolvedValue([])
   }
 }));
 
 vi.mock("@/services/team.service", () => ({
   default: { getAll: (...args: unknown[]) => getTeams(...args) }
+}));
+
+vi.mock("@/services/encounter.service", () => ({
+  default: { getAll: vi.fn().mockResolvedValue({ results: [], total: 0 }) }
 }));
 
 let isSuperuser = true;
@@ -92,7 +99,10 @@ vi.mock("next/link", () => ({
   )
 }));
 
-vi.mock("../components/tournamentWorkspace.queryKeys", () => ({
+// Partial: `useHubEncountersQuery`, which the Bracket preview observes, reads
+// the real key factory from this module.
+vi.mock("../components/tournamentWorkspace.queryKeys", async (importOriginal) => ({
+  ...((await importOriginal()) as object),
   invalidateTournamentWorkspace: vi.fn()
 }));
 

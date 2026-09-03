@@ -18,6 +18,7 @@ import {
 import { ALL_TIEBREAKERS } from "@/lib/tiebreakers";
 import { BEST_OF_OPTIONS, stageBestOfRoundSections } from "@/lib/best-of";
 import type { StageBestOfConfig } from "@/types/admin.types";
+import type { Team } from "@/types/team.types";
 import type { Stage, StageType } from "@/types/tournament.types";
 
 import {
@@ -49,13 +50,17 @@ type SectionProps = Readonly<{
 }>;
 
 export function GeneralSection({
+  stage,
   form,
   onChange,
   isSuperuser,
-  projection
-}: Omit<SectionProps, "stage"> & {
+  projection,
+  teams
+}: SectionProps & {
   isSuperuser: boolean;
   projection: StageProjection;
+  /** Named on the preview's cards, so their logos and full names resolve. */
+  teams: Team[];
 }) {
   const ids = useId();
 
@@ -131,7 +136,7 @@ export function GeneralSection({
 
       </div>
 
-      <BracketPreview projection={projection} />
+      <BracketPreview projection={projection} stage={stage} teams={teams} />
     </div>
   );
 }

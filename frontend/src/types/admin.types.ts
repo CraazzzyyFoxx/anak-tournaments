@@ -425,6 +425,29 @@ export interface StageMergeGroupStagesInput {
   target_name?: string | null;
 }
 
+/**
+ * One match of the bracket a stage would generate — `GET
+ * /admin/stages/{id}/bracket-preview`, i.e. the real generator's skeleton.
+ *
+ * `local_id` is 1-based and skeleton-local, and `sources[].local_id` points at
+ * another row of the same response rather than at an encounter, because these
+ * matches have no encounter row yet.
+ */
+export interface StageBracketPreviewMatch {
+  local_id: number;
+  round: number;
+  /** "A vs. B", with the wired teams' names when they are known. */
+  name: string;
+  best_of: number;
+  home_team_id: number | null;
+  away_team_id: number | null;
+  sources: {
+    local_id: number;
+    role: "winner" | "loser";
+    slot: "home" | "away";
+  }[];
+}
+
 
 // ─── Team ────────────────────────────────────────────────────────────────────
 

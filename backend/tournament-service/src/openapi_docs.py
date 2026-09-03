@@ -422,6 +422,10 @@ DOCS: dict[str, dict] = {
         "summary": "Get stage planned rounds",
         "description": "Returns the round numbers a stage's bracket has (once generated) or will have, predicted from its planned team inputs; requires stage-read permission on its workspace.",
     },
+    "rpc.tournament.stage_bracket_preview": {
+        "summary": "Preview stage bracket",
+        "description": "Returns the bracket a stage would generate — the real generator's pairings, seed order, advancement edges and per-round best-of, with skeleton-local ids because nothing is written; wired teams appear by name, an unseeded playoff is projected from the preceding group stage. Requires stage-read permission on its workspace.",
+    },
     "rpc.tournament.stage_merge": {
         "summary": "Merge group stages",
         "description": "Merges source group stages into a target stage; requires stage-update permission on its workspace.",

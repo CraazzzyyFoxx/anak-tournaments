@@ -120,6 +120,7 @@ import {
   AdminMatchesQuery,
   AuditLogQuery,
   AuditLogRead,
+  StageBracketPreviewMatch,
 } from "@/types/admin.types";
 
 /**
@@ -1455,6 +1456,18 @@ class AdminService {
     const response = await apiFetch(`/api/v1/admin/stages/${stageId}/planned-rounds`);
     const data: { rounds: number[] } = await response.json();
     return data.rounds;
+  }
+
+  /**
+   * The bracket `stageId` would generate, straight from the generator: real
+   * pairings, seed order, advancement edges and per-round best-of, with
+   * skeleton-local ids because nothing is written. Empty when the stage is not
+   * a bracket, or fewer than two teams are wired in and none are projected.
+   */
+  async getStageBracketPreview(stageId: number): Promise<StageBracketPreviewMatch[]> {
+    const response = await apiFetch(`/api/v1/admin/stages/${stageId}/bracket-preview`);
+    const data: { matches: StageBracketPreviewMatch[] } = await response.json();
+    return data.matches;
   }
 
   async mergeGroupStages(stageId: number, data: StageMergeGroupStagesInput): Promise<Stage> {

@@ -1,9 +1,42 @@
-import type { Encounter } from "@/types/encounter.types";
-import type { StageType } from "@/types/tournament.types";
+import type { EncounterSlotSource, Score } from "@/types/encounter.types";
+import type { Team } from "@/types/team.types";
+import type { EncounterResultStatus, StageType } from "@/types/tournament.types";
+
+/**
+ * What the bracket needs from a match — every field the layout, the helpers and
+ * the card read, and nothing else.
+ *
+ * `Encounter` satisfies it structurally, and so does a match that has no
+ * encounter row yet: the admin bracket preview draws the generator's own
+ * skeleton (`GET /admin/stages/{id}/bracket-preview`) through the same view, so
+ * the shape an organizer configures is the shape that will be generated.
+ */
+export interface BracketMatch {
+  id: number;
+  name?: string | null;
+  round: number;
+  status: string;
+  score: Score;
+  best_of?: number | null;
+  home_team_id: number;
+  away_team_id: number;
+  home_team?: Team | null;
+  away_team?: Team | null;
+  /** Only read by the interactive footer, which a preview does not render. */
+  tournament_id?: number;
+  result_status?: EncounterResultStatus | null;
+  scheduled_at?: Date | string | null;
+  started_at?: Date | string | null;
+  ended_at?: Date | string | null;
+  stage_item_id?: number | null;
+  challonge_id?: number | null;
+  /** Empty on a bracket whose advancement edges were never recorded. */
+  sources?: EncounterSlotSource[];
+}
 
 export interface RoundGroup {
   round: number;
-  matches: Encounter[];
+  matches: BracketMatch[];
 }
 
 export interface SlotHint {
@@ -11,7 +44,7 @@ export interface SlotHint {
   away: string | null;
 }
 
-function sortMatches(matches: Encounter[]) {
+function sortMatches(matches: BracketMatch[]) {
   return [...matches].sort((left, right) => {
     const leftKey = left.stage_item_id ?? left.challonge_id ?? left.id;
     const rightKey = right.stage_item_id ?? right.challonge_id ?? right.id;
@@ -20,8 +53,8 @@ function sortMatches(matches: Encounter[]) {
   });
 }
 
-export function buildRoundGroups(matches: Encounter[]): RoundGroup[] {
-  const groups = new Map<number, Encounter[]>();
+export function buildRoundGroups(matches: BracketMatch[]): RoundGroup[] {
+  const groups = new Map<number, BracketMatch[]>();
 
   for (const match of matches) {
     const existing = groups.get(match.round) ?? [];
@@ -97,7 +130,7 @@ function getFinalRounds(
   return positive.slice(-Math.max(1, trailingSingleMatchRounds - 1));
 }
 
-export function getDoubleEliminationFinalRounds(encounters: Encounter[]): Set<number> {
+export function getDoubleEliminationFinalRounds(encounters: BracketMatch[]): Set<number> {
   const matchesPerRound = new Map<number, number>();
   for (const match of encounters) {
     matchesPerRound.set(match.round, (matchesPerRound.get(match.round) ?? 0) + 1);
@@ -222,7 +255,7 @@ function inferBracketSlotHints(
 ): Map<number, SlotHint> {
   const hints = new Map<number, SlotHint>();
 
-  function label(match: Encounter | undefined, prefix: "W" | "L") {
+  function label(match: BracketMatch | undefined, prefix: "W" | "L") {
     if (!match) {
       return null;
     }
@@ -231,7 +264,7 @@ function inferBracketSlotHints(
     return matchNumber != null ? `${prefix} M${matchNumber}` : null;
   }
 
-  function setHint(target: Encounter, slot: keyof SlotHint, value: string | null) {
+  function setHint(target: BracketMatch, slot: keyof SlotHint, value: string | null) {
     if (!value) {
       return;
     }
