@@ -61,10 +61,18 @@ export const SEGMENT_LABELS: Record<string, string> = {
   preview: "Preview access",
   danger: "Danger zone",
   branding: "Branding",
-  visibility: "Visibility & SEO",
+  // "Visibility & SEO" no longer describes it: the SEO text now sits with the
+  // subdomain and the custom domain, where "what does this workspace answer
+  // on" is decided.
+  visibility: "Visibility",
   domain: "Domain",
   divisions: "Divisions",
-  statuses: "Balancer statuses",
+  // `/admin/settings/divisions/v/12` — the segment is `v` only because the
+  // route is short enough to type; kebab→Title would render it as "V".
+  v: "Version",
+  // Registration AND balancer scopes now live in one table, so the label cannot
+  // name just one of them.
+  statuses: "Player statuses",
   "sub-roles": "Sub-roles",
   subscriptions: "Subscriptions",
   import: "Import",

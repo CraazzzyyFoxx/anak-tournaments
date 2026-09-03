@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-// D10: rank collection config and rank mapping moved to /admin/rank (Settings tab).
-export default function AdminSettingsRedirect() {
-  redirect("/admin/rank");
+/** The hub root is not a screen: the rail's first section is. */
+export default function WorkspaceSettingsIndex() {
+  redirect("/admin/settings/general");
 }
