@@ -20,6 +20,8 @@ __all__ = (
     "OwalStandings",
     "TournamentPaginationSortSearchQueryParams",
     "TournamentPaginationSortSearchParams",
+    "TournamentFacets",
+    "TournamentFacetsQueryParams",
     "LeaguePlayerStack",
 )
 
@@ -43,6 +45,12 @@ class TournamentRead(BaseRead):
     is_league: bool
     is_finished: bool
     is_hidden: bool = False
+    # Branding uploaded through the dedicated image subjects, never through
+    # `TournamentUpdate` (issue #95): the cover is the wide page banner, the logo
+    # the square mark. Both nullable — a tournament with neither renders the
+    # gradient fallback.
+    cover_image_url: str | None = None
+    logo_url: str | None = None
     team_formation: str = "balancer"
     status: enums.TournamentStatus
     start_date: datetime
@@ -111,17 +119,66 @@ class OwalStandings(BaseModel):
 
 class TournamentPaginationSortSearchQueryParams(
     pagination.PaginationSortSearchQueryParams[
-        typing.Literal["id", "name", "start_date", "end_date", "similarity:name"]
+        typing.Literal[
+            "id", "name", "start_date", "end_date", "similarity:name", "participants_count"
+        ]
     ]
 ):
     is_league: bool | None = None
     workspace_id: int | None = None
+    status: enums.TournamentStatus | None = None
 
 
 @dataclass
 class TournamentPaginationSortSearchParams(pagination.PaginationSortSearchParams):
     is_league: bool | None = None
     workspace_id: int | None = None
+    status: enums.TournamentStatus | None = None
+
+    @classmethod
+    def from_query_params(cls, query_params: pagination.PaginationQueryParams):
+        """Same as the base, except ``fields`` is the SERVER's decision.
+
+        ``PaginationSortSearchParams.apply_search`` (shared/core/pagination.py)
+        feeds each entry of ``fields`` straight into
+        ``model.depth_get_column(...)`` and ILIKEs it, and 400s when ``query`` is
+        given without any. A client-supplied list is therefore both an arbitrary
+        column read through ILIKE and a 500 on the first typo, while an empty one
+        turns every public search into an error page. Tournament search means
+        searching the name, so the name is what the server searches.
+        """
+        data = query_params.model_dump()
+        data["fields"] = ["name"]
+        return cls(**data)
+
+
+class TournamentFacetsQueryParams(BaseModel):
+    """Query model for ``rpc.tournament.tournaments_facets``.
+
+    The same filter axes ``TournamentPaginationSortSearchQueryParams`` carries,
+    minus pagination and sorting: counting a facet consumes no page.
+    """
+
+    workspace_id: int | None = None
+    status: enums.TournamentStatus | None = None
+    is_league: bool | None = None
+    query: str = ""
+
+
+class TournamentFacets(BaseModel):
+    """Chip counters for the public tournaments page.
+
+    ``total``/``live`` are unconditional platform facts (see
+    ``TournamentFlowsService.get_facets``); ``by_status`` and ``league``/
+    ``standard`` each ignore their own filter so a selected chip never zeroes its
+    siblings.
+    """
+
+    total: int
+    live: int
+    by_status: dict[enums.TournamentStatus, int]
+    league: int
+    standard: int
 
 
 class LeaguePlayerStack(BaseModel):

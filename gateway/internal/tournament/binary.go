@@ -22,10 +22,10 @@ const (
 
 // Binary serves the tournament-service endpoints the generic JSON edge.Dispatcher
 // can't: the multipart image uploads, base64-encoded into the RPC body — the
-// admin team logo and the captain-owned registered-team crest. Both paired
-// deletes are plain JSON and ride the typed dispatcher (admin_routes.go /
-// public_routes.go). Permission is enforced in the worker; the gateway only
-// injects the resolved identity.
+// admin team logo, the captain-owned registered-team crest and the admin
+// tournament cover/logo. Every paired delete is plain JSON and rides the typed
+// dispatcher (admin_routes.go / public_routes.go). Permission is enforced in the
+// worker; the gateway only injects the resolved identity.
 type Binary struct {
 	rpc      edge.RPCCaller
 	identity edge.IdentityResolver
@@ -64,6 +64,22 @@ func (b *Binary) RegistrationTeamImageUpload(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	b.relayJSON(w, r, "rpc.tournament.regteam_image_upload", data, http.StatusOK)
+}
+
+// TournamentImageUpload: POST /api/v1/admin/tournaments/{tournament_id}/images/{slot}
+// (tournament.update in the worker). Unlike its siblings the target picture also
+// travels in the path: {slot} is "cover" or "logo", relayed verbatim so the
+// worker owns both the permission check and the slot validation — the gateway
+// never has to learn which slots exist.
+func (b *Binary) TournamentImageUpload(w http.ResponseWriter, r *http.Request) {
+	data, ok := b.identityInto(w, r, map[string]any{"id": r.PathValue("tournament_id"), "slot": r.PathValue("slot")})
+	if !ok {
+		return
+	}
+	if !b.attachFile(w, r, data) {
+		return
+	}
+	b.relayJSON(w, r, "rpc.tournament.tournaments.image_upload", data, http.StatusOK)
 }
 
 // identityInto resolves the bearer identity (required) and injects it into data.

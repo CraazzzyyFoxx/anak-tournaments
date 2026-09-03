@@ -300,11 +300,12 @@ func run() error {
 	// pattern under ServeMux, so it rides the subtree matcher. The prefix is less
 	// specific than PublicWriteRoutes' precise patterns, which still win.
 	mux.Handle("/api/v1/registration-teams/", tournamentEdge.Subtree(tournament.RegistrationTeamSubtreeRoutes))
-	// Team logo + registered-team crest uploads: multipart -> base64 RPC body;
-	// the JSON dispatcher can't do it.
+	// Team logo, registered-team crest and tournament cover/logo uploads:
+	// multipart -> base64 RPC body; the JSON dispatcher can't do it.
 	tournamentBinary := tournament.NewBinary(rpcClient, resolver.Resolve, logger)
 	mux.HandleFunc("POST /api/v1/admin/teams/{team_id}/image", tournamentBinary.TeamImageUpload)
 	mux.HandleFunc("POST /api/v1/registration-teams/{team_id}/image", tournamentBinary.RegistrationTeamImageUpload)
+	mux.HandleFunc("POST /api/v1/admin/tournaments/{tournament_id}/images/{slot}", tournamentBinary.TournamentImageUpload)
 	// analytics-service: typed RPC reads + job-control (the rest of /api/analytics
 	// still proxies). Specific patterns win over the proxy.
 	analyticsEdge := edge.New(rpcClient, logger, resolver.Resolve)

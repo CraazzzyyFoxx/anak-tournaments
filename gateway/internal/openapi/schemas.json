@@ -7463,7 +7463,8 @@
               "name",
               "start_date",
               "end_date",
-              "similarity:name"
+              "similarity:name",
+              "participants_count"
             ],
             "title": "Sort",
             "type": "string"
@@ -7527,6 +7528,21 @@
             ],
             "default": null,
             "title": "Workspace Id"
+          }
+        },
+        {
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/tournament.TournamentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         }
       ],
@@ -8365,6 +8381,88 @@
         "ref": "tournament.TournamentRead"
       },
       "summary": "Transition tournament status"
+    },
+    "rpc.tournament.tournaments.image_delete": {
+      "description": "Removes a tournament's cover or logo from S3 and clears its URL; the slot path segment is 'cover' or 'logo'; requires tournament-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.TournamentRead"
+      },
+      "summary": "Delete tournament image"
+    },
+    "rpc.tournament.tournaments.image_upload": {
+      "description": "Uploads a tournament's cover or logo to S3 and stores its URL; the slot path segment is 'cover' or 'logo'; requires tournament-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.TournamentRead"
+      },
+      "summary": "Upload tournament image"
+    },
+    "rpc.tournament.tournaments_facets": {
+      "description": "Returns chip counters for the tournaments list: unfiltered total/live plus per-status and league/standard counts, each axis counted without its own filter.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Workspace Id"
+          }
+        },
+        {
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/tournament.TournamentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        {
+          "name": "is_league",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is League"
+          }
+        },
+        {
+          "name": "query",
+          "required": false,
+          "schema": {
+            "default": "",
+            "title": "Query",
+            "type": "string"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.TournamentFacets"
+      },
+      "summary": "Tournament facet counts"
     }
   },
   "schemas": {
@@ -25844,6 +25942,91 @@
       "title": "AdminMatchesQueryParams",
       "type": "object"
     },
+    "tournament.AdmissionRead": {
+      "properties": {
+        "blockers": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.RequirementVerdictRead"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "checked_in": {
+          "default": false,
+          "title": "Checked In",
+          "type": "boolean"
+        },
+        "decision": {
+          "enum": [
+            "admitted",
+            "pending_check_in",
+            "not_admitted"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "overridden": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.RequirementVerdictRead"
+          },
+          "title": "Overridden",
+          "type": "array"
+        },
+        "ready": {
+          "default": false,
+          "title": "Ready",
+          "type": "boolean"
+        },
+        "requirements": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.RequirementVerdictRead"
+          },
+          "title": "Requirements",
+          "type": "array"
+        }
+      },
+      "required": [
+        "decision"
+      ],
+      "title": "AdmissionRead",
+      "type": "object"
+    },
+    "tournament.AdmissionReasonRead": {
+      "description": "Why a requirement is not satisfied, and who can fix it.\n\n``code`` is a stable machine value; the client renders\n``admission.reason.{code}`` and falls back to the raw code, so a provider added\nlater is still explainable without a deploy on both sides.\n\n``actor`` is what makes the aggregate readable: forty ``undetermined`` rows are\neither forty players who never linked Discord or one broken role mapping, and\nthe code alone cannot tell an organizer which of those to go and fix.",
+      "properties": {
+        "actor": {
+          "enum": [
+            "player",
+            "organizer",
+            "system"
+          ],
+          "title": "Actor",
+          "type": "string"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subject"
+        }
+      },
+      "required": [
+        "code",
+        "actor"
+      ],
+      "title": "AdmissionReasonRead",
+      "type": "object"
+    },
     "tournament.BalancerGoogleSheetFeedRead": {
       "properties": {
         "auto_sync_enabled": {
@@ -26998,6 +27181,9 @@
           ],
           "default": null,
           "title": "Admin Notes"
+        },
+        "admission": {
+          "$ref": "#/components/schemas/tournament.AdmissionRead"
         },
         "balancer_profile_overridden_at": {
           "anyOf": [
@@ -34978,6 +35164,9 @@
     },
     "tournament.RegistrationRead": {
       "properties": {
+        "admission": {
+          "$ref": "#/components/schemas/tournament.AdmissionRead"
+        },
         "balancer_status": {
           "default": "not_in_balancer",
           "title": "Balancer Status",
@@ -35753,6 +35942,51 @@
         "label"
       ],
       "title": "ReportCustomFieldDefinition",
+      "type": "object"
+    },
+    "tournament.RequirementVerdictRead": {
+      "properties": {
+        "detail": {
+          "additionalProperties": true,
+          "title": "Detail",
+          "type": "object"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.AdmissionReasonRead"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "stage": {
+          "enum": [
+            "registration",
+            "check_in"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "satisfied",
+            "blocked",
+            "undetermined",
+            "not_applicable"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "state",
+        "stage"
+      ],
+      "title": "RequirementVerdictRead",
       "type": "object"
     },
     "tournament.RoleTierRead": {
@@ -38666,6 +38900,93 @@
       "title": "TournamentCreate",
       "type": "object"
     },
+    "tournament.TournamentFacets": {
+      "description": "Chip counters for the public tournaments page.\n\n``total``/``live`` are unconditional platform facts (see\n``TournamentFlowsService.get_facets``); ``by_status`` and ``league``/\n``standard`` each ignore their own filter so a selected chip never zeroes its\nsiblings.",
+      "properties": {
+        "by_status": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "propertyNames": {
+            "$ref": "#/components/schemas/tournament.TournamentStatus"
+          },
+          "title": "By Status",
+          "type": "object"
+        },
+        "league": {
+          "title": "League",
+          "type": "integer"
+        },
+        "live": {
+          "title": "Live",
+          "type": "integer"
+        },
+        "standard": {
+          "title": "Standard",
+          "type": "integer"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "live",
+        "by_status",
+        "league",
+        "standard"
+      ],
+      "title": "TournamentFacets",
+      "type": "object"
+    },
+    "tournament.TournamentFacetsQueryParams": {
+      "description": "Query model for ``rpc.tournament.tournaments_facets``.\n\nThe same filter axes ``TournamentPaginationSortSearchQueryParams`` carries,\nminus pagination and sorting: counting a facet consumes no page.",
+      "properties": {
+        "is_league": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is League"
+        },
+        "query": {
+          "default": "",
+          "title": "Query",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.TournamentStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        }
+      },
+      "title": "TournamentFacetsQueryParams",
+      "type": "object"
+    },
     "tournament.TournamentLinkCreate": {
       "properties": {
         "is_active": {
@@ -38917,10 +39238,22 @@
             "name",
             "start_date",
             "end_date",
-            "similarity:name"
+            "similarity:name",
+            "participants_count"
           ],
           "title": "Sort",
           "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.TournamentStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "workspace_id": {
           "anyOf": [
@@ -39004,6 +39337,18 @@
           ],
           "title": "Challonge Slug"
         },
+        "cover_image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cover Image Url"
+        },
         "description": {
           "anyOf": [
             {
@@ -39071,6 +39416,18 @@
           },
           "title": "Links",
           "type": "array"
+        },
+        "logo_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Logo Url"
         },
         "loss_points": {
           "default": 0.0,

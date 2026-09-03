@@ -40,6 +40,12 @@ def _loaded_relationship(model: typing.Any, name: str) -> typing.Any | None:
 _StageReadT = typing.TypeVar("_StageReadT", schemas.StageSummaryRead, schemas.StageRead)
 
 
+#: "Live right now" for the page hero: a tournament in group play or already in
+#: its bracket. Both are matches being played, which is what a visitor reads the
+#: counter as — `check_in` is not.
+_LIVE_STATUSES = (enums.TournamentStatus.LIVE, enums.TournamentStatus.PLAYOFFS)
+
+
 def _apply_stage_challonge(
     stage_read: _StageReadT,
     stage_id: int,
@@ -169,6 +175,8 @@ class TournamentFlowsService:
             is_league=tournament.is_league,
             is_finished=tournament.is_finished,
             is_hidden=tournament.is_hidden,
+            cover_image_url=tournament.cover_image_url,
+            logo_url=tournament.logo_url,
             team_formation=tournament.team_formation,
             status=tournament.status,
             name=tournament.name,
@@ -314,6 +322,88 @@ class TournamentFlowsService:
             query = query.where(models.Tournament.is_league.is_(is_league))
         result = await session.execute(query)
         return [schemas.LookupItem(id=row.id, name=row.name) for row in result.all()]
+
+    async def get_facets(
+        self,
+        session: AsyncSession,
+        *,
+        viewer: AuthUser | None = None,
+        workspace_id: int | None = None,
+        status: enums.TournamentStatus | None = None,
+        is_league: bool | None = None,
+        query: str = "",
+    ) -> schemas.TournamentFacets:
+        """Chip counters for the public tournaments page (rpc.tournament.tournaments_facets).
+
+        **Each axis is counted without its own filter.** ``by_status`` applies
+        ``is_league`` and the search but not ``status``; ``league``/``standard``
+        apply ``status`` and the search but not ``is_league``. Counting an axis
+        *with* its own filter would zero every sibling chip the moment one is
+        picked — the UI would show "registration 5, everything else 0" and offer
+        no click that leads back out of the filter.
+
+        ``total`` and ``live`` are deliberately unconditional (visibility and
+        workspace only): the page hero states a platform-wide fact ("42
+        tournaments, 3 live right now"), not a property of the visitor's current
+        filter selection, which would make the headline flicker on every chip.
+
+        Lives here rather than in ``TournamentService`` for the same reason
+        :meth:`lookup` does: the whole method is "predicate in, schema out", and
+        splitting it would leave a service method handing five loose scalars and a
+        dict back for reassembly.
+
+        Search matches the same way ``PaginationSortSearchParams.apply_search``
+        matches for the list itself — ILIKE on ``name``. Any divergence here shows
+        up as counters that disagree with the rows underneath them.
+        """
+        base = visible_tournaments_predicate(viewer)
+        scope = [base] if workspace_id is None else [base, models.Tournament.workspace_id == workspace_id]
+        search = [models.Tournament.name.ilike(f"%{query}%")] if query else []
+        league = [] if is_league is None else [models.Tournament.is_league.is_(is_league)]
+        status_filter = [] if status is None else [models.Tournament.status == status]
+
+        status_rows = await session.execute(
+            sa.select(models.Tournament.status, sa.func.count(models.Tournament.id))
+            .where(*scope, *search, *league)
+            .group_by(models.Tournament.status)
+        )
+        # Every member present, always: an absent key would force each client to
+        # re-derive "this status exists but has none" from the enum itself.
+        by_status = {member: 0 for member in enums.TournamentStatus}
+        for row_status, count in status_rows.all():
+            by_status[enums.TournamentStatus(row_status)] = int(count)
+
+        league_rows = await session.execute(
+            sa.select(models.Tournament.is_league, sa.func.count(models.Tournament.id))
+            .where(*scope, *search, *status_filter)
+            .group_by(models.Tournament.is_league)
+        )
+        league_count = 0
+        standard_count = 0
+        for is_league_value, count in league_rows.all():
+            if is_league_value:
+                league_count = int(count)
+            else:
+                standard_count = int(count)
+
+        totals = (
+            await session.execute(
+                sa.select(
+                    sa.func.count(models.Tournament.id),
+                    sa.func.count(models.Tournament.id).filter(
+                        models.Tournament.status.in_(_LIVE_STATUSES)
+                    ),
+                ).where(*scope)
+            )
+        ).one()
+
+        return schemas.TournamentFacets(
+            total=int(totals[0]),
+            live=int(totals[1]),
+            by_status=by_status,
+            league=league_count,
+            standard=standard_count,
+        )
 
     async def get_stages_read(self, session: AsyncSession, tournament_id: int) -> list[schemas.StageRead]:
         """Ordered stages (with items/inputs) for a tournament (rpc.tournament.get_stages)."""

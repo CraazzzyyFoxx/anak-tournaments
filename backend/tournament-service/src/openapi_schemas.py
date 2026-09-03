@@ -55,6 +55,9 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.list_tournaments": Op(
         response=Paginated[schemas.TournamentRead], query=schemas.TournamentPaginationSortSearchQueryParams
     ),
+    "rpc.tournament.tournaments_facets": Op(
+        response=schemas.TournamentFacets, query=schemas.TournamentFacetsQueryParams
+    ),
     "rpc.tournament.list_encounters": Op(
         response=Paginated[schemas.EncounterRead], query=schemas.EncounterSearchQueryParams
     ),
@@ -123,6 +126,9 @@ OPERATIONS: dict[str, Op] = {
     # ── bespoke: team image (binary upload + delete) ───────────────────────
     "rpc.tournament.teams.image_upload": Op(response=schemas.TeamRead),
     "rpc.tournament.teams.image_delete": Op(response=schemas.TeamRead),
+    # ── bespoke: tournament cover/logo (binary upload + delete) ────────────
+    "rpc.tournament.tournaments.image_upload": Op(response=schemas.TournamentRead),
+    "rpc.tournament.tournaments.image_delete": Op(response=schemas.TournamentRead),
     # ── bespoke: registered-team image (binary upload + delete) ────────────
     "rpc.tournament.regteam_image_upload": Op(response=reg_team_schemas.RegistrationTeamRead),
     "rpc.tournament.regteam_image_delete": Op(response=reg_team_schemas.RegistrationTeamRead),

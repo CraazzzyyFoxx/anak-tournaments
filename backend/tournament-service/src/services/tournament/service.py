@@ -10,7 +10,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.repository import TournamentRepository
 from src import models, schemas
-from src.core import enums, utils
+from src.core import enums, pagination, utils
 
 OWAL_SEASON_PATTERN = re.compile(r"^OWAL Season (\d+)$")
 
@@ -28,6 +28,11 @@ def _parse_owal_season_name(tournament_name: str) -> tuple[int, str] | None:
     if not match:
         return None
     return int(match.group(1)), season_name
+
+
+def _is_desc(order: typing.Any) -> bool:
+    """``PaginationSortParams.order`` is either the enum or the bare literal."""
+    return order == pagination.SortOrder.DESC or order == "desc"
 
 
 def tournament_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
@@ -89,7 +94,27 @@ class TournamentService:
         """
         query = self.tournament_repo.select().options(*tournament_entities(params.entities))
         total_query = sa.select(sa.func.count(models.Tournament.id))
-        query = params.apply_pagination_sort(query, models.Tournament)
+        if params.sort == "participants_count":
+            # Not a column: the count lives in `player`, so `apply_pagination_sort`
+            # (which resolves the sort through `Tournament.depth_get_column`) cannot
+            # express it. Same grouped-subquery shape as `get_history_tournaments`.
+            players_sq = (
+                sa.select(
+                    models.Player.tournament_id,
+                    sa.func.count(models.Player.id).label("n"),
+                )
+                .group_by(models.Player.tournament_id)
+                .subquery()
+            )
+            n = sa.func.coalesce(players_sq.c.n, 0)
+            query = query.join(players_sq, players_sq.c.tournament_id == models.Tournament.id, isouter=True)
+            # coalesce, not the raw column: the outer join leaves NULL for a
+            # tournament with no players, and NULL ordering in Postgres puts those
+            # rows FIRST on `desc()` — the exact opposite of "most participants".
+            query = query.order_by(n.desc() if _is_desc(params.order) else n.asc())
+            query = params.apply_pagination(query)
+        else:
+            query = params.apply_pagination_sort(query, models.Tournament)
         query = params.apply_search(query, models.Tournament)
         total_query = params.apply_search(total_query, models.Tournament)
 
@@ -101,11 +126,26 @@ class TournamentService:
             query = query.where(models.Tournament.workspace_id == params.workspace_id)
             total_query = total_query.where(models.Tournament.workspace_id == params.workspace_id)
 
+        if params.status is not None:
+            # Applied to the count query too, like every other filter here: a
+            # filter missing from the total makes `total` describe a different set
+            # than `results`, and the client's "load more" decision is derived
+            # from exactly that comparison.
+            query = query.where(models.Tournament.status == params.status)
+            total_query = total_query.where(models.Tournament.status == params.status)
+
         # Hidden-tournament visibility filter (issue #115): applied to BOTH the page
         # and count query so hidden tournaments never leak into results OR totals.
         if visibility is not None:
             query = query.where(visibility)
             total_query = total_query.where(visibility)
+
+        # Unconditional tie-breaker. Neither `start_date` nor the participant count
+        # is unique, and OFFSET/LIMIT over a non-unique ORDER BY is free to return
+        # a row on page 2 that already appeared on page 1 (and drop another
+        # entirely). Invisible while the client fetched everything in one
+        # `per_page=-1` request; guaranteed to bite as soon as it pages.
+        query = query.order_by(models.Tournament.id.desc())
 
         result = await session.execute(query)
         total_result = await session.execute(total_query)

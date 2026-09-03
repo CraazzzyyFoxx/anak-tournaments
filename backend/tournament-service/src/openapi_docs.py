@@ -74,6 +74,10 @@ DOCS: dict[str, dict] = {
         "summary": "List tournaments",
         "description": "Returns a paginated, sortable, searchable list of tournaments.",
     },
+    "rpc.tournament.tournaments_facets": {
+        "summary": "Tournament facet counts",
+        "description": "Returns chip counters for the tournaments list: unfiltered total/live plus per-status and league/standard counts, each axis counted without its own filter.",
+    },
     "rpc.tournament.list_encounters": {
         "summary": "List encounters",
         "description": "Returns a paginated list of encounters for the search filters, with viewer-scoped fields resolved from the optional identity.",
@@ -111,6 +115,15 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.admin.delete#tournament": {
         "summary": "Delete tournament",
         "description": "Deletes a tournament by id (204 no body); requires tournament-delete permission on its workspace.",
+    },
+    # ── bespoke: tournament cover/logo (binary upload + delete) ────────────
+    "rpc.tournament.tournaments.image_upload": {
+        "summary": "Upload tournament image",
+        "description": "Uploads a tournament's cover or logo to S3 and stores its URL; the slot path segment is 'cover' or 'logo'; requires tournament-update permission on its workspace.",
+    },
+    "rpc.tournament.tournaments.image_delete": {
+        "summary": "Delete tournament image",
+        "description": "Removes a tournament's cover or logo from S3 and clears its URL; the slot path segment is 'cover' or 'logo'; requires tournament-update permission on its workspace.",
     },
     # ── generic CRUD engine: team ──────────────────────────────────────────
     "rpc.tournament.admin.create#team": {
