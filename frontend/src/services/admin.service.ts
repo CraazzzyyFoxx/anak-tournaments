@@ -8,7 +8,8 @@ import {
   StageItemInput,
   StageItemType,
   PickBanKind,
-  PickBanState
+  PickBanState,
+  TournamentImageSlot
 } from "@/types/tournament.types";
 import { Team, Player } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
@@ -401,6 +402,38 @@ class AdminService {
     const response = await apiFetch(`/api/v1/admin/teams/${teamId}/image`, {
       method: "DELETE"
     });
+    return response.json();
+  }
+
+  // ─── Tournament images ─────────────────────────────────────────────────────
+
+  async uploadTournamentImage(
+    tournamentId: number,
+    slot: TournamentImageSlot,
+    file: File
+  ): Promise<Tournament> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiFetch(
+      `/api/v1/admin/tournaments/${tournamentId}/images/${slot}`,
+      {
+        method: "POST",
+        body: formData
+      }
+    );
+    return response.json();
+  }
+
+  async deleteTournamentImage(
+    tournamentId: number,
+    slot: TournamentImageSlot
+  ): Promise<Tournament> {
+    const response = await apiFetch(
+      `/api/v1/admin/tournaments/${tournamentId}/images/${slot}`,
+      {
+        method: "DELETE"
+      }
+    );
     return response.json();
   }
 

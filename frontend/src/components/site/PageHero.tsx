@@ -34,6 +34,15 @@ interface HeroFrameProps {
   variant?: "default" | "profile";
   /** Role hue for the `"profile"` wash. Omit to skip the tint. */
   roleTint?: HeroRoleTint;
+  /**
+   * Optional banner image behind the hero (a tournament cover). Sits UNDER the
+   * grid and glow so the frame keeps its identity, and carries its own scrim:
+   * the hero's text tokens are tuned for `--aqt-bg`, and a bright banner would
+   * otherwise drop the title below the 4.5:1 contrast floor. The scrim is a
+   * left-weighted gradient because the copy lives in the left column, so the
+   * right side stays legible as an image.
+   */
+  coverUrl?: string | null;
 }
 
 /** The decorative shell only — for heroes with bespoke inner content. */
@@ -42,6 +51,7 @@ export function HeroFrame({
   className,
   variant = "default",
   roleTint,
+  coverUrl,
 }: Readonly<HeroFrameProps>) {
   const isProfile = variant === "profile";
   return (
@@ -66,6 +76,26 @@ export function HeroFrame({
           className="pointer-events-none absolute inset-x-0 top-0 z-[2] h-0.5 bg-[color:var(--aqt-teal)]"
         />
       )}
+      {/* Cover banner + its contrast scrim, beneath every decorative layer. */}
+      {coverUrl ? (
+        <span aria-hidden className="pointer-events-none absolute inset-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={coverUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover"
+          />
+          <span
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(90deg, color-mix(in srgb, var(--aqt-bg) 92%, transparent) 0%, color-mix(in srgb, var(--aqt-bg) 82%, transparent) 45%, color-mix(in srgb, var(--aqt-bg) 55%, transparent) 100%)",
+            }}
+          />
+        </span>
+      ) : null}
       {/* faint square grid, radially masked so it fades out */}
       <span
         aria-hidden
@@ -119,6 +149,8 @@ interface PageHeroProps {
   titleClassName?: string;
   /** Vertical alignment of the two columns. */
   align?: "start" | "end" | "center";
+  /** Banner image behind the hero — see `HeroFrameProps.coverUrl`. */
+  coverUrl?: string | null;
 }
 
 export function PageHero({
@@ -132,9 +164,10 @@ export function PageHero({
   className,
   titleClassName,
   align = "end",
+  coverUrl,
 }: Readonly<PageHeroProps>) {
   return (
-    <HeroFrame className={className}>
+    <HeroFrame className={className} coverUrl={coverUrl}>
       <div
         className={cn(
           "grid gap-8 px-6 py-8 md:px-10 md:py-9",

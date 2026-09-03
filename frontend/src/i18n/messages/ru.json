@@ -1570,6 +1570,21 @@
         "participants": "Больше участников"
       }
     },
+    "view": {
+      "label": "Вид",
+      "cards": "Плитками",
+      "list": "Списком"
+    },
+    "footer": {
+      "unit": "турниров",
+      "loadMore": "Показать ещё",
+      "progress": "Показано {loaded} из {total, plural, one {# турнира} few {# турниров} many {# турниров} other {# турниров}}",
+      "error": "Не удалось загрузить ещё турниры. Проверьте соединение и попробуйте снова."
+    },
+    "card": {
+      "playersCount": "{count, plural, one {# игрок} few {# игрока} many {# игроков} other {# игроков}}",
+      "teamsCount": "{count, plural, one {# команда} few {# команды} many {# команд} other {# команд}}"
+    },
     "featured": {
       "liveRightNow": "Сейчас в эфире",
       "eventsCount": "{count, plural, one {# турнир} few {# турнира} many {# турниров} other {# турниров}}",

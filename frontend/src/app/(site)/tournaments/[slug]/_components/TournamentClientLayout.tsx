@@ -153,7 +153,27 @@ export default function TournamentClientLayout({
             <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
           </HeroCoord>
         }
-        title={tournament.name}
+        coverUrl={tournament.cover_image_url}
+        title={
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {/* Decorative: the tournament name stands right next to it, so an
+                alt text would read the same name twice. Plain `<img>` because
+                the URL points at the deployment's S3/MinIO host, which
+                `next/image` rejects unless it is in `remotePatterns`. */}
+            {tournament.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={tournament.logo_url}
+                alt=""
+                aria-hidden
+                loading="lazy"
+                decoding="async"
+                className="h-[0.8em] w-[0.8em] shrink-0 rounded-lg border border-[color:var(--aqt-border)] object-cover"
+              />
+            ) : null}
+            {tournament.name}
+          </span>
+        }
         meta={
           <>
             <span className={cn("status-pill", statusVariant)}>

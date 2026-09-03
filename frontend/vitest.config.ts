@@ -93,6 +93,11 @@ export default defineConfig({
       "src/app/(site)/tournaments/[slug]/_views/TournamentMapsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/TournamentParticipantsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/TournamentSchedulePage.behavior.test.tsx",
+      // The public list itself. File-level for the same mixed-runner reason as
+      // its `[slug]` neighbours above: `src/app/(site)/tournaments` also holds
+      // `bun:test` files, so a directory glob would drag them into vitest.
+      "src/app/(site)/tournaments/tournamentsList.behavior.test.tsx",
+      "src/app/(site)/tournaments/components/TournamentCard.behavior.test.tsx",
       "src/components/tournaments/**/*.test.ts",
       "src/components/pick-ban/**/*.test.ts",
       "src/components/pick-ban/**/*.test.tsx",

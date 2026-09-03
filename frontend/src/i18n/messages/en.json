@@ -1570,6 +1570,21 @@
         "participants": "Most participants"
       }
     },
+    "view": {
+      "label": "Layout",
+      "cards": "Card view",
+      "list": "List view"
+    },
+    "footer": {
+      "unit": "tournaments",
+      "loadMore": "Load more tournaments",
+      "progress": "Showing {loaded} of {total, plural, one {# tournament} other {# tournaments}}",
+      "error": "Couldn't load more tournaments. Check your connection and try again."
+    },
+    "card": {
+      "playersCount": "{count, plural, one {# player} other {# players}}",
+      "teamsCount": "{count, plural, one {# team} other {# teams}}"
+    },
     "featured": {
       "liveRightNow": "Live right now",
       "eventsCount": "{count, plural, one {# event} other {# events}}",

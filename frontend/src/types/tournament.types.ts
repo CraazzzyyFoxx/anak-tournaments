@@ -130,6 +130,29 @@ export interface Tournament {
    * responses still sitting in a client cache from before this field existed.
    */
   links?: TournamentLink[];
+  /** Wide banner for the tournament hero. Uploaded separately from the
+   * settings PATCH (see `adminService.uploadTournamentImage`). */
+  cover_image_url: string | null;
+  /** Square-ish mark shown beside the tournament name. */
+  logo_url: string | null;
+}
+
+/** Which of a tournament's two images an upload/delete targets. */
+export type TournamentImageSlot = "cover" | "logo";
+
+/**
+ * Counts behind the public tournaments filter bar. Each group is counted with
+ * the OTHER filters applied but its own dimension released, so a chip shows
+ * how many rows selecting it would yield rather than how many it yields now.
+ * `total`/`live` ignore every filter — they are the unfiltered headline.
+ */
+export interface TournamentFacets {
+  total: number;
+  /** `live` + `playoffs` combined: "matches happening right now". */
+  live: number;
+  by_status: Record<TournamentStatus, number>;
+  league: number;
+  standard: number;
 }
 
 // ─── Shared pick-ban vocabulary ─────────────────────────────────────────────

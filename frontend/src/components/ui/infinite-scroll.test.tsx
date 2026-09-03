@@ -209,4 +209,39 @@ describe("InfiniteScrollFooter", () => {
     expect(status?.textContent).toBe("Showing 60 of 60 logs");
     expect(loadMore(container)).toBeNull();
   });
+
+  it("lets a localized caller replace the built-in English progress and error copy", async () => {
+    // The public pages render through next-intl, so the defaults below are
+    // wrong there in any locale — the overrides must win outright, not append.
+    const { container, rerender } = await mount(
+      <InfiniteScrollFooter
+        loaded={12}
+        total={60}
+        unit="logs"
+        progressLabel={<span>Показано 12 из 60 турниров</span>}
+        errorLabel="Не удалось загрузить ещё."
+        hasNextPage={false}
+        isFetchingNextPage={false}
+        fetchNextPage={() => {}}
+      />
+    );
+
+    expect(container.querySelector("output")?.textContent).toBe("Показано 12 из 60 турниров");
+
+    await rerender(
+      <InfiniteScrollFooter
+        loaded={12}
+        total={60}
+        unit="logs"
+        progressLabel={<span>Показано 12 из 60 турниров</span>}
+        errorLabel="Не удалось загрузить ещё."
+        hasNextPage={false}
+        isFetchingNextPage={false}
+        fetchNextPage={() => {}}
+        isError
+      />
+    );
+
+    expect(container.querySelector("output")?.textContent).toBe("Не удалось загрузить ещё.");
+  });
 });

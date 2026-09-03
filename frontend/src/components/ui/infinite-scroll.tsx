@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -75,6 +75,13 @@ interface InfiniteScrollFooterProps extends InfiniteScrollOptions {
   /** Plural noun for the rows, e.g. "logs". */
   unit: string;
   loadMoreLabel?: string;
+  /**
+   * Replaces the built-in "Showing N of M unit" line. The defaults are English
+   * literals; a next-intl page passes its own translated node instead.
+   */
+  progressLabel?: ReactNode;
+  /** Replaces the built-in failure sentence. */
+  errorLabel?: string;
   className?: string;
 }
 
@@ -91,6 +98,8 @@ export function InfiniteScrollFooter({
   total,
   unit,
   loadMoreLabel,
+  progressLabel,
+  errorLabel,
   className,
   ...options
 }: Readonly<InfiniteScrollFooterProps>) {
@@ -98,9 +107,10 @@ export function InfiniteScrollFooter({
   const { hasNextPage, isFetchingNextPage, fetchNextPage, isError, disabled } = options;
 
   const progress =
-    total != null
+    progressLabel ??
+    (total != null
       ? `Showing ${loaded.toLocaleString()} of ${total.toLocaleString()} ${unit}`
-      : `Showing ${loaded.toLocaleString()} ${unit}`;
+      : `Showing ${loaded.toLocaleString()} ${unit}`);
 
   return (
     <div className={cn("flex flex-col items-center gap-2 pt-1", className)}>
@@ -108,7 +118,7 @@ export function InfiniteScrollFooter({
         className={cn("text-xs tabular-nums", isError ? "text-danger" : "text-muted-foreground")}
       >
         {isError
-          ? `Unable to load more ${unit}. Check your connection and try again.`
+          ? (errorLabel ?? `Unable to load more ${unit}. Check your connection and try again.`)
           : isFetchingNextPage
             ? `Loading more ${unit}…`
             : progress}

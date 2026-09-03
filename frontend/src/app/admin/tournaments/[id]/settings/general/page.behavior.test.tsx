@@ -10,12 +10,18 @@
 //      tournament recorded a full rewrite of its rules, schedule and scoring in
 //      the audit trail (`model_dump(exclude_unset=True)` records exactly the
 //      keys a PATCH sends).
+//
+// The branding block below is the exception to claim 2 and has its own
+// describe: the cover and the logo are multipart uploads to their own
+// endpoint, they apply immediately, and nothing in the save-bar flow covers
+// them.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Tournament } from "@/types/tournament.types";
+import { getTournamentWorkspaceQueryKeys } from "../../components/tournamentWorkspace.queryKeys";
 import GeneralSettingsPage from "./page";
 
 declare global {
@@ -26,12 +32,16 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const getTournament = vi.fn();
 const updateTournament = vi.fn();
 const setTournamentSchedule = vi.fn();
+const uploadTournamentImage = vi.fn();
+const deleteTournamentImage = vi.fn();
 
 vi.mock("@/services/admin.service", () => ({
   default: {
     getTournament: (...args: unknown[]) => getTournament(...args),
     updateTournament: (...args: unknown[]) => updateTournament(...args),
-    setTournamentSchedule: (...args: unknown[]) => setTournamentSchedule(...args)
+    setTournamentSchedule: (...args: unknown[]) => setTournamentSchedule(...args),
+    uploadTournamentImage: (...args: unknown[]) => uploadTournamentImage(...args),
+    deleteTournamentImage: (...args: unknown[]) => deleteTournamentImage(...args)
   }
 }));
 
@@ -94,11 +104,14 @@ const TOURNAMENT: Tournament = {
   registrations_count: 20,
   teams_count: 20,
   division_grid_version_id: null,
-  division_grid_version: null
+  division_grid_version: null,
+  cover_image_url: null,
+  logo_url: null
 };
 
 let container: HTMLDivElement;
 let root: Root;
+let client: QueryClient;
 
 async function settle(times = 4) {
   for (let turn = 0; turn < times; turn += 1) {
@@ -113,12 +126,11 @@ async function settle(times = 4) {
 async function render() {
   container = document.createElement("div");
   document.body.appendChild(container);
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   root = createRoot(container);
   await act(async () => {
     root.render(
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
-      >
+      <QueryClientProvider client={client}>
         <GeneralSettingsPage />
       </QueryClientProvider>
     );
@@ -145,11 +157,49 @@ function button(label: string) {
   );
 }
 
+/**
+ * The two image editors are told apart by their captions, not by document
+ * order: reordering the cards must not silently repoint a case at the other
+ * slot, which is the very mix-up the first branding case exists to catch.
+ */
+function slot(caption: "Cover banner" | "Logo") {
+  const label = [...container.querySelectorAll("span")].find(
+    (node) => node.textContent?.trim() === caption
+  );
+  const column = label?.parentElement ?? null;
+  return {
+    file: column?.querySelector<HTMLInputElement>('input[type="file"]') ?? null,
+    remove: column?.querySelector<HTMLButtonElement>('button[aria-label="Remove image"]') ?? null
+  };
+}
+
+function image(name: string) {
+  return new File(["binary"], name, { type: "image/png" });
+}
+
+/** Pick a file the way React's synthetic change layer sees the picker. */
+async function pick(input: HTMLInputElement, file: File) {
+  await act(async () => {
+    input.files = [file] as unknown as FileList;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await settle();
+}
+
+async function click(node: HTMLElement) {
+  await act(async () => {
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle();
+}
+
 beforeEach(() => {
   canUpdateTournament = true;
   getTournament.mockReset().mockResolvedValue(TOURNAMENT);
   updateTournament.mockReset().mockResolvedValue(TOURNAMENT);
   setTournamentSchedule.mockReset().mockResolvedValue(undefined);
+  uploadTournamentImage.mockReset().mockResolvedValue(TOURNAMENT);
+  deleteTournamentImage.mockReset().mockResolvedValue(TOURNAMENT);
 });
 
 afterEach(async () => {
@@ -165,6 +215,12 @@ describe("Settings › General", () => {
 
     expect(container.textContent).toContain("Not permitted");
     expect(container.querySelector("#settings-name")).toBeNull();
+    // The branding editors are behind the same grant: a refused section must
+    // not leave an upload surface behind, and no request may go out from it.
+    expect(container.querySelectorAll('input[type="file"]').length).toBe(0);
+    expect(container.querySelectorAll('button[aria-label="Remove image"]').length).toBe(0);
+    expect(uploadTournamentImage).not.toHaveBeenCalled();
+    expect(deleteTournamentImage).not.toHaveBeenCalled();
   });
 
   it("keeps the save bar away until something actually changed", async () => {
@@ -205,5 +261,58 @@ describe("Settings › General", () => {
 
     expect(container.querySelector<HTMLInputElement>("#settings-name")?.value).toBe("OWT 64");
     expect(updateTournament).not.toHaveBeenCalled();
+  });
+});
+
+describe("Settings › General › Branding", () => {
+  it("uploads to the slot whose editor was used, and not the other one", async () => {
+    await render();
+    const cover = image("cover.png");
+    const logo = image("logo.png");
+
+    await pick(slot("Cover banner").file!, cover);
+
+    expect(uploadTournamentImage).toHaveBeenCalledTimes(1);
+    expect(uploadTournamentImage).toHaveBeenCalledWith(64, "cover", cover);
+
+    await pick(slot("Logo").file!, logo);
+
+    expect(uploadTournamentImage).toHaveBeenCalledTimes(2);
+    expect(uploadTournamentImage).toHaveBeenLastCalledWith(64, "logo", logo);
+    // Spelled out because the failure mode is silent: a swapped slot overwrites
+    // the other image in S3 and looks exactly like a successful upload.
+    expect(uploadTournamentImage).not.toHaveBeenCalledWith(64, "cover", logo);
+    expect(uploadTournamentImage).not.toHaveBeenCalledWith(64, "logo", cover);
+  });
+
+  it("offers the delete only for the slot that has an image", async () => {
+    getTournament.mockResolvedValue({
+      ...TOURNAMENT,
+      cover_image_url: "https://s3.example/cover.png",
+      logo_url: null
+    } satisfies Tournament);
+    await render();
+
+    expect(container.querySelectorAll('button[aria-label="Remove image"]').length).toBe(1);
+    expect(slot("Logo").remove).toBeNull();
+
+    await click(slot("Cover banner").remove!);
+
+    expect(deleteTournamentImage).toHaveBeenCalledTimes(1);
+    expect(deleteTournamentImage).toHaveBeenCalledWith(64, "cover");
+  });
+
+  it("invalidates the tournament everywhere it is read once the upload lands", async () => {
+    await render();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+
+    await pick(slot("Cover banner").file!, image("cover.png"));
+
+    const invalidated = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
+    const keys = getTournamentWorkspaceQueryKeys(64);
+    // The admin hub's own copy, and the public tournament page that renders the
+    // same cover — refreshing only the first leaves the old banner up there.
+    expect(invalidated).toContain(JSON.stringify(keys.tournament));
+    expect(invalidated).toContain(JSON.stringify(keys.publicTournament));
   });
 });

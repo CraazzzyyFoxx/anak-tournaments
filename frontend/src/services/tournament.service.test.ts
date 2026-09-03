@@ -97,3 +97,99 @@ describe("tournamentService.getStages", () => {
     ]);
   });
 });
+
+// The two reads behind the public `/tournaments` page. Everything the page shows
+// is now decided server-side, so these query objects ARE the contract with
+// `rpc.tournament.list_tournaments` / `rpc.tournament.tournaments_facets`. The
+// page's own tests mock this service, which is exactly why the params it sends
+// need pinning here.
+describe("tournamentService.listTournaments", () => {
+  beforeEach(() => {
+    calls.length = 0;
+  });
+
+  it("sends paging, sort and the three filters the backend understands", async () => {
+    await tournamentService.listTournaments({
+      workspaceId: 7,
+      status: "live",
+      isLeague: false,
+      query: "spring",
+      sort: "participants_count",
+      order: "desc",
+      page: 3,
+      perPage: 12,
+    });
+
+    expect(calls).toEqual([
+      {
+        path: "/api/v1/tournaments",
+        options: {
+          query: {
+            page: 3,
+            per_page: 12,
+            sort: "participants_count",
+            order: "desc",
+            workspace_id: 7,
+            entities: ["stages", "participants_count", "teams_count"],
+            status: "live",
+            is_league: false,
+            query: "spring",
+          },
+        },
+      },
+    ]);
+  });
+
+  // `is_league: false` is a real filter and must survive; the absent ones must
+  // not travel at all. A present-but-null `status` would be a value the backend
+  // matches against, and an empty `query` would ILIKE '%%' on every row while
+  // making the request key differ from the unsearched one.
+  it("omits unset filters instead of sending nulls, and keeps is_league false", async () => {
+    await tournamentService.listTournaments({
+      workspaceId: null,
+      status: null,
+      isLeague: false,
+      query: "   ",
+    });
+
+    const query = calls[0].options?.query as Record<string, unknown>;
+    expect(query.status).toBeUndefined();
+    expect(query.query).toBeUndefined();
+    expect(query.is_league).toBe(false);
+    expect(query.page).toBe(1);
+    expect(query.sort).toBe("start_date");
+    expect(query.order).toBe("desc");
+  });
+});
+
+describe("tournamentService.getFacets", () => {
+  beforeEach(() => {
+    calls.length = 0;
+  });
+
+  // Same filter object as the list, minus paging: the counters describe the
+  // filtered set, so any divergence here would show chips that disagree with
+  // the rows beneath them.
+  it("sends exactly the list's filters and no paging", async () => {
+    await tournamentService.getFacets({
+      workspaceId: 7,
+      status: "registration",
+      isLeague: true,
+      query: " cup ",
+    });
+
+    expect(calls).toEqual([
+      {
+        path: "/api/v1/tournaments/facets",
+        options: {
+          query: {
+            workspace_id: 7,
+            status: "registration",
+            is_league: true,
+            query: "cup",
+          },
+        },
+      },
+    ]);
+  });
+});

@@ -1,5 +1,13 @@
 import { LookupItem, PaginatedResponse } from "@/types/pagination.types";
-import { OwalStack, OwalStandings, Stage, Standings, Tournament } from "@/types/tournament.types";
+import {
+  OwalStack,
+  OwalStandings,
+  Stage,
+  Standings,
+  Tournament,
+  TournamentFacets,
+  TournamentStatus
+} from "@/types/tournament.types";
 import { apiFetch } from "@/lib/api-fetch";
 import { normalizePaginatedResponse } from "@/lib/normalize-paginated-response";
 
@@ -8,6 +16,26 @@ type GetStandingsOptions = {
   includeMatchesHistory?: boolean;
   includeTeamGroup?: boolean;
 };
+
+/** The three filter dimensions the list and its facet counts share. */
+type TournamentFilterParams = {
+  status?: TournamentStatus | null;
+  isLeague?: boolean | null;
+  query?: string;
+};
+
+/**
+ * Filters as query params, omitting the ones that are not set. `apiFetch`
+ * already drops `null`/`undefined`, but an empty search box would otherwise
+ * travel as `query=` and make the backend match on the empty string.
+ */
+function tournamentFilterQuery(params: TournamentFilterParams): Record<string, unknown> {
+  return {
+    status: params.status ?? undefined,
+    is_league: params.isLeague ?? undefined,
+    query: params.query?.trim() ? params.query.trim() : undefined
+  };
+}
 
 export default class tournamentService {
   static async lookup(
@@ -39,6 +67,55 @@ export default class tournamentService {
     })
       .then((response) => response.json())
       .then((response: PaginatedResponse<Tournament>) => normalizePaginatedResponse(response));
+  }
+
+  /**
+   * The public tournaments list: server-side filtering, sorting and paging.
+   *
+   * Separate from `getAll` (which pulls every row at `per_page: -1` for
+   * selects and dashboards) because this one is the paged, filtered feed the
+   * `/tournaments` page scrolls. Empty/absent filters are DROPPED rather than
+   * sent as `null`: the backend treats a present-but-null `status` as a real
+   * value and would match nothing.
+   */
+  static async listTournaments(params: {
+    workspaceId?: number | null;
+    status?: TournamentStatus | null;
+    isLeague?: boolean | null;
+    query?: string;
+    sort?: "start_date" | "participants_count";
+    order?: "asc" | "desc";
+    page?: number;
+    perPage?: number;
+  }): Promise<PaginatedResponse<Tournament>> {
+    return apiFetch(`/api/v1/tournaments`, {
+      query: {
+        page: params.page ?? 1,
+        per_page: params.perPage ?? 24,
+        sort: params.sort ?? "start_date",
+        order: params.order ?? "desc",
+        workspace_id: params.workspaceId,
+        entities: ["stages", "participants_count", "teams_count"],
+        ...tournamentFilterQuery(params)
+      }
+    })
+      .then((response) => response.json())
+      .then((response: PaginatedResponse<Tournament>) => normalizePaginatedResponse(response));
+  }
+
+  /** Counts for the filter chips of the list above, under the same filters. */
+  static async getFacets(params: {
+    workspaceId?: number | null;
+    status?: TournamentStatus | null;
+    isLeague?: boolean | null;
+    query?: string;
+  }): Promise<TournamentFacets> {
+    return apiFetch(`/api/v1/tournaments/facets`, {
+      query: {
+        workspace_id: params.workspaceId,
+        ...tournamentFilterQuery(params)
+      }
+    }).then((response) => response.json());
   }
   static async getOwalSeasons(workspaceId?: number | null): Promise<string[]> {
     return apiFetch(`/api/v1/tournaments/league/seasons`, {

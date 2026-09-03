@@ -12,8 +12,15 @@ export interface EditableAvatarProps {
   src?: string | null;
   /** Used to derive the initials fallback when there is no image. */
   name?: string | null;
-  /** Pixel size of the square/circle. Default 80. */
+  /** Pixel size of the square/circle — the height when `width` is given. Default 80. */
   size?: number;
+  /**
+   * Pixel width, when the frame is not square — a 3:1 tournament banner is the
+   * same editor as a square icon, only wider. Defaults to `size`. Every layer
+   * inside is `absolute inset-0`, so the frame's own box is the only place the
+   * two axes need to be told apart.
+   */
+  width?: number;
   /** "circle" for user/player avatars, "rounded" for workspace icons. Default "circle". */
   shape?: "circle" | "rounded";
   /** When false, renders read-only (no overlay, dropzone, or delete). Default true. */
@@ -78,6 +85,7 @@ export function EditableAvatar({
   src,
   name,
   size = 80,
+  width,
   shape = "circle",
   editable = true,
   busy = false,
@@ -126,7 +134,10 @@ export function EditableAvatar({
   };
 
   return (
-    <div className={cn("group relative shrink-0", className)} style={{ width: size, height: size }}>
+    <div
+      className={cn("group relative shrink-0", className)}
+      style={{ width: width ?? size, height: size }}
+    >
       {/* Image / fallback + interaction surface */}
       <div
         className={cn(

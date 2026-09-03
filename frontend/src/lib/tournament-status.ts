@@ -110,24 +110,6 @@ export const TOURNAMENT_STATUS_ORDER: TournamentStatus[] = [
   "draft"
 ];
 
-export function countByTournamentStatus(
-  statuses: ReadonlyArray<TournamentStatus>
-): Record<TournamentStatus, number> {
-  const counts: Record<TournamentStatus, number> = {
-    draft: 0,
-    registration: 0,
-    check_in: 0,
-    live: 0,
-    playoffs: 0,
-    completed: 0,
-    archived: 0
-  };
-  for (const status of statuses) {
-    counts[status] += 1;
-  }
-  return counts;
-}
-
 /**
  * True when the tournament currently sits in `status` and `now` falls inside
  * that phase's schedule row window. A missing row or a `null` ends_at means
