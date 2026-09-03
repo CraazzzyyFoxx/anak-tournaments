@@ -56,7 +56,10 @@ export function ValueMappingTab({
           catalog defaults, then add or adjust rows as needed.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      {/* Five short key→value lists; two abreast at xl instead of five
+          full-width rows of two 600px inputs. The role+sub-role editor has a
+          wider value column and keeps the full row. */}
+      <CardContent className="grid gap-4 xl:grid-cols-2">
         <ValueMapEditor
           title="Booleans"
           description="Map cell text (e.g. “yes”, “да”) to true/false (used by checkbox-style fields)."
@@ -92,18 +95,6 @@ export function ValueMappingTab({
           onSeedDefaults={() => onSeedDefaults("subroles", subroleDefaults)}
         />
         <ValueMapEditor
-          title="Role + Sub-role combined"
-          description={`Map a single cell value to one or more roles (e.g. "Хитскан ДПС" → DPS/Hitscan, or "Флекс, Танк или Сап" → Tank + Support). Use "Add role" to expand a value into multiple roles.`}
-          kind="role_subrole"
-          rows={valueState.role_subroles}
-          canSeed={Object.keys(roleSubroleDefaults).length > 0}
-          subroleCatalog={subroleCatalog}
-          onAdd={() => onAdd("role_subroles")}
-          onUpdate={(id, updates) => onUpdate("role_subroles", id, updates)}
-          onRemove={(id) => onRemove("role_subroles", id)}
-          onSeedDefaults={() => onSeedDefaults("role_subroles", roleSubroleDefaults)}
-        />
-        <ValueMapEditor
           title="Divisions"
           description="Map division text from the sheet directly to the numeric rank value used by the balancer."
           kind="number"
@@ -114,6 +105,20 @@ export function ValueMappingTab({
           onRemove={(id) => onRemove("divisions", id)}
           onSeedDefaults={() => onSeedDefaults("divisions", divisionDefaults)}
         />
+        <div className="xl:col-span-2">
+          <ValueMapEditor
+            title="Role + Sub-role combined"
+            description={`Map a single cell value to one or more roles (e.g. "Хитскан ДПС" → DPS/Hitscan, or "Флекс, Танк или Сап" → Tank + Support). Use "Add role" to expand a value into multiple roles.`}
+            kind="role_subrole"
+            rows={valueState.role_subroles}
+            canSeed={Object.keys(roleSubroleDefaults).length > 0}
+            subroleCatalog={subroleCatalog}
+            onAdd={() => onAdd("role_subroles")}
+            onUpdate={(id, updates) => onUpdate("role_subroles", id, updates)}
+            onRemove={(id) => onRemove("role_subroles", id)}
+            onSeedDefaults={() => onSeedDefaults("role_subroles", roleSubroleDefaults)}
+          />
+        </div>
       </CardContent>
     </Card>
   );

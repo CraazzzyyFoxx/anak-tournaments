@@ -143,6 +143,8 @@ export interface UseMappingStateResult {
   hydrate: (catalog: MappingCatalog, feed: AdminGoogleSheetFeed | null, scopeKey?: string) => void;
   applySuggestedMapping: (mappingConfigJson: Record<string, unknown> | null | undefined) => void;
   resetChanges: () => void;
+  /** Drop every unsaved edit and rebuild from the saved feed — the SaveBar "Discard". */
+  discard: (catalog: MappingCatalog, feed: AdminGoogleSheetFeed | null) => void;
   setTargetMode: (key: string, mode: MappingTargetMode) => void;
   setTargetColumns: (key: string, columns: string[]) => void;
   setTargetValue: (key: string, value: string) => void;
@@ -218,6 +220,12 @@ export function useMappingState(): UseMappingStateResult {
   }, []);
 
   const resetChanges = useCallback(() => setHasChanges(false), []);
+
+  const discard = useCallback((catalog: MappingCatalog, feed: AdminGoogleSheetFeed | null) => {
+    setMappingState(buildInitialMappingState(catalog, feed));
+    setValueState(buildInitialValueState(feed));
+    setHasChanges(false);
+  }, []);
 
   const setTargetMode = useCallback((key: string, mode: MappingTargetMode) => {
     setMappingState((prev) => {
@@ -330,6 +338,7 @@ export function useMappingState(): UseMappingStateResult {
     hydrate,
     applySuggestedMapping,
     resetChanges,
+    discard,
     setTargetMode,
     setTargetColumns,
     setTargetValue,

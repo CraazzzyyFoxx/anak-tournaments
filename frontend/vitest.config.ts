@@ -107,6 +107,7 @@ export default defineConfig({
       "src/components/tournaments/EncounterEditDialog.behavior.test.tsx",
       "src/components/balancer/registrations/**/*.test.tsx",
       "src/components/balancer/form/**/*.test.tsx",
+      "src/components/balancer/feed/**/*.test.tsx",
       "src/components/admin/**/*.test.tsx",
       "src/components/admin/**/*.test.ts",
       // `include` is an allow-list, so a test under a directory absent from it

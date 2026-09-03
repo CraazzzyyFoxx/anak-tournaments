@@ -77,9 +77,11 @@ export function MappingFieldRow({
   const subroleRole = target.default_parser === "subrole_token" ? subroleRoleFromTarget(target.key) : null;
   const subroleOptions = subroleRole ? (subroleCatalog?.[subroleRole] ?? []) : [];
 
+  // Four columns at lg: label · mode · input · preview. The preview used to
+  // stack under the input, leaving the picker to stretch across the hub.
   return (
     <div className={cn("px-4 py-3", error && "bg-destructive/5")}>
-      <div className="grid items-start gap-3 md:grid-cols-[minmax(170px,1fr)_auto_minmax(220px,1.4fr)]">
+      <div className="grid items-start gap-3 md:grid-cols-[minmax(160px,220px)_auto_minmax(220px,1fr)] lg:grid-cols-[minmax(160px,220px)_auto_minmax(220px,420px)_minmax(0,1fr)]">
         {/* Label + required badge */}
         <div className="min-w-0 pt-1.5">
           <div className="flex items-center gap-2">
@@ -107,7 +109,7 @@ export function MappingFieldRow({
           />
         </div>
 
-        {/* Mode-specific input + parser + preview + error */}
+        {/* Mode-specific input + parser */}
         <div className="min-w-0 space-y-2">
           {state.mode === "columns" ? (
             target.multi_column ? (
@@ -197,15 +199,19 @@ export function MappingFieldRow({
               </Select>
             </div>
           ) : null}
-
-          {state.mode !== "disabled" && previewValue ? (
-            <p className="truncate text-xs text-muted-foreground" title={previewValue}>
-              <span className="text-muted-foreground/60">Preview:</span> {previewValue}
-            </p>
-          ) : null}
-
-          {error ? <p className="text-xs font-medium text-destructive">{error}</p> : null}
         </div>
+
+        {/* Preview + error */}
+        {(state.mode !== "disabled" && previewValue) || error ? (
+          <div className="min-w-0 space-y-1 lg:pt-2">
+            {state.mode !== "disabled" && previewValue ? (
+              <p className="truncate text-xs text-muted-foreground" title={previewValue}>
+                <span className="text-muted-foreground/60">Preview:</span> {previewValue}
+              </p>
+            ) : null}
+            {error ? <p className="text-xs font-medium text-destructive">{error}</p> : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
