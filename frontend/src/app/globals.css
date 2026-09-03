@@ -3775,6 +3775,9 @@
   position: sticky;
   z-index: 2;
   background-color: var(--admin-sticky-bg);
+  /* Same curve as the row's Tailwind `transition-colors`, otherwise the pinned
+     cell snaps to the hover tint while the rest of the row is still fading. */
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Headers outrank body cells: they hold both axes at the corner. */
