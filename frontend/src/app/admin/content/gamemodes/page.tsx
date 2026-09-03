@@ -2,13 +2,14 @@
 
 import { useId } from "react";
 import { ColumnDef } from "@tanstack/react-table";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
 import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
-import { createAliasesColumn, createEntityActionsColumn } from "@/components/admin/catalog-table-columns";
+import { createAliasesColumn } from "@/components/admin/catalog-table-columns";
+import { createKebabColumn } from "@/components/admin/kit/kebab-column";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 
 import adminService from "@/services/admin.service";
@@ -74,20 +75,37 @@ export default function GamemodesAdminPage() {
       header: "Name",
     },
     createAliasesColumn<Gamemode>((gamemode) => gamemode.aliases),
-    createEntityActionsColumn<Gamemode>({
-      entityLabel: "gamemode",
-      getName: (gamemode) => gamemode.name,
-      isSuperuser,
-      onEdit: openEdit,
-      onDelete: (gamemode) => setDeletingGamemode(gamemode),
-    }),
+    createKebabColumn<Gamemode>(
+      (gamemode) => [
+        {
+          label: "Edit gamemode",
+          icon: Pencil,
+          hidden: !isSuperuser,
+          onSelect: () => openEdit(gamemode),
+        },
+        {
+          label: "Delete gamemode",
+          icon: Trash2,
+          destructive: true,
+          hidden: !isSuperuser,
+          onSelect: () => setDeletingGamemode(gamemode),
+        },
+      ],
+      { rowLabel: (gamemode) => gamemode.name }
+    ),
   ];
 
   return (
-    <div className="space-y-6">
-      <AdminPageHeader
-        title="Gamemodes"
-        description="Manage game modes"
+    <>
+      <AdminDataTable
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["admin", "gamemodes", page, search, pageSize, sortField, sortDir]}
+        queryFn={(page, search, pageSize, sortField, sortDir) =>
+          adminService.getGamemodes({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
+        }
+        columns={columns}
+        searchPlaceholder="Search gamemodes…"
+        emptyMessage="No gamemodes yet. Use “Create gamemode” to add the first one."
+        onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
         actions={
           <CatalogToolbarActions
             canSync={isSuperuser}
@@ -98,17 +116,6 @@ export default function GamemodesAdminPage() {
             createLabel="Create gamemode"
           />
         }
-      />
-
-      <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["admin", "gamemodes", page, search, pageSize, sortField, sortDir]}
-        queryFn={(page, search, pageSize, sortField, sortDir) =>
-          adminService.getGamemodes({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
-        }
-        columns={columns}
-        searchPlaceholder="Search gamemodes…"
-        emptyMessage="No gamemodes yet. Use “Create gamemode” to add the first one."
-        onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
       />
 
       {/* Create/Edit Dialog */}
@@ -159,6 +166,6 @@ export default function GamemodesAdminPage() {
           description={`“${deletingGamemode.name}” will be permanently removed. Reassign any maps still using it first, otherwise the delete will fail.`}
         />
       )}
-    </div>
+    </>
   );
 }

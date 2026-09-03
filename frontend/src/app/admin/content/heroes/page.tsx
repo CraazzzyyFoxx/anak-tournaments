@@ -2,15 +2,16 @@
 
 import { useId } from "react";
 import { ColumnDef } from "@tanstack/react-table";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AssetPreview } from "@/components/admin/AssetPreview";
 import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
 import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { adminColumnMeta } from "@/components/admin/admin-table-columns";
-import { createAliasesColumn, createEntityActionsColumn } from "@/components/admin/catalog-table-columns";
+import { createAliasesColumn } from "@/components/admin/catalog-table-columns";
+import { createKebabColumn } from "@/components/admin/kit/kebab-column";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -174,32 +175,28 @@ export default function HeroesAdminPage() {
       },
     },
     createAliasesColumn<Hero>((hero) => hero.aliases),
-    createEntityActionsColumn<Hero>({
-      entityLabel: "hero",
-      getName: (hero) => hero.name,
-      isSuperuser,
-      onEdit: openEdit,
-      onDelete: (hero) => setDeletingHero(hero),
-    }),
+    createKebabColumn<Hero>(
+      (hero) => [
+        {
+          label: "Edit hero",
+          icon: Pencil,
+          hidden: !isSuperuser,
+          onSelect: () => openEdit(hero),
+        },
+        {
+          label: "Delete hero",
+          icon: Trash2,
+          destructive: true,
+          hidden: !isSuperuser,
+          onSelect: () => setDeletingHero(hero),
+        },
+      ],
+      { rowLabel: (hero) => hero.name }
+    ),
   ];
 
   return (
-    <div className="space-y-6">
-      <AdminPageHeader
-        title="Heroes"
-        description="Manage game heroes and their roles"
-        actions={
-          <CatalogToolbarActions
-            canSync={isSuperuser}
-            isSyncing={syncMutation.isPending}
-            onSync={() => syncMutation.mutate()}
-            syncLabel="Sync heroes from game"
-            onCreate={openCreate}
-            createLabel="Create hero"
-          />
-        }
-      />
-
+    <>
       <AdminDataTable
         queryKey={(page, search, pageSize, sortField, sortDir, filters) => ["admin", "heroes", page, search, pageSize, sortField, sortDir, filters]}
         queryFn={(page, search, pageSize, sortField, sortDir, filters) =>
@@ -216,6 +213,16 @@ export default function HeroesAdminPage() {
         searchPlaceholder="Search heroes…"
         emptyMessage="No heroes yet. Use “Create hero” to add the first one."
         onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
+        actions={
+          <CatalogToolbarActions
+            canSync={isSuperuser}
+            isSyncing={syncMutation.isPending}
+            onSync={() => syncMutation.mutate()}
+            syncLabel="Sync heroes from game"
+            onCreate={openCreate}
+            createLabel="Create hero"
+          />
+        }
       />
 
       {/* Create/Edit Dialog */}
@@ -340,6 +347,6 @@ export default function HeroesAdminPage() {
           description={`“${deletingHero.name}” will be permanently removed from the hero catalogue. This cannot be undone.`}
         />
       )}
-    </div>
+    </>
   );
 }

@@ -3,10 +3,9 @@
 /**
  * Shared "actions" column factory for the CRUD admin pages (encounters,
  * players, standings) that render a plain edit + delete icon-button pair,
- * each independently gated by its own permission flag. This is a different
- * pattern from `catalog-table-columns.tsx`'s `createEntityActionsColumn`,
- * which renders a single dropdown menu gated by one `isSuperuser` flag for
- * the game-catalogue admin pages (maps, heroes, gamemodes).
+ * each independently gated by its own permission flag. Superseded by
+ * `kit/kebab-column.tsx`'s `createKebabColumn`, the panel's single actions
+ * convention; the remaining callers migrate to it in P6.
  */
 
 import { ColumnDef } from "@tanstack/react-table";

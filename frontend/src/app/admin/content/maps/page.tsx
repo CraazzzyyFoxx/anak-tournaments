@@ -3,15 +3,16 @@
 import { useId } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AssetPreview } from "@/components/admin/AssetPreview";
 import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
 import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { adminColumnMeta } from "@/components/admin/admin-table-columns";
-import { createAliasesColumn, createEntityActionsColumn } from "@/components/admin/catalog-table-columns";
+import { createAliasesColumn } from "@/components/admin/catalog-table-columns";
+import { createKebabColumn } from "@/components/admin/kit/kebab-column";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -180,32 +181,28 @@ export default function MapsAdminPage() {
       },
     },
     createAliasesColumn<MapRead>((map) => map.aliases),
-    createEntityActionsColumn<MapRead>({
-      entityLabel: "map",
-      getName: (map) => map.name,
-      isSuperuser,
-      onEdit: openEdit,
-      onDelete: (map) => setDeletingMap(map),
-    }),
+    createKebabColumn<MapRead>(
+      (map) => [
+        {
+          label: "Edit map",
+          icon: Pencil,
+          hidden: !isSuperuser,
+          onSelect: () => openEdit(map),
+        },
+        {
+          label: "Delete map",
+          icon: Trash2,
+          destructive: true,
+          hidden: !isSuperuser,
+          onSelect: () => setDeletingMap(map),
+        },
+      ],
+      { rowLabel: (map) => map.name }
+    ),
   ];
 
   return (
-    <div className="space-y-6">
-      <AdminPageHeader
-        title="Maps"
-        description="Manage game maps"
-        actions={
-          <CatalogToolbarActions
-            canSync={isSuperuser}
-            isSyncing={syncMutation.isPending}
-            onSync={() => syncMutation.mutate()}
-            syncLabel="Sync maps from game"
-            onCreate={openCreate}
-            createLabel="Create map"
-          />
-        }
-      />
-
+    <>
       <AdminDataTable
         queryKey={(page, search, pageSize, sortField, sortDir, filters) => [
           "admin",
@@ -234,6 +231,16 @@ export default function MapsAdminPage() {
         searchPlaceholder="Search maps…"
         emptyMessage="No maps yet. Use “Create map” to add the first one."
         onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
+        actions={
+          <CatalogToolbarActions
+            canSync={isSuperuser}
+            isSyncing={syncMutation.isPending}
+            onSync={() => syncMutation.mutate()}
+            syncLabel="Sync maps from game"
+            onCreate={openCreate}
+            createLabel="Create map"
+          />
+        }
       />
 
       {/* Create/Edit Dialog */}
@@ -316,6 +323,6 @@ export default function MapsAdminPage() {
           description={`“${deletingMap.name}” will be permanently removed from the map catalogue. This cannot be undone.`}
         />
       )}
-    </div>
+    </>
   );
 }

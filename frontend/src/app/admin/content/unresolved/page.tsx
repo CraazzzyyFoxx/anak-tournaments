@@ -1,31 +1,25 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ColumnDef } from "@tanstack/react-table";
 import { Check, EyeOff, LoaderCircle } from "lucide-react";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import SearchableImageSelect, {
   type SearchableImageOption,
 } from "@/components/ui/searchable-image-select";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { CatalogAliasMissRead, CatalogEntityType } from "@/types/admin.types";
+
+import { MISS_QUEUE_KEY } from "../miss-queue";
 
 const ENTITY_TYPES: CatalogEntityType[] = ["hero", "map", "gamemode"];
 
@@ -45,8 +39,6 @@ const ENTITY_LIST_KEYS: Record<CatalogEntityType, string> = {
   gamemode: "gamemodes",
 };
 
-const MISS_QUEUE_KEY = "catalog-alias-misses";
-
 /** One page holds every catalog entity we have — ~45 maps, ~50 heroes, 7 modes. */
 const ENTITY_PAGE_SIZE = 200;
 
@@ -59,15 +51,39 @@ function formatSeenAt(value: string): string {
   });
 }
 
-export default function CatalogAliasesAdminPage() {
+/**
+ * The triage queue of log names the parser could not resolve (F13).
+ *
+ * Not a fourth catalogue: it edits nothing itself, it decides which catalogue
+ * entity an unrecognised string meant. That decision is the screen's whole
+ * job, so it stays inline — pick a target, press Attach — instead of moving
+ * into a dialog the way an entity edit would.
+ */
+export default function UnresolvedNamesAdminPage() {
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
-  const resolvedToggleId = useId();
-  const [entityTypeFilter, setEntityTypeFilter] = useState<CatalogEntityType | "all">("all");
-  const [includeResolved, setIncludeResolved] = useState(false);
   // Target entity per miss row. Dynamic, per-row keys that come and go with the
   // queue, so a Map rather than an object literal.
   const [targets, setTargets] = useState<Map<number, number>>(new Map());
+
+  const filterDefs = useMemo<FilterDef[]>(
+    () => [
+      {
+        key: "type",
+        label: "Type",
+        kind: "single",
+        options: ENTITY_TYPES.map((entityType) => ({
+          value: entityType,
+          label: ENTITY_LABELS[entityType],
+        })),
+      },
+      { key: "resolved", label: "Include resolved", kind: "toggle" },
+    ],
+    []
+  );
+  const filters = useAdminFilters(filterDefs);
+  const entityTypeFilter = String(filters.values.type ?? "") as CatalogEntityType | "";
+  const includeResolved = filters.values.resolved === true;
 
   const [heroesQuery, mapsQuery, gamemodesQuery] = useQueries({
     queries: [
@@ -109,8 +125,9 @@ export default function CatalogAliasesAdminPage() {
     gamemode: gamemodesQuery.isLoading,
   };
 
+  // Also refreshes the tab badge: it hangs off the same key root.
   const invalidateQueue = () => {
-    queryClient.invalidateQueries({ queryKey: ["admin", MISS_QUEUE_KEY] });
+    queryClient.invalidateQueries({ queryKey: MISS_QUEUE_KEY });
   };
 
   const forgetTarget = (missId: number) => {
@@ -152,6 +169,43 @@ export default function CatalogAliasesAdminPage() {
   const isBusy = (missId: number) =>
     (attachMutation.isPending && attachMutation.variables?.miss.id === missId) ||
     (dismissMutation.isPending && dismissMutation.variables?.id === missId);
+
+  /**
+   * The row's target picker. Rendered twice — in the "Attach to" column and,
+   * below `md`, inside the card — because without it the Attach button on a
+   * phone would be permanently disabled with no way to arm it.
+   */
+  const targetPicker = (miss: CatalogAliasMissRead) => {
+    if (!isSuperuser) {
+      return null;
+    }
+    if (miss.resolved_at) {
+      return <Badge variant="secondary">Resolved</Badge>;
+    }
+
+    return (
+      <SearchableImageSelect
+        value={targets.get(miss.id)?.toString()}
+        onValueChange={(next) => {
+          setTargets((previous) => {
+            const updated = new Map(previous);
+            if (next === undefined) {
+              updated.delete(miss.id);
+            } else {
+              updated.set(miss.id, Number(next));
+            }
+            return updated;
+          });
+        }}
+        options={entityOptions[miss.entity_type]}
+        placeholder={`Pick a ${ENTITY_LABELS[miss.entity_type].toLowerCase()}…`}
+        searchPlaceholder="Search…"
+        isLoading={entityLoading[miss.entity_type]}
+        disabled={entityLoading[miss.entity_type] || isBusy(miss.id)}
+        triggerClassName="h-9"
+      />
+    );
+  };
 
   const columns: ColumnDef<CatalogAliasMissRead>[] = [
     {
@@ -222,39 +276,7 @@ export default function CatalogAliasesAdminPage() {
       header: "Attach to",
       size: 240,
       enableSorting: false,
-      cell: ({ row }) => {
-        const miss = row.original;
-        if (!isSuperuser) {
-          return null;
-        }
-        if (miss.resolved_at) {
-          return <Badge variant="secondary">Resolved</Badge>;
-        }
-
-        const options = entityOptions[miss.entity_type];
-        return (
-          <SearchableImageSelect
-            value={targets.get(miss.id)?.toString()}
-            onValueChange={(next) => {
-              setTargets((previous) => {
-                const updated = new Map(previous);
-                if (next === undefined) {
-                  updated.delete(miss.id);
-                } else {
-                  updated.set(miss.id, Number(next));
-                }
-                return updated;
-              });
-            }}
-            options={options}
-            placeholder={`Pick a ${ENTITY_LABELS[miss.entity_type].toLowerCase()}…`}
-            searchPlaceholder="Search…"
-            isLoading={entityLoading[miss.entity_type]}
-            disabled={entityLoading[miss.entity_type] || isBusy(miss.id)}
-            triggerClassName="h-9"
-          />
-        );
-      },
+      cell: ({ row }) => targetPicker(row.original),
     },
     {
       id: "actions",
@@ -305,81 +327,55 @@ export default function CatalogAliasesAdminPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      <AdminPageHeader
-        title="Catalog aliases"
-        description="Names from match logs the parser could not resolve. Attach one to the catalog entity it means and the next log carrying it goes through."
-      />
-
-      <AdminDataTable
-        filterKey={`${entityTypeFilter}-${includeResolved}`}
-        queryKey={(page, search, pageSize) => [
-          "admin",
-          MISS_QUEUE_KEY,
-          entityTypeFilter,
-          includeResolved,
+    <AdminDataTable
+      filterKey={filters.filterKey}
+      queryKey={(page, search, pageSize) => [
+        ...MISS_QUEUE_KEY,
+        entityTypeFilter,
+        includeResolved,
+        page,
+        search,
+        pageSize,
+      ]}
+      queryFn={async (page, search, pageSize) => {
+        const response = await adminService.getCatalogAliasMisses({
           page,
-          search,
-          pageSize,
-        ]}
-        queryFn={async (page, search, pageSize) => {
-          const response = await adminService.getCatalogAliasMisses({
-            page,
-            per_page: pageSize,
-            entity_type: entityTypeFilter === "all" ? undefined : entityTypeFilter,
-            include_resolved: includeResolved,
-          });
-          if (!search) {
-            return response;
-          }
-          // ponytail: `misses_list` takes no search term, so the box narrows the
-          // page in hand. Enough for a queue that lives in the dozens; lift by
-          // adding `search` to the RPC once it grows past one page.
-          const needle = search.toLowerCase();
-          const results = response.results.filter((miss) =>
-            miss.raw_name.toLowerCase().includes(needle)
-          );
-          return { ...response, results, total: results.length };
-        }}
-        columns={columns}
-        searchPlaceholder="Search raw names…"
-        emptyMessage={
-          includeResolved
-            ? "No unresolved names recorded. Every log name so far resolved to a catalog entity."
-            : "Nothing in the queue. Every log name so far resolved to a catalog entity."
+          per_page: pageSize,
+          entity_type: entityTypeFilter || undefined,
+          include_resolved: includeResolved,
+        });
+        if (!search) {
+          return response;
         }
-        actions={
-          <>
-            <Select
-              value={entityTypeFilter}
-              onValueChange={(value) => setEntityTypeFilter(value as CatalogEntityType | "all")}
-            >
-              <SelectTrigger aria-label="Filter misses by entity type" className="w-[180px]">
-                <SelectValue placeholder="Filter by type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                {ENTITY_TYPES.map((entityType) => (
-                  <SelectItem key={entityType} value={entityType}>
-                    {ENTITY_LABELS[entityType]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <div className="flex shrink-0 items-center gap-2">
-              <Switch
-                id={resolvedToggleId}
-                checked={includeResolved}
-                onCheckedChange={setIncludeResolved}
-              />
-              <Label htmlFor={resolvedToggleId} className="cursor-pointer whitespace-nowrap text-sm">
-                Show resolved
-              </Label>
-            </div>
-          </>
-        }
-      />
-    </div>
+        // ponytail: `misses_list` takes no search term, so the box narrows the
+        // page in hand. Enough for a queue that lives in the dozens; lift by
+        // adding `search` to the RPC once it grows past one page.
+        const needle = search.toLowerCase();
+        const results = response.results.filter((miss) =>
+          miss.raw_name.toLowerCase().includes(needle)
+        );
+        return { ...response, results, total: results.length };
+      }}
+      columns={columns}
+      searchPlaceholder="Search raw names…"
+      toolbar={<AdminFilterBar defs={filterDefs} filters={filters} />}
+      emptyMessage={
+        includeResolved
+          ? "No unresolved names recorded. Every log name so far resolved to a catalog entity."
+          : "Nothing in the queue. Every log name so far resolved to a catalog entity."
+      }
+      renderMobileCard={(row) => (
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <code className="block truncate rounded bg-muted/40 px-1.5 py-0.5 text-xs">
+            {row.original.raw_name}
+          </code>
+          <p className="truncate text-xs text-muted-foreground">
+            {ENTITY_LABELS[row.original.entity_type]} · seen {row.original.occurrences}× · last{" "}
+            {formatSeenAt(row.original.last_seen_at)}
+          </p>
+          {targetPicker(row.original)}
+        </div>
+      )}
+    />
   );
 }
