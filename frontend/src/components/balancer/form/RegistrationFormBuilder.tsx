@@ -459,10 +459,10 @@ export default function RegistrationFormBuilder({
                           ? t("subscription.resolved", { rule: resolvedRequirement })
                           : t("subscription.resolvedEmpty")}
                     </p>
-                    {/* `?tab=providers`: /admin/subscriptions opens on the collector
-                        dashboard otherwise, which is not where the rule is edited. */}
+                    {/* The workspace rule is workspace *configuration*, so it lives in
+                        settings; /admin/subscriptions is the collector dashboard. */}
                     <Link
-                      href="/admin/subscriptions?tab=providers"
+                      href="/admin/settings/subscriptions"
                       className="text-xs font-medium underline underline-offset-4"
                     >
                       {t("subscription.manage")}

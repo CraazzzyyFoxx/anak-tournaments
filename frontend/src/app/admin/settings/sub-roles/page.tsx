@@ -4,11 +4,11 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus } from "lucide-react";
 
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { InlineEditText } from "@/components/admin/InlineEditText";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -26,7 +26,7 @@ import type { PlayerSubRole } from "@/types/admin.types";
  * catalog is workspace-global, so it is configured here; a registration form
  * only chooses which catalog entries it offers.
  */
-export default function AdminSubRolesPage() {
+export default function WorkspaceSubRolesSettingsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
@@ -113,25 +113,16 @@ export default function AdminSubRolesPage() {
 
   if (workspaceId === null) {
     return (
-      <div className="space-y-6">
-        <AdminPageHeader
-          title="Sub-roles"
-          description="Select a workspace to manage its sub-role catalog."
-        />
-        <p className="rounded-lg border border-dashed border-border/60 p-6 text-sm text-muted-foreground">
-          Pick a workspace in the sidebar to manage its sub-roles.
-        </p>
-      </div>
+      <PageStateCard
+        state="empty"
+        title="No workspace selected"
+        description="Pick a workspace in the sidebar to manage its sub-role catalog."
+      />
     );
   }
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader
-        title="Sub-roles"
-        description="Workspace-wide sub-role catalog shared by registration forms, rosters, and the balancer."
-      />
-
       <div className="grid gap-6 lg:grid-cols-3">
         {ROLES.map((role) => {
           const entries = byRole[role.code] ?? [];
@@ -217,9 +208,9 @@ export default function AdminSubRolesPage() {
                       onClick={submitCreate}
                     >
                       {createMutation.isPending ? (
-                        <Loader2 className="mr-1 size-3.5 animate-spin" />
+                        <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
                       ) : (
-                        <Plus className="mr-1 size-3.5" />
+                        <Plus className="mr-1 size-3.5" aria-hidden />
                       )}
                       Add
                     </Button>

@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 //
-// The requirement is now workspace-wide, so the two things this card must get
-// right are both about blast radius: which providers it will even offer, and
-// telling the admin that ANY change to the rule -- emptying it or merely
-// tightening it -- re-decides admission for every tournament at once.
+// Carried over from app/admin/subscriptions/_components with the import path as
+// the only change. The requirement is workspace-wide, so the two things this
+// card must get right are both about blast radius: which providers it will even
+// offer, and telling the admin that ANY change to the rule -- emptying it or
+// merely tightening it -- re-decides admission for every tournament at once.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -16,7 +17,7 @@ import type {
   SubscriptionRequirement
 } from "@/types/registration.types";
 
-import { WorkspaceRequirementCard } from "./subscription-workspace";
+import { WorkspaceRequirementCard } from "./workspace-requirement";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;

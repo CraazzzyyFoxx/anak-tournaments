@@ -20,7 +20,7 @@ export interface CatalogEntry {
  * sub-role is offered on this tournament's registration form (a role with no
  * explicit selection offers all of its catalog options).
  *
- * The catalog itself is workspace-global and is managed on `/admin/sub-roles`:
+ * The catalog itself is workspace-global and is managed in workspace settings:
  * creating or removing an entry from here used to rewrite the options of every
  * other tournament in the workspace, plus the player, roster and balancer
  * pickers that read the same table.
@@ -48,7 +48,7 @@ export function SubrolesTab({
           <CardDescription>{t("description")}</CardDescription>
         </div>
         <Button variant="outline" size="sm" asChild className="shrink-0">
-          <Link href="/admin/sub-roles">
+          <Link href="/admin/settings/sub-roles">
             {t("editCatalog")}
             <ArrowRight className="ml-2 size-3.5" aria-hidden />
           </Link>

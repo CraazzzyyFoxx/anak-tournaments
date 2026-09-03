@@ -11,7 +11,7 @@ export function balancerRedirectTarget(path: string, params: URLSearchParams): s
     if (v) carry.set(k, v);
   }
   const q = carry.size ? `?${carry}` : "";
-  if (path.startsWith("/balancer/statuses")) return "/admin/balancer";
+  if (path.startsWith("/balancer/statuses")) return "/admin/settings/statuses";
   if (!t) return "/admin/tournaments";
   const base = `/admin/tournaments/${t}/registration`;
   if (path === "/balancer/registrations") return `${base}${q}`;

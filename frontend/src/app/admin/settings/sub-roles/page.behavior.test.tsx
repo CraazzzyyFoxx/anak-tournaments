@@ -1,11 +1,17 @@
 // @vitest-environment happy-dom
+//
+// Carried over from /admin/sub-roles unchanged apart from the import and the
+// permission mock: the screen itself is the reference flat section, so the
+// regressions it pins — deactivated rows stay reachable, grouping is by
+// registration role, deactivation keeps going through DELETE — are the same
+// ones after the move. The permission gate is new coverage.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PlayerSubRole } from "@/types/admin.types";
-import AdminSubRolesPage from "./page";
+import WorkspaceSubRolesSettingsPage from "./page";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -26,8 +32,11 @@ vi.mock("@/services/admin.service", () => ({
     deletePlayerSubRole: (...args: unknown[]) => deletePlayerSubRole(...args)
   }
 }));
+let denied: string[] = [];
 vi.mock("@/hooks/usePermissions", () => ({
-  usePermissions: () => ({ canAccessPermission: () => true })
+  usePermissions: () => ({
+    canAccessPermission: (permission: string) => !denied.includes(permission)
+  })
 }));
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
@@ -70,7 +79,7 @@ async function mount() {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <AdminSubRolesPage />
+        <WorkspaceSubRolesSettingsPage />
       </QueryClientProvider>
     );
   });
@@ -99,13 +108,24 @@ function click(node: Element) {
 }
 
 beforeEach(() => {
+  document.body.innerHTML = "";
+  denied = [];
   getPlayerSubRoles.mockReset().mockResolvedValue(CATALOG);
   createPlayerSubRole.mockReset().mockResolvedValue(CATALOG[0]);
   updatePlayerSubRole.mockReset().mockResolvedValue(CATALOG[0]);
   deletePlayerSubRole.mockReset().mockResolvedValue(undefined);
 });
 
-describe("AdminSubRolesPage", () => {
+describe("WorkspaceSubRolesSettingsPage", () => {
+  it("renders bare, letting the settings layout own the header", async () => {
+    const scope = await mount();
+
+    // The rail and the page header come from app/admin/settings/layout.tsx, so a
+    // second "Sub-roles" heading here would be the section shouting its own name
+    // twice.
+    expect([...scope.querySelectorAll("h1")]).toHaveLength(0);
+  });
+
   it("lists deactivated entries so they can be restored at all", async () => {
     const scope = await mount();
 
@@ -145,5 +165,18 @@ describe("AdminSubRolesPage", () => {
 
     expect(updatePlayerSubRole).toHaveBeenCalledWith(12, { is_active: true });
     expect(deletePlayerSubRole).not.toHaveBeenCalled();
+  });
+
+  it("hides the add field without player.create and freezes the toggle without player.delete", async () => {
+    denied = ["player.create", "player.delete"];
+    const scope = await mount();
+
+    const addButtons = [...scope.querySelectorAll("button")].filter((node) =>
+      (node.textContent ?? "").trim().startsWith("Add")
+    );
+    expect(addButtons).toHaveLength(0);
+    // Restoring is a plain update, so `player.delete` only stops deactivation.
+    expect(switchFor(scope, "Deactivate Main Tank").hasAttribute("disabled")).toBe(true);
+    expect(switchFor(scope, "Restore Off Tank").hasAttribute("disabled")).toBe(false);
   });
 });

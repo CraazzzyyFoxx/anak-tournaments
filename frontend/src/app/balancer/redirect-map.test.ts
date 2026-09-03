@@ -6,9 +6,11 @@ const params = (init: Record<string, string> = {}) => new URLSearchParams(init);
 
 describe("balancerRedirectTarget", () => {
   test("statuses always goes to the admin statuses route", () => {
-    expect(balancerRedirectTarget("/balancer/statuses", params())).toBe("/admin/balancer");
+    expect(balancerRedirectTarget("/balancer/statuses", params())).toBe(
+      "/admin/settings/statuses"
+    );
     expect(balancerRedirectTarget("/balancer/statuses", params({ tournament: "7" }))).toBe(
-      "/admin/balancer"
+      "/admin/settings/statuses"
     );
   });
 

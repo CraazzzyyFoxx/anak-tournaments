@@ -1,16 +1,15 @@
 "use client";
 
-// The workspace-scoped half of subscription admin: which providers exist, and the
-// single rule every tournament in the workspace enforces. Both used to live in the
-// per-tournament registration form builder, which re-asked the same question for
-// every new tournament.
+// The one subscription rule every tournament in the workspace enforces. It used
+// to live in the per-tournament registration form builder, which re-asked the
+// same question for every new tournament, and then briefly in the collector
+// dashboard, where it read as monitoring rather than configuration — which it is.
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import SubscriptionProvidersCard from "@/components/admin/subscriptions/SubscriptionProviderCard";
 import SubscriptionRequirementEditor from "@/components/admin/subscriptions/SubscriptionRequirementEditor";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,15 +44,6 @@ function sameRule(a: SubscriptionRequirement, b: SubscriptionRequirement): boole
         .sort()
     );
   return key(a) === key(b);
-}
-
-export function WorkspaceSubscriptionPanel({ workspaceId }: Readonly<{ workspaceId: number }>) {
-  return (
-    <div className="space-y-6">
-      <SubscriptionProvidersCard workspaceId={workspaceId} />
-      <WorkspaceRequirementCard workspaceId={workspaceId} />
-    </div>
-  );
 }
 
 /** Exported so its own behaviour can be exercised without the provider card's
