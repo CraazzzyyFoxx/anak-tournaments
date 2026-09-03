@@ -48,9 +48,9 @@ const TONE_ICON: Record<ConfirmTone, string> = {
 /**
  * The single confirmation surface for the admin panel.
  *
- * One instance per screen with a swapped `intent`, which is what replaces the
- * six separate `DeleteConfirmDialog` mounts in `StageManager` — each of them a
- * copy of the same markup differing only in its strings.
+ * One instance per screen with a swapped `intent`. That is what replaced the
+ * six near-identical delete-confirmation mounts in the old stage manager —
+ * each a copy of the same markup differing only in its strings.
  */
 export function ConfirmDialog({
   open,

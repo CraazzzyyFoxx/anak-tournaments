@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { getSocialProviderConfig, SOCIAL_PROVIDER_ORDER, socialAccountsForProvider } from "@/lib/social-providers";
 import adminService from "@/services/admin.service";
@@ -266,13 +266,17 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
           </div>
         )}
       </div>
-      <DeleteConfirmDialog
+      <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         onConfirm={() => deleteMutation.mutate()}
-        isDeleting={deleteMutation.isPending}
-        title={`Remove ${account.username}?`}
-        description={`This will remove the ${config.label} identity "${account.username}" from this player.`}
+        pending={deleteMutation.isPending}
+        intent={{
+          title: `Remove ${account.username}?`,
+          description: `This will remove the ${config.label} identity "${account.username}" from this player.`,
+          confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+          tone: "danger"
+        }}
       />
     </>
   );

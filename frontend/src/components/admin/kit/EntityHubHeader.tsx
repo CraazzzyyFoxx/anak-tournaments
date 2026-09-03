@@ -14,23 +14,33 @@ export interface EntityHubHeaderProps {
   meta?: ReactNode[];
   actions?: ReactNode;
   backHref?: string;
+  /**
+   * Heading rank, and with it the title's size. `1` (default) is the header of
+   * the screen; `2` is an entity nested in one that already owns the `<h1>` —
+   * a stage inside the tournament hub. Without this a nested header either
+   * emits a second `<h1>` or gets hand-rolled beside the kit.
+   */
+  level?: 1 | 2;
 }
 
 /**
  * The header of every T3 hub: tournament, person, team, achievement.
  *
- * Replaces `TournamentWorkspaceHeader` plus the three hand-rolled entity
- * headings, so a hub reads the same whatever entity it is about. No `Card`:
- * per the design book a header is grouped by air and a hairline, not a frame.
+ * Replaces the old tournament workspace header plus the three hand-rolled
+ * entity headings, so a hub reads the same whatever entity it is about. No
+ * `Card`: per the design book a header is grouped by air and a hairline, not
+ * a frame.
  */
 export function EntityHubHeader({
   title,
   status,
   meta,
   actions,
-  backHref
+  backHref,
+  level = 1
 }: Readonly<EntityHubHeaderProps>) {
   const metaParts = (meta ?? []).filter((part) => part !== null && part !== undefined && part !== false);
+  const Heading = level === 1 ? "h1" : "h2";
 
   return (
     <div className="flex flex-wrap items-start gap-3">
@@ -46,9 +56,14 @@ export function EntityHubHeader({
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="min-w-0 truncate font-display text-2xl font-semibold text-foreground">
+          <Heading
+            className={cn(
+              "min-w-0 truncate font-display font-semibold text-foreground",
+              level === 1 ? "text-2xl" : "text-lg"
+            )}
+          >
             {title}
-          </h1>
+          </Heading>
           {status ? (
             <span
               className={cn(

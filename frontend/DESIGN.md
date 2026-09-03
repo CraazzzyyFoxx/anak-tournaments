@@ -114,6 +114,66 @@ Principle: any new primitive must preserve:
 - reasonable touch targets (typically 36px+ height, 44px+ for primary actions on mobile)
 - predictable hover/active behavior
 
+## Admin kit
+
+`/admin` is one product with one shape. Every screen there is an instance of
+exactly one of seven templates, assembled from `components/admin/kit/*` plus
+`components/ui/*` — pages do not write layout or colour of their own, because
+the kit is where the visual language above is applied once.
+
+If you are adding an admin screen: pick the template first, then reach only
+for the components below. A screen that needs a shape no template has is a
+sign the IA is wrong, not that the kit is missing something — say so before
+inventing a surface.
+
+### The seven templates
+
+| # | Template | Structure | Where it is used |
+| --- | --- | --- | --- |
+| T1 | Dashboard | Greeting + one next action -> KPI strip -> two columns: "work" / "attention" | `/admin` |
+| T2 | Browser | Header -> filter bar (search + chips) -> table with an always-visible kebab -> Inspector (`?id=`) with "Open page" when the row has a route | Tournaments, People, Teams, Matches, Achievements, Members, `content/*`, `access/*` lists, Audit, hub Registration entries, hub Matches views |
+| T3 | Hub | Entity header (name, status, metrics, 1–2 actions) -> routed tabs -> optional routed sub-tabs -> body | Tournament hub, `people/[id]`, `teams/[id]`, `achievements/[id]` |
+| T4 | Master-detail | Sortable list left (`+ Add`) -> editor right; destructive actions in a menu, one parameterised confirm | `kit/MasterDetail`: Bracket stages, Pre-game phase scopes, Access roles. The Divisions draft editor is the full-screen variant — a ladder column instead of a list |
+| T5 | Settings | Vertical section nav left -> the section's form -> sticky save bar while dirty | `/admin/settings/*`, tournament `settings/*`, `workspaces/[id]/*`, collector settings |
+| T6 | Wizard | Step rail -> step body -> footer (Back · Save draft · Continue) | New tournament, Draft setup, Divisions import, Challonge sync |
+| T7 | Control room | Status hero (phase, timer, connection) -> current action + lifecycle buttons -> right column (presence, feasibility) | Draft live (`tournaments/[id]/teams/draft` once the draft is running) |
+
+### Rules that hold on every admin screen
+
+- **Row detail has one answer per case.** Up to ~6 editable fields -> `EntityFormDialog`. Read-only investigation -> `AdminInspector`. An entity that is editable *and* shareable -> its own route. The default for T2 is the Inspector.
+- **One filter surface.** `AdminFilterBar` above the table, nothing in the header and no `<Select>` in the toolbar. A column may still declare `meta.filter` — that is the endpoint/param contract the table applies, not a second control.
+- **One tab implementation.** `AdminTabs` (`level={2}` for sub-tabs). Not Radix `Tabs`, not a `ToggleGroup`, not a hand-rolled pill `<nav>`: nesting breaks their roving tabindex.
+- **One row-actions convention.** `createKebabColumn`. An action the reader may not perform is *absent*, never disabled — and the menu is always visible, never revealed on hover.
+- **At most three dialogs per screen**: create/edit (`EntityFormDialog`), one `ConfirmDialog` whose `intent` is swapped per operation, and at most one domain-specific dialog. Six copies of the same confirmation differing only in strings is the anti-pattern this replaced.
+- **All three page states, always.** `PageStateCard` for `empty`, `error` and `filtered-empty`; a query that can fail MUST destructure `isError`.
+- **State lives in the URL.** Tab, view, filters and the open Inspector row go through `hooks/useQueryParams.ts`, so a link pasted into Discord opens the same screen. Depth stays at three: sidebar -> screen -> (sub-tab | inspector); anything deeper becomes a route or a wizard.
+
+### What each kit component owns
+
+| Component | The job it owns |
+| --- | --- |
+| `kit/AdminTabs.tsx` | Routed tabs and sub-tabs: `next/link` items, `aria-current="page"`, arrow-key movement, horizontal scroll when narrow |
+| `kit/AdminFilterBar.tsx` | The one filter surface: search, removable chips, a "+ Filter" popover, pinned chips and saved presets |
+| `kit/useAdminFilters.ts` | Filter state, which is the URL: `set`/`setMany`/`clear`, plus `toTableFilters()` and a `filterKey` that resets paging |
+| `kit/AdminInspector.tsx` | The row detail: a right-hand panel at `lg`+, a full sheet below it; `Esc`, up/down between rows, optional "Open page" |
+| `kit/kebab-column.tsx` | The actions column, and the permission gating inside it |
+| `kit/ConfirmDialog.tsx` | Every confirmation: tone, cascade list, type-to-confirm, one mount per screen |
+| `kit/AdminSectionNav.tsx` | T5 section navigation: a `<nav>` at `md`+, a `Select` below it |
+| `kit/SaveBar.tsx` | Save/discard for a dirty form, plus the unsaved-changes guard (turn the anchor half off with `guardNavigation={false}` when the screen's own routed sub-navigation is part of that form) |
+| `kit/useUnsavedGuard.ts` | The two halves of "do not lose my edits": `beforeunload` and in-app anchor interception. Shared by `SaveBar` and `EntityFormDialog` so there is only one behaviour |
+| `kit/WizardShell.tsx` | T6 frame: step rail with `aria-current="step"`, body, footer, optional aside |
+| `kit/EntityHubHeader.tsx` | The T3 header: title, status pill, middot-joined metrics, actions, back link, and `level` for an entity nested inside a hub that already owns the `<h1>` |
+| `kit/PhaseStrip.tsx` | Lifecycle position as an indicator only — it carries no actions |
+| `kit/MasterDetail.tsx` | The T4 split, including the narrow-viewport switch to list-or-detail with a Back button |
+| `kit/NextActionHero.tsx` | The single "do this next" call to action on T1 and a hub Overview |
+
+Supporting these, outside `kit/`: `components/admin/AdminDataTable.tsx` is the
+table engine (server or client mode, paging, sorting, column picker, mobile
+cards, `toolbar` slot for the filter bar); `components/admin/tone.ts` holds
+`TONE_CLASS` and `EYEBROW_CLASS`, which is where a status colour or a small
+uppercase label comes from; `components/admin/AdminDetailTable.tsx` is styling
+only, for a dense table nested inside an editor — not a browser.
+
 ## Layout and responsive behavior
 
 ### Global container

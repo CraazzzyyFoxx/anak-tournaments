@@ -53,8 +53,8 @@ function optionLabel(def: FilterDef, value: string): string {
  * The one filter surface for the admin panel: search + removable chips + a
  * "+ Filter" popover holding everything not yet applied.
  *
- * It replaces both earlier conventions at once — `TournamentFilterSelect` (a
- * `<Select>` in the table toolbar) and the per-column funnel popovers — so a
+ * It replaced both earlier conventions at once — a "Filter by tournament"
+ * `<Select>` in the table toolbar and the per-column funnel popovers — so a
  * screen has exactly one place where "narrow this list" lives, and that place
  * writes the URL.
  */

@@ -31,7 +31,7 @@ import {
 
 import { ConditionFlowEditor } from "@/components/admin/achievements/ConditionFlowEditor";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
@@ -1036,13 +1036,19 @@ export default function AchievementDetailPage() {
       </EntityFormDialog>
 
       {/* Delete dialog */}
-      <DeleteConfirmDialog
+      <ConfirmDialog
         open={deletingRule}
         onOpenChange={setDeletingRule}
         onConfirm={() => deleteMutation.mutate()}
-        isDeleting={deleteMutation.isPending}
-        title={`Delete achievement "${rule.slug}"`}
-        cascadeInfo={["Every evaluation result and manual override for this achievement"]}
+        pending={deleteMutation.isPending}
+        intent={{
+          title: `Delete achievement "${rule.slug}"`,
+          description:
+            "The record and its linked data are removed permanently. This cannot be undone.",
+          confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+          tone: "danger",
+          cascade: ["Every evaluation result and manual override for this achievement"],
+        }}
       />
     </div>
   );

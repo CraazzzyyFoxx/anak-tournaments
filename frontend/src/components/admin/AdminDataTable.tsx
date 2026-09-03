@@ -33,7 +33,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ariaSortValue, cn } from "@/lib/utils";
-import { AdminColumnFilter } from "@/components/admin/AdminColumnFilter";
 import {
   collectFilterSpecs,
   parseFiltersFromParams,
@@ -150,8 +149,14 @@ export interface AdminDataTableProps<TData> {
   filterKey?: string;
 
   /**
-   * Controlled header filters, for a caller that also drives them from outside
-   * the header (a "49 pending" chip in `actions`). Uncontrolled otherwise.
+   * The column-declared filter set (`meta.filter`), which the table applies to
+   * the query in server mode and to the rows in client mode, and mirrors into
+   * the URL under each spec's own param name.
+   *
+   * Pass both to let `kit/AdminFilterBar` own the state: the chips write the
+   * URL, this reads it. Uncontrolled otherwise — there is no filter control
+   * in the header any more, so the only writers left are a deep link, a
+   * back/forward, and the empty state's "Clear filters".
    */
   filters?: AdminTableFilters;
   onFiltersChange?: (next: AdminTableFilters) => void;
@@ -873,7 +878,6 @@ export function AdminDataTable<TData>({
                   const sorted = header.column.getIsSorted();
                   const columnMeta = readAdminColumnMeta<TData>(header.column.columnDef.meta);
                   const align = columnMeta.align ?? (isActionColumn ? "right" : "left");
-                  const filterSpec = readAdminColumnFilter(header.column.columnDef.meta);
                   const sticky = stickyCell(header.column.id, getColumnStyle(header.column));
 
                   return (
@@ -914,9 +918,6 @@ export function AdminDataTable<TData>({
                           ) : (
                             flexRender(header.column.columnDef.header, header.getContext())
                           )}
-                          {filterSpec ? (
-                            <AdminColumnFilter spec={filterSpec} filters={filters} onChange={setFilters} />
-                          ) : null}
                         </span>
                       )}
                     </TableHead>

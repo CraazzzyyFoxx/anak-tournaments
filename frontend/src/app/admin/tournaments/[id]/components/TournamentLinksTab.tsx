@@ -20,7 +20,7 @@ import {
   entityFormError,
   onEntityDialogClose
 } from "@/components/admin/CatalogToolbarActions";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -581,17 +581,19 @@ export function TournamentLinksTab({
       </EntityFormDialog>
 
       {deletingLink && (
-        <DeleteConfirmDialog
+        <ConfirmDialog
           open={!!deletingLink}
           onOpenChange={(open) => !open && setDeletingLink(null)}
           onConfirm={() => deactivateMutation.mutate(deletingLink.id)}
-          isDeleting={deactivateMutation.isPending}
-          title="Archive link"
-          // Soft delete — the row survives with `is_active: false`. Saying
-          // "permanently removed" here would be false.
-          description={`“${deletingLink.label ?? deletingLink.url}” disappears from the tournament page. Nothing is destroyed — you can restore it from this table.`}
-          confirmLabel="Archive"
-          confirmingLabel="Archiving…"
+          pending={deactivateMutation.isPending}
+          intent={{
+            title: "Archive link",
+            // Soft delete — the row survives with `is_active: false`. Saying
+            // "permanently removed" here would be false.
+            description: `“${deletingLink.label ?? deletingLink.url}” disappears from the tournament page. Nothing is destroyed — you can restore it from this table.`,
+            confirmLabel: deactivateMutation.isPending ? "Archiving…" : "Archive",
+            tone: "danger"
+          }}
         />
       )}
     </Card>

@@ -10,7 +10,7 @@ export type AdminColumnCategory = "core" | "meta" | "admin";
 
 /** Column metadata `AdminDataTable` understands. */
 export interface AdminColumnMeta<TData = unknown> {
-  /** Header filter for this column. */
+  /** Column filter contract for `kit/AdminFilterBar` and the table's engine. */
   filter?: AdminColumnFilterSpec;
   /** Picker group. Columns without one are not offered for hiding. */
   category?: AdminColumnCategory;

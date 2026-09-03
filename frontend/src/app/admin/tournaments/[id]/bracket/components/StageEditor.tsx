@@ -18,9 +18,8 @@ import {
 
 import { AdminTabs, type AdminTabItem } from "@/components/admin/kit/AdminTabs";
 import { ConfirmDialog, type ConfirmIntent } from "@/components/admin/kit/ConfirmDialog";
+import { EntityHubHeader } from "@/components/admin/kit/EntityHubHeader";
 import { SaveBar } from "@/components/admin/kit/SaveBar";
-import { TONE_CLASS } from "@/components/admin/tone";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -28,7 +27,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { Stage, StageItem, Tournament } from "@/types/tournament.types";
@@ -100,10 +98,10 @@ interface StageEditorProps {
  * The detail column of the Bracket tab: one stage, five sections, one save.
  *
  * The pre-redesign screen put all of this behind an `Advanced` disclosure and
- * spread seven `DeleteConfirmDialog` mounts around it. Here the sections are
- * routed (`?section=`), the drafts are one object, and every destructive
- * operation goes through the single `ConfirmDialog` below with a swapped
- * `intent`.
+ * spread seven separate delete-confirmation dialogs around it. Here the
+ * sections are routed (`?section=`), the drafts are one object, and every
+ * destructive operation goes through the single `ConfirmDialog` below with a
+ * swapped `intent`.
  *
  * Mount with `key={stage.id}`: the drafts are per-stage, and remounting is how
  * they reset when the selection changes.
@@ -340,117 +338,109 @@ export function StageEditor({
 
   return (
     <div className="min-w-0 rounded-xl border border-border bg-card">
-      <div className="flex flex-wrap items-start gap-3 border-b border-border px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="min-w-0 truncate font-display text-lg font-semibold text-foreground">
-              {stage.name}
-            </h2>
-            <Badge
-              variant="outline"
-              className={cn("shrink-0", TONE_CLASS[getStageStatusTone(stage, hasEncounters)])}
-            >
-              {getStageStatus(stage, hasEncounters)}
-            </Badge>
-          </div>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
-            <span>{STAGE_TYPE_LABELS[stage.stage_type]}</span>
-            <span aria-hidden>·</span>
-            <span className="tabular-nums">
+      <div className="border-b border-border px-4 py-3">
+        <EntityHubHeader
+          level={2}
+          title={stage.name}
+          status={{
+            label: getStageStatus(stage, hasEncounters),
+            tone: getStageStatusTone(stage, hasEncounters)
+          }}
+          meta={[
+            STAGE_TYPE_LABELS[stage.stage_type],
+            <span key="slots" className="tabular-nums">
               {projection.assigned}/{projection.slots} slots
-            </span>
-            {hasEncounters ? (
-              <>
-                <span aria-hidden>·</span>
-                <span className="tabular-nums">
-                  {progress?.completed}/{progress?.total} matches
-                </span>
-              </>
-            ) : null}
-          </p>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={generateMutation.isPending}
-            onClick={() => {
-              if (hasEncounters) setPendingOp({ kind: "regenerate" });
-              else generateMutation.mutate();
-            }}
-            title="Generates the bracket as a preview without activating the stage — captains cannot report or veto until it is activated. With no teams seeded yet, a playoff is built from the group stage's advancing count and filled in once the groups finish."
-          >
-            {generateMutation.isPending ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-            ) : (
-              <Wand2 className="size-4" aria-hidden />
-            )}
-            {hasEncounters ? "Regenerate" : "Generate bracket"}
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" aria-label={`Actions for ${stage.name}`}>
-                <MoreHorizontal className="size-4" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {stage.is_active ? null : (
-                <DropdownMenuItem
-                  disabled={activateMutation.isPending}
-                  onSelect={() => activateMutation.mutate()}
-                >
-                  <PlayCircle className="size-4" aria-hidden />
-                  Activate stage
-                </DropdownMenuItem>
-              )}
-              {isBracket ? (
-                <DropdownMenuItem
-                  disabled={activateAndGenerateMutation.isPending}
-                  onSelect={() => activateAndGenerateMutation.mutate(undefined)}
-                >
-                  <Zap className="size-4" aria-hidden />
-                  Activate &amp; generate
-                </DropdownMenuItem>
-              ) : null}
-              {isBracket ? (
-                <DropdownMenuItem
-                  disabled={autoWireMutation.isPending}
-                  onSelect={() => autoWireMutation.mutate()}
-                >
-                  <Workflow className="size-4" aria-hidden />
-                  Auto-wire from groups
-                </DropdownMenuItem>
-              ) : null}
-              {canSeed ? (
-                <DropdownMenuItem onSelect={() => setPendingOp({ kind: "seed" })}>
-                  <Shuffle className="size-4" aria-hidden />
-                  Seed by SR
-                </DropdownMenuItem>
-              ) : null}
-              {mergeCandidates.length > 0 ? (
-                <DropdownMenuItem onSelect={() => setPendingOp({ kind: "merge" })}>
-                  <GitMerge className="size-4" aria-hidden />
-                  Merge groups
-                </DropdownMenuItem>
-              ) : null}
-              {canDeactivate ? (
-                <DropdownMenuItem onSelect={() => setPendingOp({ kind: "deactivate" })}>
-                  <Undo2 className="size-4" aria-hidden />
-                  Revert to draft
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuItem
-                className="text-danger focus:text-danger"
-                onSelect={() => setPendingOp({ kind: "delete-stage" })}
+            </span>,
+            hasEncounters ? (
+              <span key="matches" className="tabular-nums">
+                {progress?.completed}/{progress?.total} matches
+              </span>
+            ) : null
+          ]}
+          actions={
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={generateMutation.isPending}
+                onClick={() => {
+                  if (hasEncounters) setPendingOp({ kind: "regenerate" });
+                  else generateMutation.mutate();
+                }}
+                title="Generates the bracket as a preview without activating the stage — captains cannot report or veto until it is activated. With no teams seeded yet, a playoff is built from the group stage's advancing count and filled in once the groups finish."
               >
-                <Trash2 className="size-4" aria-hidden />
-                Delete stage
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+                {generateMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <Wand2 className="size-4" aria-hidden />
+                )}
+                {hasEncounters ? "Regenerate" : "Generate bracket"}
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="ghost" aria-label={`Actions for ${stage.name}`}>
+                    <MoreHorizontal className="size-4" aria-hidden />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {stage.is_active ? null : (
+                    <DropdownMenuItem
+                      disabled={activateMutation.isPending}
+                      onSelect={() => activateMutation.mutate()}
+                    >
+                      <PlayCircle className="size-4" aria-hidden />
+                      Activate stage
+                    </DropdownMenuItem>
+                  )}
+                  {isBracket ? (
+                    <DropdownMenuItem
+                      disabled={activateAndGenerateMutation.isPending}
+                      onSelect={() => activateAndGenerateMutation.mutate(undefined)}
+                    >
+                      <Zap className="size-4" aria-hidden />
+                      Activate &amp; generate
+                    </DropdownMenuItem>
+                  ) : null}
+                  {isBracket ? (
+                    <DropdownMenuItem
+                      disabled={autoWireMutation.isPending}
+                      onSelect={() => autoWireMutation.mutate()}
+                    >
+                      <Workflow className="size-4" aria-hidden />
+                      Auto-wire from groups
+                    </DropdownMenuItem>
+                  ) : null}
+                  {canSeed ? (
+                    <DropdownMenuItem onSelect={() => setPendingOp({ kind: "seed" })}>
+                      <Shuffle className="size-4" aria-hidden />
+                      Seed by SR
+                    </DropdownMenuItem>
+                  ) : null}
+                  {mergeCandidates.length > 0 ? (
+                    <DropdownMenuItem onSelect={() => setPendingOp({ kind: "merge" })}>
+                      <GitMerge className="size-4" aria-hidden />
+                      Merge groups
+                    </DropdownMenuItem>
+                  ) : null}
+                  {canDeactivate ? (
+                    <DropdownMenuItem onSelect={() => setPendingOp({ kind: "deactivate" })}>
+                      <Undo2 className="size-4" aria-hidden />
+                      Revert to draft
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    className="text-danger focus:text-danger"
+                    onSelect={() => setPendingOp({ kind: "delete-stage" })}
+                  >
+                    <Trash2 className="size-4" aria-hidden />
+                    Delete stage
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          }
+        />
       </div>
 
       <div className="border-b border-border px-4 py-2">
@@ -527,6 +517,10 @@ export function StageEditor({
           onDiscard={() => setForm(stageFormFromStage(stage))}
           onSave={() => updateMutation.mutate()}
           saving={updateMutation.isPending}
+          // The five sections above are `?section=` links of THIS form, so the
+          // anchor guard would demand a discard just to look at another one.
+          // The stage list beside it is buttons, which the guard never saw.
+          guardNavigation={false}
         />
       </div>
 

@@ -6,7 +6,9 @@
 //  2. the middot between meta fragments is hidden from assistive tech, so a
 //     screen reader does not read "dot" between every count;
 //  3. the status pill renders its label, and absent status renders nothing;
-//  4. `backHref` is a real link with an accessible name.
+//  4. `backHref` is a real link with an accessible name;
+//  5. `level={2}` emits an `<h2>` instead, for an entity nested inside a hub
+//     that already owns the page's `<h1>`.
 import { act, forwardRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -99,5 +101,16 @@ describe("EntityHubHeader", () => {
     await render();
 
     expect(container.textContent).toContain("Open analytics");
+  });
+
+  it("drops to an h2 for an entity nested in a hub that owns the h1", async () => {
+    await render({ level: 2 });
+
+    // A stage inside the tournament hub: same header, one rank down, so the
+    // page keeps exactly one h1 and the outline stays readable.
+    expect(container.querySelectorAll("h1")).toHaveLength(0);
+    const heading = container.querySelector("h2");
+    expect(heading?.textContent).toBe("Anak Cup #14");
+    expect(heading?.className).toContain("text-lg");
   });
 });

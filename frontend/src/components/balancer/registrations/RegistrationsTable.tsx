@@ -108,11 +108,12 @@ const SUBSCRIPTION_LABELS = {
 
 /**
  * Chip keys the TABLE resolves, because a column declares them as a header
- * filter. The remaining chips narrow `visibleRegistrations` below instead:
- * `AdminDataTable` can only apply a filter some column has declared, and
- * neither "which role" nor "include withdrawn" is a column value to match
- * against. Both halves read the same URL-backed `useAdminFilters` store, so
- * there is still exactly one place a filter lives.
+ * filter (`meta.filter`) — which in client mode is how a URL param is mapped
+ * onto the column whose values it matches. The remaining chips narrow
+ * `visibleRegistrations` below instead: neither "which role" nor "include
+ * withdrawn" is a column value to match against. Both halves read the same
+ * URL-backed `useAdminFilters` store, so there is still exactly one place a
+ * filter lives.
  */
 const COLUMN_FILTER_KEYS = ["status", "inclusion", "source"] as const;
 
@@ -322,10 +323,11 @@ export default function RegistrationsTable({
   const filters = useAdminFilters(filterDefs);
   const tableFilters = filters.toTableFilters();
 
-  // The header funnels are the only other writer of the three column-declared
-  // params. Routing them back through `useAdminFilters` keeps ONE store for
-  // filter state (the URL) instead of a controlled prop that would silently
-  // lose whatever the funnel set.
+  // With the header funnels gone the chips are the only thing a user can
+  // change, but the table still calls back on a deep link, a back/forward and
+  // its own "Clear filters". Routing those through `useAdminFilters` keeps ONE
+  // store for filter state (the URL) instead of a controlled prop that could
+  // drift from it.
   const handleTableFiltersChange = (next: AdminTableFilters) => {
     const patch: Record<string, FilterValue | null> = {};
     for (const key of COLUMN_FILTER_KEYS) {

@@ -17,6 +17,19 @@ export interface SaveBarProps {
   saving?: boolean;
   primaryLabel?: string;
   secondary?: ReactNode;
+  /**
+   * While dirty, intercept internal link clicks anywhere in the document so
+   * leaving the page goes through the discard prompt. Defaults to `true`.
+   *
+   * Pass `false` when the screen's own routed sub-navigation is PART of this
+   * form — `?section=` in the stage editor, `?tab=` in the divisions draft
+   * editor. Those links do not unmount anything, so the prompt is a false
+   * alarm that makes flipping between the sections of one form cost a
+   * discard. The `beforeunload` half of the guard stays armed either way, so
+   * a reload or a tab close is still caught; what the screen gives up is the
+   * prompt on an in-app link that really does leave.
+   */
+  guardNavigation?: boolean;
 }
 
 /**
@@ -34,7 +47,8 @@ export function SaveBar({
   onSave,
   saving = false,
   primaryLabel = "Save changes",
-  secondary
+  secondary,
+  guardNavigation = true
 }: Readonly<SaveBarProps>) {
   const router = useRouter();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
@@ -43,6 +57,7 @@ export function SaveBar({
 
   useUnsavedGuard({
     dirty: dirty && !saving,
+    guardNavigation,
     onNavigationBlocked: handleNavigationBlocked
   });
 

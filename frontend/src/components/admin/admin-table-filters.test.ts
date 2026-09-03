@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   parseFiltersFromParams,
   serializeFilters,
-  toggleFilterValue,
   writeFiltersToParams,
   type AdminColumnFilterSpec
 } from "@/components/admin/admin-table-filters";
@@ -71,21 +70,5 @@ describe("serializeFilters", () => {
 
   it("treats an empty value list as no filter", () => {
     expect(serializeFilters({ status: [] })).toBe("");
-  });
-});
-
-describe("toggleFilterValue", () => {
-  it("replaces the value in scalar mode", () => {
-    const next = toggleFilterValue({ status: ["OPEN"] }, statusSpec, "PENDING");
-    expect(next).toEqual({ status: ["PENDING"] });
-  });
-
-  it("unsets the param when the only checked value is clicked again", () => {
-    expect(toggleFilterValue({ status: ["OPEN"] }, statusSpec, "OPEN")).toEqual({});
-  });
-
-  it("accumulates in list mode", () => {
-    const next = toggleFilterValue({ kind: ["a"] }, entitiesSpec, "b");
-    expect(next).toEqual({ kind: ["a", "b"] });
   });
 });

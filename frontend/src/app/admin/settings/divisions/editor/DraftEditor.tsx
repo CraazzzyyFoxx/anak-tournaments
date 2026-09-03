@@ -511,6 +511,11 @@ export function DraftEditor({
           }
           onDiscard={onReload}
           onSave={() => saveMutation.mutate()}
+          // Divisions · Changes · Mappings · Impact are `?tab=` links of THIS
+          // editor, and "resolve the open mapping decisions" is exactly what
+          // the publish pre-flight sends a dirty draft off to do. Prompting
+          // for a discard on the way there would make that unreachable.
+          guardNavigation={false}
         />
       ) : null}
 

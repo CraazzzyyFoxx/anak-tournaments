@@ -10,7 +10,9 @@
 //     empty panel;
 //  3. one destructive operation end to end — the kebab opens the screen's ONE
 //     `ConfirmDialog` (the old screen mounted seven), and confirming calls the
-//     mutation and clears the selection.
+//     mutation and clears the selection;
+//  4. the stage header is an `<h2>`, because the tournament hub around it owns
+//     the page's `<h1>`.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act, useState } from "react";
@@ -305,6 +307,21 @@ describe("Bracket tab · URL is the state", () => {
     expect(sectionTab("Tiebreakers")).toBeNull();
     expect(sectionTab("General")?.getAttribute("aria-current")).toBe("page");
     expect(bodyText()).toContain("Bracket preview");
+  });
+});
+
+describe("Bracket tab · nested entity header", () => {
+  it("gives the stage an h2, leaving the hub's h1 the only one on the page", async () => {
+    await mount("?stage=10");
+
+    // The stage is an entity inside the tournament hub, so its header is the
+    // same kit component one rank down — not a second `<h1>` and not a
+    // hand-rolled heading beside the kit.
+    expect(container.querySelectorAll("h1")).toHaveLength(0);
+    const heading = container.querySelector("h2");
+    expect(heading?.textContent).toBe("Groups");
+    // The status pill and the metrics still travel with it.
+    expect(bodyText()).toContain("Round Robin");
   });
 });
 

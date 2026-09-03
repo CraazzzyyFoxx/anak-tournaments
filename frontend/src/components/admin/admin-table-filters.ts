@@ -1,19 +1,21 @@
 import type { ColumnDef } from "@tanstack/react-table";
 
-/** One selectable value in a header filter. */
+/** One selectable value of a column filter. */
 export interface AdminColumnFilterOption {
   value: string;
   label: string;
-  /** Matching rows, when the endpoint already knows the number. */
-  count?: number | null;
 }
 
 /**
- * A header filter, declared on the column it belongs to.
+ * A filter declared on the column whose values it narrows.
  *
  * `param` is the real query parameter the endpoint understands (`status`,
  * `has_logs`, …) — the table never invents one, because admin list endpoints
- * take typed params, not a generic filter DSL.
+ * take typed params, not a generic filter DSL. In client mode the same
+ * declaration is how a URL param is matched onto a column's `filterFn`.
+ *
+ * The control that WRITES it is `kit/AdminFilterBar`, above the table; this
+ * is only the endpoint contract, so it carries no presentation.
  */
 export interface AdminColumnFilterSpec {
   param: string;
@@ -24,10 +26,6 @@ export interface AdminColumnFilterSpec {
    */
   mode?: "single" | "multi";
   options: readonly AdminColumnFilterOption[];
-  /** Accessible name; defaults to "Filter by <param>". */
-  label?: string;
-  /** Shows a search box above the options. Default: on past 8 options. */
-  searchable?: boolean;
 }
 
 export function readAdminColumnFilter(meta: unknown): AdminColumnFilterSpec | undefined {
@@ -93,25 +91,4 @@ export function serializeFilters(filters: AdminTableFilters): string {
     .sort()
     .map((param) => `${param}=${[...filters[param]].sort().join(",")}`)
     .join("&");
-}
-
-export function toggleFilterValue(
-  filters: AdminTableFilters,
-  spec: AdminColumnFilterSpec,
-  value: string
-): AdminTableFilters {
-  const current = filters[spec.param] ?? [];
-  const next =
-    spec.mode === "multi"
-      ? current.includes(value)
-        ? current.filter((entry) => entry !== value)
-        : [...current, value]
-      : current.includes(value)
-        ? []
-        : [value];
-
-  const result = { ...filters };
-  if (next.length === 0) delete result[spec.param];
-  else result[spec.param] = next;
-  return result;
 }

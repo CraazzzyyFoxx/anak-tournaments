@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 //
-// Header filters on the admin table. What is pinned here:
-//  1. a column that declares a filter renders a funnel next to its sort button,
-//     and the two stay separate click targets;
-//  2. checking an option refetches with that value and writes it to the URL
+// Column-declared filters on the admin table. The header no longer has a
+// filter control of its own — `kit/AdminFilterBar` owns that surface — so what
+// is pinned here is the engine underneath it:
+//  1. the header holds sorting only, and no filter popover;
+//  2. a filter handed in refetches with that value and writes it to the URL
 //     under the endpoint's own param name;
 //  3. a filter change resets to page 1 — narrowing while on page 4 otherwise
 //     lands on a page the new result set does not have;
@@ -56,6 +57,8 @@ const columns: ColumnDef<Row>[] = [
 const queryFn = vi.fn();
 let container: HTMLElement;
 let root: Root;
+/** Set by `renderControlled`; pushes a filter the way a chip would. */
+let applyFilters: (next: AdminTableFilters) => void = () => {};
 
 function lastCallFilters(): AdminTableFilters {
   const call = queryFn.mock.calls.at(-1);
@@ -99,16 +102,47 @@ async function render(search = "") {
   });
 }
 
-function funnel() {
-  return container.querySelector<HTMLButtonElement>(
-    'button[aria-label^="Filter by status"]'
-  );
-}
+/**
+ * The table with its filters owned from outside, which is how a screen wires
+ * `kit/AdminFilterBar` to it: the chips write the URL, this reads it back.
+ * `applyFilters` stands in for a chip being picked.
+ */
+async function renderControlled(search = "") {
+  window.history.replaceState(null, "", `/admin/encounters${search}`);
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-function option(label: string) {
-  return [...document.querySelectorAll('[cmdk-item=""]')].find(
-    (item) => item.textContent?.trim() === label
-  );
+  function Harness() {
+    const [filters, setFilters] = useState<AdminTableFilters>({});
+    applyFilters = setFilters;
+    return (
+      <AdminDataTable<Row>
+        filters={filters}
+        onFiltersChange={setFilters}
+        queryKey={(page, searchValue, pageSize, sortField, sortDir, tableFilters) => [
+          "rows",
+          page,
+          searchValue,
+          pageSize,
+          sortField,
+          sortDir,
+          tableFilters
+        ]}
+        queryFn={queryFn}
+        columns={columns}
+      />
+    );
+  }
+
+  await act(async () => {
+    root.render(
+      <QueryClientProvider client={client}>
+        <Harness />
+      </QueryClientProvider>
+    );
+  });
 }
 
 beforeEach(() => {
@@ -128,16 +162,17 @@ afterEach(async () => {
   container.remove();
 });
 
-describe("AdminDataTable header filters", () => {
-  it("renders a funnel beside the column's sort button", async () => {
+describe("AdminDataTable column filters", () => {
+  it("puts nothing but sorting in the header", async () => {
     await render();
-    expect(funnel()).not.toBeNull();
-    // The sort control stays its own target rather than swallowing the funnel.
+    // The funnel popover is gone: one filter surface per screen, and it is the
+    // filter bar above the table.
+    expect(container.querySelector('th button[aria-label^="Filter by"]')).toBeNull();
+
     const sortButton = [...container.querySelectorAll("th button")].find((node) =>
       node.textContent?.includes("Status")
     );
     expect(sortButton).toBeDefined();
-    expect(sortButton?.contains(funnel()!)).toBe(false);
   });
 
   it("centres body cells, so a one-line cell beside a two-line one does not float", async () => {
@@ -148,22 +183,23 @@ describe("AdminDataTable header filters", () => {
     expect(cell?.className).not.toContain("align-top");
   });
 
-  it("refetches with the checked value and puts it in the URL", async () => {
-    await render();
-    await click(funnel());
-    await click(option("Open"));
+  it("refetches with the value the caller sets and puts it in the URL", async () => {
+    await renderControlled();
+    await act(async () => {
+      applyFilters({ status: ["OPEN"] });
+    });
 
     expect(lastCallFilters()).toEqual({ status: ["OPEN"] });
     expect(new URLSearchParams(window.location.search).get("status")).toBe("OPEN");
-    expect(funnel()?.getAttribute("aria-label")).toBe("Filter by status (1 applied)");
   });
 
   it("resets to page 1 when a filter changes", async () => {
-    await render("?page=4");
+    await renderControlled("?page=4");
     expect(lastCallPage()).toBe(4);
 
-    await click(funnel());
-    await click(option("Pending"));
+    await act(async () => {
+      applyFilters({ status: ["PENDING"] });
+    });
 
     expect(lastCallPage()).toBe(1);
     expect(new URLSearchParams(window.location.search).get("page")).toBeNull();
@@ -177,7 +213,6 @@ describe("AdminDataTable header filters", () => {
     });
 
     expect(lastCallFilters()).toEqual({ status: ["PENDING"] });
-    expect(funnel()?.getAttribute("aria-label")).toBe("Filter by status (1 applied)");
   });
 
   it("grows the list one batch at a time when paging is infinite", async () => {

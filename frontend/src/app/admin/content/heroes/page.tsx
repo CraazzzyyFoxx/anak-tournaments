@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useMemo } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -12,7 +12,9 @@ import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { createAliasesColumn } from "@/components/admin/catalog-table-columns";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -105,6 +107,20 @@ export default function HeroesAdminPage() {
     },
   });
 
+  const filterDefs = useMemo<FilterDef[]>(
+    () => [
+      {
+        key: "role",
+        label: "Role",
+        kind: "single",
+        options: HERO_ROLES.map((role) => ({ value: role, label: role })),
+      },
+    ],
+    []
+  );
+  const filters = useAdminFilters(filterDefs);
+  const roleFilter = String(filters.values.role ?? "");
+
   const columns: ColumnDef<Hero>[] = [
     {
       accessorKey: "id",
@@ -156,14 +172,7 @@ export default function HeroesAdminPage() {
       id: "role",
       header: "Role",
       size: 48,
-      meta: adminColumnMeta<Hero>({
-        align: "center",
-        filter: {
-          param: "role",
-          label: "Filter by role",
-          options: HERO_ROLES.map((role) => ({ value: role, label: role })),
-        },
-      }),
+      meta: adminColumnMeta<Hero>({ align: "center" }),
       cell: ({ row }) => {
         const role = getHeroRoleValue(row.original);
         return (
@@ -198,19 +207,21 @@ export default function HeroesAdminPage() {
   return (
     <>
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir, filters) => ["admin", "heroes", page, search, pageSize, sortField, sortDir, filters]}
-        queryFn={(page, search, pageSize, sortField, sortDir, filters) =>
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["admin", "heroes", page, search, pageSize, sortField, sortDir, roleFilter]}
+        queryFn={(page, search, pageSize, sortField, sortDir) =>
           adminService.getHeroes({
             page,
             search,
             per_page: pageSize,
-            role: filters.role?.[0],
+            role: roleFilter || undefined,
             sort: sortField ?? undefined,
             order: sortDir,
           })
         }
         columns={columns}
         searchPlaceholder="Search heroes…"
+        filterKey={filters.filterKey}
+        toolbar={<AdminFilterBar defs={filterDefs} filters={filters} />}
         emptyMessage="No heroes yet. Use “Create hero” to add the first one."
         onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
         actions={
@@ -338,13 +349,17 @@ export default function HeroesAdminPage() {
 
       {/* Delete Confirmation */}
       {deletingHero && (
-        <DeleteConfirmDialog
+        <ConfirmDialog
           open={!!deletingHero}
           onOpenChange={(open) => !open && setDeletingHero(null)}
           onConfirm={() => deleteMutation.mutate(deletingHero.id)}
-          isDeleting={deleteMutation.isPending}
-          title="Delete hero"
-          description={`“${deletingHero.name}” will be permanently removed from the hero catalogue. This cannot be undone.`}
+          pending={deleteMutation.isPending}
+          intent={{
+            title: "Delete hero",
+            description: `“${deletingHero.name}” will be permanently removed from the hero catalogue. This cannot be undone.`,
+            confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+            tone: "danger",
+          }}
         />
       )}
     </>

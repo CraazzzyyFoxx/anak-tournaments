@@ -10,7 +10,7 @@ import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/c
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { createAliasesColumn } from "@/components/admin/catalog-table-columns";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 
 import adminService from "@/services/admin.service";
 import type { Gamemode, GamemodeCreateInput, GamemodeUpdateInput } from "@/types/admin.types";
@@ -157,13 +157,17 @@ export default function GamemodesAdminPage() {
 
       {/* Delete Confirmation */}
       {deletingGamemode && (
-        <DeleteConfirmDialog
+        <ConfirmDialog
           open={!!deletingGamemode}
           onOpenChange={(open) => !open && setDeletingGamemode(null)}
           onConfirm={() => deleteMutation.mutate(deletingGamemode.id)}
-          isDeleting={deleteMutation.isPending}
-          title="Delete gamemode"
-          description={`“${deletingGamemode.name}” will be permanently removed. Reassign any maps still using it first, otherwise the delete will fail.`}
+          pending={deleteMutation.isPending}
+          intent={{
+            title: "Delete gamemode",
+            description: `“${deletingGamemode.name}” will be permanently removed. Reassign any maps still using it first, otherwise the delete will fail.`,
+            confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+            tone: "danger",
+          }}
         />
       )}
     </>

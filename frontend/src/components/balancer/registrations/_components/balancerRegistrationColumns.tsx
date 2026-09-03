@@ -441,7 +441,6 @@ export function buildBalancerRegistrationColumns(
         align: "center",
         filter: {
           param: "status",
-          label: "Filter by status",
           mode: "multi",
           options: statusOptions,
         },
@@ -475,7 +474,6 @@ export function buildBalancerRegistrationColumns(
         align: "center",
         filter: {
           param: "inclusion",
-          label: "Filter by participation",
           mode: "single",
           options: [
             { value: "included", label: "Included" },
@@ -595,7 +593,6 @@ export function buildBalancerRegistrationColumns(
         responsive: "md",
         filter: {
           param: "source",
-          label: "Filter by source",
           mode: "single",
           options: [
             { value: "manual", label: "Manual" },

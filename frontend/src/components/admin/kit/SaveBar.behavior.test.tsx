@@ -6,7 +6,9 @@
 //  2. it appears with the dirty summary and both actions once edits exist;
 //  3. `saving` blocks both buttons, so a double-click cannot save twice;
 //  4. an in-app link click while dirty is intercepted and routed through the
-//     discard prompt instead of losing the edits silently.
+//     discard prompt instead of losing the edits silently;
+//  5. `guardNavigation={false}` turns that interception off, for a screen
+//     whose routed sub-navigation is part of the same form.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -120,5 +122,18 @@ describe("SaveBar", () => {
     await click(button("Discard changes"));
     expect(onDiscard).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledWith("/admin/settings/branding");
+  });
+
+  it("lets a link through when the screen's sub-navigation is part of the form", async () => {
+    await render({ guardNavigation: false });
+
+    await click(document.querySelector('a[href="/admin/settings/branding"]'));
+
+    // No prompt and no held href: `?section=` links inside one editor do not
+    // unmount it, so there is nothing to discard.
+    expect(document.querySelector("[role='alertdialog']")).toBeNull();
+    expect(onDiscard).not.toHaveBeenCalled();
+    // The bar itself is untouched — this only turns off the anchor guard.
+    expect(container.querySelector("[role='region']")).not.toBeNull();
   });
 });

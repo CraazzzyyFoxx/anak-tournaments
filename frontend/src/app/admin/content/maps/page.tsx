@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useMemo } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
@@ -13,7 +13,9 @@ import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { createAliasesColumn } from "@/components/admin/catalog-table-columns";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -62,7 +64,7 @@ export default function MapsAdminPage() {
   const gamemodeFieldId = `${formId}-gamemode`;
   const aliasesFieldId = `${formId}-aliases`;
 
-  // Gamemodes back both the create/edit dialog select and the header filter.
+  // Gamemodes back both the create/edit dialog select and the Gamemode chip.
   const { data: gamemodesData } = useQuery({
     queryKey: ["gamemodes"],
     queryFn: async () => {
@@ -100,6 +102,33 @@ export default function MapsAdminPage() {
     },
   });
 
+  const filterDefs = useMemo<FilterDef[]>(
+    () => [
+      {
+        key: "gamemode_id",
+        label: "Gamemode",
+        kind: "single",
+        options: (gamemodesData ?? []).map((gamemode) => ({
+          value: gamemode.id.toString(),
+          label: gamemode.name,
+        })),
+      },
+      {
+        key: "in_competitive",
+        label: "Mode pool",
+        kind: "single",
+        options: [
+          { value: "true", label: "Competitive" },
+          { value: "false", label: "Casual" },
+        ],
+      },
+    ],
+    [gamemodesData]
+  );
+  const filters = useAdminFilters(filterDefs);
+  const gamemodeFilter = String(filters.values.gamemode_id ?? "");
+  const competitiveFilter = String(filters.values.in_competitive ?? "");
+
   const columns: ColumnDef<MapRead>[] = [
     {
       accessorKey: "id",
@@ -134,16 +163,6 @@ export default function MapsAdminPage() {
       header: "Gamemode",
       size: 112,
       enableSorting: false,
-      meta: adminColumnMeta<MapRead>({
-        filter: {
-          param: "gamemode_id",
-          label: "Filter by gamemode",
-          options: (gamemodesData ?? []).map((gamemode) => ({
-            value: gamemode.id.toString(),
-            label: gamemode.name,
-          })),
-        },
-      }),
       cell: ({ row }) => {
         const map = row.original;
         return map.gamemode ? (
@@ -157,16 +176,6 @@ export default function MapsAdminPage() {
       accessorKey: "in_competitive",
       header: "Mode Pool",
       size: 120,
-      meta: adminColumnMeta<MapRead>({
-        filter: {
-          param: "in_competitive",
-          label: "Filter by mode pool",
-          options: [
-            { value: "true", label: "Competitive" },
-            { value: "false", label: "Casual" },
-          ],
-        },
-      }),
       cell: ({ row }) => {
         const map = row.original;
         return map.in_competitive !== false ? (
@@ -204,7 +213,7 @@ export default function MapsAdminPage() {
   return (
     <>
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir, filters) => [
+        queryKey={(page, search, pageSize, sortField, sortDir) => [
           "admin",
           "maps",
           page,
@@ -212,23 +221,24 @@ export default function MapsAdminPage() {
           pageSize,
           sortField,
           sortDir,
-          filters,
+          gamemodeFilter,
+          competitiveFilter,
         ]}
-        queryFn={(page, search, pageSize, sortField, sortDir, filters) => {
-          const gamemodeId = filters.gamemode_id?.[0];
-          const competitive = filters.in_competitive?.[0];
-          return adminService.getMaps({
+        queryFn={(page, search, pageSize, sortField, sortDir) =>
+          adminService.getMaps({
             page,
             search,
             per_page: pageSize,
-            gamemode_id: gamemodeId ? Number(gamemodeId) : undefined,
-            in_competitive: competitive ? competitive === "true" : undefined,
+            gamemode_id: gamemodeFilter ? Number(gamemodeFilter) : undefined,
+            in_competitive: competitiveFilter ? competitiveFilter === "true" : undefined,
             sort: sortField ?? undefined,
             order: sortDir,
-          });
-        }}
+          })
+        }
         columns={columns}
         searchPlaceholder="Search maps…"
+        filterKey={filters.filterKey}
+        toolbar={<AdminFilterBar defs={filterDefs} filters={filters} />}
         emptyMessage="No maps yet. Use “Create map” to add the first one."
         onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
         actions={
@@ -314,13 +324,17 @@ export default function MapsAdminPage() {
 
       {/* Delete Confirmation */}
       {deletingMap && (
-        <DeleteConfirmDialog
+        <ConfirmDialog
           open={!!deletingMap}
           onOpenChange={(open) => !open && setDeletingMap(null)}
           onConfirm={() => deleteMutation.mutate(deletingMap.id)}
-          isDeleting={deleteMutation.isPending}
-          title="Delete map"
-          description={`“${deletingMap.name}” will be permanently removed from the map catalogue. This cannot be undone.`}
+          pending={deleteMutation.isPending}
+          intent={{
+            title: "Delete map",
+            description: `“${deletingMap.name}” will be permanently removed from the map catalogue. This cannot be undone.`,
+            confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+            tone: "danger",
+          }}
         />
       )}
     </>

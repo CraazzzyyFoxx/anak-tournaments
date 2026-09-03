@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { History, Pencil, Trash2 } from "lucide-react";
 
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -258,13 +258,18 @@ export function TournamentDiscordSection({
         </div>
       </EntityFormDialog>
 
-      <DeleteConfirmDialog
+      <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         onConfirm={() => deleteMutation.mutate()}
-        title="Remove Discord channel"
-        description="The bot stops monitoring this channel and match logs will no longer arrive automatically. The tournament and its existing logs are untouched."
-        isDeleting={deleteMutation.isPending}
+        pending={deleteMutation.isPending}
+        intent={{
+          title: "Remove Discord channel",
+          description:
+            "The bot stops monitoring this channel and match logs will no longer arrive automatically. The tournament and its existing logs are untouched.",
+          confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+          tone: "danger"
+        }}
       />
     </>
   );

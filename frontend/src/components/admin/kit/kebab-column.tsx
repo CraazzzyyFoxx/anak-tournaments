@@ -37,8 +37,8 @@ export interface KebabColumnOptions<T> {
  * The single row-actions convention for the admin panel: one always-visible
  * `⋯` menu.
  *
- * It replaces two competing conventions — `createRowActionsColumn`'s
- * pencil+trash pair and `createEntityActionsColumn`'s catalogue dropdown —
+ * It replaced two competing conventions — an edit-pencil/delete-trash pair
+ * and a catalogue dropdown, each with its own permission gating —
  * and it is always visible: the old actions column was `opacity-0` until
  * hover, which made every list screen's primary actions undiscoverable
  * without a mouse.
