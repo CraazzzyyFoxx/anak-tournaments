@@ -5,9 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Check, ChevronsUpDown, Trash2, UserPlus, Wand2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
+import { createKebabColumn } from "@/components/admin/kit/kebab-column";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -126,12 +128,22 @@ export default function WorkspaceMembersPage() {
     [scopedRoles]
   );
 
-  // The role header filter's options: every role scoped to this workspace,
-  // system and custom alike, keyed by the `role_id` the members endpoint takes.
-  const roleFilterOptions = useMemo(
-    () => (scopedRoles ?? []).map((role) => ({ value: String(role.id), label: role.name })),
+  // One chip: every role scoped to this workspace, system and custom alike,
+  // carrying the `role_id` the members endpoint takes. Declared even while the
+  // catalogue is still loading, so `?role=` in the URL is read on mount.
+  const filterDefs = useMemo<FilterDef[]>(
+    () => [
+      {
+        key: "role",
+        label: "Role",
+        kind: "single",
+        options: (scopedRoles ?? []).map((role) => ({ value: String(role.id), label: role.name }))
+      }
+    ],
     [scopedRoles]
   );
+  const filters = useAdminFilters(filterDefs);
+  const roleFilter = String(filters.values.role ?? "");
 
   const invalidateMembers = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["workspace-members", currentWorkspaceId] });
@@ -232,11 +244,9 @@ export default function WorkspaceMembersPage() {
         header: "Role",
         size: 340,
         enableSorting: true,
-        // Declared even while `roleFilterOptions` is still empty: the spec has to
-        // exist on mount for `?role_id=` in the URL to be picked up at all.
-        meta: adminColumnMeta<WorkspaceMember>({
-          filter: { param: "role_id", label: "Filter by role", options: roleFilterOptions }
-        }),
+        // Editing stays in the cell -- the one deliberate exception to "details
+        // go in a dialog or an inspector": two fields, and changing a role is
+        // the whole reason this screen is opened.
         cell: ({ row }) => {
           const member = row.original;
           const customCount = memberCustomRoleIds(member).length;
@@ -341,33 +351,22 @@ export default function WorkspaceMembersPage() {
       }
     ];
 
-    if (canDeleteMembers) {
-      cols.push({
-        id: "actions",
-        header: "",
-        enableSorting: false,
-        cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 text-danger"
-            onClick={() => setPendingRemoval(row.original)}
-            aria-label={`Remove ${memberLabel(row.original)} from this workspace`}
-          >
-            <Trash2 aria-hidden className="size-3.5" />
-          </Button>
-        )
-      });
-    }
+    cols.push(
+      createKebabColumn<WorkspaceMember>(
+        (member) => [
+          {
+            label: "Remove from workspace",
+            icon: Trash2,
+            destructive: true,
+            hidden: !canDeleteMembers,
+            onSelect: () => setPendingRemoval(member)
+          }
+        ],
+        { rowLabel: memberLabel }
+      )
+    );
     return cols;
-  }, [
-    canUpdateMembers,
-    canDeleteMembers,
-    customScopedRoles,
-    roleFilterOptions,
-    changePrimaryRole,
-    toggleCustomRole
-  ]);
+  }, [canUpdateMembers, canDeleteMembers, customScopedRoles, changePrimaryRole, toggleCustomRole]);
 
   // Exclusive branch: no workspace selected means the table below never renders,
   // so this header is the page's only `<h1>`.
@@ -413,17 +412,17 @@ export default function WorkspaceMembersPage() {
       />
 
       <AdminDataTable<WorkspaceMember>
-        queryKey={(page, search, pageSize, sortField, sortDir, filters) => [
+        queryKey={(page, search, pageSize, sortField, sortDir) => [
           "workspace-members",
           currentWorkspaceId,
-          { page, search, pageSize, sortField, sortDir, roleId: filters.role_id?.[0] ?? null }
+          { page, search, pageSize, sortField, sortDir, roleId: roleFilter || null }
         ]}
-        queryFn={(page, search, pageSize, sortField, sortDir, filters) =>
+        queryFn={(page, search, pageSize, sortField, sortDir) =>
           workspaceService.getMembers(currentWorkspaceId, {
             page,
             per_page: pageSize,
             search,
-            role_id: filters.role_id?.[0] ? Number(filters.role_id[0]) : null,
+            role_id: roleFilter ? Number(roleFilter) : null,
             sort: sortField === "role" ? "role" : "username",
             order: sortDir
           })
@@ -431,6 +430,9 @@ export default function WorkspaceMembersPage() {
         columns={columns}
         initialPageSize={25}
         searchPlaceholder="Search by name or email…"
+        filterKey={filters.filterKey}
+        getRowId={(row) => String(row.auth_user_id)}
+        toolbar={<AdminFilterBar defs={filterDefs} filters={filters} />}
         emptyMessage="No members yet. Add staff and administrators here — players who register for a tournament are added automatically."
         actions={tableActions}
       />
@@ -449,21 +451,21 @@ export default function WorkspaceMembersPage() {
         />
       ) : null}
 
-      <DeleteConfirmDialog
+      <ConfirmDialog
         open={pendingRemoval !== null}
         onOpenChange={(open) => (open ? null : setPendingRemoval(null))}
-        onConfirm={() =>
-          pendingRemoval && removeMemberMutation.mutate(pendingRemoval.auth_user_id)
-        }
-        title="Remove member"
-        description={
-          pendingRemoval
+        intent={{
+          title: "Remove member",
+          description: pendingRemoval
             ? `${memberLabel(pendingRemoval)} loses access to ${workspace?.name ?? "this workspace"} and all roles granted here. Their tournament results are kept, and you can add them back later.`
-            : ""
-        }
-        confirmLabel="Remove member"
-        confirmingLabel="Removing…"
-        isDeleting={removeMemberMutation.isPending}
+            : "",
+          confirmLabel: "Remove member",
+          tone: "danger"
+        }}
+        onConfirm={() => {
+          if (pendingRemoval) removeMemberMutation.mutate(pendingRemoval.auth_user_id);
+        }}
+        pending={removeMemberMutation.isPending}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { memberPrimaryRole } from "@/app/admin/workspaces/members/page";
+import { memberPrimaryRole } from "@/app/admin/members/page";
 import type { WorkspaceMember } from "@/types/workspace.types";
 
 function member(roles: Array<{ name: string; is_system: boolean }>): WorkspaceMember {
