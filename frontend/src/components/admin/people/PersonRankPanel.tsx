@@ -19,7 +19,7 @@ import userService from "@/services/user.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { CurrentRank } from "@/types/rank.types";
 
-import { StatusBadge, formatDate } from "@/app/admin/rank/_components/rank-shared";
+import { StatusBadge, formatDate } from "@/components/admin/collectors/rank-shared";
 
 interface SelectUser {
   (userId: number, label: string): void;

@@ -22,13 +22,15 @@ import { StatusBadge, formatDate } from "./rank-shared";
 const STATUS_FILTERS = ["all", "ok", "private", "not_found", "error", "rate_limited"];
 const SOURCE_FILTERS = ["all", "scheduled", "registration", "manual"];
 
-interface RankTaskHistoryProps {
-  onSelectUser: (userId: number, label: string) => void;
-}
-
-/** Live OverFast worker fetch log. Rows resolve to a player (when known) and are
- *  clickable through to that player's detail. */
-export function RankTaskHistory({ onSelectUser }: Readonly<RankTaskHistoryProps>) {
+/**
+ * Live OverFast worker fetch log.
+ *
+ * Rows that resolve to a known player link through to that person's page:
+ * per-player inspection is People's job now (F14 ·3), so this screen stays
+ * about the worker and hands the drill-down off instead of growing a second
+ * detail surface below the fold.
+ */
+export function RankTaskHistory() {
   const [status, setStatus] = useState("all");
   const [source, setSource] = useState("all");
   // Rows come back scoped to the workspace `apiFetch` injects — key on it so a
@@ -106,20 +108,20 @@ export function RankTaskHistory({ onSelectUser }: Readonly<RankTaskHistoryProps>
               </TableHeader>
               <TableBody>
                 {rows.map((row) => {
-                  const userId = row.user_id;
-                  const clickable = userId != null;
-                  const open = () => onSelectUser(userId as number, row.battle_tag);
+                  const href = row.user_id == null ? null : `/admin/people/${row.user_id}`;
                   return (
-                    <ClickableLogRow key={row.id} clickable={clickable} onOpen={open}>
+                    <ClickableLogRow key={row.id} href={href}>
                       <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
                         {formatDate(row.created_at)}
                       </TableCell>
-                      <ClickableLogCell clickable={clickable} onOpen={open} label={row.battle_tag} />
+                      <ClickableLogCell href={href} label={row.battle_tag} />
                       <TableCell>
                         <StatusBadge status={row.status} />
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{row.source}</TableCell>
-                      <TableCell className="text-right text-sm tabular-nums">{row.snapshots_written || "—"}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">
+                        {row.snapshots_written || "—"}
+                      </TableCell>
                       <TableCell
                         className="max-w-64 truncate text-xs text-danger"
                         title={row.error ?? undefined}

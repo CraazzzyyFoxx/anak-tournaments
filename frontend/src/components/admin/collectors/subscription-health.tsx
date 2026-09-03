@@ -5,7 +5,8 @@ import { AlertTriangle, Loader2, Pause, Play, RefreshCw } from "lucide-react";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { StatTileGridSkeleton } from "@/components/admin/StatTileGridSkeleton";
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { TintedBadge } from "@/components/admin/TintedBadge";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
@@ -14,6 +15,7 @@ import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { SubscriptionCollectionStats } from "@/types/admin.types";
 
+import { RUN_STATE_TONES } from "./collector-state";
 import {
   PROVIDER_LABELS,
   STATE_BAR,
@@ -121,21 +123,13 @@ export function SubscriptionHealthDashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Polls every 10s — announce the pause/resume flip and the pacing. */}
         <output className="flex flex-wrap items-center gap-2 text-sm">
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium",
-              stats.enabled ? TONE_CLASS.success : TONE_CLASS.neutral
-            )}
-          >
-            <span
-              aria-hidden
-              className={cn(
-                "h-1.5 w-1.5 rounded-full",
-                stats.enabled ? "bg-success" : "bg-muted-foreground/40"
-              )}
-            />
-            {stats.enabled ? "Collecting" : "Paused"}
-          </span>
+          <TintedBadge
+            value={stats.enabled ? "running" : "paused"}
+            tones={RUN_STATE_TONES}
+            labels={{ running: "Collecting", paused: "Paused" }}
+            fallback="Paused"
+            dot
+          />
           <span className="text-muted-foreground">
             <span className="tabular-nums">{stats.active_tournaments}</span>{" "}
             {stats.active_tournaments === 1 ? "tournament" : "tournaments"} gated · every{" "}

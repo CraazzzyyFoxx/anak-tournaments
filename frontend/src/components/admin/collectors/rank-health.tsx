@@ -4,9 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Pause, Play, RotateCcw } from "lucide-react";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { StatTileGridSkeleton } from "@/components/admin/StatTileGridSkeleton";
+import { TintedBadge } from "@/components/admin/TintedBadge";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -14,19 +15,10 @@ import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { RankCollectionStats } from "@/types/admin.types";
 
-import { STATUS_BAR, STATUS_ORDER, formatRelative } from "./rank-shared";
+import { RUN_STATE_TONES } from "./collector-state";
+import { STATUS_BAR, STATUS_ORDER, formatInterval, formatRelative } from "./rank-shared";
 
-const RANK_KEY = "parser.rank_collection";
-
-function pct(n: number, total: number): string {
-  return total ? `${Math.round((n / total) * 100)}%` : "0%";
-}
-
-function formatInterval(seconds: number): string {
-  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
-  if (seconds % 60 === 0) return `${seconds / 60}m`;
-  return `${seconds}s`;
-}
+const RANK_SETTING_KEY = "parser.rank_collection";
 
 /**
  * Stacked distribution of battle tags per collection status.
@@ -92,9 +84,9 @@ export function RankHealthDashboard() {
 
   const toggleMutation = useMutation({
     mutationFn: async () => {
-      const setting = await adminService.getSetting(RANK_KEY);
+      const setting = await adminService.getSetting(RANK_SETTING_KEY);
       const value = { ...(setting.value ?? {}), enabled: !(stats?.enabled ?? false) };
-      return adminService.updateSetting(RANK_KEY, { value });
+      return adminService.updateSetting(RANK_SETTING_KEY, { value });
     },
     onSuccess: () => {
       notify.success(stats?.enabled ? "Collection paused" : "Collection resumed");
@@ -105,17 +97,7 @@ export function RankHealthDashboard() {
   });
 
   if (statsQuery.isLoading || !stats) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-9 w-full" />
-        <StatTileGrid>
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-        </StatTileGrid>
-      </div>
-    );
+    return <StatTileGridSkeleton />;
   }
 
   const disabled = stats.by_status?.disabled ?? 0;
@@ -128,21 +110,13 @@ export function RankHealthDashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Polls every 10s — announce the pause/resume flip and the pacing. */}
         <output className="flex flex-wrap items-center gap-2 text-sm">
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium",
-              stats.enabled ? TONE_CLASS.success : TONE_CLASS.neutral
-            )}
-          >
-            <span
-              aria-hidden
-              className={cn(
-                "h-1.5 w-1.5 rounded-full",
-                stats.enabled ? "bg-success" : "bg-muted-foreground/40"
-              )}
-            />
-            {stats.enabled ? "Collecting" : "Paused"}
-          </span>
+          <TintedBadge
+            value={stats.enabled ? "running" : "paused"}
+            tones={RUN_STATE_TONES}
+            labels={{ running: "Collecting", paused: "Paused" }}
+            fallback="Paused"
+            dot
+          />
           <span className="text-muted-foreground">
             scope <b className="text-foreground">{stats.scope}</b> · every{" "}
             <span className="tabular-nums">{formatInterval(stats.interval_seconds)}</span> ·{" "}
@@ -157,7 +131,7 @@ export function RankHealthDashboard() {
             onClick={() => toggleMutation.mutate()}
           >
             {toggleMutation.isPending ? (
-              <Loader2 aria-hidden className="mr-1.5 h-4 w-4 animate-spin" />
+              <Loader2 aria-hidden className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
             ) : stats.enabled ? (
               <Pause aria-hidden className="mr-1.5 h-4 w-4" />
             ) : (
@@ -181,7 +155,7 @@ export function RankHealthDashboard() {
         <StatTile
           label="Coverage (snapshots)"
           value={stats.coverage_24h}
-          detail={`${pct(stats.coverage_24h, stats.total)} of all tags in 24h · ${stats.coverage_7d} distinct accounts in 7d`}
+          detail={`${stats.total ? Math.round((stats.coverage_24h / stats.total) * 100) : 0}% of all tags in 24h · ${stats.coverage_7d} distinct accounts in 7d`}
         />
 
         <StatTile
@@ -214,7 +188,7 @@ export function RankHealthDashboard() {
               onClick={() => reenableMutation.mutate()}
             >
               {reenableMutation.isPending ? (
-                <Loader2 aria-hidden className="mr-1.5 h-4 w-4 animate-spin" />
+                <Loader2 aria-hidden className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
               ) : (
                 <RotateCcw aria-hidden className="mr-1.5 h-4 w-4" />
               )}

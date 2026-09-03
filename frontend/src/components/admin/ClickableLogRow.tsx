@@ -1,26 +1,32 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 interface ClickableLogRowProps {
-  /** Whether this row resolves to a known user and should open on click. */
-  clickable: boolean;
-  onOpen: () => void;
+  /** Where the row resolves to, or `null` when it names no known person. */
+  href: string | null;
   children: ReactNode;
 }
 
 /**
- * Log-table row that opens a player detail dialog when it resolves to a known
- * user; shared by every collector's live task/check history table.
+ * Log-table row that opens the person it resolved to; shared by every
+ * collector's live task/check history table.
+ *
+ * The row's own `onClick` is a mouse convenience — the real affordance is the
+ * link in `ClickableLogCell`, which is what a keyboard, a middle click and a
+ * screen reader all see.
  */
-export function ClickableLogRow({ clickable, onOpen, children }: Readonly<ClickableLogRowProps>) {
+export function ClickableLogRow({ href, children }: Readonly<ClickableLogRowProps>) {
+  const router = useRouter();
   return (
     <TableRow
-      className={cn(clickable && "cursor-pointer hover:bg-muted/50")}
-      onClick={clickable ? onOpen : undefined}
+      className={cn(href && "cursor-pointer hover:bg-muted/50")}
+      onClick={href ? () => router.push(href) : undefined}
     >
       {children}
     </TableRow>
@@ -28,31 +34,26 @@ export function ClickableLogRow({ clickable, onOpen, children }: Readonly<Clicka
 }
 
 interface ClickableLogCellProps {
-  clickable: boolean;
-  onOpen: () => void;
+  href: string | null;
   label: ReactNode;
 }
 
 /**
- * The name/label cell inside a `ClickableLogRow`. The row's own `onClick` is
- * mouse-only, so this renders a real button when clickable — the only way
- * keyboard users reach it — stopping propagation so the row handler doesn't
- * fire the same open twice.
+ * The name/label cell inside a `ClickableLogRow`. A real link, so the row is
+ * reachable without a mouse and openable in a new tab; the click is stopped
+ * from bubbling so the row handler does not navigate a second time.
  */
-export function ClickableLogCell({ clickable, onOpen, label }: Readonly<ClickableLogCellProps>) {
+export function ClickableLogCell({ href, label }: Readonly<ClickableLogCellProps>) {
   return (
     <TableCell className="font-medium">
-      {clickable ? (
-        <button
-          type="button"
+      {href ? (
+        <Link
+          href={href}
           className="text-primary underline-offset-2 hover:underline"
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpen();
-          }}
+          onClick={(event) => event.stopPropagation()}
         >
           {label}
-        </button>
+        </Link>
       ) : (
         label
       )}

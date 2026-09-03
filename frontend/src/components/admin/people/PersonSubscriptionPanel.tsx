@@ -25,7 +25,7 @@ import {
   StateBadge,
   formatDate,
   formatRelative
-} from "@/app/admin/subscriptions/_components/subscription-shared";
+} from "@/components/admin/collectors/subscription-shared";
 
 interface SelectUser {
   (userId: number, label: string): void;

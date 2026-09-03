@@ -1,19 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  Clock,
-  Gauge,
-  Loader2,
-  Pause,
-  Play,
-  Radio,
-  Trophy
-} from "lucide-react";
+import { AlertTriangle, Clock, Gauge, Loader2, Pause, Play, Radio, Trophy } from "lucide-react";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { StatTileGridSkeleton } from "@/components/admin/StatTileGridSkeleton";
+import { TintedBadge } from "@/components/admin/TintedBadge";
 import { formatInterval, formatRelative } from "@/components/admin/format-time";
 import { TONE_CLASS, type Tone } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
@@ -21,7 +13,9 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
-import type { StreamPollHealth, StreamPollStatus } from "@/types/admin.types";
+
+import { RUN_STATE_TONES } from "./collector-state";
+import { STREAM_STATUS_META, diagnoseStreamHealth } from "./stream-shared";
 
 const STREAM_KEY = "stream.collection";
 
@@ -30,101 +24,6 @@ const STREAM_KEY = "stream.collection";
 // rank/subscription dashboards in kind, not in value: their sweeps are minutes
 // apart, this one is seconds.
 const REFETCH_MS = 30_000;
-
-/**
- * Wording and tone per recorded tick outcome.
- *
- * A registry rather than nested ternaries (the same reason `variant` in
- * `lib/tournament-status.ts` is a lookup): the compiler then holds this
- * exhaustive against `StreamPollStatus`, so a status added backend-side fails
- * the build here instead of silently rendering as a raw enum token.
- *
- * `hint` is the operator's next action, not a restatement of the label — the
- * whole reason this panel exists is that the tick swallows its own failures, so
- * "what went wrong" without "what to do" leaves them back in the logs.
- */
-const STATUS_META: Record<StreamPollStatus, { label: string; tone: Tone; hint: string | null }> = {
-  ok: { label: "Last tick OK", tone: "success", hint: null },
-  empty: {
-    label: "Nothing to poll",
-    tone: "neutral",
-    hint: "The last tick found no active tournament with a Twitch channel attached. Add a stream link to a live tournament to give the poller something to do."
-  },
-  truncated: {
-    label: "Tick cut short",
-    tone: "warning",
-    hint: "More channels were due than one tick could cover. Raise the batch size (up to Twitch's 100 ceiling) or lower the interval so the backlog drains."
-  },
-  not_configured: {
-    label: "Twitch credentials missing",
-    tone: "danger",
-    hint: "Set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET in backend/env/stream.env, then restart stream-service."
-  },
-  rate_limited: {
-    label: "Helix rate limit reached",
-    tone: "warning",
-    hint: "The 800 requests/min bucket is shared with identity-service's OAuth sign-ins, so exhausting it breaks logins, not just stream badges. Fix it by RAISING the poll interval (or lowering the batch size) — not by retrying."
-  },
-  unauthorized: {
-    label: "Twitch rejected the credentials",
-    tone: "danger",
-    hint: "The credentials are present but Twitch refused them. Re-check the client id/secret pair in the Twitch developer console (a rotated or deleted app reads exactly like this) and update backend/env/stream.env."
-  },
-  unavailable: {
-    label: "Twitch unreachable",
-    tone: "warning",
-    hint: "Twitch did not answer. Nothing to do on our side — the next tick retries. If it persists, check the Twitch status page and this worker's egress."
-  },
-  error: {
-    label: "Tick failed",
-    tone: "danger",
-    hint: "The tick raised an unexpected error. Check the stream-service logs for the traceback — the tick swallows failures to keep the scheduler alive, so nothing else surfaces it."
-  }
-};
-
-interface Diagnosis {
-  tone: Tone;
-  label: string;
-  hint: string | null;
-}
-
-/**
- * The one thing this panel owes the operator.
- *
- * Three unrelated causes all render as "a tournament page with no live badges",
- * and they need different actions. Resolved in this order because each earlier
- * cause makes the later ones unobservable: a disabled poller never records a
- * status at all, and missing credentials can't be "rejected".
- */
-function diagnose(health: StreamPollHealth): Diagnosis {
-  if (!health.enabled) {
-    return {
-      tone: "neutral",
-      label: "Polling is off",
-      hint: "This is the shipped default — a fresh deploy never touches Twitch. Turn on background polling in the Settings tab to start it."
-    };
-  }
-
-  // Checked ahead of `status`: an operator who has just filled in the env sees
-  // this flip before the next tick overwrites a stale `not_configured`.
-  if (!health.credentials_configured) {
-    return {
-      tone: "danger",
-      label: STATUS_META.not_configured.label,
-      hint: STATUS_META.not_configured.hint
-    };
-  }
-
-  if (health.status === null) {
-    return {
-      tone: "info",
-      label: "No tick recorded yet",
-      hint: "Polling is on and configured, but the scheduler has not reached a due tick. This is not a failure — give it one interval."
-    };
-  }
-
-  return STATUS_META[health.status];
-}
 
 export function StreamHealthDashboard() {
   const queryClient = useQueryClient();
@@ -158,7 +57,7 @@ export function StreamHealthDashboard() {
     return <StatTileGridSkeleton />;
   }
 
-  const diagnosis = diagnose(health);
+  const diagnosis = diagnoseStreamHealth(health);
   // 800/min shared with identity-service sign-ins; a low reading is a sign-in
   // outage waiting to happen, so it is worth a tone rather than a bare number.
   const remaining = health.ratelimit_remaining;
@@ -169,21 +68,13 @@ export function StreamHealthDashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Refetches every 30s — announce the pause/resume flip and the pacing. */}
         <output className="flex flex-wrap items-center gap-2 text-sm">
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium",
-              health.enabled ? TONE_CLASS.success : TONE_CLASS.neutral
-            )}
-          >
-            <span
-              aria-hidden
-              className={cn(
-                "h-1.5 w-1.5 rounded-full",
-                health.enabled ? "bg-success" : "bg-muted-foreground/40"
-              )}
-            />
-            {health.enabled ? "Polling" : "Paused"}
-          </span>
+          <TintedBadge
+            value={health.enabled ? "running" : "paused"}
+            tones={RUN_STATE_TONES}
+            labels={{ running: "Polling", paused: "Paused" }}
+            fallback="Paused"
+            dot
+          />
           <span className="text-muted-foreground">
             every <span className="tabular-nums">{formatInterval(health.interval_seconds)}</span> ·{" "}
             <span className="tabular-nums">{health.batch_size}</span>/batch
@@ -231,7 +122,7 @@ export function StreamHealthDashboard() {
           detail={
             health.status === null
               ? "Never run — no outcome recorded yet"
-              : STATUS_META[health.status].label
+              : STREAM_STATUS_META[health.status].label
           }
           icon={Clock}
           tone={diagnosis.tone}

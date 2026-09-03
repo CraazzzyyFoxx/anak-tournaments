@@ -31,20 +31,16 @@ const STATE_FILTERS = ["all", "active", "inactive", "unknown", "error"];
 const SOURCE_FILTERS = ["all", "scheduled", "registration", "check_in", "manual", "redeem"];
 const PROVIDER_FILTERS = ["all", "boosty", "twitch"];
 
-interface SubscriptionHistoryProps {
-  onSelectUser: (userId: number, label: string) => void;
-}
-
 /**
  * Live subscription check history — one row per real provider call.
  *
  * This is the view the subscription domain had no data for: `entitlement` is
  * overwritten in place on every check, so before `check_log` existed there was
  * no way to see that a player flapped, when a provider went down, or why a
- * registration was refused. Rows resolve to a player (when the auth account has
- * a profile) and are clickable through to that player's detail.
+ * registration was refused. Rows that resolve to a player link through to that
+ * person's page (F14 ·3) rather than opening a detail panel here.
  */
-export function SubscriptionTaskHistory({ onSelectUser }: Readonly<SubscriptionHistoryProps>) {
+export function SubscriptionTaskHistory() {
   const [state, setState] = useState("all");
   const [source, setSource] = useState("all");
   const [provider, setProvider] = useState("all");
@@ -138,17 +134,16 @@ export function SubscriptionTaskHistory({ onSelectUser }: Readonly<SubscriptionH
               </TableHeader>
               <TableBody>
                 {rows.map((row) => {
-                  const userId = row.user_id;
-                  const clickable = userId != null;
+                  const href = row.user_id == null ? null : `/admin/people/${row.user_id}`;
                   const label = row.user_name ?? `auth #${row.auth_user_id ?? "?"}`;
-                  const open = () => onSelectUser(userId as number, label);
-                  const reason = row.error ?? (row.reason ? (REASON_LABELS[row.reason] ?? row.reason) : null);
+                  const reason =
+                    row.error ?? (row.reason ? (REASON_LABELS[row.reason] ?? row.reason) : null);
                   return (
-                    <ClickableLogRow key={row.id} clickable={clickable} onOpen={open}>
+                    <ClickableLogRow key={row.id} href={href}>
                       <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
                         {formatDate(row.created_at)}
                       </TableCell>
-                      <ClickableLogCell clickable={clickable} onOpen={open} label={label} />
+                      <ClickableLogCell href={href} label={label} />
                       <TableCell className="text-sm">
                         {PROVIDER_LABELS[row.provider] ?? row.provider}
                       </TableCell>
@@ -158,11 +153,17 @@ export function SubscriptionTaskHistory({ onSelectUser }: Readonly<SubscriptionH
                       <TableCell className="text-xs tabular-nums text-muted-foreground">
                         {row.tier_label ?? (row.tier_rank != null ? `Tier ${row.tier_rank}` : "—")}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground" title={row.mechanism ?? undefined}>
+                      <TableCell
+                        className="text-xs text-muted-foreground"
+                        title={row.mechanism ?? undefined}
+                      >
                         {SOURCE_LABELS[row.source] ?? row.source}
                       </TableCell>
                       <TableCell
-                        className={cn("max-w-64 truncate text-xs", row.error ? "text-danger" : "text-muted-foreground")}
+                        className={cn(
+                          "max-w-64 truncate text-xs",
+                          row.error ? "text-danger" : "text-muted-foreground"
+                        )}
                         title={row.error ?? row.reason ?? undefined}
                       >
                         {reason ?? "—"}

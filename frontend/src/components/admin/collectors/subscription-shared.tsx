@@ -1,14 +1,15 @@
 import { TintedBadge } from "@/components/admin/TintedBadge";
-import { TONE_CLASS } from "@/components/admin/tone";
+import type { Tone } from "@/components/admin/tone";
+import type { SubscriptionCollectionStats } from "@/types/admin.types";
 
 export { formatDate, formatRelative, formatInterval } from "@/components/admin/format-time";
 
-/** Tinted badge classes (border + tint + text) per check state. */
-const STATE_STYLES: Record<string, string> = {
-  active: TONE_CLASS.success,
-  inactive: TONE_CLASS.warning,
-  unknown: TONE_CLASS.info,
-  error: TONE_CLASS.danger
+/** Tone per check state, handed to `TintedBadge` as the domain's vocabulary. */
+const STATE_TONES: Record<string, Tone> = {
+  active: "success",
+  inactive: "warning",
+  unknown: "info",
+  error: "danger"
 };
 
 /** Solid fill per state, for the stacked distribution bar. */
@@ -82,6 +83,23 @@ export const REASON_LABELS: Record<string, string> = {
 
 export function StateBadge({ state }: Readonly<{ state: string | null }>) {
   return (
-    <TintedBadge value={state} styles={STATE_STYLES} labels={STATE_LABELS} fallback="Never checked" />
+    <TintedBadge value={state} tones={STATE_TONES} labels={STATE_LABELS} fallback="Never checked" />
   );
+}
+
+/**
+ * Health marker for the Subscriptions tab of the collectors bar (F14).
+ *
+ * Same ordering rule as `rankHealthDot`: paused explains everything else, then
+ * the 24h failure rate, then entitlements sitting in a failed state. `error`
+ * here means the provider call itself did not conclude — a real outage, unlike
+ * `inactive`, which is a legitimate verdict.
+ */
+export function subscriptionHealthDot(
+  stats: SubscriptionCollectionStats
+): { tone: Tone; label: string } {
+  if (!stats.enabled) return { tone: "neutral", label: "Paused" };
+  if ((stats.error_rate_24h ?? 0) >= 0.2) return { tone: "danger", label: "Failing" };
+  if ((stats.by_state?.error ?? 0) > 0) return { tone: "warning", label: "Degraded" };
+  return { tone: "success", label: "Healthy" };
 }

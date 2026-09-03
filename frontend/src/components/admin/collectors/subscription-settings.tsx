@@ -1,7 +1,7 @@
 "use client";
 
-// Moved here from /admin/rank's Settings tab: the subscription collector's config
-// belongs beside its own health and history, not under the rank collector.
+// Moved out of the rank collector's Settings slot: the subscription collector's
+// config belongs beside its own health and history, not under the rank one.
 
 import { CollectionSettingsPanel, useCollectionSettings } from "@/components/admin/CollectionSettingsPanel";
 import { Label } from "@/components/ui/label";

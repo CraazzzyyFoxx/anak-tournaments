@@ -1,7 +1,7 @@
 "use client";
 
 // Moved as-is from /admin/settings (D10): rank collection config + rank mapping,
-// now rendered as the Settings tab of /admin/rank.
+// now the Settings slot of /admin/collectors/rank.
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -86,8 +86,8 @@ export function RankSettingsPanel() {
         setting={settingsQuery.data?.find((s) => s.key === RANK_COLLECTION_KEY)}
         onSaved={invalidate}
       />
-      {/* Subscription collection config moved to /admin/subscriptions, beside its
-          own health dashboard and check history. */}
+      {/* Subscription collection config lives with its own collector, at
+          /admin/collectors/subscriptions?tab=settings. */}
       <RankMappingSection
         setting={settingsQuery.data?.find((s) => s.key === RANK_MAPPING_KEY)}
         onSaved={invalidate}
