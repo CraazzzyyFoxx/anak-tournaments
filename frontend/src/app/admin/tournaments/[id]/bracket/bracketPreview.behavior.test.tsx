@@ -235,8 +235,8 @@ describe("Bracket preview", () => {
     // a shape guessed out of round numbers.
     expect(container.textContent).toContain("W M1");
     expect(container.textContent).toContain("W M2");
-    // A drawn tree, not a list: the connectors between the rounds are the
-    // difference the chips above could never express.
+    // A drawn tree, not a list of round labels: the connectors between the
+    // rounds are what the chips this replaced could never express.
     expect(container.querySelectorAll("svg path").length).toBeGreaterThanOrEqual(2);
     // Three matches: M1, M2 and the final.
     expect(container.textContent).toContain("M3");

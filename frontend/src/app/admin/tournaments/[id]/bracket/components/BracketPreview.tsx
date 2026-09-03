@@ -1,12 +1,11 @@
 "use client";
 
-import { Fragment, useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { EYEBROW_CLASS, TONE_TEXT } from "@/components/admin/tone";
 import { BracketView } from "@/components/BracketView";
 import type { BracketMatch } from "@/components/bracket-view.helpers";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
@@ -64,9 +63,9 @@ function toBracketMatches(
  * bracket-shaped drawing re-derived here, which is the only way the preview and
  * the generated bracket cannot disagree about byes and lower-bracket drops.
  *
- * The round chips above it stay: they follow the editor's UNSAVED draft (the
- * maths lives in `../projection.ts`, shared with the best-of editor so the two
- * cannot drift), while the drawn tree follows the saved stage.
+ * The per-round best-of is on the cards themselves ("Bo3"), so the round chips
+ * this section used to list beside them are gone. The drawn tree follows the
+ * SAVED stage — a format or best-of edit shows up once it is saved.
  *
  * Matches are NOT editable here. Editing them is the Matches tab's job, and
  * the Items section carries the cross-link.
@@ -82,13 +81,7 @@ export function BracketPreview({
   teams: Team[];
   className?: string;
 }>) {
-  const { bracketTeams, rounds, unresolved } = projection;
-  const sections: { label: string | null; rounds: StageProjection["rounds"] }[] = [];
-  for (const round of rounds) {
-    const last = sections[sections.length - 1];
-    if (last && last.label === round.section) last.rounds.push(round);
-    else sections.push({ label: round.section, rounds: [round] });
-  }
+  const { bracketTeams, unresolved } = projection;
 
   // The hub's shared encounters query: the same cache entry the Matches tab
   // observes, so this costs nothing extra there and stays invalidated by every
@@ -179,27 +172,7 @@ export function BracketPreview({
         </p>
       ) : null}
 
-      <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-        {sections.map((section, index) => (
-          <Fragment key={section.label ?? `flat-${index}`}>
-            {section.label ? <p className={EYEBROW_CLASS}>{section.label}</p> : null}
-            <ul className="flex flex-wrap gap-1.5">
-              {section.rounds.map((round) => (
-                <li key={round.round}>
-                  <Badge variant="outline" className="gap-1.5 font-normal">
-                    <span>{round.label}</span>
-                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                      Bo{round.bestOf}
-                    </span>
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          </Fragment>
-        ))}
-      </div>
-
-      <div className="mt-4">
+      <div className="mt-3 border-t border-border pt-3">
         {isLoading ? (
           <Skeleton className="h-64 w-full rounded-2xl" />
         ) : matches.length > 0 ? (
