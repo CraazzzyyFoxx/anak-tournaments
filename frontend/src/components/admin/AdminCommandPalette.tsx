@@ -14,8 +14,11 @@ import {
 } from "@/components/ui/command";
 import {
   adminNavItemSearchValue,
+  adminRouteAccessOptions,
   type AdminNavGroup,
 } from "@/components/admin/admin-navigation";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 interface AdminCommandPaletteProps {
   groups: AdminNavGroup[];
@@ -43,6 +46,8 @@ function ResultCountAnnouncer() {
 
 export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<AdminCommandPaletteProps>) {
   const router = useRouter();
+  const { canAccessAdminRoute } = usePermissions();
+  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const handleSelect = useCallback(
     (href: string) => {
@@ -52,10 +57,20 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<Adm
     [router, onOpenChange],
   );
 
-  // Only the visible items contribute views: the palette must never offer a
-  // route the sidebar hides.
+  // A view is a route of its own, and one entry's views can carry different
+  // gates than the entry (Access mixes global-RBAC, workspace-admin and
+  // superuser-only sections). Gating each against the same route table the
+  // layout guard reads keeps the palette from offering an Unauthorized wall.
   const viewEntries = groups.flatMap((group) =>
-    group.items.flatMap((item) => (item.views ?? []).map((view) => ({ item, view }))),
+    group.items.flatMap((item) =>
+      (item.views ?? [])
+        .filter((view) =>
+          canAccessAdminRoute(
+            adminRouteAccessOptions(view.href.split("?")[0], currentWorkspaceId),
+          ),
+        )
+        .map((view) => ({ item, view })),
+    ),
   );
 
   return (

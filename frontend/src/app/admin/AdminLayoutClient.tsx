@@ -7,8 +7,7 @@ import { skipToken, useQuery } from "@tanstack/react-query";
 
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AuditTrailProvider } from "@/components/admin/AuditTrailSheet";
-import { getMatchingAdminRoute } from "@/components/admin/admin-navigation";
-import { adminEntryPermissions } from "@/lib/admin-permissions";
+import { adminRouteAccessOptions } from "@/components/admin/admin-navigation";
 import {
   getBreadcrumbEntityRef,
   breadcrumbSegmentLabel
@@ -141,19 +140,7 @@ export function AdminLayoutClient({
     return <LoadingState />;
   }
 
-  const matchingRoute = getMatchingAdminRoute(pathname);
-  const hasAccess = matchingRoute
-    ? canAccessAdminRoute({
-        permissions: matchingRoute.permissions,
-        workspaceId: matchingRoute.workspaceAdminVisible ? null : currentWorkspaceId,
-        globalOnly: matchingRoute.globalOnly,
-        workspaceAdminVisible: matchingRoute.workspaceAdminVisible,
-        superuserOnly: matchingRoute.superuserOnly
-      })
-    : canAccessAdminRoute({
-        permissions: adminEntryPermissions,
-        workspaceId: currentWorkspaceId
-      });
+  const hasAccess = canAccessAdminRoute(adminRouteAccessOptions(pathname, currentWorkspaceId));
 
   if (!hasAccess) {
     return <UnauthorizedState />;

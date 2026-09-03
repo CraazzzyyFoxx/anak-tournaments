@@ -22,8 +22,10 @@ vi.mock("@/stores/workspace.store", () => ({
   },
 }));
 
-import { adminEntryPermissions } from "@/lib/admin-permissions";
-import { getMatchingAdminRoute } from "@/components/admin/admin-navigation";
+import {
+  adminRouteAccessOptions,
+  getMatchingAdminRoute,
+} from "@/components/admin/admin-navigation";
 import { type AppPermission, usePermissions } from "@/hooks/usePermissions";
 import { type AuthProfile, useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -89,19 +91,7 @@ function Probe({
 
   const result: Record<string, boolean> = {};
   for (const path of paths) {
-    const route = getMatchingAdminRoute(path);
-    result[path] = route
-      ? canAccessAdminRoute({
-          permissions: route.permissions,
-          workspaceId: route.workspaceAdminVisible ? null : currentWorkspaceId,
-          globalOnly: route.globalOnly,
-          workspaceAdminVisible: route.workspaceAdminVisible,
-          superuserOnly: route.superuserOnly,
-        })
-      : canAccessAdminRoute({
-          permissions: adminEntryPermissions,
-          workspaceId: currentWorkspaceId,
-        });
+    result[path] = canAccessAdminRoute(adminRouteAccessOptions(path, currentWorkspaceId));
   }
   onReady(result);
   return null;
@@ -172,6 +162,12 @@ const ROUTES = {
     "/admin/workspaces",
     "/admin/workspaces/8/general",
   ],
+  /**
+   * The hub landing: the union gate, open to anyone with any Access section.
+   * It must stay open to a workspace admin — pointing the sidebar entry at
+   * global-only Accounts is what walled them out of the whole block.
+   */
+  accessHub: ["/admin/access"],
   superuserOnly: [
     "/admin/content/heroes",
     "/admin/content/maps",
@@ -215,6 +211,7 @@ describe("route × role access", () => {
       ...ROUTES.hub,
       ...ROUTES.data,
       ...ROUTES.workspace,
+      ...ROUTES.accessHub,
     ]);
 
     for (const [path, allowed] of Object.entries(granted)) {
@@ -235,6 +232,7 @@ describe("route × role access", () => {
       "/admin",
       ...ROUTES.hub,
       ...ROUTES.data,
+      ...ROUTES.accessHub,
       "/admin/collectors/rank",
       "/admin/collectors/subscriptions",
     ]);

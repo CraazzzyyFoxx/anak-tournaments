@@ -71,6 +71,23 @@ export type AdminNavGroup = {
 };
 
 /**
+ * The Access hub's six sections, in tab order.
+ *
+ * Shared with the hub's landing redirect: Access mixes three gate classes
+ * (global-RBAC reads, workspace-admin surfaces, superuser-only sessions), so
+ * the entry cannot point at a fixed section — `/admin/access` forwards to the
+ * first of these the caller may actually open.
+ */
+export const accessSectionViews: AdminNavView[] = [
+  { key: "accounts", label: "Accounts", href: "/admin/access/accounts" },
+  { key: "roles", label: "Roles", href: "/admin/access/roles" },
+  { key: "permissions", label: "Permissions", href: "/admin/access/permissions" },
+  { key: "api-keys", label: "API keys", href: "/admin/access/api-keys" },
+  { key: "oauth", label: "OAuth", href: "/admin/access/oauth" },
+  { key: "sessions", label: "Sessions", href: "/admin/access/sessions" },
+];
+
+/**
  * The sidebar: 13 entries in four groups (`01-ia.md` §3.1).
  *
  * Three contexts of work instead of six catalogues: what happens in the
@@ -249,19 +266,12 @@ export const adminNavigationGroups: AdminNavGroup[] = [
       },
       {
         title: "Access",
-        href: "/admin/access/accounts",
+        href: "/admin/access",
         activePrefix: "/admin/access",
         icon: Shield,
         description: "Staff accounts, roles, permissions, API keys, OAuth and sessions.",
         aliases: ["staff", "roles", "permissions", "api keys", "sessions", "oauth", "accounts"],
-        views: [
-          { key: "accounts", label: "Accounts", href: "/admin/access/accounts" },
-          { key: "roles", label: "Roles", href: "/admin/access/roles" },
-          { key: "permissions", label: "Permissions", href: "/admin/access/permissions" },
-          { key: "api-keys", label: "API keys", href: "/admin/access/api-keys" },
-          { key: "oauth", label: "OAuth", href: "/admin/access/oauth" },
-          { key: "sessions", label: "Sessions", href: "/admin/access/sessions" },
-        ],
+        views: accessSectionViews,
         permissions: accessAdminPermissions,
         workspaceAdminVisible: true,
       },
@@ -354,6 +364,36 @@ export function getMatchingAdminRoute(pathname: string) {
 
     return pathname === route.prefix || pathname.startsWith(`${route.prefix}/`);
   });
+}
+
+/**
+ * The gate arguments for a pathname, ready for `canAccessAdminRoute`.
+ *
+ * The route table is the single source of truth for who may open what, so the
+ * layout guard, the Access landing redirect and the command palette all ask it
+ * the same way — a link one of them offers and the guard rejects is a dead end.
+ */
+export function adminRouteAccessOptions(
+  pathname: string,
+  currentWorkspaceId: number | null,
+): {
+  permissions: AppPermission[];
+  workspaceId: number | null;
+  globalOnly?: boolean;
+  workspaceAdminVisible?: boolean;
+  superuserOnly?: boolean;
+} {
+  const route = getMatchingAdminRoute(pathname);
+  if (!route) {
+    return { permissions: adminEntryPermissions, workspaceId: currentWorkspaceId };
+  }
+  return {
+    permissions: route.permissions,
+    workspaceId: route.workspaceAdminVisible ? null : currentWorkspaceId,
+    globalOnly: route.globalOnly,
+    workspaceAdminVisible: route.workspaceAdminVisible,
+    superuserOnly: route.superuserOnly,
+  };
 }
 
 /**

@@ -33,7 +33,7 @@ describe("admin navigation structure (01-ia.md §3.1)", () => {
       "/admin/members",
       "/admin/content/heroes",
       "/admin/collectors/rank",
-      "/admin/access/accounts",
+      "/admin/access",
       "/admin/workspaces",
       "/admin/audit",
     ]);
@@ -108,7 +108,7 @@ describe("active-entry matching", () => {
     expect(getActiveAdminNavHref("/admin/content/unresolved", allItems)).toBe(
       "/admin/content/heroes",
     );
-    expect(getActiveAdminNavHref("/admin/access/roles", allItems)).toBe("/admin/access/accounts");
+    expect(getActiveAdminNavHref("/admin/access/roles", allItems)).toBe("/admin/access");
   });
 
   it("does not light Dashboard on every admin route", () => {
@@ -222,6 +222,7 @@ describe("route gates", () => {
       "/admin/collectors/rank",
       "/admin/collectors/subscriptions",
       "/admin/collectors/streams",
+      "/admin/access",
       "/admin/access/accounts",
       "/admin/access/roles",
       "/admin/access/permissions",
