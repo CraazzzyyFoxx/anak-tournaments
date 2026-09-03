@@ -256,17 +256,14 @@ describe("RegistrationsTable toolbar", () => {
     expect(scope.querySelectorAll("tbody tr").length).toBe(1);
   });
 
-  it("hides withdrawn registrations until the chip asks for them", async () => {
+  it("lists withdrawn registrations alongside the rest", async () => {
     listRegistrations.mockResolvedValue([
       registration(1),
       registration(2, { status: "withdrawn" })
     ]);
 
-    const withoutWithdrawn = await mount();
-    expect(withoutWithdrawn.querySelectorAll("tbody tr").length).toBe(1);
-
-    const withWithdrawn = await mount("?withdrawn=1");
-    expect(withWithdrawn.querySelectorAll("tbody tr").length).toBe(2);
+    const scope = await mount();
+    expect(scope.querySelectorAll("tbody tr").length).toBe(2);
   });
 
   it("keeps the pending row selectable and the approved rows not", async () => {

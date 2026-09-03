@@ -106,8 +106,8 @@ const SUBSCRIPTION_LABELS = {
  * Chip keys the TABLE resolves, because a column declares them as a header
  * filter (`meta.filter`) — which in client mode is how a URL param is mapped
  * onto the column whose values it matches. The remaining chips narrow
- * `visibleRegistrations` below instead: neither "which role" nor "include
- * withdrawn" is a column value to match against. Both halves read the same
+ * `visibleRegistrations` below instead: "which role" is not a column value to
+ * match against. Both halves read the same
  * URL-backed `useAdminFilters` store, so there is still exactly one place a
  * filter lives.
  */
@@ -292,7 +292,6 @@ export default function RegistrationsTable({
             }
           ]
         : []),
-      { key: "withdrawn", label: "Include withdrawn", kind: "toggle" },
       { key: "status", label: "Status", kind: "multi", options: statusFilterOptions },
       {
         key: "inclusion",
@@ -338,14 +337,12 @@ export default function RegistrationsTable({
   const admissionFilter = String(filters.values.admission ?? "");
   const roleFilter = String(filters.values.role ?? "");
   const subscriptionFilter = String(filters.values.subscription ?? "");
-  const includeWithdrawn = filters.values.withdrawn === true;
 
-  // Withdrawn rows are out by default (F4): they are the pool's history, and an
-  // organizer reading "38 entries" means the 38 who are still in.
+  // Everything but a deleted row is listed (`include_deleted: false` on the
+  // query); withdrawn rows stay visible and are narrowed by the Status chip.
   const visibleRegistrations = useMemo(
     () =>
       registrations.filter((registration) => {
-        if (!includeWithdrawn && registration.status === "withdrawn") return false;
         if (admissionFilter && registration.admission.decision !== admissionFilter) return false;
         if (
           roleFilter &&
@@ -361,7 +358,7 @@ export default function RegistrationsTable({
         }
         return true;
       }),
-    [registrations, includeWithdrawn, admissionFilter, roleFilter, subscriptionFilter]
+    [registrations, admissionFilter, roleFilter, subscriptionFilter]
   );
 
   // Patch a single row across every cached filter variant. The PATCH endpoints

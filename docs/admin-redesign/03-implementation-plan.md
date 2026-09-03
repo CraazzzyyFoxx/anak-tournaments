@@ -604,11 +604,11 @@ workspace-скоупный (`["admin","achievement-rule",workspaceId,ruleId]`), 
 - Истории приглашений на регистрацию в инспекторе нет:
   `listInviteHistoryAdmin(tournamentId, teamId)` — ledger команды, он остался в
   `RegistrationTeamsCard`.
-- Отозванные заявки теперь скрыты по умолчанию (чип «Include withdrawn»
-  возвращает их). Это поведение F4, но видимое пользователю изменение.
+- Отозванные заявки видны всегда: в списке всё, кроме удалённых, а сузить до
+  них или убрать их можно чипом «Status». Чипа «Include withdrawn» больше нет.
 - Фильтры остаются одним URL-состоянием (`useAdminFilters`), но применяются в
   двух местах: `AdminDataTable` умеет только фильтры, объявленные колонкой через
-  `meta.filter.param`, поэтому admission/role/subscription/withdrawn сужают пул
+  `meta.filter.param`, поэтому admission/role/subscription сужают пул
   в памяти, а status/participation/source идут через движок таблицы.
 
 ### 2026-09-03 · P2-5 · `ParsedMatchSheet` → `ParsedMatchDetail`
