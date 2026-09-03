@@ -2343,15 +2343,6 @@
   border-radius: 50%;
   background: var(--blue);
 }
-/* Card view: the pill sits on artwork we do not control, so the variant tint
-   alone is not enough contrast. Blur what is behind it and give it an edge. */
-.aqt-tn [data-tournament-grid] .tn-status {
-  padding: 4px 9px;
-  backdrop-filter: blur(8px) saturate(1.3);
-  box-shadow:
-    0 0 0 1px var(--aqt-overlay-border),
-    0 4px 12px hsl(0 0% 0% / 0.35);
-}
 .aqt-tn .tn-stage {
   display: inline-flex;
   align-items: center;

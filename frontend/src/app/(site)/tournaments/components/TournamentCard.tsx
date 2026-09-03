@@ -83,17 +83,12 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
           COVER_FALLBACK
         )}
 
-        {/* Scrim: the status pill and the logo sit on artwork we do not control,
-            so the contrast under them cannot be left to the image. */}
+        {/* Scrim: the logo sits on artwork we do not control, so the contrast
+            under it cannot be left to the image. */}
         <span
           aria-hidden
           className="absolute inset-x-0 bottom-0 z-[1] h-2/3 bg-gradient-to-t from-[color:var(--aqt-bg)] via-[color:color-mix(in_srgb,var(--aqt-bg)_55%,transparent)] to-transparent"
         />
-
-        <span className={cn("tn-status absolute right-2 top-2 z-[2]", variant)}>
-          <span aria-hidden className="dot" />
-          {t(`common.statusBadge.${tournament.status}`)}
-        </span>
 
         {tournament.logo_url ? (
           // eslint-disable-next-line @next/next/no-img-element -- see the note above
@@ -113,14 +108,23 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
 
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div className="flex flex-col gap-1.5">
-          <h3 className="flex items-start gap-2 text-[15px] font-semibold leading-snug text-[color:var(--aqt-fg)] transition-colors group-hover:text-[color:var(--aqt-teal)]">
-            <span className="line-clamp-2">{tournament.name}</span>
-            {tournament.is_hidden && (
-              <span className="aqt-mono mt-0.5 shrink-0 rounded border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
-                {t("common.previewBadge")}
-              </span>
-            )}
-          </h3>
+          {/* The status belongs with the facts, not floating on the cover: it is
+              the first thing a reader wants to know, so it shares the name's
+              baseline instead of a corner of the artwork. */}
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="flex min-w-0 items-start gap-2 text-[15px] font-semibold leading-snug text-[color:var(--aqt-fg)] transition-colors group-hover:text-[color:var(--aqt-teal)]">
+              <span className="line-clamp-2">{tournament.name}</span>
+              {tournament.is_hidden && (
+                <span className="aqt-mono mt-0.5 shrink-0 rounded border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
+                  {t("common.previewBadge")}
+                </span>
+              )}
+            </h3>
+            <span className={cn("tn-status mt-px shrink-0", variant)}>
+              <span aria-hidden className="dot" />
+              {t(`common.statusBadge.${tournament.status}`)}
+            </span>
+          </div>
           <p className="aqt-mono flex flex-wrap items-center gap-x-2 text-[11px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
             <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
             {tournament.is_league && (
