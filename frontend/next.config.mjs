@@ -133,8 +133,10 @@ const nextConfig = {
       { source: "/admin/access/users", destination: "/admin/access/accounts", permanent: true },
       { source: "/admin/access", destination: "/admin/access/accounts", permanent: true },
 
-      // PR-6   cleanup
-      // { source: "/admin/pickup", destination: "/balancer/pickup", permanent: true },
+      // PR-6   cleanup. The mix builder never belonged under /admin: it is a
+      // balancer tool, and this path was a runtime redirect pretending to be
+      // a route.
+      { source: "/admin/pickup", destination: "/balancer/pickup", permanent: true },
     ];
   },
   images: {
