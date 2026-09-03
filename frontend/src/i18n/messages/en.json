@@ -980,9 +980,6 @@
     "loadError": "Failed to load the report form"
   },
   "rankAutofill": {
-    "title": "Rank autofill",
-    "subtitle": "Configure the source chain and pick exactly which players to update.",
-    "backToRegistrations": "Back to registrations",
     "chainTitle": "Source chain",
     "chainDescription": "Drag to set priority order, disable sources you don't need, and optionally limit recency (tournaments for history/analytics, days for OW).",
     "toggleChainAria": "Toggle source chain",

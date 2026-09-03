@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronDown, ChevronUp, Loader2, Search } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Loader2, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -21,7 +19,6 @@ import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { EYEBROW_CLASS, TONE_TEXT } from "@/components/admin/tone";
-import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
   RegistrationRankAutofillRequest,
@@ -42,15 +39,8 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 
 // D25: rendered by both the hub sub-route (tournament from the path) and the
 // legacy balancer route (tournament from the ?tournament query) until T14.
-export default function RankAutofillPage({
-  tournamentId,
-  basePath
-}: Readonly<{
-  tournamentId: number | null;
-  basePath: string;
-}>) {
+export default function RankAutofillPage({ tournamentId }: Readonly<{ tournamentId: number | null }>) {
   const t = useTranslations();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
 
   const [stages, setStages] = useState(() => defaultRankAutofillStages());
@@ -176,10 +166,6 @@ export default function RankAutofillPage({
     );
   }
 
-  const registrationsHref = searchParams.toString()
-    ? `${basePath}?${searchParams.toString()}`
-    : basePath;
-
   const preview = previewQuery.data;
   const stats = preview
     ? [
@@ -216,20 +202,7 @@ export default function RankAutofillPage({
     applyMutation.isPending || previewQuery.isFetching || selectedIds.size === 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t("rankAutofill.title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("rankAutofill.subtitle")}</p>
-        </div>
-        <Button variant="outline" asChild className={MUTED_BUTTON_CLASS}>
-          <Link href={registrationsHref}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            {t("rankAutofill.backToRegistrations")}
-          </Link>
-        </Button>
-      </div>
-
+    <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-2">
