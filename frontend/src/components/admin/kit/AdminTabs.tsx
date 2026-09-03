@@ -25,7 +25,11 @@ export interface AdminTabItem {
 export interface AdminTabsProps {
   items: AdminTabItem[];
   activeKey: string;
-  /** `1` is a screen's own tab row; `2` is the smaller sub-tab row under it. */
+  /**
+   * `1` is a screen's own tab row; `2` is a sub-tab row nested under it. Same
+   * tab size at both levels — the hierarchy is carried by position and by the
+   * hairline under the first row, not by shrinking the second.
+   */
   level?: 1 | 2;
   ariaLabel: string;
 }
@@ -74,10 +78,7 @@ export function AdminTabs({ items, activeKey, level = 1, ariaLabel }: Readonly<A
       <ul
         ref={listRef}
         onKeyDown={handleKeyDown}
-        className={cn(
-          "-mb-px flex w-full items-center gap-1 overflow-x-auto whitespace-nowrap",
-          level === 2 && "gap-0.5"
-        )}
+        className="-mb-px flex w-full items-center gap-1 overflow-x-auto whitespace-nowrap"
       >
         {visible.map((item) => {
           const isActive = item.key === activeKey;
@@ -89,9 +90,8 @@ export function AdminTabs({ items, activeKey, level = 1, ariaLabel }: Readonly<A
                 ref={isActive ? activeRef : undefined}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "inline-flex items-center gap-1.5 border-b-2 transition-colors",
+                  "inline-flex h-9 items-center gap-1.5 border-b-2 px-3 text-sm transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-                  level === 1 ? "h-9 px-3 text-sm" : "h-8 px-2.5 text-xs",
                   isActive
                     ? "border-primary text-foreground font-medium"
                     : "border-transparent text-muted-foreground hover:text-foreground"
