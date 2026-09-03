@@ -632,12 +632,13 @@ export default function AchievementsPage() {
               className="hidden"
               onChange={(e) => void handleJsonImportFile(e.target.files?.[0] ?? null)}
             />
-            <Button variant="outline" onClick={() => void handleExport()}>
+            <Button variant="outline" size="sm" onClick={() => void handleExport()}>
               <Download className="mr-2 h-4 w-4" aria-hidden />
               Export JSON
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 setLibraryDialogOpen(true);
                 setLibrarySelectedSlugs(new Set());
@@ -649,6 +650,7 @@ export default function AchievementsPage() {
             {(canCreate || canUpdate) && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => jsonImportInputRef.current?.click()}
                 disabled={importMutation.isPending}
               >
@@ -658,6 +660,7 @@ export default function AchievementsPage() {
             )}
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 setEvalSelectedRuleIds(new Set());
                 setEvalTournamentId(undefined);
@@ -669,6 +672,7 @@ export default function AchievementsPage() {
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 overrideMutation.reset();
                 setOverrideFormError(null);
@@ -681,6 +685,7 @@ export default function AchievementsPage() {
             {canCreate && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => seedMutation.mutate()}
                 disabled={seedMutation.isPending}
               >

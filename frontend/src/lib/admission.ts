@@ -2,7 +2,6 @@ import type {
   Admission,
   AdmissionDecision,
   AdmissionReason,
-  ReasonActor,
   RequirementVerdict
 } from "@/types/registration.types";
 
@@ -11,10 +10,10 @@ import type {
  *
  * Every consumer needs a different shape of the same decision — a badge wants
  * three states, the sort column wants an ordinal, the search index wants text,
- * the registrant's progress steps want one entry per requirement, the organizer
- * wants a tally over the whole list. Those shapes live here, derived from
- * `admission.decision` and `admission.requirements`, so that they cannot drift
- * from each other the way the five hand-written re-derivations they replaced
+ * the registrant's progress steps want one entry per requirement. Those shapes
+ * live here, derived from `admission.decision` and `admission.requirements`, so
+ * that they cannot drift from each other the way the five hand-written
+ * re-derivations they replaced
  * did: two of those deliberately ignored the subscription condition their own
  * cell rendered.
  *
@@ -153,59 +152,6 @@ export function primaryAdmissionReason(admission: Admission): AdmissionReason | 
     (requirement) => requirement.state === "undetermined" && requirement.reasons.length > 0
   );
   return pending?.reasons[0] ?? null;
-}
-
-export interface AdmissionReasonTally {
-  code: string;
-  actor: ReasonActor;
-  count: number;
-}
-
-/** Organizer first, then system, then player.
- *
- *  That is the entire point of `actor`. Forty unresolved rows are either forty
- *  players to chase one at a time or one misconfiguration to fix once, and the
- *  organizer must see which without opening the OW-Profile and Subscriptions
- *  screens row by row. System sits second for the same reason: an outage is one
- *  root cause behind many rows, and it is nobody's to chase. */
-const ACTOR_ORDER: Record<ReasonActor, number> = { organizer: 0, system: 1, player: 2 };
-
-/**
- * Reason counts over a whole list, worst-actor first.
- *
- * Counted once per registration per code: a registrant with two closed smurf
- * tags under `scope: "all"` is one player to chase, not two.
- */
-export function tallyAdmissionReasons(
-  admissions: readonly Admission[]
-): AdmissionReasonTally[] {
-  const tally = new Map<string, AdmissionReasonTally>();
-  for (const admission of admissions) {
-    const seen = new Set<string>();
-    for (const requirement of admission.requirements) {
-      // Only a requirement that is actually unresolved. A `satisfied` verdict
-      // can still carry reasons — under subscription `any` mode every losing
-      // provider contributes one — and counting those would report "3 without
-      // Discord" for three players who are subscribed via Twitch.
-      if (requirement.state !== "blocked" && requirement.state !== "undetermined") continue;
-      for (const reason of requirement.reasons) {
-        if (seen.has(reason.code)) continue;
-        seen.add(reason.code);
-        const entry = tally.get(reason.code);
-        if (entry) {
-          entry.count += 1;
-        } else {
-          tally.set(reason.code, { code: reason.code, actor: reason.actor, count: 1 });
-        }
-      }
-    }
-  }
-  return Array.from(tally.values()).sort(
-    (left, right) =>
-      ACTOR_ORDER[left.actor] - ACTOR_ORDER[right.actor] ||
-      right.count - left.count ||
-      (left.code < right.code ? -1 : left.code > right.code ? 1 : 0)
-  );
 }
 
 /** Requirements the registrant's progress chain shows: everything the tournament

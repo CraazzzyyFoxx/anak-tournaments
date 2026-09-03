@@ -271,8 +271,8 @@ export default function WorkspacesPage() {
         description="Isolated tournament environments. Open one to edit its settings."
         actions={
           isSuperuser ? (
-            <Button onClick={handleCreate}>
-              <Plus className="size-4" aria-hidden />
+            <Button size="sm" onClick={handleCreate}>
+              <Plus className="size-3.5" aria-hidden />
               Create workspace
             </Button>
           ) : null

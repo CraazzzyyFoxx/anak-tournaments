@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef, Row } from "@tanstack/react-table";
 import { useTranslations } from "next-intl";
 import {
-  AlertTriangle,
+  ArrowRight,
   Check,
   Clock,
   History,
@@ -18,9 +18,9 @@ import {
   UserPlus,
   X
 } from "lucide-react";
+import Link from "next/link";
 
 import UnifiedRegistrationForm from "@/components/registration/UnifiedRegistrationForm";
-import RankHistory from "@/components/RankHistory";
 import { renderCustomFieldValue } from "@/components/registration/customFieldValue";
 import { buildBalancerRegistrationColumns } from "@/components/balancer/registrations/_components/balancerRegistrationColumns";
 import {
@@ -62,11 +62,7 @@ import { useQueryParams } from "@/hooks/useQueryParams";
 import { usePermissions } from "@/hooks/usePermissions";
 import { mergeStatusOptions } from "@/lib/balancer-statuses";
 import { notify } from "@/lib/notify";
-import {
-  formatAdmissionReason,
-  tallyAdmissionReasons,
-  type AdmissionTranslator
-} from "@/lib/admission";
+import { formatAdmissionReason, type AdmissionTranslator } from "@/lib/admission";
 import { ROLE_LABELS, getSubroleLabel } from "@/lib/roles";
 import balancerAdminService from "@/services/balancer-admin.service";
 import registrationService from "@/services/registration.service";
@@ -523,13 +519,6 @@ export default function RegistrationsTable({
   const isPendingFilterOn = Array.isArray(statusFilterValue)
     ? statusFilterValue.includes("pending")
     : false;
-  // Over the WHOLE pool, not the current page or filter: the point of the line
-  // is to answer "is this forty players to chase or one thing to fix", and a
-  // tally that moved with the header filters could not.
-  const reasonTally = useMemo(
-    () => tallyAdmissionReasons(registrations.map((registration) => registration.admission)),
-    [registrations]
-  );
 
   // `mutate` is observer-bound and stable across renders; the mutation objects
   // around it are not, so the column memo depends on these rather than on them.
@@ -688,22 +677,6 @@ export default function RegistrationsTable({
       )}
     >
       <div className="flex min-h-0 min-w-0 flex-col gap-4">
-        {reasonTally.length > 0 ? (
-          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            {reasonTally.map((entry) => (
-              <span key={entry.code} className="inline-flex items-center gap-1">
-                {/* Organizer-actionable entries are marked, not just sorted first:
-                    they are the ones where the fix is a setting on this site
-                    rather than a message to a player. */}
-                {entry.actor === "organizer" ? (
-                  <AlertTriangle className="h-3.5 w-3.5 text-warning" aria-hidden />
-                ) : null}
-                <span className="tabular-nums">{entry.count}</span>
-                {formatAdmissionReason(t, { code: entry.code, actor: entry.actor })}
-              </span>
-            ))}
-          </p>
-        ) : null}
         <AdminDataTable<AdminRegistration>
           rows={visibleRegistrations}
           isLoading={registrationsQuery.isFetching}
@@ -813,7 +786,7 @@ export default function RegistrationsTable({
                 value={groupBy}
                 onValueChange={(value) => setGroupBy(value as RegistrationGroupingMode)}
               >
-                <SelectTrigger className="w-[160px]" aria-label="Group registrations">
+                <SelectTrigger className="h-8 w-[160px]" aria-label="Group registrations">
                   <SelectValue placeholder="Group by" />
                 </SelectTrigger>
                 <SelectContent>
@@ -823,7 +796,7 @@ export default function RegistrationsTable({
                   <SelectItem value="admission">Group by admission</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" onClick={() => setCreateOpen(true)}>
+              <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
                 <UserPlus className="mr-2 h-4 w-4" aria-hidden />
                 Create registration
               </Button>
@@ -1048,14 +1021,16 @@ function RegistrationInspectorBody({
         </dl>
       </section>
 
-      <section className="space-y-1.5">
-        <h3 className={EYEBROW_CLASS}>Rank history</h3>
-        {registration.user_id != null ? (
-          <RankHistory userId={registration.user_id} />
-        ) : (
-          <RankHistory battleTag={registration.battle_tag} />
-        )}
-      </section>
+      {/* The chart itself lives on the person: a 380px panel is the wrong
+          canvas for a time series, and the person page already draws it. */}
+      {registration.user_id != null ? (
+        <Button asChild variant="outline" size="sm" className="w-fit">
+          <Link href={`/admin/people/${registration.user_id}`}>
+            Open rank history
+            <ArrowRight className="size-3.5" aria-hidden />
+          </Link>
+        </Button>
+      ) : null}
     </div>
   );
 }

@@ -775,37 +775,37 @@ export function AdminDataTable<TData>({
   return (
     <div className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
       {/* ── TOOLBAR ─────────────────────────────────────── */}
-      {toolbar ? (
-        <div className="border-b border-border/40 px-4 py-2.5">{toolbar}</div>
-      ) : null}
-      {showSearch || hasToolbarTrailing ? (
-        <div className="flex items-center justify-between gap-3 border-b border-border/40 px-4 py-2.5">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            {showSearch ? (
-              <div className="relative w-full max-w-xs">
-                <Label htmlFor={searchInputId} className="sr-only">{searchLabel}</Label>
-                <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id={searchInputId}
-                  autoComplete="off"
-                  className="h-9 border-border bg-muted/30 pl-9 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring"
-                  name="admin-table-search"
-                  placeholder={searchLabel}
-                  value={searchValue}
-                  onChange={(event) => setSearchValue(event.target.value)}
-                />
-              </div>
-            ) : null}
+      {/* One row: search, then the screen's filter bar (chips wrap inside it),
+          then the table's own controls. Two stacked rows cost a full band of
+          chrome for a chip row that is empty most of the time. */}
+      {toolbar || showSearch || hasToolbarTrailing ? (
+        <div className="flex flex-wrap items-center gap-3 border-b border-border/40 px-4 py-2.5">
+          {showSearch ? (
+            <div className="relative w-64 shrink-0">
+              <Label htmlFor={searchInputId} className="sr-only">{searchLabel}</Label>
+              <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id={searchInputId}
+                autoComplete="off"
+                className="h-8 border-border bg-muted/30 pl-9 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring"
+                name="admin-table-search"
+                placeholder={searchLabel}
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+              />
+            </div>
+          ) : null}
 
-            {isRefreshing ? (
-              <output className="flex shrink-0 items-center text-muted-foreground">
-                <LoaderCircle aria-hidden className="size-3 animate-spin" />
-                <span className="sr-only">Refreshing results…</span>
-              </output>
-            ) : null}
-          </div>
+          {toolbar ? <div className="min-w-0 flex-1">{toolbar}</div> : null}
 
-          <div className="flex items-center gap-2 shrink-0">
+          {isRefreshing ? (
+            <output className="flex shrink-0 items-center text-muted-foreground">
+              <LoaderCircle aria-hidden className="size-3 animate-spin" />
+              <span className="sr-only">Refreshing results…</span>
+            </output>
+          ) : null}
+
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {bulkActions && selectedRows.length > 0
               ? bulkActions(
                   selectedRows.map((row) => row.original),

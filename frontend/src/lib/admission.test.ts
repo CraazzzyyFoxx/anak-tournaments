@@ -6,7 +6,6 @@ import {
   ADMISSION_SEARCH_TEXT,
   formatAdmissionReason,
   primaryAdmissionReason,
-  tallyAdmissionReasons,
   type AdmissionTranslator
 } from "@/lib/admission";
 import en from "@/i18n/messages/en.json";
@@ -101,59 +100,6 @@ describe("primaryAdmissionReason", () => {
 
   it("is null when nothing is unresolved", () => {
     expect(primaryAdmissionReason(admission([verdict({ state: "satisfied" })]))).toBeNull();
-  });
-});
-
-describe("tallyAdmissionReasons", () => {
-  it("puts organizer-actionable reasons first, whatever their count", () => {
-    // The entire point of `actor`: forty unresolved rows are either forty
-    // players to chase or one setting to fix, and the organizer must see which.
-    const players = Array.from({ length: 12 }, () =>
-      admission([verdict({ reasons: [reason("no_linked_discord_account", "player")] })])
-    );
-    const outage = admission([verdict({ reasons: [reason("provider_unavailable", "system")] })]);
-    const broken = admission([verdict({ reasons: [reason("role_mapping_drift", "organizer")] })]);
-
-    expect(tallyAdmissionReasons([...players, outage, broken])).toEqual([
-      { code: "role_mapping_drift", actor: "organizer", count: 1 },
-      { code: "provider_unavailable", actor: "system", count: 1 },
-      { code: "no_linked_discord_account", actor: "player", count: 12 }
-    ]);
-  });
-
-  it("counts a code once per registration, not once per reason", () => {
-    // Under `open_profile_scope: "all"` one registrant can carry three closed
-    // smurf tags. That is one player to chase.
-    const threeTags = admission([
-      verdict({
-        key: "open_profile",
-        state: "blocked",
-        reasons: [
-          { code: "profile_private", actor: "player", subject: "Main#1" },
-          { code: "profile_private", actor: "player", subject: "Smurf#2" },
-          { code: "profile_private", actor: "player", subject: "Smurf#3" }
-        ]
-      })
-    ]);
-
-    expect(tallyAdmissionReasons([threeTags])).toEqual([
-      { code: "profile_private", actor: "player", count: 1 }
-    ]);
-  });
-
-  it("ignores reasons hanging off a satisfied requirement", () => {
-    // Under subscription `any` mode every losing provider contributes a reason
-    // to a verdict that PASSED. Counting those would report "3 without Discord"
-    // for three players who are subscribed via Twitch.
-    const satisfiedViaTwitch = admission([
-      verdict({ state: "satisfied", reasons: [reason("no_linked_discord_account", "player")] })
-    ]);
-
-    expect(tallyAdmissionReasons([satisfiedViaTwitch])).toEqual([]);
-  });
-
-  it("ignores a switched-off requirement entirely", () => {
-    expect(tallyAdmissionReasons([admission([verdict({ state: "not_applicable" })])])).toEqual([]);
   });
 });
 

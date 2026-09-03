@@ -312,46 +312,4 @@ describe("RegistrationsTable toolbar", () => {
     // Both buckets: the pool has no checked-in rows, so one section holds all 25.
     expect(scope.textContent).toContain("25 registrations");
   });
-
-  it("summarises the whole pool's admission reasons, organizer-actionable first", async () => {
-    // Forty unresolved rows are either forty players to chase one at a time or
-    // one setting to fix once. Before this line, the only way to tell was to
-    // open the OW-Profile and Subscriptions screens row by row.
-    const unresolved = (
-      code: string,
-      actor: "player" | "organizer"
-    ): AdminRegistration["admission"] => ({
-      decision: "pending_check_in",
-      requirements: [
-        {
-          key: "subscription",
-          state: "undetermined",
-          stage: "check_in",
-          reasons: [{ code, actor, subject: null }],
-          detail: {}
-        }
-      ],
-      blockers: [],
-      overridden: [],
-      checked_in: false,
-      ready: true
-    });
-    listRegistrations.mockResolvedValue([
-      registration(1, { admission: unresolved("no_linked_discord_account", "player") }),
-      registration(2, { admission: unresolved("no_linked_discord_account", "player") }),
-      registration(3, { admission: unresolved("role_mapping_drift", "organizer") })
-    ]);
-
-    const scope = await mount();
-    // `messages={{}}` here, so the labels fall back to the raw codes — which is
-    // itself the contract: an unknown code must never render as blank.
-    const summary = scope.textContent ?? "";
-
-    expect(summary).toContain("role_mapping_drift");
-    expect(summary).toContain("no_linked_discord_account");
-    // Organizer first despite being outnumbered two to one.
-    expect(summary.indexOf("role_mapping_drift")).toBeLessThan(
-      summary.indexOf("no_linked_discord_account")
-    );
-  });
 });

@@ -174,8 +174,8 @@ export default function TournamentsPage() {
         description="Manage tournaments and their stages"
         actions={
           canCreate ? (
-            <Button onClick={() => router.push("/admin/tournaments/new")}>
-              <Plus className="mr-2 h-4 w-4" aria-hidden />
+            <Button size="sm" onClick={() => router.push("/admin/tournaments/new")}>
+              <Plus className="size-3.5" aria-hidden />
               Create tournament
             </Button>
           ) : null
