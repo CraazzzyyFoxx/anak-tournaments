@@ -14,6 +14,7 @@ import type {
 
 import { MappingGroupSection } from "./MappingGroupSection";
 import { GROUP_LABELS, GROUP_ORDER, targetsByGroup } from "./mappingConfig";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface ColumnMappingTabProps {
   catalog: MappingCatalog;
@@ -79,13 +80,10 @@ export function ColumnMappingTab({
       </div>
 
       {!hasHeaders ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-12 text-center">
-          <p className="text-sm text-muted-foreground">No sheet headers detected yet.</p>
-          <p className="mt-1 max-w-md text-xs text-muted-foreground/60">
-            Set the sheet URL, then use Auto-suggest (above) or run a sync to read the header row.
-            Once headers are available you can map each field visually.
-          </p>
-        </div>
+        <EmptyNote title="No sheet headers detected yet.">
+          Set the sheet URL, then use Auto-suggest (above) or run a sync to read the header row.
+          Once headers are available you can map each field visually.
+        </EmptyNote>
       ) : (
         <>
           <ButtonGroup>

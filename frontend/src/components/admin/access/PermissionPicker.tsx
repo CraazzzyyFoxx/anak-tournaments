@@ -18,6 +18,7 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 /**
  * One grantable permission. `key` is what travels in `value` — the RBAC
@@ -285,13 +286,13 @@ export function PermissionPicker({
       ) : null}
 
       {catalog.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+        <EmptyNote size="sm">
           No permissions are available to grant here.
-        </p>
+        </EmptyNote>
       ) : groups.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+        <EmptyNote size="sm">
           Nothing matches this filter.
-        </p>
+        </EmptyNote>
       ) : mode === "list" ? (
         <div className="max-h-[52dvh] space-y-3 overflow-y-auto rounded-md border border-border p-2">
           {groups.map((group) => (

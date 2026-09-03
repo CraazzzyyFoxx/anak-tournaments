@@ -26,6 +26,7 @@ import {
   StateBadge,
   formatDate
 } from "./subscription-shared";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const STATE_FILTERS = ["all", "active", "inactive", "unknown", "error"];
 const SOURCE_FILTERS = ["all", "scheduled", "registration", "check_in", "manual", "redeem"];
@@ -113,11 +114,11 @@ export function SubscriptionTaskHistory() {
         {query.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : rows.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+          <EmptyNote>
             No subscription checks recorded yet. A row lands here each time a provider is actually
             queried — resume collection, run &ldquo;Check all now&rdquo;, or wait for a player to
             register in a tournament that requires a subscription.
-          </p>
+          </EmptyNote>
         ) : (
           <div className="max-h-96 overflow-y-auto">
             <Table>

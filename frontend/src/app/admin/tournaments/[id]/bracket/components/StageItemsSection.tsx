@@ -39,6 +39,7 @@ import {
   STAGE_ITEM_TYPE_LABELS,
   type StageProgress
 } from "../projection";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface StageItemsSectionProps {
   stage: Stage;
@@ -375,9 +376,9 @@ export function StageItemsSection({
                     })}
                 </ul>
               ) : (
-                <p className="rounded-md border border-dashed border-border bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+                <EmptyNote size="sm">
                   No teams assigned yet. Pick a team below to fill the first slot.
-                </p>
+                </EmptyNote>
               )}
 
               <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -432,9 +433,9 @@ export function StageItemsSection({
           ))}
         </div>
       ) : (
-        <p className="rounded-lg border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+        <EmptyNote>
           This stage has no structure items yet. Add a group or bracket lane below.
-        </p>
+        </EmptyNote>
       )}
 
       <div className="grid gap-2 border-t border-border pt-3 lg:grid-cols-[minmax(0,1fr)_200px_auto] lg:items-end">

@@ -5,6 +5,8 @@ import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT } from "@/components/admin/tone";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { resolveDivisionFromRank } from "@/lib/division-grid";
@@ -62,12 +64,14 @@ function roleHasMismatch(role: RegistrationRankAutofillRole): boolean {
 
 type RolePillTone = "update" | "mismatch" | "unverified" | "blocked" | "neutral";
 
+// Role pills are the admin's tone vocabulary, not a private palette: the same
+// green/amber/rose here as on every other status surface.
 const ROLE_PILL_TONE_CLASS: Record<RolePillTone, string> = {
-  update: "border-emerald-400/25 bg-emerald-500/10 text-emerald-100",
-  mismatch: "border-rose-400/25 bg-rose-500/10 text-rose-100",
-  unverified: "border-amber-400/25 bg-amber-500/10 text-amber-100",
-  blocked: "border-orange-400/25 bg-orange-500/10 text-orange-100",
-  neutral: "border-[color:var(--aqt-border-2)] bg-white/5 text-[color:var(--aqt-fg-muted)]"
+  update: TONE_CLASS.success,
+  mismatch: TONE_CLASS.danger,
+  unverified: TONE_CLASS.warning,
+  blocked: TONE_CLASS.warning,
+  neutral: TONE_CLASS.neutral
 };
 
 /**
@@ -120,13 +124,16 @@ function RankAutofillRolePill({ role }: Readonly<{ role: RegistrationRankAutofil
 
   const showsTransition = (isUpdate || isMismatch) && role.current_rank_value != null;
   const primaryRank =
-    isUpdate || isMismatch ? role.parsed_rank_value : (role.current_rank_value ?? role.parsed_rank_value);
-  const primaryDivision = isUpdate || isMismatch ? parsedDivision : (currentDivision ?? parsedDivision);
+    isUpdate || isMismatch
+      ? role.parsed_rank_value
+      : (role.current_rank_value ?? role.parsed_rank_value);
+  const primaryDivision =
+    isUpdate || isMismatch ? parsedDivision : (currentDivision ?? parsedDivision);
 
   return (
     <div
       className={cn(
-        "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]",
+        "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
         ROLE_PILL_TONE_CLASS[tone]
       )}
       title={[[role.reason, source].filter(Boolean).join(" / "), ...breakdown]
@@ -134,7 +141,12 @@ function RankAutofillRolePill({ role }: Readonly<{ role: RegistrationRankAutofil
         .join("\n")}
     >
       <span className="shrink-0">
-        <PlayerRoleIcon role={getRoleIconName(role.role)} size={14} color="currentColor" decorative />
+        <PlayerRoleIcon
+          role={getRoleIconName(role.role)}
+          size={14}
+          color="currentColor"
+          decorative
+        />
       </span>
       <span className="sr-only">{roleLabel}</span>
 
@@ -233,15 +245,15 @@ export function RankAutofillPreviewTables({
             disabled={selectableIds.length === 0 || loading}
             aria-label={t("rankAutofill.selectAllAria")}
           />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">
-            {t("rankAutofill.sections.assign")}
-          </span>
-          <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+          <span className={EYEBROW_CLASS}>{t("rankAutofill.sections.assign")}</span>
+          <StatusPill tone="success" className="tabular-nums">
             {selectedIds.size}/{updatablePlayers.length}
-          </span>
+          </StatusPill>
         </div>
         {updatablePlayers.length === 0 ? (
-          <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("rankAutofill.noRanksToUpdate")}</p>
+          <p className="text-xs text-[color:var(--aqt-fg-dim)]">
+            {t("rankAutofill.noRanksToUpdate")}
+          </p>
         ) : (
           <div className="flex flex-col gap-2 md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-1">
             {updatablePlayers.map((player) => (
@@ -253,7 +265,9 @@ export function RankAutofillPreviewTables({
                   <Checkbox
                     className="shrink-0"
                     checked={selectedIds.has(player.registration_id)}
-                    onCheckedChange={(checked) => onToggle(player.registration_id, checked === true)}
+                    onCheckedChange={(checked) =>
+                      onToggle(player.registration_id, checked === true)
+                    }
                     disabled={loading}
                     aria-label={t("rankAutofill.selectAria", { name: playerLabel(player) })}
                   />
@@ -261,19 +275,19 @@ export function RankAutofillPreviewTables({
                     {playerLabel(player)}
                   </span>
                   {player.partial && (
-                    <span className="shrink-0 rounded border border-amber-400/20 bg-amber-500/10 px-1 py-px text-[11px] font-semibold uppercase tracking-wide text-amber-200">
-                      {t("rankAutofill.badgePartial")}
-                    </span>
+                    <StatusPill tone="warning">{t("rankAutofill.badgePartial")}</StatusPill>
                   )}
                   {player.will_add_to_balancer && (
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded border border-cyan-400/20 bg-cyan-500/10 px-1 py-px text-[11px] font-semibold uppercase tracking-wide text-cyan-200">
-                      <ArrowRight className="size-4 shrink-0" aria-hidden />
+                    <StatusPill tone="info">
+                      <ArrowRight className="size-3 shrink-0" aria-hidden />
                       Balancer
-                    </span>
+                    </StatusPill>
                   )}
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center gap-1.5 pl-6">
-                  <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">#{player.registration_id}</span>
+                  <span className="text-xs text-[color:var(--aqt-fg-dim)]">
+                    #{player.registration_id}
+                  </span>
                   {player.roles
                     .filter((role) => role.action === "set" || role.action === "overwrite")
                     .map((role) => (
@@ -289,13 +303,11 @@ export function RankAutofillPreviewTables({
       {/* Column 2 — Skipped */}
       <section className="flex min-w-0 flex-col md:min-h-0">
         <div className="mb-2 flex shrink-0 items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">
-            {t("rankAutofill.sections.skipped")}
-          </span>
+          <span className={EYEBROW_CLASS}>{t("rankAutofill.sections.skipped")}</span>
           {skippedPlayers.length > 0 && (
-            <span className="rounded-full bg-orange-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-orange-300">
+            <StatusPill tone="warning" className="tabular-nums">
               {skippedPlayers.length}
-            </span>
+            </StatusPill>
           )}
         </div>
         {skippedPlayers.length === 0 ? (
@@ -307,8 +319,10 @@ export function RankAutofillPreviewTables({
                 key={player.registration_id}
                 className="min-w-0 rounded-lg border border-[color:var(--aqt-border-2)] bg-white/[0.02] p-2.5"
               >
-                <div className="truncate text-xs font-medium text-[color:var(--aqt-fg-muted)]">{playerLabel(player)}</div>
-                <div className="mt-0.5 text-[11px] leading-4 text-orange-200/70">
+                <div className="truncate text-xs font-medium text-[color:var(--aqt-fg-muted)]">
+                  {playerLabel(player)}
+                </div>
+                <div className={cn("mt-0.5 text-xs leading-4", TONE_TEXT.warning)}>
                   {player.reason ?? t("rankAutofill.skippedFallback")}
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1">
@@ -325,13 +339,11 @@ export function RankAutofillPreviewTables({
       {/* Column 3 — Already set */}
       <section className="flex min-w-0 flex-col md:min-h-0">
         <div className="mb-2 flex shrink-0 items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">
-            {t("rankAutofill.sections.alreadySet")}
-          </span>
+          <span className={EYEBROW_CLASS}>{t("rankAutofill.sections.alreadySet")}</span>
           {unchangedPlayers.length > 0 && (
-            <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-[color:var(--aqt-fg-dim)]">
+            <StatusPill tone="neutral" className="tabular-nums">
               {unchangedPlayers.length}
-            </span>
+            </StatusPill>
           )}
         </div>
         {unchangedPlayers.length === 0 ? (
@@ -352,17 +364,13 @@ export function RankAutofillPreviewTables({
                       {playerLabel(player)}
                     </span>
                     {hasUnverifiedRole(player) && (
-                      <span className="shrink-0 rounded border border-amber-400/20 bg-amber-500/10 px-1 py-px text-[11px] font-semibold uppercase tracking-wide text-amber-200">
-                        {t("rankAutofill.badgeUnverified")}
-                      </span>
+                      <StatusPill tone="warning">{t("rankAutofill.badgeUnverified")}</StatusPill>
                     )}
                     {playerHasMismatch(player) && (
-                      <span className="shrink-0 rounded border border-rose-400/20 bg-rose-500/10 px-1 py-px text-[11px] font-semibold uppercase tracking-wide text-rose-200">
-                        {t("rankAutofill.badgeMismatch")}
-                      </span>
+                      <StatusPill tone="danger">{t("rankAutofill.badgeMismatch")}</StatusPill>
                     )}
                   </div>
-                  <div className="mt-0.5 text-[11px] leading-4 text-[color:var(--aqt-fg-dim)]">
+                  <div className="mt-0.5 text-xs leading-4 text-[color:var(--aqt-fg-dim)]">
                     {player.reason ?? t("rankAutofill.unchangedFallback")}
                   </div>
                   {auditRoles.length > 0 && (

@@ -21,6 +21,7 @@ import type { SubroleCatalog } from "@/types/registration.types";
 import { HeaderCombobox } from "./HeaderCombobox";
 import { HeaderMultiCombobox } from "./HeaderMultiCombobox";
 import { ModeToggle } from "./ModeToggle";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 
 const AUTO_FIELD_MODES: MappingTargetMode[] = ["auto", "columns"];
 const STANDARD_FIELD_MODES: MappingTargetMode[] = ["columns", "constant", "disabled"];
@@ -86,12 +87,12 @@ export function MappingFieldRow({
               {target.label}
             </span>
             {target.required ? (
-              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
+              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
                 Required
               </span>
             ) : null}
           </div>
-          <p className="truncate font-mono text-[11px] text-muted-foreground/60" title={target.key}>
+          <p className="truncate font-mono text-xs text-muted-foreground/60" title={target.key}>
             {target.key}
           </p>
         </div>
@@ -179,7 +180,7 @@ export function MappingFieldRow({
 
           {showParser ? (
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+              <span className={EYEBROW_CLASS}>
                 Parser
               </span>
               <Select value={activeParser} onValueChange={onParserChange} disabled={disabled}>

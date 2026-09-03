@@ -8,9 +8,8 @@ import Image from "next/image";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { InlineEditText } from "@/components/admin/InlineEditText";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
-import { TONE_CLASS } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 import {
   bandIconUrl,
@@ -91,14 +90,7 @@ export function DivisionsTable({
                 }
               />
               {band.icon_url === null ? (
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full border px-1.5 py-0.5 text-xs",
-                    TONE_CLASS.neutral
-                  )}
-                >
-                  borrows crest
-                </span>
+                <StatusPill tone="neutral">borrows crest</StatusPill>
               ) : null}
             </div>
           );
@@ -107,17 +99,13 @@ export function DivisionsTable({
       {
         id: "band",
         header: "OW band",
-        cell: ({ row }) => (
-          <span className="font-mono text-sm">{bandRangeLabel(row.original)}</span>
-        )
+        cell: ({ row }) => <span className="font-mono text-sm">{bandRangeLabel(row.original)}</span>
       },
       {
         id: "ranks",
         header: "Ranks",
         size: 76,
-        cell: ({ row }) => (
-          <span className="font-mono tabular-nums">{bandSize(row.original)}</span>
-        )
+        cell: ({ row }) => <span className="font-mono tabular-nums">{bandSize(row.original)}</span>
       },
       {
         id: "players",
@@ -139,16 +127,7 @@ export function DivisionsTable({
         cell: ({ row }) => {
           const verdict = bandVerdict(base, row.original);
           if (verdict === null) return <span className="text-muted-foreground">&mdash;</span>;
-          return (
-            <span
-              className={cn(
-                "rounded-full border px-2 py-0.5 text-xs font-medium",
-                TONE_CLASS[VERDICT_TONE[verdict]]
-              )}
-            >
-              {verdict}
-            </span>
-          );
+          return <StatusPill tone={VERDICT_TONE[verdict]}>{verdict}</StatusPill>;
         }
       }
     ];

@@ -27,6 +27,7 @@ import { ApiError } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { AuditLogRead } from "@/types/admin.types";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 
 /**
  * Per-line marker for the field diff.
@@ -87,7 +88,7 @@ export function AuditFieldDiff({
           <div key={row.field} className="grid gap-0.5">
             <dt className="flex items-baseline gap-1.5">
               <span className="font-mono text-xs text-foreground">{row.field}</span>
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              <span className={EYEBROW_CLASS}>
                 {DIFF_KIND_WORD[row.kind]}
               </span>
             </dt>

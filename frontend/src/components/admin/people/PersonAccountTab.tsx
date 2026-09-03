@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { rbacService } from "@/services/rbac.service";
-import { cn } from "@/lib/utils";
 
 function Field({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
   return (
@@ -119,14 +119,9 @@ export function PersonAccountTab({
         </Field>
         <Field label="Email">{detail.email}</Field>
         <Field label="Status">
-          <span
-            className={cn(
-              "inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
-              TONE_CLASS[detail.is_active ? "success" : "danger"]
-            )}
-          >
+          <StatusPill tone={detail.is_active ? "success" : "danger"}>
             {detail.is_active ? "Active" : "Disabled"}
-          </span>
+          </StatusPill>
         </Field>
         <Field label="Verified">{detail.is_verified ? "Yes" : "No"}</Field>
         <Field label="Superuser">{detail.is_superuser ? "Yes" : "No"}</Field>

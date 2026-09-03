@@ -18,6 +18,7 @@ import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 import { StatusBadge, formatDate } from "./rank-shared";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const STATUS_FILTERS = ["all", "ok", "private", "not_found", "error", "rate_limited"];
 const SOURCE_FILTERS = ["all", "scheduled", "registration", "manual"];
@@ -89,10 +90,10 @@ export function RankTaskHistory() {
         {query.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : rows.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+          <EmptyNote>
             No fetch tasks recorded yet. The worker logs a row here each time it queries OverFast —
             resume collection or collect a single player to see activity.
-          </p>
+          </EmptyNote>
         ) : (
           <div className="max-h-96 overflow-y-auto">
             <Table>

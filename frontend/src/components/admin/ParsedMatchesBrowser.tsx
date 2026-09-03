@@ -21,6 +21,7 @@ import adminService from "@/services/admin.service";
 import mapService from "@/services/map.service";
 import tournamentService from "@/services/tournament.service";
 import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const PAGE_SIZE = 25;
 
@@ -218,9 +219,9 @@ export function ParsedMatchesBrowser({
 
   if (workspaceId == null) {
     return (
-      <div className="rounded-lg border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
+      <EmptyNote>
         Parsed maps are scoped to a workspace. Pick one to see what the log parser produced.
-      </div>
+      </EmptyNote>
     );
   }
 

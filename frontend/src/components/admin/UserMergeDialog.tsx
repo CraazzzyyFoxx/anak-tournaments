@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { getSocialProviderConfig } from "@/lib/social-providers";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface UserMergeDialogProps {
   sourceUser: User;
@@ -83,7 +84,7 @@ function FieldChoiceButtons({
           onClick={() => onChange("source")}
         >
           <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wider opacity-70">Source</div>
+            <div className={EYEBROW_CLASS}>Source</div>
             <div className="text-sm">{sourceValue}</div>
           </div>
         </Button>
@@ -95,7 +96,7 @@ function FieldChoiceButtons({
           onClick={() => onChange("target")}
         >
           <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wider opacity-70">Target</div>
+            <div className={EYEBROW_CLASS}>Target</div>
             <div className="text-sm">{targetValue}</div>
           </div>
         </Button>
@@ -121,9 +122,9 @@ function IdentitySelectionSection({
     return (
       <div className="space-y-2">
         <p className="text-sm font-medium">{label}</p>
-        <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+        <EmptyNote>
           The source profile has no linked social accounts, so nothing moves across.
-        </p>
+        </EmptyNote>
       </div>
     );
   }

@@ -4,7 +4,8 @@ import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
-import { TONE_CLASS, type Tone } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import type { Tone } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
 
 export interface EntityHubHeaderProps {
@@ -39,7 +40,9 @@ export function EntityHubHeader({
   backHref,
   level = 1
 }: Readonly<EntityHubHeaderProps>) {
-  const metaParts = (meta ?? []).filter((part) => part !== null && part !== undefined && part !== false);
+  const metaParts = (meta ?? []).filter(
+    (part) => part !== null && part !== undefined && part !== false
+  );
   const Heading = level === 1 ? "h1" : "h2";
 
   return (
@@ -64,16 +67,7 @@ export function EntityHubHeader({
           >
             {title}
           </Heading>
-          {status ? (
-            <span
-              className={cn(
-                "shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium",
-                TONE_CLASS[status.tone]
-              )}
-            >
-              {status.label}
-            </span>
-          ) : null}
+          {status ? <StatusPill tone={status.tone}>{status.label}</StatusPill> : null}
         </div>
 
         {metaParts.length > 0 ? (

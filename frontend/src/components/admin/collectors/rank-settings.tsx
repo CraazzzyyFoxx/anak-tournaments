@@ -40,6 +40,7 @@ import type {
   RankMappingEntry,
   SettingRead
 } from "@/types/admin.types";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 
 const RANK_COLLECTION_KEY = "parser.rank_collection";
 const RANK_MAPPING_KEY = "parser.rank_mapping";
@@ -347,7 +348,7 @@ function RankMappingSection({
         </p>
 
         <div className="overflow-hidden rounded-md border">
-          <div className="grid grid-cols-[minmax(140px,1fr)_24px_minmax(0,1.4fr)] gap-3 border-b bg-muted/40 px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <div className={cn(EYEBROW_CLASS, "grid grid-cols-[minmax(140px,1fr)_24px_minmax(0,1.4fr)] gap-3 border-b bg-muted/40 px-4 py-2")}>
             <span>OverFast rank</span>
             <span />
             <span>Ladder division</span>

@@ -101,6 +101,7 @@ import {
   MAX_ACHIEVEMENT_IMAGE_BYTES
 } from "@/lib/achievement-image";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const CATEGORIES: AchievementCategory[] = ["overall", "hero", "division", "team", "standing", "match"];
 const SCOPES: AchievementScope[] = ["global", "tournament", "match"];
@@ -610,9 +611,9 @@ export default function AchievementsPage() {
           title="Achievements"
           description="Condition-tree rules, evaluation runs and manual overrides."
         />
-        <p className="rounded-lg border border-dashed border-border/60 p-6 text-sm text-muted-foreground">
+        <EmptyNote>
           Pick a workspace in the sidebar to load its achievement catalog.
-        </p>
+        </EmptyNote>
       </div>
     );
   }

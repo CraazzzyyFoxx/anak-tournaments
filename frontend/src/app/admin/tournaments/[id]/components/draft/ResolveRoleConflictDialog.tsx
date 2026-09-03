@@ -40,6 +40,7 @@ import type {
 } from "@/types/draft.types";
 
 import { availableRolesForPlayer, canCommitRoleEdit, roleEditImpact } from "./admin-control-model";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 
 interface ResolveRoleConflictDialogProps {
   open: boolean;
@@ -329,7 +330,7 @@ function ImpactValue({
 }>) {
   return (
     <div>
-      <p className="font-mono text-xs uppercase tracking-wider text-[color:var(--aqt-fg-faint)]">
+      <p className={EYEBROW_CLASS}>
         {label}
       </p>
       <p

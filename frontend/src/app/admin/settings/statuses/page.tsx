@@ -20,7 +20,7 @@ import {
   StatusForm,
   type StatusFormState
 } from "@/components/admin/statuses/StatusForm";
-import { TONE_CLASS } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,7 +33,6 @@ import {
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import balancerAdminService from "@/services/balancer-admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type {
@@ -259,24 +258,10 @@ export default function WorkspaceStatusesSettingsPage() {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>{row.original.description ?? "—"}</span>
             {row.original.excludes_from_balancer ? (
-              <span
-                className={cn(
-                  "whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                  TONE_CLASS.warning
-                )}
-              >
-                Excludes pool
-              </span>
+              <StatusPill tone="warning">Excludes pool</StatusPill>
             ) : null}
             {row.original.excludes_from_ready ? (
-              <span
-                className={cn(
-                  "whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                  TONE_CLASS.warning
-                )}
-              >
-                Blocks ready
-              </span>
+              <StatusPill tone="warning">Blocks ready</StatusPill>
             ) : null}
           </div>
         )

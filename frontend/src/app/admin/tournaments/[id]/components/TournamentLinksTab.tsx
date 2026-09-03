@@ -46,6 +46,7 @@ import type {
   TournamentLinkUpdateInput
 } from "@/types/stream.types";
 import { primaryStreamLinkSortOrder } from "./tournamentLinks.helpers";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 /** Mirrors `TOURNAMENT_LINK_KINDS` in `backend/shared/models/tournament/link.py`. */
 const LINK_KINDS: ReadonlyArray<{ value: TournamentLinkKind; label: string }> = [
@@ -450,9 +451,9 @@ export function TournamentLinksTab({
 
       <CardContent>
         {linksQuery.isError ? (
-          <p className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
+          <EmptyNote>
             Could not load the links for this tournament.
-          </p>
+          </EmptyNote>
         ) : (
           <AdminDataTable
             rows={links}

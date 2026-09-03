@@ -20,6 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
+import { EYEBROW_CLASS, TONE_TEXT } from "@/components/admin/tone";
 import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
@@ -76,7 +77,10 @@ export default function RankAutofillPage({
   const previewQuery = useQuery({
     queryKey: ["balancer-admin", "rank-autofill-preview", tournamentId, debouncedRequest],
     queryFn: () =>
-      balancerAdminService.previewRegistrationRankAutofill(tournamentId as number, debouncedRequest),
+      balancerAdminService.previewRegistrationRankAutofill(
+        tournamentId as number,
+        debouncedRequest
+      ),
     enabled: tournamentId !== null,
     placeholderData: keepPreviousData
   });
@@ -132,8 +136,10 @@ export default function RankAutofillPage({
     activeSource: Parameters<typeof moveStageBySource>[1],
     overSource: Parameters<typeof moveStageBySource>[2]
   ) => setStages((current) => moveStageBySource(current, activeSource, overSource));
-  const handleLookbackChange = (source: Parameters<typeof setStageLookback>[1], value: number | null) =>
-    setStages((current) => setStageLookback(current, source, value));
+  const handleLookbackChange = (
+    source: Parameters<typeof setStageLookback>[1],
+    value: number | null
+  ) => setStages((current) => setStageLookback(current, source, value));
 
   const handleTogglePlayer = (registrationId: number, checked: boolean) =>
     setSelectedIds((current) => {
@@ -181,28 +187,33 @@ export default function RankAutofillPage({
         {
           label: t("rankAutofill.stats.update"),
           value: preview.updatable_registrations,
-          color: "text-emerald-300"
+          color: TONE_TEXT.success
         },
-        { label: t("rankAutofill.stats.ranks"), value: preview.role_updates, color: "text-emerald-300" },
+        {
+          label: t("rankAutofill.stats.ranks"),
+          value: preview.role_updates,
+          color: TONE_TEXT.success
+        },
         {
           label: t("rankAutofill.stats.toBalancer"),
           value: preview.balancer_additions,
-          color: "text-cyan-300"
+          color: TONE_TEXT.info
         },
         {
           label: t("rankAutofill.stats.unverified"),
           value: preview.unverified_registrations,
-          color: preview.unverified_registrations > 0 ? "text-amber-300" : ""
+          color: preview.unverified_registrations > 0 ? TONE_TEXT.warning : ""
         },
         {
           label: t("rankAutofill.stats.skipped"),
           value: preview.skipped_registrations,
-          color: preview.skipped_registrations > 0 ? "text-orange-300" : ""
+          color: preview.skipped_registrations > 0 ? TONE_TEXT.warning : ""
         }
       ]
     : [];
 
-  const applyDisabled = applyMutation.isPending || previewQuery.isFetching || selectedIds.size === 0;
+  const applyDisabled =
+    applyMutation.isPending || previewQuery.isFetching || selectedIds.size === 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
@@ -257,7 +268,9 @@ export default function RankAutofillPage({
                   disabled={applyMutation.isPending}
                   aria-label={t("rankAutofill.overwriteAria")}
                 />
-                <span className="text-xs text-[color:var(--aqt-fg-muted)] select-none">{t("rankAutofill.overwrite")}</span>
+                <span className="text-xs text-[color:var(--aqt-fg-muted)] select-none">
+                  {t("rankAutofill.overwrite")}
+                </span>
               </label>
               <label className="flex cursor-pointer items-center gap-2">
                 <Checkbox
@@ -302,10 +315,13 @@ export default function RankAutofillPage({
             <div className="flex shrink-0 items-center divide-x divide-[color:var(--aqt-border)] rounded-lg border border-[color:var(--aqt-border-2)] bg-white/[0.03]">
               {stats.map(({ label, value, color }) => (
                 <div key={label} className="px-3 py-2 text-center">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">
-                    {label}
-                  </div>
-                  <div className={cn("text-base font-semibold tabular-nums", color || "text-[color:var(--aqt-fg)]")}>
+                  <div className={EYEBROW_CLASS}>{label}</div>
+                  <div
+                    className={cn(
+                      "text-base font-semibold tabular-nums",
+                      color || "text-[color:var(--aqt-fg)]"
+                    )}
+                  >
                     {value}
                   </div>
                 </div>
@@ -330,7 +346,9 @@ export default function RankAutofillPage({
                 onCheckedChange={(checked) => setMismatchOnly(checked === true)}
                 aria-label={t("rankAutofill.mismatchOnlyAria")}
               />
-              <span className="text-xs text-[color:var(--aqt-fg-muted)] select-none">{t("rankAutofill.mismatchOnly")}</span>
+              <span className="text-xs text-[color:var(--aqt-fg-muted)] select-none">
+                {t("rankAutofill.mismatchOnly")}
+              </span>
             </label>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">

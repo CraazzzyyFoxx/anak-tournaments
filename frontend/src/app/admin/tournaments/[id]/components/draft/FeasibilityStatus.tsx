@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DraftFeasibility } from "@/types/draft.types";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface FeasibilityStatusProps {
   feasibility: DraftFeasibility | null;
@@ -17,9 +18,9 @@ export function FeasibilityStatus({ feasibility, loading = false }: Readonly<Fea
   if (loading) return <Skeleton className="h-28 w-full rounded-xl" />;
   if (!feasibility) {
     return (
-      <p className="rounded-lg border border-dashed border-[color:var(--aqt-border)] px-4 py-3 text-sm text-[color:var(--aqt-fg-muted)]">
+      <EmptyNote>
         {t("feasibilityUnavailable")}
-      </p>
+      </EmptyNote>
     );
   }
   const percent = feasibility.total_open_slots

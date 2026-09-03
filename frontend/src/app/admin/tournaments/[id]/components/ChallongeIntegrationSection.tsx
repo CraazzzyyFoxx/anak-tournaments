@@ -13,6 +13,7 @@ import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { ChallongeSyncLogEntry } from "@/types/admin.types";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface ChallongeIntegrationSectionProps {
   tournamentId: number;
@@ -192,9 +193,9 @@ export function ChallongeIntegrationSection({
       </div>
 
       {!hasChallongeSource ? (
-        <p className="rounded-lg border border-dashed border-border/70 bg-muted/10 p-3 text-xs text-muted-foreground">
+        <EmptyNote size="sm">
           Save a Challonge URL or a stage slug above to enable bracket sync.
-        </p>
+        </EmptyNote>
       ) : syncPending || isLoading || lastLog ? (
         <div
           aria-live="polite"
@@ -238,21 +239,24 @@ export function ChallongeIntegrationSection({
           shows the same problem N times with no hint that the fix is a mapping on
           another tab. */}
       {hasChallongeSource && unmappedParticipantIds.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg border border-dashed border-warning/40 bg-warning/5 p-3">
-          <p className="min-w-0 text-xs text-muted-foreground">
-            <span className={cn("font-medium", TONE_TEXT.warning)}>
-              <span className="tabular-nums">{unmappedParticipantIds.length}</span> Challonge
-              participant{unmappedParticipantIds.length === 1 ? "" : "s"} not mapped to a team.
-            </span>{" "}
-            Import cannot create their matches until each one points at an internal team.
-          </p>
-          <Button asChild type="button" size="sm" variant="outline" className="shrink-0">
-            <Link href={teamMappingHref}>
-              <Users className="size-4" aria-hidden />
-              Map teams
-            </Link>
-          </Button>
-        </div>
+        <EmptyNote
+          size="sm"
+          tone="warning"
+          action={
+            <Button asChild type="button" size="sm" variant="outline" className="shrink-0">
+              <Link href={teamMappingHref}>
+                <Users className="size-4" aria-hidden />
+                Map teams
+              </Link>
+            </Button>
+          }
+        >
+          <span className={cn("font-medium", TONE_TEXT.warning)}>
+            <span className="tabular-nums">{unmappedParticipantIds.length}</span> Challonge
+            participant{unmappedParticipantIds.length === 1 ? "" : "s"} not mapped to a team.
+          </span>{" "}
+          Import cannot create their matches until each one points at an internal team.
+        </EmptyNote>
       ) : null}
 
       {hasChallongeSource ? (
@@ -267,9 +271,9 @@ export function ChallongeIntegrationSection({
           {isLoading ? (
             <div className="text-sm text-muted-foreground">Loading sync log…</div>
           ) : logs.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border/70 px-3 py-2 text-sm text-muted-foreground">
+            <EmptyNote>
               No sync history yet. Run an import or export to record the first event.
-            </div>
+            </EmptyNote>
           ) : (
             <div className="max-h-[260px] overflow-y-auto rounded-lg border border-border/60">
               {logs.map((log) => (

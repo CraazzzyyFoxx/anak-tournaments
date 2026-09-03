@@ -21,6 +21,7 @@ import adminService from "@/services/admin.service";
 import type { DiscordChannelInput, DiscordChannelRead } from "@/types/admin.types";
 import type { Tournament } from "@/types/tournament.types";
 import { getTournamentWorkspaceQueryKeys } from "./tournamentWorkspace.queryKeys";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const EMPTY_CHANNEL_FORM: DiscordChannelInput = {
   channel_id: "",
@@ -145,9 +146,9 @@ export function TournamentDiscordSection({
             <DetailField label="Channel ID" value={discordChannel.channel_id} />
           </div>
         ) : (
-          <p className="rounded-lg border border-dashed border-border bg-muted/10 p-3 text-xs text-muted-foreground">
+          <EmptyNote size="sm">
             No channel yet. Add a channel to start pulling match logs in automatically.
-          </p>
+          </EmptyNote>
         )}
 
         {canUpdateTournament ? (

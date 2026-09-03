@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, CheckCircle2, Circle, ListChecks } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Circle } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CardDescription, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT, type Tone } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS, TONE_TEXT, type Tone } from "@/components/admin/tone";
 import {
   buildChecklist,
   hasChallongeSource,
@@ -15,7 +15,6 @@ import {
 } from "@/components/admin/tournament-checklist";
 import { cn } from "@/lib/utils";
 import { PermissionHiddenNotice } from "./PermissionHiddenNotice";
-import { SurfaceCard, SurfaceCardContent, SurfaceCardHeader } from "./SurfaceCard";
 import type { TournamentReadiness } from "@/types/admin.types";
 import type { Tournament } from "@/types/tournament.types";
 
@@ -43,9 +42,9 @@ function ActionRow({ item }: Readonly<{ item: ChecklistItem }>) {
     </>
   );
 
-  // Rows bleed to the card edge (`-mx-5`) so the hover fill spans the card
+  // Rows bleed to the card edge (`-mx-6`) so the hover fill spans the card
   // instead of a framed box inside it.
-  const shared = "flex items-center gap-2 -mx-5 px-5 py-2.5 transition-colors";
+  const shared = "flex items-center gap-2 -mx-6 px-6 py-2.5 transition-colors";
 
   if (!item.href) {
     return <div className={shared}>{body}</div>;
@@ -91,14 +90,14 @@ export function ActiveTournamentReadiness({
 }: Readonly<ActiveTournamentReadinessProps>) {
   if (!canRead) {
     return (
-      <SurfaceCard>
-        <SurfaceCardContent className="pt-5">
+      <Card>
+        <CardContent className="pt-6">
           <PermissionHiddenNotice
             title="Tournament readiness is hidden"
             permission="tournament read or team read"
           />
-        </SurfaceCardContent>
-      </SurfaceCard>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -128,22 +127,17 @@ export function ActiveTournamentReadiness({
   const draftFormation = readiness?.team_formation === "draft";
 
   return (
-    <SurfaceCard>
-      <SurfaceCardHeader>
+    <Card>
+      <CardHeader>
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="flex size-7 items-center justify-center rounded-lg border border-border/50 bg-background/60">
-              <ListChecks className="size-3.5 text-muted-foreground" aria-hidden />
-            </div>
-            <CardTitle asChild className="text-sm">
-              <h2>Next actions</h2>
-            </CardTitle>
-          </div>
+          <CardTitle asChild>
+            <h2>Next actions</h2>
+          </CardTitle>
           <Button
             asChild
             variant="ghost"
             size="sm"
-            className="-mt-1 shrink-0 text-muted-foreground"
+            className="-mt-1.5 shrink-0 text-muted-foreground"
           >
             <Link href={`${basePath}/overview`}>
               Full checklist
@@ -152,13 +146,13 @@ export function ActiveTournamentReadiness({
           </Button>
         </div>
         {trackedCount > 0 && (
-          <CardDescription className="text-xs tabular-nums">
+          <CardDescription className="tabular-nums">
             {doneCount} of {trackedCount} steps done
           </CardDescription>
         )}
-      </SurfaceCardHeader>
+      </CardHeader>
 
-      <SurfaceCardContent className="space-y-4">
+      <CardContent className="space-y-4">
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-10 rounded-xl" />
@@ -200,46 +194,31 @@ export function ActiveTournamentReadiness({
               <dt className={EYEBROW_CLASS}>{draftFormation ? "Draft" : "Balancer"}</dt>
               <dd className="mt-1 flex flex-wrap gap-1.5">
                 {draftFormation ? (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-xs",
-                      TONE_CLASS[
-                        readiness.draft_session_status
-                          ? (DRAFT_TONE[readiness.draft_session_status] ?? "neutral")
-                          : "neutral"
-                      ]
-                    )}
+                  <StatusPill
+                    tone={
+                      readiness.draft_session_status
+                        ? (DRAFT_TONE[readiness.draft_session_status] ?? "neutral")
+                        : "neutral"
+                    }
                   >
                     {readiness.draft_session_status ?? "No session"}
-                  </Badge>
+                  </StatusPill>
                 ) : (
                   <>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-xs tabular-nums",
-                        TONE_CLASS[(readiness.pool_need_fix ?? 0) > 0 ? "warning" : "success"]
-                      )}
+                    <StatusPill
+                      tone={(readiness.pool_need_fix ?? 0) > 0 ? "warning" : "success"}
+                      className="tabular-nums"
                     >
                       Pool {readiness.pool_ready ?? 0} ready
                       {(readiness.pool_need_fix ?? 0) > 0
                         ? ` · ${readiness.pool_need_fix} need fixing`
                         : ""}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-xs",
-                        TONE_CLASS[readiness.balance_saved ? "success" : "neutral"]
-                      )}
-                    >
+                    </StatusPill>
+                    <StatusPill tone={readiness.balance_saved ? "success" : "neutral"}>
                       {readiness.balance_saved ? "Balance saved" : "Balance not saved"}
-                    </Badge>
+                    </StatusPill>
                     {readiness.balance_exported_at && (
-                      <Badge variant="outline" className={cn("text-xs", TONE_CLASS.success)}>
-                        Exported
-                      </Badge>
+                      <StatusPill tone="success">Exported</StatusPill>
                     )}
                   </>
                 )}
@@ -247,8 +226,8 @@ export function ActiveTournamentReadiness({
             </div>
           </dl>
         )}
-      </SurfaceCardContent>
-    </SurfaceCard>
+      </CardContent>
+    </Card>
   );
 }
 

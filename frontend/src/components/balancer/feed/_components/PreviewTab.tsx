@@ -14,6 +14,7 @@ import type {
 } from "@/types/balancer-admin.types";
 
 import { PreviewTable } from "./PreviewTable";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface PreviewTabProps {
   catalog: MappingCatalog;
@@ -70,20 +71,13 @@ export function PreviewTab({
       </div>
 
       {!canPreview ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-12 text-center">
-          <p className="text-sm text-muted-foreground">Set a sheet URL to preview parsed rows.</p>
-        </div>
+        <EmptyNote className="text-center">Set a sheet URL to preview parsed rows.</EmptyNote>
       ) : !preview ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-12 text-center">
-          <p className="text-sm text-muted-foreground">No preview yet.</p>
-          <p className="mt-1 text-xs text-muted-foreground/60">
-            Click “Refresh preview” to fetch sample rows with the current mapping.
-          </p>
-        </div>
+        <EmptyNote title="No preview yet.">
+          Click “Refresh preview” to fetch sample rows with the current mapping.
+        </EmptyNote>
       ) : rowCount === 0 || !activeRow ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-12 text-center">
-          <p className="text-sm text-muted-foreground">The sheet returned no sample rows.</p>
-        </div>
+        <EmptyNote className="text-center">The sheet returned no sample rows.</EmptyNote>
       ) : (
         <Card>
           <CardHeader>

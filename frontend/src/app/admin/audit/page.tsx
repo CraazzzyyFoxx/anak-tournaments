@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { AuditLogRead, AuditSortField } from "@/types/admin.types";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 /** Server caps `per_page` at 200, so the selector must not offer more. */
 const PAGE_SIZE = 25;
@@ -352,10 +353,10 @@ export default function AdminAuditPage() {
     return (
       <div className="space-y-6">
         <AdminPageHeader title="Audit log" description="Who changed what, and when." />
-        <p className="rounded-xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+        <EmptyNote className="text-center">
           Pick a workspace to read its audit log. The feed is scoped to one workspace at a time —
           the same scope the actions in it were authorized against.
-        </p>
+        </EmptyNote>
       </div>
     );
   }

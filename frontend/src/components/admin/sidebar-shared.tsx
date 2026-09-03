@@ -25,6 +25,8 @@ import { logout } from "@/lib/logout";
 import { WorkspaceAvatar } from "@/components/WorkspaceSwitcher";
 import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { cn } from "@/lib/utils";
 
 // Role names come from two RBAC scopes: global roles ("admin",
 // "tournament_organizer", "moderator" — see AppRole in usePermissions) and
@@ -216,7 +218,7 @@ export function SidebarUserDropdown() {
               {workspaces.length > 0 && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground/60 px-2 py-1">
+                  <DropdownMenuLabel className={cn(EYEBROW_CLASS, "px-2 py-1")}>
                     Workspace
                   </DropdownMenuLabel>
                   {workspaces.map((ws) => (

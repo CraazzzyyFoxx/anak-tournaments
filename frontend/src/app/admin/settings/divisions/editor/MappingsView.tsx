@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import {
   Select,
   SelectContent,
@@ -91,19 +92,13 @@ export function MappingsView({
           <section key={readiness.version_id} className="flex min-w-0 flex-col gap-2">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className={cn(EYEBROW_CLASS, "font-mono")}>
-                {readiness.version_label} &rarr; {targetLabel} ·{" "}
-                {readiness.tournament_count}{" "}
-                {readiness.tournament_count === 1 ? "tournament" : "tournaments"} ·{" "}
-                {rows.length} source divisions
+                {readiness.version_label} &rarr; {targetLabel} · {readiness.tournament_count}{" "}
+                {readiness.tournament_count === 1 ? "tournament" : "tournaments"} · {rows.length}{" "}
+                source divisions
               </p>
-              <span
-                className={cn(
-                  "rounded-full border px-2 py-0.5 text-xs font-medium",
-                  TONE_CLASS[unresolved.length === 0 ? "success" : "warning"]
-                )}
-              >
+              <StatusPill tone={unresolved.length === 0 ? "success" : "warning"}>
                 {unresolved.length === 0 ? "complete" : `${unresolved.length} to resolve`}
-              </span>
+              </StatusPill>
             </div>
 
             <div className="min-w-0 overflow-x-auto rounded-xl border border-border bg-card">
@@ -132,10 +127,7 @@ export function MappingsView({
                     const primary = primaryTarget(row, chosen);
                     const sourceTierId = row.source.id;
                     return (
-                      <tr
-                        key={row.source.slug}
-                        className="border-b border-border last:border-b-0"
-                      >
+                      <tr key={row.source.slug} className="border-b border-border last:border-b-0">
                         <td className="px-3 py-2">{row.source.name}</td>
                         <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
                           {bandShortLabel(row.source)}

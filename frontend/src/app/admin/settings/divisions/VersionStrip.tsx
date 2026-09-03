@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { formatDate } from "@/components/admin/format-time";
 import { cn } from "@/lib/utils";
 import type { DivisionGridVersion } from "@/types/workspace.types";
@@ -58,14 +59,7 @@ export function VersionStrip({
               <span className="font-display text-base font-semibold tabular-nums">
                 v{version.version}
               </span>
-              <span
-                className={cn(
-                  "rounded-full border px-2 py-0.5 text-xs font-medium",
-                  TONE_CLASS[VERSION_STATE_TONE[state]]
-                )}
-              >
-                {state}
-              </span>
+              <StatusPill tone={VERSION_STATE_TONE[state]}>{state}</StatusPill>
             </div>
 
             <p className="min-w-0 truncate text-sm font-medium">{version.label}</p>

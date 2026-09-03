@@ -9,6 +9,7 @@ import type { Tournament } from "@/types/tournament.types";
 import { TournamentPreviewAllowlist } from "../../components/TournamentPreviewAllowlist";
 import { SettingsSectionPage } from "../SettingsSection";
 import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 export default function PreviewSettingsPage() {
   return (
@@ -77,10 +78,10 @@ function PreviewForm({
                 workspaceId={workspaceId}
               />
             ) : (
-              <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+              <EmptyNote size="sm">
                 Tick “Hidden (preview)” above to choose who may view this tournament while it is
                 still private.
-              </p>
+              </EmptyNote>
             )}
           </div>
         </CardContent>

@@ -3,6 +3,9 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AdminGoogleSheetFeed } from "@/types/balancer-admin.types";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { cn } from "@/lib/utils";
 
 function statusVariant(status: string | null | undefined): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
@@ -31,9 +34,9 @@ export function FeedStatusCard({ feed }: Readonly<FeedStatusCardProps>) {
       </CardHeader>
       <CardContent>
         {!feed ? (
-          <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+          <EmptyNote>
             No Google Sheets feed configured yet.
-          </div>
+          </EmptyNote>
         ) : (
           <div className="space-y-3 rounded-lg border p-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
@@ -47,7 +50,7 @@ export function FeedStatusCard({ feed }: Readonly<FeedStatusCardProps>) {
             {feed.last_error ? <p className="text-sm text-destructive">{feed.last_error}</p> : null}
             {feed.header_row_json?.length ? (
               <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+                <p className={cn(EYEBROW_CLASS, "mb-1")}>
                   Detected headers ({feed.header_row_json.length})
                 </p>
                 <div className="flex flex-wrap gap-1.5">

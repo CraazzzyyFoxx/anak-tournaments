@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import type { AdminCustomFieldDef } from "@/types/balancer-admin.types";
 
 import { FIELD_TYPE_OPTIONS, getCustomFieldDefaultValidation, supportsCustomFieldValidation } from "./formConfig";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 export function CustomFieldsCard({
   customFields,
@@ -54,14 +55,17 @@ export function CustomFieldsCard({
       </CardHeader>
       <CardContent>
         {customFields.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 px-4 py-10 text-center">
-            <p className="text-sm font-medium">{t("emptyTitle")}</p>
-            <p className="mt-1 max-w-prose text-xs text-muted-foreground">{t("emptyHint")}</p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={onAdd}>
-              <Plus className="mr-1.5 size-3.5" aria-hidden />
-              {t("addField")}
-            </Button>
-          </div>
+          <EmptyNote
+            title={t("emptyTitle")}
+            action={
+              <Button variant="outline" size="sm" onClick={onAdd}>
+                <Plus className="mr-1.5 size-3.5" aria-hidden />
+                {t("addField")}
+              </Button>
+            }
+          >
+            {t("emptyHint")}
+          </EmptyNote>
         ) : (
           <div className="space-y-3">
             {customFields.map((field, index) => {

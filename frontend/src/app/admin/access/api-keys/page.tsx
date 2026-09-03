@@ -37,6 +37,7 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { AccountApiKey } from "@/types/auth.types";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const PAGE_SIZE = 20;
 
@@ -562,10 +563,10 @@ export default function AccessAdminApiKeysPage() {
           />
 
           {availableScopes.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+            <EmptyNote size="sm">
               You hold no delegatable permissions in this workspace, so every key created here
               would be inert. Ask a workspace admin to grant you the permissions first.
-            </p>
+            </EmptyNote>
           ) : (
             <PermissionPicker
               mode="list"

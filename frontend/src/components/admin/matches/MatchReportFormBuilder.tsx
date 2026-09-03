@@ -29,6 +29,7 @@ import {
   type ReportBuiltInFieldConfig,
   type ReportCustomFieldDefinition
 } from "@/types/encounter.types";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 type BuiltInKey = keyof MatchReportForm["built_in_fields"];
 
@@ -395,9 +396,7 @@ export function MatchReportFormBuilder({ tournamentId }: Readonly<{ tournamentId
           </div>
 
           {customFields.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-[color:var(--aqt-border-2)] p-8 text-center text-sm text-muted-foreground">
-              {t("noCustomFields")}
-            </p>
+            <EmptyNote className="text-center">{t("noCustomFields")}</EmptyNote>
           ) : (
             <ul className="space-y-3">
               {customFields.map((field, index) => {
@@ -437,9 +436,7 @@ export function MatchReportFormBuilder({ tournamentId }: Readonly<{ tournamentId
                           value={field.key}
                           className="font-mono"
                           aria-invalid={Boolean(errors.key)}
-                          aria-describedby={
-                            errors.key ? `${keyHintId} ${keyErrorId}` : keyHintId
-                          }
+                          aria-describedby={errors.key ? `${keyHintId} ${keyErrorId}` : keyHintId}
                           onChange={(event) =>
                             updateCustomField(field.uid, {
                               key: event.target.value,

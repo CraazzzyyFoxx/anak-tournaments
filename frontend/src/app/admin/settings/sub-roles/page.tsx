@@ -164,7 +164,7 @@ export default function WorkspaceSubRolesSettingsPage() {
                             onSave={(label) => renameMutation.mutateAsync({ id: entry.id, label })}
                             textClassName={entry.is_active ? undefined : "text-muted-foreground"}
                           />
-                          <p className="truncate font-mono text-[11px] text-muted-foreground/70">
+                          <p className="truncate font-mono text-xs text-muted-foreground/70">
                             {entry.slug}
                           </p>
                         </div>

@@ -57,6 +57,7 @@ import type {
 import type { Team } from "@/types/team.types";
 import { TOURNAMENT_DETAIL_PREVIEW_LIMIT } from "./tournamentWorkspace.helpers";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface TournamentTeamsTabProps {
   tournamentId: number;
@@ -506,23 +507,24 @@ export function TournamentTeamsTab({
                 ) : (
                   <TableRow className={tableStyles.row}>
                     <TableCell className={tableStyles.cell} colSpan={5}>
-                      <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-                        <span>
-                          No teams loaded for this tournament yet. Sync from Challonge or open the
-                          dedicated teams workspace to create the first roster.
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                          {syncTeamsButton}
-                          {canManageTeams ? (
-                            <Button asChild variant="outline">
-                              <Link href={teamsAdminHref}>
-                                <Plus className="mr-2 h-4 w-4" aria-hidden />
-                                Manage teams
-                              </Link>
-                            </Button>
-                          ) : null}
-                        </div>
-                      </div>
+                      <EmptyNote
+                        action={
+                          <div className="flex flex-wrap gap-2">
+                            {syncTeamsButton}
+                            {canManageTeams ? (
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={teamsAdminHref}>
+                                  <Plus className="size-3.5" aria-hidden />
+                                  Manage teams
+                                </Link>
+                              </Button>
+                            ) : null}
+                          </div>
+                        }
+                      >
+                        No teams loaded for this tournament yet. Sync from Challonge or open the
+                        dedicated teams workspace to create the first roster.
+                      </EmptyNote>
                     </TableCell>
                   </TableRow>
                 )}
@@ -601,7 +603,10 @@ export function TournamentTeamsTab({
                       <span className="min-w-0 flex-1 truncate" title={row.participant}>
                         {row.participant}
                       </span>
-                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                      <ArrowRight
+                        className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                        aria-hidden
+                      />
                       <span className="min-w-0 flex-1 truncate font-medium" title={row.team}>
                         {row.team}
                       </span>

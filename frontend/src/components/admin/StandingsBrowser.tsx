@@ -29,6 +29,7 @@ import adminService from "@/services/admin.service";
 import tournamentService from "@/services/tournament.service";
 import type { StandingUpdateInput } from "@/types/admin.types";
 import type { Standings } from "@/types/tournament.types";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const PAGE_SIZE = 25;
 
@@ -338,9 +339,9 @@ export function StandingsBrowser({
 
   if (workspaceId == null) {
     return (
-      <div className="rounded-lg border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
+      <EmptyNote>
         Standings are scoped to a workspace. Pick one to see a ranking table.
-      </div>
+      </EmptyNote>
     );
   }
 

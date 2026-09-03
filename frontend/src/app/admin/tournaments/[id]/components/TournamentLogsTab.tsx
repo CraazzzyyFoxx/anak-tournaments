@@ -41,6 +41,7 @@ import {
   getTournamentWorkspaceQueryKeys,
   invalidateTournamentWorkspace
 } from "./tournamentWorkspace.queryKeys";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const PAGE_SIZE = 25;
 /**
@@ -126,7 +127,7 @@ function LogStatusBadge({ status }: Readonly<{ status: LogProcessingStatus }>) {
   return (
     <Badge
       variant="outline"
-      className={cn("gap-1.5 whitespace-nowrap px-1.5 text-[11px]", TONE_CLASS[meta.tone])}
+      className={cn("gap-1.5 whitespace-nowrap px-1.5 text-xs", TONE_CLASS[meta.tone])}
     >
       <Icon className={cn("size-3", status === "processing" && "animate-spin")} aria-hidden />
       {meta.label}
@@ -237,11 +238,14 @@ export function TournamentLogsTab({
 
   // Parser signals completions on the workspace topic, so the console stays live
   // without polling. Coalesced: a batch upload emits one signal per file.
-  useRealtimeCoalescedRefetch(enabled && workspaceId != null ? `workspace:${workspaceId}:logs` : null, {
-    minDelayMs: REALTIME_REFRESH_DEBOUNCE_MS,
-    onEvent: (_event, schedule) => schedule(),
-    onFlush: refreshAll
-  });
+  useRealtimeCoalescedRefetch(
+    enabled && workspaceId != null ? `workspace:${workspaceId}:logs` : null,
+    {
+      minDelayMs: REALTIME_REFRESH_DEBOUNCE_MS,
+      onEvent: (_event, schedule) => schedule(),
+      onFlush: refreshAll
+    }
+  );
 
   const retryLogMutation = useMutation({
     mutationFn: (recordId: number) => adminService.retryLogRecord(recordId),
@@ -436,20 +440,14 @@ export function TournamentLogsTab({
               <Skeleton className="h-11 w-full" />
             </div>
           ) : records.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
-              {hasActiveFilter ? (
-                <>
-                  <Search className="mx-auto size-6 text-muted-foreground" aria-hidden />
-                  <p className="mt-3 text-sm font-medium">
-                    {searchTerm ? `No logs match “${searchTerm}”` : "No logs in this status"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Search covers every log in this scope, not just the loaded rows.
-                  </p>
+            hasActiveFilter ? (
+              <EmptyNote
+                icon={Search}
+                title={searchTerm ? `No logs match “${searchTerm}”` : "No logs in this status"}
+                action={
                   <Button
                     variant="outline"
                     size="sm"
-                    className="mt-4"
                     onClick={() => {
                       filters.clear();
                       setSearchInput("");
@@ -457,21 +455,22 @@ export function TournamentLogsTab({
                   >
                     Clear filters
                   </Button>
-                </>
-              ) : (
-                <>
-                  <FileText className="mx-auto size-6 text-muted-foreground" aria-hidden />
-                  <p className="mt-3 text-sm font-medium">
-                    {tournamentId != null
-                      ? "No logs for this tournament yet"
-                      : "No logs in this workspace yet"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Upload log files or process stored S3 logs to populate this console.
-                  </p>
-                </>
-              )}
-            </div>
+                }
+              >
+                Search covers every log in this scope, not just the loaded rows.
+              </EmptyNote>
+            ) : (
+              <EmptyNote
+                icon={FileText}
+                title={
+                  tournamentId != null
+                    ? "No logs for this tournament yet"
+                    : "No logs in this workspace yet"
+                }
+              >
+                Upload log files or process stored S3 logs to populate this console.
+              </EmptyNote>
+            )
           ) : (
             <>
               <ul className="divide-y divide-border/30 overflow-hidden rounded-lg border border-border/40">
@@ -512,7 +511,7 @@ export function TournamentLogsTab({
                         <div className="flex w-28 shrink-0 items-center gap-1.5">
                           <LogStatusBadge status={record.status} />
                           {record.attempts > 1 ? (
-                            <span className="text-[11px] tabular-nums text-muted-foreground">
+                            <span className="text-xs tabular-nums text-muted-foreground">
                               ×{record.attempts}
                             </span>
                           ) : null}

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 
 /**
  * `isOpen` is READ-ONLY and derived.
@@ -41,15 +42,9 @@ export function RegistrationStatusCard({
             <p className="text-sm font-medium">{t("acceptLabel")}</p>
             <p className="max-w-prose text-xs text-muted-foreground">{t("scheduleHint")}</p>
           </div>
-          <span
-            className={
-              isOpen
-                ? "shrink-0 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
-                : "shrink-0 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
-            }
-          >
+          <StatusPill tone={isOpen ? "success" : "neutral"}>
             {isOpen ? t("stateOpen") : t("stateClosed")}
-          </span>
+          </StatusPill>
         </div>
         <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
           <div className="space-y-0.5">

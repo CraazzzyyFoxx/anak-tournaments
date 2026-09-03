@@ -27,6 +27,7 @@ import type { DivisionGrid } from "@/types/workspace.types";
 import { filterCaptainRows, type DraftCaptainSort } from "./setup-model";
 import type { DraftCaptainSetup } from "./setup-types";
 import { registrationLabel, summarizeRegistration } from "./setup-types";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface DraftCaptainsStepProps {
   pool: AdminRegistration[];
@@ -173,7 +174,10 @@ export function DraftCaptainsStep({
             </div>
             <Select value={sort} onValueChange={(next) => setSort(next as DraftCaptainSort)}>
               <SelectTrigger className="w-44" aria-label={t("captainSort")}>
-                <ArrowDownWideNarrow className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <ArrowDownWideNarrow
+                  className="h-4 w-4 shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -235,9 +239,7 @@ export function DraftCaptainsStep({
             <h3 className="text-sm font-semibold">{t("selectedTeams")}</h3>
           </div>
           {value.ids.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-              {t("selectCaptainsHint")}
-            </div>
+            <EmptyNote className="text-center">{t("selectCaptainsHint")}</EmptyNote>
           ) : (
             <div className="space-y-2">
               {value.ids.map((id, index) => {

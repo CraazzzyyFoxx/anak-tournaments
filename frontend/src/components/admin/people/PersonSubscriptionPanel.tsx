@@ -26,6 +26,7 @@ import {
   formatDate,
   formatRelative
 } from "@/components/admin/collectors/subscription-shared";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface SelectUser {
   (userId: number, label: string): void;
@@ -193,9 +194,9 @@ function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
       {query.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+        <EmptyNote>
           No checks recorded for this player yet.
-        </p>
+        </EmptyNote>
       ) : (
         <ol className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
           {rows.map((row) => {
@@ -292,11 +293,11 @@ export function SubscriptionPlayerPanel({
         {statusQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : rows.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+          <EmptyNote>
             No subscription verdict stored for this player. Either they have no linked auth account,
             or nothing has ever checked them — subscriptions are only resolved for tournaments whose
             registration form requires one.
-          </p>
+          </EmptyNote>
         ) : (
           <Table>
             <TableHeader>

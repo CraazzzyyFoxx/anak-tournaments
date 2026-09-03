@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Plus } from "lucide-react";
+import { useFormatter } from "next-intl";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -17,7 +19,8 @@ import tournamentService from "@/services/tournament.service";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import type { Tournament } from "@/types/tournament.types";
 
-import { GreetingBar } from "@/components/admin/dashboard/GreetingBar";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { KpiStrip, kpiColumnsClass } from "@/components/admin/dashboard/KpiStrip";
 import { ActiveTournamentCard } from "@/components/admin/dashboard/ActiveTournamentCard";
 import { ActiveTournamentReadiness } from "@/components/admin/dashboard/ActiveTournamentReadiness";
@@ -61,6 +64,11 @@ function emptyPaginated<T>(): PaginatedResponse<T> {
 export default function AdminDashboard() {
   const { canAccessPermission } = usePermissions();
   const workspaceId = useCurrentWorkspaceId();
+  const { user } = useAuthProfile();
+  const format = useFormatter();
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const today = format.dateTime(new Date(), { weekday: "long", month: "long", day: "numeric" });
 
   const canReadTournaments = canAccessPermission("tournament.read", workspaceId);
   const canCreateTournaments = canAccessPermission("tournament.create", workspaceId);
@@ -181,22 +189,22 @@ export default function AdminDashboard() {
   if (statsQuery.isLoading || tournamentsQuery.isLoading) {
     return (
       <div className="flex flex-col gap-4">
-        <Skeleton className="h-14 rounded-2xl" />
+        <Skeleton className="h-12 rounded-xl" />
         {kpiCount > 0 && (
           <div className={cn("grid gap-3 md:grid-cols-2", kpiColumnsClass(kpiCount))}>
             {Array.from({ length: kpiCount }).map((_, i) => (
-              <Skeleton key={i} className="h-24 rounded-2xl" />
+              <Skeleton key={i} className="h-24 rounded-xl" />
             ))}
           </div>
         )}
         <div className="grid gap-4 xl:grid-cols-[7fr_3fr]">
           <div className="flex flex-col gap-4">
-            <Skeleton className="h-28 rounded-2xl" />
-            <Skeleton className="h-72 rounded-2xl" />
+            <Skeleton className="h-28 rounded-xl" />
+            <Skeleton className="h-72 rounded-xl" />
           </div>
           <div className="flex flex-col gap-4">
-            <Skeleton className="h-40 rounded-2xl" />
-            <Skeleton className="h-64 rounded-2xl" />
+            <Skeleton className="h-40 rounded-xl" />
+            <Skeleton className="h-64 rounded-xl" />
           </div>
         </div>
       </div>
@@ -208,8 +216,21 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* [1] GREETING BAR */}
-      <GreetingBar canCreateTournament={canCreateTournaments} />
+      {/* [1] HEADER — the same primitive every other admin screen opens with */}
+      <AdminPageHeader
+        title="Dashboard"
+        description={`${greeting}, ${user?.username ?? "Admin"} · ${today}`}
+        actions={
+          canCreateTournaments ? (
+            <Button asChild size="sm">
+              <Link href="/admin/tournaments/new">
+                <Plus className="size-3.5" aria-hidden />
+                Create tournament
+              </Link>
+            </Button>
+          ) : null
+        }
+      />
 
       {/* [2] LOAD FAILURE — a failed fetch must not read as a real zero */}
       {(statsFailed || tournamentsFailed) && (

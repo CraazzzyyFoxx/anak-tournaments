@@ -25,6 +25,7 @@ import adminService from "@/services/admin.service";
 import tournamentService from "@/services/tournament.service";
 import type { EncounterReportsQuery, EncounterReportsRow } from "@/types/admin.types";
 import { invalidateTournamentWorkspace } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const PAGE_SIZE = 25;
 
@@ -248,9 +249,9 @@ export function EncounterReportsBrowser({
 
   if (workspaceId == null) {
     return (
-      <div className="rounded-lg border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
+      <EmptyNote>
         Captain reports are scoped to a workspace. Pick one to see what has been reported.
-      </div>
+      </EmptyNote>
     );
   }
 

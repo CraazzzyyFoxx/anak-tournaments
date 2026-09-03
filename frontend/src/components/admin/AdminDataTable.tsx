@@ -53,6 +53,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
 import { useColumnVisibility } from "@/hooks/useColumnVisibility";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 
 const ADMIN_ACTION_COLUMN_ID = "actions";
 const ADMIN_ACTION_COLUMN_MIN_WIDTH = 80;
@@ -934,7 +935,7 @@ export function AdminDataTable<TData>({
                     <TableRow className="hover:bg-transparent">
                       <TableCell
                         colSpan={bodyColumnCount}
-                        className="border-b border-border/40 bg-muted/30 py-2 pl-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                        className={cn(EYEBROW_CLASS, "border-b border-border/40 bg-muted/30 py-2 pl-4")}
                       >
                         {group.label}
                       </TableCell>

@@ -20,6 +20,7 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { CurrentRank } from "@/types/rank.types";
 
 import { StatusBadge, formatDate } from "@/components/admin/collectors/rank-shared";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface SelectUser {
   (userId: number, label: string): void;
@@ -212,10 +213,10 @@ export function RankPlayerPanel({ userId }: Readonly<{ userId: number }>) {
         {statusQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : rows.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+          <EmptyNote>
             No battle tags linked to this player. Ask them to connect a Battle.net account before
             rank collection can run.
-          </p>
+          </EmptyNote>
         ) : (
           <Table>
             <TableHeader>

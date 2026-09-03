@@ -39,6 +39,7 @@ import type {
   RegistrationTeamStatus
 } from "@/types/registration-team.types";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 /**
  * Organizer view of the registered teams (§8 of the team-registration design).
@@ -408,11 +409,9 @@ export function RegistrationTeamsCard({
               <Skeleton className="h-24 w-full rounded-lg" />
             </div>
           ) : teams.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
-              <Users className="mx-auto size-6 text-muted-foreground" aria-hidden />
-              <p className="mt-3 text-sm font-medium">{t("list.empty")}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{t("admin.emptyHint")}</p>
-            </div>
+            <EmptyNote icon={Users} title={t("list.empty")}>
+              {t("admin.emptyHint")}
+            </EmptyNote>
           ) : (
             teams.map((team) => (
               <div key={team.id} className="space-y-3 rounded-lg border border-border p-3">
@@ -605,7 +604,10 @@ export function RegistrationTeamsCard({
 
       {/* The admin area's existing confirmation primitive, same as the reject
           above: a forgiven count cannot be un-forgiven. */}
-      <AlertDialog open={resetTarget != null} onOpenChange={(open) => !open && setResetTarget(null)}>
+      <AlertDialog
+        open={resetTarget != null}
+        onOpenChange={(open) => !open && setResetTarget(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>

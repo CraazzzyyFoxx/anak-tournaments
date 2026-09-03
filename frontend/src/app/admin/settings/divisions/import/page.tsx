@@ -6,7 +6,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { LoaderCircle } from "lucide-react";
 
 import { WizardShell, type WizardStep } from "@/components/admin/kit/WizardShell";
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -187,9 +188,7 @@ export default function DivisionGridImportPage() {
             label: "Open the draft",
             disabled: importedVersion === null,
             onClick: () =>
-              router.push(
-                `/admin/settings/divisions/v/${importedVersion!.id}?tab=mappings`
-              )
+              router.push(`/admin/settings/divisions/v/${importedVersion!.id}?tab=mappings`)
           };
 
   return (
@@ -234,8 +233,8 @@ export default function DivisionGridImportPage() {
                   <SelectContent>
                     {(workspacesQuery.data ?? []).map((workspace) => (
                       <SelectItem key={workspace.id} value={String(workspace.id)}>
-                        {workspace.name} · {workspace.grids_count} grids,{" "}
-                        {workspace.versions_count} versions
+                        {workspace.name} · {workspace.grids_count} grids, {workspace.versions_count}{" "}
+                        versions
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -329,20 +328,14 @@ export default function DivisionGridImportPage() {
               <div className="rounded-xl border border-border bg-card p-3 text-sm">
                 <p className={cn(EYEBROW_CLASS, "font-mono")}>Preview</p>
                 <p className="mt-1">
-                  {preflightQuery.data.tiers_count} divisions ·{" "}
-                  {preflightQuery.data.mappings_count} mappings ·{" "}
-                  {preflightQuery.data.assets_to_copy} crests to copy
+                  {preflightQuery.data.tiers_count} divisions · {preflightQuery.data.mappings_count}{" "}
+                  mappings · {preflightQuery.data.assets_to_copy} crests to copy
                 </p>
                 {preflightQuery.data.conflicts.length > 0 ? (
                   <p className="mt-2">
-                    <span
-                      className={cn(
-                        "rounded-full border px-2 py-0.5 text-xs font-medium",
-                        TONE_CLASS.warning
-                      )}
-                    >
+                    <StatusPill tone="warning">
                       {preflightQuery.data.conflicts.length} to resolve after import
-                    </span>{" "}
+                    </StatusPill>{" "}
                     <span className="text-muted-foreground">
                       Resolved in the draft&apos;s Mappings view, not here.
                     </span>
@@ -371,18 +364,16 @@ export default function DivisionGridImportPage() {
                 state="error"
                 title="Import failed"
                 description={
-                  job.error ??
-                  "The import job failed and nothing was written into this workspace."
+                  job.error ?? "The import job failed and nothing was written into this workspace."
                 }
               />
             ) : job.status === "completed" ? (
               <div className="rounded-xl border border-border bg-card p-3 text-sm">
                 <p className="font-medium">Draft created</p>
                 <p className="mt-1 text-muted-foreground">
-                  {job.result?.created_versions ?? 0} versions ·{" "}
-                  {job.result?.created_tiers ?? 0} divisions ·{" "}
-                  {job.result?.copied_mappings ?? 0} mappings copied. Open it to resolve the
-                  mappings against the versions your tournaments still read.
+                  {job.result?.created_versions ?? 0} versions · {job.result?.created_tiers ?? 0}{" "}
+                  divisions · {job.result?.copied_mappings ?? 0} mappings copied. Open it to resolve
+                  the mappings against the versions your tournaments still read.
                 </p>
               </div>
             ) : (

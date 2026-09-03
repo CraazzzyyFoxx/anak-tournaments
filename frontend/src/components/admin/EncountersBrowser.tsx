@@ -56,6 +56,7 @@ import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import type { AdminMatchRow } from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const PAGE_SIZE = 15;
 
@@ -426,9 +427,9 @@ export function EncountersBrowser({
 
   if (workspaceId == null) {
     return (
-      <div className="rounded-lg border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
+      <EmptyNote>
         Encounters are scoped to a workspace. Pick one to see what has been scheduled.
-      </div>
+      </EmptyNote>
     );
   }
 

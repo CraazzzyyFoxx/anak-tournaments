@@ -8,7 +8,8 @@ import { Download, Upload, Wand2 } from "lucide-react";
 import Link from "next/link";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import {
@@ -105,7 +106,8 @@ export default function DivisionsSettingsPage() {
     enabled: canRead && selectedGrid !== null
   });
   const versions = versionsQuery.data ?? selectedGrid?.versions ?? [];
-  const latestVersion = [...versions].sort((left, right) => right.version - left.version)[0] ?? null;
+  const latestVersion =
+    [...versions].sort((left, right) => right.version - left.version)[0] ?? null;
   const activeVersion = versions.find((version) => version.id === activeVersionId) ?? null;
 
   const readinessQuery = useQuery({
@@ -132,8 +134,7 @@ export default function DivisionsSettingsPage() {
     ]);
   };
 
-  const openEditor = (versionId: number) =>
-    router.push(`/admin/settings/divisions/v/${versionId}`);
+  const openEditor = (versionId: number) => router.push(`/admin/settings/divisions/v/${versionId}`);
 
   const cloneMutation = useMutation({
     mutationFn: () => workspaceService.cloneDivisionGridVersion(latestVersion!.id),
@@ -209,25 +210,19 @@ export default function DivisionsSettingsPage() {
         id: "number",
         header: "#",
         size: 56,
-        cell: ({ row }) => (
-          <span className="font-mono tabular-nums">{row.original.number}</span>
-        )
+        cell: ({ row }) => <span className="font-mono tabular-nums">{row.original.number}</span>
       },
       { id: "name", header: "Division", cell: ({ row }) => row.original.name },
       {
         id: "band",
         header: "OW band",
-        cell: ({ row }) => (
-          <span className="font-mono text-sm">{bandRangeLabel(row.original)}</span>
-        )
+        cell: ({ row }) => <span className="font-mono text-sm">{bandRangeLabel(row.original)}</span>
       },
       {
         id: "ranks",
         header: "Ranks",
         size: 80,
-        cell: ({ row }) => (
-          <span className="font-mono tabular-nums">{bandSize(row.original)}</span>
-        )
+        cell: ({ row }) => <span className="font-mono tabular-nums">{bandSize(row.original)}</span>
       },
       {
         id: "players",
@@ -287,8 +282,8 @@ export default function DivisionsSettingsPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-prose text-sm text-muted-foreground">
           A division is a band of the Overwatch ladder. Published versions are immutable — every
-          tournament keeps the version it was played on, and a mapping translates its divisions
-          into the current grid.
+          tournament keeps the version it was played on, and a mapping translates its divisions into
+          the current grid.
         </p>
         <div className="flex flex-wrap gap-2">
           {canCreate ? (
@@ -361,8 +356,8 @@ export default function DivisionsSettingsPage() {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="font-display text-base font-semibold">Version history</h2>
           <span className={cn(EYEBROW_CLASS, "font-mono")}>
-            {activeVersion ? "1 active" : "none active"} ·{" "}
-            {versions.length} {versions.length === 1 ? "version" : "versions"}
+            {activeVersion ? "1 active" : "none active"} · {versions.length}{" "}
+            {versions.length === 1 ? "version" : "versions"}
           </span>
         </div>
 
@@ -441,8 +436,7 @@ export default function DivisionsSettingsPage() {
             <Skeleton className="h-32 w-full rounded-xl" />
           ) : sources.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Every tournament in this workspace reads the active version, so no mapping is
-              needed.
+              Every tournament in this workspace reads the active version, so no mapping is needed.
             </p>
           ) : (
             <>
@@ -457,14 +451,9 @@ export default function DivisionsSettingsPage() {
                       {source.tournament_count}{" "}
                       {source.tournament_count === 1 ? "tournament" : "tournaments"}
                     </span>
-                    <span
-                      className={cn(
-                        "rounded-full border px-2 py-0.5 text-xs font-medium",
-                        TONE_CLASS[SOURCE_STATUS_TONE[source.status]]
-                      )}
-                    >
+                    <StatusPill tone={SOURCE_STATUS_TONE[source.status]}>
                       {source.status === "ok" ? "mapping complete" : `mapping ${source.status}`}
-                    </span>
+                    </StatusPill>
                   </li>
                 ))}
               </ul>

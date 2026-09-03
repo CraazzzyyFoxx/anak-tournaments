@@ -21,6 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import type { PickBanKind } from "@/types/tournament.types";
 import { matchesItemName } from "../../components/pickBanConfig.helpers";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 /** One selectable map or hero, flattened so both catalogues share one picker. */
 export interface CatalogueItem {
@@ -491,9 +492,9 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
           </div>
 
           {filter.visibleOptions.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+            <EmptyNote size="sm" className="text-center">
               {t("catalogueEmpty")}
-            </p>
+            </EmptyNote>
           ) : (
             <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-4">
               {filter.visibleOptions.map((option) => (

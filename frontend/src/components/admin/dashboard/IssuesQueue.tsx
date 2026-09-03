@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { AlertCircle, AlertTriangle, ChevronRight, Info, type LucideIcon } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { CardDescription, CardTitle } from "@/components/ui/card";
-import { TONE_CLASS, TONE_TEXT, type Tone } from "@/components/admin/tone";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { TONE_TEXT, type Tone } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
-import { SurfaceCard, SurfaceCardContent, SurfaceCardHeader } from "./SurfaceCard";
 
 type AttentionTone = "critical" | "warning" | "info";
 
@@ -34,7 +33,7 @@ interface IssuesQueueProps {
 }
 
 export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
-  // The count badge takes the worst severity present. It used to be
+  // The count pill takes the worst severity present. It used to be
   // `variant="destructive"` unconditionally, so an info-only list raised a red
   // alarm. `aria-hidden` because the CardDescription below states the same
   // count in words — a bare number is not an accessible name.
@@ -45,35 +44,26 @@ export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
       : "info";
 
   return (
-    <SurfaceCard>
-      <SurfaceCardHeader>
+    <Card>
+      <CardHeader>
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="flex size-7 items-center justify-center rounded-lg border border-border/50 bg-background/60">
-              <AlertTriangle className="size-3.5 text-muted-foreground" aria-hidden />
-            </div>
-            <CardTitle asChild className="text-sm">
-              <h2>Issues</h2>
-            </CardTitle>
-          </div>
+          <CardTitle asChild>
+            <h2>Issues</h2>
+          </CardTitle>
           {items.length > 0 && (
-            <Badge
-              variant="outline"
-              className={cn("tabular-nums", TONE_CLASS[worstTone])}
-              aria-hidden
-            >
+            <StatusPill tone={worstTone} className="tabular-nums" aria-hidden>
               {items.length}
-            </Badge>
+            </StatusPill>
           )}
         </div>
         {items.length > 0 && (
-          <CardDescription className="text-xs">
+          <CardDescription>
             {items.length} item{items.length === 1 ? "" : "s"} need
             {items.length === 1 ? "s" : ""} attention
           </CardDescription>
         )}
-      </SurfaceCardHeader>
-      <SurfaceCardContent>
+      </CardHeader>
+      <CardContent>
         {items.length > 0 ? (
           <ul className="divide-y divide-border/50">
             {items.map((item) => {
@@ -84,7 +74,7 @@ export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
                   {/* Bleeds to the card edge so the hover fill spans the card. */}
                   <Link
                     href={item.href}
-                    className="-mx-5 flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="-mx-6 flex items-center gap-3 px-6 py-2.5 transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   >
                     <Icon className={cn("size-4 shrink-0", TONE_TEXT[severity.tone])} aria-hidden />
                     <span className="sr-only">{severity.detail}: </span>
@@ -110,7 +100,7 @@ export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
             Nothing needs attention — new issues appear here as they are detected.
           </p>
         )}
-      </SurfaceCardContent>
-    </SurfaceCard>
+      </CardContent>
+    </Card>
   );
 }

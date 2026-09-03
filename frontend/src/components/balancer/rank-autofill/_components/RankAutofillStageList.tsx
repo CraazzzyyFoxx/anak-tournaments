@@ -95,7 +95,7 @@ function SortableStageRow({
 
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-[color:var(--aqt-fg)]">{label}</div>
-        <div className="truncate text-[11px] text-[color:var(--aqt-fg-dim)]">{description}</div>
+        <div className="truncate text-xs text-[color:var(--aqt-fg-dim)]">{description}</div>
       </div>
 
       <label className="flex shrink-0 items-center gap-1.5">
@@ -109,7 +109,7 @@ function SortableStageRow({
           className="h-8 w-16 text-right text-xs"
           aria-label={t("rankAutofill.windowAria", { label })}
         />
-        <span className="w-9 text-[11px] text-[color:var(--aqt-fg-dim)]">
+        <span className="w-9 text-xs text-[color:var(--aqt-fg-dim)]">
           {t(`rankAutofill.window.${windowKind}Suffix`)}
         </span>
       </label>

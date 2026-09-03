@@ -5,6 +5,9 @@ import { useFormatter, useTranslations, type DateTimeFormatOptions } from "next-
 
 import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { TONE_CLASS, TONE_TEXT } from "@/components/admin/tone";
+import { Badge } from "@/components/ui/badge";
 import {
   AdmissionStatusBadge,
   SubscriptionStatusBadge,
@@ -171,7 +174,7 @@ function RolesCell({
             >
               <PlayerRoleIcon role={getRoleIconName(role.role)} size={20} />
             </span>
-            <span className="text-center text-[11px] font-semibold uppercase leading-none tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
+            <span className="text-center text-xs font-semibold uppercase leading-none tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
               {subroleLabel ?? role.rank_value ?? ""}
             </span>
           </div>
@@ -184,16 +187,12 @@ function RolesCell({
 function SourceCell({ source }: Readonly<{ source: AdminRegistration["source"] }>) {
   const isSheets = source === "google_sheets";
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-        isSheets
-          ? "border-sky-500/20 bg-sky-500/10 text-sky-300"
-          : "border-[color:var(--aqt-border-2)] bg-white/5 text-[color:var(--aqt-fg-muted)]",
-      )}
+    <Badge
+      variant="outline"
+      className={cn("font-medium", isSheets ? TONE_CLASS.info : TONE_CLASS.neutral)}
     >
       {isSheets ? "Sheets" : "Manual"}
-    </span>
+    </Badge>
   );
 }
 
@@ -213,7 +212,7 @@ function CompactListCell({ values }: Readonly<{ values: string[] }>) {
         </div>
       ))}
       {hiddenCount > 0 ? (
-        <div className="text-[11px] font-medium text-emerald-300/75">
+        <div className={cn("text-xs font-medium", TONE_TEXT.success)}>
           +{hiddenCount} more
         </div>
       ) : null}
@@ -269,12 +268,9 @@ function ExclusionCell({ registration }: Readonly<{ registration: AdminRegistrat
 
   const reason = registration.exclude_reason ?? "Excluded";
   return (
-    <span
-      className="inline-flex max-w-[220px] truncate rounded-md border border-orange-500/20 bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-300"
-      title={reason}
-    >
-      {reason}
-    </span>
+    <StatusPill tone="warning" className="max-w-[220px]" title={reason}>
+      <span className="truncate">{reason}</span>
+    </StatusPill>
   );
 }
 
@@ -297,7 +293,7 @@ function AdmissionReasonCell({ registration }: Readonly<{ registration: AdminReg
   return (
     <span
       className={cn(
-        "block max-w-[240px] truncate text-[11px]",
+        "block max-w-[240px] truncate text-xs",
         isBlocking ? "text-[color:var(--aqt-amber)]" : "text-[color:var(--aqt-fg-dim)]",
       )}
       title={text}

@@ -14,6 +14,7 @@ import type {
 } from "@/types/balancer-admin.types";
 
 import { FeedStatusCard } from "./FeedStatusCard";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 
 interface SourceSyncTabProps {
   feed: AdminGoogleSheetFeed | null | undefined;
@@ -127,7 +128,7 @@ export function SourceSyncTab({
               ].map((stat) => (
                 <div key={stat.label} className="rounded-lg border px-3 py-2 text-center">
                   <p className="text-lg font-semibold tabular-nums">{stat.value}</p>
-                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+                  <p className={EYEBROW_CLASS}>{stat.label}</p>
                 </div>
               ))}
             </div>

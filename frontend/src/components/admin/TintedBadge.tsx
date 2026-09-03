@@ -1,6 +1,5 @@
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import { TONE_CLASS, type Tone } from "./tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import type { Tone } from "./tone";
 
 interface TintedBadgeProps {
   /** Machine value the badge represents; `null`/`undefined` renders `fallback`. */
@@ -21,9 +20,9 @@ interface TintedBadgeProps {
 }
 
 /**
- * The one tinted status badge of the admin panel: every collector (rank,
- * subscriptions, streams) renders its status through this, supplying its own
- * vocabulary as data.
+ * A `StatusPill` whose tone is looked up from a machine value: every collector
+ * (rank, subscriptions, streams) renders its status through this, supplying
+ * its own vocabulary as data.
  *
  * Callers name a `Tone`, not a class string: indexing `TONE_CLASS` at every
  * call site is how three collectors ended up with three near-identical style
@@ -33,9 +32,8 @@ interface TintedBadgeProps {
 export function TintedBadge({ value, tones, labels, fallback, dot }: Readonly<TintedBadgeProps>) {
   const tone = tones[value ?? ""] ?? "neutral";
   return (
-    <Badge variant="outline" className={cn("gap-1.5", TONE_CLASS[tone])}>
-      {dot ? <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-current" /> : null}
+    <StatusPill tone={tone} dot={dot}>
       {value ? (labels?.[value] ?? value) : fallback}
-    </Badge>
+    </StatusPill>
   );
 }
