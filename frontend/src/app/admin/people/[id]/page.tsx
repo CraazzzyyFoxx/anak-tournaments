@@ -143,7 +143,11 @@ export default function PersonHubPage() {
 
       {tab === "identity" ? (
         person ? (
-          <div className="space-y-4">
+          // The profile body was built for a max-w-md dialog — a centred avatar
+          // and a stacked identity list. Stretched across the page it read as
+          // empty, so it keeps dialog width as the left rail and the rank and
+          // subscription panels (tables, a chart) take the rest.
+          <div className="grid items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
             <Section title="Profile">
               <PlayerProfileBody
                 key={person.id}
@@ -152,18 +156,21 @@ export default function PersonHubPage() {
                 canManageIdentity={canManageIdentity}
                 canSetVisibility={canRead}
                 workspaceId={workspaceId}
-                canMerge={canMerge}
-                onMergeRequested={() => setMergeOpen(true)}
+                // The header already carries Merge; a second button under the
+                // avatar said the same thing twice.
+                canMerge={false}
               />
             </Section>
 
-            <Section title="Rank collection">
-              <RankPlayerPanel userId={person.id} />
-            </Section>
+            <div className="flex min-w-0 flex-col gap-4">
+              <Section title="Rank collection">
+                <RankPlayerPanel userId={person.id} />
+              </Section>
 
-            <Section title="Subscription">
-              <SubscriptionPlayerPanel userId={person.id} label={person.name} />
-            </Section>
+              <Section title="Subscription">
+                <SubscriptionPlayerPanel userId={person.id} label={person.name} />
+              </Section>
+            </div>
           </div>
         ) : (
           <div className="h-64 animate-pulse rounded-lg bg-muted/40 motion-reduce:animate-none" />
