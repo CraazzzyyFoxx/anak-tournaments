@@ -68,7 +68,7 @@ export function SaveBar({
       <div
         role="region"
         aria-label="Unsaved changes"
-        className="sticky bottom-0 z-10 -mx-4 mt-4 flex flex-wrap items-center gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/80"
+        className="sticky bottom-0 z-10 -mx-4 mt-4 flex flex-wrap items-center gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:-mx-5 md:px-5"
       >
         <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{summary}</p>
         {secondary}

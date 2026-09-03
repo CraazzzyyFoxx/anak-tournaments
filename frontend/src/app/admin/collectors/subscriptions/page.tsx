@@ -21,8 +21,10 @@ const REALTIME_REFRESH_DEBOUNCE_MS = 500;
 /**
  * The Boosty/Twitch subscription collector: health, check history and config.
  *
- * Same two gates as the rank collector — `subscription.read` scoped to the
- * active workspace for health and history, superuser for the config that
+ * Health and the check log share one view (see the rank collector for why);
+ * Settings is the only other slot and is superuser-only. Same two gates as the
+ * rank collector — `subscription.read` scoped to the active workspace for
+ * health and history, superuser for the config that
  * `PUT /api/v1/admin/settings/{key}` will only accept from one.
  *
  * Provider configuration and the workspace admission rule are NOT here: they
@@ -35,7 +37,6 @@ export default function SubscriptionCollectorPage() {
 
   const { activeKey, items } = useCollectorTab("subscriptions", [
     { key: "status", label: "Status" },
-    { key: "history", label: "History" },
     { key: "settings", label: "Settings", hidden: !isSuperuser }
   ]);
 
@@ -67,18 +68,21 @@ export default function SubscriptionCollectorPage() {
 
   return (
     <div className="space-y-4">
-      <AdminTabs
-        items={items}
-        activeKey={activeKey}
-        level={2}
-        ariaLabel="Subscription collector views"
-      />
+      {items.length > 1 && (
+        <AdminTabs
+          items={items}
+          activeKey={activeKey}
+          level={2}
+          ariaLabel="Subscription collector views"
+        />
+      )}
       {activeKey === "settings" ? (
         <SubscriptionSettingsPanel />
-      ) : activeKey === "history" ? (
-        <SubscriptionTaskHistory />
       ) : (
-        <SubscriptionHealthDashboard />
+        <>
+          <SubscriptionHealthDashboard />
+          <SubscriptionTaskHistory />
+        </>
       )}
     </div>
   );

@@ -141,14 +141,11 @@ describe("StreamCollectorPage", () => {
     ).toEqual(["status", "settings"]);
   });
 
-  it("shows only Status to a non-superuser, and opens the poller health there", async () => {
+  it("shows no tab bar to a non-superuser, and opens the poller health directly", async () => {
     const container = await mount();
 
-    expect(
-      Array.from(container.querySelectorAll("a[data-admin-tab]")).map((link) =>
-        link.getAttribute("data-admin-tab")
-      )
-    ).toEqual(["status"]);
+    // Status would be the only slot; a one-tab bar is noise, so it is omitted.
+    expect(container.querySelectorAll("a[data-admin-tab]")).toHaveLength(0);
     expect(getStreamPollHealth).toHaveBeenCalled();
     expect(container.textContent).toContain("Last tick OK");
   });

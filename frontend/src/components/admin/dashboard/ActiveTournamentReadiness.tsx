@@ -7,12 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardDescription, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT, type Tone } from "@/components/admin/tone";
 import {
   buildChecklist,
   hasChallongeSource,
-  type ChecklistItem,
+  type ChecklistItem
 } from "@/components/admin/tournament-checklist";
 import { cn } from "@/lib/utils";
 import { PermissionHiddenNotice } from "./PermissionHiddenNotice";
@@ -28,7 +27,7 @@ const DRAFT_TONE: Record<string, Tone> = {
   completed: "success",
   live: "info",
   paused: "warning",
-  cancelled: "danger",
+  cancelled: "danger"
 };
 
 function ActionRow({ item }: Readonly<{ item: ChecklistItem }>) {
@@ -44,8 +43,9 @@ function ActionRow({ item }: Readonly<{ item: ChecklistItem }>) {
     </>
   );
 
-  const shared =
-    "flex items-center gap-2 bg-background/40 px-3 py-2.5 transition-colors";
+  // Rows bleed to the card edge (`-mx-5`) so the hover fill spans the card
+  // instead of a framed box inside it.
+  const shared = "flex items-center gap-2 -mx-5 px-5 py-2.5 transition-colors";
 
   if (!item.href) {
     return <div className={shared}>{body}</div>;
@@ -55,7 +55,7 @@ function ActionRow({ item }: Readonly<{ item: ChecklistItem }>) {
       href={item.href}
       className={cn(
         shared,
-        "hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        "hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       )}
     >
       {body}
@@ -87,7 +87,7 @@ export function ActiveTournamentReadiness({
   tournament,
   readiness,
   isLoading,
-  failed,
+  failed
 }: Readonly<ActiveTournamentReadinessProps>) {
   if (!canRead) {
     return (
@@ -111,7 +111,7 @@ export function ActiveTournamentReadiness({
       ? buildChecklist(readiness, {
           basePath,
           schedule: tournament.phase_schedule.map((entry) => entry.status),
-          hasChallongeSource: hasChallongeSource(tournament, tournament.stages ?? []),
+          hasChallongeSource: hasChallongeSource(tournament, tournament.stages ?? [])
         })
       : [];
 
@@ -139,7 +139,12 @@ export function ActiveTournamentReadiness({
               <h2>Next actions</h2>
             </CardTitle>
           </div>
-          <Button asChild variant="ghost" size="sm" className="-mt-1 shrink-0 text-muted-foreground">
+          <Button
+            asChild
+            variant="ghost"
+            size="sm"
+            className="-mt-1 shrink-0 text-muted-foreground"
+          >
             <Link href={`${basePath}/overview`}>
               Full checklist
               <ArrowRight className="size-3.5" aria-hidden />
@@ -165,99 +170,105 @@ export function ActiveTournamentReadiness({
             Readiness could not be loaded. Open the tournament to see its checklist.
           </p>
         ) : actions.length > 0 ? (
-          <div className="divide-y divide-border/50 overflow-hidden rounded-xl border border-border/50">
+          <div className="divide-y divide-border/50">
             {actions.map((item) => (
               <ActionRow key={item.key} item={item} />
             ))}
             {open.length > actions.length && (
-              <div className="bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+              <p className="pt-2.5 text-xs text-muted-foreground">
                 <span className="tabular-nums">{open.length - actions.length}</span> more in the
                 full checklist
-              </div>
+              </p>
             )}
           </div>
         ) : (
-          <div
-            className={cn(
-              "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm",
-              TONE_CLASS.success,
-            )}
-          >
+          <p className={cn("flex items-center gap-2 text-sm", TONE_TEXT.success)}>
             <CheckCircle2 className="size-4 shrink-0" aria-hidden />
             Every applicable step is done.
-          </div>
+          </p>
         )}
 
+        {/* Registration counts as one plain row of figures, not four framed
+            tiles inside a framed card; the formation state sits in the same row. */}
         {teamAccess && readiness && (
-          <>
-            <StatTileGrid>
-              <StatTile
-                label="Pending"
-                value={readiness.registrations_pending ?? 0}
-                detail="Awaiting a decision"
-                tone={(readiness.registrations_pending ?? 0) > 0 ? "warning" : "neutral"}
-              />
-              <StatTile label="Approved" value={readiness.registrations_approved ?? 0} />
-              <StatTile label="Checked in" value={readiness.registrations_checked_in ?? 0} />
-              <StatTile
-                label="Ranked"
-                value={readiness.registrations_ranked ?? 0}
-                detail="Saved rank data"
-              />
-            </StatTileGrid>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={EYEBROW_CLASS}>
-                {draftFormation ? "Draft" : "Balancer"}
-              </span>
-              {draftFormation ? (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-xs",
-                    TONE_CLASS[
-                      readiness.draft_session_status
-                        ? (DRAFT_TONE[readiness.draft_session_status] ?? "neutral")
-                        : "neutral"
-                    ],
-                  )}
-                >
-                  {readiness.draft_session_status ?? "No session"}
-                </Badge>
-              ) : (
-                <>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-xs tabular-nums",
-                      TONE_CLASS[(readiness.pool_need_fix ?? 0) > 0 ? "warning" : "success"],
-                    )}
-                  >
-                    Pool {readiness.pool_ready ?? 0} ready
-                    {(readiness.pool_need_fix ?? 0) > 0
-                      ? ` · ${readiness.pool_need_fix} need fixing`
-                      : ""}
-                  </Badge>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border/50 pt-4 sm:grid-cols-5">
+            <Figure label="Pending" value={readiness.registrations_pending ?? 0} warn />
+            <Figure label="Approved" value={readiness.registrations_approved ?? 0} />
+            <Figure label="Checked in" value={readiness.registrations_checked_in ?? 0} />
+            <Figure label="Ranked" value={readiness.registrations_ranked ?? 0} />
+            <div>
+              <dt className={EYEBROW_CLASS}>{draftFormation ? "Draft" : "Balancer"}</dt>
+              <dd className="mt-1 flex flex-wrap gap-1.5">
+                {draftFormation ? (
                   <Badge
                     variant="outline"
                     className={cn(
                       "text-xs",
-                      TONE_CLASS[readiness.balance_saved ? "success" : "neutral"],
+                      TONE_CLASS[
+                        readiness.draft_session_status
+                          ? (DRAFT_TONE[readiness.draft_session_status] ?? "neutral")
+                          : "neutral"
+                      ]
                     )}
                   >
-                    {readiness.balance_saved ? "Balance saved" : "Balance not saved"}
+                    {readiness.draft_session_status ?? "No session"}
                   </Badge>
-                  {readiness.balance_exported_at && (
-                    <Badge variant="outline" className={cn("text-xs", TONE_CLASS.success)}>
-                      Exported
+                ) : (
+                  <>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-xs tabular-nums",
+                        TONE_CLASS[(readiness.pool_need_fix ?? 0) > 0 ? "warning" : "success"]
+                      )}
+                    >
+                      Pool {readiness.pool_ready ?? 0} ready
+                      {(readiness.pool_need_fix ?? 0) > 0
+                        ? ` · ${readiness.pool_need_fix} need fixing`
+                        : ""}
                     </Badge>
-                  )}
-                </>
-              )}
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-xs",
+                        TONE_CLASS[readiness.balance_saved ? "success" : "neutral"]
+                      )}
+                    >
+                      {readiness.balance_saved ? "Balance saved" : "Balance not saved"}
+                    </Badge>
+                    {readiness.balance_exported_at && (
+                      <Badge variant="outline" className={cn("text-xs", TONE_CLASS.success)}>
+                        Exported
+                      </Badge>
+                    )}
+                  </>
+                )}
+              </dd>
             </div>
-          </>
+          </dl>
         )}
       </SurfaceCardContent>
     </SurfaceCard>
+  );
+}
+
+/** One figure of the registration row: eyebrow above a tabular number. */
+function Figure({
+  label,
+  value,
+  warn = false
+}: Readonly<{ label: string; value: number; warn?: boolean }>) {
+  return (
+    <div>
+      <dt className={EYEBROW_CLASS}>{label}</dt>
+      <dd
+        className={cn(
+          "mt-1 text-xl font-semibold tabular-nums",
+          warn && value > 0 && TONE_TEXT.warning
+        )}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }

@@ -77,7 +77,7 @@ export default function AdminDashboard() {
   const statsQuery = useQuery({
     queryKey: ["admin", "dashboard", "stats", workspaceId],
     queryFn: () =>
-      apiFetch("/api/v1/statistics/dashboard").then((r) => r.json() as Promise<DashboardStats>),
+      apiFetch("/api/v1/statistics/dashboard").then((r) => r.json() as Promise<DashboardStats>)
   });
 
   // Tournaments still needed for Active Tournament Card & Recent Tournaments display
@@ -86,7 +86,7 @@ export default function AdminDashboard() {
     queryFn: () =>
       canReadTournaments
         ? tournamentService.getAll(null)
-        : Promise.resolve(emptyPaginated<Tournament>()),
+        : Promise.resolve(emptyPaginated<Tournament>())
   });
 
   const stats = statsQuery.data;
@@ -106,27 +106,22 @@ export default function AdminDashboard() {
   const readinessQuery = useQuery({
     queryKey: getTournamentWorkspaceQueryKeys(activeTournament?.id ?? 0).readiness,
     queryFn: () => adminService.getTournamentReadiness(activeTournament!.id),
-    enabled: canReadReadiness && activeTournament != null,
+    enabled: canReadReadiness && activeTournament != null
   });
 
   // One tile per KPI the reader may actually see — the loading skeleton reserves
   // the same count, so a two-permission role no longer gets a four-tile shimmer.
   const kpiCount = (canReadTournaments ? 2 : 0) + (canReadMatches ? 2 : 0);
 
-  const derived = useMemo(() => {
-    const activeStats = stats?.active_tournament_stats;
-    const encounterCount = activeStats?.encounters_total ?? 0;
-    const missingLogs = activeStats?.encounters_missing_logs ?? 0;
-    const logCoveragePercent = activeStats?.log_coverage_percent ?? 100;
-
+  const issueItems = useMemo(() => {
     const issues = stats?.issues;
-    const issueItems: IssueItem[] = [
+    const items: IssueItem[] = [
       canReadMatches && (issues?.encounters_pending_confirmation ?? 0) > 0
         ? {
             label: "Results awaiting confirmation",
             count: issues!.encounters_pending_confirmation,
             href: "/admin/encounters",
-            tone: "critical" as const,
+            tone: "critical" as const
           }
         : null,
       canReadMatches && (issues?.encounters_awaiting_result ?? 0) > 0
@@ -134,7 +129,7 @@ export default function AdminDashboard() {
             label: "Overdue match results",
             count: issues!.encounters_awaiting_result,
             href: "/admin/encounters",
-            tone: "critical" as const,
+            tone: "critical" as const
           }
         : null,
       // Warning, not critical: an unrecorded or unconfirmed result blocks the
@@ -144,7 +139,7 @@ export default function AdminDashboard() {
             label: "Missing encounter logs",
             count: issues!.encounters_missing_logs,
             href: "/admin/encounters",
-            tone: "warning" as const,
+            tone: "warning" as const
           }
         : null,
       canReadTournaments && (issues?.stage_slots_empty ?? 0) > 0
@@ -152,7 +147,7 @@ export default function AdminDashboard() {
             label: "Empty bracket slots",
             count: issues!.stage_slots_empty,
             href: "/admin/tournaments",
-            tone: "warning" as const,
+            tone: "warning" as const
           }
         : null,
       canReadTeams && (issues?.teams_without_players ?? 0) > 0
@@ -160,7 +155,7 @@ export default function AdminDashboard() {
             label: "Teams without rosters",
             count: issues!.teams_without_players,
             href: "/admin/teams",
-            tone: "warning" as const,
+            tone: "warning" as const
           }
         : null,
       canReadTournaments && (issues?.tournaments_without_stages ?? 0) > 0
@@ -168,7 +163,7 @@ export default function AdminDashboard() {
             label: "Tournaments missing stages",
             count: issues!.tournaments_without_stages,
             href: "/admin/tournaments",
-            tone: "warning" as const,
+            tone: "warning" as const
           }
         : null,
       canReadUsers && (issues?.users_without_identities ?? 0) > 0
@@ -176,12 +171,11 @@ export default function AdminDashboard() {
             label: "Unlinked player identities",
             count: issues!.users_without_identities,
             href: "/admin/users",
-            tone: "info" as const,
+            tone: "info" as const
           }
-        : null,
+        : null
     ].filter((item): item is IssueItem => item !== null);
-
-    return { encounterCount, missingLogs, logCoveragePercent, issueItems };
+    return items;
   }, [stats, canReadMatches, canReadTeams, canReadTournaments, canReadUsers]);
 
   if (statsQuery.isLoading || tournamentsQuery.isLoading) {
@@ -197,11 +191,11 @@ export default function AdminDashboard() {
         )}
         <div className="grid gap-4 xl:grid-cols-[7fr_3fr]">
           <div className="flex flex-col gap-4">
-            <Skeleton className="h-56 rounded-2xl" />
-            <Skeleton className="h-64 rounded-2xl" />
+            <Skeleton className="h-28 rounded-2xl" />
+            <Skeleton className="h-72 rounded-2xl" />
           </div>
           <div className="flex flex-col gap-4">
-            <Skeleton className="h-48 rounded-2xl" />
+            <Skeleton className="h-40 rounded-2xl" />
             <Skeleton className="h-64 rounded-2xl" />
           </div>
         </div>
@@ -252,14 +246,12 @@ export default function AdminDashboard() {
               ? { active: stats?.tournaments_active ?? 0, total: stats?.tournaments_total ?? 0 }
               : null
           }
-          registrationOpen={
-            canReadTournaments ? (stats?.tournaments_registration_open ?? 0) : null
-          }
+          registrationOpen={canReadTournaments ? (stats?.tournaments_registration_open ?? 0) : null}
           matches={
             canReadMatches
               ? {
                   completed: stats?.encounters_completed ?? 0,
-                  total: stats?.encounters_total ?? 0,
+                  total: stats?.encounters_total ?? 0
                 }
               : null
           }
@@ -268,7 +260,7 @@ export default function AdminDashboard() {
               ? {
                   covered:
                     (stats?.encounters_total ?? 0) - (stats?.issues.encounters_missing_logs ?? 0),
-                  total: stats?.encounters_total ?? 0,
+                  total: stats?.encounters_total ?? 0
                 }
               : null
           }
@@ -279,14 +271,7 @@ export default function AdminDashboard() {
       <section className={cn("grid gap-4", !tournamentsFailed && "xl:grid-cols-[7fr_3fr]")}>
         {!tournamentsFailed && (
           <div className="flex flex-col gap-4">
-            <ActiveTournamentCard
-              canRead={canReadTournaments}
-              tournament={activeTournament}
-              encounterCount={derived.encounterCount}
-              missingLogs={derived.missingLogs}
-              logCoveragePercent={derived.logCoveragePercent}
-              canReadMatches={canReadMatches}
-            />
+            <ActiveTournamentCard canRead={canReadTournaments} tournament={activeTournament} />
             <ActiveTournamentReadiness
               canRead={canReadReadiness}
               tournament={activeTournament}
@@ -299,7 +284,7 @@ export default function AdminDashboard() {
 
         {(!statsFailed || !tournamentsFailed) && (
           <div className="flex flex-col gap-4">
-            {!statsFailed && <IssuesQueue items={derived.issueItems} />}
+            {!statsFailed && <IssuesQueue items={issueItems} />}
             {!tournamentsFailed && (
               <RecentTournaments canRead={canReadTournaments} tournaments={tournaments} />
             )}

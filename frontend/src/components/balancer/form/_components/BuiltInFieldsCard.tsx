@@ -37,11 +37,13 @@ export function BuiltInFieldsCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle asChild><h2>{t("title")}</h2></CardTitle>
+        <CardTitle asChild>
+          <h2>{t("title")}</h2>
+        </CardTitle>
         <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="divide-y rounded-lg border">
+        <div className="divide-y">
           {BUILT_IN_FIELDS.map((def) => {
             const cfg = builtInFields[def.key] ?? {
               enabled: def.defaultEnabled,
@@ -55,7 +57,7 @@ export function BuiltInFieldsCard({
             const description = t(`defs.${def.key}.description` as Parameters<typeof t>[0]);
 
             return (
-              <div key={def.key} className="px-4 py-3">
+              <div key={def.key} data-field={def.key} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex items-center gap-3">
                   <Switch
                     checked={cfg.enabled}

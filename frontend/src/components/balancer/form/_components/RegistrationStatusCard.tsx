@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 export function RegistrationStatusCard({
   isOpen,
   autoApprove,
-  onChangeAutoApprove,
+  onChangeAutoApprove
 }: Readonly<{
   isOpen: boolean;
   autoApprove: boolean;
@@ -30,11 +30,13 @@ export function RegistrationStatusCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle asChild><h2>{t("title")}</h2></CardTitle>
+        <CardTitle asChild>
+          <h2>{t("title")}</h2>
+        </CardTitle>
         <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+      <CardContent className="divide-y">
+        <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
           <div className="space-y-0.5">
             <p className="text-sm font-medium">{t("acceptLabel")}</p>
             <p className="max-w-prose text-xs text-muted-foreground">{t("scheduleHint")}</p>
@@ -49,7 +51,7 @@ export function RegistrationStatusCard({
             {isOpen ? t("stateOpen") : t("stateClosed")}
           </span>
         </div>
-        <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+        <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
           <div className="space-y-0.5">
             <Label htmlFor={`${idPrefix}-auto-approve`} className="text-sm font-medium">
               {t("autoApproveLabel")}

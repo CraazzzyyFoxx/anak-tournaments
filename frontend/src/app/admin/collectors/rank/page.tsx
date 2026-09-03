@@ -12,10 +12,13 @@ import { usePermissions } from "@/hooks/usePermissions";
  * The OverFast rank collector: is the worker healthy, what has it been doing,
  * and how is it configured.
  *
- * Two gates, as before the move. Health and history are gated on `rank.read`
- * and scoped to the active workspace (see `admin.service.ts`) — which is what
- * lets a workspace owner open them at all instead of 403ing on a global role.
- * Settings writes `parser.rank_collection` through
+ * Health and the fetch log are one view — a `?tab=history` slot used to hide
+ * the log behind a third row of tabs under the hub's, and the two answer the
+ * same question ("is it working?") for the same reader. Settings stays its own
+ * slot: it is a form, and superuser-only. Health and history are gated on
+ * `rank.read` and scoped to the active workspace (see `admin.service.ts`) —
+ * which is what lets a workspace owner open them at all instead of 403ing on
+ * a global role. Settings writes `parser.rank_collection` through
  * `PUT /api/v1/admin/settings/{key}`, which is superuser-only, so the slot is
  * offered only to a superuser rather than showing a form that 403s on save.
  *
@@ -29,7 +32,6 @@ export default function RankCollectorPage() {
 
   const { activeKey, items } = useCollectorTab("rank", [
     { key: "status", label: "Status" },
-    { key: "history", label: "History" },
     { key: "settings", label: "Settings", hidden: !isSuperuser }
   ]);
 
@@ -45,13 +47,17 @@ export default function RankCollectorPage() {
 
   return (
     <div className="space-y-4">
-      <AdminTabs items={items} activeKey={activeKey} level={2} ariaLabel="Rank collector views" />
+      {/* A one-tab bar is a heading with a hover state; non-superusers get none. */}
+      {items.length > 1 && (
+        <AdminTabs items={items} activeKey={activeKey} level={2} ariaLabel="Rank collector views" />
+      )}
       {activeKey === "settings" ? (
         <RankSettingsPanel />
-      ) : activeKey === "history" ? (
-        <RankTaskHistory />
       ) : (
-        <RankHealthDashboard />
+        <>
+          <RankHealthDashboard />
+          <RankTaskHistory />
+        </>
       )}
     </div>
   );

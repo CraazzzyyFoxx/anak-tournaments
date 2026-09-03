@@ -47,7 +47,14 @@ export default function StreamCollectorPage() {
 
   return (
     <div className="space-y-4">
-      <AdminTabs items={items} activeKey={activeKey} level={2} ariaLabel="Stream collector views" />
+      {items.length > 1 && (
+        <AdminTabs
+          items={items}
+          activeKey={activeKey}
+          level={2}
+          ariaLabel="Stream collector views"
+        />
+      )}
       {activeKey === "settings" ? <StreamSettingsPanel /> : <StreamHealthDashboard />}
     </div>
   );

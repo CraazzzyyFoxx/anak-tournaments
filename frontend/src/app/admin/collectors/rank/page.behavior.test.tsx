@@ -6,10 +6,11 @@
 //  1. `rank.read` is the PAGE's gate, not the sidebar's — a typed URL has to be
 //     refused, and nothing may be asked of the API before it is allowed;
 //  2. the slot comes from `?tab=`, in both directions. This is the whole point
-//     of the move: the old screen kept the tab in `useState`, so Settings and
-//     the task log had no URL at all and could not be linked or bookmarked. A
-//     slot the viewer may not have (Settings, superuser-only) falls back to the
-//     first visible one instead of rendering an empty page;
+//     of the move: the old screen kept the tab in `useState`, so Settings had no
+//     URL at all and could not be linked or bookmarked. A slot the viewer may
+//     not have (Settings, superuser-only) falls back to the first visible one
+//     instead of rendering an empty page — and health plus the fetch log are
+//     that one slot, so an old `?tab=history` link still lands on the log;
 //  3. one manual action end to end — Pause collection reads the setting and
 //     writes it back with `enabled` flipped, rather than posting a bare `false`
 //     that would drop the interval and rate limit stored beside it;
@@ -246,32 +247,35 @@ describe("RankCollectorPage", () => {
     expect(container.querySelectorAll("a[data-admin-tab]")).toHaveLength(0);
   });
 
-  it("opens the slot named by ?tab= directly", async () => {
+  it("shows health and the fetch log on one screen; an old ?tab=history link lands there", async () => {
     const container = await mount("?tab=history");
 
+    expect(getRankCollectionStats).toHaveBeenCalled();
     expect(getRankFetchLog).toHaveBeenCalled();
     expect(container.textContent).toContain("Task history");
-    expect(tab(container, "History")?.getAttribute("aria-current")).toBe("page");
+    // Status is the only slot a non-superuser has, so there is no tab bar to
+    // pick it from — a one-tab bar would be a heading with a hover state.
+    expect(container.querySelectorAll("a[data-admin-tab]")).toHaveLength(0);
   });
 
   it("defaults to Status and writes the slot to the URL when a tab is clicked", async () => {
+    superuser = true;
     const container = await mount();
 
     expect(tab(container, "Status")?.getAttribute("aria-current")).toBe("page");
-    expect(getRankFetchLog).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("rank settings panel");
 
-    await click(tab(container, "History"));
+    await click(tab(container, "Settings"));
 
-    expect(replace).toHaveBeenCalledWith("/admin/collectors/rank?tab=history");
-    expect(window.location.search).toBe("?tab=history");
-    expect(container.textContent).toContain("Task history");
+    expect(replace).toHaveBeenCalledWith("/admin/collectors/rank?tab=settings");
+    expect(window.location.search).toBe("?tab=settings");
+    expect(container.textContent).toContain("rank settings panel");
   });
 
   it("hides the superuser-only Settings slot and falls back rather than blanking", async () => {
     const container = await mount("?tab=settings");
 
     expect(tab(container, "Settings")).toBeUndefined();
-    expect(tab(container, "Status")?.getAttribute("aria-current")).toBe("page");
     expect(container.textContent).not.toContain("rank settings panel");
     expect(getRankCollectionStats).toHaveBeenCalled();
   });

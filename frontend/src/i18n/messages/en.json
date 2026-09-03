@@ -4577,15 +4577,6 @@
       "emptyRole": "No {role} sub-roles in this workspace yet — add them in the catalog."
     },
     "page": {
-      "title": "Form Configuration",
-      "description": "Configure registration form fields, admission rules, sub-roles, and custom inputs.",
-      "backToRegistrations": "Back to registrations",
-      "tabs": {
-        "status": "Status",
-        "fields": "Fields",
-        "subroles": "Subroles",
-        "custom": "Custom Fields"
-      },
       "admission": {
         "title": "Admission",
         "requireOpenProfile": "Require open Overwatch profile",

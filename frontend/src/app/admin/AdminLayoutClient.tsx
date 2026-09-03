@@ -9,14 +9,17 @@ import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AuditTrailProvider } from "@/components/admin/AuditTrailSheet";
 import { getMatchingAdminRoute } from "@/components/admin/admin-navigation";
 import { adminEntryPermissions } from "@/lib/admin-permissions";
-import { getBreadcrumbEntityRef, breadcrumbSegmentLabel } from "@/components/admin/breadcrumb-registry";
+import {
+  getBreadcrumbEntityRef,
+  breadcrumbSegmentLabel
+} from "@/components/admin/breadcrumb-registry";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator,
+  BreadcrumbSeparator
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -41,7 +44,9 @@ function UnauthorizedState() {
     <div className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
         <h1 className="text-4xl font-bold">Unauthorized</h1>
-        <p className="mt-4 text-muted-foreground">You do not have permission to access the admin panel.</p>
+        <p className="mt-4 text-muted-foreground">
+          You do not have permission to access the admin panel.
+        </p>
         <p className="mt-2 text-sm text-muted-foreground">
           Please contact an administrator if you believe this is an error.
         </p>
@@ -56,11 +61,9 @@ function UnauthorizedState() {
   );
 }
 
-
-
 function EntityBreadcrumbName({
   queryKey,
-  fallback,
+  fallback
 }: Readonly<{
   queryKey: readonly unknown[];
   fallback: string;
@@ -118,7 +121,7 @@ function AdminBreadcrumb() {
 
 const sidebarShellStyle = {
   "--sidebar-width": "15.5rem",
-  "--sidebar-width-icon": "3.75rem",
+  "--sidebar-width-icon": "3.75rem"
 } as CSSProperties;
 
 type AdminLayoutClientProps = {
@@ -126,7 +129,10 @@ type AdminLayoutClientProps = {
   defaultSidebarOpen: boolean;
 };
 
-export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<AdminLayoutClientProps>) {
+export function AdminLayoutClient({
+  children,
+  defaultSidebarOpen
+}: Readonly<AdminLayoutClientProps>) {
   const pathname = usePathname();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const { isLoaded, canAccessAdminRoute } = usePermissions();
@@ -142,11 +148,11 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<Adm
         workspaceId: matchingRoute.workspaceAdminVisible ? null : currentWorkspaceId,
         globalOnly: matchingRoute.globalOnly,
         workspaceAdminVisible: matchingRoute.workspaceAdminVisible,
-        superuserOnly: matchingRoute.superuserOnly,
+        superuserOnly: matchingRoute.superuserOnly
       })
     : canAccessAdminRoute({
         permissions: adminEntryPermissions,
-        workspaceId: currentWorkspaceId,
+        workspaceId: currentWorkspaceId
       });
 
   if (!hasAccess) {
@@ -176,10 +182,13 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<Adm
             <AdminBreadcrumb />
           </header>
 
+          {/* Full-bleed on purpose: a centered 1720px cap left ~300px of dead
+              gutter each side on a 2560 display. Wide tables scroll inside
+              their own container, so the page itself never needs the cap. */}
           <div
             id="admin-content"
             tabIndex={-1}
-            className="mx-auto flex w-full max-w-[1720px] flex-1 flex-col gap-4 overflow-x-hidden p-4"
+            className="flex w-full flex-1 flex-col gap-4 overflow-x-hidden p-4 md:px-5"
           >
             {/* One drawer for the whole panel: every per-entity trail opens
                 here, so no screen mounts its own copy and none can nest. */}

@@ -2,21 +2,14 @@
 
 import { startTransition, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -25,9 +18,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
-import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
 import { ROLES, canonicalToRegistrationRole } from "@/lib/roles";
 import adminService from "@/services/admin.service";
@@ -53,21 +44,16 @@ import {
   supportsCustomFieldValidation
 } from "./_components/formConfig";
 
-// D25: rendered by both the hub sub-route (tournament from the path) and the
-// legacy balancer route (tournament from the ?tournament query) until T14.
 export default function RegistrationFormBuilder({
-  tournamentId,
-  basePath
+  tournamentId
 }: Readonly<{
   tournamentId: number | null;
-  basePath: string;
 }>) {
   const t = useTranslations("registrationFormAdmin.page");
   const scopeSelectId = useId();
   const stageSelectId = useId();
 
   const queryClient = useQueryClient();
-  const searchParams = useSearchParams();
   const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
 
   const [isOpen, setIsOpen] = useState(false);
@@ -307,143 +293,118 @@ export default function RegistrationFormBuilder({
     );
   }
 
-  const registrationsHref = searchParams.toString()
-    ? `${basePath}?${searchParams.toString()}`
-    : basePath;
-
   const formExists = formQuery.data != null;
 
+  // One form, one save: the sections used to sit behind four in-page tabs
+  // under the hub's two routed tab rows — a third level of tabs, and a way to
+  // leave unsaved edits hidden on a tab you were not looking at.
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-            <p className="max-w-prose text-sm text-muted-foreground">{t("description")}</p>
-          </div>
-          <Button variant="outline" asChild className={MUTED_BUTTON_CLASS}>
-            <Link href={registrationsHref}>
-              <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
-              {t("backToRegistrations")}
-            </Link>
-          </Button>
-        </div>
+    <div className="flex flex-col gap-4">
+      <RegistrationStatusCard
+        isOpen={isOpen}
+        autoApprove={autoApprove}
+        onChangeAutoApprove={(value) => {
+          setAutoApprove(value);
+          setHasChanges(true);
+        }}
+      />
 
-        <Tabs defaultValue="status" className="flex min-h-0 flex-1 flex-col">
-          <TabsList className="self-start">
-            <TabsTrigger value="status">{t("tabs.status")}</TabsTrigger>
-            <TabsTrigger value="fields">{t("tabs.fields")}</TabsTrigger>
-            <TabsTrigger value="subroles">{t("tabs.subroles")}</TabsTrigger>
-            <TabsTrigger value="custom">{t("tabs.custom")}</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="status">
-            <div className="space-y-4">
-              <RegistrationStatusCard
-                isOpen={isOpen}
-                autoApprove={autoApprove}
-                onChangeAutoApprove={(value) => {
-                  setAutoApprove(value);
-                  setHasChanges(true);
-                }}
-              />
-
-              {/* Every section on this tab is a Card with the rule stated in its
+      {/* Every section on this tab is a Card with the rule stated in its
                   description, so the explanation precedes the control it governs
                   instead of trailing it. */}
-              <Card>
-                <CardHeader>
-                  <CardTitle asChild><h2>{t("admission.title")}</h2></CardTitle>
-                  <CardDescription className="max-w-prose">{t("admission.hint")}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={requireOpenProfile}
-                      onCheckedChange={(checked) => {
-                        setRequireOpenProfile(checked === true);
-                        setHasChanges(true);
-                      }}
-                    />
-                    {t("admission.requireOpenProfile")}
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <Label htmlFor={scopeSelectId} className="text-muted-foreground">
-                      {t("admission.scope")}
-                    </Label>
-                    <Select
-                      value={openProfileScope}
-                      disabled={!requireOpenProfile}
-                      onValueChange={(value) => {
-                        setOpenProfileScope(value as "main" | "all");
-                        setHasChanges(true);
-                      }}
-                    >
-                      <SelectTrigger
-                        id={scopeSelectId}
-                        // Sized from content, not a pixel width: the Russian option
-                        // labels are longer and a fixed 230px clipped them.
-                        className="h-8 w-fit min-w-[230px] max-w-full text-sm"
-                        aria-label={t("admission.scopeAria")}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="main">{t("admission.scopeMain")}</SelectItem>
-                        <SelectItem value="all">{t("admission.scopeAll")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle asChild>
+            <h2>{t("admission.title")}</h2>
+          </CardTitle>
+          <CardDescription className="max-w-prose">{t("admission.hint")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={requireOpenProfile}
+              onCheckedChange={(checked) => {
+                setRequireOpenProfile(checked === true);
+                setHasChanges(true);
+              }}
+            />
+            {t("admission.requireOpenProfile")}
+          </label>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Label htmlFor={scopeSelectId} className="text-muted-foreground">
+              {t("admission.scope")}
+            </Label>
+            <Select
+              value={openProfileScope}
+              disabled={!requireOpenProfile}
+              onValueChange={(value) => {
+                setOpenProfileScope(value as "main" | "all");
+                setHasChanges(true);
+              }}
+            >
+              <SelectTrigger
+                id={scopeSelectId}
+                // Sized from content, not a pixel width: the Russian option
+                // labels are longer and a fixed 230px clipped them.
+                className="h-8 w-fit min-w-[230px] max-w-full text-sm"
+                aria-label={t("admission.scopeAria")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="main">{t("admission.scopeMain")}</SelectItem>
+                <SelectItem value="all">{t("admission.scopeAll")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle asChild><h2>{t("subscription.title")}</h2></CardTitle>
-                  <CardDescription className="max-w-prose">
-                    {t("subscription.hint")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={requireSubscription}
-                      onCheckedChange={(checked) => {
-                        setRequireSubscription(checked === true);
-                        setHasChanges(true);
-                      }}
-                    />
-                    {t("subscription.require")}
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <Label htmlFor={stageSelectId} className="text-muted-foreground">
-                      {t("subscription.stage")}
-                    </Label>
-                    <Select
-                      value={subscriptionStage}
-                      disabled={!requireSubscription}
-                      onValueChange={(value) => {
-                        setSubscriptionStage(value as "registration" | "check_in");
-                        setHasChanges(true);
-                      }}
-                    >
-                      <SelectTrigger
-                        id={stageSelectId}
-                        className="h-8 w-fit min-w-[230px] max-w-full text-sm"
-                        aria-label={t("subscription.stageAria")}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="check_in">{t("subscription.stageCheckIn")}</SelectItem>
-                        <SelectItem value="registration">
-                          {t("subscription.stageRegistration")}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1 text-sm">
-                    {/* The workspace rule reaches this card as a projection ON the
+      <Card>
+        <CardHeader>
+          <CardTitle asChild>
+            <h2>{t("subscription.title")}</h2>
+          </CardTitle>
+          <CardDescription className="max-w-prose">{t("subscription.hint")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={requireSubscription}
+              onCheckedChange={(checked) => {
+                setRequireSubscription(checked === true);
+                setHasChanges(true);
+              }}
+            />
+            {t("subscription.require")}
+          </label>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Label htmlFor={stageSelectId} className="text-muted-foreground">
+              {t("subscription.stage")}
+            </Label>
+            <Select
+              value={subscriptionStage}
+              disabled={!requireSubscription}
+              onValueChange={(value) => {
+                setSubscriptionStage(value as "registration" | "check_in");
+                setHasChanges(true);
+              }}
+            >
+              <SelectTrigger
+                id={stageSelectId}
+                className="h-8 w-fit min-w-[230px] max-w-full text-sm"
+                aria-label={t("subscription.stageAria")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="check_in">{t("subscription.stageCheckIn")}</SelectItem>
+                <SelectItem value="registration">{t("subscription.stageRegistration")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1 text-sm">
+            {/* The workspace rule reaches this card as a projection ON the
                         form, so `resolvedRequirement === ""` means two different
                         things: the workspace has no rule, or there is no form to read
                         one from (`reg_form_get` returns null until the first save --
@@ -452,71 +413,64 @@ export default function RegistrationFormBuilder({
                         truth nobody has looked up, right beside the toggle it describes.
                         `!formExists` also covers `formQuery.isPending`, which implies
                         `data === undefined`. */}
-                    <p className="max-w-prose text-muted-foreground">
-                      {!formExists
-                        ? t("subscription.resolvedUnknown")
-                        : resolvedRequirement
-                          ? t("subscription.resolved", { rule: resolvedRequirement })
-                          : t("subscription.resolvedEmpty")}
-                    </p>
-                    {/* The workspace rule is workspace *configuration*, so it lives in
+            <p className="max-w-prose text-muted-foreground">
+              {!formExists
+                ? t("subscription.resolvedUnknown")
+                : resolvedRequirement
+                  ? t("subscription.resolved", { rule: resolvedRequirement })
+                  : t("subscription.resolvedEmpty")}
+            </p>
+            {/* The workspace rule is workspace *configuration*, so it lives in
                         settings; /admin/subscriptions is the collector dashboard. */}
-                    <Link
-                      href="/admin/settings/subscriptions"
-                      className="text-xs font-medium underline underline-offset-4"
-                    >
-                      {t("subscription.manage")}
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
+            <Link
+              href="/admin/settings/subscriptions"
+              className="text-xs font-medium underline underline-offset-4"
+            >
+              {t("subscription.manage")}
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle asChild><h2>{t("display.title")}</h2></CardTitle>
-                  <CardDescription className="max-w-prose">{t("display.hint")}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={showRanks}
-                      onCheckedChange={(checked) => {
-                        setShowRanks(checked === true);
-                        setHasChanges(true);
-                      }}
-                    />
-                    {t("display.showRanks")}
-                  </label>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="fields">
-            <BuiltInFieldsCard builtInFields={builtInFields} onUpdate={updateBuiltIn} />
-          </TabsContent>
-
-          <TabsContent value="subroles">
-            <SubrolesTab
-              catalog={subroleCatalog}
-              selection={subroleSelection}
-              onToggleOffered={handleToggleSubrole}
-              isLoading={catalogQuery.isLoading}
+      <Card>
+        <CardHeader>
+          <CardTitle asChild>
+            <h2>{t("display.title")}</h2>
+          </CardTitle>
+          <CardDescription className="max-w-prose">{t("display.hint")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={showRanks}
+              onCheckedChange={(checked) => {
+                setShowRanks(checked === true);
+                setHasChanges(true);
+              }}
             />
-          </TabsContent>
+            {t("display.showRanks")}
+          </label>
+        </CardContent>
+      </Card>
+      <BuiltInFieldsCard builtInFields={builtInFields} onUpdate={updateBuiltIn} />
 
-          <TabsContent value="custom">
-            <CustomFieldsCard
-              customFields={customFields}
-              onAdd={addCustomField}
-              onUpdate={updateCustomField}
-              onRemove={removeCustomField}
-            />
-          </TabsContent>
-        </Tabs>
-      </div>
+      <SubrolesTab
+        catalog={subroleCatalog}
+        selection={subroleSelection}
+        onToggleOffered={handleToggleSubrole}
+        isLoading={catalogQuery.isLoading}
+      />
 
-      <div className="flex items-center justify-end gap-3 border-t py-3">
+      <CustomFieldsCard
+        customFields={customFields}
+        onAdd={addCustomField}
+        onUpdate={updateCustomField}
+        onRemove={removeCustomField}
+      />
+
+      {/* Same register as kit/SaveBar, but always present: a tournament with no
+          saved form yet needs "Create form" reachable before any edit. */}
+      <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:-mx-5 md:px-5">
         {/* Stable region, not a conditionally mounted node: a polite live region
             only announces reliably when it is already in the tree. */}
         <output className="text-xs text-muted-foreground">
