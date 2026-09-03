@@ -23,11 +23,14 @@ export function TournamentHubActions({
   tournament,
   tournamentId,
   canReadAnalytics,
+  canUpdateTournament,
   canToggleFinished
 }: Readonly<{
   tournament: Tournament;
   tournamentId: number;
   canReadAnalytics: boolean;
+  /** `tournament.update` — the grant the status RPC checks. */
+  canUpdateTournament: boolean;
   canToggleFinished: boolean;
 }>) {
   const queryClient = useQueryClient();
@@ -52,7 +55,7 @@ export function TournamentHubActions({
           </Link>
         </Button>
       ) : null}
-      <TournamentStatusControl tournament={tournament} />
+      {canUpdateTournament ? <TournamentStatusControl tournament={tournament} /> : null}
       {canToggleFinished ? (
         <Button
           size="sm"

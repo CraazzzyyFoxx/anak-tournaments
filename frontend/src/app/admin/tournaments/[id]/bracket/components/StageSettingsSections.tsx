@@ -1,10 +1,9 @@
 "use client";
 
 import { useId } from "react";
-import { ChevronDown, ChevronUp, Link2, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
-import { Badge } from "@/components/ui/badge";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,14 +17,11 @@ import {
 } from "@/components/ui/select";
 import { ALL_TIEBREAKERS } from "@/lib/tiebreakers";
 import { BEST_OF_OPTIONS, stageBestOfRoundSections } from "@/lib/best-of";
-import { cn } from "@/lib/utils";
 import type { StageBestOfConfig } from "@/types/admin.types";
 import type { Stage, StageType } from "@/types/tournament.types";
 
 import {
   BRACKET_STAGE_TYPES,
-  getStageStatus,
-  getStageStatusTone,
   normalizeMaxRounds,
   RANKING_PRESETS,
   SEED_RANKING_LABELS,
@@ -53,16 +49,13 @@ type SectionProps = Readonly<{
 }>;
 
 export function GeneralSection({
-  stage,
   form,
   onChange,
   isSuperuser,
-  projection,
-  hasEncounters
-}: SectionProps & {
+  projection
+}: Omit<SectionProps, "stage"> & {
   isSuperuser: boolean;
   projection: StageProjection;
-  hasEncounters: boolean;
 }) {
   const ids = useId();
 
@@ -136,33 +129,6 @@ export function GeneralSection({
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-1.5">
-          <p className={EYEBROW_CLASS}>Status</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant="outline"
-              className={cn(TONE_CLASS[getStageStatusTone(stage, hasEncounters)])}
-            >
-              {getStageStatus(stage, hasEncounters)}
-            </Badge>
-            {stage.is_published ? (
-              <span className="text-xs text-muted-foreground">published to captains</span>
-            ) : (
-              <span className="text-xs text-muted-foreground">not visible to captains</span>
-            )}
-            {stage.challonge_slug ? (
-              <a
-                className="inline-flex items-center gap-1 rounded-full border border-primary/40 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
-                href={`https://challonge.com/${stage.challonge_slug}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <Link2 className="size-3" aria-hidden />
-                Challonge
-              </a>
-            ) : null}
-          </div>
-        </div>
       </div>
 
       <BracketPreview projection={projection} />

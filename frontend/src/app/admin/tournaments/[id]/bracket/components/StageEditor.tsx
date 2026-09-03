@@ -13,6 +13,7 @@ import {
   Undo2,
   Wand2,
   Workflow,
+  Link2,
   Zap
 } from "lucide-react";
 
@@ -355,6 +356,22 @@ export function StageEditor({
               <span key="matches" className="tabular-nums">
                 {progress?.completed}/{progress?.total} matches
               </span>
+            ) : null,
+            // Captain visibility used to sit in the General form under a second
+            // "Status" label, beside a second status badge. It is a fact about
+            // the stage, so it lives with the other facts up here.
+            stage.is_published ? "Published to captains" : "Not visible to captains",
+            stage.challonge_slug ? (
+              <a
+                key="challonge"
+                className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
+                href={`https://challonge.com/${stage.challonge_slug}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Link2 className="size-3" aria-hidden />
+                Challonge
+              </a>
             ) : null
           ]}
           actions={
@@ -455,12 +472,10 @@ export function StageEditor({
       <div className="p-4">
         {activeSection === "general" ? (
           <GeneralSection
-            stage={stage}
             form={form}
             onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
             isSuperuser={isSuperuser}
             projection={projection}
-            hasEncounters={hasEncounters}
           />
         ) : null}
 

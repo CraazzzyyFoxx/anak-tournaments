@@ -311,6 +311,7 @@ export function TournamentHubShell({
             tournament={tournament}
             tournamentId={tournamentId}
             canReadAnalytics={canReadAnalytics}
+            canUpdateTournament={canUpdateTournament}
             canToggleFinished={canUpdateTournament && isSuperuser}
           />
         }
