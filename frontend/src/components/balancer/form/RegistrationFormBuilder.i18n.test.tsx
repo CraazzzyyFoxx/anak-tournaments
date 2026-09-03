@@ -52,7 +52,10 @@ vi.mock("@/services/admin.service", () => ({
       .mockResolvedValue([{ id: 1, role: "tank", slug: "main_tank", label: "Main Tank" }])
   }
 }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams("") }));
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(""),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() })
+}));
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
     selector({ currentWorkspaceId: 1 })
@@ -79,7 +82,7 @@ async function renderPage(locale: "en" | "ru") {
     );
   });
   for (let i = 0; i < 30; i += 1) {
-    if (container.querySelector('button[role="checkbox"]')) break;
+    if (container.querySelector('button[role="switch"]')) break;
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
