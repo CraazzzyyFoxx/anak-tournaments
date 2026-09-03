@@ -376,10 +376,12 @@ Items → ссылка «Edit matches in Matches › Encounters?stage=N».
 
 ### P4-3 Divisions — обзор (F11)
 
-`settings/divisions/page.tsx`:
-- Данные: `workspaceService.getDivisionGrids(ws)` → если гридов > 1 — `Select` грида над полосой; `getDivisionGridVersions(ws, gridId)`.
-- `VersionStrip.tsx`: карточка на версию (`version`, `label`, `status` pill через `TONE_CLASS`: archived neutral, published info, active success, draft warning; `tiers.length` divisions; tournaments count — §7 gap G2; дата). Draft → «Open editor →» на `/settings/divisions/v/[id]`. Кнопки: «+ New draft from vN» (`cloneDivisionGridVersion`), «Load standard OW ladder» (существующий `standardOwGrid` → `createDivisionGridVersion`), «Import from workspace…» → `/settings/divisions/import`, Import/Export JSON (`importDivisionGridPortable`/`exportDivisionGridPortable`).
-- Активная версия read-only таблица; «Who reads which version» — из readiness `sources` активной версии (`getDivisionGridVersionReadiness`) — там есть `version_label`, `status`; список турниров по версии — gap G2.
+`settings/divisions/page.tsx` (реализовано в редизайне обзора):
+- Данные: `workspaceService.getDivisionGrids(ws)` → если гридов > 1 — `Select` грида над историей; `getDivisionGridVersions(ws, gridId)`. Активная версия берётся из `workspace.default_division_grid_version`, не из списка гридов: воркспейс может указывать на версию общего (shared) грида, которого нет в его списке — она всё равно «в силе».
+- Hero «In force»: активная версия (label, `N divisions · 45 ranks · published · shared grid`), `LadderBar.tsx` — 45 рангов OW одной полосой, порезанной на дивизионы (крест на сегмент на `lg+`), и один «Next step» по рангу: открыть draft → активировать готовую published-версию → новый draft от последней → загрузить стандартный ладдер. Без активной версии — hero пунктиром с встроенным ладдером.
+- `VersionHistory.tsx`: список версий, новые сверху; строка = `vN`, label, status pill (`VERSION_STATE_TONE`), мини-`LadderBar`, `N divisions · N tournaments · дата`. Draft → «Open editor →»; published не-активная → «Activate vN» (по readiness этой версии; `ConfirmDialog`, `activateDivisionGridVersion`), иначе «View». Кнопки «+ New draft from vN» / «Load standard OW ladder» — в шапке секции; Import/Export JSON и «Import from workspace…» — строка «Transfer» под списком.
+- «Who reads which version» — из readiness `sources` активной версии: `version_label`, `grid_name`, `tournament_count`, `tournament_names` (бэкенд отдаёт 5 новейших + счётчик → показываем как выборку с «+N more»; gap G2 закрыт), статус с объяснением, что делать при `missing`/`incomplete`.
+- «Divisions in force» — read-only таблица активной версии с крестами; колонка Players убрана до закрытия gap G1.
 
 ### P4-4 Divisions — редактор черновика (F12)
 

@@ -35,11 +35,13 @@ const getDivisionGridVersions = vi.fn();
 const getDivisionGridVersionReadiness = vi.fn();
 const createDivisionGridVersion = vi.fn();
 const cloneDivisionGridVersion = vi.fn();
+const activateDivisionGridVersion = vi.fn();
 
 let permitted = true;
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
+  useFormatter: () => ({ dateTime: (value: Date) => value.toISOString().slice(0, 10) }),
   NextIntlClientProvider: ({ children }: { children: ReactNode }) => children
 }));
 
@@ -52,6 +54,8 @@ vi.mock("@/hooks/usePermissions", () => ({
   })
 }));
 
+let currentWorkspace: Record<string, unknown> = { id: 1, default_division_grid_version_id: 22 };
+
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (
     selector: (state: {
@@ -62,7 +66,7 @@ vi.mock("@/stores/workspace.store", () => ({
   ) =>
     selector({
       currentWorkspaceId: 1,
-      getCurrentWorkspace: () => ({ id: 1, default_division_grid_version_id: 22 }),
+      getCurrentWorkspace: () => currentWorkspace,
       fetchWorkspaces: async () => undefined
     })
 }));
@@ -75,6 +79,7 @@ vi.mock("@/services/workspace.service", () => ({
       getDivisionGridVersionReadiness(...args),
     createDivisionGridVersion: (...args: unknown[]) => createDivisionGridVersion(...args),
     cloneDivisionGridVersion: (...args: unknown[]) => cloneDivisionGridVersion(...args),
+    activateDivisionGridVersion: (...args: unknown[]) => activateDivisionGridVersion(...args),
     exportDivisionGridPortable: vi.fn(),
     importDivisionGridPortable: vi.fn()
   }
@@ -208,6 +213,8 @@ function button(text: string) {
 
 beforeEach(() => {
   permitted = true;
+  currentWorkspace = { id: 1, default_division_grid_version_id: 22 };
+  activateDivisionGridVersion.mockReset();
   replace.mockClear();
   getDivisionGrids.mockReset().mockResolvedValue([grid(7, "Anak Division Grid")]);
   getDivisionGridVersions.mockReset().mockResolvedValue(VERSIONS);
@@ -270,15 +277,84 @@ describe("Settings › Divisions", () => {
     expect(editorLinks[0].getAttribute("href")).toBe("/admin/settings/divisions/v/23");
   });
 
-  it("reports who reads which version by count, never inventing the tournament list", async () => {
+  it("names the tournaments still reading an older version, and counts the rest honestly", async () => {
+    getDivisionGridVersionReadiness.mockResolvedValue({
+      target_version_id: 22,
+      is_ready: true,
+      used_source_version_ids: [21],
+      missing_mapping_version_ids: [],
+      incomplete_mapping_version_ids: [],
+      sources: [
+        {
+          version_id: 21,
+          version_label: "Season 2 ladder",
+          grid_name: "Anak Division Grid",
+          tournament_count: 7,
+          tournament_names: ["Anak Cup 11", "Anak Cup 10"],
+          status: "ok",
+          conflict_tiers: []
+        }
+      ]
+    });
     const container = await mount();
 
-    expect(container.textContent).toContain("v2");
-    expect(container.textContent).toContain("1 tournament");
+    expect(container.textContent).toContain("7 tournaments");
     expect(container.textContent).toContain("mapping complete");
-    // The readiness payload truncates the names, so they are not shown as if
-    // they were the whole list (backend gap G2).
-    expect(container.textContent).not.toContain("Anak Cup 11");
+    // The payload carries the five newest names and the full count, so the
+    // names are shown as a sample with the remainder made explicit.
+    expect(container.textContent).toContain("Anak Cup 11");
+    expect(container.textContent).toContain("+5 more");
+  });
+
+  it("shows the active version as the grid in force, even when it belongs to a shared grid", async () => {
+    const own = await mount();
+    expect(own.textContent).toContain("In force · v3");
+    expect(own.textContent).not.toContain("shared grid");
+
+    // The workspace points at a version of a grid it does not own: it is not in
+    // the grid list, but it is still the grid every rank resolves through.
+    const shared = {
+      ...version(90, 2, "published"),
+      grid_id: 1,
+      label: "Overwatch 2 Default Grid"
+    };
+    currentWorkspace = {
+      id: 1,
+      default_division_grid_version_id: 90,
+      default_division_grid_version: shared
+    };
+    const container = await mount();
+    expect(container.textContent).toContain("In force · v2");
+    expect(container.textContent).toContain("Overwatch 2 Default Grid");
+    expect(container.textContent).toContain("shared grid");
+    expect(container.textContent).not.toContain("Nothing activated");
+  });
+
+  it("offers to activate a published version only once its readiness says so, then confirms", async () => {
+    getDivisionGridVersionReadiness.mockImplementation(async (_ws: number, versionId: number) => ({
+      target_version_id: versionId,
+      is_ready: versionId === 21,
+      used_source_version_ids: [],
+      missing_mapping_version_ids: versionId === 21 ? [] : [22],
+      incomplete_mapping_version_ids: [],
+      sources: []
+    }));
+    activateDivisionGridVersion.mockResolvedValue(version(21, 2, "published"));
+    await mount();
+
+    // v2 is the one published version the workspace is not on; v3 is active.
+    const activate = button("Activate v2");
+    expect(activate).toBeTruthy();
+    expect(activate!.hasAttribute("disabled")).toBe(false);
+    expect(activateDivisionGridVersion).not.toHaveBeenCalled();
+
+    await click(activate);
+    const confirm = Array.from(document.querySelectorAll("button")).find(
+      (element) => element.textContent?.trim() === "Activate v2" && element !== activate
+    );
+    await click(confirm);
+
+    expect(activateDivisionGridVersion).toHaveBeenCalledWith(1, 21);
   });
 
   it("offers the grid selector only when there is more than one grid, and writes ?grid=", async () => {
