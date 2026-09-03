@@ -293,12 +293,16 @@ function StageCard({
   const slots = getStageTeamSlots(stage);
   const assigned = getStageAssignedTeams(stage);
 
+  // The whole card selects. The name stays a <button> so keyboard users have a
+  // focus stop; its Enter/Space click bubbles to the card's handler, so it
+  // carries none of its own. A click on the grip bubbles too, which is harmless.
   return (
     <div
       ref={ref}
       style={style}
+      onClick={onSelect}
       className={cn(
-        "flex items-start gap-2 rounded-lg border border-transparent p-2 transition-colors hover:border-border",
+        "flex cursor-pointer items-start gap-2 rounded-lg border border-transparent p-2 transition-colors hover:border-border",
         selected && "border-border bg-accent/30"
       )}
     >
@@ -315,7 +319,6 @@ function StageCard({
             type="button"
             aria-current={selected ? "true" : undefined}
             className="min-w-0 truncate text-left text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onSelect}
           >
             {stage.name}
           </button>

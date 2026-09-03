@@ -8,6 +8,7 @@ import { MasterDetail } from "@/components/admin/kit/MasterDetail";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryParams } from "@/hooks/useQueryParams";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { usePermissions } from "@/hooks/usePermissions";
 import adminService from "@/services/admin.service";
 import teamService from "@/services/team.service";
@@ -34,6 +35,7 @@ export default function BracketTabPage() {
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
   const { searchParams, setParams } = useQueryParams({ mode: "push" });
+  const isMobile = useIsMobile();
 
   const stagesQuery = useQuery({
     queryKey: ["admin", "stages", tournamentId],
@@ -69,8 +71,13 @@ export default function BracketTabPage() {
 
   const teams = teamsData?.results ?? [];
   const stageParam = Number(searchParams?.get("stage"));
+  // No `?stage=` on a wide viewport opens the LAST stage — the one still being
+  // worked on, since seeding flows top to bottom. Below `md` the list is the
+  // landing surface and `MasterDetail`'s Back is `history.back()`, so an
+  // implicit selection there would send the reader off the tab.
   const selectedStage =
-    orderedStages.find((stage) => stage.id === stageParam) ?? null;
+    orderedStages.find((stage) => stage.id === stageParam) ??
+    (isMobile ? null : (orderedStages.at(-1) ?? null));
 
   if (stagesQuery.isError) {
     return (

@@ -4,10 +4,11 @@
 //  1. the permission gate that survived the split — only a superuser may change
 //     a stage's format after creation, and a non-superuser is told why rather
 //     than left with a control that silently does nothing;
-//  2. `?stage=` and `?section=` ARE the state: no selection shows the empty
-//     detail, selecting pushes a linkable URL, and a section that does not
-//     apply to the stage's format falls back to General instead of rendering an
-//     empty panel;
+//  2. `?stage=` and `?section=` ARE the state: selecting pushes a linkable URL,
+//     and a section that does not apply to the stage's format falls back to
+//     General instead of rendering an empty panel. Without `?stage=` a wide
+//     viewport opens the last stage; a narrow one keeps the list, because
+//     `MasterDetail`'s Back there is `history.back()`;
 //  3. one destructive operation end to end — the kebab opens the screen's ONE
 //     `ConfirmDialog` (the old screen mounted seven), and confirming calls the
 //     mutation and clears the selection;
@@ -52,6 +53,11 @@ vi.mock("@/services/team.service", () => ({
 let isSuperuser = true;
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({ isSuperuser })
+}));
+
+let isMobile = false;
+vi.mock("@/hooks/use-mobile", () => ({
+  useIsMobile: () => isMobile
 }));
 
 vi.mock("@/lib/notify", () => ({
@@ -230,6 +236,7 @@ function sectionTab(text: string): HTMLAnchorElement | null {
 beforeEach(() => {
   vi.clearAllMocks();
   isSuperuser = true;
+  isMobile = false;
   if (root) {
     act(() => root.unmount());
     container.remove();
@@ -264,27 +271,38 @@ describe("Bracket tab · permission gate", () => {
 });
 
 describe("Bracket tab · URL is the state", () => {
-  it("shows the empty detail until a stage is selected", async () => {
+  it("opens the last stage by default on a wide viewport", async () => {
+    await mount();
+
+    // Seeding flows top to bottom, so the last stage is the one still in work.
+    expect(container.querySelector('nav[aria-label="Playoff sections"]')).not.toBeNull();
+    expect(bodyText()).toContain("Double Elimination");
+    // Not written to the URL: a default is not a navigation.
+    expect(push).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the list as the landing surface on a narrow viewport", async () => {
+    isMobile = true;
     await mount();
 
     expect(bodyText()).toContain("No stage selected");
-    // Both stages are listed, neither is open.
     expect(named("button", "Groups")).toHaveLength(1);
     expect(named("button", "Playoff")).toHaveLength(1);
-    expect(container.querySelector('nav[aria-label="Groups sections"]')).toBeNull();
+    expect(container.querySelector('nav[aria-label="Playoff sections"]')).toBeNull();
   });
 
   it("selecting a stage pushes `?stage=` and opens that stage's editor", async () => {
     await mount();
 
-    await click(named("button", "Playoff")[0]);
+    await click(named("button", "Groups")[0]);
 
-    expect(push).toHaveBeenCalledWith("/admin/tournaments/84/bracket?stage=20");
+    expect(push).toHaveBeenCalledWith("/admin/tournaments/84/bracket?stage=10");
     // A history entry, so `MasterDetail`'s mobile "Back to list" works.
     expect(replace).not.toHaveBeenCalled();
-    expect(container.querySelector('nav[aria-label="Playoff sections"]')).not.toBeNull();
+    expect(container.querySelector('nav[aria-label="Groups sections"]')).not.toBeNull();
     // The editor header names the selected stage's format.
-    expect(bodyText()).toContain("Double Elimination");
+    expect(bodyText()).toContain("Round Robin");
   });
 
   it("`?section=` chooses the section, and marks its tab current", async () => {
