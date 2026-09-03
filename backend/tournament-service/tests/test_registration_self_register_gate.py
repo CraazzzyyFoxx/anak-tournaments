@@ -110,6 +110,9 @@ async def _make_tournament(session, *, workspace_id: int) -> Tournament:
     tournament = Tournament(
         workspace_id=workspace_id,
         name=f"Self-Register Gate Tournament {suffix}",
+        # NOT NULL and globally unique; production writes go through
+        # `generate_unique_tournament_slug`, which this factory bypasses.
+        slug=f"selfreg-{suffix}",
         status=enums.TournamentStatus.CHECK_IN,
     )
     session.add(tournament)
@@ -174,6 +177,7 @@ def test_first_registration_creates_member_and_player_role() -> None:
                         smurf_tags=None,
                         discord_nick=None,
                         twitch_nick=None,
+                        boosty_nick=None,
                         stream_pov=False,
                         notes=None,
                         custom_fields=None,
@@ -246,6 +250,7 @@ def test_workspace_scoped_self_register_deny_returns_403() -> None:
                             smurf_tags=None,
                             discord_nick=None,
                             twitch_nick=None,
+                            boosty_nick=None,
                             stream_pov=False,
                             notes=None,
                             custom_fields=None,
@@ -300,6 +305,7 @@ def test_second_registration_does_not_duplicate_member() -> None:
                         smurf_tags=None,
                         discord_nick=None,
                         twitch_nick=None,
+                        boosty_nick=None,
                         stream_pov=False,
                         notes=None,
                         custom_fields=None,
@@ -317,6 +323,7 @@ def test_second_registration_does_not_duplicate_member() -> None:
                         smurf_tags=None,
                         discord_nick=None,
                         twitch_nick=None,
+                        boosty_nick=None,
                         stream_pov=False,
                         notes=None,
                         custom_fields=None,
@@ -364,9 +371,11 @@ def _gate_tournament(
     allow_late_registration: bool = False,
     schedule: list[TournamentPhaseSchedule] | None = None,
 ) -> Tournament:
+    suffix = uuid.uuid4().hex[:12]
     tournament = Tournament(
         workspace_id=1,
         name="Gate Unit Tournament",
+        slug=f"gate-unit-{suffix}",
         status=status,
         allow_late_registration=allow_late_registration,
     )

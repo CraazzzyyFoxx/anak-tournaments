@@ -87,6 +87,9 @@ async def _seed(session):
     tournament = Tournament(
         workspace_id=ws.id,
         name=f"Preview Access Tournament {suffix}",
+        # NOT NULL and globally unique; production writes go through
+        # `generate_unique_tournament_slug`, which this factory bypasses.
+        slug=f"pa-{suffix}",
         status=enums.TournamentStatus.DRAFT,
         is_hidden=True,
     )
