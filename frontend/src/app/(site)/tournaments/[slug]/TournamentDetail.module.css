@@ -412,6 +412,82 @@
   min-width: 0;
 }
 
+/* ── Section vocabulary (wireframes §11, "broadcast scoreboard") ──
+   A block is a mono eyebrow over a hairline, never a framed card: the page
+   already sits inside the hero's frame and the site's chrome, and a third
+   border around every list is what made the sections read as a dashboard.
+   The eyebrow (`ROUND 2 · BO5`, `MAP POOL · 12`) is the page's recognisable
+   anchor, so it is the same class wherever a block starts. */
+.block {
+  min-width: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--aqt-border);
+}
+
+.blockHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.blockTitle {
+  margin: 0;
+  font-family: var(--aqt-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--aqt-fg-faint);
+}
+
+/* A figure: label above, the number in the display face — the number is what
+   the block is for, so it is the largest thing in it. */
+.figure {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.figureLabel {
+  font-family: var(--aqt-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--aqt-fg-faint);
+}
+
+.figureValue {
+  font-family: var(--aqt-display);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--aqt-fg);
+}
+
+.figureHint {
+  margin-inline-start: 0.35rem;
+  font-family: var(--aqt-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--aqt-fg-faint);
+}
+
+/* Score in a match row: the display face, heavier and larger than the team
+   names beside it (§11: "score larger than the name"). */
+.score {
+  font-family: var(--aqt-display);
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The bracket canvas is intrinsically wider than any viewport. It owns its own
    horizontal scroll so the page never scrolls sideways; the caller marks it as
    a focusable labelled region so keyboard users can reach that scroll.

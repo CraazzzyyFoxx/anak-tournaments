@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
+import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
@@ -9,6 +9,7 @@ import { withReturnTo } from "@/lib/return-to";
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 
+import styles from "../TournamentDetail.module.css";
 import { isEncounterCompleted } from "./MatchCard";
 
 export type MatchRowProps = {
@@ -17,7 +18,7 @@ export type MatchRowProps = {
   leading: string;
   /** Mono trailing cell: "Group B · Bo2", "Lower R4 · Bo3". */
   trailing?: string;
-  /** Bracket node for this match; renders a "⤴ bracket" link when given. */
+  /** Bracket node for this match; renders a labelled "open in bracket" link when given. */
   bracketHref?: string;
   /** This page's own location, so the pre-game room can send viewers back. */
   returnTo: string;
@@ -49,7 +50,7 @@ export function MatchRow({
   const summary = (
     <div
       className={cn(
-        "grid grid-cols-[minmax(4.5rem,auto)_minmax(0,1fr)_5rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-2 text-sm sm:gap-3",
+        "grid grid-cols-[minmax(4.5rem,auto)_minmax(0,1fr)_5.5rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-2 text-sm sm:gap-3",
         className
       )}
     >
@@ -57,12 +58,12 @@ export function MatchRow({
       <span className={cn("flex min-w-0 justify-end", winner === "home" && "font-semibold", winner === "away" && "text-[color:var(--aqt-fg-dim)]")}>
         <TeamName team={encounter.home_team} fallback={t("common.tbd")} size="xs" reverse />
       </span>
-      <span className="text-center font-semibold tabular-nums">
+      <span className={cn(styles.score, "text-center")}>
         {hasScore ? (
           <>
-            <span className={cn(winner === "home" && "text-[color:var(--aqt-teal)]")}>{home}</span>
-            <span className="text-[color:var(--aqt-fg-faint)]"> – </span>
-            <span className={cn(winner === "away" && "text-[color:var(--aqt-teal)]")}>{away}</span>
+            <span className={cn(winner === "home" ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]")}>{home}</span>
+            <span className="mx-1 font-normal text-[color:var(--aqt-fg-faint)]">–</span>
+            <span className={cn(winner === "away" ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]")}>{away}</span>
           </>
         ) : (
           <span className="font-mono text-[11px] font-normal uppercase text-[color:var(--aqt-fg-faint)]">vs</span>
@@ -76,10 +77,11 @@ export function MatchRow({
         {bracketHref ? (
           <Link
             href={bracketHref}
-            className="hover:text-[color:var(--aqt-teal)]"
+            className="inline-flex hover:text-[color:var(--aqt-teal)]"
             aria-label={t("tournamentDetail.matchRow.openInBracket")}
+            title={t("tournamentDetail.matchRow.openInBracket")}
           >
-            ⤴
+            <ArrowUpRight className="size-3.5" aria-hidden />
           </Link>
         ) : null}
         {expandable ? (
@@ -100,8 +102,8 @@ export function MatchRow({
       <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)]">
         {summary}
       </summary>
-      <div className="mb-2 ml-[4.5rem] mr-2 rounded-md border border-dashed border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2 text-xs">
-        <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_4rem_4rem_auto] gap-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+      <div className="mb-2 ml-2 mr-2 border-l-2 border-[color:var(--aqt-border)] py-1 pl-3 text-xs sm:ml-[5.5rem]">
+        <div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] gap-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
           <span>{t("tournamentDetail.matchRow.map")}</span>
           <span>{t("tournamentDetail.matchRow.mode")}</span>
           <span className="text-right">{t("tournamentDetail.matchRow.score")}</span>
@@ -111,7 +113,7 @@ export function MatchRow({
         {maps.map((map) => (
           <div
             key={map.id}
-            className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_4rem_4rem_auto] items-center gap-2 py-1"
+            className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] items-center gap-2 py-1"
           >
             <span className="truncate font-semibold">{map.map?.name ?? "—"}</span>
             <span className="truncate text-[color:var(--aqt-fg-muted)]">{map.map?.gamemode?.name ?? "—"}</span>

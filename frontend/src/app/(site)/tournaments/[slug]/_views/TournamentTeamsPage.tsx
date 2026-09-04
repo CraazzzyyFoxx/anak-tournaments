@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, LayoutGrid, List } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Tournament } from "@/types/tournament.types";
@@ -14,7 +14,7 @@ import teamService from "@/services/team.service";
 import { TournamentTeamCard } from "@/components/TournamentTeamCard";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import TeamName from "@/components/TeamName";
+import { TeamLogo } from "@/components/TeamName";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
 import {
@@ -192,6 +192,28 @@ function rosterSlots(tournament: Tournament, team: Team): { role: string; player
   });
 }
 
+/**
+ * The list's column tracks: seed · logo slot · name · AVG SR · [role glyphs] ·
+ * W–L · chevron. The logo track is always reserved so names align whether or
+ * not a team uploaded an image (`TeamLogo` renders nothing without one). The
+ * glyph track exists only for a shape with role slots — an all-flex roster
+ * would show five identical glyphs, which says nothing.
+ */
+function listGrid(withRoles: boolean): string {
+  return cn(
+    "grid items-center gap-2 sm:gap-3",
+    "grid-cols-[2rem_1.25rem_minmax(0,1fr)_3.5rem_2.75rem_1.25rem]",
+    withRoles
+      ? "sm:grid-cols-[2.5rem_1.25rem_minmax(0,1fr)_4rem_auto_3.5rem_1.25rem]"
+      : "sm:grid-cols-[2.5rem_1.25rem_minmax(0,1fr)_4rem_3.5rem_1.25rem]"
+  );
+}
+
+/** Role · battletag · division+SR · notes. The name track is capped so the
+ *  division does not drift to the far edge of a wide row. */
+const ROSTER_GRID =
+  "grid grid-cols-[3rem_minmax(0,16rem)_6rem_minmax(0,1fr)] items-center gap-2";
+
 const TeamRosterRow = ({
   player,
   tournament,
@@ -205,9 +227,12 @@ const TeamRosterRow = ({
   const workspaceGrid = useDivisionGrid();
   const grid = tournament.division_grid_version ?? workspaceGrid;
   const name = player.name;
+  const role = normalizePlayerRole(player.role);
   const notes = [
     formatSubRoleLabel(player.sub_role),
-    player.is_newcomer_role ? t("teams.roster.newcomerRole") : null,
+    // "New role" is a fact about a role: a flex player has none to be new to,
+    // and in a flex tournament the flag is set on everyone.
+    player.is_newcomer_role && role !== "Flex" ? t("teams.roster.newcomerRole") : null,
     player.is_newcomer ? t("teams.roster.newcomer") : null
   ].filter(Boolean);
 
@@ -217,9 +242,9 @@ const TeamRosterRow = ({
   // request per user — a hundred requests for one expanded roster. The column
   // is therefore absent rather than filled with a placeholder.
   return (
-    <div className="grid grid-cols-[3rem_minmax(0,1fr)_4.5rem_3rem_minmax(0,6rem)] items-center gap-2 py-1">
+    <div className={cn(ROSTER_GRID, "py-1")}>
       <span className="aqt-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
-        {normalizePlayerRole(player.role)}
+        {role}
       </span>
       <Link
         href={`/users/${getPlayerSlug(name)}`}
@@ -232,19 +257,19 @@ const TeamRosterRow = ({
           name
         )}
       </Link>
-      <span className="flex items-center gap-1">
+      {/* Division as its icon (the tier name in `title`) beside the SR — one
+          cell, so neither can run into the other. */}
+      <span
+        className="flex items-center gap-1.5"
+        title={getDivisionLabel(grid, player.division) ?? undefined}
+      >
         <DivisionIcon
           division={player.division}
-          width={20}
-          height={20}
+          width={18}
+          height={18}
           tournamentGrid={tournament.division_grid_version}
         />
-        <span className="aqt-mono text-[10px] text-[color:var(--aqt-fg-muted)]">
-          {getDivisionLabel(grid, player.division) ?? ""}
-        </span>
-      </span>
-      <span className="tabular-nums text-[11px] text-[color:var(--aqt-fg-muted)]">
-        {player.rank}
+        <span className="aqt-tnum text-[11px] text-[color:var(--aqt-fg-muted)]">{player.rank}</span>
       </span>
       <span className="truncate text-[11px] text-[color:var(--aqt-fg-dim)]">
         {notes.join(" · ")}
@@ -272,7 +297,8 @@ const TeamListRow = ({
   needle: string;
 }) => {
   const t = useTranslations();
-  const slots = rosterSlots(tournament, team);
+  const withRoles = tournament.roster_shape?.has_role_slots ?? true;
+  const slots = withRoles ? rosterSlots(tournament, team) : [];
   const subtitle = [
     team.group?.name ? t("teams.groupLabel", { name: team.group.name }) : null,
     team.placement === 1 ? t("tournamentDetail.teams.champion") : null
@@ -281,33 +307,38 @@ const TeamListRow = ({
   return (
     <details className="group border-b border-[color:var(--aqt-border)]/60">
       <summary className="cursor-pointer list-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)] [&::-webkit-details-marker]:hidden">
-        <div className="grid grid-cols-[2rem_minmax(0,1fr)_3.5rem_2.75rem_1.25rem] items-center gap-2 px-2 py-2 text-sm sm:grid-cols-[2.5rem_minmax(0,1fr)_4rem_auto_3.5rem_1.25rem] sm:gap-3">
+        <div className={cn(listGrid(withRoles), "px-2 py-2 text-sm")}>
           <span className="aqt-mono tabular-nums text-[11px] text-[color:var(--aqt-fg-faint)]">
             {team.placement != null ? `#${team.placement}` : ""}
           </span>
+          <span className="inline-flex size-5 items-center justify-center">
+            <TeamLogo team={team} size="sm" />
+          </span>
           <span className="flex min-w-0 flex-col">
-            <TeamName team={team} size="sm" />
+            <span className="truncate font-medium" title={team.name}>
+              {team.name}
+            </span>
             {subtitle.length > 0 ? (
               <span className="truncate text-[11px] text-[color:var(--aqt-fg-dim)]">
                 {subtitle.join(" · ")}
               </span>
             ) : null}
           </span>
-          <span className="tabular-nums text-[color:var(--aqt-fg-muted)]">
-            {team.avg_sr.toFixed(0)}
-          </span>
-          <span className="hidden items-center gap-0.5 sm:flex">
-            {slots.map((slot, index) => (
-              <span
-                key={index}
-                title={slot.player?.name ?? undefined}
-                className={cn("inline-flex", slot.player == null && "opacity-40")}
-              >
-                <PlayerRoleIcon role={slot.role} size={16} label={slot.player?.name ?? undefined} />
-              </span>
-            ))}
-          </span>
-          <span className="text-right tabular-nums text-[color:var(--aqt-fg-muted)]">
+          <span className="aqt-tnum text-[color:var(--aqt-fg-muted)]">{team.avg_sr.toFixed(0)}</span>
+          {withRoles ? (
+            <span className="hidden items-center gap-0.5 sm:flex">
+              {slots.map((slot, index) => (
+                <span
+                  key={index}
+                  title={slot.player?.name ?? undefined}
+                  className={cn("inline-flex", slot.player == null && "opacity-40")}
+                >
+                  <PlayerRoleIcon role={slot.role} size={16} label={slot.player?.name ?? undefined} />
+                </span>
+              ))}
+            </span>
+          ) : null}
+          <span className="aqt-tnum text-right text-[color:var(--aqt-fg-muted)]">
             {record ? `${record.won}–${record.lost}` : "—"}
           </span>
           <span className="flex justify-end">
@@ -318,12 +349,13 @@ const TeamListRow = ({
           </span>
         </div>
       </summary>
-      <div className="mb-2 ml-2 mr-2 rounded-md border border-dashed border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2 text-xs sm:ml-[2.5rem]">
-        <div className="grid grid-cols-[3rem_minmax(0,1fr)_4.5rem_3rem_minmax(0,6rem)] gap-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+      <div className="mb-2 ml-2 mr-2 border-l-2 border-[color:var(--aqt-border)] py-1 pl-3 text-xs sm:ml-[4.75rem]">
+        <div className={cn(ROSTER_GRID, "py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]")}>
           <span>{t("teams.roster.role")}</span>
           <span>{t("teams.roster.battleTag")}</span>
-          <span>{t("teams.roster.division")}</span>
-          <span>{t("tournamentDetail.teams.sr")}</span>
+          <span>
+            {t("teams.roster.division")} · {t("tournamentDetail.teams.sr")}
+          </span>
           <span />
         </div>
         {sortTeamPlayers(team.players).map((player) => (
@@ -375,6 +407,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
   const [storedView, setStoredView] = useState<TeamsView | null>(null);
   const narrow = useIsNarrowViewport();
+  const withRoles = tournament.roster_shape?.has_role_slots ?? true;
 
   // Post-hydration: the server has no localStorage, so reading it during
   // render would make the first client paint disagree with the markup.
@@ -471,8 +504,16 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                   param="view"
                   defaultValue={storedView ?? "list"}
                   options={[
-                    { value: "list", label: t("tournamentDetail.teams.viewList") },
-                    { value: "cards", label: t("tournamentDetail.teams.viewCards") }
+                    {
+                      value: "list",
+                      label: <List aria-hidden width={14} height={14} />,
+                      ariaLabel: t("tournamentDetail.teams.viewList")
+                    },
+                    {
+                      value: "cards",
+                      label: <LayoutGrid aria-hidden width={14} height={14} />,
+                      ariaLabel: t("tournamentDetail.teams.viewCards")
+                    }
                   ]}
                   onChange={(next) => {
                     writeStoredView(next);
@@ -538,12 +579,20 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
               })}
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-[color:var(--aqt-border)]">
-              <div className="grid grid-cols-[2rem_minmax(0,1fr)_3.5rem_2.75rem_1.25rem] items-center gap-2 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)] sm:grid-cols-[2.5rem_minmax(0,1fr)_4rem_auto_3.5rem_1.25rem] sm:gap-3">
+            <div className="border-t border-[color:var(--aqt-border)]">
+              <div
+                className={cn(
+                  listGrid(withRoles),
+                  "border-b border-[color:var(--aqt-border)] px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]"
+                )}
+              >
                 <span>#</span>
+                <span />
                 <span>{t("tournamentDetail.teams.team")}</span>
                 <span>{t("teams.roster.avgSr")}</span>
-                <span className="hidden sm:block">{t("tournamentDetail.teams.rosterColumn")}</span>
+                {withRoles ? (
+                  <span className="hidden sm:block">{t("tournamentDetail.teams.rosterColumn")}</span>
+                ) : null}
                 <span className="text-right">{t("tournamentDetail.teams.record")}</span>
                 <span />
               </div>

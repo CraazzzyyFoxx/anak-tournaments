@@ -8,6 +8,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   buildRoundGroups,
+  orderEliminationRounds,
   stageFinalRounds,
   type RoundGroup
 } from "@/components/bracket-view.helpers";
@@ -32,7 +33,7 @@ import { MatchCard, isEncounterCompleted, isEncounterLive } from "../_components
 import { MatchRow } from "../_components/MatchRow";
 import { PhaseTimeline } from "../_components/PhaseTimeline";
 import { Podium, type PodiumTeam } from "../_components/Podium";
-import { formatLabel } from "../_components/TournamentClientLayout";
+import { formatLabel, tournamentPlayersCount } from "../_components/TournamentClientLayout";
 import { TournamentPageState } from "../_components/TournamentPageState";
 import { TournamentOverviewSkeleton } from "../_components/TournamentSkeletons";
 import { UpdatingBadge } from "../_components/UpdatingBadge";
@@ -205,11 +206,13 @@ export function tournamentDaySpan(start: Date | string, end: Date | string): num
   return days > 0 ? days : null;
 }
 
+/** The champion's roster as one line — names only, the `#1234` is noise here (§3C). */
 function rosterBattletags(team: Team | null | undefined): string {
   const players = team?.players ?? [];
   return players
     .map((player) => player.name)
     .filter((name): name is string => typeof name === "string" && name.length > 0)
+    .map((name) => name.split("#")[0])
     .join(" · ");
 }
 
@@ -217,28 +220,30 @@ function rosterBattletags(team: Team | null | undefined): string {
 // Small shared surfaces
 // ---------------------------------------------------------------------------
 
+/**
+ * One block of the overview: a mono eyebrow over a hairline (wireframes §11),
+ * not a framed card — see `.block` in the module CSS for why.
+ */
 function OverviewCard({
   title,
   action,
   id,
-  flush = false,
   children
 }: Readonly<{
   title?: string;
   action?: React.ReactNode;
   id?: string;
-  flush?: boolean;
   children: React.ReactNode;
 }>) {
   return (
-    <section className="aqt-card-surface scroll-mt-28" id={id}>
-      {title ? (
-        <div className="aqt-card-head">
-          <h2 className="aqt-card-title">{title}</h2>
+    <section className={cn(styles.block, "scroll-mt-28")} id={id}>
+      {title || action ? (
+        <div className={styles.blockHead}>
+          {title ? <h2 className={styles.blockTitle}>{title}</h2> : <span />}
           {action}
         </div>
       ) : null}
-      <div className={cn("aqt-card-body", flush && "aqt-flush")}>{children}</div>
+      {children}
     </section>
   );
 }
@@ -260,17 +265,11 @@ function StatTile({
   hint
 }: Readonly<{ label: string; value: string; hint?: string }>) {
   return (
-    <div className="rounded-md border border-[color:var(--aqt-border)] px-2.5 py-2">
-      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
-        {label}
-      </div>
-      <div className="aqt-tnum text-lg font-semibold leading-tight">
+    <div className={styles.figure}>
+      <div className={styles.figureLabel}>{label}</div>
+      <div className={styles.figureValue}>
         {value}
-        {hint ? (
-          <span className="ml-1 text-[11px] font-normal text-[color:var(--aqt-fg-faint)]">
-            {hint}
-          </span>
-        ) : null}
+        {hint ? <span className={styles.figureHint}>{hint}</span> : null}
       </div>
     </div>
   );
@@ -383,7 +382,17 @@ export default function TournamentOverviewPage({
       stageId === null ? [] : encounters.filter((encounter) => encounter.stage_id === stageId),
     [encounters, stageId]
   );
-  const roundGroups = useMemo(() => buildRoundGroups(stageEncounters), [stageEncounters]);
+  // Play order (upper → lower → finals), so the window ends on the decider at
+  // the right — `buildRoundGroups` interleaves by depth and would put the
+  // grand final in the middle of the lower bracket.
+  const stageType = stage?.stage_type;
+  const roundGroups = useMemo(
+    () =>
+      stageType !== undefined && ELIMINATION_TYPES[stageType] === true
+        ? orderEliminationRounds(stageEncounters, stageType).groups
+        : buildRoundGroups(stageEncounters),
+    [stageEncounters, stageType]
+  );
   // Per stage, because "Latest results" spans stages: a group stage's highest
   // round is not a Grand Final, and naming it one would contradict the bracket.
   const finalRoundsByStage = useMemo(() => {
@@ -472,7 +481,7 @@ export default function TournamentOverviewPage({
 
   const overviewHref = `/tournaments/${slug}`;
   const teamsCount = tournament.teams_count ?? 0;
-  const playersCount = tournament.participants_count ?? tournament.registrations_count ?? 0;
+  const playersCount = tournamentPlayersCount(tournament);
 
   // ---- shared right-column blocks -----------------------------------------
 
@@ -757,7 +766,7 @@ export default function TournamentOverviewPage({
     .slice(0, 4);
 
   const matchRows = (rows: Encounter[], withTime: boolean) => (
-    <div className="-mx-[18px] -mb-[18px]">
+    <div>
       {rows.map((encounter) => (
         <MatchRow
           key={encounter.id}

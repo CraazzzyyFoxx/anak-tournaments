@@ -138,6 +138,48 @@ export function getDoubleEliminationFinalRounds(encounters: BracketMatch[]): Set
   return new Set(getFinalRounds(true, [...matchesPerRound.keys()], matchesPerRound));
 }
 
+export interface EliminationRoundOrder {
+  /** Rounds in the order the bracket plays them: upper, lower, then the finals. */
+  groups: RoundGroup[];
+  /** The bracket's own match numbering (M1 … Mn) over the same order. */
+  matchNumbers: Map<number, number>;
+  /** Signed rounds the Grand Final (and its reset) occupy, ascending. */
+  finalRounds: number[];
+}
+
+/**
+ * An elimination stage's rounds in play order. `buildRoundGroups` interleaves
+ * upper and lower rounds by depth (1, -1, 2, -2, …), which is right for laying
+ * the two brackets side by side and wrong for anything that reads rounds as a
+ * sequence: the lower final (round -4) is played before the grand final
+ * (round 3), and no comparison of signed round numbers says so. The match
+ * numbering does, so the sequence is the numbering's.
+ */
+export function orderEliminationRounds(
+  encounters: BracketMatch[],
+  stageType: StageType | undefined
+): EliminationRoundOrder {
+  const finals =
+    stageType === "double_elimination"
+      ? getDoubleEliminationFinalRounds(encounters)
+      : new Set<number>();
+  const upper = buildRoundGroups(
+    encounters.filter((match) => match.round > 0 && !finals.has(match.round))
+  );
+  const lower = buildRoundGroups(encounters.filter((match) => match.round < 0));
+  const finalGroups = buildRoundGroups(
+    encounters.filter((match) => match.round > 0 && finals.has(match.round))
+  );
+  const matchNumbers = computeMatchNumbers(upper, lower, finalGroups);
+  const rank = (group: RoundGroup) =>
+    Math.max(...group.matches.map((match) => matchNumbers.get(match.id) ?? 0));
+  return {
+    groups: [...upper, ...lower, ...finalGroups].sort((left, right) => rank(left) - rank(right)),
+    matchNumbers,
+    finalRounds: [...finals].sort((left, right) => left - right)
+  };
+}
+
 /** The encounter fields `stageFinalRounds` reads. */
 export interface StageScopedRound {
   stage_id: number | null;

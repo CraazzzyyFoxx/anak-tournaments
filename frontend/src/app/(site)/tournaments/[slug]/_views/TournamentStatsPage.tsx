@@ -299,9 +299,9 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
           description={t("tournamentDetail.stats.maps.emptyDescription")}
         />
       ) : (
-        // `.tn-card` carries the surface but no padding, and the table owns its
-        // own horizontal scroller inside it.
-        <div className="tn-card p-4">
+        // No card: the table sits on the page like the match list does (§11),
+        // with its own horizontal scroller inside.
+        <div className="border-t border-[color:var(--aqt-border)] pt-3">
           <MapPool
             id="map-pool"
             pool={mapPool.pool}

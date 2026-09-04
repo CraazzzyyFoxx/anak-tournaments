@@ -440,7 +440,7 @@ describe("before the tournament starts (§3A)", () => {
     const phases = container.querySelector("#phases");
     expect(phases).not.toBeNull();
     // First block on the page: the phases are the content, not context.
-    const cards = Array.from(container.querySelectorAll("section.aqt-card-surface"));
+    const cards = Array.from(container.querySelectorAll("section[aria-label] section"));
     expect(cards[0]?.id).toBe("phases");
     expect(phases?.textContent).toContain(en.common.statusBadge.check_in);
   });

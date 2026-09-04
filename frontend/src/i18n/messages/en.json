@@ -2043,6 +2043,7 @@
       "matchedPlayers": "Matched:"
     },
     "bracketRegion": "Bracket — scroll horizontally to see all rounds",
+    "stageTabsLabel": "Tournament stage",
     "sortTeams": "Sort teams",
     "rankHistory": "Rank history",
     "allFieldsVisible": "All fields visible in table",
@@ -2101,11 +2102,7 @@
       "flexTitle": "Plays several roles, so appears in each of them: {roles}",
       "more": "… {count} more",
       "withdrawn": "{count, plural, one {# withdrew} other {# withdrew}}",
-      "resultCount": "{count, plural, one {# player in the pool} other {# players in the pool}}",
-      "teamsFormed": {
-        "title": "Teams are formed — the roster below is the registration pool.",
-        "action": "Teams"
-      }
+      "resultCount": "{count, plural, one {# player in the pool} other {# players in the pool}}"
     },
     "publicPages": {
       "matches": {
@@ -2119,8 +2116,7 @@
         "title": "Phase schedule",
         "startsRelative": "Starts {relative}",
         "closesRelative": "Closes {relative}",
-        "windowHint": "A closing time ends that phase's own actions — check-in, for example. It does not move the tournament to the next phase.",
-        "manualHint": "Automatic phase transitions are off, so these times are the organizer's plan rather than a promise."
+        "closed": "Closed"
       },
       "standings": {
         "tableLabel": "Tournament standings. Scroll horizontally for all ranking metrics."

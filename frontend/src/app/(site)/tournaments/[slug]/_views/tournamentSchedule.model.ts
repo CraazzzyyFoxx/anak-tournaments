@@ -46,6 +46,13 @@ export type PhaseSegment = {
   countdownTo: "start" | "close" | null;
   /** Elapsed fraction (0..1) of a current segment with a closed window. */
   progress: number | null;
+  /**
+   * The phase is current but its action window has already closed — the
+   * tournament waits for the next phase. Registration is the usual case: the
+   * status stays `registration` until check-in starts, but nobody can register.
+   * The view must not paint such a phase as "now".
+   */
+  windowClosed: boolean;
 };
 
 export type TournamentScheduleModel = {
@@ -114,7 +121,8 @@ export function buildTournamentSchedule({
       endsAt: row.ends_at,
       countdownMs: null,
       countdownTo: null,
-      progress: null
+      progress: null,
+      windowClosed: false
     });
   }
 
@@ -137,6 +145,7 @@ export function buildTournamentSchedule({
         current.countdownTo = "close";
       }
     }
+    current.windowClosed = endsAt !== null && endsAt <= now;
   }
 
   if (current?.countdownMs == null) {

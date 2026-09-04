@@ -60,6 +60,21 @@ describe("buildTournamentSchedule", () => {
     ).toEqual(["registration", "draft", "live"]);
   });
 
+  it("flags a current phase whose window has closed, and hands the countdown to the next", () => {
+    // Registration ran 10:00–18:00; at 18:30 the status is still registration.
+    const { segments } = buildTournamentSchedule({ tournament: tournament(), now: at(18, 30) });
+    const [registration, checkIn] = segments;
+
+    expect(registration.state).toBe("current");
+    expect(registration.windowClosed).toBe(true);
+    expect(registration.countdownMs).toBeNull();
+    expect(checkIn.countdownTo).toBe("start");
+
+    const open = buildTournamentSchedule({ tournament: tournament(), now: at(12) }).segments[0];
+    expect(open.windowClosed).toBe(false);
+    expect(open.countdownTo).toBe("close");
+  });
+
   it("derives segment state from the tournament status, not from the clock", () => {
     // The clock says check-in should have started two hours ago; the status says
     // the tournament never left registration. The status wins.

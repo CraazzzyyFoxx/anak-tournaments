@@ -188,6 +188,11 @@ export default class tournamentService {
           // the draft room rendered ladder divisions instead of the grid the
           // tournament is actually seeded and balanced on.
           "division_grid_version",
+          // Which seats the roster has. The teams list draws role glyphs only
+          // for a shape with role slots, and the overview's format card reads
+          // the slot line off it; without the entity the read says `null` and
+          // both fall back to per-player roles — meaningless in a flex event.
+          "roster_shape",
         ],
       },
     }).then((response) => response.json());

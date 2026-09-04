@@ -84,8 +84,8 @@ export function MatchCard({
         <TeamName team={team} fallback={t("common.tbd")} size={size === "sm" ? "xs" : "sm"} />
         <span
           className={cn(
-            "shrink-0 font-semibold tabular-nums",
-            size === "sm" ? "text-[13px]" : "text-[15px]",
+            "shrink-0 font-onest font-bold leading-none tabular-nums",
+            size === "sm" ? "text-[15px]" : "text-[19px]",
             won ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]"
           )}
         >
@@ -107,16 +107,20 @@ export function MatchCard({
       )}
       data-live={live || undefined}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
-        <span className="truncate">{eyebrow}</span>
-        {live ? (
-          <span className="status-pill live shrink-0" style={{ padding: "0 6px", fontSize: 10 }}>
-            <span aria-hidden className="dot" />
-            {t("common.live")}
-            {streamsCount ? ` · ${streamsCount}` : null}
-          </span>
-        ) : null}
-      </div>
+      {/* The mini tile sits under a column heading that already names the
+          round, so it carries no eyebrow of its own — only the live marker. */}
+      {size === "md" || live ? (
+        <div className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+          <span className="truncate">{size === "md" ? eyebrow : null}</span>
+          {live ? (
+            <span className="status-pill live shrink-0" style={{ padding: "0 6px", fontSize: 10 }}>
+              <span aria-hidden className="dot" />
+              {t("common.live")}
+              {streamsCount ? ` · ${streamsCount}` : null}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {row("home")}
       {row("away")}
       {size === "md" && encounter.matches?.length > 0 ? (

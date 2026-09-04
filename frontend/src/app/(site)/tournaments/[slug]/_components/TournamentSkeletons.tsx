@@ -83,32 +83,19 @@ export function TournamentShellSkeleton() {
     <SkeletonRegion variant="shell" message={t("common.loading")}>
       <div className="aqt-tn min-w-0 space-y-4">
         <PageHero
+          compact
+          align="start"
           eyebrow={<SkeletonBlock style={{ width: "14rem", height: "0.65rem" }} />}
-          title={<SkeletonBlock style={{ width: "min(32rem, 76vw)", height: "3rem" }} />}
+          title={<SkeletonBlock style={{ width: "min(28rem, 70vw)", height: "2rem" }} />}
           meta={
             <>
               <SkeletonBlock style={{ width: "5rem", height: "1.75rem" }} />
+              <SkeletonBlock style={{ width: "9rem", height: "1.75rem" }} />
               <SkeletonBlock style={{ width: "7rem", height: "1.75rem" }} />
               <SkeletonBlock style={{ width: "6rem", height: "1.75rem" }} />
             </>
           }
-          lede={
-            <span className="grid gap-2">
-              <SkeletonBlock style={{ width: "min(28rem, 74vw)", height: "0.7rem" }} />
-              <SkeletonBlock style={{ width: "min(21rem, 58vw)", height: "0.7rem" }} />
-            </span>
-          }
-          aside={
-            <div className="grid grid-cols-2 gap-x-7 gap-y-5 xl:grid-cols-4">
-              {Array.from({ length: 4 }, (_, index) => (
-                <div className="grid gap-2" key={index}>
-                  <SkeletonBlock style={{ width: "4rem", height: "0.55rem" }} />
-                  <SkeletonBlock style={{ width: "3rem", height: "2rem" }} />
-                  <SkeletonBlock style={{ width: "3.5rem", height: "0.55rem" }} />
-                </div>
-              ))}
-            </div>
-          }
+          lede={<SkeletonBlock style={{ width: "min(28rem, 74vw)", height: "0.7rem" }} />}
         />
 
         <div className={styles.navRegion} data-shell-region="tabs">

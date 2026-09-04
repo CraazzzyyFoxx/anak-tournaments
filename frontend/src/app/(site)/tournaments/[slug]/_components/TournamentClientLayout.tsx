@@ -22,7 +22,7 @@ import { TournamentRouteProvider } from "../_hooks/useTournamentId";
 import { useSyncActiveWorkspace } from "@/hooks/useSyncActiveWorkspace";
 import { useTournamentStreamRealtime } from "@/hooks/useTournamentStreamRealtime";
 import { useTournamentStreamsQuery } from "../_hooks/useTournamentStreams";
-import type { StageSummary } from "@/types/tournament.types";
+import type { StageSummary, Tournament } from "@/types/tournament.types";
 
 import { useTranslations, useLocale } from "next-intl";
 import TournamentSectionNav from "./TournamentSectionNav";
@@ -30,7 +30,6 @@ import { TournamentShellSkeleton } from "./TournamentSkeletons";
 import TournamentShellError from "../TournamentShellError";
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { buttonVariants } from "@/components/ui/button";
 
 type TournamentClientLayoutProps = {
   slug: string;
@@ -49,6 +48,21 @@ export function formatLabel(stages: StageSummary[], t: Translate): string {
   if (hasElim) return t("common.formatLabel.playoffBracket");
   if (hasGroup) return t("common.formatLabel.groupStage");
   return stages[0]?.stage_type?.replace(/_/g, " ") ?? "—";
+}
+
+/**
+ * The one "players" figure every surface of the page quotes. Registrations
+ * count while the field is still forming; once teams exist (`participants_count`
+ * is only populated then) the rostered players are the tournament's players —
+ * the header and the overview's numbers must not disagree by the withdrawn.
+ */
+export function tournamentPlayersCount(
+  tournament: Pick<Tournament, "participants_count" | "registrations_count" | "teams_count">
+): number {
+  const rostered = tournament.participants_count ?? 0;
+  return (tournament.teams_count ?? 0) > 0 && rostered > 0
+    ? rostered
+    : (tournament.registrations_count ?? 0);
 }
 
 /**
@@ -148,17 +162,44 @@ export default function TournamentClientLayout({
 
   const stages = tournament.stages;
   const teamsCount = tournament.teams_count ?? 0;
-  const registrations = tournament.registrations_count ?? 0;
+  const players = tournamentPlayersCount(tournament);
 
-  const statusVariant = getTournamentStatusMeta(tournament.status).variant;
   const isEnded = isTournamentStatusEnded(tournament.status);
-  const isLive = tournament.status === "live" || tournament.status === "playoffs";
+  const isLive = getTournamentStatusMeta(tournament.status).variant === "live";
   const overviewHref = `/tournaments/${tournament.slug}`;
-  // The draft room is an external route, so it is a header action rather than a
-  // rail tab. It appears once registration is over — before that there is no
-  // room to open.
+  // The draft room is an external route, so it cannot be a rail tab. It appears
+  // once registration is over — before that there is no room to open.
   const showDraftLink =
     tournament.team_formation === "draft" && tournament.status !== "registration";
+
+  // The cast must list every value the column can hold. It said
+  // `"balancer" | "draft"` while `team_formation` is a free string, so a
+  // "registration" tournament rendered the raw key path `common.registration`.
+  const formation = (
+    <>
+      <span className="k">{t("common.teamFormation")}</span>
+      <span className="v">
+        {t(
+          `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`
+        )}
+      </span>
+    </>
+  );
+  // The draft room hangs off the pill that already says the tournament IS a
+  // draft, rather than standing as a lone button on its own action row — for an
+  // ended tournament with no links that row held nothing else.
+  const formationPill = showDraftLink ? (
+    <Link
+      href={`/draft/${tournament.slug}`}
+      aria-label={t("common.draft")}
+      className="meta-pill no-underline transition-colors hover:border-[color:var(--aqt-teal)] hover:text-[color:var(--aqt-fg)]"
+    >
+      {formation}
+      <ExternalLink className="size-3" aria-hidden />
+    </Link>
+  ) : (
+    <span className="meta-pill">{formation}</span>
+  );
 
   const registerButton = !isEnded ? <TournamentRegisterButton tournament={tournament} /> : null;
   const nextPhaseChip = <NextPhaseChip tournament={tournament} href={`${overviewHref}#phases`} />;
@@ -180,6 +221,7 @@ export default function TournamentClientLayout({
       )}
       <div ref={heroRef}>
         <PageHero
+          compact
           align="start"
           eyebrow={
             <HeroCoord className="inline-flex flex-wrap items-center gap-2">
@@ -196,7 +238,10 @@ export default function TournamentClientLayout({
           title={tournament.name}
           meta={
             <>
-              <span className={cn("status-pill", statusVariant)}>
+              {/* Teal is the page's only accent and it means "now": the pill is
+                  coloured for a live tournament and neutral for every other
+                  status — the status word carries the meaning on its own. */}
+              <span className={cn("status-pill", isLive ? "live" : "neutral")}>
                 {isLive && <span className="dot" />}
                 {t(`common.statusBadge.${tournament.status}`)}
               </span>
@@ -208,25 +253,11 @@ export default function TournamentClientLayout({
                   <span className="v">{formatLabel(stages, t)}</span>
                 </span>
               ) : null}
-              <span className="meta-pill">
-                <span className="k">{t("common.teamFormation")}</span>
-                {/* The cast must list every value the column can hold. It said
-                    `"balancer" | "draft"` while `team_formation` is a free string,
-                    so a "registration" tournament rendered the raw key path
-                    `common.registration` in the badge. */}
-                <span className="v">
-                  {t(
-                    `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`,
-                  )}
-                </span>
-              </span>
+              {formationPill}
               <span className="meta-pill aqt-tnum">
                 {teamsCount > 0
-                  ? t("tournamentDetail.header.teamsAndPlayers", {
-                      teams: teamsCount,
-                      players: registrations
-                    })
-                  : t("tournamentDetail.header.players", { players: registrations })}
+                  ? t("tournamentDetail.header.teamsAndPlayers", { teams: teamsCount, players })
+                  : t("tournamentDetail.header.players", { players })}
               </span>
             </>
           }
@@ -243,15 +274,6 @@ export default function TournamentClientLayout({
           actions={
             <>
               {registerButton}
-              {showDraftLink ? (
-                <Link
-                  href={`/draft/${tournament.slug}`}
-                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
-                >
-                  {t("common.draft")}
-                  <ExternalLink className="size-3.5" aria-hidden />
-                </Link>
-              ) : null}
               <TournamentLinkChips links={tournament.links} />
             </>
           }

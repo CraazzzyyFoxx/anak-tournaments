@@ -3,7 +3,6 @@
 import { useFormatter, useTranslations } from "next-intl";
 
 import { useMinuteClock } from "@/hooks/useMinuteClock";
-import { getTournamentStatusMeta } from "@/lib/tournament-status";
 import { cn } from "@/lib/utils";
 import type { Tournament } from "@/types/tournament.types";
 
@@ -43,6 +42,10 @@ const STAMP = {
  * only decides how to draw the same segments in two orientations. Times are the
  * viewer's local time — the zone is named explicitly because next-intl's
  * default zone is the server's.
+ *
+ * Teal marks exactly one thing: the phase happening now. A current phase whose
+ * window has closed (registration over, check-in not yet open) is drawn in the
+ * neutral scale with a "closed" tag — the countdown then sits on the next phase.
  */
 export function PhaseTimeline({
   tournament,
@@ -60,7 +63,7 @@ export function PhaseTimeline({
   // disagree about an instant neither of them has.
   if (now === null) return null;
 
-  const { segments, automationOff } = buildTournamentSchedule({ tournament, now });
+  const { segments } = buildTournamentSchedule({ tournament, now });
   if (segments.length === 0) return null;
 
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -85,34 +88,32 @@ export function PhaseTimeline({
       : t("tournamentDetail.publicPages.schedule.startsRelative", { relative });
   };
 
-  const footnote =
-    automationOff || segments.some((segment) => segment.endsAt !== null) ? (
-      <div className="mt-3 space-y-1 text-xs text-[color:var(--aqt-fg-dim)]">
-        {segments.some((segment) => segment.endsAt !== null) ? (
-          <p className="max-w-[68ch] text-pretty">
-            {t("tournamentDetail.publicPages.schedule.windowHint")}
-          </p>
-        ) : null}
-        {automationOff ? (
-          <p className="max-w-[68ch] text-pretty">
-            {t("tournamentDetail.publicPages.schedule.manualHint")}
-          </p>
-        ) : null}
-      </div>
-    ) : null;
+  const isNow = (segment: PhaseSegment) => segment.state === "current" && !segment.windowClosed;
+  const label = (segment: PhaseSegment) => (
+    <>
+      {t(`common.statusBadge.${segment.status}`)}
+      {segment.windowClosed ? (
+        <span className="ml-1.5 font-mono text-[10px] font-normal uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+          {t("tournamentDetail.publicPages.schedule.closed")}
+        </span>
+      ) : null}
+    </>
+  );
 
   if (orientation === "horizontal") {
     return (
       <div id={id} className={cn("scroll-mt-28", className)}>
         <div className="mb-2 flex items-baseline justify-between gap-3">
-          <h2 className="aqt-card-title">{t("tournamentDetail.publicPages.schedule.title")}</h2>
+          <h2 className="aqt-mono text-[11px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]">
+            {t("tournamentDetail.publicPages.schedule.title")}
+          </h2>
           <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
             {zoneLabel}
           </span>
         </div>
         <ol className="grid auto-cols-fr grid-flow-col gap-1 overflow-x-auto" aria-label={t("tournamentDetail.publicPages.schedule.title")}>
           {segments.map((segment) => {
-            const meta = getTournamentStatusMeta(segment.status);
+            const now = isNow(segment);
             const startText = stamp(segment.startsAt);
             const endText = segment.endsAt === null ? null : clock24(segment.endsAt);
             const countdownText = countdown(segment);
@@ -122,24 +123,21 @@ export function PhaseTimeline({
                 aria-current={segment.state === "current" ? "step" : undefined}
                 className={cn(
                   "relative min-w-[9rem] border-t-[3px] px-3 pb-2 pt-2.5",
-                  segment.state === "upcoming"
-                    ? "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-dim)]"
-                    : segment.state === "done"
-                      ? "border-[color:var(--aqt-fg-faint)]"
-                      : "border-[color:var(--aqt-teal)] bg-[color:var(--aqt-overlay-1)]"
+                  now
+                    ? "border-[color:var(--aqt-teal)] bg-[color:var(--aqt-overlay-1)]"
+                    : segment.state === "upcoming"
+                      ? "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-dim)]"
+                      : "border-[color:var(--aqt-fg-faint)]"
                 )}
               >
-                {segment.state === "current" ? (
+                {now ? (
                   <span
                     aria-hidden
-                    className={cn(
-                      "absolute -top-[7px] left-3 size-[11px] rounded-full ring-[3px] ring-[color:var(--aqt-bg)]",
-                      meta.dotClassName
-                    )}
+                    className="absolute -top-[7px] left-3 size-[11px] rounded-full bg-[color:var(--aqt-teal)] ring-[3px] ring-[color:var(--aqt-bg)]"
                   />
                 ) : null}
-                <div className={cn("text-sm font-semibold", segment.state === "current" && meta.textClassName)}>
-                  {t(`common.statusBadge.${segment.status}`)}
+                <div className={cn("text-sm font-semibold", now && "text-[color:var(--aqt-teal)]")}>
+                  {label(segment)}
                 </div>
                 <div className="aqt-tnum mt-0.5 font-mono text-[11px] text-[color:var(--aqt-fg-muted)]">
                   {startText ? <time dateTime={segment.startsAt}>{startText}</time> : null}
@@ -152,7 +150,6 @@ export function PhaseTimeline({
             );
           })}
         </ol>
-        {footnote}
       </div>
     );
   }
@@ -161,7 +158,7 @@ export function PhaseTimeline({
     <div id={id} className={cn("scroll-mt-28", className)}>
       <ol aria-label={t("tournamentDetail.publicPages.schedule.title")}>
         {segments.map((segment, index) => {
-          const meta = getTournamentStatusMeta(segment.status);
+          const now = isNow(segment);
           const isLast = index === segments.length - 1;
           const startText = stamp(segment.startsAt);
           const countdownText = countdown(segment);
@@ -176,11 +173,11 @@ export function PhaseTimeline({
                   aria-hidden
                   className={cn(
                     "size-2.5 shrink-0 rounded-full",
-                    segment.state === "upcoming"
-                      ? "border border-[color:var(--aqt-border)]"
-                      : segment.state === "done"
-                        ? "bg-[color:var(--aqt-fg-faint)]"
-                        : cn(meta.dotClassName, "ring-[3px] ring-[color:var(--aqt-overlay-2)]")
+                    now
+                      ? "bg-[color:var(--aqt-teal)] ring-[3px] ring-[color:var(--aqt-overlay-2)]"
+                      : segment.state === "upcoming"
+                        ? "border border-[color:var(--aqt-border)]"
+                        : "bg-[color:var(--aqt-fg-faint)]"
                   )}
                 />
                 {isLast ? null : (
@@ -191,14 +188,14 @@ export function PhaseTimeline({
                 <span
                   className={cn(
                     "text-sm",
-                    segment.state === "current"
-                      ? cn("font-semibold", meta.textClassName)
+                    now
+                      ? "font-semibold text-[color:var(--aqt-teal)]"
                       : segment.state === "upcoming"
                         ? "text-[color:var(--aqt-fg-dim)]"
                         : "text-[color:var(--aqt-fg-muted)]"
                   )}
                 >
-                  {t(`common.statusBadge.${segment.status}`)}
+                  {label(segment)}
                 </span>
                 <span className="aqt-tnum font-mono text-[11px] text-[color:var(--aqt-fg-faint)]">
                   {countdownText ?? (startText ? <time dateTime={segment.startsAt}>{startText}</time> : null)}
@@ -208,7 +205,6 @@ export function PhaseTimeline({
           );
         })}
       </ol>
-      {footnote}
     </div>
   );
 }

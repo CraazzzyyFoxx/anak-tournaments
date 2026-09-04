@@ -1992,7 +1992,10 @@
   color: var(--amber);
   border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
 }
-.aqt-tn .status-pill.finished {
+/* `neutral`: the status word without a hue — for surfaces where colour is
+   reserved for "now" (the tournament page header). */
+.aqt-tn .status-pill.finished,
+.aqt-tn .status-pill.neutral {
   background: color-mix(in srgb, var(--fg-dim) 18%, transparent);
   color: var(--fg-muted);
   border: 1px solid var(--border-2);
@@ -2695,56 +2698,6 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
-/* Same drawing as `ToggleGroup variant="pill" size="sm"` (components/ui/toggle.tsx):
-   a 3px frame around 24px items = a 32px control, level with the search field
-   and the sort select beside it. Change both together. */
-.aqt-tn .stage-tabs {
-  display: flex;
-  gap: 4px;
-  background: var(--tn-card);
-  border: 1px solid var(--tn-border);
-  padding: 3px;
-  border-radius: 10px;
-  align-self: flex-start;
-}
-.aqt-tn .stage-tab {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  color: var(--fg-muted);
-  font-family: inherit;
-  font-weight: 600;
-  font-size: 12.5px;
-  height: 24px;
-  padding: 0 12px;
-  border-radius: 7px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transition: 0.15s;
-}
-.aqt-tn .stage-tab:hover {
-  color: var(--tn-fg);
-}
-.aqt-tn .stage-tab.active {
-  background: color-mix(in srgb, var(--teal) 14%, transparent);
-  color: var(--teal);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 30%, transparent);
-}
-.aqt-tn .stage-tab .count {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--fg-faint);
-  background: var(--aqt-overlay-3);
-  padding: 1px 6px;
-  border-radius: 4px;
-}
-.aqt-tn .stage-tab.active .count {
-  color: var(--teal);
-  background: color-mix(in srgb, var(--teal) 18%, transparent);
-}
-
 .aqt-tn .groups-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

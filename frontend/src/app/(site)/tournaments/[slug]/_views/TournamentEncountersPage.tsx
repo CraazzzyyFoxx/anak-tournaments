@@ -3,11 +3,12 @@
 import { usePathname } from "next/navigation";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useFormatter, useTranslations } from "next-intl";
+import { CalendarClock, ListOrdered } from "lucide-react";
 
 import {
   buildRoundGroups,
-  computeMatchNumbers,
   getDoubleEliminationFinalRounds,
+  orderEliminationRounds,
   type RoundGroup
 } from "@/components/bracket-view.helpers";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -162,17 +163,14 @@ type MatchBlock = {
  * One stage's rounds in reading order — final first — with the leading and
  * trailing mono cells of every row.
  *
- * Elimination stages are ordered by the bracket's OWN match numbering
- * (`computeMatchNumbers`), reversed. Round numbers cannot do it: a Grand Final
- * at round 3 and a lower-bracket final at round -4 carry no comparable
- * magnitude, and the bracket plays M9 (the lower final) before M10 (the grand
- * final) — which is what the numbering says and the round numbers do not.
+ * Elimination stages come from `orderEliminationRounds` reversed: the
+ * bracket's own match numbering is the only thing that knows the lower final
+ * (round -4) is played before the grand final (round 3).
  */
 function buildStageBlocks(
   stage: StageMeta,
   encounters: Encounter[],
   roundLabel: BracketRoundLabelFormatter,
-  groupWord: string,
   countLabel: (count: number) => string
 ): MatchBlock[] {
   const isElimination = IS_ELIMINATION[stage.type ?? ""] === true;
@@ -183,22 +181,10 @@ function buildStageBlocks(
   let matchNumbers = new Map<number, number>();
 
   if (isElimination) {
-    const finals =
-      stage.type === "double_elimination"
-        ? getDoubleEliminationFinalRounds(encounters)
-        : new Set<number>();
-    finalRoundList = [...finals].sort((left, right) => left - right);
-    const upper = buildRoundGroups(
-      encounters.filter((encounter) => encounter.round > 0 && !finals.has(encounter.round))
-    );
-    const lower = buildRoundGroups(encounters.filter((encounter) => encounter.round < 0));
-    const finalGroups = buildRoundGroups(
-      encounters.filter((encounter) => encounter.round > 0 && finals.has(encounter.round))
-    );
-    matchNumbers = computeMatchNumbers(upper, lower, finalGroups);
-    const rank = (group: RoundGroup) =>
-      Math.max(...group.matches.map((match) => matchNumbers.get(match.id) ?? 0));
-    groups = [...upper, ...lower, ...finalGroups].sort((left, right) => rank(right) - rank(left));
+    const order = orderEliminationRounds(encounters, stage.type);
+    groups = [...order.groups].reverse();
+    finalRoundList = order.finalRounds;
+    matchNumbers = order.matchNumbers;
   } else {
     groups = buildRoundGroups(encounters).sort((left, right) => right.round - left.round);
   }
@@ -216,14 +202,10 @@ function buildStageBlocks(
         rows.push({ encounter, leading: number == null ? bo : `M${number} · ${bo}` });
         continue;
       }
-      const name = encounter.stage_item?.name;
-      rows.push({
-        encounter,
-        leading: name ?? bo,
-        trailing: name
-          ? `${name.length <= 2 ? `${groupWord} ${name}` : name} · ${bo}`
-          : undefined
-      });
+      // Wireframe §7 ⑥: the group letter leads, the format trails. The round is
+      // in the heading and the group is already the leading cell, so the
+      // trailing cell says only what neither of them does.
+      rows.push({ encounter, leading: encounter.stage_item?.name ?? bo, trailing: bo });
     }
 
     return {
@@ -496,7 +478,6 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
             stage,
             rows.filter((encounter) => encounter.stage_id === stage.id),
             roundLabel,
-            groupWord,
             countLabel
           )
         )
@@ -591,8 +572,16 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
                   defaultValue="round"
                   label={t("tournamentDetail.matches.viewLabel")}
                   options={[
-                    { value: "round", label: t("tournamentDetail.matches.viewRound") },
-                    { value: "time", label: t("tournamentDetail.matches.viewTime") }
+                    {
+                      value: "round",
+                      label: <ListOrdered aria-hidden width={14} height={14} />,
+                      ariaLabel: t("tournamentDetail.matches.viewRound")
+                    },
+                    {
+                      value: "time",
+                      label: <CalendarClock aria-hidden width={14} height={14} />,
+                      ariaLabel: t("tournamentDetail.matches.viewTime")
+                    }
                   ]}
                 />
               ) : undefined
@@ -653,7 +642,10 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
               onReset={() => setParams({ stage: null, team: null, map: null })}
             />
           ) : (
-            <>
+            /* A scoreboard reads at a column's width. Stretched across a wide
+               viewport the two team names drift apart from the score they
+               belong to, so the list stops at roughly the wireframe's frame. */
+            <div className="max-w-[64rem]">
               {timeSections && timeSections.live.length > 0 ? (
                 <section aria-label={t("tournamentDetail.matches.now")}>
                   <h2 className={HEADING_CLASS}>{t("tournamentDetail.matches.now")}</h2>
@@ -676,7 +668,7 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
               {blocks.map((block) => (
                 <section key={block.key} aria-label={block.heading}>
                   <h2 className={HEADING_CLASS}>{block.heading}</h2>
-                  <div className="rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
+                  <div className="border-t border-[color:var(--aqt-border)]">
                     {block.rows.map((row) => (
                       <MatchRow
                         key={row.encounter.id}
@@ -690,7 +682,7 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
                   </div>
                 </section>
               ))}
-            </>
+            </div>
           )}
         </div>
       )}

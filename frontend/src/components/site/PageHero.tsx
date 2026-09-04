@@ -151,6 +151,12 @@ interface PageHeroProps {
   align?: "start" | "end" | "center";
   /** Banner image behind the hero — see `HeroFrameProps.coverUrl`. */
   coverUrl?: string | null;
+  /**
+   * Tight header for pages whose content starts right under it (a tournament's
+   * section rail): half the padding, a ~2rem title, single-line rhythm. The
+   * hero is then a header, not a landing block.
+   */
+  compact?: boolean;
 }
 
 export function PageHero({
@@ -165,12 +171,14 @@ export function PageHero({
   titleClassName,
   align = "end",
   coverUrl,
+  compact = false,
 }: Readonly<PageHeroProps>) {
   return (
     <HeroFrame className={className} coverUrl={coverUrl}>
       <div
         className={cn(
-          "grid gap-8 px-6 py-8 md:px-10 md:py-9",
+          "grid",
+          compact ? "gap-4 px-5 py-3.5 md:px-6 md:py-4" : "gap-8 px-6 py-8 md:px-10 md:py-9",
           aside && "lg:grid-cols-[1.5fr_1fr] lg:gap-12",
           align === "end" && "lg:items-end",
           align === "center" && "lg:items-center",
@@ -183,17 +191,27 @@ export function PageHero({
           ) : null}
           <h1
             className={cn(
-              "aqt-hero-title mt-4 font-onest text-[clamp(2rem,4.6vw,3.5rem)] font-semibold leading-[1.03] tracking-[-0.01em] text-[color:var(--aqt-fg)]",
+              "aqt-hero-title font-onest font-semibold leading-[1.03] tracking-[-0.01em] text-[color:var(--aqt-fg)]",
+              compact
+                ? "mt-2 text-[clamp(1.5rem,2.4vw,2rem)]"
+                : "mt-4 text-[clamp(2rem,4.6vw,3.5rem)]",
               titleClassName
             )}
           >
             {title}
           </h1>
           {meta ? (
-            <div className="mt-4 flex flex-wrap items-center gap-2">{meta}</div>
+            <div className={cn("flex flex-wrap items-center gap-2", compact ? "mt-2.5" : "mt-4")}>
+              {meta}
+            </div>
           ) : null}
           {lede ? (
-            <p className="mt-5 max-w-[34rem] text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
+            <p
+              className={cn(
+                "max-w-[34rem] text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]",
+                compact ? "mt-2.5 max-w-[48rem]" : "mt-5"
+              )}
+            >
               {lede}
             </p>
           ) : null}
@@ -202,7 +220,14 @@ export function PageHero({
                each decide whether they render — an ended tournament with no links
                passes a truthy node that emits nothing, and the margin alone would
                leave a 24px hole under the lede. */
-            <div className="mt-6 flex flex-wrap items-center gap-2.5 empty:hidden">{actions}</div>
+            <div
+              className={cn(
+                "flex flex-wrap items-center gap-2.5 empty:hidden",
+                compact ? "mt-2.5" : "mt-6"
+              )}
+            >
+              {actions}
+            </div>
           ) : null}
           {stamp ? (
             <div className="mt-7 flex flex-wrap gap-x-8 gap-y-3">{stamp}</div>
