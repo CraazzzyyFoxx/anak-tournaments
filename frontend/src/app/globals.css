@@ -1992,10 +1992,7 @@
   color: var(--amber);
   border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
 }
-/* `neutral`: the status word without a hue — for surfaces where colour is
-   reserved for "now" (the tournament page header). */
-.aqt-tn .status-pill.finished,
-.aqt-tn .status-pill.neutral {
+.aqt-tn .status-pill.finished {
   background: color-mix(in srgb, var(--fg-dim) 18%, transparent);
   color: var(--fg-muted);
   border: 1px solid var(--border-2);

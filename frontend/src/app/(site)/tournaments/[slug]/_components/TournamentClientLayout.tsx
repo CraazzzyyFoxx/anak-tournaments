@@ -165,7 +165,8 @@ export default function TournamentClientLayout({
   const players = tournamentPlayersCount(tournament);
 
   const isEnded = isTournamentStatusEnded(tournament.status);
-  const isLive = getTournamentStatusMeta(tournament.status).variant === "live";
+  const statusVariant = getTournamentStatusMeta(tournament.status).variant;
+  const isLive = statusVariant === "live";
   const overviewHref = `/tournaments/${tournament.slug}`;
   // The draft room is an external route, so it cannot be a rail tab. It appears
   // once registration is over — before that there is no room to open.
@@ -238,10 +239,10 @@ export default function TournamentClientLayout({
           title={tournament.name}
           meta={
             <>
-              {/* Teal is the page's only accent and it means "now": the pill is
-                  coloured for a live tournament and neutral for every other
-                  status — the status word carries the meaning on its own. */}
-              <span className={cn("status-pill", isLive ? "live" : "neutral")}>
+              {/* The status pill keeps the site-wide status colours (the same
+                  ones the tournaments list uses), so a reader coming from the
+                  list meets the same signal here. */}
+              <span className={cn("status-pill", statusVariant)}>
                 {isLive && <span className="dot" />}
                 {t(`common.statusBadge.${tournament.status}`)}
               </span>
