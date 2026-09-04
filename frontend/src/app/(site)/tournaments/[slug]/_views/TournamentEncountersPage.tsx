@@ -51,7 +51,7 @@ const IS_ELIMINATION: Record<string, true> = {
 };
 
 const HEADING_CLASS =
-  "aqt-mono mb-1 mt-4 text-[11px] uppercase tracking-[.06em] text-[color:var(--aqt-fg-faint)]";
+  "aqt-mono mb-1 mt-5 text-[12px] uppercase tracking-[.06em] text-[color:var(--aqt-fg-faint)]";
 
 /**
  * Every encounter of the tournament, with the maps of each series.

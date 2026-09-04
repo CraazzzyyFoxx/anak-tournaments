@@ -104,7 +104,7 @@ export function PhaseTimeline({
     return (
       <div id={id} className={cn("scroll-mt-28", className)}>
         <div className="mb-2 flex items-baseline justify-between gap-3">
-          <h2 className="aqt-mono text-[11px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]">
+          <h2 className="aqt-mono text-[12px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]">
             {t("tournamentDetail.publicPages.schedule.title")}
           </h2>
           <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
@@ -138,15 +138,15 @@ export function PhaseTimeline({
                     className="absolute -top-[7px] left-3 size-[11px] rounded-full bg-[color:var(--aqt-teal)] ring-[3px] ring-[color:var(--aqt-bg)]"
                   />
                 ) : null}
-                <div className={cn("text-sm font-semibold", now && "text-[color:var(--aqt-teal)]")}>
+                <div className={cn("text-[15px] font-semibold", now && "text-[color:var(--aqt-teal)]")}>
                   {label(segment)}
                 </div>
-                <div className="aqt-tnum mt-0.5 font-mono text-[11px] text-[color:var(--aqt-fg-muted)]">
+                <div className="aqt-tnum mt-0.5 font-mono text-[12px] text-[color:var(--aqt-fg-muted)]">
                   {startText ? <time dateTime={segment.startsAt}>{startText}</time> : null}
                   {endText ? <> – <time dateTime={segment.endsAt ?? undefined}>{endText}</time></> : null}
                 </div>
                 {countdownText ? (
-                  <div className="aqt-tnum mt-0.5 text-xs text-[color:var(--aqt-teal)]">{countdownText}</div>
+                  <div className="aqt-tnum mt-1 text-[13px] text-[color:var(--aqt-teal)]">{countdownText}</div>
                 ) : null}
               </li>
             );
@@ -199,7 +199,7 @@ export function PhaseTimeline({
                 >
                   {label(segment)}
                 </span>
-                <span className="aqt-tnum font-mono text-[11px] text-[color:var(--aqt-fg-faint)]">
+                <span className="aqt-tnum font-mono text-[12px] text-[color:var(--aqt-fg-faint)]">
                   {countdownText ?? (startText ? <time dateTime={segment.startsAt}>{startText}</time> : null)}
                 </span>
               </div>

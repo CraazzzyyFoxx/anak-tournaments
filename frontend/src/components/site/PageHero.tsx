@@ -193,7 +193,7 @@ export function PageHero({
             className={cn(
               "aqt-hero-title font-onest font-semibold leading-[1.03] tracking-[-0.01em] text-[color:var(--aqt-fg)]",
               compact
-                ? "mt-2 text-[clamp(1.5rem,2.4vw,2rem)]"
+                ? "mt-2 text-[clamp(1.75rem,2.6vw,2.25rem)]"
                 : "mt-4 text-[clamp(2rem,4.6vw,3.5rem)]",
               titleClassName
             )}

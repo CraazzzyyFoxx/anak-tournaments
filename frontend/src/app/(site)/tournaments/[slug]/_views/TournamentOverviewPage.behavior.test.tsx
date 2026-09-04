@@ -466,6 +466,17 @@ describe("before the tournament starts (§3A)", () => {
 
     expect(headings()).toContain(COPY.format.title);
     expect(container.textContent).toContain("Players may swap roles between matches.");
+    // The roster shape reads as role glyphs (1 tank, 2 dps, 2 support), each
+    // announced by its slot name — not as "1 × Tank · 2 × DPS".
+    const glyphs = Array.from(container.querySelectorAll('[role="img"]')).map((node) =>
+      node.getAttribute("aria-label")
+    );
+    expect(glyphs).toContain(en.rosterShape.slotCodes.tank);
+    expect(glyphs).toContain(en.rosterShape.slotCodes.dps);
+    expect(glyphs).toContain(en.rosterShape.slotCodes.support);
+    expect(container.textContent).toContain("×2");
+    // The old "1 × Tank" spelling is gone: no slot name in the format card.
+    expect(container.textContent).not.toContain(`× ${en.rosterShape.slotCodes.tank}`);
   });
 
   it("carries the map pool under the anchor the retired /maps route points at", async () => {

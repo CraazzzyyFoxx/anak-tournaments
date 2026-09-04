@@ -12,6 +12,7 @@ import {
   stageFinalRounds,
   type RoundGroup
 } from "@/components/bracket-view.helpers";
+import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import TeamName from "@/components/TeamName";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
@@ -253,7 +254,7 @@ function CardLink({ href, children }: Readonly<{ href: string; children: React.R
   return (
     <Link
       href={href}
-      className="font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-teal)]"
+      className="font-mono text-[12px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-teal)]"
     >
       {children}
     </Link>
@@ -293,10 +294,10 @@ const ROLE_TINT: Record<RosterSlotCode, string> = {
 function KeyValue({ term, children }: Readonly<{ term: string; children: React.ReactNode }>) {
   return (
     <div className="grid gap-0.5 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-3">
-      <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)] sm:pt-0.5">
+      <dt className="font-mono text-[12px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)] sm:pt-0.5">
         {term}
       </dt>
-      <dd className="min-w-0 text-sm text-[color:var(--aqt-fg-muted)]">{children}</dd>
+      <dd className="min-w-0 text-[15px] text-[color:var(--aqt-fg-muted)]">{children}</dd>
     </div>
   );
 }
@@ -542,7 +543,7 @@ export default function TournamentOverviewPage({
         <div className="flex gap-2 overflow-x-auto pb-1">
           {pickRoundWindow(roundGroups, currentRoundOf(roundGroups)).map((group) => (
             <div className="min-w-[13rem] flex-1 space-y-1.5" key={group.round}>
-              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+              <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
                 {roundLabel(group.round, finalRounds)}
               </div>
               {group.matches.map((match) => {
@@ -636,11 +637,15 @@ export default function TournamentOverviewPage({
         : null;
     const isTeamRegistration = tournament.team_formation === "registration";
     const rosterShape = tournament.roster_shape;
-    const rosterLine = rosterShape
-      ? ROSTER_SLOT_CODES.filter((code) => (rosterShape.slots[code] ?? 0) > 0)
-          .map((code) => `${rosterShape.slots[code]} × ${t(`rosterShape.slotCodes.${code}`)}`)
-          .join(" · ")
-      : "";
+    // Slots as role glyphs, not "2 × Урон": the icon is the site's role
+    // vocabulary everywhere else, and `RosterSlotGlyph` still announces the
+    // slot name for screen readers.
+    const rosterSlots = rosterShape
+      ? ROSTER_SLOT_CODES.filter((code) => (rosterShape.slots[code] ?? 0) > 0).map((code) => ({
+          code,
+          count: rosterShape.slots[code] as number
+        }))
+      : [];
     // The share of each role in the field — what a draft/balancer organizer
     // reads ("tanks are short"). Role tints, the same dots on the figures above.
     const roleShares = ROSTER_SLOT_CODES.filter((code) => roleCounts[code] > 0);
@@ -711,7 +716,7 @@ export default function TournamentOverviewPage({
                     </div>
                   ) : null}
                   {latest.length > 0 ? (
-                    <p className="mt-2 truncate text-xs text-[color:var(--aqt-fg-faint)]">
+                    <p className="mt-2 truncate text-[13px] text-[color:var(--aqt-fg-faint)]">
                       {t("tournamentDetail.overview.registration.latest")}: {latest.join(" · ")}
                       {latestAgo ? ` · ${latestAgo}` : null}
                     </p>
@@ -741,10 +746,16 @@ export default function TournamentOverviewPage({
                   {t(
                     `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`
                   )}
-                  {rosterLine ? (
-                    <span className="text-[color:var(--aqt-fg-faint)]">
-                      {" — "}
-                      {rosterLine}
+                  {rosterSlots.length > 0 ? (
+                    <span className="ml-2 inline-flex items-center gap-2 align-middle">
+                      {rosterSlots.map(({ code, count }) => (
+                        <span key={code} className="inline-flex items-center gap-1">
+                          <RosterSlotGlyph code={code} size={14} />
+                          <span className="aqt-tnum text-[color:var(--aqt-fg-faint)]">
+                            ×{count}
+                          </span>
+                        </span>
+                      ))}
                     </span>
                   ) : null}
                 </KeyValue>
@@ -1100,7 +1111,7 @@ export default function TournamentOverviewPage({
                         ) : null}
                         <AvatarFallback className="bg-transparent" />
                       </Avatar>
-                      <span className="min-w-0 truncate text-xs" title={entry.hero.name}>
+                      <span className="min-w-0 truncate text-[13px]" title={entry.hero.name}>
                         {entry.hero.name}
                       </span>
                       <span
@@ -1112,7 +1123,7 @@ export default function TournamentOverviewPage({
                           style={{ width: `${widest > 0 ? (share / widest) * 100 : 0}%` }}
                         />
                       </span>
-                      <span className="aqt-tnum text-right text-[11px] text-[color:var(--aqt-fg-muted)]">
+                      <span className="aqt-tnum text-right text-[12px] text-[color:var(--aqt-fg-muted)]">
                         {format.number(entry.playtime, {
                           style: "percent",
                           maximumFractionDigits: 1

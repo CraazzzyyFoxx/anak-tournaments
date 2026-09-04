@@ -438,7 +438,7 @@
 .blockTitle {
   margin: 0;
   font-family: var(--aqt-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -455,7 +455,7 @@
 
 .figureLabel {
   font-family: var(--aqt-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--aqt-fg-faint);
@@ -463,7 +463,7 @@
 
 .figureValue {
   font-family: var(--aqt-display);
-  font-size: 1.75rem;
+  font-size: 2rem;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.01em;
@@ -484,7 +484,7 @@
    names beside it (§11: "score larger than the name"). */
 .score {
   font-family: var(--aqt-display);
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.01em;

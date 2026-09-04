@@ -40,7 +40,7 @@ export type MapPoolProps = {
 
 /** The block eyebrow shared with the overview's sections (wireframes §11). */
 const EYEBROW =
-  "aqt-mono block text-[11px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]";
+  "aqt-mono block text-[12px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]";
 
 /**
  * The tournament's map pool in three densities, from one data shape.
@@ -92,7 +92,7 @@ export function MapPool({
       <details id={id} className={cn("group scroll-mt-28", className)}>
         <summary className="flex cursor-pointer list-none flex-col gap-1 [&::-webkit-details-marker]:hidden">
           <span className={EYEBROW}>{title}</span>
-          <span className="font-mono text-[11px] uppercase leading-relaxed tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+          <span className="font-mono text-[12px] uppercase leading-relaxed tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
             {shown.byGamemode.map((g) => `${g.gamemode} ${g.maps.length}`).join(" · ")}
           </span>
         </summary>
@@ -192,10 +192,10 @@ function Tiles({ pool }: Readonly<{ pool: MapPoolView }>) {
     <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
       {pool.byGamemode.map((group) => (
         <div key={group.gamemode} className="border-t border-[color:var(--aqt-border)] pt-1.5">
-          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+          <div className="mb-1 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
             {group.gamemode}
           </div>
-          <ul className="space-y-0.5 text-xs">
+          <ul className="space-y-0.5 text-[13px]">
             {group.maps.map((map) => (
               <li key={map.id} className="truncate" title={map.name}>
                 {map.name}
