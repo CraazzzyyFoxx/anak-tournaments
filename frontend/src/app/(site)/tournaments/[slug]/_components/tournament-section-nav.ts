@@ -1,7 +1,7 @@
 import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
 
 export type TournamentSectionId =
-  | "overview" | "bracket" | "teams" | "matches" | "stats" | "stream" | "participants";
+  | "overview" | "bracket" | "teams" | "matches" | "maps" | "stats" | "stream" | "participants";
 
 type TournamentNavReasonKey =
   | "tournamentDetail.nav.reasons.competitionNotStarted"
@@ -59,6 +59,9 @@ const competitionOnlySections = new Set<TournamentSectionId>(["bracket", "matche
 const preCompetitionOrder: TournamentSectionId[] = [
   "overview",
   "participants",
+  // Which maps the tournament plays is reference data a registering player
+  // reads before anything about the bracket, so it sits ahead of it.
+  "maps",
   "teams",
   "bracket",
   "matches",
@@ -70,6 +73,7 @@ const competitionOrder: TournamentSectionId[] = [
   "bracket",
   "teams",
   "matches",
+  "maps",
   "stats",
   "stream",
   "participants"

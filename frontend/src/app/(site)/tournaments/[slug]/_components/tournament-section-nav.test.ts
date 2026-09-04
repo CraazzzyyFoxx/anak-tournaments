@@ -71,6 +71,7 @@ describe("buildTournamentSectionNav", () => {
     expect(model("registration").map((item) => item.id)).toEqual([
       "overview",
       "participants",
+      "maps",
       "teams",
       "bracket",
       "matches",
@@ -81,6 +82,7 @@ describe("buildTournamentSectionNav", () => {
       "bracket",
       "teams",
       "matches",
+      "maps",
       "stats",
       "participants"
     ]);
@@ -153,15 +155,25 @@ describe("buildTournamentSectionNav", () => {
       ["bracket", "common.bracket"],
       ["teams", "common.teams"],
       ["matches", "common.matches"],
+      ["maps", "common.maps"],
       ["stats", "common.stats"],
       ["participants", "common.participants"]
     ]);
-    // Schedule, Maps, Heroes and Standings folded into Overview / Stats /
-    // Bracket; Draft moved to a header action. None may come back as a tab.
+    // Schedule, Heroes and Standings folded into Overview / Stats / Bracket;
+    // Draft moved to a header action. None may come back as a tab. Maps did
+    // come back: a pool of map pictures is a section, not a statistic.
     const ids = items.map((item) => item.id) as string[];
-    for (const gone of ["schedule", "maps", "heroes", "standings", "draft"]) {
+    for (const gone of ["schedule", "heroes", "standings", "draft"]) {
       expect(ids).not.toContain(gone);
     }
+  });
+
+  it("puts Maps ahead of the bracket before the tournament starts", () => {
+    const ids = model("registration", `/tournaments/${tournamentId}`).map((item) => item.id);
+
+    expect(ids.indexOf("maps")).toBeLessThan(ids.indexOf("bracket"));
+    // Reference data, never gated: the pool is published before play.
+    expect(model("registration").find((item) => item.id === "maps")?.available).toBe(true);
   });
 
   it("shows Stream only when there is something to watch", () => {

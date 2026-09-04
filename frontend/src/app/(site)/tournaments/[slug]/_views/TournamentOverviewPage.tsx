@@ -30,7 +30,7 @@ import type { Registration } from "@/types/registration.types";
 import type { Team } from "@/types/team.types";
 import type { StageSummary, Standings, TournamentStatus } from "@/types/tournament.types";
 
-import { MapPool } from "../_components/MapPool";
+import { MapPoolCard } from "../_components/MapPoolCard";
 import { MatchCard, isEncounterCompleted, isEncounterLive } from "../_components/MatchCard";
 import { MatchRow } from "../_components/MatchRow";
 import { PhaseTimeline } from "../_components/PhaseTimeline";
@@ -503,22 +503,15 @@ export default function TournamentOverviewPage({
 
   // ---- shared right-column blocks -----------------------------------------
 
-  const mapPoolTiles =
+  /**
+   * One teaser in every branch, linking into the Maps section. The pool itself
+   * — by mode, and per round with pictures — is that section's job; the
+   * overview only has to make it findable.
+   */
+  const mapPoolCard =
     mapPool.pool.total > 0 ? (
       <OverviewCard>
-        <MapPool id="map-pool" pool={mapPool.pool} scopes={mapPool.scopes} variant="tiles" />
-      </OverviewCard>
-    ) : null;
-
-  const mapPoolSummary =
-    mapPool.pool.total > 0 ? (
-      <OverviewCard id="map-pool">
-        <MapPool pool={mapPool.pool} scopes={mapPool.scopes} variant="summary" />
-        <div className="mt-3">
-          <CardLink href={`${overviewHref}/stats?tab=maps`}>
-            {t("tournamentDetail.overview.mapPoolStats")}
-          </CardLink>
-        </div>
+        <MapPoolCard id="map-pool" pool={mapPool.pool} href={`${overviewHref}/maps`} />
       </OverviewCard>
     ) : null;
 
@@ -663,8 +656,8 @@ export default function TournamentOverviewPage({
         {/* One column when there is no map pool yet: an aside holding nothing
             reads as a broken layout, not as restraint. The organizer links live
             in the hero's action row already, so they are not repeated here. */}
-        <div className={cn("grid gap-4", mapPoolTiles && "lg:grid-cols-[6fr_4fr]")}>
-          <div className={cn("grid content-start gap-4", !mapPoolTiles && "lg:grid-cols-2")}>
+        <div className={cn("grid gap-4", mapPoolCard && "lg:grid-cols-[6fr_4fr]")}>
+          <div className={cn("grid content-start gap-4", !mapPoolCard && "lg:grid-cols-2")}>
             {/* ② "Tanks are short" is what a draft/balancer tournament is read
                 for; a team-registration one counts teams instead. */}
             <OverviewCard
@@ -770,8 +763,8 @@ export default function TournamentOverviewPage({
             </OverviewCard>
           </div>
 
-          {/* ④ The retired Maps tab, as tiles per game mode. */}
-          {mapPoolTiles ? <div className="grid content-start gap-4">{mapPoolTiles}</div> : null}
+          {/* ④ The Maps section, as a strip of pictures that opens it. */}
+          {mapPoolCard ? <div className="grid content-start gap-4">{mapPoolCard}</div> : null}
         </div>
       </section>
     );
@@ -944,7 +937,7 @@ export default function TournamentOverviewPage({
                 </div>
               </OverviewCard>
             ) : null}
-            {mapPoolSummary}
+            {mapPoolCard}
             <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>
               <div className="grid gap-2 sm:grid-cols-2">
                 <StatTile
@@ -1135,7 +1128,7 @@ export default function TournamentOverviewPage({
               </ol>
             </OverviewCard>
           ) : null}
-          {mapPoolSummary}
+          {mapPoolCard}
           <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>
             <div className="grid gap-2 sm:grid-cols-2">
               <StatTile

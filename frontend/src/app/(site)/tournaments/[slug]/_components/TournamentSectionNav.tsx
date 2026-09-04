@@ -12,6 +12,7 @@ import {
   ClipboardList,
   LayoutDashboard,
   LayoutGrid,
+  Map as MapIcon,
   Radio,
   Users
 } from "lucide-react";
@@ -33,6 +34,7 @@ const icons: Record<TournamentSectionId, React.ComponentType<{ className?: strin
   bracket: LayoutGrid,
   teams: Users,
   matches: Calendar,
+  maps: MapIcon,
   stats: BarChart3,
   stream: Radio,
   participants: ClipboardList

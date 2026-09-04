@@ -377,28 +377,6 @@ const POOL_CONFIG: PickBanConfig = {
   slots: []
 };
 
-const POOL_STAGE_ID = 7;
-
-/**
- * A round's own pool, as organizers actually author one: slot mode, one
- * candidate list per map of the series.
- */
-function makeRoundConfig(round: number, slots: number[][]): PickBanConfig {
-  return {
-    ...POOL_CONFIG,
-    id: 100 + slots.length * 10 + round,
-    stage_id: POOL_STAGE_ID,
-    round,
-    mode: "slots",
-    item_ids: [],
-    slots: slots.map((candidates, index) => ({
-      position: index + 1,
-      reserve_item_id: null,
-      candidates
-    }))
-  };
-}
-
 let container: HTMLDivElement;
 let root: Root;
 
@@ -512,61 +490,18 @@ describe("before the tournament starts (§3A)", () => {
     expect(container.textContent).not.toContain(`× ${en.rosterShape.slotCodes.tank}`);
   });
 
-  it("carries the map pool under the anchor the retired /maps route points at", async () => {
+  it("teases the map pool as pictures that open the Maps section", async () => {
     await mount();
 
     const pool = container.querySelector("#map-pool");
     expect(pool).not.toBeNull();
-    expect(pool?.textContent).toContain("Ilios");
-    expect(pool?.textContent).toContain("Busan");
-  });
-
-  it("switches the map pool to a single round's slot pools", async () => {
-    // What organizers actually configure: a pool per ROUND, each round naming
-    // one candidate list per map of the series. Merged into one bag, the card
-    // would claim King's Row can be played in round 1 — it cannot.
-    getStages.mockResolvedValue([
-      makeStage({ id: POOL_STAGE_ID, name: "Playoff", order: 1 }) as Stage
-    ]);
-    listPublicConfigs.mockResolvedValue({
-      configs: [
-        POOL_CONFIG,
-        makeRoundConfig(-1, [[43]]),
-        makeRoundConfig(1, [[41], [42]])
-      ]
-    });
-    await mount();
-
-    const pool = container.querySelector("#map-pool");
-    expect(pool).not.toBeNull();
-    // Default: the whole tournament, every map any config names.
-    expect(pool?.textContent).toContain("Ilios");
-    expect(pool?.textContent).toContain("King's Row");
-
-    const scopeChips = Array.from(
-      pool?.querySelectorAll<HTMLButtonElement>('[role="group"] button') ?? []
-    );
-    const chipLabels = scopeChips.map((chip) => chip.textContent ?? "");
-    // The stage names the row; the chips inside it name rounds, upper bracket
-    // first and lower after — the order the bracket reads in.
-    expect(pool?.textContent).toContain("Playoff");
-    expect(chipLabels[0]).toContain(en.tournamentDetail.mapPool.wholeTournament);
-    expect(chipLabels[1]).toContain("Round 1");
-    expect(chipLabels[2]).toContain("Lower R1");
-    expect(scopeChips[1]?.getAttribute("title")).toBe("Playoff · Round 1");
-
-    const roundOne = scopeChips[1];
-    await act(async () => {
-      roundOne?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    const scoped = container.querySelector("#map-pool")?.textContent ?? "";
-    // Slot columns, not game modes: each list is the pool for one map of the series.
-    expect(scoped).toContain("Map 1");
-    expect(scoped).toContain("Map 2");
-    expect(scoped).toContain("Ilios");
-    expect(scoped).toContain("Busan");
-    expect(scoped).not.toContain("King's Row");
+    // The whole card is the anchor: a disclosure that only looked like text
+    // gave no sign the section existed.
+    expect(pool?.tagName).toBe("A");
+    expect(pool?.getAttribute("href")).toBe(`/tournaments/${SLUG}/maps`);
+    expect(pool?.querySelectorAll("img").length).toBeGreaterThan(0);
+    // The pool itself — by mode, and per round — belongs to that section.
+    expect(container.querySelector("[data-map-pool-round]")).toBeNull();
   });
 
   it("counts teams instead of roles when the tournament registers teams", async () => {
@@ -756,7 +691,7 @@ describe("once it is over (§3C)", () => {
     expect(numbers?.textContent).toContain("2");
     expect(
       Array.from(container.querySelectorAll("a")).some(
-        (node) => node.getAttribute("href") === `/tournaments/${SLUG}/stats?tab=maps`
+        (node) => node.getAttribute("href") === `/tournaments/${SLUG}/maps`
       )
     ).toBe(true);
   });

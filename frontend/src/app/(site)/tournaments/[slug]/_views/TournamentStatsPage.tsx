@@ -1,9 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
+import { ImageOff } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -17,9 +20,11 @@ import type { HeroPlaytime } from "@/types/hero.types";
 import type { Tournament } from "@/types/tournament.types";
 
 import styles from "../TournamentDetail.module.css";
-import { MapPool, type MapPlayedCount } from "../_components/MapPool";
 import { TournamentPageState } from "../_components/TournamentPageState";
-import { TournamentHeroesSkeleton, TournamentMapsSkeleton } from "../_components/TournamentSkeletons";
+import {
+  TournamentHeroesSkeleton,
+  TournamentMapsSkeleton
+} from "../_components/TournamentSkeletons";
 import { UpdatingBadge } from "../_components/UpdatingBadge";
 import { ViewSegment, readViewParam } from "../_components/ViewSegment";
 import { useTournamentQuery } from "../_hooks/useTournamentClientData";
@@ -35,10 +40,6 @@ type RoleFilter = "all" | RoleKey;
 
 const ROLE_ORDER: RoleKey[] = ["tank", "dps", "support"];
 
-/** `heroes` first: hero play-time is what the section answered before the map pool joined it. */
-export const STATS_TABS = ["heroes", "maps"] as const;
-export type StatsTab = (typeof STATS_TABS)[number];
-
 export const getHeroesQueryPresentation = (state: PublicPageQueryState) =>
   getPublicPageQueryPresentation(state);
 
@@ -53,12 +54,24 @@ function heroRole(playtime: HeroPlaytime): RoleKey {
   return slotCode === "flex" ? "dps" : slotCode;
 }
 
+/** `heroes` first: hero play-time is what the section answered before maps joined it. */
+export const STATS_TABS = ["heroes", "maps"] as const;
+export type StatsTab = (typeof STATS_TABS)[number];
+
+export type MapPlayedCount = {
+  played: number;
+  /** Mean map duration in seconds, or null when no map has a recorded length. */
+  avgDurationSec: number | null;
+};
+
 /**
  * How often each map was played, and how long it took, from the tournament's
  * own series. No attack/defense split: a `Match` carries a score, a duration
  * and a map, and nothing in the read model says which team attacked.
  */
-export function buildMapPlayedCounts(encounters: readonly Encounter[]): Record<number, MapPlayedCount> {
+export function buildMapPlayedCounts(
+  encounters: readonly Encounter[]
+): Record<number, MapPlayedCount> {
   const totals = new Map<number, { played: number; durationSec: number; timed: number }>();
 
   for (const encounter of encounters) {
@@ -81,6 +94,10 @@ export function buildMapPlayedCounts(encounters: readonly Encounter[]): Record<n
     };
   }
   return counts;
+}
+
+function clock(seconds: number) {
+  return `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 }
 
 function HeroesTab({
@@ -239,14 +256,22 @@ function HeroesTab({
   return content;
 }
 
+/**
+ * How often each map of the pool was played, as a table.
+ *
+ * Every map of the pool is a row, including one nobody picked: the pool is the
+ * regulation, so a map missing from it is a different statement from a map that
+ * went unplayed, and a table built from match logs alone could not tell them
+ * apart. Rows are ordered by plays, because that is the question a statistic
+ * answers; the thumbnail is there so the row is recognisable at a glance, the
+ * way the Maps section is.
+ */
 function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: string }>) {
   const t = useTranslations();
   const mapPool = useTournamentMapPool(tournament.id);
-  // The matches section's own all-encounters-with-maps entry, not the
-  // bracket's `tournamentQueryKeys.encounters`: the bracket asks for no
-  // `matches` entity, so counting map plays out of it would depend on which
-  // screen mounted first. Sharing P3's entry also means visiting both sections
-  // costs one request, not two.
+  // The matches section's own all-encounters-with-maps entry, not the bracket's
+  // `tournamentQueryKeys.encounters`: the bracket asks for no `matches` entity,
+  // so counting map plays out of it would depend on which screen mounted first.
   const playedQuery = useQuery(tournamentEncountersQueryOptions(tournament));
 
   const playedCounts = useMemo(
@@ -257,12 +282,6 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
   // One presentation for both reads: a pool without its play counts would
   // render every row as "0 played", which is a different statement from "we
   // could not load the matches".
-  //
-  // `useTournamentMapPool` exposes no `data`, so "has something to show" is
-  // derived: an errored first read leaves the pool empty, and passing that
-  // along would claim the organizer published no maps. Stale content still
-  // survives a failed refresh — a non-empty pool keeps rendering under the
-  // refresh-error strip.
   const poolLoaded = !mapPool.isPending && !(mapPool.isError && mapPool.pool.total === 0);
   const presentation = getPublicPageQueryPresentation({
     data: poolLoaded && playedQuery.data !== undefined ? mapPool.pool : undefined,
@@ -283,6 +302,14 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
     return <TournamentMapsSkeleton />;
   }
 
+  const rows = mapPool.pool.byGamemode
+    .flatMap((group) => group.maps.map((map) => ({ map, mode: group.gamemode })))
+    .sort((left, right) => {
+      const delta =
+        (playedCounts[right.map.id]?.played ?? 0) - (playedCounts[left.map.id]?.played ?? 0);
+      return delta !== 0 ? delta : left.map.name.localeCompare(right.map.name);
+    });
+
   const content = (
     <>
       {presentation.showUpdating ? <UpdatingBadge /> : null}
@@ -296,15 +323,77 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
       ) : (
         // No card: the table sits on the page like the match list does (§11),
         // with its own horizontal scroller inside.
-        <div className="border-t border-[color:var(--aqt-border)] pt-3">
-          <MapPool
-            id="map-pool"
-            pool={mapPool.pool}
-            scopes={mapPool.scopes}
-            variant="table"
-            playedCounts={playedCounts}
-            matchesHref={(mapId) => tournamentHref({ slug }, `/matches?map=${mapId}`)}
-          />
+        <div
+          id="map-stats"
+          className="scroll-mt-28 overflow-x-auto border-t border-[color:var(--aqt-border)] pt-3"
+        >
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[color:var(--aqt-border)] font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+                <th scope="col" className="py-2 pr-3 text-left font-medium">
+                  {t("tournamentDetail.mapPool.col.map")}
+                </th>
+                <th scope="col" className="py-2 pr-3 text-left font-medium">
+                  {t("tournamentDetail.mapPool.col.mode")}
+                </th>
+                <th scope="col" className="py-2 pr-3 text-right font-medium">
+                  {t("tournamentDetail.mapPool.col.played")}
+                </th>
+                <th scope="col" className="py-2 pr-3 text-right font-medium">
+                  {t("tournamentDetail.mapPool.col.avgDuration")}
+                </th>
+                <th scope="col" className="py-2">
+                  <span className="sr-only">{t("common.matches")}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ map, mode }) => {
+                const counts = playedCounts[map.id];
+                const played = counts?.played ?? 0;
+                const muted = played === 0;
+                return (
+                  <tr
+                    key={map.id}
+                    className={cn(
+                      "border-b border-[color:var(--aqt-border)]/60",
+                      muted && "text-[color:var(--aqt-fg-dim)]"
+                    )}
+                  >
+                    <td className="py-2 pr-3">
+                      <span className="flex items-center gap-2.5">
+                        <span className="relative block aspect-video w-14 shrink-0 overflow-hidden rounded border border-[color:var(--aqt-border)]">
+                          {map.image_path ? (
+                            <Image src={map.image_path} alt="" fill sizes="56px" className="object-cover" />
+                          ) : (
+                            <span className="grid h-full place-items-center text-[color:var(--aqt-fg-faint)]">
+                              <ImageOff aria-hidden width={12} height={12} />
+                            </span>
+                          )}
+                        </span>
+                        <span className={cn("truncate", !muted && "font-semibold")}>{map.name}</span>
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 text-[color:var(--aqt-fg-muted)]">{mode}</td>
+                    <td className="aqt-tnum py-2 pr-3 text-right">{played}</td>
+                    <td className="aqt-tnum py-2 pr-3 text-right">
+                      {counts?.avgDurationSec != null ? clock(counts.avgDurationSec) : "—"}
+                    </td>
+                    <td className="py-2 text-right">
+                      {played > 0 ? (
+                        <Link
+                          href={tournamentHref({ slug }, `/matches?map=${map.id}`)}
+                          className="font-mono text-[11px] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]"
+                        >
+                          {t("common.matches")} →
+                        </Link>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </>
@@ -326,12 +415,12 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
 }
 
 /**
- * Statistics: hero play-time and the map pool with play counts, as two
- * sub-tabs of one section rather than two rail entries (§8 ①).
+ * Statistics: hero play-time and how often each map was played, as two sub-tabs
+ * of one section.
  *
- * The map pool used to be its own tab that only listed which maps each round
- * could play; the counts are what make it a statistic, and the same `MapPool`
- * component renders the reference form on the overview.
+ * The pool itself is not here — it went back to its own `maps` section, which
+ * is open before the tournament starts while this one is still locked. What
+ * stays is the part that only exists once matches have been played.
  */
 const TournamentStatsPage = ({
   tournamentId,
@@ -357,7 +446,7 @@ const TournamentStatsPage = ({
   return (
     <section className={styles.publicDataPage} aria-label={t("tournamentDetail.stats.title")}>
       {/* Sub-tabs, not a view density switch: hiding them below `sm` would make
-          the map pool unreachable on a phone, so `hideOnMobile` stays off. */}
+          the map table unreachable on a phone, so `hideOnMobile` stays off. */}
       <div className={styles.controlRail}>
         <ViewSegment
           param="tab"

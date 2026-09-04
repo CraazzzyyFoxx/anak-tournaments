@@ -145,9 +145,10 @@ const nextConfig = {
       // stats is a tab of the statistics section. Unmatched query strings
       // (`?stage=`) carry through on their own.
       { source: "/tournaments/:slug/schedule", destination: "/tournaments/:slug#phases", permanent: true },
-      { source: "/tournaments/:slug/maps", destination: "/tournaments/:slug#map-pool", permanent: true },
+      // `/tournaments/:slug/maps` is a real route again — the pool is its own
+      // section, so nothing redirects it.
       { source: "/tournaments/:slug/standings", destination: "/tournaments/:slug/bracket?view=standings", permanent: true },
-      { source: "/tournaments/:slug/heroes", destination: "/tournaments/:slug/stats?tab=heroes", permanent: true },
+      { source: "/tournaments/:slug/heroes", destination: "/tournaments/:slug/stats", permanent: true },
     ];
   },
   images: {

@@ -49,15 +49,23 @@ export type MapPoolScopeView = {
   slots: MapPoolSlotView[] | null;
 };
 
+/** A stage's own pool: the union of its rounds, and those rounds in play order. */
+export type MapPoolStageView = {
+  stageId: number;
+  stageName: string;
+  pool: MapPoolView;
+  rounds: MapPoolScopeView[];
+};
+
 export type TournamentMapPool = {
   /** Every map any veto config of the tournament names, grouped by game mode. */
   pool: MapPoolView;
   /**
-   * The pools the organizer actually authored, per stage and per round, in play
-   * order. `null` when a single config decides the whole tournament and `pool`
-   * is already the whole story.
+   * The pools the organizer actually authored, grouped by stage and in play
+   * order within it. Empty when a single tournament-wide config decides
+   * everything and `pool` is already the whole story.
    */
-  scopes: MapPoolScopeView[] | null;
+  stages: MapPoolStageView[];
   isPending: boolean;
   isError: boolean;
   isFetching: boolean;
@@ -182,7 +190,29 @@ export function useTournamentMapPool(tournamentId: number): TournamentMapPool {
       })
       .sort((left, right) => left.order - right.order);
 
-    return { pool, scopes: scopes.length > 1 ? scopes : null };
+    // Consecutive runs are one stage, since the sort put them in play order.
+    // A stage's pool is the union of its rounds — what "this stage can play".
+    const stages: MapPoolStageView[] = [];
+    for (const scope of scopes) {
+      const last = stages.at(-1);
+      if (last?.stageId === scope.stageId) last.rounds.push(scope);
+      else
+        stages.push({
+          stageId: scope.stageId,
+          stageName: scope.stageName,
+          pool: { byGamemode: [], total: 0 },
+          rounds: [scope]
+        });
+    }
+    for (const stage of stages) {
+      const ids = new Set<number>();
+      for (const round of stage.rounds) {
+        for (const group of round.pool.byGamemode) for (const map of group.maps) ids.add(map.id);
+      }
+      stage.pool = groupByGamemode(resolve(ids));
+    }
+
+    return { pool, stages };
   }, [configsQuery.data, mapsQuery.data, stagesQuery.data, roundLabel]);
 
   return {

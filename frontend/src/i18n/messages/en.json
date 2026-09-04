@@ -1965,7 +1965,6 @@
         "viewers": "{count} watching",
         "participants": "+{count} participants on air →"
       },
-      "mapPoolStats": "stats →",
       "heroes": {
         "title": "Most played heroes",
         "all": "stats →"
@@ -1987,16 +1986,25 @@
     },
     "mapPool": {
       "title": "Map pool · {count}",
-      "scopeLabel": "Map pool by stage and round",
-      "wholeTournament": "Whole tournament",
-      "wholeStage": "Whole stage",
+      "open": "all maps",
       "slot": "Map {n}",
+      "allStages": "Whole tournament",
+      "stagesLabel": "Map pool by stage",
+      "rounds": {
+        "title": "By round",
+        "lede": "Each round plays its own set of maps — one set per map of the series.",
+        "wholeStage": "Whole stage"
+      },
       "col": {
         "map": "Map",
         "mode": "Mode",
         "played": "Played",
         "avgDuration": "Avg. length"
       }
+    },
+    "maps": {
+      "emptyTitle": "No map pool published",
+      "emptyDescription": "Maps will appear here once the organizer configures the tournament's pick-and-ban pool."
     },
     "stats": {
       "title": "Statistics",
@@ -2008,7 +2016,7 @@
       },
       "maps": {
         "emptyTitle": "No map pool published",
-        "emptyDescription": "Maps will appear here once the organizer configures the tournament's pick-and-ban pool."
+        "emptyDescription": "Map statistics appear once the organizer configures the pool and teams start playing."
       }
     },
     "matchRow": {

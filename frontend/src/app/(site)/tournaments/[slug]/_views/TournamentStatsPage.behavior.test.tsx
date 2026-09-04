@@ -1,25 +1,21 @@
 // @vitest-environment happy-dom
 //
-// Statistics is two answers behind one rail entry: which heroes were played,
-// and which maps were played. They used to be two tabs — Heroes, and a Maps tab
-// that only listed which maps each round *could* pick, with no indication that
-// any of them had ever been played.
+// Statistics is what only exists once matches have been played: which heroes
+// were played, and which maps were played. The pool itself is not here — it has
+// its own `maps` section, open before the tournament starts.
 //
 // What is pinned here:
 //  1. `?tab=` is the whole tab state — no `?tab=` means heroes, `?tab=maps`
-//     means the map table, and choosing a tab writes the URL (and never writes
-//     the default, so the canonical link stays clean);
+//     means the map table, and choosing a tab writes the URL (never the
+//     default, so the canonical link stays clean);
 //  2. every map of the pool is a row, INCLUDING one nobody played: the pool is
 //     the regulation, so a map missing from it is a different statement from a
 //     map that went unpicked, and a table built from match logs alone could not
-//     tell them apart;
-//  3. played counts and mean duration come from the tournament's own series,
-//     and the attack/defense column stays an em dash because nothing in the
-//     read model says which side attacked;
-//  4. "matches →" leads to the matches section filtered by that map, and an
-//     unplayed map offers no such link;
-//  5. an empty pool and a failed read are different cards, both from
-//     `TournamentPageState`.
+//     tell them apart. Rows are ordered by plays;
+//  3. counts and mean duration come from the tournament's own series, and
+//     "matches →" leads to the matches section filtered by that map;
+//  4. an empty pool, a failed read and no hero data are different cards, all
+//     from `TournamentPageState`.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act, type ReactNode } from "react";
@@ -90,6 +86,14 @@ vi.mock("next/link", () => ({
     <a href={href} {...rest}>
       {children}
     </a>
+  )
+}));
+
+/** The optimiser adds nothing to assert here, and its loader wants a real config. */
+vi.mock("next/image", () => ({
+  default: ({ src, alt }: { src: string; alt?: string }) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={typeof src === "string" ? src : ""} alt={alt ?? ""} />
   )
 }));
 
@@ -260,11 +264,7 @@ function encounter(matches: Match[]): Encounter {
   };
 }
 
-const STAGE: Stage = {
-  id: 188,
-  name: "Playoff",
-  order: 1
-} as Stage;
+const STAGE: Stage = { id: 188, name: "Playoff", order: 1 } as Stage;
 
 let container: HTMLDivElement;
 let root: Root;
@@ -298,18 +298,24 @@ beforeEach(() => {
     page: 1,
     per_page: -1
   });
-  getEncounters
-    .mockReset()
-    .mockResolvedValue({
-      results: [encounter([match(1, KINGS_ROW.id, 820), match(2, KINGS_ROW.id, 600), match(3, ILIOS.id, null)])],
-      total: 1,
-      page: 1,
-      per_page: -1
-    });
+  getEncounters.mockReset().mockResolvedValue({
+    results: [
+      encounter([
+        match(1, KINGS_ROW.id, 820),
+        match(2, KINGS_ROW.id, 600),
+        match(3, ILIOS.id, null)
+      ])
+    ],
+    total: 1,
+    page: 1,
+    per_page: -1
+  });
   listPublicConfigs
     .mockReset()
     .mockResolvedValue({ configs: [config({ item_ids: MAPS.map((m) => m.id) })] });
-  getAllMaps.mockReset().mockResolvedValue({ results: MAPS, total: MAPS.length, page: 1, per_page: -1 });
+  getAllMaps
+    .mockReset()
+    .mockResolvedValue({ results: MAPS, total: MAPS.length, page: 1, per_page: -1 });
   getStages.mockReset().mockResolvedValue([STAGE]);
 
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -362,6 +368,7 @@ function mapRows() {
     const cells = [...row.querySelectorAll("td")];
     return {
       map: cells[0]?.textContent ?? "",
+      thumb: cells[0]?.querySelector("img")?.getAttribute("src") ?? null,
       mode: cells[1]?.textContent ?? "",
       played: cells[2]?.textContent ?? "",
       duration: cells[3]?.textContent ?? "",
@@ -420,15 +427,20 @@ describe("the tab is the URL", () => {
 });
 
 describe("every map of the pool is a row", () => {
-  it("keeps an unplayed pool map, with no matches link", async () => {
+  it("orders by plays and keeps an unplayed pool map, with no matches link", async () => {
     await render("tab=maps");
 
-    // Grouped by game mode, and the groups are ordered by mode name:
-    // Control · Flashpoint · Hybrid.
     const rows = mapRows();
-    expect(rows.map((row) => row.map)).toEqual([ILIOS.name, SURAVASA.name, KINGS_ROW.name]);
+    // King's Row twice, Ilios once, Suravasa never.
+    expect(rows.map((row) => row.map.trim())).toEqual([
+      KINGS_ROW.name,
+      ILIOS.name,
+      SURAVASA.name
+    ]);
+    // The picture rides along, so a row is recognisable the way a pool card is.
+    expect(rows[0]?.thumb).toBe(`/maps/${KINGS_ROW.id}.jpg`);
 
-    const suravasa = rows[1];
+    const suravasa = rows[2];
     expect(suravasa?.played).toBe("0");
     expect(suravasa?.duration).toBe("—");
     expect(suravasa?.matchesHref).toBeNull();
@@ -437,7 +449,7 @@ describe("every map of the pool is a row", () => {
   it("counts plays and averages only the durations that exist", async () => {
     await render("tab=maps");
 
-    const [ilios, , kingsRow] = mapRows();
+    const [kingsRow, ilios] = mapRows();
     expect(kingsRow?.played).toBe("2");
     // (820 + 600) / 2 = 710s
     expect(kingsRow?.duration).toBe("11:50");
@@ -452,7 +464,7 @@ describe("every map of the pool is a row", () => {
   it("leads to the matches section filtered by the map", async () => {
     await render("tab=maps");
 
-    expect(mapRows()[2]?.matchesHref).toBe(`/tournaments/anak-open/matches?map=${KINGS_ROW.id}`);
+    expect(mapRows()[0]?.matchesHref).toBe(`/tournaments/anak-open/matches?map=${KINGS_ROW.id}`);
   });
 
   it("counts out of the matches section's own read, which asks for the maps", async () => {
@@ -462,8 +474,8 @@ describe("every map of the pool is a row", () => {
     // (perPage -1) with the `matches` entity, which the endpoint omits unless
     // named. Sharing that entry is what keeps this table from fetching every
     // encounter a second time.
-    const [page, query, tournamentId, perPage, , , workspaceId, filters] =
-      getEncounters.mock.calls[0] as [number, string, number, number, unknown, unknown, number, { entities: string[] }];
+    const [page, query, tournamentId, perPage, , , workspaceId, filters] = getEncounters.mock
+      .calls[0] as [number, string, number, number, unknown, unknown, number, { entities: string[] }];
     expect([page, query, tournamentId, perPage, workspaceId]).toEqual([
       1,
       "",
