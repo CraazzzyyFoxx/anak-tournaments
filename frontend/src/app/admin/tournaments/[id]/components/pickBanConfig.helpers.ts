@@ -31,6 +31,7 @@ import {
   DEFAULT_BEST_OF,
   buildSequenceForBestOf,
   hasPerRoundBestOf,
+  maxBestOf,
   parseStageBestOf,
   resolveBestOf,
 } from "@/lib/best-of";
@@ -426,6 +427,52 @@ export function resolveSeriesLength(
   });
   if (round != null) return { bestOf, source: "round" };
   return { bestOf, source: hasPerRoundBestOf(bestOfConfig) ? "variesByRound" : "stage" };
+}
+
+/**
+ * How many round groups a slot-mode pool needs here, from the bracket.
+ *
+ * The count is never the organizer's to type: the server plays the first
+ * `best_of` groups and keeps the room shut when the pool has fewer, so a group
+ * count that disagrees with the bracket is always a misconfiguration. Groups
+ * past the longest series a scope covers are dead weight the server ignores,
+ * which is why this is a max and not `resolveSeriesLength`'s single preview: a
+ * stage-wide pool has to cover its Bo5 final as well as its Bo3 rounds.
+ */
+export function resolveSlotCount(
+  stageId: number | null,
+  round: number | null,
+  stages: Stage[],
+  encounters: PickBanScopeEncounter[] | undefined
+): number {
+  if (stageId != null && round != null) {
+    return resolveSeriesLength(stageId, round, stages, encounters).bestOf;
+  }
+
+  // Generated encounters are the truth once the bracket exists; the stage's
+  // configuration is the only thing to go on before it does.
+  const generated = (encounters ?? [])
+    .filter((encounter) => stageId == null || encounter.stage_id === stageId)
+    .map((encounter) => encounter.best_of)
+    .filter((bestOf) => bestOf > 0);
+  if (generated.length > 0) return Math.max(...generated);
+
+  const planned = (stageId == null ? stages : stages.filter((stage) => stage.id === stageId)).map(
+    (stage) => maxBestOf(parseStageBestOf(stage.settings_json ?? null))
+  );
+  return planned.length > 0 ? Math.max(...planned) : DEFAULT_BEST_OF;
+}
+
+/** A slot list resized to `count`, keeping every group the new size still has. */
+export function alignSlots(
+  slots: PickBanDraft["slots"],
+  count: number
+): PickBanDraft["slots"] {
+  if (slots.length === count) return slots;
+  return Array.from(
+    { length: count },
+    (_, index) => slots[index] ?? { candidates: [], reserveItemId: null }
+  );
 }
 
 // ── validation ───────────────────────────────────────────────────────────────

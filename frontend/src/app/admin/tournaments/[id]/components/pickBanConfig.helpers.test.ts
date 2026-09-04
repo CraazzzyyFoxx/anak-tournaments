@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { PickBanConfig, Stage } from "@/types/tournament.types";
 
 import {
+  alignSlots,
   effectiveSequence,
   emptyPickBanDraft,
   findScopeCollision,
@@ -17,6 +18,7 @@ import {
   pickBanDraftToInput,
   protectHasNoStep,
   resolveSeriesLength,
+  resolveSlotCount,
   roundsPlayed,
   stageRoundOptions,
   validatePickBanDraft,
@@ -266,6 +268,48 @@ describe("scope resolution", () => {
         undefined
       ).source
     ).toBe("variesByRound");
+  });
+});
+
+// A slot pool is sized by the bracket, never by hand: the server plays the
+// first `best_of` groups and keeps the room shut when there are fewer
+// (`REASON_SLOT_COUNT_MISMATCH`), so a scope covering matches of different
+// lengths needs the LONGEST one's count -- the preview length would leave the
+// final unplayable.
+describe("round groups are counted from the bracket", () => {
+  it("takes a round scope's exact series length", () => {
+    expect(resolveSlotCount(10, 1, [stage({ id: 10 })], [{ stage_id: 10, round: 1, best_of: 2 }])).toBe(
+      2
+    );
+  });
+
+  it("covers the longest match of a stage-wide or tournament-wide scope", () => {
+    const encounters = [
+      { stage_id: 10, round: 1, best_of: 3 },
+      { stage_id: 10, round: 2, best_of: 5 },
+      { stage_id: 11, round: 1, best_of: 7 },
+    ];
+
+    expect(resolveSlotCount(10, null, [stage({ id: 10 })], encounters)).toBe(5);
+    expect(resolveSlotCount(null, null, [stage({ id: 10 })], encounters)).toBe(7);
+  });
+
+  it("reads the stage's configuration before the bracket exists, final included", () => {
+    const stages = [stage({ id: 10, settings_json: { best_of: { default: 3, final: 5 } } })];
+
+    expect(resolveSlotCount(10, null, stages, [])).toBe(5);
+    expect(resolveSlotCount(10, null, stages, undefined)).toBe(5);
+  });
+
+  it("resizes a stored pool to that count, keeping the groups that survive", () => {
+    const slots = [
+      { candidates: [1, 2], reserveItemId: 9 },
+      { candidates: [3, 4], reserveItemId: null },
+    ];
+
+    expect(alignSlots(slots, 2)).toBe(slots);
+    expect(alignSlots(slots, 1)).toEqual([slots[0]]);
+    expect(alignSlots(slots, 3)).toEqual([...slots, { candidates: [], reserveItemId: null }]);
   });
 });
 

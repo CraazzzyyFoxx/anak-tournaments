@@ -867,3 +867,56 @@ describe("Settings › Pre-game phase prefills a narrower scope from the rules a
     expect(deleteConfig).toHaveBeenCalledWith(4);
   });
 });
+
+// 2026-09-04: a slot-mode pool's group count was typed by hand, so a stage
+// whose matches play Bo3 could sit on four groups. The extras were unplayable
+// (the server plays the first `best_of`), yet their emptiness was a validation
+// error — and an inert Save meant a map added to a real group never persisted.
+// The count comes from the bracket now.
+describe("Settings › Pre-game phase sizes a round-group pool from the bracket", () => {
+  const STORED_GROUPS: PickBanConfig = {
+    ...TOURNAMENT_MAP_CONFIG,
+    id: 8,
+    stage_id: 10,
+    round: null,
+    mode: "slots",
+    item_ids: [],
+    slots: [
+      { position: 1, reserve_item_id: null, candidates: [1, 2] },
+      { position: 2, reserve_item_id: null, candidates: [2, 3] },
+      { position: 3, reserve_item_id: null, candidates: [3, 1] },
+      { position: 4, reserve_item_id: null, candidates: [1, 4] }
+    ]
+  };
+
+  async function openStoredGroups() {
+    await mount({ configs: [STORED_GROUPS], url: "?scope=stage:10&kind=map&step=pool" });
+  }
+
+  it("keeps one group per map of the longest match, whatever was stored", async () => {
+    await openStoredGroups();
+
+    // Stage 10's generated encounters are Bo3, so the fourth group is gone and
+    // there is no control that could add a fifth. The groups are named after
+    // the maps of the series, not after bracket rounds — the scope tree calls
+    // those "Round 1" too, and organizers read one as the other.
+    expect(editor().textContent).toContain("Map 3");
+    expect(editor().textContent).not.toContain("Map 4");
+    expect(byName("Add a round")).toHaveLength(0);
+    expect(editor().textContent).toContain("playing up to 3 maps");
+  });
+
+  it("saves a map added to a group, instead of an unplayable group blocking it", async () => {
+    await openStoredGroups();
+
+    // The first group's picker; each group carries one.
+    await click(byName("Add maps")[0]);
+    await click(only("Hollywood"));
+    await click(only("Save rules"));
+
+    const body = upsertConfig.mock.calls[0][1];
+    expect(body.mode).toBe("slots");
+    expect(body.slots).toHaveLength(3);
+    expect(body.slots[0].candidates).toEqual([1, 2, 4]);
+  });
+});

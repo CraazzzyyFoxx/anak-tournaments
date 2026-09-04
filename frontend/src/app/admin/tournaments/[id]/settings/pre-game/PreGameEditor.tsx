@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, ArrowDown, ArrowUp, Copy, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Copy, Plus, RotateCcw, X } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,7 @@ import {
   PICK_BAN_ROTATIONS,
   PICK_BAN_STEP_ACTIONS,
   PICK_BAN_STEP_SIDES,
+  alignSlots,
   buildStepToken,
   effectiveSequence,
   emptyPickBanDraft,
@@ -51,6 +52,7 @@ import {
   protectHasNoStep,
   rescopePickBanDraft,
   resolveSeriesLength,
+  resolveSlotCount,
   roundsPlayed,
   validatePickBanDraft,
   type PickBanDraft,
@@ -125,16 +127,25 @@ export function PreGameEditor({
   const savedConfig = findScopeConfig(kind, scope, configs);
   const inheritedConfig = findInheritedConfig(kind, scope.stageId, scope.round, configs);
 
+  const slotCount = resolveSlotCount(scope.stageId, scope.round, stages, encounters);
+
   // What this scope says today: its own saved config, or a copy of whatever it
   // inherits — retyping the tournament's timer, rotation and pool onto every
   // round is the work organizers skipped, leaving rounds on rules nobody chose.
-  const baseDraft = useMemo(
-    () =>
+  //
+  // Slot-mode groups are resized to the bracket on the way in: a stored count
+  // the bracket has since outgrown would keep the room shut, and the extra
+  // groups of a shrunk one are unplayable groups whose emptiness blocked the
+  // save of every other change on the form.
+  const baseDraft = useMemo(() => {
+    const stored =
       savedConfig != null
         ? pickBanDraftFromConfig(savedConfig)
-        : rescopePickBanDraft(emptyPickBanDraft(kind), scope.stageId, scope.round, configs),
-    [savedConfig, kind, scope.stageId, scope.round, configs]
-  );
+        : rescopePickBanDraft(emptyPickBanDraft(kind), scope.stageId, scope.round, configs);
+    return stored.mode === "slots"
+      ? { ...stored, slots: alignSlots(stored.slots, slotCount) }
+      : stored;
+  }, [savedConfig, kind, scope.stageId, scope.round, configs, slotCount]);
 
   const [draft, setDraft] = useState<PickBanDraft>(baseDraft);
   // Re-baseline on a scope or kind switch, and when another admin's write
@@ -223,7 +234,7 @@ export function PreGameEditor({
               ids={ids}
               draft={draft}
               kind={kind}
-              bestOf={series.bestOf}
+              slotCount={slotCount}
               catalogue={catalogue}
               catalogueById={catalogueById}
               catalogueLoading={catalogueLoading}
@@ -347,7 +358,7 @@ function PoolStep({
   ids,
   draft,
   kind,
-  bestOf,
+  slotCount,
   catalogue,
   catalogueById,
   catalogueLoading,
@@ -359,7 +370,8 @@ function PoolStep({
   ids: string;
   draft: PickBanDraft;
   kind: PickBanKind;
-  bestOf: number;
+  /** Round groups the bracket calls for; the list is always this long. */
+  slotCount: number;
   catalogue: CatalogueItem[];
   catalogueById: Map<number, CatalogueItem>;
   catalogueLoading: boolean;
@@ -370,8 +382,6 @@ function PoolStep({
 }>) {
   const t = useTranslations("pickBan.admin");
   const isHero = kind === "hero";
-  const slotCountMismatch =
-    draft.mode === "slots" && draft.slots.length > 0 && draft.slots.length !== bestOf;
 
   return (
     <>
@@ -386,7 +396,15 @@ function PoolStep({
           <Select
             value={draft.mode}
             disabled={!canManage}
-            onValueChange={(value) => patch({ mode: value as MapVetoMode })}
+            onValueChange={(value) =>
+              patch({
+                mode: value as MapVetoMode,
+                // Switching into slot mode used to land on an empty list and a
+                // validation error; the bracket already says how many groups
+                // there are, so they are there to fill.
+                slots: value === "slots" ? alignSlots(draft.slots, slotCount) : draft.slots
+              })
+            }
           >
             <SelectTrigger id={`${ids}-mode`} aria-describedby={`${ids}-mode-hint`}>
               <SelectValue />
@@ -442,14 +460,7 @@ function PoolStep({
         </Field>
       ) : (
         <div className="flex flex-col gap-3">
-          {slotCountMismatch ? (
-            <Alert>
-              <AlertTriangle aria-hidden className="size-4" />
-              <AlertDescription>
-                {t("slotCountMismatch", { slots: draft.slots.length, maps: bestOf })}
-              </AlertDescription>
-            </Alert>
-          ) : null}
+          <FieldDescription>{t("slotCountFromBracket", { maps: slotCount })}</FieldDescription>
 
           {draft.slots.map((slot, index) => (
             <div key={index} className="flex flex-col gap-2 rounded-lg border border-border p-3">
@@ -460,32 +471,18 @@ function PoolStep({
                     {t("slotCandidates", { count: slot.candidates.length })}
                   </Badge>
                 </FieldTitle>
-                <div className="flex items-center gap-2">
-                  <CataloguePicker
-                    mode="single"
-                    kind={kind}
-                    triggerLabel={t("slotReserveAria", { n: index + 1 })}
-                    triggerPrefix={t("slotReserve")}
-                    value={slot.reserveItemId}
-                    // The server rejects a reserve that is also a candidate,
-                    // so it is never offered here.
-                    options={catalogue.filter((option) => !slot.candidates.includes(option.id))}
-                    disabled={catalogueLoading || !canManage}
-                    onChange={(itemId) => patchSlot(index, { reserveItemId: itemId })}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    disabled={!canManage}
-                    aria-label={t("slotRemove", { n: index + 1 })}
-                    onClick={() =>
-                      patch({ slots: draft.slots.filter((_, at) => at !== index) })
-                    }
-                  >
-                    <Trash2 aria-hidden className="size-4" />
-                  </Button>
-                </div>
+                <CataloguePicker
+                  mode="single"
+                  kind={kind}
+                  triggerLabel={t("slotReserveAria", { n: index + 1 })}
+                  triggerPrefix={t("slotReserve")}
+                  value={slot.reserveItemId}
+                  // The server rejects a reserve that is also a candidate,
+                  // so it is never offered here.
+                  options={catalogue.filter((option) => !slot.candidates.includes(option.id))}
+                  disabled={catalogueLoading || !canManage}
+                  onChange={(itemId) => patchSlot(index, { reserveItemId: itemId })}
+                />
               </div>
 
               <CatalogueChips
@@ -541,20 +538,6 @@ function PoolStep({
               <FieldDescription>{t("slotReserveHint")}</FieldDescription>
             </div>
           ))}
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="self-start"
-            disabled={!canManage}
-            onClick={() =>
-              patch({ slots: [...draft.slots, { candidates: [], reserveItemId: null }] })
-            }
-          >
-            <Plus aria-hidden className="me-2 size-4" />
-            {t("addSlot")}
-          </Button>
         </div>
       )}
     </>
