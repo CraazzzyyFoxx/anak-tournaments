@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
+from sqlalchemy.sql.elements import ColumnElement
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException
@@ -30,6 +31,7 @@ __all__ = (
     "assert_no_registered_teams",
     "has_registered_teams",
     "registered_team_status",
+    "teams_holding_slots_clause",
 )
 
 #: A disbanded or rejected team has released its slots and holds nothing; an
@@ -48,13 +50,21 @@ async def registered_team_status(session: AsyncSession, tournament_id: int) -> s
     """
     return await session.scalar(
         select(BalancerRegistrationTeam.status)
-        .where(
-            BalancerRegistrationTeam.tournament_id == tournament_id,
-            BalancerRegistrationTeam.deleted_at.is_(None),
-            BalancerRegistrationTeam.status.notin_(_RELEASED_TEAM_STATUSES),
-            BalancerRegistrationTeam.exported_team_id.is_(None),
-        )
+        .where(BalancerRegistrationTeam.tournament_id == tournament_id, teams_holding_slots_clause())
         .limit(1)
+    )
+
+
+def teams_holding_slots_clause() -> ColumnElement[bool]:
+    """What "still holding roster slots" means, for differently scoped callers.
+
+    ``roster_shape_guards`` asks it across every tournament of a workspace, so
+    the three conditions live here once rather than per query.
+    """
+    return and_(
+        BalancerRegistrationTeam.deleted_at.is_(None),
+        BalancerRegistrationTeam.status.notin_(_RELEASED_TEAM_STATUSES),
+        BalancerRegistrationTeam.exported_team_id.is_(None),
     )
 
 

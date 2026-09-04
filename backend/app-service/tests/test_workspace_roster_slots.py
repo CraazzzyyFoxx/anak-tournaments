@@ -91,15 +91,29 @@ class _FakeWorkspace:
         self.default_roster_slots_json = slots
 
 
+class _FakeLockResult:
+    def __init__(self, row) -> None:
+        self._row = row
+
+    def first(self):
+        return self._row
+
+
 class _FakeSession:
-    def __init__(self) -> None:
+    """``lock_rows`` answers ``roster_shape_guards``' two shape-lock reads."""
+
+    def __init__(self, *lock_rows) -> None:
         self.committed = False
+        self._lock_rows = list(lock_rows)
 
     async def flush(self) -> None:
         pass
 
     async def commit(self) -> None:
         self.committed = True
+
+    async def execute(self, _statement) -> _FakeLockResult:
+        return _FakeLockResult(self._lock_rows.pop(0) if self._lock_rows else None)
 
 
 class _InvalidationSpy:
@@ -125,9 +139,9 @@ def test_service_update_still_rejects_the_division_grid_version() -> None:
     assert exc_info.value.status_code == 400
 
 
-def _run_registry_update(monkeypatch, payload: schemas.WorkspaceUpdate, *, stored=None):
+def _run_registry_update(monkeypatch, payload: schemas.WorkspaceUpdate, *, stored=None, lock_rows=()):
     workspace = _FakeWorkspace(stored)
-    session = _FakeSession()
+    session = _FakeSession(*lock_rows)
     spy = _InvalidationSpy(session)
 
     async def _get_by_id(_session, _workspace_id):
@@ -163,4 +177,33 @@ def test_resending_the_same_default_does_not_invalidate(monkeypatch) -> None:
 
 def test_unrelated_edits_do_not_invalidate(monkeypatch) -> None:
     _, _, spy = _run_registry_update(monkeypatch, schemas.WorkspaceUpdate(name="renamed"), stored=dict(_STORED))
+    assert spy.calls == []
+
+
+def test_a_draft_inheriting_the_default_blocks_the_change(monkeypatch) -> None:
+    # The change would re-shape that draft's rosters mid-pick: a 1/2/2 team would
+    # start accepting a second tank because the slot rule is asked about a shape
+    # nobody drafted into. Nothing is written and nothing is invalidated.
+    with pytest.raises(BaseAPIException) as exc_info:
+        _run_registry_update(
+            monkeypatch,
+            schemas.WorkspaceUpdate(default_roster_slots_json={"flex": 6}),
+            stored=dict(_STORED),
+            lock_rows=[(42, "live")],
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "42" in str(exc_info.value.detail)
+
+
+def test_an_unrelated_edit_is_not_gated_by_the_shape_lock(monkeypatch) -> None:
+    # Renaming a workspace whose tournament has a live draft stays allowed: only
+    # the shape moves rosters.
+    session, _, spy = _run_registry_update(
+        monkeypatch,
+        schemas.WorkspaceUpdate(name="renamed"),
+        stored=dict(_STORED),
+        lock_rows=[(42, "live")],
+    )
+    assert session.committed is True
     assert spy.calls == []
