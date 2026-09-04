@@ -158,25 +158,29 @@ describe("player inspector role ranks", () => {
     expect(html).toContain("—");
   });
 
-  test("the header answers the player's strength with the effective rank", () => {
-    // Best role is dps at 3900 while the primary sits at 2814: the header shows
-    // the division of what the pick will freeze, the rows stay per-role.
+  test("the header shows the rank the server resolved for this draft, not the maximum", () => {
+    // A support main: 2814 on support, 3900 on dps. `rank_value` carries 3900
+    // because an all-roles registration form stores the maximum there, so the
+    // header has to render `effective_rank` — the server's rank for the player's
+    // own role (services.draft.board) — or it advertises a 3900 support.
     const html = render(
       player({
         primary_role: "support",
         secondary_roles_json: ["dps"],
-        rank_value: 2814,
-        effective_rank: 3900,
+        rank_value: 3900,
+        effective_rank: 2814,
         role_ranks: { support: 2814, dps: 3900 }
       }),
       GRID
     );
 
-    // The header icon precedes the role list, so its division is the effective
-    // rank's (High, 3000+) and not the primary role's (Low, 2814).
-    const headerIcon = html.indexOf('title="High"');
+    // The header icon precedes the role list, so its division is the resolved
+    // rank's (Low, 2814) and not the maximum's (High, 3900).
+    const headerIcon = html.indexOf('title="Low"');
     expect(headerIcon).toBeGreaterThan(-1);
     expect(headerIcon).toBeLessThan(html.indexOf("chooseRole"));
+    expect(html).not.toContain('title="High"');
+    // The rows stay per-role: both ranks are still readable.
     expect(html).toContain("2814 SR");
     expect(html).toContain("3900 SR");
   });

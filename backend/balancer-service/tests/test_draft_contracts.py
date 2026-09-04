@@ -24,8 +24,8 @@ from shared.core.enums import (  # noqa: E402
     DraftStatus,
     HeroClass,
 )
-from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE  # noqa: E402
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession  # noqa: E402
+from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE, parse_roster_slots  # noqa: E402
+from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftPlayerRole, DraftSession  # noqa: E402
 from src import (  # noqa: E402
     openapi_docs,
     openapi_schemas,
@@ -464,13 +464,14 @@ class _BoardSession:
         return _ExecuteResult(self._results.pop(0))
 
 
-def test_board_projects_flagged_answers_and_never_ships_the_rest(monkeypatch) -> None:
-    async def _shape(*_args, **_kwargs):
-        return DEFAULT_ROSTER_SHAPE
+def _live_draft(session_id: int = 1) -> DraftSession:
+    """The one row ``build_board`` reads a session's own fields from.
 
-    monkeypatch.setattr(feasibility_service, "resolve_shape", _shape)
-    draft = DraftSession(
-        id=1,
+    ``session_id`` is a parameter because ``build_board`` caches its snapshot per
+    session: two tests sharing an id would read each other's board.
+    """
+    return DraftSession(
+        id=session_id,
         tournament_id=2,
         workspace_id=3,
         status=DraftStatus.LIVE.value,
@@ -488,6 +489,14 @@ def test_board_projects_flagged_answers_and_never_ships_the_rest(monkeypatch) ->
         settings_json={},
         version=1,
     )
+
+
+def test_board_projects_flagged_answers_and_never_ships_the_rest(monkeypatch) -> None:
+    async def _shape(*_args, **_kwargs):
+        return DEFAULT_ROSTER_SHAPE
+
+    monkeypatch.setattr(feasibility_service, "resolve_shape", _shape)
+    draft = _live_draft()
     player = DraftPlayer(
         id=20,
         session_id=1,
@@ -524,3 +533,54 @@ def test_board_projects_flagged_answers_and_never_ships_the_rest(monkeypatch) ->
     # The un-flagged answer leaves the service in NO shape — the whole point of
     # the opt-in is that the public board carries only what the organizer chose.
     assert "phone" not in snapshot.model_dump_json()
+
+
+def test_board_ranks_a_player_on_their_own_role_under_role_slots(monkeypatch) -> None:
+    # A support main rated 2800 on support and 4000 on dps. `rank_value` holds
+    # 4000 because an all-roles registration form stores the maximum there
+    # (rules.map_registration), so the board must read the catalogue instead:
+    # the pool card, the inspector header and the shortlist all render
+    # `effective_rank`, and they were showing this player as a 4000.
+    player = DraftPlayer(
+        id=21,
+        session_id=1,
+        battle_tag="Ana#2",
+        primary_role=HeroClass.support.slot_code,
+        sub_role=None,
+        is_flex=False,
+        division_number=None,
+        rank_value=4000,
+        status=DraftPlayerStatus.AVAILABLE.value,
+        is_captain=False,
+        drafted_by_team_id=None,
+        additional_info={},
+        version=1,
+        roles=[
+            DraftPlayerRole(role="support", rank_value=2800, is_secondary=False, priority=0),
+            DraftPlayerRole(role="dps", rank_value=4000, is_secondary=True, priority=1),
+        ],
+    )
+
+    async def _role_shape(*_args, **_kwargs):
+        return DEFAULT_ROSTER_SHAPE
+
+    monkeypatch.setattr(feasibility_service, "resolve_shape", _role_shape)
+    role_slots = asyncio.run(
+        board.board_service.build_board(  # type: ignore[arg-type]
+            _BoardSession(custom_fields_json=[], players=[player]), _live_draft(session_id=91)
+        )
+    )
+    assert role_slots.players[0].effective_rank == 2800
+
+    async def _flex_shape(*_args, **_kwargs):
+        return parse_roster_slots({"flex": 5})
+
+    # A role-less roster assigns nobody a role, so the maximum stands in — the
+    # existing flex rule, unchanged.
+    monkeypatch.setattr(feasibility_service, "resolve_shape", _flex_shape)
+    all_flex = asyncio.run(
+        board.board_service.build_board(  # type: ignore[arg-type]
+            _BoardSession(custom_fields_json=[], players=[player]), _live_draft(session_id=92)
+        )
+    )
+    assert all_flex.players[0].effective_rank == 4000

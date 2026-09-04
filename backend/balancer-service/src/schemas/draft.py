@@ -259,11 +259,13 @@ class DraftPlayerRead(BaseRead):
     role_top_heroes: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     additional_info: dict[str, Any] = Field(default_factory=dict)
     # Projected on the read side (not an ORM column) — see board.build_board.
-    # The one rank that represents this player in THIS draft: ``rank_value``
-    # under a shape with role slots, their best role rank under a role-less
-    # (all-flex) one, where nobody is assigned a role. Clients render it instead
-    # of ``rank_value`` wherever they show a player with no role context, so the
-    # flex rule lives once, in ``domain.draft.ranks.slot_rank``.
+    # The one rank that represents this player in THIS draft: their own role's
+    # rank from ``role_ranks`` under a shape with role slots (``rank_value`` only
+    # as the fallback — an all-roles registration form stores the MAXIMUM there),
+    # their best role rank under a role-less (all-flex) one, where nobody is
+    # assigned a role. Clients render it instead of ``rank_value`` wherever they
+    # show a player with no role context, so the rule lives once, in
+    # ``domain.draft.ranks.slot_rank``.
     effective_rank: int | None = None
     # Projected on the read side (not an ORM column) — see board.build_board.
     custom_fields: list[DraftPlayerCustomFieldRead] = Field(default_factory=list)

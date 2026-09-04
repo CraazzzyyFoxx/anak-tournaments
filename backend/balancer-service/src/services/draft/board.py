@@ -203,7 +203,15 @@ class DraftBoardService:
                         # Shape-aware, so it cannot be an ORM property: a role-less
                         # roster makes the player's best role rank the one that
                         # represents them. See domain.draft.ranks.slot_rank.
-                        "effective_rank": ranks.slot_rank(p, None, shape),
+                        #
+                        # Under role slots it is the rank ON THEIR OWN ROLE, read
+                        # from the per-role catalogue. `rank_value` is not that
+                        # rank: an all-roles registration form stores the player's
+                        # MAXIMUM there (rules.map_registration), so passing it
+                        # showed a 2800 support at their 4000 dps rank in every
+                        # role-less place the client renders — pool card,
+                        # inspector header, shortlist.
+                        "effective_rank": ranks.slot_rank(p, p.primary_role, shape),
                     }
                 )
                 for p in players

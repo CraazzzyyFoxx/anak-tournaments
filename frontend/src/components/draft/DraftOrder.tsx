@@ -52,7 +52,11 @@ export function DraftOrder({
                 const team = teamById.get(pick.draft_team_id);
                 const player = pick.picked_player_id == null ? null : playerById.get(pick.picked_player_id);
                 const done = pick.status === "completed" || pick.status === "autopicked";
-                const division = player ? resolveDivisionFromRank(divisionGrid, player.effective_rank) : null;
+                // The rank the pick froze for the role it was made on, which is
+                // what the roster shows too; `effective_rank` is the player's own
+                // role and says nothing about an off-role pick.
+                const rank = pick.target_rank_value ?? player?.effective_rank ?? null;
+                const division = player ? resolveDivisionFromRank(divisionGrid, rank) : null;
                 return (
                   <li
                     key={pick.id}
