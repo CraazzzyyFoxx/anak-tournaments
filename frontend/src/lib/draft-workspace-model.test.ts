@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { DraftPickOptionsResponse, DraftPick, DraftPlayer } from "@/types/draft.types";
+import type { DraftPickOption, DraftPickOptionsResponse, DraftPick, DraftPlayer, DraftRole } from "@/types/draft.types";
 
 import {
   buildRosterByTeam,
@@ -10,6 +10,7 @@ import {
   rosterRoleForPlayer,
   slotRankForPlayer,
   optionForSelection,
+  safeRoleForPlayer,
   playerRoles,
   parseDraftViewParams
 } from "./draft-workspace-model";
@@ -87,6 +88,24 @@ describe("extended filterDraftPlayers search", () => {
     const strict = mkPlayer({ id: 4, primary_role: "dps", secondary_roles_json: ["tank"] });
     expect(playerRoles(strict)).toEqual(["dps", "tank"]);
     expect(filterDraftPlayers([strict], { role: "support", sort: "rank", query: "" })).toEqual([]);
+  });
+  it("preselects the primary role when it is safe, not the server's first safe option", () => {
+    // The server emits options in tank, dps, support order, so a support main
+    // who also plays tank used to open on tank.
+    const player = mkPlayer({ id: 5, primary_role: "support", secondary_roles_json: ["tank"] });
+    const option = (role: DraftRole, is_safe: boolean): DraftPickOption => ({
+      player_id: 5, role, is_safe, reason_code: is_safe ? null : "role_shortage",
+      unmatched_slots: [], blocking_player_ids: [], suggestion_score: null
+    });
+    const response = (options: DraftPickOption[]): DraftPickOptionsResponse => ({
+      pick_id: 1, pick_version: 0, draft_team_id: 2, options
+    });
+
+    expect(safeRoleForPlayer(response([option("tank", true), option("support", true)]), player)).toBe("support");
+    // Primary blocked: fall to the next declared role rather than to nothing.
+    expect(safeRoleForPlayer(response([option("tank", true), option("support", false)]), player)).toBe("tank");
+    expect(safeRoleForPlayer(response([option("tank", false), option("support", false)]), player)).toBeNull();
+    expect(safeRoleForPlayer(null, player)).toBeNull();
   });
 });
 

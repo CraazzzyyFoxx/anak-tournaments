@@ -34,7 +34,7 @@ import type { DivisionGrid } from "@/types/workspace.types";
 import { formatSubRoleLabel, getHeroIconUrl, getPlayerSlug } from "@/utils/player";
 
 import type { DraftPoolRoleFilter, DraftPoolSort } from "@/lib/draft-workspace-model";
-import { allPlayerHeroes, playerRoles, roleTopHeroes } from "@/lib/draft-workspace-model";
+import { allPlayerHeroes, playerRoles, roleTopHeroes, safeRoleForPlayer } from "@/lib/draft-workspace-model";
 
 const POOL_ROLES: DraftRole[] = ["tank", "dps", "support"];
 const SEGMENT_CLASS =
@@ -228,9 +228,12 @@ export function PlayerPool({
           {visiblePlayers.map((player) => {
             const roles = playerRoles(player);
             const secondaryRoles = roles.filter((entry) => entry !== player.primary_role);
-            const playerOptions = options?.options.filter((option) => option.player_id === player.id) ?? [];
-            const safeOption = playerOptions.find((option) => option.is_safe) ?? null;
-            const blocked = safetyRequired && safeOption == null;
+            // The server lists options in its own role order (tank, dps,
+            // support), so taking its first safe one preselected a secondary
+            // role for anybody whose primary sorts later. Ask in the player's
+            // own order instead.
+            const safeRole = safeRoleForPlayer(options, player);
+            const blocked = safetyRequired && safeRole == null;
             const bookmarked = shortlist.has(player.id);
             const isSelected = selectedPlayerId === player.id;
             // effective_rank, not rank_value: under a role-less roster the
@@ -243,7 +246,7 @@ export function PlayerPool({
             ].filter(Boolean).join(" · ");
             const heroes = roleTopHeroes(player, player.primary_role);
             const profileSlug = player.battle_tag ? getPlayerSlug(player.battle_tag) : null;
-            const selectPlayer = () => onSelect(player, safeOption?.role ?? roles[0] ?? null);
+            const selectPlayer = () => onSelect(player, safeRole ?? roles[0] ?? null);
             return (
               <article
                 key={player.id}

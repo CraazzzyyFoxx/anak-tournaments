@@ -89,6 +89,28 @@ export function playerRoles(player: DraftPlayer): DraftRole[] {
   return Array.from(new Set<DraftRole>([player.primary_role, ...declared]));
 }
 
+/**
+ * The role to preselect for a player: the first SAFE one in the player's own
+ * order (primary, then the declared secondaries).
+ *
+ * The server emits an option per role in its own canonical order — tank, dps,
+ * support (`evaluate_pick_options` iterates `HERO_TYPE_CLASSES`) — so reading
+ * its first safe option handed a support main their tank option. `null` means
+ * the player has no safe role at all, which is what blocks the row.
+ */
+export function safeRoleForPlayer(
+  options: DraftPickOptionsResponse | null,
+  player: DraftPlayer
+): DraftRole | null {
+  const safe = (options?.options ?? []).filter(
+    (option) => option.player_id === player.id && option.is_safe
+  );
+  if (safe.length === 0) return null;
+  // A safe role the player never declared can only come from the server (a
+  // flex player), so it still beats returning nothing.
+  return playerRoles(player).find((role) => safe.some((option) => option.role === role)) ?? safe[0].role;
+}
+
 export function buildRosterByTeam(players: DraftPlayer[]): Map<number, DraftPlayer[]> {
   const rosters = new Map<number, DraftPlayer[]>();
   for (const player of players) {
