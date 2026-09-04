@@ -32,6 +32,7 @@ from src import (  # noqa: E402
     schemas,  # noqa: E402
 )
 from src.domain.draft import rules  # noqa: E402
+from src.domain.draft.entities import DraftPickOption  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
 from src.services.draft import board, lifecycle  # noqa: E402
 from src.services.draft.feasibility import feasibility_service  # noqa: E402
@@ -85,6 +86,37 @@ def test_feasibility_and_pick_options_have_typed_public_contracts() -> None:
     assert feasibility.unmatched_slots[0].slot_code == "support"
     assert options.pick_version == 4
     assert options.options[0].is_safe is False
+
+
+def test_read_models_and_handlers_cross_the_role_vocabulary_both_ways() -> None:
+    # domain -> wire: the option/suggestion/role-edit reads are fed straight
+    # from `domain/draft`, which speaks HeroClass. A read model that only took
+    # the slot code raised a ValidationError and 500'd the whole response, so
+    # the captain's pool showed no safe pick at all.
+    option = DraftPickOption(
+        player_id=20,
+        role=HeroClass.damage,
+        is_safe=True,
+        reason_code=None,
+    )
+    assert schemas.DraftPickOptionRead.model_validate(option).role == "dps"
+    assert schemas.DraftSuggestion(player_id=20, role=HeroClass.tank, fit_score=1.0).role == "tank"
+
+    # wire -> domain: the reverse crossing, which the pick/override/role-edit
+    # handlers own. Passing the raw string down reached `role.slot_code` on a
+    # `str`.
+    assert draft_rpc._to_role("dps") is HeroClass.damage
+    assert draft_rpc._to_role(None) is None
+    shape = DEFAULT_ROSTER_SHAPE
+    player = DraftPlayer(id=1, session_id=1, primary_role="dps", is_flex=False, status="available")
+    player.roles = []
+    decision = rules.resolve_pick_slot(
+        shape,
+        dict.fromkeys(shape.slots, 0),
+        player,
+        draft_rpc._to_role("dps"),
+    )
+    assert decision.recorded_role == "dps"
 
 
 def test_role_edit_contract_requires_reason_and_explicit_missing_rank_confirmation() -> None:

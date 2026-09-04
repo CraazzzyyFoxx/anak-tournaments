@@ -115,6 +115,17 @@ async def _actor_player_ids(session: AsyncSession, auth_user_id: int) -> list[in
     return [player_id] if player_id is not None else []
 
 
+def _to_role(slot_code: str | None) -> HeroClass | None:
+    """Wire slot code -> the domain's ``HeroClass``.
+
+    Requests carry ``tank``/``dps``/``support``; everything below this layer —
+    ``rules.resolve_pick_slot``, ``role_edit_service``, ``fit`` — takes a
+    ``HeroClass``. Handing the raw string down reached ``role.slot_code`` on a
+    ``str`` and 500'd the pick instead of drafting anyone.
+    """
+    return HeroClass.from_slot_code(slot_code) if slot_code is not None else None
+
+
 def _pick_event_payload(draft: DraftSession, pick: DraftPick) -> dict:
     return {
         "session_id": draft.id,
@@ -371,7 +382,7 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 draft,
                 player_id=player_id,
-                role=payload.role,
+                role=HeroClass.from_slot_code(payload.role),
                 rank_value=payload.rank_value,
                 rank_absence_confirmed=payload.rank_absence_confirmed,
                 reason=payload.reason,
@@ -744,7 +755,7 @@ def register(broker: Any, logger: Any) -> None:
                 pick,
                 player_id=payload.player_id,
                 expected_version=payload.expected_version,
-                target_role=payload.target_role,
+                target_role=_to_role(payload.target_role),
                 actor_user_id=public_user_id,
                 actor_auth_user_id=user.id,
                 actor_player_ids=public_user_ids,
@@ -800,7 +811,7 @@ def register(broker: Any, logger: Any) -> None:
                 player_id=payload.player_id,
                 expected_version=payload.expected_version,
                 actor_user_id=public_user_id,
-                target_role=payload.target_role,
+                target_role=_to_role(payload.target_role),
             )
             await _audit_repo.create(
                 session,

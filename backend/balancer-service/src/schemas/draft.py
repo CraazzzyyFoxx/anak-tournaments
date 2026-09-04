@@ -8,9 +8,9 @@ shared StrEnums so values are validated and serialize to their string form.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 from shared.core.enums import (
     DraftAutopickStrategy,
@@ -20,6 +20,7 @@ from shared.core.enums import (
     DraftPlayerStatus,
     DraftPoolSource,
     DraftStatus,
+    HeroClass,
 )
 from shared.domain.roster_shape import RegistrationRoleCode, RosterShape
 from shared.schemas.roster_slots import RosterShapeRead
@@ -54,6 +55,21 @@ __all__ = (
 )
 
 _ReadConfig = ConfigDict(from_attributes=True)
+
+
+def _role_slot_code(value: Any) -> Any:
+    """Accept the domain's ``HeroClass`` next to the wire slot code.
+
+    ``domain/draft`` thinks in ``HeroClass`` (``HeroClass.damage``), every read
+    model here carries the wire spelling (``dps``). Coercing in the field means
+    a handler that hands a read model a domain role gets the right JSON instead
+    of a ``ValidationError`` that turns the whole response into a 500 —
+    ``HeroClass.flex`` still fails, since no pick can name it.
+    """
+    return value.slot_code if isinstance(value, HeroClass) else value
+
+
+DraftRoleRead = Annotated[RegistrationRoleCode, BeforeValidator(_role_slot_code)]
 
 
 # --------------------------------------------------------------------------- #
@@ -328,7 +344,7 @@ class DraftBoardSnapshot(BaseModel):
 
 class DraftSuggestion(BaseModel):
     player_id: int
-    role: RegistrationRoleCode
+    role: DraftRoleRead
     fit_score: float
     breakdown: dict[str, float] = Field(default_factory=dict)
 
@@ -371,7 +387,7 @@ class DraftPickOptionRead(BaseModel):
     model_config = _ReadConfig
 
     player_id: int
-    role: RegistrationRoleCode
+    role: DraftRoleRead
     is_safe: bool
     reason_code: str | None = None
     unmatched_slots: list[DraftSlotRead] = Field(default_factory=list)
@@ -388,7 +404,7 @@ class DraftPickOptionsResponse(BaseModel):
 
 class DraftRoleEditResponse(BaseModel):
     player_id: int
-    role: RegistrationRoleCode
+    role: DraftRoleRead
     player_version: int
     committed: bool
     before: DraftFeasibilityResponse
