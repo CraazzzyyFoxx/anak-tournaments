@@ -119,6 +119,12 @@ export function PhaseTimeline({
             const startText = stamp(segment.startsAt);
             const endText = segment.endsAt === null ? null : clock24(segment.endsAt);
             const countdownText = countdown(segment);
+            // How far through its own window the phase is — set by the model
+            // only for a current phase whose window has an end. The step bar
+            // then fills to it and the marker rides it, so "closes in 46
+            // minutes" is also readable as a position.
+            const elapsed = now && segment.progress !== null ? segment.progress : null;
+            const pct = elapsed === null ? null : `${Math.round(elapsed * 1000) / 10}%`;
             return (
               <li
                 key={segment.status}
@@ -126,16 +132,37 @@ export function PhaseTimeline({
                 className={cn(
                   "relative min-w-[9rem] border-t-[3px] px-3 pb-2 pt-2.5",
                   now
-                    ? "border-[color:var(--aqt-teal)] bg-[color:var(--aqt-overlay-1)]"
+                    ? cn(
+                        "bg-[color:var(--aqt-overlay-1)]",
+                        // With a progress fill the border is the unspent part of
+                        // the window, so it drops to the neutral track colour.
+                        pct === null
+                          ? "border-[color:var(--aqt-teal)]"
+                          : "border-[color:var(--aqt-border)]"
+                      )
                     : segment.state === "upcoming"
                       ? "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-dim)]"
                       : "border-[color:var(--aqt-fg-faint)]"
                 )}
               >
+                {pct === null ? null : (
+                  <span
+                    aria-hidden
+                    className="absolute -top-[3px] left-0 h-[3px] bg-[color:var(--aqt-teal)]"
+                    style={{ width: pct }}
+                  />
+                )}
                 {now ? (
                   <span
                     aria-hidden
-                    className="absolute -top-[7px] left-3 size-[11px] rounded-full bg-[color:var(--aqt-teal)] ring-[3px] ring-[color:var(--aqt-bg)]"
+                    className={cn(
+                      "absolute -top-[7px] size-[11px] rounded-full bg-[color:var(--aqt-teal)] ring-[3px] ring-[color:var(--aqt-bg)]",
+                      pct === null ? "left-3" : "-translate-x-1/2"
+                    )}
+                    // Clamped to the segment's own edges: at 0% or 100% an
+                    // untranslated marker would hang outside the scroll box and
+                    // get clipped.
+                    style={pct === null ? undefined : { left: `clamp(6px, ${pct}, calc(100% - 6px))` }}
                   />
                 ) : null}
                 <div className={cn("text-[15px] font-semibold", now && "text-[color:var(--aqt-teal)]")}>

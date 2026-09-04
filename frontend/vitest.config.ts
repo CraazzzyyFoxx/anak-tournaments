@@ -201,6 +201,7 @@ export default defineConfig({
       "src/components/match/MatchLogIndicator.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/tournament-section-nav.test.ts",
       "src/app/(site)/tournaments/[slug]/_components/tournament-shared-ui.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_components/PhaseTimeline.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/TournamentBroadcastDock.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/TournamentLinkChips.behavior.test.tsx",
       // Same file-level rule as `src/components`: the bracket folder also holds a
