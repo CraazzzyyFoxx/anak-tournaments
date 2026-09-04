@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { cn } from "@/lib/utils";
@@ -13,8 +13,6 @@ export type MapPlayedCount = {
   played: number;
   /** Mean map duration in seconds, or null when no map has a recorded length. */
   avgDurationSec: number | null;
-  /** Attack-side win share 0..1, or null for modes without an attacking side. */
-  attackWinShare: number | null;
 };
 
 export type MapPoolProps = {
@@ -61,7 +59,6 @@ export function MapPool({
   className
 }: Readonly<MapPoolProps>) {
   const t = useTranslations();
-  const format = useFormatter();
   const [stageId, setStageId] = useState<number | null>(null);
 
   const shown =
@@ -127,9 +124,6 @@ export function MapPool({
                 <th scope="col" className="py-2 pr-3 text-right font-medium">
                   {t("tournamentDetail.mapPool.col.avgDuration")}
                 </th>
-                <th scope="col" className="py-2 pr-3 text-left font-medium">
-                  {t("tournamentDetail.mapPool.col.sides")}
-                </th>
                 {matchesHref ? (
                   <th scope="col" className="py-2">
                     <span className="sr-only">{t("common.matches")}</span>
@@ -160,28 +154,6 @@ export function MapPool({
                         {counts?.avgDurationSec != null
                           ? `${Math.floor(counts.avgDurationSec / 60)}:${String(Math.round(counts.avgDurationSec % 60)).padStart(2, "0")}`
                           : "—"}
-                      </td>
-                      <td className="py-2 pr-3">
-                        {counts?.attackWinShare != null ? (
-                          <div
-                            className="flex h-2 w-40 max-w-full overflow-hidden rounded-sm"
-                            role="img"
-                            aria-label={t("tournamentDetail.mapPool.attackShare", {
-                              pct: format.number(counts.attackWinShare, {
-                                style: "percent",
-                                maximumFractionDigits: 0
-                              })
-                            })}
-                          >
-                            <span
-                              className="bg-[color:var(--aqt-fg-muted)]"
-                              style={{ width: `${Math.round(counts.attackWinShare * 100)}%` }}
-                            />
-                            <span className="flex-1 bg-[color:var(--aqt-border)]" />
-                          </div>
-                        ) : (
-                          "—"
-                        )}
                       </td>
                       {matchesHref ? (
                         <td className="py-2 text-right">

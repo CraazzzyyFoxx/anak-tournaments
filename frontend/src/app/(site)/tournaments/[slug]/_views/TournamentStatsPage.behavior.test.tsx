@@ -365,7 +365,6 @@ function mapRows() {
       mode: cells[1]?.textContent ?? "",
       played: cells[2]?.textContent ?? "",
       duration: cells[3]?.textContent ?? "",
-      sides: cells[4]?.textContent ?? "",
       matchesHref: row.querySelector("a")?.getAttribute("href") ?? null
     };
   });
@@ -475,14 +474,10 @@ describe("every map of the pool is a row", () => {
     expect(filters.entities).toContain("matches");
   });
 
-  it("shows an em dash for attack/defense, because no side is recorded", async () => {
-    await render("tab=maps");
-
-    for (const row of mapRows()) expect(row.sides).toBe("—");
+  it("averages only the timed maps", () => {
     expect(buildMapPlayedCounts([encounter([match(1, KINGS_ROW.id, 600)])])[KINGS_ROW.id]).toEqual({
       played: 1,
-      avgDurationSec: 600,
-      attackWinShare: null
+      avgDurationSec: 600
     });
   });
 });

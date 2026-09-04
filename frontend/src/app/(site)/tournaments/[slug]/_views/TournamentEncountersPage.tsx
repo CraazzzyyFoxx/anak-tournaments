@@ -12,6 +12,13 @@ import {
   type RoundGroup
 } from "@/components/bracket-view.helpers";
 import { FilterChip } from "@/components/ui/filter-chip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { useBracketRoundLabel, type BracketRoundLabelFormatter } from "@/hooks/useBracketRoundLabel";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -430,6 +437,17 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
                 : null
           )
           .find(Boolean) ?? null;
+  /** Every team with a match, once, by name — the picker's options. */
+  const teamOptions = (() => {
+    const byId: Record<number, string> = {};
+    for (const encounter of encounters) {
+      if (encounter.home_team) byId[encounter.home_team_id] = encounter.home_team.name;
+      if (encounter.away_team) byId[encounter.away_team_id] = encounter.away_team.name;
+    }
+    return Object.entries(byId)
+      .map(([id, name]) => ({ id: Number(id), name }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  })();
   const mapName =
     mapFilter === null
       ? null
@@ -622,6 +640,25 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
                 })}
                 <span aria-hidden>×</span>
               </FilterChip>
+            ) : teamOptions.length > 0 ? (
+              /* Wireframe §7 ②: one "+ Team" chip, not a filter panel. The
+                 picker lists every team that played, and the chosen team
+                 becomes the removable chip above. */
+              <Select value="" onValueChange={(value) => setParams({ team: value })}>
+                <SelectTrigger
+                  aria-label={t("tournamentDetail.matches.pickTeam")}
+                  className="filter-sort h-8 w-auto gap-1.5 shadow-none focus:ring-0 focus:ring-offset-0"
+                >
+                  <SelectValue placeholder={t("tournamentDetail.matches.addTeam")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {teamOptions.map((team) => (
+                    <SelectItem key={team.id} value={String(team.id)}>
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : null}
             {mapFilter !== null ? (
               <FilterChip

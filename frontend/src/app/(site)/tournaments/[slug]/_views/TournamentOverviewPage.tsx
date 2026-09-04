@@ -14,6 +14,7 @@ import {
 } from "@/components/bracket-view.helpers";
 import TeamName from "@/components/TeamName";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
+import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { normalizePlayerRole, playerRoleSlotCode } from "@/lib/player-role";
 import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
@@ -308,6 +309,8 @@ export default function TournamentOverviewPage({
   const t = useTranslations();
   const format = useFormatter();
   const roundLabel = useBracketRoundLabel();
+  // Null until hydration — recency text waits rather than disagree with SSR.
+  const clockNow = useMinuteClock();
 
   const tournamentQuery = useTournamentQuery(slug);
   const tournament = tournamentQuery.data;
@@ -605,12 +608,18 @@ export default function TournamentOverviewPage({
 
   if (variant === "registration") {
     const roleCounts = countRegistrationRoles(registrations);
-    const latest = [...registrations]
+    const submitted = [...registrations]
       .filter((registration) => registration.submitted_at !== null)
-      .sort((left, right) => String(right.submitted_at).localeCompare(String(left.submitted_at)))
+      .sort((left, right) => String(right.submitted_at).localeCompare(String(left.submitted_at)));
+    const latest = submitted
       .slice(0, 3)
       .map((registration) => registration.battle_tag)
       .filter((tag): tag is string => typeof tag === "string" && tag.length > 0);
+    const latestAt = submitted[0]?.submitted_at ?? null;
+    const latestAgo =
+      latestAt !== null && clockNow !== null
+        ? format.relativeTime(new Date(latestAt), clockNow)
+        : null;
     const isTeamRegistration = tournament.team_formation === "registration";
     const rosterShape = tournament.roster_shape;
     const rosterLine = rosterShape
@@ -618,8 +627,12 @@ export default function TournamentOverviewPage({
           .map((code) => `${rosterShape.slots[code]} × ${t(`rosterShape.slotCodes.${code}`)}`)
           .join(" · ")
       : "";
-    const hasFormat =
-      tournament.stages.length > 0 || rosterLine.length > 0 || Boolean(tournament.description);
+    // The share of each role in the field — the thing a draft/balancer
+    // organizer reads ("tanks are short"). Neutral shades, darkest first, so
+    // it needs no legend beyond the figures above it.
+    const roleShares = ROSTER_SLOT_CODES.filter((code) => roleCounts[code] > 0);
+    const roleTotal = roleShares.reduce((sum, code) => sum + roleCounts[code], 0);
+    const ROLE_SHADES = ["var(--aqt-fg)", "var(--aqt-fg-muted)", "var(--aqt-fg-faint)", "var(--aqt-border-3)"];
 
     const content = (
       <section className={styles.publicDataPage} aria-label={t("common.overview")}>
@@ -634,12 +647,7 @@ export default function TournamentOverviewPage({
             reads as a broken layout, not as restraint. The organizer links live
             in the hero's action row already, so they are not repeated here. */}
         <div className={cn("grid gap-4", mapPoolTiles && "lg:grid-cols-[6fr_4fr]")}>
-          <div
-            className={cn(
-              "grid content-start gap-4",
-              !mapPoolTiles && hasFormat && "lg:grid-cols-2"
-            )}
-          >
+          <div className={cn("grid content-start gap-4", !mapPoolTiles && "lg:grid-cols-2")}>
             {/* ② "Tanks are short" is what a draft/balancer tournament is read
                 for; a team-registration one counts teams instead. */}
             <OverviewCard
@@ -676,48 +684,66 @@ export default function TournamentOverviewPage({
                       />
                     ))}
                   </div>
+                  {roleShares.length > 1 && roleTotal > 0 ? (
+                    <div aria-hidden className="mt-3 flex h-1.5 gap-px overflow-hidden rounded-sm">
+                      {roleShares.map((code, index) => (
+                        <span
+                          key={code}
+                          style={{
+                            width: `${(roleCounts[code] / roleTotal) * 100}%`,
+                            background: ROLE_SHADES[index % ROLE_SHADES.length]
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                   {latest.length > 0 ? (
-                    <p className="mt-3 truncate text-xs text-[color:var(--aqt-fg-faint)]">
+                    <p className="mt-2 truncate text-xs text-[color:var(--aqt-fg-faint)]">
                       {t("tournamentDetail.overview.registration.latest")}: {latest.join(" · ")}
+                      {latestAgo ? ` · ${latestAgo}` : null}
                     </p>
                   ) : null}
                 </>
               )}
             </OverviewCard>
 
-            {/* ③ Format and the full description move out of the hero. Team
-                formation alone is already a header chip, so the card needs at
-                least one thing the header does not say. */}
-            {hasFormat ? (
-              <OverviewCard title={t("tournamentDetail.overview.format.title")}>
-                <dl className="grid gap-2.5">
-                  {tournament.stages.length > 0 ? (
-                    <KeyValue term={t("common.format")}>
-                      {formatLabel(tournament.stages, t)}
-                      <span className="text-[color:var(--aqt-fg-faint)]">
-                        {" — "}
-                        {[...tournament.stages]
-                          .sort((left, right) => left.order - right.order)
-                          .map((item) => item.name)
-                          .join(" → ")}
-                      </span>
-                    </KeyValue>
-                  ) : null}
+            {/* ③ Format and the full description move out of the hero — the whole
+                text, since the hero shows one clamped line. Team formation is
+                repeated from the header chip so the block always has a body. */}
+            <OverviewCard title={t("tournamentDetail.overview.format.title")}>
+              <dl className="grid gap-2.5">
+                {tournament.stages.length > 0 ? (
+                  <KeyValue term={t("common.format")}>
+                    {formatLabel(tournament.stages, t)}
+                    <span className="text-[color:var(--aqt-fg-faint)]">
+                      {" — "}
+                      {[...tournament.stages]
+                        .sort((left, right) => left.order - right.order)
+                        .map((item) => item.name)
+                        .join(" → ")}
+                    </span>
+                  </KeyValue>
+                ) : null}
+                <KeyValue term={t("common.teamFormation")}>
+                  {t(
+                    `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`
+                  )}
                   {rosterLine ? (
-                    <KeyValue term={t("tournamentDetail.overview.format.roster")}>
+                    <span className="text-[color:var(--aqt-fg-faint)]">
+                      {" — "}
                       {rosterLine}
-                    </KeyValue>
+                    </span>
                   ) : null}
-                  {tournament.description ? (
-                    <KeyValue term={t("tournamentDetail.overview.format.description")}>
-                      <span className="block whitespace-pre-line leading-relaxed">
-                        {tournament.description}
-                      </span>
-                    </KeyValue>
-                  ) : null}
-                </dl>
-              </OverviewCard>
-            ) : null}
+                </KeyValue>
+                {tournament.description ? (
+                  <KeyValue term={t("tournamentDetail.overview.format.description")}>
+                    <span className="block whitespace-pre-line leading-relaxed">
+                      {tournament.description}
+                    </span>
+                  </KeyValue>
+                ) : null}
+              </dl>
+            </OverviewCard>
           </div>
 
           {/* ④ The retired Maps tab, as tiles per game mode. */}

@@ -55,12 +55,8 @@ function heroRole(playtime: HeroPlaytime): RoleKey {
 
 /**
  * How often each map was played, and how long it took, from the tournament's
- * own series.
- *
- * `attackWinShare` is always null: a `Match` carries a score, a duration and a
- * map, and nothing anywhere in the read model says which team attacked, so the
- * attack/defense column has no honest value to show. `MapPool` renders it as an
- * em dash rather than as a 0% bar.
+ * own series. No attack/defense split: a `Match` carries a score, a duration
+ * and a map, and nothing in the read model says which team attacked.
  */
 export function buildMapPlayedCounts(encounters: readonly Encounter[]): Record<number, MapPlayedCount> {
   const totals = new Map<number, { played: number; durationSec: number; timed: number }>();
@@ -81,8 +77,7 @@ export function buildMapPlayedCounts(encounters: readonly Encounter[]): Record<n
   for (const [mapId, entry] of totals) {
     counts[mapId] = {
       played: entry.played,
-      avgDurationSec: entry.timed > 0 ? entry.durationSec / entry.timed : null,
-      attackWinShare: null
+      avgDurationSec: entry.timed > 0 ? entry.durationSec / entry.timed : null
     };
   }
   return counts;

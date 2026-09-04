@@ -1932,9 +1932,6 @@
       },
       "format": {
         "title": "Format",
-        "stages": "Stages",
-        "teamFormation": "Team formation",
-        "roster": "Roster",
         "description": "About"
       },
       "live": {
@@ -1991,13 +1988,11 @@
     "mapPool": {
       "title": "Map pool · {count}",
       "stageLabel": "Map pool by stage",
-      "attackShare": "Attack wins {pct}",
       "col": {
         "map": "Map",
         "mode": "Mode",
         "played": "Played",
-        "avgDuration": "Avg. length",
-        "sides": "Attack / defense wins"
+        "avgDuration": "Avg. length"
       }
     },
     "stats": {
@@ -2166,6 +2161,8 @@
       "matchCount": "{count, plural, one {# match} other {# matches}}",
       "teamFilter": "Team: {name}",
       "clearTeamFilter": "Clear the team filter",
+      "addTeam": "+ Team",
+      "pickTeam": "Filter by team",
       "mapFilter": "Map: {name}",
       "clearMapFilter": "Clear the map filter"
     }

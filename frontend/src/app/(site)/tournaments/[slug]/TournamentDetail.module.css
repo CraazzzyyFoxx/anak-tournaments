@@ -182,8 +182,11 @@
   color: var(--aqt-teal);
 }
 
+/* Locked tabs read as unavailable at a glance (wireframes §2 ⑤ `.dim`), not as
+   a shade of the same grey the open ones use. */
 .navItem.locked {
   color: var(--aqt-fg-faint);
+  opacity: 0.55;
   cursor: not-allowed;
 }
 

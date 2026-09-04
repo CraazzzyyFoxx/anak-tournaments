@@ -9,8 +9,12 @@ import { useTranslations } from "next-intl";
 import { Tournament } from "@/types/tournament.types";
 import { Player, Team } from "@/types/team.types";
 import type { Encounter } from "@/types/encounter.types";
+import type { Hero } from "@/types/hero.types";
+import type { Registration } from "@/types/registration.types";
 import encounterService from "@/services/encounter.service";
+import registrationService from "@/services/registration.service";
 import teamService from "@/services/team.service";
+import { HeroStrip } from "@/components/hero/HeroImage";
 import { TournamentTeamCard } from "@/components/TournamentTeamCard";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -42,6 +46,7 @@ import { UpdatingBadge } from "../_components/UpdatingBadge";
 import { ViewSegment, readViewParam } from "../_components/ViewSegment";
 import { useTournamentQuery } from "../_hooks/useTournamentClientData";
 import { getPublicPageQueryPresentation } from "./publicPageQueryPresentation";
+import { useHeroesMap } from "./_components/participantsColumns";
 
 const VIEWS = ["list", "cards"] as const;
 type TeamsView = (typeof VIEWS)[number];
@@ -209,19 +214,53 @@ function listGrid(withRoles: boolean): string {
   );
 }
 
-/** Role · battletag · division+SR · notes. The name track is capped so the
- *  division does not drift to the far edge of a wide row. */
-const ROSTER_GRID =
-  "grid grid-cols-[3rem_minmax(0,16rem)_6rem_minmax(0,1fr)] items-center gap-2";
+/** Role · battletag · division+SR · [heroes] · notes. The name track is capped
+ *  so the division does not drift to the far edge of a wide row. */
+function rosterGrid(withHeroes: boolean): string {
+  return cn(
+    "grid items-center gap-2",
+    withHeroes
+      ? "grid-cols-[3rem_minmax(0,16rem)_6rem_4.5rem_minmax(0,1fr)]"
+      : "grid-cols-[3rem_minmax(0,16rem)_6rem_minmax(0,1fr)]"
+  );
+}
+
+/**
+ * The heroes a player declared for the role they were drafted into (§5 ③).
+ * The public teams read carries no hero data, so the source is the same
+ * registration list the participants pool shows — declared picks, not
+ * playtime. A player without a registration (team-registration tournaments,
+ * hand-added substitutes) has none.
+ */
+function declaredHeroes(
+  player: Player,
+  registration: Registration | undefined,
+  heroesMap: Map<string, Hero>
+): Hero[] {
+  if (!registration) return [];
+  const roles = registration.roles ?? [];
+  const wanted = normalizePlayerRole(player.role);
+  const role =
+    roles.find((entry) => normalizePlayerRole(entry.role) === wanted) ??
+    roles.find((entry) => entry.is_primary) ??
+    roles[0];
+  return (role?.top_heroes ?? [])
+    .slice(0, 3)
+    .map((slug) => heroesMap.get(slug) ?? ({ name: slug, slug, image_path: "", role: wanted } as Hero));
+}
 
 const TeamRosterRow = ({
   player,
   tournament,
-  needle
+  needle,
+  heroes,
+  withHeroes
 }: {
   player: Player;
   tournament: Tournament;
   needle: string;
+  heroes: Hero[];
+  withHeroes: boolean;
 }) => {
   const t = useTranslations();
   const workspaceGrid = useDivisionGrid();
@@ -236,13 +275,8 @@ const TeamRosterRow = ({
     player.is_newcomer ? t("teams.roster.newcomer") : null
   ].filter(Boolean);
 
-  // Wireframe §5 ③ also asks for each player's top three heroes. The public
-  // teams read (`/api/v1/teams`, entities `players` + `players.user`) carries
-  // no hero data, and the only per-player hero source is one hero-playtime
-  // request per user — a hundred requests for one expanded roster. The column
-  // is therefore absent rather than filled with a placeholder.
   return (
-    <div className={cn(ROSTER_GRID, "py-1")}>
+    <div className={cn(rosterGrid(withHeroes), "py-1")}>
       <span className="aqt-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
         {role}
       </span>
@@ -271,6 +305,18 @@ const TeamRosterRow = ({
         />
         <span className="aqt-tnum text-[11px] text-[color:var(--aqt-fg-muted)]">{player.rank}</span>
       </span>
+      {withHeroes ? (
+        heroes.length > 0 ? (
+          <HeroStrip
+            heroes={heroes}
+            size={18}
+            limit={3}
+            className="justify-self-start"
+          />
+        ) : (
+          <span className="text-[color:var(--aqt-fg-dim)]">—</span>
+        )
+      ) : null}
       <span className="truncate text-[11px] text-[color:var(--aqt-fg-dim)]">
         {notes.join(" · ")}
       </span>
@@ -288,13 +334,17 @@ const TeamListRow = ({
   tournament,
   slug,
   record,
-  needle
+  needle,
+  registrationsByUser,
+  heroesMap
 }: {
   team: Team;
   tournament: Tournament;
   slug: string;
   record: TeamRecord | null | undefined;
   needle: string;
+  registrationsByUser: Map<number, Registration>;
+  heroesMap: Map<string, Hero>;
 }) => {
   const t = useTranslations();
   const withRoles = tournament.roster_shape?.has_role_slots ?? true;
@@ -303,6 +353,12 @@ const TeamListRow = ({
     team.group?.name ? t("teams.groupLabel", { name: team.group.name }) : null,
     team.placement === 1 ? t("tournamentDetail.teams.champion") : null
   ].filter(Boolean);
+  const roster = sortTeamPlayers(team.players).map((player) => ({
+    player,
+    heroes: declaredHeroes(player, registrationsByUser.get(player.user_id), heroesMap)
+  }));
+  // A column of dashes says nothing: it exists only when someone declared heroes.
+  const withHeroes = roster.some((entry) => entry.heroes.length > 0);
 
   return (
     <details className="group border-b border-[color:var(--aqt-border)]/60">
@@ -350,16 +406,24 @@ const TeamListRow = ({
         </div>
       </summary>
       <div className="mb-2 ml-2 mr-2 border-l-2 border-[color:var(--aqt-border)] py-1 pl-3 text-xs sm:ml-[4.75rem]">
-        <div className={cn(ROSTER_GRID, "py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]")}>
+        <div className={cn(rosterGrid(withHeroes), "py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]")}>
           <span>{t("teams.roster.role")}</span>
           <span>{t("teams.roster.battleTag")}</span>
           <span>
             {t("teams.roster.division")} · {t("tournamentDetail.teams.sr")}
           </span>
+          {withHeroes ? <span>{t("common.heroes")}</span> : null}
           <span />
         </div>
-        {sortTeamPlayers(team.players).map((player) => (
-          <TeamRosterRow key={player.id} player={player} tournament={tournament} needle={needle} />
+        {roster.map(({ player, heroes }) => (
+          <TeamRosterRow
+            key={player.id}
+            player={player}
+            tournament={tournament}
+            needle={needle}
+            heroes={heroes}
+            withHeroes={withHeroes}
+          />
         ))}
         <div className="mt-1.5 flex flex-wrap gap-3 border-t border-[color:var(--aqt-border)]/60 pt-1.5 font-mono text-[10px]">
           <Link
@@ -403,6 +467,25 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
         tournament.workspace_id
       )
   });
+
+  // Declared top heroes for the roster expansion (§5 ③) — the participants
+  // section's own list and hero catalogue, so both are cache reads after one
+  // visit there. Only draft/balancer tournaments register players one by one;
+  // a team-registration read would come back without per-player picks.
+  const hasPlayerRegistrations = tournament.team_formation !== "registration";
+  const registrationsQuery = useQuery({
+    queryKey: tournamentQueryKeys.registrationsList(tournament.workspace_id, tournament.id),
+    queryFn: () => registrationService.listRegistrations(tournament.id),
+    enabled: hasPlayerRegistrations
+  });
+  const heroesMap = useHeroesMap({ enabled: hasPlayerRegistrations });
+  const registrationsByUser = useMemo(() => {
+    const byUser = new Map<number, Registration>();
+    for (const registration of registrationsQuery.data ?? []) {
+      if (registration.user_id !== null) byUser.set(registration.user_id, registration);
+    }
+    return byUser;
+  }, [registrationsQuery.data]);
 
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
   const [storedView, setStoredView] = useState<TeamsView | null>(null);
@@ -604,6 +687,8 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                   slug={slug}
                   record={records?.get(team.id) ?? null}
                   needle={needle}
+                  registrationsByUser={registrationsByUser}
+                  heroesMap={heroesMap}
                 />
               ))}
             </div>
