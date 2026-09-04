@@ -829,8 +829,9 @@ export default function RegistrationsTable({
               Create Manual Registration
             </DialogTitle>
             <DialogDescription className="mt-1 max-w-2xl text-sm leading-5 text-[color:var(--aqt-fg-muted)]">
-              Open the same multi-step visual shell used by the public flow, but keep every admin
-              field available in one fixed editor.
+              Registers a player on your behalf: every field stays available regardless of the
+              public form config, and verified-account requirements are not enforced. Link a site
+              account to prefill BattleTag, Discord and Twitch from its verified logins.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-4 py-3.5 sm:px-5">
