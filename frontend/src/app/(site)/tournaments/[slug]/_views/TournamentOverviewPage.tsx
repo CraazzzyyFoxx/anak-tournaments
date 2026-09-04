@@ -627,12 +627,6 @@ export default function TournamentOverviewPage({
           .map((code) => `${rosterShape.slots[code]} × ${t(`rosterShape.slotCodes.${code}`)}`)
           .join(" · ")
       : "";
-    // The share of each role in the field — the thing a draft/balancer
-    // organizer reads ("tanks are short"). Neutral shades, darkest first, so
-    // it needs no legend beyond the figures above it.
-    const roleShares = ROSTER_SLOT_CODES.filter((code) => roleCounts[code] > 0);
-    const roleTotal = roleShares.reduce((sum, code) => sum + roleCounts[code], 0);
-    const ROLE_SHADES = ["var(--aqt-fg)", "var(--aqt-fg-muted)", "var(--aqt-fg-faint)", "var(--aqt-border-3)"];
 
     const content = (
       <section className={styles.publicDataPage} aria-label={t("common.overview")}>
@@ -684,21 +678,8 @@ export default function TournamentOverviewPage({
                       />
                     ))}
                   </div>
-                  {roleShares.length > 1 && roleTotal > 0 ? (
-                    <div aria-hidden className="mt-3 flex h-1.5 gap-px overflow-hidden rounded-sm">
-                      {roleShares.map((code, index) => (
-                        <span
-                          key={code}
-                          style={{
-                            width: `${(roleCounts[code] / roleTotal) * 100}%`,
-                            background: ROLE_SHADES[index % ROLE_SHADES.length]
-                          }}
-                        />
-                      ))}
-                    </div>
-                  ) : null}
                   {latest.length > 0 ? (
-                    <p className="mt-2 truncate text-xs text-[color:var(--aqt-fg-faint)]">
+                    <p className="mt-3 truncate text-xs text-[color:var(--aqt-fg-faint)]">
                       {t("tournamentDetail.overview.registration.latest")}: {latest.join(" · ")}
                       {latestAgo ? ` · ${latestAgo}` : null}
                     </p>

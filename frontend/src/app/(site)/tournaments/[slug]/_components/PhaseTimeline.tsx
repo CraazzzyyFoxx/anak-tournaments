@@ -111,7 +111,9 @@ export function PhaseTimeline({
             {zoneLabel}
           </span>
         </div>
-        <ol className="grid auto-cols-fr grid-flow-col gap-1 overflow-x-auto" aria-label={t("tournamentDetail.publicPages.schedule.title")}>
+        {/* `overflow-x-auto` also clips vertically, so the 7px the "now" dot
+            rises above the step bar is padding inside the scroll box. */}
+        <ol className="grid auto-cols-fr grid-flow-col gap-1 overflow-x-auto pt-2" aria-label={t("tournamentDetail.publicPages.schedule.title")}>
           {segments.map((segment) => {
             const now = isNow(segment);
             const startText = stamp(segment.startsAt);
