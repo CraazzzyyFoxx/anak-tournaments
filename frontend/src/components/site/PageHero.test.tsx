@@ -12,7 +12,7 @@ function decorativeLayers(markup: string) {
 }
 
 describe("PageHero cover banner", () => {
-  it("renders a lazily-loaded banner inside its own band, clear of the copy", () => {
+  it("renders the banner as a blurred wash, not as a picture", () => {
     const markup = renderToStaticMarkup(
       <PageHero title="Overwatch Cup" coverUrl="https://cdn.example.test/cover.png" />
     );
@@ -21,17 +21,21 @@ describe("PageHero cover banner", () => {
     expect(markup).toContain('loading="lazy"');
     // Decorative only: the hero title already names the page.
     expect(markup).toContain('alt=""');
-    // The picture is confined to its band and fades into the frame there; the
-    // copy below it sits on plain `bg`, so contrast never depends on the upload.
-    expect(markup).toContain("height:80px");
-    expect(markup).toContain("transparent 0%");
-    expect(markup).toContain("var(--aqt-bg) 100%");
-    // ...and the copy is pushed clear of the band by the same 80px.
-    expect(markup).toContain("padding-top:80px");
+    // Blurred, oversaturated and blended, all inline: `mix-blend-mode: color`
+    // takes hue from the image and luminance from the frame, so no upload can
+    // move a contrast ratio, and saturation is the one channel such a blend can
+    // spend. A scrim could not do this — `--aqt-fg-faint` sits at 5.1:1 on
+    // `--aqt-bg`, and a white cover bleeding 5% of its light drops it to ~2.6:1.
+    expect(markup).toContain("mix-blend-mode:color");
+    expect(markup).toContain("blur(28px) saturate(2.2)");
+    expect(markup).toContain("scale(1.12)");
+    // The blend has to stay inside the hero, not reach the page behind it.
+    expect(markup).toContain("isolate");
+    // No band is reserved and no scrim is painted: the wash is behind the copy.
+    expect(markup).not.toContain("padding-top");
 
-    // The band paints OVER the grid and glow: under them the artwork came out
-    // teal-washed and cross-hatched. Both layers still frame the copy area.
-    expect(markup.indexOf("cover.png")).toBeGreaterThan(markup.indexOf("48px 48px"));
+    // The wash sits BELOW the grid and glow, which are the frame's identity.
+    expect(markup.indexOf("cover.png")).toBeLessThan(markup.indexOf("48px 48px"));
     expect(decorativeLayers(markup)).toEqual({ grid: true, glow: true });
   });
 
@@ -39,8 +43,7 @@ describe("PageHero cover banner", () => {
     const markup = renderToStaticMarkup(<PageHero title="Overwatch Cup" />);
 
     expect(markup).not.toContain("<img");
-    expect(markup).not.toContain("height:80px");
-    expect(markup).not.toContain("padding-top");
+    expect(markup).not.toContain("mix-blend-mode");
     expect(decorativeLayers(markup)).toEqual({ grid: true, glow: true });
   });
 });

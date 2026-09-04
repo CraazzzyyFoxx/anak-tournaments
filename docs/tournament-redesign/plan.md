@@ -126,14 +126,14 @@ type PodiumProps = { first: TeamRef & { roster: string[] }; second: TeamRef & { 
 ### P0 — Оболочка (§2). Оркестратор.
 
 **WU-0.1 Заголовок = обложка + состояние.** `_components/TournamentClientLayout.tsx`, `components/site/PageHero.tsx`. **Сделано.**
-- Обложка: `coverUrl={tournament.cover_image_url}` в `PageHero`. В `PageHero` — `COVER_BAND_PX = 80`: картинка ровно этой высоты сверху, растворяется в `--aqt-bg`, тот же `80px` идёт в `paddingTop` контента (одно число на оба, иначе заголовок садится на арт). Полоса рисуется НАД сеткой и свечением. Нет обложки → рамка как раньше, ничего не резервируется. §2 ⑦.
+- Обложка: `coverUrl={tournament.cover_image_url}` в `PageHero`. В `HeroFrame` — размытая цветовая заливка на всю площадь, под сеткой и свечением: `filter: blur(28px) saturate(2.2)`, `transform: scale(1.12)`, `mix-blend-mode: color`; всё **инлайном**, а не Tailwind-классами (`mix-blend-*`, `saturate-*`, `scale-*` в этой сборке не сгенерированы, и класс молча не применился — первый рендер вышел 70%-непрозрачным фото). Blend берёт тон из картинки, а яркость из рамки, поэтому контраст не зависит от загрузки; скрим этого не может — `--aqt-fg-faint` и так на пороге AA. Нет обложки → рамка как раньше, ничего не резервируется. §2 ⑦.
 - Логотип: `logo_url`, 44px, внутри `title` слева от имени (`title` уже `ReactNode`, новый проп не нужен). §2 ③.
 - Убрать `aside` с четырьмя `HeroStat`. `meta` — только состояние: статус · `NextPhaseChip` · лига · счётчик («72 / 120 игроков» в регистрации, «20 команд · 116 игроков» после). §2 ②.
 - Убрать из шапки `FORMAT`, team formation и `lede` — они дубль карточки «Формат», которая теперь есть во всех трёх вариантах Обзора (WU-2.x, §3 ⑨). Описание читается там целиком, а не одной обрезанной строкой.
 - `aside` — только действия: `TournamentRegisterButton` (не-ended) и «Драфт →» (`team_formation === "draft"` и статус ≠ registration). `TournamentLinkChips` из шапки убрать: чипы с `--aqt-overlay-2` лежали бы на картинке. §2 ④.
 - Геометрию секондари-кнопки вынести в `_components/tournamentActionClass.ts` (`TOURNAMENT_ACTION_CLASS`) — до этого одна и та же строка классов была скопирована в `TournamentLinkChips` и `TournamentRegisterButton`, «Драфт →» стал бы третьей копией.
-- Подсказку в админке (`admin/tournaments/[id]/settings/general`) поправить: полоса 80px, верх и низ 3:1-картинки обрезаются.
-- Замеры (Chrome headless, реальный рендер): 1280 → шапка 211px с обложкой / 147px без; 375 → 333px / 267px, `scrollWidth === clientWidth === 375`. Обложка стоит +66px первого экрана и только когда организатор её загрузил.
+- Подсказку в админке (`admin/tournaments/[id]/settings/general`) поправить: соотношение и кроп значения не имеют, важна палитра; целиком арт виден в карточке списка.
+- Замеры (Chrome headless, пиксели скриншота): светимость фона под крошкой 0.00369 с «горячей» обложкой против 0.00370 без — контраст `fg-faint` 4.48 в обоих; шапка 261px на 375, `scrollWidth === clientWidth === 375`, обложка не стоит ни пикселя первого экрана.
 
 **WU-0.2 Рейл.** `_components/TournamentSectionNav.tsx`, `_components/tournament-section-nav.ts` (+ `.test.ts`).
 - Секции: `overview | bracket | teams | matches | stats | stream | participants | draft`. `schedule`, `maps`, `heroes`, `standings` удалить из `TournamentSectionId` и из `tournamentSections`. `draft` из рейла убрать (он в шапке).

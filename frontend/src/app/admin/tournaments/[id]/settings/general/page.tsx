@@ -172,9 +172,9 @@ function BrandingCard({
               disabled={disabled}
             />
             <p className="text-xs text-muted-foreground">
-              Wide image, roughly 3:1. The public page shows it as an 80px band above the
-              tournament name, so keep the key art vertically centred — the top and bottom of the
-              image are cropped.
+              Wide image, roughly 16:9. Shown in full on the tournaments list; the tournament page
+              takes its colours as a blurred tint behind the header, so aspect ratio and crop do
+              not matter there — a strong palette does.
             </p>
           </div>
 

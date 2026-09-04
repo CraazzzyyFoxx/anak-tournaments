@@ -21,13 +21,6 @@ import type { PlayerRoleTint } from "@/lib/player-role";
  *  name is historical, so it stays an alias over the one tint vocabulary. */
 type HeroRoleTint = PlayerRoleTint;
 
-/**
- * Height of the band a cover banner occupies, and the top padding the copy
- * takes to clear it. One number for both: the picture ends exactly where the
- * text begins, so no title can land on artwork.
- */
-export const COVER_BAND_PX = 80;
-
 interface HeroFrameProps {
   children: React.ReactNode;
   className?: string;
@@ -42,21 +35,44 @@ interface HeroFrameProps {
   /** Role hue for the `"profile"` wash. Omit to skip the tint. */
   roleTint?: HeroRoleTint;
   /**
-   * Optional banner image behind the hero (a tournament cover). Sits UNDER the
-   * grid and glow so the frame keeps its identity.
+   * Optional banner image behind the hero (a tournament cover) — rendered
+   * BLURRED and full-bleed, as the tournament's colour field, not as a picture.
    *
-   * The image is `COVER_BAND_PX` TALL, not full-bleed behind the copy. Two
-   * reasons, both learnt from rendering it the other way:
+   * Two earlier attempts read badly, both for the same reason:
    *
-   * - Contrast stops depending on the upload. The copy sits on the frame's own
-   *   `bg`, exactly as it does with no cover, instead of on a scrimmed photo
-   *   whose luminance nobody controls.
-   * - `object-cover` crops to the box it fills. A full-bleed image in a ~200px
-   *   header showed the TOP of the crop in the band and hid the middle under
-   *   the scrim — so the organizer's centred key art was the one part never
-   *   visible. Cropping into the band itself puts the source's centre on screen.
+   * - Full-bleed and sharp: `object-cover` in a ~200px header crops a wide
+   *   slice and the scrim hid the middle, so the organizer's centred key art
+   *   was the one part never visible.
+   * - An 80px sharp band: at 1568px wide that box is 19.6:1, and a 16:9 upload
+   *   showed 9% of its own height — an arbitrary horizontal strip of legs and
+   *   UI, recognisable as nothing.
    *
-   * The band fades into `bg` over its lower half so there is no seam.
+   * No crop of a poster survives those ratios, because the art is drawn to be
+   * seen whole. It IS seen whole — on the tournaments list card (`aspect-video`,
+   * the entire top of the card). What the detail header owes the reader is
+   * recognition, not a second showing, and a colour field pulled from the same
+   * image does that for any upload: 16:9, 3:1, or a portrait screenshot. The
+   * logo beside the title carries the sharp identity.
+   *
+   * ## Why the blend and not a scrim
+   *
+   * `mix-blend-mode: color` takes hue and chroma from the image and LUMINANCE
+   * from the frame underneath, so the header's brightness is by construction
+   * the same as with no cover at all — every text contrast ratio is unchanged
+   * and cannot be broken by an upload.
+   *
+   * An alpha scrim cannot do that. `--aqt-fg-faint` (the mono eyebrow, every
+   * stat label) already sits at 5.1:1 on `--aqt-bg`, barely over the AA floor;
+   * the arithmetic says a white cover bleeding through at even 5% drops it to
+   * ~2.6:1, and the scrim that would save it (≈99%) shows nothing. So the tint
+   * has to carry colour without carrying light.
+   *
+   * A desaturated (white/grey) cover therefore contributes nothing — correct
+   * behaviour, not a bug: there is no palette in it to recognise.
+   *
+   * `scale-110` because a blur samples past the element's edges and would
+   * otherwise leave a visible seam inside the frame. `isolate` on the section
+   * keeps the blend inside the hero instead of reaching the page behind it.
    */
   coverUrl?: string | null;
 }
@@ -73,7 +89,7 @@ export function HeroFrame({
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]",
+        "relative isolate overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]",
         className
       )}
     >
@@ -92,6 +108,34 @@ export function HeroFrame({
           className="pointer-events-none absolute inset-x-0 top-0 z-[2] h-0.5 bg-[color:var(--aqt-teal)]"
         />
       )}
+      {/* Cover wash, UNDER the grid and glow: those two are the frame's
+          identity and must survive on top of it. Blurred, so there is no crop
+          to get wrong, and blended, so there is no light to blow the copy out. */}
+      {coverUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={coverUrl}
+          alt=""
+          aria-hidden
+          loading="lazy"
+          decoding="async"
+          className="pointer-events-none absolute inset-0 size-full object-cover"
+          /* Inline rather than Tailwind utilities. `mix-blend-*`, `saturate-*`
+             and `scale-*` are all new to this codebase here, and a class the
+             build has not generated fails SILENTLY — the first render of this
+             was a 70%-opaque photo, the exact brightness problem the blend
+             exists to prevent. One style object cannot half-apply.
+
+             `saturate` and not `opacity`: chroma is the only channel a `color`
+             blend spends, and spending it is free — the frame's luminance, and
+             with it every contrast ratio, is untouched however far it goes. */
+          style={{
+            mixBlendMode: "color",
+            filter: "blur(28px) saturate(2.2)",
+            transform: "scale(1.12)",
+          }}
+        />
+      ) : null}
       {/* faint square grid, radially masked so it fades out */}
       <span
         aria-hidden
@@ -120,36 +164,6 @@ export function HeroFrame({
             background: `radial-gradient(70% 120% at 12% -20%, color-mix(in srgb, var(--aqt-${roleTint}) 16%, transparent), transparent 55%)`,
           }}
         />
-      ) : null}
-      {/* Cover band, ABOVE the grid and glow: those layers are the frame's
-          identity where the frame shows — the copy area, which is most of the
-          header — but painted over the artwork they tinted its left third teal
-          and laid a 48px lattice on it. The band stays under the accent
-          hairline (z-2) and the content (z-1). */}
-      {coverUrl ? (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0"
-          style={{ height: COVER_BAND_PX }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={coverUrl}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="h-full w-full object-cover"
-          />
-          <span
-            className="absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(to bottom, transparent 0%," +
-                " color-mix(in srgb, var(--aqt-bg) 25%, transparent) 55%," +
-                " var(--aqt-bg) 100%)",
-            }}
-          />
-        </span>
       ) : null}
       <div className="relative z-[1]">{children}</div>
     </section>
@@ -202,10 +216,6 @@ export function PageHero({
   return (
     <HeroFrame className={className} coverUrl={coverUrl}>
       <div
-        /* The copy starts below the banner's visible strip. Inline, because the
-           same number drives the scrim's ramp — a Tailwind class here would let
-           the two drift apart silently. */
-        style={coverUrl ? { paddingTop: COVER_BAND_PX } : undefined}
         className={cn(
           "grid",
           compact ? "gap-4 px-5 py-3.5 md:px-6 md:py-4" : "gap-8 px-6 py-8 md:px-10 md:py-9",
