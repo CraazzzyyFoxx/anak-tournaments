@@ -8,9 +8,7 @@
 //     the table and never grows a view switch (§6 ①);
 //  2. the organizer-only columns (balancer state, check-in, notes, smurfs,
 //     subscription) are absent from the column CONFIG without the grant, so
-//     they leave the table, the search and the column picker together (§6 ②);
-//  3. once the competition is running the section says so and points at the
-//     teams (§6, closing note).
+//     they leave the table, the search and the column picker together (§6 ②).
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -50,8 +48,22 @@ vi.mock("@/services/hero.service", () => ({
     getAll: () =>
       Promise.resolve({
         results: [
-          { id: 1, name: "Ana", slug: "ana", image_path: "/ana.png", role: "support", type: "support" },
-          { id: 2, name: "Genji", slug: "genji", image_path: "/genji.png", role: "dps", type: "dps" },
+          {
+            id: 1,
+            name: "Ana",
+            slug: "ana",
+            image_path: "/ana.png",
+            role: "support",
+            type: "support"
+          },
+          {
+            id: 2,
+            name: "Genji",
+            slug: "genji",
+            image_path: "/genji.png",
+            role: "dps",
+            type: "dps"
+          },
           { id: 3, name: "Rein", slug: "rein", image_path: "/rein.png", role: "tank", type: "tank" }
         ]
       })
@@ -162,7 +174,14 @@ function role(
   heroes: string[] = [],
   isPrimary = true
 ): RegistrationRole {
-  return { role: name, subrole: null, is_primary: isPrimary, priority: 0, rank_value: rank, top_heroes: heroes };
+  return {
+    role: name,
+    subrole: null,
+    is_primary: isPrimary,
+    priority: 0,
+    rank_value: rank,
+    top_heroes: heroes
+  };
 }
 
 function makeRegistration(
@@ -297,9 +316,22 @@ function column(role: string): HTMLElement | null {
   return container.querySelector<HTMLElement>(`[data-pool-column="${role}"]`);
 }
 
+/** The pool is the second view now, so its cases have to ask for it. */
+async function mountPool() {
+  searchParams = new URLSearchParams("view=pool");
+  await mount();
+}
+
 describe("participants pool", () => {
-  it("opens a draft tournament on the pool, one column per role slot", async () => {
+  it("opens on the table even where a pool exists", async () => {
     await mount();
+
+    expect(container.querySelector('[data-testid="roster"]')).not.toBeNull();
+    expect(container.querySelector("[data-pool-column]")).toBeNull();
+  });
+
+  it("gives the pool one column per role slot", async () => {
+    await mountPool();
 
     expect(
       [...container.querySelectorAll("[data-pool-column]")].map((node) =>
@@ -314,7 +346,7 @@ describe("participants pool", () => {
   });
 
   it("lists a player with several roles in each of them, marked and explained", async () => {
-    await mount();
+    await mountPool();
 
     const dps = column("dps");
     const support = column("support");
@@ -338,13 +370,15 @@ describe("participants pool", () => {
     expect(primaryLink?.className).toContain("font-medium");
     expect(secondaryLink?.className).not.toContain("font-medium");
     // Rank is per role, not per player: the same person sits at a different
-    // height in each column.
-    expect(dps?.textContent).toMatch(/D\d+ · 3540/);
-    expect(support?.textContent).toMatch(/D\d+ · 3380/);
+    // height in each column. The division reads as an icon, so the SR rides on
+    // the title of the cell that carries it.
+    expect(dps?.querySelector('[title$="3540"]')).not.toBeNull();
+    expect(support?.querySelector('[title$="3380"]')).not.toBeNull();
+    expect(dps?.textContent).not.toMatch(/3540/);
   });
 
   it("sorts each column by rank and folds withdrawn registrations away", async () => {
-    await mount();
+    await mountPool();
 
     const dpsNames = [...(column("dps")?.querySelectorAll("li") ?? [])].map(
       (node) => node.textContent ?? ""
@@ -371,12 +405,21 @@ describe("participants pool", () => {
   });
 
   it("offers the pool/table switch only where a pool exists", async () => {
-    await mount();
+    await mountPool();
 
     const segment = container.querySelector<HTMLElement>('[role="radiogroup"]');
     expect(segment?.getAttribute("aria-label")).toBe("Participant view");
-    expect([...(segment?.querySelectorAll('[role="radio"]') ?? [])].map((n) => n.textContent)).toEqual(
-      ["By role", "Table"]
+    expect(
+      [...(segment?.querySelectorAll('[role="radio"]') ?? [])].map((n) => n.textContent)
+    ).toEqual(["Table", "By role"]);
+
+    // The switch opens the toolbar and the search closes it: `.filter-search`
+    // owns the one `auto` margin, so a control after it would be pushed into
+    // the right-hand cluster and jump when the view changes.
+    const toolbar = segment?.closest(".filters");
+    const search = toolbar?.querySelector("input");
+    expect(segment && search && segment.compareDocumentPosition(search)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
     );
   });
 
@@ -393,12 +436,18 @@ describe("participants pool", () => {
     getForm.mockResolvedValue(makeForm({ require_subscription: true }));
     await mount();
 
-    const columns =
-      container.querySelector('[data-testid="roster"]')?.getAttribute("data-columns") ?? "";
-    for (const id of ["_balancer_status", "_check_in", "notes", "smurf_tags", "_subscription"]) {
-      expect(columns.split(",")).not.toContain(id);
+    const columns = (
+      container.querySelector('[data-testid="roster"]')?.getAttribute("data-columns") ?? ""
+    ).split(",");
+    for (const id of ["notes", "smurf_tags"]) {
+      expect(columns).not.toContain(id);
     }
-    expect(columns.split(",")).toContain("battle_tag");
+    // The registration's own state is public: check-in, the subscription
+    // verdict and the balancer status answer "am I in and what is still
+    // missing", which is why the roster is opened at all.
+    for (const id of ["battle_tag", "_check_in", "_subscription", "_balancer_status"]) {
+      expect(columns).toContain(id);
+    }
   });
 
   it("restores organizer-only columns for a reader who may see them", async () => {
@@ -410,23 +459,8 @@ describe("participants pool", () => {
     const columns = (
       container.querySelector('[data-testid="roster"]')?.getAttribute("data-columns") ?? ""
     ).split(",");
-    for (const id of ["_balancer_status", "_check_in", "notes", "smurf_tags", "_subscription"]) {
+    for (const id of ["notes", "smurf_tags"]) {
       expect(columns).toContain(id);
     }
-  });
-
-  it("points at the teams once the competition is running", async () => {
-    tournament = makeTournament("draft", "live", OW5V5_SHAPE);
-    await mount();
-
-    const banner = container.querySelector<HTMLElement>('[role="status"]');
-    expect(banner?.textContent).toContain("Teams are formed");
-    expect(banner?.querySelector("a")?.getAttribute("href")).toBe("/tournaments/anak-cup/teams");
-  });
-
-  it("does not claim the teams exist before the competition starts", async () => {
-    await mount();
-
-    expect(container.querySelector('[role="status"]')).toBeNull();
   });
 });

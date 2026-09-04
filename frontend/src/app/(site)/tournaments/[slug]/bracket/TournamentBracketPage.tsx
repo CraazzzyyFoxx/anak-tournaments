@@ -9,6 +9,8 @@ import { ConnectionIndicator } from "@/components/realtime/ConnectionIndicator";
 import StandingsTable from "@/components/StandingsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { SegmentedLinks } from "@/components/ui/segmented";
+import { toggleVariants, segmentedFrame } from "@/components/ui/toggle";
 import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
 import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
 import { notify } from "@/lib/notify";
@@ -21,7 +23,7 @@ import type { Encounter } from "@/types/encounter.types";
 import type { StreamEntry } from "@/types/stream.types";
 import type { Standings, Tournament, Stage, StageItem } from "@/types/tournament.types";
 
-import Link from "next/link";
+import { ListOrdered, Network } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { tournamentHref } from "@/lib/tournament-url";
 import { useTranslations } from "next-intl";
@@ -45,6 +47,34 @@ import { buildLiveTeamStreams } from "./bracketLiveStreams";
 export { getBracketRefetchInterval } from "./bracketData";
 
 const ADMIN_ROLES = new Set(["admin", "superadmin", "tournament_admin"]);
+
+/**
+ * Standings ⇄ bracket switch, icon-only like the tournaments list's view
+ * switch. Both bracket panels draw it, so the frame and the pill live in one
+ * place instead of four copies of a 200-character class string.
+ */
+function ViewTabs({
+  hasStandings,
+  bracketValue
+}: Readonly<{ hasStandings: boolean; bracketValue: string }>) {
+  const t = useTranslations();
+  const item = toggleVariants({ variant: "pill", size: "sm" });
+
+  return (
+    <TabsList className={cn(segmentedFrame, "h-8 text-[color:var(--aqt-fg-muted)]")}>
+      {hasStandings && (
+        <TabsTrigger value="standings" className={item}>
+          <ListOrdered aria-hidden width={14} height={14} />
+          <span className="sr-only">{t("common.standings")}</span>
+        </TabsTrigger>
+      )}
+      <TabsTrigger value={bracketValue} className={item}>
+        <Network aria-hidden width={14} height={14} />
+        <span className="sr-only">{t("common.bracket")}</span>
+      </TabsTrigger>
+    </TabsList>
+  );
+}
 
 interface TournamentBracketViewProps {
   tournament: Tournament;
@@ -100,19 +130,9 @@ function GroupStagePanel({
     >
       <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
         {bracketTabs && bracketTabs.length > 1 ? (
-          <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <div className="stage-tabs">
-                {bracketTabs.map((tab) => (
-                  <Link
-                    key={tab.key}
-                    href={tab.href}
-                    className={cn("stage-tab", tab.isActive && "active")}
-                  >
-                    {tab.label}
-                  </Link>
-                ))}
-              </div>
+          <div className="flex min-w-0 flex-col items-start gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <SegmentedLinks items={bracketTabs} label={t("tournamentDetail.stageTabsLabel")} />
               {stageItem && (
                 <span className="text-sm font-semibold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
                   / {stageItem.name}
@@ -120,7 +140,7 @@ function GroupStagePanel({
               )}
               {isPreview && <Badge variant="outline">{t("common.bracketPreview")}</Badge>}
             </div>
-            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               {subtitle}
             </p>
           </div>
@@ -140,22 +160,7 @@ function GroupStagePanel({
           </div>
         )}
 
-        <TabsList className="h-8 justify-start gap-1 rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-[3px] text-[color:var(--aqt-fg-muted)]">
-          {hasStandings && (
-            <TabsTrigger
-              value="standings"
-              className="h-6 rounded-[7px] px-3 text-[12.5px] font-semibold data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
-            >
-              {t("common.standings")}
-            </TabsTrigger>
-          )}
-          <TabsTrigger
-            value="matches"
-            className="h-6 rounded-[7px] px-3 text-[12.5px] font-semibold data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
-          >
-            {t("common.bracket")}
-          </TabsTrigger>
-        </TabsList>
+        <ViewTabs hasStandings={hasStandings} bracketValue="matches" />
       </div>
 
       {hasStandings && (
@@ -529,19 +534,12 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                     >
                       <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                         {bracketTabs.length > 1 ? (
-                          <div className="min-w-0">
-                            <div className="stage-tabs">
-                              {bracketTabs.map((tab) => (
-                                <Link
-                                  key={tab.key}
-                                  href={tab.href}
-                                  className={cn("stage-tab", tab.isActive && "active")}
-                                >
-                                  {tab.label}
-                                </Link>
-                              ))}
-                            </div>
-                            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+                          <div className="flex min-w-0 flex-col items-start gap-2">
+                            <SegmentedLinks
+                              items={bracketTabs}
+                              label={t("tournamentDetail.stageTabsLabel")}
+                            />
+                            <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
                               {stage.stage_type.replace(/_/g, " ")}
                             </p>
                           </div>
@@ -561,22 +559,7 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                           </div>
                         )}
 
-                        <TabsList className="h-8 justify-start gap-1 rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-[3px] text-[color:var(--aqt-fg-muted)]">
-                          {hasPlayoffStandings && (
-                            <TabsTrigger
-                              value="standings"
-                              className="h-6 rounded-[7px] px-3 text-[12.5px] font-semibold data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
-                            >
-                              {t("common.standings")}
-                            </TabsTrigger>
-                          )}
-                          <TabsTrigger
-                            value="bracket"
-                            className="h-6 rounded-[7px] px-3 text-[12.5px] font-semibold data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
-                          >
-                            {t("common.bracket")}
-                          </TabsTrigger>
-                        </TabsList>
+                        <ViewTabs hasStandings={hasPlayoffStandings} bracketValue="bracket" />
                       </div>
 
                       {hasPlayoffStandings && (

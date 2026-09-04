@@ -4,7 +4,7 @@ import * as React from "react"
 import { type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
-import { toggleVariants } from "@/components/ui/toggle"
+import { segmentedFrame, toggleVariants } from "@/components/ui/toggle"
 
 interface ToggleGroupProps extends VariantProps<typeof toggleVariants> {
   type: "single"
@@ -87,7 +87,7 @@ function ToggleGroup({
         className={cn(
           "flex items-center",
           variant === "pill"
-            ? "gap-1 rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-[3px]"
+            ? segmentedFrame
             : cn(
                 "[&>*:not(:first-child)]:-ml-px",
                 "[&>*:first-child]:rounded-r-none",

@@ -25,7 +25,9 @@ import {
   XCircle,
   Tv,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  LayoutGrid,
+  Table2
 } from "lucide-react";
 
 import {
@@ -98,7 +100,6 @@ import { TournamentPageState } from "../_components/TournamentPageState";
 import { useTournamentQuery } from "../_hooks/useTournamentClientData";
 import { ViewSegment } from "../_components/ViewSegment";
 import { usePermissions } from "@/hooks/usePermissions";
-import Link from "next/link";
 import styles from "../TournamentDetail.module.css";
 
 // ---------------------------------------------------------------------------
@@ -231,27 +232,19 @@ const CHECK_IN_OVER_TOURNAMENT_STATUSES = new Set<string>([
 /** Team formations whose roster is a player pool rather than a list of teams. */
 const POOL_TEAM_FORMATIONS: Record<string, true> = { balancer: true, draft: true };
 
-/** Statuses in which the teams exist and the pool is history (§6, final note).
- *  Same four values as `CHECK_IN_OVER_TOURNAMENT_STATUSES` by coincidence, not
- *  by rule: one is about a closed check-in window, this one about a running
- *  competition, and they are free to drift apart. */
-const COMPETITION_STARTED_STATUSES: Record<string, true> = {
-  live: true,
-  playoffs: true,
-  completed: true,
-  archived: true
-};
-
-/** Organizer-only columns: balancer state, check-in, notes, smurfs and the
- *  subscription verdict (§6 ②). Filtered out of the column CONFIG rather than
- *  blanked per cell, so they leave the table, the search and the column picker
- *  together. */
+/** Organizer-only columns: private notes and smurf tags — the two fields the
+ *  organizer writes about a player rather than reads off them. Filtered out of
+ *  the column CONFIG rather than blanked per cell, so they leave the table, the
+ *  search and the column picker together.
+ *
+ *  Check-in, the subscription verdict and the balancer status are deliberately
+ *  NOT here: all three are the registration's own public state — "am I in, and
+ *  what is still missing" is the question this section is opened with, and the
+ *  public read already ships `checked_in`, `subscription_outcome`, `admission`
+ *  and `balancer_status` on every row. */
 const ADMIN_ONLY_COLUMN_IDS: Record<string, true> = {
-  _balancer_status: true,
-  _check_in: true,
   notes: true,
-  smurf_tags: true,
-  _subscription: true
+  smurf_tags: true
 };
 
 function RegistrationStepMarker({ tone }: Readonly<{ tone: RegistrationStepTone }>) {
@@ -834,10 +827,7 @@ function isCheckInWindowActive(tournament: Tournament) {
 // Main page
 // ---------------------------------------------------------------------------
 
-function TournamentParticipantsView({
-  tournament,
-  slug
-}: Readonly<{ tournament: Tournament; slug: string }>) {
+function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tournament }>) {
   const t = useTranslations();
   const locale = useLocale();
   const { user, status: authStatus } = useAuthProfile();
@@ -1049,10 +1039,12 @@ function TournamentParticipantsView({
     setActiveSearchParams(searchParamsString);
   }, [searchParamsString]);
 
-  // A balancer/draft tournament has no teams to list yet, so its roster reads
-  // as a pool by default; team registration keeps the table it already has.
+  // The table is the default everywhere: it answers "is my registration in and
+  // what is its state" for every reader, which is what the section is opened
+  // for. The by-role pool is the second read, offered only where a pool exists
+  // (balancer/draft) — team registration has no pool to show.
   const hasPoolView = POOL_TEAM_FORMATIONS[tournament.team_formation] === true;
-  const defaultView: ParticipantView = hasPoolView ? "pool" : "table";
+  const defaultView: ParticipantView = "table";
 
   const participantUrl = useMemo(
     () =>
@@ -1253,7 +1245,6 @@ function TournamentParticipantsView({
     () => (view === "pool" ? poolDivisionOptions(registrations, divisionGrid) : []),
     [divisionGrid, registrations, view]
   );
-  const competitionStarted = COMPETITION_STARTED_STATUSES[tournament.status] === true;
 
   if (listQuery.isPending && listQuery.data === undefined) {
     return <TournamentParticipantsSkeleton />;
@@ -1265,24 +1256,6 @@ function TournamentParticipantsView({
 
   return (
     <div className="space-y-5" data-participant-layout="true">
-      {/* Once the competition is running, this roster is history: the answer to
-          "who is playing" moved to the teams. §6, closing note. */}
-      {competitionStarted && (
-        <div
-          role="status"
-          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-3 text-sm"
-        >
-          <span className="text-[color:var(--aqt-fg)]">
-            {t("tournamentDetail.participantsPool.teamsFormed.title")}
-          </span>
-          <Link
-            href={`/tournaments/${slug}/teams`}
-            className="font-medium text-[color:var(--aqt-teal)] underline-offset-4 hover:underline"
-          >
-            {t("tournamentDetail.participantsPool.teamsFormed.action")}
-          </Link>
-        </div>
-      )}
       {/* My registration status */}
       {myRegistration && (
         <MyRegistrationCard
@@ -1386,8 +1359,11 @@ function TournamentParticipantsView({
         </p>
       )}
 
-      {/* One toolbar for both views: the table keeps its status chips and
-          column picker, the pool swaps them for the division filter (§6 ②). */}
+      {/* One toolbar for both views, two clusters: what you are looking at on
+          the left (view switch, status chips), how you are narrowing it on the
+          right (search, division, columns). The switch stays put when the view
+          changes — `.filter-search` owns the single `auto` margin between the
+          clusters, and a second one would scatter the controls across the bar. */}
       {!trueEmpty && (
         <div
           className="filters"
@@ -1395,6 +1371,25 @@ function TournamentParticipantsView({
           aria-label={t("common.filters")}
           ref={resultsHeadingRef}
         >
+          {hasPoolView && (
+            <ViewSegment<ParticipantView>
+              param="view"
+              defaultValue={defaultView}
+              label={t("tournamentDetail.participantsPool.viewLabel")}
+              options={[
+                {
+                  value: "table",
+                  label: <Table2 aria-hidden width={14} height={14} />,
+                  ariaLabel: t("tournamentDetail.participantsPool.view.table")
+                },
+                {
+                  value: "pool",
+                  label: <LayoutGrid aria-hidden width={14} height={14} />,
+                  ariaLabel: t("tournamentDetail.participantsPool.view.pool")
+                }
+              ]}
+            />
+          )}
           {view === "table" && (
             <>
               <FilterChip
@@ -1480,18 +1475,6 @@ function TournamentParticipantsView({
               onReset={resetToDefaults}
             />
           )}
-          {hasPoolView && (
-            <ViewSegment<ParticipantView>
-              className="ml-auto"
-              param="view"
-              defaultValue={defaultView}
-              label={t("tournamentDetail.participantsPool.viewLabel")}
-              options={[
-                { value: "pool", label: t("tournamentDetail.participantsPool.view.pool") },
-                { value: "table", label: t("tournamentDetail.participantsPool.view.table") }
-              ]}
-            />
-          )}
         </div>
       )}
 
@@ -1569,5 +1552,5 @@ export default function TournamentParticipantsPage({ slug }: Readonly<{ slug: st
     return <TournamentParticipantsSkeleton />;
   }
 
-  return <TournamentParticipantsView tournament={tournamentQuery.data} slug={slug} />;
+  return <TournamentParticipantsView tournament={tournamentQuery.data} />;
 }

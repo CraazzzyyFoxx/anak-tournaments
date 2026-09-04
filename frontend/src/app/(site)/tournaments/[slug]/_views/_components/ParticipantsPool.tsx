@@ -1,9 +1,12 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import { useMemo } from "react";
+import type { CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import DivisionIcon from "@/components/DivisionIcon";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { resolveDivisionFromRank } from "@/lib/division-grid";
 import { isRoleSlotCode, orderSlotCodes, ROSTER_SLOT_CODES } from "@/lib/roster-shape";
@@ -35,11 +38,38 @@ const ROLE_TO_ICON: Record<string, string> = {
   flex: "Flex"
 };
 
-const ROLE_ACCENT: Record<string, string> = {
-  tank: "text-[color:var(--aqt-tank)]",
-  dps: "text-[color:var(--aqt-damage)]",
-  support: "text-[color:var(--aqt-support)]"
+/**
+ * One colour per column, exposed as `--pool-role` on the card so the accent
+ * rail, the icon chip and the leading positions all read from a single value.
+ */
+const ROLE_COLOR: Record<string, string> = {
+  tank: "var(--aqt-tank)",
+  dps: "var(--aqt-damage)",
+  support: "var(--aqt-support)",
+  flex: "var(--aqt-teal)"
 };
+
+/** Positions that wear the role colour — the top of a role is the headline. */
+const HIGHLIGHTED_POSITIONS = 3;
+
+/**
+ * Row track widths, spelled out per case because Tailwind only emits arbitrary
+ * values it can see verbatim. A column with no divisions (before the balancer
+ * assigns ranks) or no hero data must not reserve the space for it.
+ */
+const ROW_GRID: Record<string, string> = {
+  "division-heroes": "grid-cols-[1.25rem_minmax(0,1fr)_1.25rem_3.25rem]",
+  division: "grid-cols-[1.25rem_minmax(0,1fr)_1.25rem]",
+  heroes: "grid-cols-[1.25rem_minmax(0,1fr)_3.25rem]",
+  bare: "grid-cols-[1.25rem_minmax(0,1fr)]"
+};
+
+function rowGridClass(showDivision: boolean, showHeroes: boolean): string {
+  if (showDivision && showHeroes) return ROW_GRID["division-heroes"];
+  if (showDivision) return ROW_GRID.division;
+  if (showHeroes) return ROW_GRID.heroes;
+  return ROW_GRID.bare;
+}
 
 interface PoolEntry {
   registration: Registration;
@@ -98,14 +128,30 @@ function topHeroes(role: RegistrationRole, heroesMap: Map<string, Hero>, limit: 
 
 function PoolRow({
   entry,
+  position,
   heroesMap,
-  showRank
-}: Readonly<{ entry: PoolEntry; heroesMap: Map<string, Hero>; showRank: boolean }>) {
+  divisionGrid,
+  showDivision,
+  showHeroes
+}: Readonly<{
+  entry: PoolEntry;
+  position: number;
+  heroesMap: Map<string, Hero>;
+  divisionGrid: DivisionGrid;
+  showDivision: boolean;
+  showHeroes: boolean;
+}>) {
   const t = useTranslations();
   const { registration, role, division, isFlex } = entry;
   const rank = role.rank_value ?? null;
   const heroes = topHeroes(role, heroesMap, 3);
   const battleTag = registration.battle_tag ?? "\u2014";
+  // BattleTags are `Name#1234`; the discriminator is how you tell two Kennys
+  // apart and nothing else, so it stays present and stops competing with the
+  // name for attention.
+  const hash = battleTag.indexOf("#");
+  const name = hash > 0 ? battleTag.slice(0, hash) : battleTag;
+  const discriminator = hash > 0 ? battleTag.slice(hash) : "";
   // A multi-role player is listed in every role column; in the columns of their
   // secondary roles the name is dimmed. That says "also plays this" without a
   // glyph — in a flex tournament nearly every row would carry the glyph and it
@@ -119,38 +165,82 @@ function PoolRow({
       })
     : null;
 
+  const label = (
+    <>
+      <span className="truncate">{name}</span>
+      {discriminator ? (
+        <span className="shrink-0 text-[color:var(--aqt-fg-faint)]">{discriminator}</span>
+      ) : null}
+    </>
+  );
+
   return (
-    <li className="flex items-center gap-2 py-1" data-flex-mark={isFlex || undefined}>
-      <span className="flex min-w-0 flex-1 items-center gap-1">
+    <li
+      className={cn(
+        "grid items-center gap-x-2 rounded-md px-1.5 py-[5px] transition-colors hover:bg-[color:var(--aqt-overlay-2)]",
+        rowGridClass(showDivision, showHeroes)
+      )}
+      data-flex-mark={isFlex || undefined}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "aqt-mono text-right text-[10px] tabular-nums",
+          position <= HIGHLIGHTED_POSITIONS
+            ? "text-[color:var(--pool-role)]"
+            : "text-[color:var(--aqt-fg-faint)]"
+        )}
+      >
+        {position}
+      </span>
+      <span className="flex min-w-0 items-baseline text-[13px]">
         {registration.battle_tag ? (
           <a
             href={`/users/${getPlayerSlug(registration.battle_tag)}`}
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
-              "truncate transition hover:text-[color:var(--aqt-teal)] hover:underline",
+              "flex min-w-0 items-baseline transition hover:text-[color:var(--aqt-teal)]",
               secondary
                 ? "text-[color:var(--aqt-fg-muted)]"
                 : "font-medium text-[color:var(--aqt-fg)]"
             )}
             title={flexTitle ?? battleTag}
           >
-            {battleTag}
+            {label}
           </a>
         ) : (
-          <span className="truncate text-[color:var(--aqt-fg-dim)]">{battleTag}</span>
+          <span className="flex min-w-0 items-baseline text-[color:var(--aqt-fg-dim)]">
+            {label}
+          </span>
         )}
         {flexTitle ? <span className="sr-only">{flexTitle}</span> : null}
       </span>
-      {showRank ? (
-        <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-[color:var(--aqt-fg-muted)]">
-          {division != null && rank != null
-            ? t("tournamentDetail.participantsPool.rank", { division, rank })
-            : "\u2014"}
+      {showDivision ? (
+        // The icon is the division; the SR behind it stays available on hover
+        // rather than spending a column of its own on five digits per row.
+        <span
+          className="justify-self-end leading-none"
+          title={
+            division != null && rank != null
+              ? t("tournamentDetail.participantsPool.rank", { division, rank })
+              : undefined
+          }
+        >
+          {division != null ? (
+            <DivisionIcon
+              division={division}
+              tournamentGrid={divisionGrid}
+              width={20}
+              height={20}
+            />
+          ) : (
+            <span className="text-[11px] text-[color:var(--aqt-fg-faint)]">{"\u2014"}</span>
+          )}
         </span>
       ) : null}
-      {heroes.length > 0 ? (
-        <HeroStrip heroes={heroes} size="sm" limit={3} className="shrink-0" />
+      {showHeroes ? (
+        <HeroStrip heroes={heroes} size={20} limit={3} className="justify-self-end" />
       ) : null}
     </li>
   );
@@ -160,68 +250,78 @@ function RoleColumn({
   role,
   entries,
   heroesMap,
-  showRank
+  divisionGrid,
+  showDivision
 }: Readonly<{
   role: string;
   entries: PoolEntry[];
   heroesMap: Map<string, Hero>;
-  showRank: boolean;
+  divisionGrid: DivisionGrid;
+  showDivision: boolean;
 }>) {
   const t = useTranslations();
   const visible = entries.slice(0, VISIBLE_PER_COLUMN);
   const rest = entries.slice(VISIBLE_PER_COLUMN);
+  // Reserving the hero track in a column nobody filled in leaves a stripe of
+  // nothing next to every name.
+  const showHeroes = entries.some((entry) => (entry.role.top_heroes?.length ?? 0) > 0);
+
+  const renderRow = (entry: PoolEntry, index: number) => (
+    <PoolRow
+      key={entry.registration.id}
+      entry={entry}
+      position={index + 1}
+      heroesMap={heroesMap}
+      divisionGrid={divisionGrid}
+      showDivision={showDivision}
+      showHeroes={showHeroes}
+    />
+  );
 
   return (
     <section
-      className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-3"
+      className="relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2 pt-3"
+      style={{ "--pool-role": ROLE_COLOR[role] ?? "var(--aqt-fg-muted)" } as CSSProperties}
       aria-label={t("tournamentDetail.participantsPool.columnLabel", {
         role: getRoleLabel(role, t),
         count: entries.length
       })}
       data-pool-column={role}
     >
-      <h3 className="mb-2 flex items-center gap-2 border-b border-[color:var(--aqt-border)] pb-2">
-        <span className={cn("inline-flex shrink-0", ROLE_ACCENT[role])}>
-          <PlayerRoleIcon role={ROLE_TO_ICON[role] ?? role} size={16} decorative />
+      {/* The column's identity: a role-tinted edge, readable before the label. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,var(--pool-role),transparent_75%)]"
+      />
+      <h3 className="mb-2 flex items-center gap-2 px-1.5">
+        <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--pool-role)_26%,transparent)] bg-[color:color-mix(in_srgb,var(--pool-role)_12%,transparent)] text-[color:var(--pool-role)]">
+          <PlayerRoleIcon role={ROLE_TO_ICON[role] ?? role} size={13} decorative />
         </span>
-        <span className="aqt-mono text-[11px] uppercase tracking-[.06em] text-[color:var(--aqt-fg)]">
+        <span className="aqt-display text-[12px] font-bold uppercase tracking-[.08em] text-[color:var(--aqt-fg)]">
           {getRoleLabel(role, t)}
         </span>
-        <span className="ml-auto text-xs tabular-nums text-[color:var(--aqt-fg-dim)]">
+        <span className="aqt-mono ml-auto rounded-md bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-[11px] tabular-nums text-[color:var(--aqt-fg-muted)]">
           {entries.length}
         </span>
       </h3>
       {entries.length === 0 ? (
-        <p className="py-1 text-xs text-[color:var(--aqt-fg-dim)]">
+        <p className="px-1.5 py-1 text-xs text-[color:var(--aqt-fg-dim)]">
           {t("tournamentDetail.participantsPool.columnEmpty")}
         </p>
       ) : (
-        <ul className="divide-y divide-[color:var(--aqt-border)]">
-          {visible.map((entry) => (
-            <PoolRow
-              key={entry.registration.id}
-              entry={entry}
-              heroesMap={heroesMap}
-              showRank={showRank}
-            />
-          ))}
-        </ul>
+        <ul>{visible.map(renderRow)}</ul>
       )}
       {rest.length > 0 ? (
-        <details className="mt-1">
-          <summary className="cursor-pointer list-none py-1 text-xs text-[color:var(--aqt-fg-muted)] transition hover:text-[color:var(--aqt-fg)]">
+        <details className="group mt-1 border-t border-[color:var(--aqt-border)] pt-1">
+          <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]">
+            <ChevronDown
+              size={12}
+              aria-hidden
+              className="transition-transform group-open:rotate-180"
+            />
             {t("tournamentDetail.participantsPool.more", { count: rest.length })}
           </summary>
-          <ul className="divide-y divide-[color:var(--aqt-border)]">
-            {rest.map((entry) => (
-              <PoolRow
-                key={entry.registration.id}
-                entry={entry}
-                heroesMap={heroesMap}
-                showRank={showRank}
-              />
-            ))}
-          </ul>
+          <ul>{rest.map((entry, index) => renderRow(entry, index + VISIBLE_PER_COLUMN))}</ul>
         </details>
       ) : null}
     </section>
@@ -334,11 +434,10 @@ export default function ParticipantsPool({
   }, [entriesByRole]);
 
   // Before the organizer assigns ranks (the balancer does, after registration
-  // closes) no entry has one, and a column of em dashes is noise.
-  const showRank = useMemo(() => {
+  // closes) no entry resolves to a division, and a column of em dashes is noise.
+  const showDivision = useMemo(() => {
     for (const bucket of entriesByRole.values()) {
-      if (bucket.some((entry) => entry.division != null && entry.role.rank_value != null))
-        return true;
+      if (bucket.some((entry) => entry.division != null)) return true;
     }
     return false;
   }, [entriesByRole]);
@@ -370,15 +469,21 @@ export default function ParticipantsPool({
               role={role}
               entries={entriesByRole.get(role) ?? []}
               heroesMap={heroesMap}
-              showRank={showRank}
+              divisionGrid={divisionGrid}
+              showDivision={showDivision}
             />
           ))}
         </div>
       ) : null}
 
       {withdrawn.length > 0 ? (
-        <details className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2">
-          <summary className="cursor-pointer list-none text-xs text-[color:var(--aqt-fg-muted)] transition hover:text-[color:var(--aqt-fg)]">
+        <details className="group rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)]">
+            <ChevronDown
+              size={12}
+              aria-hidden
+              className="transition-transform group-open:rotate-180"
+            />
             {t("tournamentDetail.participantsPool.withdrawn", { count: withdrawn.length })}
           </summary>
           <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
