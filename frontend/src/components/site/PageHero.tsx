@@ -21,6 +21,16 @@ import type { PlayerRoleTint } from "@/lib/player-role";
  *  name is historical, so it stays an alias over the one tint vocabulary. */
 type HeroRoleTint = PlayerRoleTint;
 
+/**
+ * The cover wash's blur radius, and how far its image is bled past the frame.
+ *
+ * The bleed MUST stay comfortably over 3× the radius: a Gaussian blur reaches
+ * roughly 3σ, and anything it samples from outside the image's own box is
+ * transparent — which a `color` blend renders as no tint at all.
+ */
+const COVER_BLUR_PX = 28;
+const COVER_BLEED_PX = 96;
+
 interface HeroFrameProps {
   children: React.ReactNode;
   className?: string;
@@ -119,20 +129,28 @@ export function HeroFrame({
           aria-hidden
           loading="lazy"
           decoding="async"
-          className="pointer-events-none absolute inset-0 size-full object-cover"
+          className="pointer-events-none absolute object-cover"
           /* Inline rather than Tailwind utilities. `mix-blend-*`, `saturate-*`
-             and `scale-*` are all new to this codebase here, and a class the
+             and inset-bleed are all new to this codebase here, and a class the
              build has not generated fails SILENTLY — the first render of this
              was a 70%-opaque photo, the exact brightness problem the blend
              exists to prevent. One style object cannot half-apply.
 
              `saturate` and not `opacity`: chroma is the only channel a `color`
              blend spends, and spending it is free — the frame's luminance, and
-             with it every contrast ratio, is untouched however far it goes. */
+             with it every contrast ratio, is untouched however far it goes.
+
+             `inset: -BLEED` and NOT `transform: scale`: a blur samples past the
+             element's box and pulls TRANSPARENCY in from outside it, which the
+             blend renders as "no tint". `scale(1.12)` on a 200px-tall header
+             overhangs 12px against a ~84px blur reach, so the tint faded to 60%
+             of itself at the top and bottom edges — a vignette that read as the
+             image having come apart. The bleed is absolute, so it holds at any
+             header height, unlike a ratio. */
           style={{
+            inset: -COVER_BLEED_PX,
             mixBlendMode: "color",
-            filter: "blur(28px) saturate(2.2)",
-            transform: "scale(1.12)",
+            filter: `blur(${COVER_BLUR_PX}px) saturate(2.2)`,
           }}
         />
       ) : null}

@@ -28,7 +28,9 @@ describe("PageHero cover banner", () => {
     // `--aqt-bg`, and a white cover bleeding 5% of its light drops it to ~2.6:1.
     expect(markup).toContain("mix-blend-mode:color");
     expect(markup).toContain("blur(28px) saturate(2.2)");
-    expect(markup).toContain("scale(1.12)");
+    // Bled past the frame, or the blur pulls transparency in from outside the
+    // image's box and the tint fades out at the top and bottom edges.
+    expect(markup).toContain("inset:-96px");
     // The blend has to stay inside the hero, not reach the page behind it.
     expect(markup).toContain("isolate");
     // No band is reserved and no scrim is painted: the wash is behind the copy.
