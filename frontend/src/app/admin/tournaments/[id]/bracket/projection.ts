@@ -322,6 +322,27 @@ export function resolveBracketTeamCount(
   return { count: projected, source: projected > 0 ? "projected" : "unknown" };
 }
 
+/**
+ * The rounds a round robin will play, mirroring `services/bracket/round_robin.py`:
+ * the circle method pairs an even field, so `n` teams (padded with a BYE when
+ * odd) play `n - 1` rounds. Groups each run their own round robin, so the stage
+ * is as long as its largest group.
+ *
+ * `0` when nothing is wired into the stage yet and the length cannot be derived
+ * — a round robin's length follows its team count, NOT `Stage.max_rounds`,
+ * which is an independent admin planning field. Callers decide whether to fall
+ * back to it.
+ */
+export function projectedRoundRobinRounds(stage: Stage): number {
+  const groupSizes = (stage.items.length > 0 ? stage.items : []).map((item) => {
+    const assigned = item.inputs.filter((input) => input.team_id != null).length;
+    return assigned > 0 ? assigned : item.inputs.length;
+  });
+  const largest = groupSizes.length > 0 ? Math.max(...groupSizes) : 0;
+  if (largest < 2) return 0;
+  return (largest % 2 === 0 ? largest : largest + 1) - 1;
+}
+
 export interface ProjectedRound {
   /** Signed round number; negative is a lower-bracket round. */
   round: number;

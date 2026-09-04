@@ -1048,11 +1048,49 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
 
   // The case the feature is actually used in: a group stage's pools are
   // authored before the bracket is generated, and the server's prediction
-  // returns nothing until teams are wired into the stage. A round robin plays
-  // rounds 1..max_rounds whoever the teams are, so the rounds are known anyway
-  // — without this the screen fell back to one flat list of groups, which is
-  // what an organizer read as "where is the split by round?".
-  it("lists a group stage's configured rounds before the bracket exists", async () => {
+  // returns nothing until teams are wired into the stage. A group stage's
+  // length is known anyway — without this the screen fell back to one flat
+  // list of groups, which is what an organizer read as "where is the split by
+  // round?".
+  it("derives a round robin's rounds from its teams, not from max_rounds", async () => {
+    getStagePlannedRounds.mockResolvedValue([]);
+    // Six teams in the group: everyone plays everyone, so five rounds — the
+    // stage's max_rounds of 3 is an unrelated planning field.
+    const seeded = {
+      ...STAGES[0],
+      items: [
+        {
+          id: 100,
+          stage_id: 10,
+          name: "Group A",
+          type: "group",
+          order: 0,
+          inputs: Array.from({ length: 6 }, (_, index) => ({
+            id: 200 + index,
+            stage_item_id: 100,
+            slot: index + 1,
+            input_type: "final",
+            team_id: index + 1,
+            source_stage_item_id: null,
+            source_position: null
+          }))
+        }
+      ]
+    } as unknown as Stage;
+
+    await mount({
+      encounters: [],
+      stages: [seeded, STAGES[1]],
+      configs: [STAGE_GROUPS],
+      url: "?scope=stage:10&kind=map&step=pool"
+    });
+
+    const text = editor().textContent ?? "";
+    expect(text).toContain("Round 5");
+    expect(text).not.toContain("Round 6");
+  });
+
+  it("falls back to the planned round count when the stage has no teams yet", async () => {
     getStagePlannedRounds.mockResolvedValue([]);
     await mount({
       encounters: [],
@@ -1061,9 +1099,7 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
     });
 
     const text = editor().textContent ?? "";
-    // Stage 10 is a round robin with max_rounds 3.
-    expect(text).toContain("Round 1");
-    expect(text).toContain("Round 2");
+    // Stage 10 has no items wired, so its max_rounds of 3 is all there is.
     expect(text).toContain("Round 3");
     expect(text).not.toContain("Round 4");
   });

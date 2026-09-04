@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import adminService from "@/services/admin.service";
-import { GROUP_STAGE_TYPES } from "../../bracket/projection";
+import { GROUP_STAGE_TYPES, projectedRoundRobinRounds } from "../../bracket/projection";
 import type { Stage } from "@/types/tournament.types";
 import { stageRoundOptions, type PickBanScopeEncounter } from "../../components/pickBanConfig.helpers";
 
@@ -24,11 +24,18 @@ export interface StageRounds {
  * rather than the stage's `max_rounds`. So the server predicts it from the
  * stage's planned team inputs, running the real generator.
  *
- * A round robin or a Swiss is different: it plays rounds 1..`max_rounds` by
- * definition, whoever the teams turn out to be. That fallback is what lets an
- * organizer author a group stage's per-round map pools before the bracket is
- * generated — which is when they actually do it, and the prediction returns
- * nothing until teams are wired in.
+ * A group stage is different. A Swiss plays exactly `max_rounds` (the server
+ * refuses to generate past it), and a round robin plays as many rounds as its
+ * largest group needs — `n - 1` for an even field, mirrored in
+ * `projectedRoundRobinRounds`, which is derived from the teams wired into the
+ * stage rather than from `max_rounds`. Either way the rounds are known before
+ * the bracket is, which is when a group stage's per-round map pools are
+ * actually authored: the prediction returns nothing until teams are wired in.
+ *
+ * A round robin with nothing wired yet has no derivable length, so it falls
+ * back to `max_rounds` — the same planning number the best-of editor offers
+ * rows for. A round the generated bracket never has is inert; a round missing
+ * from this list is one nobody can configure.
  *
  * Shared by the scope tree and the stage editor: both need the same rounds, and
  * one query key means the second one costs nothing.
@@ -46,7 +53,10 @@ export function useStageRounds(
   );
   const planned = useMemo(() => {
     if (stage == null || !GROUP_STAGE_TYPES.includes(stage.stage_type)) return EMPTY_ROUNDS;
-    return Array.from({ length: Math.max(0, stage.max_rounds) }, (_, index) => index + 1);
+    const derived =
+      stage.stage_type === "round_robin" ? projectedRoundRobinRounds(stage) : 0;
+    const count = derived > 0 ? derived : Math.floor(stage.max_rounds);
+    return Array.from({ length: Math.max(0, count) }, (_, index) => index + 1);
   }, [stage]);
 
   const predicted = useQuery({

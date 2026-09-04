@@ -18,6 +18,7 @@ import {
   getStageStatus,
   projectStage,
   projectedBracketSeedCounts,
+  projectedRoundRobinRounds,
   resolveBracketTeamCount
 } from "./projection";
 
@@ -137,6 +138,42 @@ describe("projectedBracketSeedCounts", () => {
       upper: 3,
       lower: 3
     });
+  });
+});
+
+// A round robin's length is its team count, not `max_rounds`: everyone plays
+// everyone, so an even field of `n` needs `n - 1` rounds and an odd one pads
+// with a BYE (`services/bracket/round_robin.py`).
+describe("projectedRoundRobinRounds", () => {
+  test("an even group plays one round fewer than it has teams", () => {
+    const groups = stage({ id: 1, stage_type: "round_robin", items: [item(10, "group", { seeded: 6 })] });
+
+    expect(projectedRoundRobinRounds(groups)).toBe(5);
+  });
+
+  test("an odd group pads with a BYE, so it plays as many rounds as it has teams", () => {
+    const groups = stage({ id: 1, stage_type: "round_robin", items: [item(10, "group", { seeded: 5 })] });
+
+    expect(projectedRoundRobinRounds(groups)).toBe(5);
+  });
+
+  test("the stage is as long as its largest group, and counts empty slots", () => {
+    const groups = stage({
+      id: 1,
+      stage_type: "round_robin",
+      items: [item(10, "group", { seeded: 4 }), item(11, "group", { empty: 8 })]
+    });
+
+    expect(projectedRoundRobinRounds(groups)).toBe(7);
+  });
+
+  test("nothing wired in derives nothing — the caller falls back to max_rounds", () => {
+    expect(projectedRoundRobinRounds(stage({ id: 1, stage_type: "round_robin" }))).toBe(0);
+    expect(
+      projectedRoundRobinRounds(
+        stage({ id: 1, stage_type: "round_robin", items: [item(10, "group", { seeded: 1 })] })
+      )
+    ).toBe(0);
   });
 });
 
