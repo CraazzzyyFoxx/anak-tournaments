@@ -263,11 +263,17 @@ function CardLink({ href, children }: Readonly<{ href: string; children: React.R
 function StatTile({
   label,
   value,
-  hint
-}: Readonly<{ label: string; value: string; hint?: string }>) {
+  hint,
+  accent
+}: Readonly<{ label: string; value: string; hint?: string; accent?: string }>) {
   return (
     <div className={styles.figure}>
-      <div className={styles.figureLabel}>{label}</div>
+      <div className={cn(styles.figureLabel, "flex items-center gap-1.5")}>
+        {accent ? (
+          <span aria-hidden className="size-1.5 rounded-full" style={{ background: accent }} />
+        ) : null}
+        {label}
+      </div>
       <div className={styles.figureValue}>
         {value}
         {hint ? <span className={styles.figureHint}>{hint}</span> : null}
@@ -275,6 +281,14 @@ function StatTile({
     </div>
   );
 }
+
+/** The site's role tints (`PlayerRoleIcon` uses the same tokens), keyed by slot code. */
+const ROLE_TINT: Record<RosterSlotCode, string> = {
+  tank: "var(--aqt-tank)",
+  dps: "var(--aqt-damage)",
+  support: "var(--aqt-support)",
+  flex: "var(--aqt-flex)"
+};
 
 function KeyValue({ term, children }: Readonly<{ term: string; children: React.ReactNode }>) {
   return (
@@ -627,6 +641,10 @@ export default function TournamentOverviewPage({
           .map((code) => `${rosterShape.slots[code]} × ${t(`rosterShape.slotCodes.${code}`)}`)
           .join(" · ")
       : "";
+    // The share of each role in the field — what a draft/balancer organizer
+    // reads ("tanks are short"). Role tints, the same dots on the figures above.
+    const roleShares = ROSTER_SLOT_CODES.filter((code) => roleCounts[code] > 0);
+    const roleTotal = roleShares.reduce((sum, code) => sum + roleCounts[code], 0);
 
     const content = (
       <section className={styles.publicDataPage} aria-label={t("common.overview")}>
@@ -670,16 +688,30 @@ export default function TournamentOverviewPage({
                       label={t("tournamentDetail.overview.registration.total")}
                       value={String(tournament.registrations_count ?? registrations.length)}
                     />
-                    {ROSTER_SLOT_CODES.filter((code) => roleCounts[code] > 0).map((code) => (
+                    {roleShares.map((code) => (
                       <StatTile
                         key={code}
                         label={t(`common.roles.${code}`)}
                         value={String(roleCounts[code])}
+                        accent={ROLE_TINT[code]}
                       />
                     ))}
                   </div>
+                  {roleShares.length > 1 && roleTotal > 0 ? (
+                    <div aria-hidden className="mt-3 flex h-1.5 gap-px overflow-hidden rounded-sm">
+                      {roleShares.map((code) => (
+                        <span
+                          key={code}
+                          style={{
+                            width: `${(roleCounts[code] / roleTotal) * 100}%`,
+                            background: ROLE_TINT[code]
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                   {latest.length > 0 ? (
-                    <p className="mt-3 truncate text-xs text-[color:var(--aqt-fg-faint)]">
+                    <p className="mt-2 truncate text-xs text-[color:var(--aqt-fg-faint)]">
                       {t("tournamentDetail.overview.registration.latest")}: {latest.join(" · ")}
                       {latestAgo ? ` · ${latestAgo}` : null}
                     </p>
