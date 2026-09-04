@@ -585,7 +585,7 @@ function PoolStep({
             catalogue={catalogueById}
             disabled={!canManage}
             onRemove={toggleItem}
-            trailing={
+            leading={
               <CataloguePicker
                 mode="multi"
                 kind={kind}
@@ -729,7 +729,7 @@ function SlotCard({
         onRemove={(itemId) =>
           onPatch({ candidates: slot.candidates.filter((id) => id !== itemId) })
         }
-        trailing={
+        leading={
           <CataloguePicker
             mode="multi"
             kind={kind}

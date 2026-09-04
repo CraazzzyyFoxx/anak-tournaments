@@ -679,11 +679,22 @@ describe("Settings › Pre-game phase's picker searches by name and adds/clears 
     await openMapPicker();
     await click(only("Busan"));
 
-    // One chip for Busan, plus the trailing "Add maps" trigger in the same row.
+    // The leading "Add maps" trigger shares the row, then one chip for Busan.
     const chips = editor().querySelectorAll("ul li");
     expect(chips).toHaveLength(2);
-    expect(chips[0].textContent).toContain("Busan");
-    expect(chips[0].querySelector("img")).toBeTruthy();
+    expect(chips[1].textContent).toContain("Busan");
+    expect(chips[1].querySelector("img")).toBeTruthy();
+  });
+
+  it("keeps the picker trigger first in the row, so adding a map never moves it", async () => {
+    await openMapPicker();
+    await click(only("Busan"));
+    await click(only("Ilios"));
+
+    // The popover is anchored to this trigger: let a chip push it and the open
+    // panel slides out from under the cursor mid-selection.
+    const row = editor().querySelectorAll("ul li");
+    expect(row[0].textContent).toContain("Add maps");
   });
 
   it("never offers a map flagged out of competitive rotation", async () => {

@@ -243,10 +243,12 @@ export interface CatalogueChipsProps {
   disabled?: boolean;
   onRemove: (itemId: number) => void;
   /**
-   * The row's last item, normally the picker trigger — it flows in the same
-   * wrapping row as the chips rather than sitting above or below them.
+   * The row's first item, normally the picker trigger — it flows in the same
+   * wrapping row as the chips rather than sitting above or below them. It leads
+   * the row rather than trailing it so that adding a chip never moves it, which
+   * would drag the anchored picker popover along with it.
    */
-  trailing?: ReactNode;
+  leading?: ReactNode;
 }
 
 /** Selected items in stored order, each with the control that removes it. */
@@ -255,12 +257,13 @@ export function CatalogueChips({
   catalogue,
   disabled = false,
   onRemove,
-  trailing
+  leading
 }: Readonly<CatalogueChipsProps>) {
   const t = useTranslations("pickBan.admin");
 
   return (
     <ul className="flex flex-wrap items-center gap-1.5">
+      {leading ? <li>{leading}</li> : null}
       {itemIds.map((itemId, index) => {
         const item = catalogue.get(itemId);
         const name = item?.name ?? `#${itemId}`;
@@ -294,7 +297,6 @@ export function CatalogueChips({
           </li>
         );
       })}
-      {trailing ? <li>{trailing}</li> : null}
     </ul>
   );
 }
