@@ -25,8 +25,14 @@ export function SectionToolbar({ children, end, label, className }: Readonly<Sec
       aria-label={label}
       className={cn("flex flex-wrap items-center gap-2 sm:gap-3", className)}
     >
-      <div className={cn(styles.controlRail, "min-w-0 flex-1 flex-wrap")}>{children}</div>
-      {end ? <div className="flex flex-wrap items-center gap-2 sm:ml-auto">{end}</div> : null}
+      <div className={cn(styles.controlRail, "min-w-0 basis-full sm:flex-1 sm:basis-auto")}>
+        {children}
+      </div>
+      {end ? (
+        <div className="flex basis-full flex-wrap items-center gap-2 sm:ml-auto sm:basis-auto">
+          {end}
+        </div>
+      ) : null}
     </div>
   );
 }

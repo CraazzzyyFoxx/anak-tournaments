@@ -89,9 +89,9 @@ export function MapPool({
   if (variant === "summary") {
     return (
       <details id={id} className={cn("group scroll-mt-28", className)}>
-        <summary className="flex cursor-pointer list-none items-baseline justify-between gap-3 [&::-webkit-details-marker]:hidden">
+        <summary className="flex cursor-pointer list-none flex-col gap-1 [&::-webkit-details-marker]:hidden">
           <span className="aqt-card-title">{title}</span>
-          <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+          <span className="font-mono text-[11px] uppercase leading-relaxed tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
             {shown.byGamemode.map((g) => `${g.gamemode} ${g.maps.length}`).join(" · ")}
           </span>
         </summary>
@@ -111,12 +111,26 @@ export function MapPool({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[color:var(--aqt-border)] font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
-                <th scope="col" className="py-2 pr-3 text-left font-medium">{t("tournamentDetail.mapPool.col.map")}</th>
-                <th scope="col" className="py-2 pr-3 text-left font-medium">{t("tournamentDetail.mapPool.col.mode")}</th>
-                <th scope="col" className="py-2 pr-3 text-right font-medium">{t("tournamentDetail.mapPool.col.played")}</th>
-                <th scope="col" className="py-2 pr-3 text-right font-medium">{t("tournamentDetail.mapPool.col.avgDuration")}</th>
-                <th scope="col" className="py-2 pr-3 text-left font-medium">{t("tournamentDetail.mapPool.col.sides")}</th>
-                {matchesHref ? <th scope="col" className="py-2"><span className="sr-only">{t("common.matches")}</span></th> : null}
+                <th scope="col" className="py-2 pr-3 text-left font-medium">
+                  {t("tournamentDetail.mapPool.col.map")}
+                </th>
+                <th scope="col" className="py-2 pr-3 text-left font-medium">
+                  {t("tournamentDetail.mapPool.col.mode")}
+                </th>
+                <th scope="col" className="py-2 pr-3 text-right font-medium">
+                  {t("tournamentDetail.mapPool.col.played")}
+                </th>
+                <th scope="col" className="py-2 pr-3 text-right font-medium">
+                  {t("tournamentDetail.mapPool.col.avgDuration")}
+                </th>
+                <th scope="col" className="py-2 pr-3 text-left font-medium">
+                  {t("tournamentDetail.mapPool.col.sides")}
+                </th>
+                {matchesHref ? (
+                  <th scope="col" className="py-2">
+                    <span className="sr-only">{t("common.matches")}</span>
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -134,7 +148,9 @@ export function MapPool({
                       )}
                     >
                       <td className={cn("py-2 pr-3", !muted && "font-semibold")}>{map.name}</td>
-                      <td className="py-2 pr-3 text-[color:var(--aqt-fg-muted)]">{group.gamemode}</td>
+                      <td className="py-2 pr-3 text-[color:var(--aqt-fg-muted)]">
+                        {group.gamemode}
+                      </td>
                       <td className="aqt-tnum py-2 pr-3 text-right">{played}</td>
                       <td className="aqt-tnum py-2 pr-3 text-right">
                         {counts?.avgDurationSec != null
@@ -147,10 +163,16 @@ export function MapPool({
                             className="flex h-2 w-40 max-w-full overflow-hidden rounded-sm"
                             role="img"
                             aria-label={t("tournamentDetail.mapPool.attackShare", {
-                              pct: format.number(counts.attackWinShare, { style: "percent", maximumFractionDigits: 0 })
+                              pct: format.number(counts.attackWinShare, {
+                                style: "percent",
+                                maximumFractionDigits: 0
+                              })
                             })}
                           >
-                            <span className="bg-[color:var(--aqt-fg-muted)]" style={{ width: `${Math.round(counts.attackWinShare * 100)}%` }} />
+                            <span
+                              className="bg-[color:var(--aqt-fg-muted)]"
+                              style={{ width: `${Math.round(counts.attackWinShare * 100)}%` }}
+                            />
                             <span className="flex-1 bg-[color:var(--aqt-border)]" />
                           </div>
                         ) : (
@@ -160,7 +182,10 @@ export function MapPool({
                       {matchesHref ? (
                         <td className="py-2 text-right">
                           {played > 0 ? (
-                            <Link href={matchesHref(map.id)} className="font-mono text-[11px] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]">
+                            <Link
+                              href={matchesHref(map.id)}
+                              className="font-mono text-[11px] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]"
+                            >
                               {t("common.matches")} →
                             </Link>
                           ) : null}
@@ -190,7 +215,10 @@ function Tiles({ pool }: Readonly<{ pool: MapPoolView }>) {
   return (
     <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
       {pool.byGamemode.map((group) => (
-        <div key={group.gamemode} className="rounded-md border border-dashed border-[color:var(--aqt-border)] px-2 py-1.5">
+        <div
+          key={group.gamemode}
+          className="rounded-md border border-dashed border-[color:var(--aqt-border)] px-2 py-1.5"
+        >
           <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
             {group.gamemode}
           </div>
