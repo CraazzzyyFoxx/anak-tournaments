@@ -50,7 +50,6 @@ from src.services.registration._common import (
 )
 from src.services.registration import rank_resolution
 from src.services.registration.service import RegistrationService, registration_service
-from src.services.registration.windows import is_check_in_window_active
 from src.services.tournament.events import (
     enqueue_registration_approved,
     enqueue_registration_rejected,
@@ -633,12 +632,13 @@ class RegistrationLifecycleService:
         *,
         checked_in_by: int | None,
     ) -> models.BalancerRegistration:
+        """Admin check-in. Deliberately ungated by the CHECK_IN phase window --
+        organizers check people in before the phase opens, after it closes, and
+        during LIVE when someone shows up late. The window gate belongs to the
+        self-service path only (``registration_service.check_in_registration``),
+        and undo (``uncheck_in_registration``) has never had one either.
+        """
         registration = await self.get_registration_by_id(session, registration_id)
-        if not is_check_in_window_active(registration.tournament):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Check-in is not active for this tournament",
-            )
         registration.checked_in = True
         registration.checked_in_at = datetime.now(UTC)
         registration.checked_in_by = checked_in_by

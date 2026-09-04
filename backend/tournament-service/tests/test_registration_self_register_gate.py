@@ -549,3 +549,42 @@ def test_check_in_window_active_inside_row_window() -> None:
 def test_check_in_window_requires_check_in_status() -> None:
     tournament = _gate_tournament(enums.TournamentStatus.REGISTRATION)
     assert windows.is_check_in_window_active(tournament) is False
+
+
+def test_admin_check_in_ignores_the_check_in_window() -> None:
+    """Organizers must be able to check someone in outside CHECK_IN — before the
+    phase opens, after its window closes, or once the tournament is LIVE. Only
+    the self-service path (``registration_service.check_in_registration``) is
+    window-gated."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from src.services.registration import lifecycle
+
+    registration = SimpleNamespace(
+        id=7,
+        tournament=_gate_tournament(enums.TournamentStatus.LIVE),
+        checked_in=False,
+        checked_in_at=None,
+        checked_in_by=None,
+    )
+
+    async def fake_get(_self, _session, _registration_id):
+        return registration
+
+    session = SimpleNamespace(commit=_noop)
+    service = lifecycle.lifecycle_service
+
+    with (
+        patch.object(type(service), "get_registration_by_id", fake_get),
+        patch.object(service.common, "_register_registration_changed", lambda *a, **k: None),
+    ):
+        result = asyncio.run(service.check_in_registration(session, 7, checked_in_by=99))
+
+    assert result is registration
+    assert registration.checked_in is True
+    assert registration.checked_in_by == 99
+
+
+async def _noop() -> None:
+    return None
