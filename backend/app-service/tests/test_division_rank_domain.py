@@ -32,7 +32,9 @@ class DivisionRankDomainTests(TestCase):
         grid = make_grid()
 
         self.assertEqual(500, division_rank.resolve_rank_for_division(grid, 1))
-        self.assertEqual(299, division_rank.resolve_rank_for_division(grid, 2))
+        # Tier floor, not the band midpoint: a division->rank round trip has to land on
+        # the same rank_value every other grid path uses (the 4449-for-Grandmaster-1 bug).
+        self.assertEqual(100, division_rank.resolve_rank_for_division(grid, 2))
         self.assertEqual(1, division_rank.clamp_division_to_grid(grid, -4))
         self.assertEqual(2, division_rank.clamp_division_to_grid(grid, 99))
 

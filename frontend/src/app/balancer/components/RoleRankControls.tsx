@@ -8,7 +8,7 @@ import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import {
   getDivisionLabel,
   resolveDivisionFromRank,
-  resolveExactRankFromDivision,
+  resolveRankFromDivision,
   sortTiersAscending,
 } from "@/lib/division-grid";
 import { cn } from "@/lib/utils";
@@ -241,7 +241,7 @@ export function RoleRankControls({
           value={sliderIndex}
           onChange={(event) => {
             const nextDivision = tiers[Number(event.target.value)]?.number ?? null;
-            onChange(resolveExactRankFromDivision(grid, nextDivision), nextDivision);
+            onChange(resolveRankFromDivision(grid, nextDivision), nextDivision);
           }}
           className={cn(
             "h-1 w-full cursor-pointer appearance-none rounded-full bg-white/8",

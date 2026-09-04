@@ -24,7 +24,7 @@ import {
   OW_REFERENCE_GRID,
   getTierForRank,
   resolveDivisionFromRank,
-  resolveExactRankFromDivision,
+  resolveRankFromDivision,
   sortTiersDescending
 } from "@/lib/division-grid";
 import {
@@ -323,7 +323,7 @@ function RankMappingSection({
     setCells((current) =>
       current.map((cell, i) =>
         i === index
-          ? { ...cell, rank_value: resolveExactRankFromDivision(grid, divisionNumber) ?? cell.rank_value }
+          ? { ...cell, rank_value: resolveRankFromDivision(grid, divisionNumber) ?? cell.rank_value }
           : cell
       )
     );
