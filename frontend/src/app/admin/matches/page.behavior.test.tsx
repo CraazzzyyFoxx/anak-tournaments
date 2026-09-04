@@ -35,6 +35,11 @@ let permitted = true;
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
+  useFormatter: () => ({
+    dateTime: (value: Date) => value.toISOString(),
+    number: (value: number) => String(value),
+    relativeTime: () => ""
+  }),
   NextIntlClientProvider: ({ children }: { children: ReactNode }) => children
 }));
 

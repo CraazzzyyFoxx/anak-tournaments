@@ -2074,9 +2074,7 @@
         "participants": "Loading tournament participants",
         "matches": "Loading tournament matches",
         "heroes": "Loading hero statistics",
-        "standings": "Loading tournament standings",
         "maps": "Loading the tournament map pool",
-        "schedule": "Loading the tournament schedule",
         "stream": "Loading tournament streams"
       }
     },
@@ -2119,26 +2117,13 @@
       },
       "schedule": {
         "title": "Phase schedule",
-        "emptyTitle": "No schedule published",
-        "emptyDescription": "Phase times will appear here once the organizer sets them.",
-        "startsLabel": "Starts",
-        "closesLabel": "Closes",
         "startsRelative": "Starts {relative}",
         "closesRelative": "Closes {relative}",
-        "state": {
-          "done": "Done",
-          "current": "Now"
-        },
         "windowHint": "A closing time ends that phase's own actions — check-in, for example. It does not move the tournament to the next phase.",
         "manualHint": "Automatic phase transitions are off, so these times are the organizer's plan rather than a promise."
       },
       "standings": {
-        "stageViewLabel": "Choose standings stage view",
-        "tableLabel": "Tournament standings. Scroll horizontally for all ranking metrics.",
-        "emptyTitle": "No standings yet",
-        "emptyDescription": "Standings will appear when the organizer publishes stage results.",
-        "stageEmptyTitle": "No standings in this view",
-        "stageEmptyDescription": "Choose another stage view to see the available standings."
+        "tableLabel": "Tournament standings. Scroll horizontally for all ranking metrics."
       }
     },
     "pageState": {

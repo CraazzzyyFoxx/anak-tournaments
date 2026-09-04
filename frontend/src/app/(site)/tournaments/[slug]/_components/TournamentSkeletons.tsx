@@ -333,28 +333,6 @@ export function TournamentHeroesSkeleton() {
   );
 }
 
-export function TournamentStandingsSkeleton() {
-  const t = useTranslations();
-
-  return (
-    <SkeletonRegion variant="standings" message={t("tournamentDetail.loading.pages.standings")}>
-      <TournamentPageSkeletonLayout>
-        
-        <ControlRowSkeleton />
-        {[0, 1].map((card) => (
-          <div className={styles.skeletonSurface} key={card}>
-            <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
-              <SkeletonBlock style={{ width: "11rem", height: "1.25rem" }} />
-              <SkeletonBlock style={{ width: "4rem", height: "1.25rem" }} />
-            </div>
-            <TableRowsSkeleton count={5} />
-          </div>
-        ))}
-      </TournamentPageSkeletonLayout>
-    </SkeletonRegion>
-  );
-}
-
 export function TournamentMapsSkeleton() {
   const t = useTranslations();
 
@@ -377,33 +355,6 @@ export function TournamentMapsSkeleton() {
         </div>
         <div className={styles.skeletonSurface}>
           <TableRowsSkeleton count={4} />
-        </div>
-      </TournamentPageSkeletonLayout>
-    </SkeletonRegion>
-  );
-}
-
-export function TournamentScheduleSkeleton() {
-  const t = useTranslations();
-
-  return (
-    <SkeletonRegion variant="schedule" message={t("tournamentDetail.loading.pages.schedule")}>
-      <TournamentPageSkeletonLayout>
-        <div className={styles.skeletonSurface}>
-          <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
-            <SkeletonBlock style={{ width: "9rem", height: "1.25rem" }} />
-          </div>
-          {/* Three rows: the shortest schedule worth a page is
-              registration -> check-in -> live. Each row is a phase label over
-              its two timestamps, so the arriving content does not reflow. */}
-          <div className={styles.skeletonRows}>
-            {Array.from({ length: 3 }, (_, row) => (
-              <div className={styles.skeletonRow} key={row}>
-                <SkeletonBlock style={{ width: "6.5rem", height: "0.85rem" }} />
-                <SkeletonBlock style={{ width: "13rem", height: "0.7rem" }} />
-              </div>
-            ))}
-          </div>
         </div>
       </TournamentPageSkeletonLayout>
     </SkeletonRegion>

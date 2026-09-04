@@ -93,7 +93,6 @@ export default defineConfig({
       "src/app/(site)/tournaments/[slug]/_views/TournamentEncountersPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/TournamentOverviewPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/TournamentParticipantsPage.behavior.test.tsx",
-      "src/app/(site)/tournaments/[slug]/_views/TournamentSchedulePage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/TournamentStatsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/TournamentTeamsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/_components/ParticipantsPool.behavior.test.tsx",

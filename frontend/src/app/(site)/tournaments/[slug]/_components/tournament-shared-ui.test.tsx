@@ -15,7 +15,6 @@ import {
   TournamentMatchesSkeleton,
   TournamentParticipantsSkeleton,
   TournamentShellSkeleton,
-  TournamentStandingsSkeleton,
   TournamentTeamsSkeleton
 } from "./TournamentSkeletons";
 import { TournamentPageState } from "./TournamentPageState";
@@ -29,8 +28,7 @@ describe("tournament skeleton compositions", () => {
     ["teams", TournamentTeamsSkeleton],
     ["participants", TournamentParticipantsSkeleton],
     ["matches", TournamentMatchesSkeleton],
-    ["heroes", TournamentHeroesSkeleton],
-    ["standings", TournamentStandingsSkeleton]
+    ["heroes", TournamentHeroesSkeleton]
   ] as const)("gives the %s region exactly one loading announcement", (variant, Component) => {
     const html = renderToStaticMarkup(<Component />);
 
@@ -45,8 +43,7 @@ describe("tournament skeleton compositions", () => {
     ["teams", "TournamentTeamsSkeleton"],
     ["participants", "TournamentParticipantsSkeleton"],
     ["matches", "TournamentMatchesSkeleton"],
-    ["stats", "TournamentHeroesSkeleton"],
-    ["standings", "TournamentStandingsSkeleton"]
+    ["stats", "TournamentHeroesSkeleton"]
   ])("wires %s/loading.tsx to the shared %s", (route, exportName) => {
     const source = readFileSync(resolve(tournamentRoot, route, "loading.tsx"), "utf8");
 
