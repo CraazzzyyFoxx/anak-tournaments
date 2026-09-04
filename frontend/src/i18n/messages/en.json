@@ -854,6 +854,28 @@
       "you": "You"
     }
   },
+  "admin": {
+    "roundSchedule": {
+      "title": "Round schedule",
+      "description": "One planned start time per round, written to every match of that round. A match moved on its own keeps its time unless you confirm overwriting it. Times are in your local time zone.",
+      "roundColumn": "Round",
+      "timeColumn": "Start time",
+      "matchesColumn": "Matches",
+      "actionsColumn": "Apply the round time",
+      "timeInputLabel": "Start time for {round}",
+      "apply": "Apply",
+      "applied": "{count, plural, one {# match scheduled} other {# matches scheduled}}",
+      "applyError": "Could not apply the round schedule",
+      "overrides": "{count, plural, one {# moved} other {# moved}}",
+      "emptyTitle": "No matches in this stage yet",
+      "emptyBody": "Generate the bracket first — round times are written onto matches that already exist.",
+      "errorTitle": "Could not load this stage's matches",
+      "errorBody": "The round times are read from the matches themselves, so nothing can be shown until they load.",
+      "confirmTitle": "{count, plural, one {Overwrite # individual time?} other {Overwrite # individual times?}}",
+      "confirmDescription": "{count, plural, one {# match in {round} was moved on its own} other {# matches in {round} were moved on their own}}. Overwriting replaces those times with the round time. Cancelling keeps them and still applies the round time to the rest.",
+      "confirmLabel": "Overwrite all"
+    }
+  },
   "matchEdit": {
     "title": "Edit Match",
     "pendingConfirmation": "Pending Confirmation",
@@ -894,7 +916,10 @@
     "reopenResult": "Reopen result",
     "reopening": "Reopening…",
     "resultReopened": "Result reopened",
-    "reopenErrorMessage": "Could not reopen the result"
+    "reopenErrorMessage": "Could not reopen the result",
+    "scheduledAt": "Start time",
+    "scheduledAtHint": "Overrides the round schedule for this match only. Leave empty to fall back to no planned time. Your local time zone.",
+    "scheduledAtInvalid": "Enter a full date and time, or leave the field empty"
   },
   "matchReport": {
     "title": "Match Report",
@@ -1892,7 +1917,76 @@
       "closes": "{phase} closes"
     },
     "overview": {
-      "links": "Links"
+      "links": "Links",
+      "loading": "Loading the tournament overview",
+      "empty": {
+        "title": "Nothing published yet",
+        "description": "As soon as the bracket is drawn, the matches show up here."
+      },
+      "registration": {
+        "title": "Registration",
+        "all": "all participants →",
+        "total": "Registered",
+        "teams": "Teams",
+        "latest": "Latest"
+      },
+      "format": {
+        "title": "Format",
+        "stages": "Stages",
+        "teamFormation": "Team formation",
+        "roster": "Roster",
+        "description": "About"
+      },
+      "live": {
+        "title": "Now playing",
+        "all": "all matches →"
+      },
+      "upcoming": {
+        "title": "Upcoming"
+      },
+      "recent": {
+        "title": "Latest results"
+      },
+      "bracketMini": {
+        "title": "Bracket · {stage}",
+        "open": "open →"
+      },
+      "groupTable": {
+        "title": "{stage} standings",
+        "open": "standings →",
+        "pos": "#",
+        "team": "Team",
+        "record": "W–L",
+        "points": "Pts"
+      },
+      "phases": {
+        "title": "Phases"
+      },
+      "stream": {
+        "title": "Stream",
+        "open": "official broadcast →",
+        "viewers": "{count} watching",
+        "participants": "+{count} participants on air →"
+      },
+      "mapPoolStats": "stats →",
+      "heroes": {
+        "title": "Most played heroes",
+        "all": "stats →"
+      },
+      "numbers": {
+        "title": "Numbers",
+        "teams": "Teams",
+        "players": "Players",
+        "matches": "Matches",
+        "days": "Days",
+        "played": "Played"
+      },
+      "result": {
+        "title": "Result",
+        "finalScore": "{score} in the final",
+        "exitedIn": "Eliminated in {round}",
+        "record": "{wins}–{losses} record"
+      }
     },
     "mapPool": {
       "title": "Map pool · {count}",
@@ -1904,6 +1998,19 @@
         "played": "Played",
         "avgDuration": "Avg. length",
         "sides": "Attack / defense wins"
+      }
+    },
+    "stats": {
+      "title": "Statistics",
+      "tabsLabel": "Statistics sub-tabs",
+      "heroes": {
+        "roleLabel": "Filter heroes by role",
+        "emptyTitle": "No hero data yet",
+        "emptyDescription": "Hero play-time data will appear after match statistics are processed."
+      },
+      "maps": {
+        "emptyTitle": "No map pool published",
+        "emptyDescription": "Maps will appear here once the organizer configures the tournament's pick-and-ban pool."
       }
     },
     "matchRow": {
@@ -1919,6 +2026,21 @@
       "place1": "Champion",
       "place2": "2nd place",
       "place3": "3rd place"
+    },
+    "teams": {
+      "team": "Team",
+      "rosterColumn": "Roster",
+      "sr": "SR",
+      "record": "W–L",
+      "champion": "champion",
+      "byGroup": "By group",
+      "searchLabel": "Search team or player",
+      "searchPlaceholder": "Team or player…",
+      "viewLabel": "Teams view",
+      "viewList": "List",
+      "viewCards": "Cards",
+      "teamMatches": "Team matches →",
+      "matchedPlayers": "Matched:"
     },
     "bracketRegion": "Bracket — scroll horizontally to see all rounds",
     "sortTeams": "Sort teams",
@@ -1965,6 +2087,28 @@
         "description": "Participants will appear here when registrations are published."
       }
     },
+    "participantsPool": {
+      "viewLabel": "Participant view",
+      "view": {
+        "pool": "By role",
+        "table": "Table"
+      },
+      "searchLabel": "Search by BattleTag",
+      "divisionFilterLabel": "Division",
+      "allDivisions": "All divisions",
+      "divisionOption": "D{division}",
+      "columnLabel": "{role} — {count} players",
+      "columnEmpty": "Nobody in this role yet",
+      "rank": "D{division} · {rank}",
+      "flexTitle": "Plays several roles, so appears in each of them: {roles}",
+      "more": "… {count} more",
+      "withdrawn": "{count, plural, one {# withdrew} other {# withdrew}}",
+      "resultCount": "{count, plural, one {# player in the pool} other {# players in the pool}}",
+      "teamsFormed": {
+        "title": "Teams are formed — the roster below is the registration pool.",
+        "action": "Teams"
+      }
+    },
     "publicPages": {
       "matches": {
         "searchLabel": "Search tournament matches",
@@ -1987,11 +2131,6 @@
         },
         "windowHint": "A closing time ends that phase's own actions — check-in, for example. It does not move the tournament to the next phase.",
         "manualHint": "Automatic phase transitions are off, so these times are the organizer's plan rather than a promise."
-      },
-      "heroes": {
-        "roleLabel": "Filter heroes by role",
-        "emptyTitle": "No hero data yet",
-        "emptyDescription": "Hero play-time data will appear after match statistics are processed."
       },
       "standings": {
         "stageViewLabel": "Choose standings stage view",
@@ -2032,6 +2171,22 @@
         "rules": "Rules",
         "other": "Link"
       }
+    },
+    "matches": {
+      "sectionLabel": "Tournament matches",
+      "toolbarLabel": "Match filters and views",
+      "viewLabel": "Choose how matches are grouped",
+      "viewRound": "By round",
+      "viewTime": "By time",
+      "allStages": "All stages",
+      "now": "Now",
+      "laterToday": "Later today",
+      "unscheduled": "Time not set",
+      "matchCount": "{count, plural, one {# match} other {# matches}}",
+      "teamFilter": "Team: {name}",
+      "clearTeamFilter": "Clear the team filter",
+      "mapFilter": "Map: {name}",
+      "clearMapFilter": "Clear the map filter"
     }
   },
   "home": {

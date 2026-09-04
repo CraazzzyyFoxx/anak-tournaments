@@ -45,7 +45,7 @@ describe("tournament skeleton compositions", () => {
     ["teams", "TournamentTeamsSkeleton"],
     ["participants", "TournamentParticipantsSkeleton"],
     ["matches", "TournamentMatchesSkeleton"],
-    ["heroes", "TournamentHeroesSkeleton"],
+    ["stats", "TournamentHeroesSkeleton"],
     ["standings", "TournamentStandingsSkeleton"]
   ])("wires %s/loading.tsx to the shared %s", (route, exportName) => {
     const source = readFileSync(resolve(tournamentRoot, route, "loading.tsx"), "utf8");

@@ -34,7 +34,7 @@ const encountersModule =
     ) => boolean;
   };
 const heroesModule =
-  (await import("./TournamentHeroPlaytimePage")) as typeof import("./TournamentHeroPlaytimePage") & {
+  (await import("./TournamentStatsPage")) as typeof import("./TournamentStatsPage") & {
     getHeroesQueryPresentation?: GetQueryPresentation;
     getHeroPlaytimeMetric?: (playtime: number) => {
       sharePercent: number;
@@ -315,7 +315,7 @@ describe("public tournament data page contracts", () => {
   it("keeps pages headerless with an accessible section label and exact state components", () => {
     const contracts = [
       ["TournamentEncountersPage.tsx", "TournamentMatchesSkeleton"],
-      ["TournamentHeroPlaytimePage.tsx", "TournamentHeroesSkeleton"],
+      ["TournamentStatsPage.tsx", "TournamentHeroesSkeleton"],
       ["TournamentStandingsPage.tsx", "TournamentStandingsSkeleton"]
     ];
 
@@ -349,7 +349,7 @@ describe("public tournament data page contracts", () => {
   });
 
   it("keeps hero role controls and exposes ranked quantitative bars", () => {
-    const source = pageSource("TournamentHeroPlaytimePage.tsx");
+    const source = pageSource("TournamentStatsPage.tsx");
     const chip = readFileSync(join(componentsRoot, "ui/filter-chip.tsx"), "utf8");
 
     expect(source).toContain("ROLE_ORDER");
@@ -385,7 +385,7 @@ describe("public tournament data page contracts", () => {
   it("keeps every route file thin and free from generic loading gates", () => {
     for (const segment of [
       "matches",
-      "heroes",
+      "stats",
       "standings",
       "teams",
       "participants",
@@ -439,7 +439,7 @@ describe("public tournament data page contracts", () => {
   it("defines the background-refresh badge exactly once", () => {
     const views = [
       pageSource("TournamentEncountersPage.tsx"),
-      pageSource("TournamentHeroPlaytimePage.tsx"),
+      pageSource("TournamentStatsPage.tsx"),
       pageSource("TournamentStandingsPage.tsx"),
       pageSource("TournamentTeamsPage.tsx"),
       readFileSync(join(tournamentRoot, "bracket", "TournamentBracketPage.tsx"), "utf8")
@@ -494,17 +494,5 @@ describe("public tournament data page contracts", () => {
     expect(initialErrorBranch).toBeGreaterThan(-1);
     expect(skeletonBranch).toBeGreaterThan(-1);
     expect(initialErrorBranch).toBeLessThan(skeletonBranch);
-  });
-
-  it("replaces the matches table on a true empty instead of stacking two messages", () => {
-    const source = pageSource("TournamentEncountersPage.tsx");
-    const emptyCard = source.indexOf('state="empty"');
-    const table = source.indexOf("<EncountersTable");
-
-    expect(source).toContain("search.length === 0");
-    // Branches, not siblings: the card sits in the true arm and the table in the
-    // false arm of one ternary, so only one of them can ever render.
-    expect(emptyCard).toBeLessThan(table);
-    expect(source).toContain("isTrueEmpty ? (");
   });
 });

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
-import { BracketView } from "@/components/BracketView";
+import { ResponsiveBracket } from "./ResponsiveBracket";
 import { ConnectionIndicator } from "@/components/realtime/ConnectionIndicator";
 import StandingsTable from "@/components/StandingsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -61,7 +61,9 @@ function GroupStagePanel({
   canEdit,
   canReport,
   bracketTabs,
-  liveTeamStreams
+  liveTeamStreams,
+  defaultView = "matches",
+  highlightMatchId = null
 }: Readonly<{
   stage: Stage;
   stageItem?: StageItem;
@@ -79,6 +81,9 @@ function GroupStagePanel({
     isActive: boolean;
   }>;
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
+  /** `?view=standings` opens the table first; anything else opens the matches. */
+  defaultView?: "matches" | "standings";
+  highlightMatchId?: number | null;
 }>) {
   const t = useTranslations();
   const hasStandings = standings.length > 0;
@@ -90,7 +95,7 @@ function GroupStagePanel({
 
   return (
     <Tabs
-      defaultValue="matches"
+      defaultValue={defaultView === "standings" && hasStandings ? "standings" : "matches"}
       className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
     >
       <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -167,15 +172,14 @@ function GroupStagePanel({
           tabIndex={0}
           className={styles.bracketScroller}
         >
-          <BracketView
-            encounters={encounters}
-            type={stage.stage_type}
-            onEdit={onEdit}
-            onReport={onReport}
-            canEdit={canEdit}
-            canReport={canReport}
-            liveTeamStreams={liveTeamStreams}
-          />
+          <ResponsiveBracket encounters={encounters}
+          type={stage.stage_type}
+          onEdit={onEdit}
+          onReport={onReport}
+          canEdit={canEdit}
+          canReport={canReport}
+          liveTeamStreams={liveTeamStreams}
+          highlightMatchId={highlightMatchId} />
         </section>
       </TabsContent>
     </Tabs>
@@ -186,6 +190,10 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
   const searchParams = useSearchParams();
   const selectedStageParam = searchParams.get("stage");
   const viewParam = searchParams.get("view");
+  // `?match=` deep link from the overview and matches sections: the bracket
+  // scrolls that node into view and outlines it. Non-numeric → ignored.
+  const matchParam = Number(searchParams.get("match"));
+  const highlightMatchId = Number.isInteger(matchParam) && matchParam > 0 ? matchParam : null;
 
   const { isSuperuser, isWorkspaceAdmin } = usePermissions();
   const { status: authStatus, user: authUser } = useAuthProfile();
@@ -487,6 +495,8 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                   canReport={canReport}
                   bracketTabs={index === 0 ? bracketTabs : undefined}
                   liveTeamStreams={liveTeamStreams}
+                  defaultView={viewParam === "standings" ? "standings" : "matches"}
+                  highlightMatchId={highlightMatchId}
                 />
               ))
             : activeStages.map((stage) => {
@@ -510,7 +520,7 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                 return (
                   <Tabs
                     key={stage.id}
-                    defaultValue="bracket"
+                    defaultValue={viewParam === "standings" && hasPlayoffStandings ? "standings" : "bracket"}
                     className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
                   >
                     <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -589,15 +599,14 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                           tabIndex={0}
                           className={styles.bracketScroller}
                         >
-                          <BracketView
-                            encounters={encounters}
-                            type={stage.stage_type}
-                            onEdit={handleEdit}
-                            onReport={handleReport}
-                            canEdit={canEdit}
-                            canReport={canReport}
-                            liveTeamStreams={liveTeamStreams}
-                          />
+                          <ResponsiveBracket encounters={encounters}
+                          type={stage.stage_type}
+                          onEdit={handleEdit}
+                          onReport={handleReport}
+                          canEdit={canEdit}
+                          canReport={canReport}
+                          liveTeamStreams={liveTeamStreams}
+                          highlightMatchId={highlightMatchId} />
                         </section>
                       )}
                     </TabsContent>

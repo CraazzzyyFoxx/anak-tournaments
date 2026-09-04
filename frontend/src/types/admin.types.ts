@@ -788,6 +788,8 @@ export interface EncounterUpdateInput {
   name?: string;
   closeness?: number | null;
   best_of?: number;
+  /** ISO instant, or `null` to clear the planned start time. */
+  scheduled_at?: string | null;
 }
 
 export interface MatchUpdateInput {

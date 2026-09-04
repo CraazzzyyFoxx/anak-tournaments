@@ -71,6 +71,11 @@ interface BracketViewProps<M extends BracketMatch> {
    * only the destinations do not exist.
    */
   interactive?: boolean;
+  /**
+   * Encounter id to bring into view and outline on mount — the `?match=` deep
+   * link the overview and matches sections use to point at one node.
+   */
+  highlightMatchId?: number | null;
 }
 
 interface MatchNodeData {
@@ -799,7 +804,8 @@ export function BracketView<M extends BracketMatch>({
   canEdit,
   canReport,
   liveTeamStreams,
-  interactive = true
+  interactive = true,
+  highlightMatchId = null
 }: Readonly<BracketViewProps<M>>) {
   const t = useTranslations();
   // The bracket's own location, stage/view query included: the pre-game room
@@ -825,6 +831,15 @@ export function BracketView<M extends BracketMatch>({
     () => buildLayout(encounters, type, t, roundLabel),
     [encounters, type, t, roundLabel]
   );
+
+  // Scroll the deep-linked node into view once, after layout. A ref callback
+  // rather than an effect keyed on the DOM: the node mounts inside the canvas
+  // which itself mounts twice (inline + fullscreen), so the callback fires per
+  // instance and the inline one is the one on screen.
+  const highlightedRef = (node: HTMLDivElement | null) => {
+    if (!node || highlightMatchId === null) return;
+    node.scrollIntoView({ block: "center", inline: "center" });
+  };
 
   // Drag-to-pan with the mouse; touch keeps native scrolling. The scroller is
   // the event target, so the same handlers serve the inline and the fullscreen
@@ -943,10 +958,13 @@ export function BracketView<M extends BracketMatch>({
           const match = node.encounter as M;
           const editable = onEdit && (canEdit?.(match) ?? true);
           const reportable = onReport && (canReport?.(match) ?? false);
+          const highlighted = highlightMatchId !== null && match.id === highlightMatchId;
           return (
             <div
               key={node.id}
-              className="group absolute"
+              ref={highlighted ? highlightedRef : undefined}
+              data-match-id={match.id}
+              className={cn("group absolute", highlighted && "rounded-[10px] ring-2 ring-[color:var(--aqt-teal)] ring-offset-2 ring-offset-[color:var(--aqt-card)]")}
               style={{ left: node.x, top: node.y, width: CARD_WIDTH, height: CARD_HEIGHT }}
             >
               <MatchCard

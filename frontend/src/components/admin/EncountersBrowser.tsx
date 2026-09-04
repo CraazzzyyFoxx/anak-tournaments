@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useFormatter } from "next-intl";
 import {
   CheckCircle,
   CircleAlert,
@@ -79,6 +80,33 @@ function EncounterStatusCell({ status }: Readonly<{ status?: string | null }>) {
       label={upper ? `${upper[0]}${upper.slice(1).toLowerCase()}` : "Unknown"}
       variant="muted"
     />
+  );
+}
+
+/**
+ * The planned start time, on the viewer's own clock — the same zone the stage
+ * editor's round schedule is typed against. Its own component so the column
+ * definitions stay independent of the formatter's identity.
+ */
+function ScheduledAtCell({ value }: Readonly<{ value: Encounter["scheduled_at"] }>) {
+  const format = useFormatter();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (value == null) return <span className="text-muted-foreground">—</span>;
+  const at = new Date(value);
+  return (
+    <time
+      className="text-sm tabular-nums"
+      dateTime={at.toISOString()}
+      title={format.dateTime(at, { dateStyle: "full", timeStyle: "short", timeZone })}
+    >
+      {format.dateTime(at, {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone
+      })}
+    </time>
   );
 }
 
@@ -364,6 +392,12 @@ export function EncountersBrowser({
             <span className="tabular-nums text-muted-foreground">{row.original.round}</span>
           </div>
         )
+      },
+      {
+        accessorKey: "scheduled_at",
+        header: "Scheduled",
+        size: 132,
+        cell: ({ row }) => <ScheduledAtCell value={row.original.scheduled_at} />
       },
       {
         accessorKey: "score",

@@ -55,6 +55,8 @@ describe("participant URL state", () => {
       search: "",
       status: "all",
       visibleColumnIds: ["battle_tag", "_status", "roles"],
+      view: "table",
+      division: null,
     });
     expect(result.needsNormalization).toBe(true);
     expect(result.params.toString()).toBe("tab=rules");
@@ -67,7 +69,7 @@ describe("participant URL state", () => {
   it("removes explicit defaults and restores custom status/column state deterministically", () => {
     const defaults = readParticipantUrlState(
       new URLSearchParams(
-        "participantSearch=%20%00%20&participantStatus=all&participantColumns=battle_tag,roles,_status",
+        "q=%20%00%20&participantStatus=all&participantColumns=battle_tag,roles,_status",
       ),
       ["approved", "custom_review"],
       columns,
@@ -85,6 +87,8 @@ describe("participant URL state", () => {
       search: "",
       status: "custom_review",
       visibleColumnIds: ["battle_tag", "_status", "notes"],
+      view: "table",
+      division: null,
     });
     expect(restored.params.get("participantColumns")).toBe("notes");
   });
@@ -140,14 +144,14 @@ describe("participant URL state", () => {
     expect(searchUpdate.history).toBe("replace");
     expect(statusUpdate.history).toBe("push");
     expect(statusUpdate.params.toString()).toContain("tab=rules");
-    expect(statusUpdate.params.get("participantSearch")).toBe("Ana");
+    expect(statusUpdate.params.get("q")).toBe("Ana");
     expect(statusUpdate.params.get("participantStatus")).toBe("approved");
   });
 
   it("reset removes only participant-owned parameters and never adds pagination", () => {
     const result = updateParticipantUrlState(
       new URLSearchParams(
-        "participantSearch=Ana&participantStatus=pending&participantColumns=none&tab=rules",
+        "q=Ana&participantStatus=pending&participantColumns=none&division=3&tab=rules",
       ),
       { type: "reset" },
     );
@@ -155,6 +159,86 @@ describe("participant URL state", () => {
     expect(result.history).toBe("push");
     expect(result.params.toString()).toBe("tab=rules");
     expect(result.params.toString()).not.toMatch(/page|pagination/i);
+  });
+
+  it("keeps the default view out of the URL and ignores an unknown one", () => {
+    const bare = readParticipantUrlState(
+      new URLSearchParams("tab=rules"),
+      ["approved"],
+      columns,
+      null,
+      "pool",
+    );
+    const explicitDefault = readParticipantUrlState(
+      new URLSearchParams("view=pool"),
+      ["approved"],
+      columns,
+      null,
+      "pool",
+    );
+    const other = readParticipantUrlState(
+      new URLSearchParams("view=table"),
+      ["approved"],
+      columns,
+      null,
+      "pool",
+    );
+    const bogus = readParticipantUrlState(
+      new URLSearchParams("view=cards"),
+      ["approved"],
+      columns,
+      null,
+      "pool",
+    );
+
+    expect(bare.state.view).toBe("pool");
+    expect(bare.params.get("view")).toBeNull();
+    expect(explicitDefault.state.view).toBe("pool");
+    expect(explicitDefault.params.get("view")).toBeNull();
+    expect(explicitDefault.needsNormalization).toBe(true);
+    expect(other.state.view).toBe("table");
+    expect(other.params.get("view")).toBe("table");
+    expect(bogus.state.view).toBe("pool");
+    expect(bogus.params.get("view")).toBeNull();
+    // A tournament with no pool defaults the other way round.
+    expect(readParticipantUrlState(new URLSearchParams(""), ["approved"], columns).state.view).toBe(
+      "table",
+    );
+  });
+
+  it("accepts only a positive integer division and pushes changes to it", () => {
+    const valid = readParticipantUrlState(
+      new URLSearchParams("division=4"),
+      ["approved"],
+      columns,
+    );
+    const garbage = readParticipantUrlState(
+      new URLSearchParams("division=abc"),
+      ["approved"],
+      columns,
+    );
+    const zero = readParticipantUrlState(
+      new URLSearchParams("division=0"),
+      ["approved"],
+      columns,
+    );
+    const cleared = updateParticipantUrlState(new URLSearchParams("division=4&tab=rules"), {
+      type: "division",
+      value: null,
+    });
+    const set = updateParticipantUrlState(new URLSearchParams("tab=rules"), {
+      type: "division",
+      value: 2,
+    });
+
+    expect(valid.state.division).toBe(4);
+    expect(valid.needsNormalization).toBe(false);
+    expect(garbage.state.division).toBeNull();
+    expect(garbage.params.get("division")).toBeNull();
+    expect(zero.state.division).toBeNull();
+    expect(cleared.params.toString()).toBe("tab=rules");
+    expect(set.history).toBe("push");
+    expect(set.params.get("division")).toBe("2");
   });
 
   it("pushes column changes and omits the default column set", () => {

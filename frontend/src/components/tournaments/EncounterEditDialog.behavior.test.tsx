@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Real copy: these assertions are about the label an admin reads in the status
 // field, so an empty message set would only verify missing-message fallbacks.
 import messages from "@/i18n/messages/en.json";
+import { utcToZonedInput, zonedInputToUtc } from "@/lib/timezone";
 import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
 import type { Encounter } from "@/types/encounter.types";
 
@@ -150,5 +151,72 @@ describe("EncounterEditDialog status field", () => {
 
     await clickSave();
     expect(updateEncounter.mock.calls[0]?.[1]).toMatchObject({ status: "open" });
+  });
+});
+
+/**
+ * The per-match override of the stage editor's round schedule (P7). A round is
+ * scheduled in bulk; this field is how the one series that moved keeps its own
+ * time. It is nullable on purpose — clearing it means "no planned time".
+ */
+describe("EncounterEditDialog start time", () => {
+  const VIEWER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  /** The only `datetime-local` field in the dialog. */
+  function timeField(): HTMLInputElement {
+    const input = document.body.querySelector<HTMLInputElement>(
+      'input[type="datetime-local"]'
+    );
+    if (!input) throw new Error("start time field not rendered");
+    return input;
+  }
+
+  async function type(value: string) {
+    const input = timeField();
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    await act(async () => {
+      setter?.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await flush();
+  }
+
+  it("shows the stored instant on the viewer's clock and sends it back unchanged", async () => {
+    const scheduled = "2026-05-02T15:00:00.000Z";
+    await mount(
+      <EncounterEditDialog open onOpenChange={() => {}} encounter={encounter({ scheduled_at: scheduled })} />
+    );
+
+    expect(timeField().value).toBe(utcToZonedInput(scheduled, VIEWER_ZONE));
+
+    await clickSave();
+    expect(updateEncounter.mock.calls[0]?.[1]).toMatchObject({ scheduled_at: scheduled });
+  });
+
+  it("saves a newly typed time as a UTC instant", async () => {
+    await mount(<EncounterEditDialog open onOpenChange={() => {}} encounter={encounter()} />);
+
+    expect(timeField().value).toBe("");
+    await type("2026-05-02T20:30");
+    await clickSave();
+
+    expect(updateEncounter.mock.calls[0]?.[1]).toMatchObject({
+      scheduled_at: zonedInputToUtc("2026-05-02T20:30", VIEWER_ZONE)
+    });
+  });
+
+  it("clears the time when the field is emptied", async () => {
+    await mount(
+      <EncounterEditDialog
+        open
+        onOpenChange={() => {}}
+        encounter={encounter({ scheduled_at: "2026-05-02T15:00:00.000Z" })}
+      />
+    );
+
+    await type("");
+    await clickSave();
+
+    expect(updateEncounter.mock.calls[0]?.[1]).toMatchObject({ scheduled_at: null });
   });
 });

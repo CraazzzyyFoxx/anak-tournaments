@@ -72,7 +72,9 @@ vi.mock("./_components/VirtualParticipantsList", () => ({
 
 vi.mock("next/navigation", () => ({
   usePathname: () => `/tournaments/${TOURNAMENT_ID}/participants`,
-  useSearchParams: () => new URLSearchParams()
+  useSearchParams: () => new URLSearchParams(),
+  // `ViewSegment` writes `?view=` through `useQueryParams`, which needs a router.
+  useRouter: () => ({ push: () => {}, replace: () => {} })
 }));
 
 let tournament: Tournament;

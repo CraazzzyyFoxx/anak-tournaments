@@ -1,0 +1,388 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
+
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { FilterChip } from "@/components/ui/filter-chip";
+import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
+import { tournamentHref } from "@/lib/tournament-url";
+import { cn } from "@/lib/utils";
+import heroService from "@/services/hero.service";
+import { normalizePlayerRole, playerRoleSlotCode, type PlayerRoleSlotCode } from "@/lib/player-role";
+import type { Encounter } from "@/types/encounter.types";
+import type { HeroPlaytime } from "@/types/hero.types";
+import type { Tournament } from "@/types/tournament.types";
+
+import styles from "../TournamentDetail.module.css";
+import { MapPool, type MapPlayedCount } from "../_components/MapPool";
+import { TournamentPageState } from "../_components/TournamentPageState";
+import { TournamentHeroesSkeleton, TournamentMapsSkeleton } from "../_components/TournamentSkeletons";
+import { UpdatingBadge } from "../_components/UpdatingBadge";
+import { ViewSegment, readViewParam } from "../_components/ViewSegment";
+import { useTournamentQuery } from "../_hooks/useTournamentClientData";
+import { useTournamentMapPool } from "../_hooks/useTournamentMapPool";
+import { tournamentEncountersQueryOptions } from "./TournamentEncountersPage";
+import {
+  getPublicPageQueryPresentation,
+  type PublicPageQueryState
+} from "./publicPageQueryPresentation";
+
+type RoleKey = Exclude<PlayerRoleSlotCode, "flex">;
+type RoleFilter = "all" | RoleKey;
+
+const ROLE_ORDER: RoleKey[] = ["tank", "dps", "support"];
+
+/** `heroes` first: hero play-time is what the section answered before the map pool joined it. */
+export const STATS_TABS = ["heroes", "maps"] as const;
+export type StatsTab = (typeof STATS_TABS)[number];
+
+export const getHeroesQueryPresentation = (state: PublicPageQueryState) =>
+  getPublicPageQueryPresentation(state);
+
+export function getHeroPlaytimeMetric(playtime: number) {
+  const sharePercent = Number.isFinite(playtime) ? Math.min(100, Math.max(0, playtime * 100)) : 0;
+
+  return { sharePercent, barWidthPercent: sharePercent };
+}
+
+function heroRole(playtime: HeroPlaytime): RoleKey {
+  const slotCode = playerRoleSlotCode(normalizePlayerRole(playtime.hero.type ?? playtime.hero.role));
+  return slotCode === "flex" ? "dps" : slotCode;
+}
+
+/**
+ * How often each map was played, and how long it took, from the tournament's
+ * own series.
+ *
+ * `attackWinShare` is always null: a `Match` carries a score, a duration and a
+ * map, and nothing anywhere in the read model says which team attacked, so the
+ * attack/defense column has no honest value to show. `MapPool` renders it as an
+ * em dash rather than as a 0% bar.
+ */
+export function buildMapPlayedCounts(encounters: readonly Encounter[]): Record<number, MapPlayedCount> {
+  const totals = new Map<number, { played: number; durationSec: number; timed: number }>();
+
+  for (const encounter of encounters) {
+    for (const match of encounter.matches ?? []) {
+      const entry = totals.get(match.map_id) ?? { played: 0, durationSec: 0, timed: 0 };
+      entry.played += 1;
+      if (match.time != null) {
+        entry.durationSec += match.time;
+        entry.timed += 1;
+      }
+      totals.set(match.map_id, entry);
+    }
+  }
+
+  const counts: Record<number, MapPlayedCount> = {};
+  for (const [mapId, entry] of totals) {
+    counts[mapId] = {
+      played: entry.played,
+      avgDurationSec: entry.timed > 0 ? entry.durationSec / entry.timed : null,
+      attackWinShare: null
+    };
+  }
+  return counts;
+}
+
+function HeroesTab({
+  tournament,
+  tournamentId
+}: Readonly<{ tournament: Tournament; tournamentId: number }>) {
+  const t = useTranslations();
+  const statsQuery = useQuery({
+    queryKey: tournamentQueryKeys.heroPlaytime(tournamentId),
+    queryFn: () =>
+      heroService.getHeroPlaytime(1, -1, "all", tournament.id, {
+        workspaceId: tournament.workspace_id
+      })
+  });
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+
+  const heroes = useMemo(
+    () =>
+      statsQuery.data ? [...statsQuery.data.results].sort((a, b) => b.playtime - a.playtime) : [],
+    [statsQuery.data]
+  );
+  const roleCounts = useMemo(() => {
+    const counts: Record<RoleKey, number> = { tank: 0, dps: 0, support: 0 };
+    for (const hero of heroes) counts[heroRole(hero)] += 1;
+    return counts;
+  }, [heroes]);
+  const visible =
+    roleFilter === "all" ? heroes : heroes.filter((hero) => heroRole(hero) === roleFilter);
+  const presentation = getHeroesQueryPresentation({
+    data: statsQuery.data,
+    itemCount: heroes.length,
+    isPending: statsQuery.isPending,
+    isError: statsQuery.isError,
+    isFetching: statsQuery.isFetching
+  });
+
+  if (presentation.initialState === "error") {
+    return <TournamentPageState state="initial-error" onRetry={() => void statsQuery.refetch()} />;
+  }
+  if (presentation.initialState === "skeleton" || presentation.contentState === null) {
+    return <TournamentHeroesSkeleton />;
+  }
+
+  const content = (
+    <>
+      {presentation.showUpdating ? <UpdatingBadge /> : null}
+
+      {heroes.length > 0 ? (
+        <div
+          className={styles.controlRail}
+          role="group"
+          aria-label={t("tournamentDetail.stats.heroes.roleLabel")}
+        >
+          <FilterChip
+            active={roleFilter === "all"}
+            count={heroes.length}
+            onClick={() => setRoleFilter("all")}
+          >
+            {t("common.all")}
+          </FilterChip>
+          {ROLE_ORDER.filter((role) => roleCounts[role] > 0).map((role) => (
+            <FilterChip
+              key={role}
+              active={roleFilter === role}
+              count={roleCounts[role]}
+              onClick={() => setRoleFilter(role)}
+            >
+              {t(`common.roles.${role}`)}
+            </FilterChip>
+          ))}
+        </div>
+      ) : null}
+
+      {presentation.contentState === "empty" ? (
+        <TournamentPageState
+          state="empty"
+          title={t("tournamentDetail.stats.heroes.emptyTitle")}
+          description={t("tournamentDetail.stats.heroes.emptyDescription")}
+        />
+      ) : visible.length === 0 ? (
+        <TournamentPageState state="filtered-empty" onReset={() => setRoleFilter("all")} />
+      ) : (
+        <div className={cn("tn-card", styles.heroList)}>
+          <div className="hero-bars">
+            {visible.map((hero, index) => {
+              const role = heroRole(hero);
+              const { sharePercent, barWidthPercent } = getHeroPlaytimeMetric(hero.playtime);
+              return (
+                <div className="hero-row" key={hero.hero.id} data-rank={index + 1}>
+                  <div className="hero-name">
+                    <span className={styles.heroRank} aria-hidden="true">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <Avatar className="h-[34px] w-[34px] border-none bg-transparent">
+                      {hero.hero.image_path ? (
+                        <AvatarImage
+                          src={hero.hero.image_path}
+                          alt={hero.hero.name}
+                          className="object-contain"
+                        />
+                      ) : null}
+                      <AvatarFallback className="bg-transparent" />
+                    </Avatar>
+                    <div className="stack">
+                      <span className="nm">{hero.hero.name}</span>
+                      <span className="meta">{t(`common.roles.${role}`)}</span>
+                    </div>
+                  </div>
+                  <div
+                    className="hero-bar"
+                    role="progressbar"
+                    aria-label={`${hero.hero.name}: ${sharePercent.toFixed(1)} ${t("common.playtimeLabel")}`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={sharePercent}
+                    aria-valuetext={`${sharePercent.toFixed(1)} ${t("common.playtimeLabel")}`}
+                  >
+                    <div
+                      className={cn(
+                        "fill",
+                        styles.heroBarFill,
+                        !hero.hero.color && role,
+                        barWidthPercent === 0 && styles.zeroHeroBar
+                      )}
+                      style={{
+                        width: `${barWidthPercent}%`,
+                        backgroundColor: hero.hero.color || undefined
+                      }}
+                    />
+                  </div>
+                  <div className="hero-stats">
+                    <span className="val">{sharePercent.toFixed(1)}</span>
+                    <span className="pct">{t("common.playtimeLabel")}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  if (presentation.showRefreshError) {
+    return (
+      <TournamentPageState
+        state="refresh-error"
+        onRetry={() => void statsQuery.refetch()}
+        isUpdating={statsQuery.isFetching}
+      >
+        {content}
+      </TournamentPageState>
+    );
+  }
+
+  return content;
+}
+
+function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: string }>) {
+  const t = useTranslations();
+  const mapPool = useTournamentMapPool(tournament.id);
+  // The matches section's own all-encounters-with-maps entry, not the
+  // bracket's `tournamentQueryKeys.encounters`: the bracket asks for no
+  // `matches` entity, so counting map plays out of it would depend on which
+  // screen mounted first. Sharing P3's entry also means visiting both sections
+  // costs one request, not two.
+  const playedQuery = useQuery(tournamentEncountersQueryOptions(tournament));
+
+  const playedCounts = useMemo(
+    () => buildMapPlayedCounts(playedQuery.data?.results ?? []),
+    [playedQuery.data]
+  );
+
+  // One presentation for both reads: a pool without its play counts would
+  // render every row as "0 played", which is a different statement from "we
+  // could not load the matches".
+  //
+  // `useTournamentMapPool` exposes no `data`, so "has something to show" is
+  // derived: an errored first read leaves the pool empty, and passing that
+  // along would claim the organizer published no maps. Stale content still
+  // survives a failed refresh — a non-empty pool keeps rendering under the
+  // refresh-error strip.
+  const poolLoaded = !mapPool.isPending && !(mapPool.isError && mapPool.pool.total === 0);
+  const presentation = getPublicPageQueryPresentation({
+    data: poolLoaded && playedQuery.data !== undefined ? mapPool.pool : undefined,
+    itemCount: mapPool.pool.total,
+    isPending: mapPool.isPending || playedQuery.isPending,
+    isError: mapPool.isError || playedQuery.isError,
+    isFetching: mapPool.isFetching || playedQuery.isFetching
+  });
+  const retry = () => {
+    mapPool.refetch();
+    void playedQuery.refetch();
+  };
+
+  if (presentation.initialState === "error") {
+    return <TournamentPageState state="initial-error" onRetry={() => void retry()} />;
+  }
+  if (presentation.initialState === "skeleton" || presentation.contentState === null) {
+    return <TournamentMapsSkeleton />;
+  }
+
+  const content = (
+    <>
+      {presentation.showUpdating ? <UpdatingBadge /> : null}
+
+      {presentation.contentState === "empty" ? (
+        <TournamentPageState
+          state="empty"
+          title={t("tournamentDetail.stats.maps.emptyTitle")}
+          description={t("tournamentDetail.stats.maps.emptyDescription")}
+        />
+      ) : (
+        // `.tn-card` carries the surface but no padding, and the table owns its
+        // own horizontal scroller inside it.
+        <div className="tn-card p-4">
+          <MapPool
+            id="map-pool"
+            pool={mapPool.pool}
+            stages={mapPool.stages}
+            variant="table"
+            playedCounts={playedCounts}
+            matchesHref={(mapId) => tournamentHref({ slug }, `/matches?map=${mapId}`)}
+          />
+        </div>
+      )}
+    </>
+  );
+
+  if (presentation.showRefreshError) {
+    return (
+      <TournamentPageState
+        state="refresh-error"
+        onRetry={() => void retry()}
+        isUpdating={presentation.showUpdating}
+      >
+        {content}
+      </TournamentPageState>
+    );
+  }
+
+  return content;
+}
+
+/**
+ * Statistics: hero play-time and the map pool with play counts, as two
+ * sub-tabs of one section rather than two rail entries (§8 ①).
+ *
+ * The map pool used to be its own tab that only listed which maps each round
+ * could play; the counts are what make it a statistic, and the same `MapPool`
+ * component renders the reference form on the overview.
+ */
+const TournamentStatsPage = ({
+  tournamentId,
+  slug
+}: Readonly<{ tournamentId: number; slug: string }>) => {
+  const t = useTranslations();
+  const searchParams = useSearchParams();
+  const tab = readViewParam(searchParams, "tab", STATS_TABS, "heroes");
+  // Keyed by `slug`: shares TournamentClientLayout's overview cache entry
+  // instead of refetching under a different key.
+  const tournamentQuery = useTournamentQuery(slug);
+  const tournament = tournamentQuery.data;
+
+  if (!tournament) {
+    if (tournamentQuery.isError) {
+      return (
+        <TournamentPageState state="initial-error" onRetry={() => void tournamentQuery.refetch()} />
+      );
+    }
+    return tab === "maps" ? <TournamentMapsSkeleton /> : <TournamentHeroesSkeleton />;
+  }
+
+  return (
+    <section className={styles.publicDataPage} aria-label={t("tournamentDetail.stats.title")}>
+      {/* Sub-tabs, not a view density switch: hiding them below `sm` would make
+          the map pool unreachable on a phone, so `hideOnMobile` stays off. */}
+      <div className={styles.controlRail}>
+        <ViewSegment
+          param="tab"
+          options={[
+            { value: "heroes", label: t("common.heroes") },
+            { value: "maps", label: t("common.maps") }
+          ]}
+          defaultValue="heroes"
+          label={t("tournamentDetail.stats.tabsLabel")}
+          hideOnMobile={false}
+        />
+      </div>
+
+      {tab === "maps" ? (
+        <MapsTab tournament={tournament} slug={slug} />
+      ) : (
+        <HeroesTab tournament={tournament} tournamentId={tournamentId} />
+      )}
+    </section>
+  );
+};
+
+export default TournamentStatsPage;

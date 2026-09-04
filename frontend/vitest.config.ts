@@ -90,9 +90,13 @@ export default defineConfig({
       "src/app/(site)/tournaments/[slug]/_views/_components/participantsColumns.test.tsx",
       // Same allow-list trap: this folder also holds `bun:test` files, so the
       // entry is file-level rather than a directory glob.
-      "src/app/(site)/tournaments/[slug]/_views/TournamentMapsPage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_views/TournamentEncountersPage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_views/TournamentOverviewPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/TournamentParticipantsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/TournamentSchedulePage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_views/TournamentStatsPage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_views/TournamentTeamsPage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_views/_components/ParticipantsPool.behavior.test.tsx",
       // The public list itself. File-level for the same mixed-runner reason as
       // its `[slug]` neighbours above: `src/app/(site)/tournaments` also holds
       // `bun:test` files, so a directory glob would drag them into vitest.

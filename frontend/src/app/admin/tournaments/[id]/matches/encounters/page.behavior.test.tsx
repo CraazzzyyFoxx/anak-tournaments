@@ -34,6 +34,12 @@ let permitted = true;
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
+  // The Scheduled column formats through next-intl; the assertions below are
+  // about WHICH instant a row carries, so the mock defers to plain `Intl`.
+  useFormatter: () => ({
+    dateTime: (date: Date, options?: Intl.DateTimeFormatOptions) =>
+      new Intl.DateTimeFormat(undefined, options).format(date)
+  }),
   NextIntlClientProvider: ({ children }: { children: ReactNode }) => children
 }));
 
@@ -323,5 +329,36 @@ describe("hub Matches › Encounters", () => {
     await click(await waitFor(() => button("Delete encounter"), "the confirm button"));
 
     expect(deleteEncounter).toHaveBeenCalledWith(8812);
+  });
+
+  // The planned start time (P7): entered per round in the stage editor, or per
+  // match in the match editor. Invisible here before this column, so an
+  // organizer could not tell which matches had a time at all.
+  it("shows the planned start time, and an em dash for a match without one", async () => {
+    getAll.mockResolvedValue({
+      results: [
+        encounter(),
+        encounter({ id: 8813, name: "Team E vs Team F", scheduled_at: "2026-05-02T15:00:00.000Z" })
+      ],
+      total: 2,
+      page: 1,
+      per_page: 15
+    });
+    const container = await mount();
+    await waitFor(() => container.textContent?.includes("Team E vs Team F"), "the encounter rows");
+
+    const headers = [...container.querySelectorAll("thead th")];
+    const column = headers.findIndex((th) => (th.textContent ?? "").trim() === "Scheduled");
+    expect(column).toBeGreaterThan(-1);
+
+    const cells = [...container.querySelectorAll("tbody tr")].map(
+      (row) => row.querySelectorAll("td")[column]
+    );
+    // Machine-readable instant, so the rendered text can stay short and local.
+    expect(cells[1]?.querySelector("time")?.getAttribute("dateTime")).toBe(
+      "2026-05-02T15:00:00.000Z"
+    );
+    expect(cells[1]?.textContent?.trim()).not.toBe("");
+    expect(cells[0]?.textContent?.trim()).toBe("—");
   });
 });

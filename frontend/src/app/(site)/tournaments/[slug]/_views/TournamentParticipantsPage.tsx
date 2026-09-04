@@ -62,6 +62,7 @@ import {
   getRoleLabel,
   useHeroesMap
 } from "./_components/participantsColumns";
+import ParticipantsPool, { poolDivisionOptions } from "./_components/ParticipantsPool";
 import {
   PARTICIPANT_SEARCH_MAX_LENGTH,
   claimCheckInPrompt,
@@ -76,7 +77,8 @@ import {
   subscribeParticipantColumnsStorage,
   updateParticipantUrlState,
   writeStoredParticipantColumnIds,
-  type ParticipantUrlUpdate
+  type ParticipantUrlUpdate,
+  type ParticipantView
 } from "./_components/participants-url-state";
 import { useParticipantSearchInput } from "./_components/useParticipantSearchInput";
 import VirtualParticipantsList from "./_components/VirtualParticipantsList";
@@ -91,6 +93,9 @@ import { formatSubroleSlug } from "@/lib/roles";
 import { TournamentParticipantsSkeleton } from "../_components/TournamentSkeletons";
 import { TournamentPageState } from "../_components/TournamentPageState";
 import { useTournamentQuery } from "../_hooks/useTournamentClientData";
+import { ViewSegment } from "../_components/ViewSegment";
+import { usePermissions } from "@/hooks/usePermissions";
+import Link from "next/link";
 import styles from "../TournamentDetail.module.css";
 
 // ---------------------------------------------------------------------------
@@ -219,6 +224,32 @@ const CHECK_IN_OVER_TOURNAMENT_STATUSES = new Set<string>([
   "completed",
   "archived"
 ]);
+
+/** Team formations whose roster is a player pool rather than a list of teams. */
+const POOL_TEAM_FORMATIONS: Record<string, true> = { balancer: true, draft: true };
+
+/** Statuses in which the teams exist and the pool is history (§6, final note).
+ *  Same four values as `CHECK_IN_OVER_TOURNAMENT_STATUSES` by coincidence, not
+ *  by rule: one is about a closed check-in window, this one about a running
+ *  competition, and they are free to drift apart. */
+const COMPETITION_STARTED_STATUSES: Record<string, true> = {
+  live: true,
+  playoffs: true,
+  completed: true,
+  archived: true
+};
+
+/** Organizer-only columns: balancer state, check-in, notes, smurfs and the
+ *  subscription verdict (§6 ②). Filtered out of the column CONFIG rather than
+ *  blanked per cell, so they leave the table, the search and the column picker
+ *  together. */
+const ADMIN_ONLY_COLUMN_IDS: Record<string, true> = {
+  _balancer_status: true,
+  _check_in: true,
+  notes: true,
+  smurf_tags: true,
+  _subscription: true
+};
 
 function RegistrationStepMarker({ tone }: Readonly<{ tone: RegistrationStepTone }>) {
   switch (tone) {
@@ -789,7 +820,10 @@ function isCheckInWindowActive(tournament: Tournament) {
 // Main page
 // ---------------------------------------------------------------------------
 
-function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tournament }>) {
+function TournamentParticipantsView({
+  tournament,
+  slug
+}: Readonly<{ tournament: Tournament; slug: string }>) {
   const t = useTranslations();
   const locale = useLocale();
   const { user, status: authStatus } = useAuthProfile();
@@ -899,11 +933,20 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
   // carries no team-registration flag.
   const hasTeams = useMemo(() => registrations.some((reg) => reg.team != null), [registrations]);
 
-  // Dynamic columns
-  const allColumns = useMemo(
-    () => buildParticipantColumns(form, t, locale, divisionGrid, heroesMap, hasTeams),
-    [form, t, locale, divisionGrid, heroesMap, hasTeams]
+  // Dynamic columns. Organizer-only columns are dropped from the config here,
+  // which is the single place the table, the search and the column picker all
+  // read — a per-cell blank would still leak the column heading and the filter.
+  const { canAccessPermission } = usePermissions();
+  const canReadOrganizerColumns = canAccessPermission(
+    "registration.read",
+    tournament.workspace_id
   );
+  const allColumns = useMemo(() => {
+    const columns = buildParticipantColumns(form, t, locale, divisionGrid, heroesMap, hasTeams);
+    return canReadOrganizerColumns
+      ? columns
+      : columns.filter((column) => !ADMIN_ONLY_COLUMN_IDS[column.id]);
+  }, [canReadOrganizerColumns, form, t, locale, divisionGrid, heroesMap, hasTeams]);
 
   // Status counts + chips present in the data.
   const statusCounts = useMemo(() => {
@@ -995,19 +1038,29 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
     setActiveSearchParams(searchParamsString);
   }, [searchParamsString]);
 
+  // A balancer/draft tournament has no teams to list yet, so its roster reads
+  // as a pool by default; team registration keeps the table it already has.
+  const hasPoolView = POOL_TEAM_FORMATIONS[tournament.team_formation] === true;
+  const defaultView: ParticipantView = hasPoolView ? "pool" : "table";
+
   const participantUrl = useMemo(
     () =>
       readParticipantUrlState(
         new URLSearchParams(activeSearchParams),
         allowedStatuses,
         allColumns,
-        storedColumnIds
+        storedColumnIds,
+        defaultView
       ),
-    [activeSearchParams, allColumns, allowedStatuses, storedColumnIds]
+    [activeSearchParams, allColumns, allowedStatuses, defaultView, storedColumnIds]
   );
   const latestParamsRef = useRef(searchParamsString);
   const searchQuery = participantUrl.state.search;
   const statusFilter = participantUrl.state.status as StatusFilter;
+  const divisionFilter = participantUrl.state.division;
+  // `view=pool` in the URL of a team-registration tournament means nothing:
+  // that roster has no pool to show.
+  const view: ParticipantView = hasPoolView ? participantUrl.state.view : "table";
   const displayedStatuses = useMemo(
     () =>
       statusFilter !== "all" && !presentStatuses.includes(statusFilter)
@@ -1029,14 +1082,14 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
     [allColumns, visibleColumnIdSet]
   );
 
-  // The hero catalogue backs only the top_heroes cells, so its request stays
-  // unsent while that column is hidden. Latched on: toggling the column off
-  // must not discard a catalogue the user can re-reveal in one click.
+  // The hero catalogue backs the top_heroes cells and every pool row, so its
+  // request stays unsent while neither is on screen. Latched on: toggling the
+  // column off must not discard a catalogue the user can re-reveal in one click.
   useEffect(() => {
-    if (visibleColumnIdSet.has("top_heroes")) {
+    if (view === "pool" || visibleColumnIdSet.has("top_heroes")) {
       setNeedsHeroes(true);
     }
-  }, [visibleColumnIdSet]);
+  }, [view, visibleColumnIdSet]);
 
   useEffect(() => {
     latestParamsRef.current = searchParamsString;
@@ -1148,9 +1201,10 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
       participantResultsTransitionSignature({
         search: searchQuery,
         status: statusFilter,
+        division: divisionFilter,
         visibleColumnIds
       }),
-    [searchQuery, statusFilter, visibleColumnIds]
+    [divisionFilter, searchQuery, statusFilter, visibleColumnIds]
   );
   useEffect(() => {
     if (previousResultsSignatureRef.current === null) {
@@ -1184,6 +1238,11 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
 
   const trueEmpty = listQuery.data !== undefined && registrations.length === 0;
   const filteredEmpty = !trueEmpty && filtered.length === 0;
+  const divisionOptions = useMemo(
+    () => (view === "pool" ? poolDivisionOptions(registrations, divisionGrid) : []),
+    [divisionGrid, registrations, view]
+  );
+  const competitionStarted = COMPETITION_STARTED_STATUSES[tournament.status] === true;
 
   if (listQuery.isPending && listQuery.data === undefined) {
     return <TournamentParticipantsSkeleton />;
@@ -1195,6 +1254,24 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
 
   return (
     <div className="space-y-5" data-participant-layout="true">
+      {/* Once the competition is running, this roster is history: the answer to
+          "who is playing" moved to the teams. §6, closing note. */}
+      {competitionStarted && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-3 text-sm"
+        >
+          <span className="text-[color:var(--aqt-fg)]">
+            {t("tournamentDetail.participantsPool.teamsFormed.title")}
+          </span>
+          <Link
+            href={`/tournaments/${slug}/teams`}
+            className="font-medium text-[color:var(--aqt-teal)] underline-offset-4 hover:underline"
+          >
+            {t("tournamentDetail.participantsPool.teamsFormed.action")}
+          </Link>
+        </div>
+      )}
       {/* My registration status */}
       {myRegistration && (
         <MyRegistrationCard
@@ -1292,61 +1369,126 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
         </AlertDialogContent>
       </AlertDialog>
 
-      <p aria-atomic="true" aria-live="polite" className="sr-only">
-        {t("tournamentDetail.participants.resultCount", { count: filtered.length })}
-      </p>
+      {view === "table" && (
+        <p aria-atomic="true" aria-live="polite" className="sr-only">
+          {t("tournamentDetail.participants.resultCount", { count: filtered.length })}
+        </p>
+      )}
 
-      {/* Status filter chips + search + column picker */}
+      {/* One toolbar for both views: the table keeps its status chips and
+          column picker, the pool swaps them for the division filter (§6 ②). */}
       {!trueEmpty && (
         <div className="filters" role="group" aria-label={t("common.filters")} ref={resultsHeadingRef}>
-          <FilterChip
-            active={statusFilter === "all"}
-            count={registrations.length}
-            onClick={() => navigateParticipantUrl({ type: "status", value: "all" })}
-          >
-            {t("common.all")}
-          </FilterChip>
-          {displayedStatuses.map((status) => {
-            const meta = statusMetaMap[status];
-            return (
+          {view === "table" && (
+            <>
               <FilterChip
-                key={status}
-                active={statusFilter === status}
-                count={statusCounts[status] ?? 0}
-                dotColor={meta?.dot ?? "var(--aqt-fg-dim)"}
-                onClick={() =>
-                  navigateParticipantUrl({
-                    type: "status",
-                    value: statusFilter === status ? "all" : status
-                  })
-                }
+                active={statusFilter === "all"}
+                count={registrations.length}
+                onClick={() => navigateParticipantUrl({ type: "status", value: "all" })}
               >
-                {meta?.name ?? status}
+                {t("common.all")}
               </FilterChip>
-            );
-          })}
+              {displayedStatuses.map((status) => {
+                const meta = statusMetaMap[status];
+                return (
+                  <FilterChip
+                    key={status}
+                    active={statusFilter === status}
+                    count={statusCounts[status] ?? 0}
+                    dotColor={meta?.dot ?? "var(--aqt-fg-dim)"}
+                    onClick={() =>
+                      navigateParticipantUrl({
+                        type: "status",
+                        value: statusFilter === status ? "all" : status
+                      })
+                    }
+                  >
+                    {meta?.name ?? status}
+                  </FilterChip>
+                );
+              })}
+            </>
+          )}
           <div className="filter-search">
             <Search size={13} aria-hidden />
             <input
-              aria-label={t("common.searchParticipants")}
+              aria-label={
+                view === "pool"
+                  ? t("tournamentDetail.participantsPool.searchLabel")
+                  : t("common.searchParticipants")
+              }
               defaultValue={searchQuery}
               maxLength={PARTICIPANT_SEARCH_MAX_LENGTH}
               onChange={handleParticipantSearchChange}
-              placeholder={t("common.searchParticipants")}
+              placeholder={
+                view === "pool"
+                  ? t("tournamentDetail.participantsPool.searchLabel")
+                  : t("common.searchParticipants")
+              }
               ref={participantSearchInputRef}
             />
           </div>
-          <ColumnPicker
-            columns={allColumns}
-            visibility={visibility}
-            onToggle={toggleColumn}
-            onReset={resetToDefaults}
-          />
+          {view === "pool" && divisionOptions.length > 0 && (
+            <label className="inline-flex items-center gap-1.5 text-xs text-[color:var(--aqt-fg-muted)]">
+              <span className="sr-only">
+                {t("tournamentDetail.participantsPool.divisionFilterLabel")}
+              </span>
+              <select
+                className="rounded-md border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-2 py-1 text-xs text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+                value={divisionFilter === null ? "" : String(divisionFilter)}
+                onChange={(event) =>
+                  navigateParticipantUrl({
+                    type: "division",
+                    value: event.target.value === "" ? null : Number(event.target.value)
+                  })
+                }
+              >
+                <option value="">
+                  {t("tournamentDetail.participantsPool.allDivisions")}
+                </option>
+                {divisionOptions.map((division) => (
+                  <option key={division} value={division}>
+                    {t("tournamentDetail.participantsPool.divisionOption", { division })}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {view === "table" && (
+            <ColumnPicker
+              columns={allColumns}
+              visibility={visibility}
+              onToggle={toggleColumn}
+              onReset={resetToDefaults}
+            />
+          )}
+          {hasPoolView && (
+            <ViewSegment<ParticipantView>
+              className="ml-auto"
+              param="view"
+              defaultValue={defaultView}
+              label={t("tournamentDetail.participantsPool.viewLabel")}
+              options={[
+                { value: "pool", label: t("tournamentDetail.participantsPool.view.pool") },
+                { value: "table", label: t("tournamentDetail.participantsPool.view.table") }
+              ]}
+            />
+          )}
         </div>
       )}
 
       {/* Participants list */}
-      {filtered.length > 0 ? (
+      {view === "pool" ? (
+        <ParticipantsPool
+          registrations={registrations}
+          rosterShape={tournament.roster_shape}
+          divisionGrid={divisionGrid}
+          heroesMap={heroesMap}
+          search={searchQuery}
+          division={divisionFilter}
+          onResetFilters={() => navigateParticipantUrl({ type: "reset" })}
+        />
+      ) : filtered.length > 0 ? (
         <VirtualParticipantsList
           allColumns={allColumns}
           expandedIds={expandedIds}
@@ -1409,5 +1551,5 @@ export default function TournamentParticipantsPage({ slug }: Readonly<{ slug: st
     return <TournamentParticipantsSkeleton />;
   }
 
-  return <TournamentParticipantsView tournament={tournamentQuery.data} />;
+  return <TournamentParticipantsView tournament={tournamentQuery.data} slug={slug} />;
 }

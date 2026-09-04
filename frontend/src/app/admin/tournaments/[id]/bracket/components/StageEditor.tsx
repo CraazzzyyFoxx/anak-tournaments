@@ -51,6 +51,7 @@ import {
   stageFormFromStage,
   type StageForm
 } from "../stageForm";
+import { RoundScheduleSection } from "./RoundScheduleSection";
 import { StageItemsSection } from "./StageItemsSection";
 import {
   BestOfSection,
@@ -59,7 +60,14 @@ import {
   TiebreakersSection
 } from "./StageSettingsSections";
 
-export const BRACKET_SECTIONS = ["general", "seeding", "tiebreakers", "best-of", "items"] as const;
+export const BRACKET_SECTIONS = [
+  "general",
+  "seeding",
+  "tiebreakers",
+  "best-of",
+  "schedule",
+  "items"
+] as const;
 export type BracketSection = (typeof BRACKET_SECTIONS)[number];
 
 const SECTION_LABELS: Record<BracketSection, string> = {
@@ -67,6 +75,7 @@ const SECTION_LABELS: Record<BracketSection, string> = {
   seeding: "Seeding",
   tiebreakers: "Tiebreakers",
   "best-of": "Best-of",
+  schedule: "Round schedule",
   items: "Items"
 };
 
@@ -155,6 +164,7 @@ export function StageEditor({
     // Standings presets, scoring and tiebreakers only rank a group stage.
     tiebreakers: GROUP_STAGE_TYPES.includes(form.stageType),
     "best-of": true,
+    schedule: true,
     items: true
   };
   const requested = searchParams?.get("section") ?? "";
@@ -508,6 +518,14 @@ export function StageEditor({
             bracketTeamCount={projection.bracketTeams.count}
             onApplyToExisting={() => applyBestOfMutation.mutate()}
             applying={applyBestOfMutation.isPending}
+          />
+        ) : null}
+
+        {activeSection === "schedule" ? (
+          <RoundScheduleSection
+            stage={stage}
+            bracketTeamCount={projection.bracketTeams.count}
+            onChanged={onChanged}
           />
         ) : null}
 
