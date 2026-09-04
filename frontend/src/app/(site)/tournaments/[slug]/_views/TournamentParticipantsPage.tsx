@@ -39,12 +39,15 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { cn, hexToRgba } from "@/lib/utils";
 import {
-  activeRequirements,
-  formatAdmissionReason,
-  formatRequirementName
-} from "@/lib/admission";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import { cn, hexToRgba } from "@/lib/utils";
+import { activeRequirements, formatAdmissionReason, formatRequirementName } from "@/lib/admission";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { isPhaseWindowActive } from "@/lib/tournament-status";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
@@ -628,7 +631,10 @@ function MyRegistrationCard({
               className="inline-flex items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--aqt-rose)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_5%,transparent)] px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--aqt-rose)] transition-all hover:border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--aqt-rose)_10%,transparent)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
               {isWithdrawing && (
-                <Loader2 className="mr-1 size-3 animate-spin motion-reduce:animate-none" aria-hidden />
+                <Loader2
+                  className="mr-1 size-3 animate-spin motion-reduce:animate-none"
+                  aria-hidden
+                />
               )}
               {isWithdrawing ? t("common.withdrawing") : t("common.withdraw")}
             </button>
@@ -680,7 +686,9 @@ function MyRegistrationCard({
                   step.tone === "idle" && "text-[color:var(--aqt-fg-dim)]",
                   // The affordance for "this one is yours": emphasis plus an
                   // underline, on a label already phrased as an instruction.
-                  step.actionable && step.tone !== "done" && "font-semibold underline decoration-dotted underline-offset-2"
+                  step.actionable &&
+                    step.tone !== "done" &&
+                    "font-semibold underline decoration-dotted underline-offset-2"
                 )}
                 title={step.actionable ? t("admission.playerActionable") : undefined}
               >
@@ -759,7 +767,10 @@ function MyRegistrationCard({
                 )}
                 {registration.discord_nick && (
                   <div className="flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-2 py-1">
-                    <DiscordIcon aria-hidden className="size-3.5 text-[color:var(--aqt-brand-discord)]" />
+                    <DiscordIcon
+                      aria-hidden
+                      className="size-3.5 text-[color:var(--aqt-brand-discord)]"
+                    />
                     <span className="text-[color:var(--aqt-fg-muted)]">
                       {registration.discord_nick}
                     </span>
@@ -767,7 +778,10 @@ function MyRegistrationCard({
                 )}
                 {registration.twitch_nick && (
                   <div className="flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-2 py-1">
-                    <TwitchIcon aria-hidden className="size-3.5 text-[color:var(--aqt-brand-twitch)]" />
+                    <TwitchIcon
+                      aria-hidden
+                      className="size-3.5 text-[color:var(--aqt-brand-twitch)]"
+                    />
                     <span className="text-[color:var(--aqt-fg-muted)]">
                       {registration.twitch_nick}
                     </span>
@@ -937,10 +951,7 @@ function TournamentParticipantsView({
   // which is the single place the table, the search and the column picker all
   // read — a per-cell blank would still leak the column heading and the filter.
   const { canAccessPermission } = usePermissions();
-  const canReadOrganizerColumns = canAccessPermission(
-    "registration.read",
-    tournament.workspace_id
-  );
+  const canReadOrganizerColumns = canAccessPermission("registration.read", tournament.workspace_id);
   const allColumns = useMemo(() => {
     const columns = buildParticipantColumns(form, t, locale, divisionGrid, heroesMap, hasTeams);
     return canReadOrganizerColumns
@@ -1378,7 +1389,12 @@ function TournamentParticipantsView({
       {/* One toolbar for both views: the table keeps its status chips and
           column picker, the pool swaps them for the division filter (§6 ②). */}
       {!trueEmpty && (
-        <div className="filters" role="group" aria-label={t("common.filters")} ref={resultsHeadingRef}>
+        <div
+          className="filters"
+          role="group"
+          aria-label={t("common.filters")}
+          ref={resultsHeadingRef}
+        >
           {view === "table" && (
             <>
               <FilterChip
@@ -1429,30 +1445,32 @@ function TournamentParticipantsView({
             />
           </div>
           {view === "pool" && divisionOptions.length > 0 && (
-            <label className="inline-flex items-center gap-1.5 text-xs text-[color:var(--aqt-fg-muted)]">
-              <span className="sr-only">
-                {t("tournamentDetail.participantsPool.divisionFilterLabel")}
-              </span>
-              <select
-                className="rounded-md border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-2 py-1 text-xs text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-                value={divisionFilter === null ? "" : String(divisionFilter)}
-                onChange={(event) =>
-                  navigateParticipantUrl({
-                    type: "division",
-                    value: event.target.value === "" ? null : Number(event.target.value)
-                  })
-                }
+            <Select
+              value={divisionFilter === null ? "all" : String(divisionFilter)}
+              onValueChange={(value) =>
+                navigateParticipantUrl({
+                  type: "division",
+                  value: value === "all" ? null : Number(value)
+                })
+              }
+            >
+              <SelectTrigger
+                aria-label={t("tournamentDetail.participantsPool.divisionFilterLabel")}
+                className="filter-sort h-8 w-[10.5rem] shadow-none focus:ring-0 focus:ring-offset-0"
               >
-                <option value="">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
                   {t("tournamentDetail.participantsPool.allDivisions")}
-                </option>
+                </SelectItem>
                 {divisionOptions.map((division) => (
-                  <option key={division} value={division}>
+                  <SelectItem key={division} value={String(division)}>
                     {t("tournamentDetail.participantsPool.divisionOption", { division })}
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
-            </label>
+              </SelectContent>
+            </Select>
           )}
           {view === "table" && (
             <ColumnPicker

@@ -2695,12 +2695,15 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
+/* Same drawing as `ToggleGroup variant="pill" size="sm"` (components/ui/toggle.tsx):
+   a 3px frame around 24px items = a 32px control, level with the search field
+   and the sort select beside it. Change both together. */
 .aqt-tn .stage-tabs {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   background: var(--tn-card);
   border: 1px solid var(--tn-border);
-  padding: 5px;
+  padding: 3px;
   border-radius: 10px;
   align-self: flex-start;
 }
@@ -2711,8 +2714,9 @@
   color: var(--fg-muted);
   font-family: inherit;
   font-weight: 600;
-  font-size: 13px;
-  padding: 7px 14px;
+  font-size: 12.5px;
+  height: 24px;
+  padding: 0 12px;
   border-radius: 7px;
   cursor: pointer;
   display: inline-flex;

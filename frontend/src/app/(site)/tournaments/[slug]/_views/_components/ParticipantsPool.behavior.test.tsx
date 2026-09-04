@@ -365,7 +365,7 @@ describe("participants pool", () => {
     tournament = makeTournament("registration", "check_in", null);
     await mount();
 
-    expect(container.querySelector('[role="tablist"]')).toBeNull();
+    expect(container.querySelector('[role="radiogroup"]')).toBeNull();
     expect(container.querySelector("[data-pool-column]")).toBeNull();
     expect(container.querySelector('[data-testid="roster"]')).not.toBeNull();
   });
@@ -373,9 +373,9 @@ describe("participants pool", () => {
   it("offers the pool/table switch only where a pool exists", async () => {
     await mount();
 
-    const segment = container.querySelector<HTMLElement>('[role="tablist"]');
+    const segment = container.querySelector<HTMLElement>('[role="radiogroup"]');
     expect(segment?.getAttribute("aria-label")).toBe("Participant view");
-    expect([...(segment?.querySelectorAll('[role="tab"]') ?? [])].map((n) => n.textContent)).toEqual(
+    expect([...(segment?.querySelectorAll('[role="radio"]') ?? [])].map((n) => n.textContent)).toEqual(
       ["By role", "Table"]
     );
   });

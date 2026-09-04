@@ -147,7 +147,7 @@ const TournamentsFilters = ({
         value={view}
         onValueChange={(value) => onViewChange(value as ViewMode)}
         aria-label={t("tournamentsList.view.label")}
-        variant="outline"
+        variant="pill"
         size="sm"
       >
         <ToggleGroupItem value="cards">

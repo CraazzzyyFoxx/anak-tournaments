@@ -86,11 +86,15 @@ function ToggleGroup({
         onKeyDown={handleKeyDown}
         className={cn(
           "flex items-center",
-          "[&>*:not(:first-child)]:-ml-px",
-          "[&>*:first-child]:rounded-r-none",
-          "[&>*:last-child]:rounded-l-none",
-          "[&>*:not(:first-child):not(:last-child)]:rounded-none",
-          "[&>*[data-state=on]]:z-10 [&>*[data-state=on]]:relative",
+          variant === "pill"
+            ? "gap-1 rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-[3px]"
+            : cn(
+                "[&>*:not(:first-child)]:-ml-px",
+                "[&>*:first-child]:rounded-r-none",
+                "[&>*:last-child]:rounded-l-none",
+                "[&>*:not(:first-child):not(:last-child)]:rounded-none",
+                "[&>*[data-state=on]]:z-10 [&>*[data-state=on]]:relative"
+              ),
           className
         )}
       >

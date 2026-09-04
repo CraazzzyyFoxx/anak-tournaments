@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 
@@ -27,9 +28,12 @@ export type ViewSegmentProps<V extends string> = {
 };
 
 /**
- * A segmented switch between views of one section, bound to a URL parameter.
- * The default value is never written, so the canonical URL stays clean and a
- * link with no `?view=` means "the default".
+ * A switch between views of one section, bound to a URL parameter. The default
+ * value is never written, so the canonical URL stays clean and a link with no
+ * `?view=` means "the default".
+ *
+ * Visually it is the site's one segmented control — `ToggleGroup` in the `pill`
+ * variant — so every toolbar's search, sort and view switch share one 32px row.
  */
 export function ViewSegment<V extends string>({
   param,
@@ -45,40 +49,27 @@ export function ViewSegment<V extends string>({
   const current = (options.find((o) => o.value === raw)?.value ?? defaultValue) as V;
 
   return (
-    <div
-      role="tablist"
+    <ToggleGroup
+      type="single"
+      value={current}
+      onValueChange={(value) => {
+        const next = options.find((o) => o.value === value)?.value;
+        if (!next) return;
+        setParams({ [param]: next === defaultValue ? null : next });
+        onChange?.(next);
+      }}
       aria-label={label}
-      className={cn(
-        "inline-flex overflow-hidden rounded-md border border-[color:var(--aqt-border)] text-xs",
-        hideOnMobile && "hidden sm:inline-flex",
-        className
-      )}
+      variant="pill"
+      size="sm"
+      className={cn(hideOnMobile && "hidden sm:flex", className)}
     >
-      {options.map((option) => {
-        const selected = option.value === current;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            aria-label={option.ariaLabel}
-            className={cn(
-              "px-2.5 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)]",
-              selected
-                ? "bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg)]"
-                : "text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
-            )}
-            onClick={() => {
-              setParams({ [param]: option.value === defaultValue ? null : option.value });
-              onChange?.(option.value);
-            }}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
+      {options.map((option) => (
+        <ToggleGroupItem key={option.value} value={option.value}>
+          {option.ariaLabel ? <span className="sr-only">{option.ariaLabel}</span> : null}
+          <span aria-hidden={option.ariaLabel ? true : undefined}>{option.label}</span>
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }
 

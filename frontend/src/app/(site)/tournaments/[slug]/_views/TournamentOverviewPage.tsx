@@ -695,7 +695,9 @@ export default function TournamentOverviewPage({
                     </KeyValue>
                   ) : null}
                   {rosterLine ? (
-                    <KeyValue term={t("tournamentDetail.overview.format.roster")}>{rosterLine}</KeyValue>
+                    <KeyValue term={t("tournamentDetail.overview.format.roster")}>
+                      {rosterLine}
+                    </KeyValue>
                   ) : null}
                   {tournament.description ? (
                     <KeyValue term={t("tournamentDetail.overview.format.description")}>
@@ -1030,9 +1032,12 @@ export default function TournamentOverviewPage({
                   const share = Math.min(100, Math.max(0, entry.playtime * 100));
                   const widest = Math.min(100, Math.max(0, topHeroes[0].playtime * 100));
                   return (
-                    <li className="flex items-center gap-2" key={entry.hero.id}>
+                    <li
+                      className="grid grid-cols-[1rem_1.5rem_minmax(0,1fr)_auto_2.75rem] items-center gap-2"
+                      key={entry.hero.id}
+                    >
                       <span
-                        className="aqt-tnum w-4 text-[10px] text-[color:var(--aqt-fg-faint)]"
+                        className="aqt-tnum text-[10px] text-[color:var(--aqt-fg-faint)]"
                         aria-hidden
                       >
                         {String(index + 1).padStart(2, "0")}
@@ -1047,7 +1052,7 @@ export default function TournamentOverviewPage({
                         ) : null}
                         <AvatarFallback className="bg-transparent" />
                       </Avatar>
-                      <span className="min-w-0 flex-1 truncate text-xs" title={entry.hero.name}>
+                      <span className="min-w-0 truncate text-xs" title={entry.hero.name}>
                         {entry.hero.name}
                       </span>
                       <span
@@ -1059,7 +1064,7 @@ export default function TournamentOverviewPage({
                           style={{ width: `${widest > 0 ? (share / widest) * 100 : 0}%` }}
                         />
                       </span>
-                      <span className="aqt-tnum text-[11px] text-[color:var(--aqt-fg-muted)]">
+                      <span className="aqt-tnum text-right text-[11px] text-[color:var(--aqt-fg-muted)]">
                         {format.number(entry.playtime, {
                           style: "percent",
                           maximumFractionDigits: 1

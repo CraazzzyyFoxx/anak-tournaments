@@ -140,18 +140,18 @@ function GroupStagePanel({
           </div>
         )}
 
-        <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
+        <TabsList className="h-8 justify-start gap-1 rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-[3px] text-[color:var(--aqt-fg-muted)]">
           {hasStandings && (
             <TabsTrigger
               value="standings"
-              className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+              className="h-6 rounded-[7px] px-3 text-[12.5px] font-semibold data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
             >
               {t("common.standings")}
             </TabsTrigger>
           )}
           <TabsTrigger
             value="matches"
-            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+            className="h-6 rounded-[7px] px-3 text-[12.5px] font-semibold data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
           >
             {t("common.bracket")}
           </TabsTrigger>
@@ -561,18 +561,18 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                           </div>
                         )}
 
-                        <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
+                        <TabsList className="h-8 justify-start gap-1 rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-[3px] text-[color:var(--aqt-fg-muted)]">
                           {hasPlayoffStandings && (
                             <TabsTrigger
                               value="standings"
-                              className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+                              className="h-6 rounded-[7px] px-3 text-[12.5px] font-semibold data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
                             >
                               {t("common.standings")}
                             </TabsTrigger>
                           )}
                           <TabsTrigger
                             value="bracket"
-                            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+                            className="h-6 rounded-[7px] px-3 text-[12.5px] font-semibold data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
                           >
                             {t("common.bracket")}
                           </TabsTrigger>

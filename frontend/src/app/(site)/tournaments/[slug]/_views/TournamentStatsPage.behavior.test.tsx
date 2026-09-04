@@ -350,9 +350,9 @@ async function render(query?: string) {
 }
 
 function tabButtons() {
-  return [...container.querySelectorAll('[role="tab"]')].map((tab) => ({
+  return [...container.querySelectorAll('[role="radio"]')].map((tab) => ({
     label: tab.textContent,
-    selected: tab.getAttribute("aria-selected") === "true"
+    selected: tab.getAttribute("aria-checked") === "true"
   }));
 }
 
@@ -395,14 +395,14 @@ describe("the tab is the URL", () => {
   it("writes the chosen tab, and clears the parameter for the default", async () => {
     await render();
 
-    const maps = [...container.querySelectorAll('[role="tab"]')][1] as HTMLButtonElement;
+    const maps = [...container.querySelectorAll('[role="radio"]')][1] as HTMLButtonElement;
     await act(async () => {
       maps.click();
     });
     expect(replaced.at(-1)).toBe(`/tournaments/${TOURNAMENT_ID}/stats?tab=maps`);
 
     await render("tab=maps");
-    const heroes = [...container.querySelectorAll('[role="tab"]')][0] as HTMLButtonElement;
+    const heroes = [...container.querySelectorAll('[role="radio"]')][0] as HTMLButtonElement;
     await act(async () => {
       heroes.click();
     });
@@ -413,7 +413,7 @@ describe("the tab is the URL", () => {
   it("keeps the sub-tabs reachable on a phone", async () => {
     await render();
 
-    const tablist = container.querySelector('[role="tablist"]');
+    const tablist = container.querySelector('[role="radiogroup"]');
     // `hideOnMobile` would add `hidden sm:inline-flex`, which is exactly how
     // the maps table became unreachable below 640px.
     expect(tablist?.className.split(/\s+/)).not.toContain("hidden");

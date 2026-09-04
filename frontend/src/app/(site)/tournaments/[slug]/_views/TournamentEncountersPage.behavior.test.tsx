@@ -318,13 +318,13 @@ function headings(): string[] {
 
 /** The view switcher, or `null` when the section offers a single view. */
 function segment(): { labels: string[]; selected: string | null } | null {
-  const tablist = container.querySelector('[role="tablist"]');
+  const tablist = container.querySelector('[role="radiogroup"]');
   if (!tablist) return null;
-  const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
+  const tabs = Array.from(tablist.querySelectorAll('[role="radio"]'));
   return {
     labels: tabs.map((tab) => (tab.textContent ?? "").trim()),
     selected:
-      tabs.find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent?.trim() ?? null
+      tabs.find((tab) => tab.getAttribute("aria-checked") === "true")?.textContent?.trim() ?? null
   };
 }
 

@@ -17,6 +17,13 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import TeamName from "@/components/TeamName";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { getDivisionLabel } from "@/lib/division-grid";
 import { normalizePlayerRole } from "@/lib/player-role";
 import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster-shape";
@@ -296,11 +303,7 @@ const TeamListRow = ({
                 title={slot.player?.name ?? undefined}
                 className={cn("inline-flex", slot.player == null && "opacity-40")}
               >
-                <PlayerRoleIcon
-                  role={slot.role}
-                  size={16}
-                  label={slot.player?.name ?? undefined}
-                />
+                <PlayerRoleIcon role={slot.role} size={16} label={slot.player?.name ?? undefined} />
               </span>
             ))}
           </span>
@@ -324,12 +327,7 @@ const TeamListRow = ({
           <span />
         </div>
         {sortTeamPlayers(team.players).map((player) => (
-          <TeamRosterRow
-            key={player.id}
-            player={player}
-            tournament={tournament}
-            needle={needle}
-          />
+          <TeamRosterRow key={player.id} player={player} tournament={tournament} needle={needle} />
         ))}
         <div className="mt-1.5 flex flex-wrap gap-3 border-t border-[color:var(--aqt-border)]/60 pt-1.5 font-mono text-[10px]">
           <Link
@@ -347,13 +345,7 @@ const TeamListRow = ({
   );
 };
 
-const TournamentTeamsView = ({
-  tournament,
-  slug
-}: {
-  tournament: Tournament;
-  slug: string;
-}) => {
+const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slug: string }) => {
   const t = useTranslations();
   const teamsQuery = useQuery({
     queryKey: tournamentQueryKeys.teams(tournament.id, tournament.workspace_id),
@@ -455,20 +447,26 @@ const TournamentTeamsView = ({
                   containerClassName="w-[11rem]"
                   className="h-8 py-1"
                 />
-                <select
-                  className="filter-sort h-8"
-                  aria-label={t("tournamentDetail.sortTeams")}
+                <Select
                   value={sortBy}
-                  onChange={(event) => {
-                    const next = event.target.value as SortBy;
+                  onValueChange={(value) => {
+                    const next = value as SortBy;
                     setParams({ sort: next === defaultSort ? null : next });
                   }}
                 >
-                  <option value="placement">{t("common.byPlacement")}</option>
-                  <option value="group">{t("tournamentDetail.teams.byGroup")}</option>
-                  <option value="sr">{t("common.byAvgSr")}</option>
-                  <option value="name">{t("common.byName")}</option>
-                </select>
+                  <SelectTrigger
+                    aria-label={t("tournamentDetail.sortTeams")}
+                    className="filter-sort h-8 w-[10.5rem] shadow-none focus:ring-0 focus:ring-offset-0"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="placement">{t("common.byPlacement")}</SelectItem>
+                    <SelectItem value="group">{t("tournamentDetail.teams.byGroup")}</SelectItem>
+                    <SelectItem value="sr">{t("common.byAvgSr")}</SelectItem>
+                    <SelectItem value="name">{t("common.byName")}</SelectItem>
+                  </SelectContent>
+                </Select>
                 <ViewSegment
                   param="view"
                   defaultValue={storedView ?? "list"}
@@ -545,9 +543,7 @@ const TournamentTeamsView = ({
                 <span>#</span>
                 <span>{t("tournamentDetail.teams.team")}</span>
                 <span>{t("teams.roster.avgSr")}</span>
-                <span className="hidden sm:block">
-                  {t("tournamentDetail.teams.rosterColumn")}
-                </span>
+                <span className="hidden sm:block">{t("tournamentDetail.teams.rosterColumn")}</span>
                 <span className="text-right">{t("tournamentDetail.teams.record")}</span>
                 <span />
               </div>
