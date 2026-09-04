@@ -235,6 +235,17 @@ describe("tournament overview server contract", () => {
       true
     );
     expect(source).toContain("tournament.logo_url");
+    // The poster is shown WHOLE, in its own aspect: it carries the tournament's
+    // name and the organizer's mark inside the artwork, so a header-shaped crop
+    // of it (an 80px band showed 9% of its height) shows none of that.
+    expect(hasJsxAttribute(sourceFile, hero[0]!, "aside")).toBe(true);
+    expect(source).toContain("object-contain");
+    // Sized inline. This build emits only utilities already used elsewhere, and
+    // a missing `max-h-*` rule silently rendered the poster at 1920px wide.
+    expect(source).toContain("height: 160");
+    // Actions moved out of the aside to make room, and are still there.
+    expect(hasJsxAttribute(sourceFile, hero[0]!, "actions")).toBe(true);
+    expect(source).toContain("{registerButton}");
     // Reference material lives in the overview's cards. Chips and a clamped
     // description over artwork is the regression this pins.
     expect(jsxElements(sourceFile, "TournamentLinkChips")).toHaveLength(0);

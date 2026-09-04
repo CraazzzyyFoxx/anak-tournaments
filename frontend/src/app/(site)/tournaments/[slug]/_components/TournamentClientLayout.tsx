@@ -250,17 +250,51 @@ export default function TournamentClientLayout({
               </span>
             </>
           }
-          /* Right-hand action column (wireframes §2 ④): what a reader can DO,
-             across from the title. The organizer's informational links are NOT
-             here — they are reference material, and they live in the overview's
-             Links card, where a translucent chip is not sitting on artwork.
+          /* Actions move under the copy so the right column can hold the
+             poster: what a reader can DO, still one row, still above the rail.
+             The organizer's informational links are NOT here — they are
+             reference material and live in the overview's Links card.
              `empty:hidden` because an ended tournament without a draft room
-             renders nothing at all in this column. */
-          aside={
-            <div className="flex flex-wrap items-center gap-2.5 empty:hidden lg:justify-end">
+             renders nothing at all here. */
+          actions={
+            <div className="flex flex-wrap items-center gap-2.5 empty:hidden">
               {registerButton}
               {draftButton}
             </div>
+          }
+          /* The cover, WHOLE.
+
+             It is a poster — 16:9, with the tournament's name typeset inside it
+             and the organizer's logo in a corner. Every treatment that tried to
+             fit it to the header's shape destroyed exactly that content: an 80px
+             band showed 9% of its height, and the blurred wash (still behind
+             this, as its colour field) shows none of it. So the picture gets its
+             own aspect and the copy keeps the other column.
+
+             A FIXED box plus `object-contain`, not `max-h` with an intrinsic
+             width: a 16:9 upload — what the admin panel asks for — fills it
+             exactly, and any other ratio fits inside with transparent margins
+             instead of stretching. An auto-sized image also sized the grid's
+             auto column from its intrinsic 1920px and squeezed the title to
+             two characters per line.
+
+             `width`/`height` inline, not `w-[284px] max-h-40`: this build emits
+             only utilities already used elsewhere in the codebase, and both of
+             those were new here — `max-h-40` produced no rule at all, which is
+             how the poster came out full-size. */
+          aside={
+            tournament.cover_image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={tournament.cover_image_url}
+                alt=""
+                aria-hidden
+                loading="lazy"
+                decoding="async"
+                className="rounded-lg object-contain"
+                style={{ width: 284, height: 160, maxWidth: "100%" }}
+              />
+            ) : null
           }
         />
       </div>
