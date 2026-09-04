@@ -4484,6 +4484,7 @@
     "confirmPick": "Confirm pick",
     "pickSuccess": "{player} was picked successfully.",
     "checkingSafeOptions": "Checking every player-role option against the remaining draft…",
+    "safeOptionsUnavailable": "The safe-pick check could not be loaded, so no player is marked safe or blocked here.",
     "mobileViews": "Draft workspace sections",
     "mobileView": {
       "pool": "Pool",

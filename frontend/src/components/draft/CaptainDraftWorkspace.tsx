@@ -37,6 +37,7 @@ interface CaptainDraftWorkspaceProps {
   gating: DraftGating;
   options: DraftPickOptionsResponse | null;
   optionsLoading: boolean;
+  onRetryOptions: () => void;
   connectionState: RealtimeConnectionState;
   viewParams: DraftViewParams;
   onViewParamsChange: (patch: Partial<DraftViewParams>) => void;
@@ -52,6 +53,7 @@ export function CaptainDraftWorkspace({
   gating,
   options,
   optionsLoading,
+  onRetryOptions,
   connectionState,
   viewParams,
   onViewParamsChange,
@@ -93,7 +95,11 @@ export function CaptainDraftWorkspace({
   const shortlistPlayers = availablePlayers.filter((player) => shortlist.has(player.id));
   const myTeam = board.teams.find((team) => team.id === gating.myTeamId) ?? null;
   const currentPick = board.current_pick;
-  const safetyRequired = gating.isMyPick;
+  // Only claim a player is safe or blocked when the server's option list is
+  // actually here. Without it every row would read as "no role keeps every
+  // remaining roster feasible" — a verdict nobody computed.
+  const safetyRequired = gating.isMyPick && options != null;
+  const optionsUnavailable = gating.isMyPick && options == null && !optionsLoading;
   const selection = selectedPlayer && selectedRole
     ? { playerId: selectedPlayer.id, role: selectedRole }
     : null;
@@ -202,6 +208,18 @@ export function CaptainDraftWorkspace({
         // line box instead of down the whole notice.
         <output className="block border-l-2 border-[color:var(--aqt-teal)] pl-3 text-sm text-[color:var(--aqt-fg-muted)]">
           {t("checkingSafeOptions")}
+        </output>
+      )}
+      {optionsUnavailable && (
+        <output className="flex flex-wrap items-center gap-2 border-l-2 border-[color:var(--aqt-live)] pl-3 text-sm text-[color:var(--aqt-fg-muted)]">
+          {t("safeOptionsUnavailable")}
+          <button
+            type="button"
+            onClick={onRetryOptions}
+            className="min-h-11 text-[color:var(--aqt-teal)] underline outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+          >
+            {t("retry")}
+          </button>
         </output>
       )}
 
