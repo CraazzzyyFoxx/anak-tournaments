@@ -10,6 +10,17 @@ import { useUnsavedGuard } from "@/components/admin/kit/useUnsavedGuard";
 
 export interface SaveBarProps {
   dirty: boolean;
+  /**
+   * Whether leaving would LOSE something, arming the unsaved guard. Defaults
+   * to `dirty`.
+   *
+   * The two differ on a form that opens prefilled from somewhere else — a
+   * pick-ban scope carrying the rules it inherits, say. Saving there stores
+   * values the organizer never typed, so the bar has work to offer; leaving
+   * discards nothing they authored, so a discard prompt is a false alarm that
+   * makes clicking through the scope tree cost a dialog per scope.
+   */
+  edited?: boolean;
   /** What is about to be saved: "3 changed fields", "v4 draft · 9 divisions". */
   summary: ReactNode;
   onDiscard: () => void;
@@ -42,6 +53,7 @@ export interface SaveBarProps {
  */
 export function SaveBar({
   dirty,
+  edited,
   summary,
   onDiscard,
   onSave,
@@ -56,7 +68,7 @@ export function SaveBar({
   const handleNavigationBlocked = useCallback((href: string) => setPendingHref(href), []);
 
   useUnsavedGuard({
-    dirty: dirty && !saving,
+    dirty: (edited ?? dirty) && !saving,
     guardNavigation,
     onNavigationBlocked: handleNavigationBlocked
   });

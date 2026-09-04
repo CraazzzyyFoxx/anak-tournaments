@@ -1121,3 +1121,40 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
     expect(text).not.toContain("Round 1");
   });
 });
+
+// 2026-09-04: clicking through the scope tree cost a "Discard unsaved
+// changes?" dialog per round. The save bar's `dirty` flag answered two
+// questions at once — "is there something to save here" (true on every scope
+// with no config of its own, since saving stores what it inherits) and "would
+// leaving lose work" — and armed the unsaved guard with the first.
+describe("Settings › Pre-game phase only guards edits an organizer made", () => {
+  it("switches scope without a discard prompt when nothing was typed", async () => {
+    await mount({
+      configs: [TOURNAMENT_MAP_CONFIG],
+      url: "?scope=round:10:1&kind=map&step=pool"
+    });
+
+    // Round 1 has no config of its own: the bar is up, offering to store what
+    // the round inherits.
+    expect(only("Save rules")).toBeTruthy();
+
+    await click(treeLink("Round 2"));
+
+    expect(document.body.textContent).not.toContain("Discard unsaved changes?");
+    expect(editor().textContent).toContain("Group stage — round 2");
+  });
+
+  it("still stops a scope switch that would lose an edit", async () => {
+    await mount({
+      configs: [TOURNAMENT_MAP_CONFIG],
+      url: "?scope=round:10:1&kind=map&step=pool"
+    });
+
+    await click(only("Add maps"));
+    await click(only("Hollywood"));
+    await click(treeLink("Round 2"));
+
+    expect(document.body.textContent).toContain("Discard unsaved changes?");
+    expect(editor().textContent).toContain("Group stage — round 1");
+  });
+});

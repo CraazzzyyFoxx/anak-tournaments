@@ -238,10 +238,17 @@ export function PreGameEditor({
   const issues = validatePickBanDraft(draft, series.bestOf);
   const scopeLabel = describeScope({ stage_id: scope.stageId, round: scope.round });
   const scopeState = scopeConfigState(kind, scope, configs);
-  // A scope with no config of its own always has something to save — either
-  // the values it was prefilled with from the cascade, or a first rule set for
-  // a scope nothing reaches. Only an already-saved config can be clean.
-  const dirty = savedConfig == null || hasUnsavedChanges(draft, baseDraft);
+  // Two different questions. `edited` is what the organizer has typed here —
+  // the only thing leaving this scope can lose, so it is what arms the unsaved
+  // guard; clicking through the scope tree used to cost a discard prompt per
+  // round because the two were one flag.
+  //
+  // `dirty` is what the bar has to offer: a scope with no config of its own
+  // always has something to save — either the values it was prefilled with
+  // from the cascade, or a first rule set for a scope nothing reaches. Only an
+  // already-saved config can be clean.
+  const edited = hasUnsavedChanges(draft, baseDraft);
+  const dirty = savedConfig == null || edited;
 
   const patch = (values: Partial<PickBanDraft>) =>
     setDraft((current) => ({ ...current, ...values }));
@@ -436,6 +443,7 @@ export function PreGameEditor({
 
       <SaveBar
         dirty={dirty && canManage}
+        edited={edited && canManage}
         saving={saving}
         primaryLabel={t("save")}
         summary={t("editingScope", { scope: scopeLabel })}
