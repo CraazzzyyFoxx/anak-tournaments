@@ -224,25 +224,35 @@ def average_seat_order(
     seats: Sequence[_SeatT],
     *,
     averages: Mapping[int, float],
+    captain_ranks: Mapping[int, int],
     descending: bool,
 ) -> list[_SeatT]:
-    """Seat order for a ``team_avg_*`` round: by live average, ties by seed.
+    """Seat order for a ``team_avg_*`` round: live average, captain, then seed.
 
     The direction lives in the key rather than in ``reverse=``, because
-    ``reverse`` flips the WHOLE key: the tie-break would run backwards under
-    ``team_avg_desc`` and forwards under ``team_avg_asc``, so two teams on the
-    same average would swap seats purely from the direction of the rule. Equal
-    averages therefore always fall back to the seed order, matching what
-    ``weakest_first``/``strongest_first`` already do with equal captain ranks.
+    ``reverse`` flips the WHOLE key: the seed tie-break would then run backwards
+    under ``team_avg_desc`` and forwards under ``team_avg_asc``, so two teams on
+    the same average would swap seats purely from the direction of the rule.
+
+    Equal averages break by captain rank IN THE RULE'S DIRECTION -- under
+    ``team_avg_asc`` the weaker captain picks first, exactly as the rule already
+    does with the averages themselves, and mirrored under ``team_avg_desc``.
+    Without it a tie fell through to the seed order, which is whatever order the
+    organizer happened to tick the captains in (the pool lists them
+    alphabetically), so an equal-average round was decided by battle tag.
+    An unranked captain sorts as weakest, as in ``weakest_first``. Only teams
+    that tie on BOTH keep the seed order, so the result stays deterministic.
 
     A team with no average yet sorts as 0.0. In practice every team has one --
     captains are seeded as PICKED players on their own roster -- so this only
     guards a team whose roster was emptied by hand.
     """
+    direction = -1 if descending else 1
     return sorted(
         seats,
         key=lambda t: (
-            -averages.get(t.id, 0.0) if descending else averages.get(t.id, 0.0),
+            direction * averages.get(t.id, 0.0),
+            direction * captain_ranks.get(t.id, -1),
             t.draft_position,
         ),
     )

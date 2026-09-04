@@ -109,40 +109,59 @@ class TestAverageSeatOrder:
     round order.
     """
 
-    def test_ascending_puts_the_lowest_average_first(self) -> None:
-        order = average_seat_order(SEATS, averages={70: 3000.0, 20: 2000.0, 50: 2500.0}, descending=False)
+    def _avg(self, averages, *, descending, captain_ranks=CAPTAIN_RANKS) -> list[int]:
+        return [
+            team.id
+            for team in average_seat_order(
+                SEATS, averages=averages, captain_ranks=captain_ranks, descending=descending
+            )
+        ]
 
-        assert [team.id for team in order] == [20, 50, 70]
+    def test_ascending_puts_the_lowest_average_first(self) -> None:
+        assert self._avg({70: 3000.0, 20: 2000.0, 50: 2500.0}, descending=False) == [20, 50, 70]
 
     def test_descending_puts_the_highest_average_first(self) -> None:
-        order = average_seat_order(SEATS, averages={70: 3000.0, 20: 2000.0, 50: 2500.0}, descending=True)
+        assert self._avg({70: 3000.0, 20: 2000.0, 50: 2500.0}, descending=True) == [70, 50, 20]
 
-        assert [team.id for team in order] == [70, 50, 20]
-
-    def test_equal_averages_fall_back_to_the_seed_order_in_both_directions(self) -> None:
-        # The regression this pins: `reverse=True` flipped the whole sort key, so
-        # tied teams came out 3 -> 1 under desc and 1 -> 3 under asc. The seed
-        # order is the answer either way, as it is for equal captain ranks.
+    def test_equal_averages_break_by_captain_rank_in_the_rule_s_direction(self) -> None:
+        # Ranks: 50=2000, 70=3000, 20=4000 against seed order 70, 20, 50. Falling
+        # through to the seed would hand the round to whatever order the organizer
+        # ticked the captains in — the pool lists them alphabetically — so a tied
+        # round was decided by battle tag instead of by strength.
         tied = {70: 2800.0, 20: 2800.0, 50: 2800.0}
 
-        assert [team.draft_position for team in average_seat_order(SEATS, averages=tied, descending=False)] == [1, 2, 3]
-        assert [team.draft_position for team in average_seat_order(SEATS, averages=tied, descending=True)] == [1, 2, 3]
+        assert self._avg(tied, descending=False) == [50, 70, 20]
+        assert self._avg(tied, descending=True) == [20, 70, 50]
 
-    def test_a_partial_tie_breaks_by_seed_within_the_tied_group_only(self) -> None:
+    def test_an_unranked_captain_counts_as_weakest_in_a_tie(self) -> None:
+        tied = {70: 2800.0, 20: 2800.0, 50: 2800.0}
+
+        assert self._avg(tied, descending=False, captain_ranks={70: 3000, 20: 4000}) == [50, 70, 20]
+        assert self._avg(tied, descending=True, captain_ranks={70: 3000, 20: 4000}) == [20, 70, 50]
+
+    def test_teams_tied_on_average_and_captain_keep_the_seed_order(self) -> None:
+        # The last key, so the round order is never left to dict or id order.
+        tied = {70: 2800.0, 20: 2800.0, 50: 2800.0}
+        same = {70: 2800, 20: 2800, 50: 2800}
+
+        assert self._avg(tied, descending=False, captain_ranks=same) == [70, 20, 50]
+        assert self._avg(tied, descending=True, captain_ranks=same) == [70, 20, 50]
+
+    def test_a_partial_tie_breaks_within_the_tied_group_only(self) -> None:
         averages = {70: 2800.0, 20: 2800.0, 50: 3500.0}
 
-        assert [t.id for t in average_seat_order(SEATS, averages=averages, descending=False)] == [70, 20, 50]
-        assert [t.id for t in average_seat_order(SEATS, averages=averages, descending=True)] == [50, 70, 20]
+        assert self._avg(averages, descending=False) == [70, 20, 50]
+        assert self._avg(averages, descending=True) == [50, 20, 70]
 
     def test_a_team_without_an_average_sorts_as_zero(self) -> None:
         averages = {70: 2800.0, 20: 2800.0}
 
-        assert [t.id for t in average_seat_order(SEATS, averages=averages, descending=False)] == [50, 70, 20]
-        assert [t.id for t in average_seat_order(SEATS, averages=averages, descending=True)] == [70, 20, 50]
+        assert self._avg(averages, descending=False) == [50, 70, 20]
+        assert self._avg(averages, descending=True) == [20, 70, 50]
 
     def test_the_input_list_is_never_mutated(self) -> None:
         before = list(SEATS)
-        average_seat_order(SEATS, averages={70: 1.0}, descending=True)
+        self._avg({70: 1.0}, descending=True)
 
         assert SEATS == before
 

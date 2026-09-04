@@ -119,11 +119,18 @@ class DraftSelectionService:
             session, draft_session.id, await self.feasibility.resolve_shape(session, draft_session)
         )
         teams = await self.teams_repo.list_by_session(session, draft_session.id)
+        # Tie-break for equal averages — same shape as lifecycle.resync_pick_order's,
+        # so a live re-seat and a settings resync rank captains identically.
+        captain_ranks = {
+            captain.drafted_by_team_id: (captain.rank_value if captain.rank_value is not None else -1)
+            for captain in await self.players_repo.list_drafted_captains(session, draft_session.id)
+        }
         sorted_team_ids = [
             team.id
             for team in rules.average_seat_order(
                 list(teams),
                 averages=avg_by_team,
+                captain_ranks=captain_ranks,
                 descending=rule == "team_avg_desc",
             )
         ]
