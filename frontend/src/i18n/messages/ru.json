@@ -5294,11 +5294,8 @@
     },
     "broadcast": {
       "heading": "Официальная трансляция",
-      "participantHeading": "Стрим участника",
       "playerLabel": "Плеер Twitch · {channel}",
       "participantPlayerLabel": "Стрим участника · {channel}",
-      "participantNotice": "Каста сейчас нет — в плеере POV участника {player}.",
-      "participantNoticeWithTeam": "Каста сейчас нет — в плеере POV участника {player} ({team}).",
       "watchOn": "Смотреть на {platform}",
       "moreLinks": "Другие ссылки на трансляцию",
       "hide": "Скрыть трансляцию",

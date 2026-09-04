@@ -9,33 +9,16 @@ import { TwitchEmbed } from "@/components/stream/TwitchEmbed";
 import {
   embeddableTwitchChannel,
   getStreamStatus,
-  sortStreamsByAudience,
   streamPlatformLabel
 } from "@/lib/stream-platform";
 import { cn } from "@/lib/utils";
-import type { StreamEntry, TournamentStreams } from "@/types/stream.types";
+import type { TournamentStreams } from "@/types/stream.types";
 
 type TournamentBroadcastDockProps = {
   /** The tournament's streams, or `undefined` while the read is in flight. */
   streams: TournamentStreams | undefined;
   className?: string;
 };
-
-/**
- * The live participant whose own POV stands in for an official player, or
- * `null` when none can fill the frame.
- *
- * Ordered by `sortStreamsByAudience` rather than by whatever the read returned,
- * because this list is refetched on every poller tick: a pick that moved with
- * input order would tear down and restart the iframe on each one.
- */
-function pickParticipantFallback(participants: StreamEntry[]): StreamEntry | null {
-  return (
-    sortStreamsByAudience(participants).find(
-      (entry) => embeddableTwitchChannel(entry) !== null
-    ) ?? null
-  );
-}
 
 // Bottom-trailing, inset by the same 1rem the cookie banner uses, with the
 // safe-area floor so the panel clears an iOS home indicator. Logical `end`, not
@@ -91,15 +74,18 @@ const ANCHOR =
  * no live detection at all (`live === null`), and hiding it would lose the only
  * way to reach the broadcast.
  *
- * ## Why a participant can end up in the frame
+ * ## Why a participant never enters the frame
  *
- * `embeddable` is true only for `live`, so between casts the dock would fall
- * back to a bare "Watch on …" link and the page would have nothing playing —
- * while participants were on air the whole time. When NO official entry can
- * carry the player, the busiest live participant's POV fills it instead. It is
- * announced as exactly that, named by player and team, because a spectator who
- * thinks a one-sided POV is the cast will read the match wrong. An official
- * channel is never displaced, and every official link stays listed.
+ * `embeddable` is true only for `live`, so between casts the dock falls back to
+ * a bare "Watch on …" link and the page has nothing playing — while
+ * participants may be on air the whole time. The dock used to fill the frame
+ * with the busiest live participant's POV, announced as exactly that.
+ *
+ * That is gone: this panel is the ORGANIZER's broadcast, on every section of
+ * the page, and a one-sided POV in the corner reserved for the cast reads as
+ * the cast however it is captioned. Participant streams have their own section
+ * (`TournamentStreamPage`), where the viewer picks the POV deliberately and the
+ * page around it says whose it is.
  */
 export function TournamentBroadcastDock({ streams, className }: Readonly<TournamentBroadcastDockProps>) {
   const t = useTranslations();
@@ -134,22 +120,12 @@ export function TournamentBroadcastDock({ streams, className }: Readonly<Tournam
   // One player, for the first OFFICIAL broadcast that can carry one. An
   // organizer with two simultaneously live official channels is not a case
   // worth a switcher; the rest stay reachable as links below.
-  const officialFeatured =
-    official.find((entry) => embeddableTwitchChannel(entry) !== null) ?? null;
-  // Consulted only once the official channels have all declined the frame, so
-  // a live cast always outranks a participant however many viewers they have.
-  const participantFallback = officialFeatured
-    ? null
-    : pickParticipantFallback(streams?.participants ?? []);
-  const featured = officialFeatured ?? participantFallback ?? official[0];
+  const featured =
+    official.find((entry) => embeddableTwitchChannel(entry) !== null) ?? official[0];
   const featuredChannel = embeddableTwitchChannel(featured);
   const featuredStatus = getStreamStatus(featured.live);
-  // In fallback mode `featured` is a participant, so nothing is subtracted here
-  // and every official link survives — the fallback hides no way to the cast.
   const secondary = official.filter((entry) => entry !== featured);
-  const heading = participantFallback
-    ? t("stream.broadcast.participantHeading")
-    : t("stream.broadcast.heading");
+  const heading = t("stream.broadcast.heading");
 
   if (!isOpen) {
     return (
@@ -229,11 +205,7 @@ export function TournamentBroadcastDock({ streams, className }: Readonly<Tournam
         <div className="relative aspect-video w-full bg-black">
           <TwitchEmbed
             channel={featuredChannel}
-            title={
-              participantFallback
-                ? t("stream.broadcast.participantPlayerLabel", { channel: featuredChannel })
-                : t("stream.broadcast.playerLabel", { channel: featuredChannel })
-            }
+            title={t("stream.broadcast.playerLabel", { channel: featuredChannel })}
             className="absolute inset-0 size-full border-0"
           />
         </div>
@@ -244,9 +216,8 @@ export function TournamentBroadcastDock({ streams, className }: Readonly<Tournam
           watches, not reads, and a channel's self-written blurb repeated the
           heading, the pill and the frame's own overlay for two more lines of
           panel. What survives is what the frame cannot say by itself — a way
-          out to a platform we cannot embed, whose POV is in the frame, and the
-          other official channels. */}
-      {!featuredChannel || participantFallback || secondary.length > 0 ? (
+          out to a platform we cannot embed, and the other official channels. */}
+      {!featuredChannel || secondary.length > 0 ? (
         <div className="flex flex-col gap-2.5 p-3">
           {featuredChannel ? null : (
             <a
@@ -260,21 +231,6 @@ export function TournamentBroadcastDock({ streams, className }: Readonly<Tournam
               <ExternalLink className="size-3.5 opacity-70" aria-hidden />
             </a>
           )}
-
-          {/* Deliberately unmuted: this is the disclaimer that the frame is one
-              player's POV, so it has to be read, not skimmed past. */}
-          {participantFallback ? (
-            <p className="m-0 text-[13px] font-medium leading-snug text-[color:var(--aqt-fg)]">
-              {participantFallback.player?.team
-                ? t("stream.broadcast.participantNoticeWithTeam", {
-                    player: participantFallback.player.name,
-                    team: participantFallback.player.team.name
-                  })
-                : t("stream.broadcast.participantNotice", {
-                    player: participantFallback.player?.name ?? participantFallback.channel
-                  })}
-            </p>
-          ) : null}
           {secondary.length > 0 ? (
             <ul
               aria-label={t("stream.broadcast.moreLinks")}

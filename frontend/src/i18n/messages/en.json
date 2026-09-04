@@ -5294,11 +5294,8 @@
     },
     "broadcast": {
       "heading": "Official broadcast",
-      "participantHeading": "Participant stream",
       "playerLabel": "Twitch player · {channel}",
       "participantPlayerLabel": "Participant stream · {channel}",
-      "participantNotice": "No cast is live right now — this frame is the POV of {player}.",
-      "participantNoticeWithTeam": "No cast is live right now — this frame is the POV of {player} ({team}).",
       "watchOn": "Watch on {platform}",
       "moreLinks": "Other broadcast links",
       "hide": "Hide the broadcast",
