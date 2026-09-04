@@ -26,6 +26,7 @@
     "standings": "Таблица",
     "bracket": "Сетка",
     "stream": "Трансляции",
+    "stats": "Статистика",
     "bracketPreview": "Предпросмотр",
     "rolesList": "Роли",
     "ranks": "Ранги",
@@ -1882,6 +1883,43 @@
     "metaTitleFallback": "Турнир",
     "metaDescriptionFallback": "Обзор турнира.",
     "sectionsNav": "Разделы турнира",
+    "header": {
+      "players": "{players, plural, one {# игрок} few {# игрока} other {# игроков}}",
+      "teamsAndPlayers": "{teams, plural, one {# команда} few {# команды} other {# команд}} · {players, plural, one {# игрок} few {# игрока} other {# игроков}}"
+    },
+    "nextPhase": {
+      "starts": "→ {phase}",
+      "closes": "{phase} — до"
+    },
+    "overview": {
+      "links": "Ссылки"
+    },
+    "mapPool": {
+      "title": "Мап-пул · {count}",
+      "stageLabel": "Мап-пул по стадиям",
+      "attackShare": "Победы атаки {pct}",
+      "col": {
+        "map": "Карта",
+        "mode": "Режим",
+        "played": "Сыграно",
+        "avgDuration": "Ср. длит.",
+        "sides": "Победы атака / защита"
+      }
+    },
+    "matchRow": {
+      "openInBracket": "Открыть в сетке",
+      "map": "Карта",
+      "mode": "Режим",
+      "score": "Счёт",
+      "duration": "Длит.",
+      "log": "лог"
+    },
+    "podium": {
+      "label": "Итоговые места",
+      "place1": "Чемпион",
+      "place2": "2 место",
+      "place3": "3 место"
+    },
     "bracketRegion": "Сетка — прокрутите по горизонтали, чтобы увидеть все раунды",
     "sortTeams": "Сортировать команды",
     "rankHistory": "История рангов",

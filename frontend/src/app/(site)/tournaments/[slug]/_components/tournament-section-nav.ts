@@ -1,12 +1,11 @@
 import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
 
 export type TournamentSectionId =
-  | "bracket" | "stream" | "teams" | "participants" | "schedule" | "matches" | "maps" | "heroes" | "standings" | "draft";
+  | "overview" | "bracket" | "teams" | "matches" | "stats" | "stream" | "participants";
 
 type TournamentNavReasonKey =
   | "tournamentDetail.nav.reasons.competitionNotStarted"
   | "tournamentDetail.nav.reasons.noStages"
-  | "tournamentDetail.nav.reasons.noSchedule"
   | "tournamentDetail.nav.reasons.noTeams";
 
 /** Every section labels itself from `common.<id>`. */
@@ -25,13 +24,6 @@ type BuildTournamentSectionNavInput = {
   tournamentId: string;
   status: TournamentStatus;
   stages: StageSummary[];
-  teamFormation?: string;
-  /**
-   * Whether the organizer published any `tournament_phase_schedule` row. The
-   * Schedule section has nothing to show without one, so it locks rather than
-   * leading to an empty page.
-   */
-  hasSchedule?: boolean;
   /**
    * Whether any team exists yet. Teams are formed before play starts (balancer
    * run or draft), so the section opens as soon as there is a roster to show
@@ -40,10 +32,10 @@ type BuildTournamentSectionNavInput = {
   hasTeams?: boolean;
   /**
    * Whether the tournament has any stream at all — an official broadcast link
-   * or a participant currently live. Unlike Schedule and Teams, the Stream
-   * section does not lock when it is empty: it disappears. A lock advertises
-   * content the organizer has not published YET, and every tournament would
-   * carry that promise forever, because most of them never have a stream.
+   * or a participant currently live. Unlike Teams, the Stream section does not
+   * lock when it is empty: it disappears. A lock advertises content the
+   * organizer has not published YET, and every tournament would carry that
+   * promise forever, because most of them never have a stream.
    */
   hasStreams?: boolean;
   pathname: string;
@@ -56,26 +48,31 @@ const competitionStatuses = new Set<TournamentStatus>([
   "archived"
 ]);
 
-const competitionOnlySections = new Set<TournamentSectionId>([
-  "bracket",
-  "matches",
-  "heroes",
-  "standings"
-]);
+const competitionOnlySections = new Set<TournamentSectionId>(["bracket", "matches", "stats"]);
 
-const tournamentSections: Exclude<TournamentSectionId, "draft">[] = [
-  "bracket",
-  "stream",
-  "teams",
+/**
+ * The rail's order is a function of the phase, not a constant. Before play the
+ * viewer's job is to register and see who else did, so Participants sits second;
+ * once play starts the registration list is history and moves to the end, behind
+ * everything that describes the competition itself.
+ */
+const preCompetitionOrder: TournamentSectionId[] = [
+  "overview",
   "participants",
-  // Sits with `participants`, not next to `teams`: both read registration-phase
-  // data, and the post-balancer `teams` tab carries the same visible label, so
-  // neighbouring them would read as a duplicate rather than two views.
-  "schedule",
+  "teams",
+  "bracket",
   "matches",
-  "maps",
-  "heroes",
-  "standings"
+  "stats"
+];
+
+const competitionOrder: TournamentSectionId[] = [
+  "overview",
+  "bracket",
+  "teams",
+  "matches",
+  "stats",
+  "stream",
+  "participants"
 ];
 
 function normalizePathname(pathname: string): string {
@@ -110,13 +107,11 @@ function resolveNavLockReason(
   locks: Readonly<{
     phaseLocked: boolean;
     stageLocked: boolean;
-    scheduleLocked: boolean;
     teamsLocked: boolean;
   }>
 ): TournamentNavReasonKey | null {
   if (locks.phaseLocked) return "tournamentDetail.nav.reasons.competitionNotStarted";
   if (locks.stageLocked) return "tournamentDetail.nav.reasons.noStages";
-  if (locks.scheduleLocked) return "tournamentDetail.nav.reasons.noSchedule";
   if (locks.teamsLocked) return "tournamentDetail.nav.reasons.noTeams";
   return null;
 }
@@ -125,45 +120,31 @@ export function buildTournamentSectionNav({
   tournamentId,
   status,
   stages,
-  teamFormation,
-  hasSchedule = false,
   hasTeams = false,
   hasStreams = false,
   pathname
 }: BuildTournamentSectionNavInput): TournamentSectionNavItem[] {
   const competitionStarted = competitionStatuses.has(status);
   const currentPath = normalizePathname(pathname);
-  // Two sections are present-or-absent rather than open-or-locked, because a
-  // locked tab claims the content exists somewhere: `draft`, which only a draft
-  // tournament has at all, and `stream`, which needs a broadcast link or a live
-  // participant. `stream` is filtered from its display position instead of
-  // appended like `draft`, so the rail keeps one order in every case.
-  const sections: TournamentSectionId[] = [
-    ...tournamentSections.filter((id) => {
-      if (id === "stream") return hasStreams;
-      return true;
-    }),
-    ...(teamFormation === "draft" ? (["draft"] as const) : [])
-  ];
+  // `stream` is present-or-absent rather than open-or-locked, because a locked
+  // tab claims the content exists somewhere. It is filtered from its display
+  // position so the rail keeps one order in every case.
+  const sections = (competitionStarted ? competitionOrder : preCompetitionOrder).filter(
+    (id) => id !== "stream" || hasStreams
+  );
 
   return sections.map((id) => {
     const href =
-      id === "draft"
-        ? `/draft/${tournamentId}`
+      id === "overview"
+        ? `/tournaments/${tournamentId}`
         : id === "bracket"
           ? resolveBracketHref(tournamentId, stages)
           : `/tournaments/${tournamentId}/${id}`;
     const canonicalPath = href.split("?", 1)[0];
     const phaseLocked = competitionOnlySections.has(id) && !competitionStarted;
     const stageLocked = id === "bracket" && competitionStarted && stages.length === 0;
-    const scheduleLocked = id === "schedule" && !hasSchedule;
     const teamsLocked = id === "teams" && !hasTeams && !competitionStarted;
-    const reasonKey = resolveNavLockReason({
-      phaseLocked,
-      stageLocked,
-      scheduleLocked,
-      teamsLocked
-    });
+    const reasonKey = resolveNavLockReason({ phaseLocked, stageLocked, teamsLocked });
 
     return {
       id,

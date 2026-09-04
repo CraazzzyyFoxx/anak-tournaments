@@ -8,6 +8,56 @@
   background: linear-gradient(180deg, var(--aqt-bg) 78%, transparent);
 }
 
+/* One row: an optional collapsed-title lead, the scrolling rail, an optional
+   trailing action slot. The slots mount only while the page's big title is out
+   of view, so the rail never doubles as a second header. */
+.railRow {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-bottom: 1px solid var(--aqt-border);
+  background: color-mix(in srgb, var(--aqt-bg) 96%, transparent);
+}
+
+.railRow > .railFrame {
+  flex: 1 1 auto;
+  border-bottom: none;
+  background: transparent;
+}
+
+.railLead,
+.railTrail {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.railLead {
+  max-width: 16rem;
+  padding-inline: 0.25rem 0.75rem;
+  border-inline-end: 1px solid var(--aqt-border);
+  margin-inline-end: 0.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--aqt-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.railTrail {
+  padding-inline-start: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .railLead,
+  .railTrail {
+    display: flex;
+  }
+}
+
 .railFrame {
   display: grid;
   grid-template-columns: 0 minmax(0, 1fr) 0;

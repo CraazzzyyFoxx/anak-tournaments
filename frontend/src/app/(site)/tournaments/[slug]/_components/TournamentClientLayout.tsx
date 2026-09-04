@@ -3,10 +3,12 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ExternalLink } from "lucide-react";
 
 import TournamentBroadcastDock from "./TournamentBroadcastDock";
 import TournamentLinkChips from "./TournamentLinkChips";
 import TournamentRegisterButton from "./TournamentRegisterButton";
+import { NextPhaseChip } from "./NextPhaseChip";
 import {
   areStreamsVisible,
   getTournamentStatusMeta,
@@ -26,17 +28,19 @@ import { useTranslations, useLocale } from "next-intl";
 import TournamentSectionNav from "./TournamentSectionNav";
 import { TournamentShellSkeleton } from "./TournamentSkeletons";
 import TournamentShellError from "../TournamentShellError";
-import { PageHero, HeroCoord, HeroStat } from "@/components/site/PageHero";
+import { PageHero, HeroCoord } from "@/components/site/PageHero";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { buttonVariants } from "@/components/ui/button";
 
 type TournamentClientLayoutProps = {
   slug: string;
   children: React.ReactNode;
 };
 
-type Translate = ReturnType<typeof useTranslations<never>>;
+/** The translator the header helpers accept — next-intl's own, for the root namespace. */
+export type Translate = ReturnType<typeof useTranslations<never>>;
 
-function formatLabel(stages: StageSummary[], t: Translate): string {
+export function formatLabel(stages: StageSummary[], t: Translate): string {
   const hasGroup = stages.some((s) => s.stage_type === "round_robin" || s.stage_type === "swiss");
   const hasElim = stages.some(
     (s) => s.stage_type === "single_elimination" || s.stage_type === "double_elimination"
@@ -45,6 +49,35 @@ function formatLabel(stages: StageSummary[], t: Translate): string {
   if (hasElim) return t("common.formatLabel.playoffBracket");
   if (hasGroup) return t("common.formatLabel.groupStage");
   return stages[0]?.stage_type?.replace(/_/g, " ") ?? "—";
+}
+
+/**
+ * Whether the hero has scrolled under the site header. Drives the rail's
+ * collapsed slots: the rail is the only sticky surface this page adds under the
+ * site header, so the tournament's name moves INTO it rather than into a second
+ * bar. `false` on the server and until the observer fires, so SSR never renders
+ * the collapsed state.
+ */
+function useScrolledPast<T extends HTMLElement>(): [(node: T | null) => void, boolean] {
+  const [past, setPast] = React.useState(false);
+  const observerRef = React.useRef<IntersectionObserver | null>(null);
+  // A callback ref, not an effect on mount: the hero mounts AFTER the shell's
+  // skeleton, so a mount-time effect would observe nothing.
+  const attach = React.useCallback((node: T | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setPast(!entry.isIntersecting && entry.boundingClientRect.top < 0),
+      // The site header covers the top 3.5rem; the hero counts as gone once it
+      // slides under that band, not only once it leaves the window.
+      { rootMargin: "-56px 0px 0px 0px" }
+    );
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
+  React.useEffect(() => () => observerRef.current?.disconnect(), []);
+  return [attach, past];
 }
 
 export default function TournamentClientLayout({
@@ -95,6 +128,8 @@ export default function TournamentClientLayout({
   const streams = useTournamentStreamsQuery(streamsTournamentId).data;
   useTournamentStreamRealtime({ tournamentId: streamsTournamentId });
 
+  const [heroRef, heroScrolledPast] = useScrolledPast<HTMLDivElement>();
+
   if (tournamentQuery.isPending) {
     return <TournamentShellSkeleton />;
   }
@@ -113,11 +148,20 @@ export default function TournamentClientLayout({
 
   const stages = tournament.stages;
   const teamsCount = tournament.teams_count ?? 0;
+  const registrations = tournament.registrations_count ?? 0;
 
   const statusVariant = getTournamentStatusMeta(tournament.status).variant;
   const isEnded = isTournamentStatusEnded(tournament.status);
-  const players = tournament.participants_count ?? 0;
-  const completedStages = stages.filter((stage) => stage.is_completed).length;
+  const isLive = tournament.status === "live" || tournament.status === "playoffs";
+  const overviewHref = `/tournaments/${tournament.slug}`;
+  // The draft room is an external route, so it is a header action rather than a
+  // rail tab. It appears once registration is over — before that there is no
+  // room to open.
+  const showDraftLink =
+    tournament.team_formation === "draft" && tournament.status !== "registration";
+
+  const registerButton = !isEnded ? <TournamentRegisterButton tournament={tournament} /> : null;
+  const nextPhaseChip = <NextPhaseChip tournament={tournament} href={`${overviewHref}#phases`} />;
 
   return (
     <div className="aqt-tn space-y-4">
@@ -134,110 +178,98 @@ export default function TournamentClientLayout({
           <p className="text-xs opacity-70">{t("tournamentDetail.previewBannerDescription")}</p>
         </div>
       )}
-      <PageHero
-        eyebrow={
-          <HeroCoord className="inline-flex flex-wrap items-center gap-2">
-            <Link
-              href="/tournaments"
-              className="transition-colors hover:text-[color:var(--aqt-teal)]"
-            >
-              {t("common.tournaments")}
-            </Link>
-            <span className="opacity-50">/</span>
-            {tournament.is_league && (
-              <>
-                <span>{t("common.league")}</span>
-                <span className="opacity-50">·</span>
-              </>
-            )}
-            <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
-          </HeroCoord>
-        }
-        coverUrl={tournament.cover_image_url}
-        title={
-          <span className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            {/* Decorative: the tournament name stands right next to it, so an
-                alt text would read the same name twice. Plain `<img>` because
-                the URL points at the deployment's S3/MinIO host, which
-                `next/image` rejects unless it is in `remotePatterns`. */}
-            {tournament.logo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={tournament.logo_url}
-                alt=""
-                aria-hidden
-                loading="lazy"
-                decoding="async"
-                className="h-[0.8em] w-[0.8em] shrink-0 rounded-lg border border-[color:var(--aqt-border)] object-cover"
-              />
-            ) : null}
-            {tournament.name}
-          </span>
-        }
-        meta={
-          <>
-            <span className={cn("status-pill", statusVariant)}>
-              {(tournament.status === "live" || tournament.status === "playoffs") && (
-                <span className="dot" />
-              )}
-              {t(`common.statusBadge.${tournament.status}`)}
-            </span>
-            <span className="meta-pill">
-              <span className="k">{t("common.format")}</span>
-              <span className="v">{formatLabel(stages, t)}</span>
-            </span>
-            <span className="meta-pill">
-              <span className="k">{t("common.teamFormation")}</span>
-              {/* The cast must list every value the column can hold. It said
-                  `"balancer" | "draft"` while `team_formation` is a free string,
-                  so a "registration" tournament rendered the raw key path
-                  `common.registration` in the badge. */}
-              <span className="v">
-                {t(
-                  `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`,
-                )}
+      <div ref={heroRef}>
+        <PageHero
+          align="start"
+          eyebrow={
+            <HeroCoord className="inline-flex flex-wrap items-center gap-2">
+              <Link
+                href="/tournaments"
+                className="transition-colors hover:text-[color:var(--aqt-teal)]"
+              >
+                {t("common.tournaments")}
+              </Link>
+              <span className="opacity-50">/</span>
+              <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
+            </HeroCoord>
+          }
+          title={tournament.name}
+          meta={
+            <>
+              <span className={cn("status-pill", statusVariant)}>
+                {isLive && <span className="dot" />}
+                {t(`common.statusBadge.${tournament.status}`)}
               </span>
-            </span>
-          </>
-        }
-        lede={tournament.description || undefined}
-        actions={
-          /* Discord, the rules doc, an external bracket and the VODs sit in the
-             hero's own action row rather than in a strip between the hero and the
-             nav, where they read as an orphaned line of chrome. Both slots share
-             one flex row, so the chips wrap under the buttons on a phone and the
-             row collapses to whichever of the two exists. */
-          <>
-            {!isEnded && <TournamentRegisterButton tournament={tournament} />}
-            <TournamentLinkChips links={tournament.links} />
-          </>
-        }
-        aside={
-          <div className="grid grid-cols-2 gap-x-7 gap-y-5 xl:grid-cols-4">
-            <HeroStat label={t("common.teams")} value={teamsCount} sub={t("common.registered")} />
-            <HeroStat
-              label={t("common.participants")}
-              value={tournament.registrations_count ?? 0}
-              sub={t("common.players")}
-            />
-            <HeroStat label={t("common.rostered")} value={players} sub={t("common.inTeams")} />
-            <HeroStat
-              label={t("common.stages")}
-              value={stages.length}
-              sub={`${completedStages} ${t("common.done")}`}
-            />
-          </div>
-        }
-      />
+              {nextPhaseChip}
+              {tournament.is_league && <span className="meta-pill">{t("common.league")}</span>}
+              <span className="meta-pill">
+                <span className="k">{t("common.format")}</span>
+                <span className="v">{formatLabel(stages, t)}</span>
+              </span>
+              <span className="meta-pill">
+                <span className="k">{t("common.teamFormation")}</span>
+                {/* The cast must list every value the column can hold. It said
+                    `"balancer" | "draft"` while `team_formation` is a free string,
+                    so a "registration" tournament rendered the raw key path
+                    `common.registration` in the badge. */}
+                <span className="v">
+                  {t(
+                    `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`,
+                  )}
+                </span>
+              </span>
+              <span className="meta-pill aqt-tnum">
+                {teamsCount > 0
+                  ? t("tournamentDetail.header.teamsAndPlayers", {
+                      teams: teamsCount,
+                      players: registrations
+                    })
+                  : t("tournamentDetail.header.players", { players: registrations })}
+              </span>
+            </>
+          }
+          lede={
+            tournament.description ? (
+              /* One line; the whole text lives in the overview's Format card,
+                 so this is a teaser, not the place to read it. A span, because
+                 PageHero wraps the lede in a <p>. */
+              <span className="line-clamp-1 block" title={tournament.description}>
+                {tournament.description}
+              </span>
+            ) : undefined
+          }
+          actions={
+            <>
+              {registerButton}
+              {showDraftLink ? (
+                <Link
+                  href={`/draft/${tournament.slug}`}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+                >
+                  {t("common.draft")}
+                  <ExternalLink className="size-3.5" aria-hidden />
+                </Link>
+              ) : null}
+              <TournamentLinkChips links={tournament.links} />
+            </>
+          }
+        />
+      </div>
 
       <TournamentSectionNav
         tournamentId={tournament.slug}
         status={tournament.status}
         stages={stages}
-        teamFormation={tournament.team_formation}
-        hasSchedule={(tournament.phase_schedule?.length ?? 0) > 0}
         hasTeams={teamsCount > 0}
         hasStreams={(streams?.official.length ?? 0) > 0 || (streams?.participants.length ?? 0) > 0}
+        collapsed={heroScrolledPast}
+        collapsedTitle={<span title={tournament.name}>{tournament.name}</span>}
+        collapsedActions={
+          <>
+            {nextPhaseChip}
+            {registerButton}
+          </>
+        }
       />
 
       <section className="min-w-0">

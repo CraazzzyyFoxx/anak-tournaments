@@ -41,8 +41,6 @@ function model(
     tournamentId,
     status,
     stages,
-    teamFormation: "draft",
-    hasSchedule: true,
     hasTeams: true,
     pathname
   });
@@ -50,19 +48,14 @@ function model(
 
 describe("buildTournamentSectionNav", () => {
   it.each<TournamentStatus>(["registration", "draft", "check_in"])(
-    "keeps pre-competition data sections discoverable but locked during %s",
+    "keeps competition sections discoverable but locked during %s",
     (status) => {
       const items = model(status);
       const locked = items.filter((item) => !item.available);
 
-      expect(locked.map((item) => item.id)).toEqual([
-        "bracket",
-        "matches",
-        "heroes",
-        "standings"
-      ]);
+      expect(locked.map((item) => item.id)).toEqual(["bracket", "matches", "stats"]);
+      expect(items.find((item) => item.id === "overview")?.available).toBe(true);
       expect(items.find((item) => item.id === "participants")?.available).toBe(true);
-      expect(items.find((item) => item.id === "draft")?.available).toBe(true);
       expect(locked.every((item) => Boolean(item.reasonKey))).toBe(true);
     }
   );
@@ -73,6 +66,25 @@ describe("buildTournamentSectionNav", () => {
       expect(model(status).every((item) => item.available)).toBe(true);
     }
   );
+
+  it("orders the rail by phase: participants second before play, last after", () => {
+    expect(model("registration").map((item) => item.id)).toEqual([
+      "overview",
+      "participants",
+      "teams",
+      "bracket",
+      "matches",
+      "stats"
+    ]);
+    expect(model("live").map((item) => item.id)).toEqual([
+      "overview",
+      "bracket",
+      "teams",
+      "matches",
+      "stats",
+      "participants"
+    ]);
+  });
 
   it("locks only the bracket for missing stage structure after competition starts", () => {
     const items = model("live", `/tournaments/${tournamentId}/bracket`, []);
@@ -89,34 +101,12 @@ describe("buildTournamentSectionNav", () => {
     );
   });
 
-  it("locks Schedule until the organizer publishes a phase schedule", () => {
-    const items = buildTournamentSectionNav({
-      tournamentId,
-      status: "registration",
-      stages: [stage()],
-      teamFormation: "balancer",
-      hasSchedule: false,
-      pathname: `/tournaments/${tournamentId}/participants`
-    });
-
-    expect(items.find((item) => item.id === "schedule")).toMatchObject({
-      available: false,
-      reasonKey: "tournamentDetail.nav.reasons.noSchedule",
-      href: `/tournaments/${tournamentId}/schedule`
-    });
-    // A published schedule is the ONLY thing that gate reads: it stays open
-    // during play, where the timeline is the record of when each phase ran.
-    expect(model("playoffs").find((item) => item.id === "schedule")?.available).toBe(true);
-  });
-
   it("unlocks Teams before play once rosters exist and locks it while there are none", () => {
     const teams = (hasTeams: boolean) =>
       buildTournamentSectionNav({
         tournamentId,
         status: "registration",
         stages: [stage()],
-        teamFormation: "balancer",
-        hasSchedule: true,
         hasTeams,
         pathname: `/tournaments/${tournamentId}/teams`
       }).find((item) => item.id === "teams");
@@ -138,7 +128,6 @@ describe("buildTournamentSectionNav", () => {
         tournamentId,
         status: "live",
         stages: [stage()],
-        hasSchedule: true,
         pathname: `/tournaments/${tournamentId}/teams`
       }).find((item) => item.id === "teams")?.available
     ).toBe(true);
@@ -156,66 +145,48 @@ describe("buildTournamentSectionNav", () => {
     );
   });
 
-  it("uses stable ids and label keys and omits Draft for non-draft tournaments", () => {
-    const items = buildTournamentSectionNav({
-      tournamentId,
-      status: "completed",
-      stages: [stage()],
-      teamFormation: "balancer",
-      pathname: `/tournaments/${tournamentId}/teams`
-    });
+  it("uses stable ids and label keys and never carries the folded sections", () => {
+    const items = model("completed", `/tournaments/${tournamentId}/teams`);
 
     expect(items.map(({ id, labelKey }) => [id, labelKey])).toEqual([
+      ["overview", "common.overview"],
       ["bracket", "common.bracket"],
       ["teams", "common.teams"],
-      ["participants", "common.participants"],
-      ["schedule", "common.schedule"],
       ["matches", "common.matches"],
-      // `maps` joined TOURNAMENT_SECTION_ORDER after this expectation was
-      // written; the file was outside vitest's include list, so the stale
-      // assertion never failed.
-      ["maps", "common.maps"],
-      ["heroes", "common.heroes"],
-      ["standings", "common.standings"]
+      ["stats", "common.stats"],
+      ["participants", "common.participants"]
     ]);
-  });
-
-  it("links Draft to the standalone room and recognizes that route as active", () => {
-    const draft = model("draft", `/draft/${tournamentId}`).find((item) => item.id === "draft");
-
-    expect(draft).toMatchObject({
-      href: `/draft/${tournamentId}`,
-      active: true,
-      available: true
-    });
-  });
-
-  it("never carries a registered-teams section, on any formation", () => {
-    // Registered teams render on the Participants page, not behind their own tab.
-    // A dedicated tab put three sections in one conceptual space (`Teams`,
-    // `Participants`, `Registered teams`) and duplicated the `Teams` tab outright
-    // once the organizer exported: both then listed the same teams. This pins the
-    // removal, since re-adding a section id is a one-line change.
-    for (const teamFormation of ["balancer", "draft", "registration"]) {
-      const nav = buildTournamentSectionNav({
-        tournamentId,
-        status: "registration",
-        stages: [stage()],
-        teamFormation,
-        hasSchedule: true,
-        hasTeams: true,
-        pathname: `/tournaments/${tournamentId}/participants`
-      });
-      expect(nav.filter((item) => item.id.includes("registration"))).toEqual([]);
-      // ...and exactly one section is about teams.
-      expect(nav.filter((item) => item.labelKey === "common.teams")).toHaveLength(1);
+    // Schedule, Maps, Heroes and Standings folded into Overview / Stats /
+    // Bracket; Draft moved to a header action. None may come back as a tab.
+    const ids = items.map((item) => item.id) as string[];
+    for (const gone of ["schedule", "maps", "heroes", "standings", "draft"]) {
+      expect(ids).not.toContain(gone);
     }
   });
 
-  it("marks exactly the canonical nested route active", () => {
-    const items = model("playoffs", `/tournaments/${tournamentId}/standings/`);
+  it("shows Stream only when there is something to watch", () => {
+    const withStreams = buildTournamentSectionNav({
+      tournamentId,
+      status: "live",
+      stages: [stage()],
+      hasStreams: true,
+      pathname: `/tournaments/${tournamentId}/stream`
+    });
+    expect(withStreams.find((item) => item.id === "stream")).toMatchObject({
+      active: true,
+      available: true,
+      href: `/tournaments/${tournamentId}/stream`
+    });
+    expect(model("live").some((item) => item.id === "stream")).toBe(false);
+  });
 
-    expect(items.filter((item) => item.active).map((item) => item.id)).toEqual(["standings"]);
+  it("links Overview to the tournament root and marks exactly the canonical route active", () => {
+    const root = model("playoffs", `/tournaments/${tournamentId}/`);
+    expect(root.filter((item) => item.active).map((item) => item.id)).toEqual(["overview"]);
+    expect(root.find((item) => item.id === "overview")?.href).toBe(`/tournaments/${tournamentId}`);
+
+    const nested = model("playoffs", `/tournaments/${tournamentId}/matches/`);
+    expect(nested.filter((item) => item.active).map((item) => item.id)).toEqual(["matches"]);
   });
 });
 

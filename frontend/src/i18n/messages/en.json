@@ -26,6 +26,7 @@
     "standings": "Standings",
     "bracket": "Bracket",
     "stream": "Streams",
+    "stats": "Statistics",
     "bracketPreview": "Preview",
     "rolesList": "Roles",
     "ranks": "Ranks",
@@ -1882,6 +1883,43 @@
     "metaTitleFallback": "Tournament",
     "metaDescriptionFallback": "Tournament overview.",
     "sectionsNav": "Tournament sections",
+    "header": {
+      "players": "{players, plural, one {# player} other {# players}}",
+      "teamsAndPlayers": "{teams, plural, one {# team} other {# teams}} · {players, plural, one {# player} other {# players}}"
+    },
+    "nextPhase": {
+      "starts": "→ {phase}",
+      "closes": "{phase} closes"
+    },
+    "overview": {
+      "links": "Links"
+    },
+    "mapPool": {
+      "title": "Map pool · {count}",
+      "stageLabel": "Map pool by stage",
+      "attackShare": "Attack wins {pct}",
+      "col": {
+        "map": "Map",
+        "mode": "Mode",
+        "played": "Played",
+        "avgDuration": "Avg. length",
+        "sides": "Attack / defense wins"
+      }
+    },
+    "matchRow": {
+      "openInBracket": "Open in bracket",
+      "map": "Map",
+      "mode": "Mode",
+      "score": "Score",
+      "duration": "Length",
+      "log": "log"
+    },
+    "podium": {
+      "label": "Final placements",
+      "place1": "Champion",
+      "place2": "2nd place",
+      "place3": "3rd place"
+    },
     "bracketRegion": "Bracket — scroll horizontally to see all rounds",
     "sortTeams": "Sort teams",
     "rankHistory": "Rank history",

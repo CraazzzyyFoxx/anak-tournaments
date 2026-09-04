@@ -150,3 +150,27 @@ export function buildTournamentSchedule({
 
   return { segments, automationOff: !tournament.auto_transitions_enabled };
 }
+
+export type NextPhaseBoundary = {
+  status: SchedulablePhase;
+  /** ISO-8601 instant of the boundary. */
+  at: string;
+  /** Whether the boundary opens the phase or closes its action window. */
+  kind: "start" | "close";
+  msLeft: number;
+};
+
+/**
+ * The one upcoming boundary the header chip announces: the current phase's
+ * close, else the next phase's start. `null` once the schedule holds nothing
+ * ahead of `now` — a finished tournament, or one whose organizer published no
+ * times — so the chip renders nothing instead of a stale promise.
+ */
+export function nextPhaseBoundary(input: ScheduleInput): NextPhaseBoundary | null {
+  const { segments } = buildTournamentSchedule(input);
+  const carrier = segments.find((segment) => segment.countdownMs !== null);
+  if (!carrier || carrier.countdownMs === null || carrier.countdownTo === null) return null;
+  const at = carrier.countdownTo === "close" ? carrier.endsAt : carrier.startsAt;
+  if (at === null) return null;
+  return { status: carrier.status, at, kind: carrier.countdownTo, msLeft: carrier.countdownMs };
+}

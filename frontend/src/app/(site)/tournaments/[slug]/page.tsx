@@ -1,8 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
-import type { TournamentStatus } from "@/types/tournament.types";
-
 import { getTournamentOverviewState } from "./_data";
+import TournamentOverviewRoute from "./_views/TournamentOverviewRoute";
 
 type TournamentIndexPageProps = {
   params: Promise<{ slug: string }>;
@@ -13,66 +12,36 @@ type TournamentIndexPageProps = {
   }>;
 };
 
-const isTab = (value: string | undefined) => {
-  return (
-    value === "teams" ||
-    value === "participants" ||
-    value === "matches" ||
-    value === "heroes" ||
-    value === "standings"
-  );
+/**
+ * Pre-redesign deep links used `?tab=` on the root. Each maps onto the section
+ * that now owns that content; anything else falls through to the overview.
+ */
+const LEGACY_TAB_PATH: Record<string, string> = {
+  teams: "/teams",
+  participants: "/participants",
+  matches: "/matches",
+  heroes: "/stats?tab=heroes",
+  standings: "/bracket?view=standings"
 };
-
-const REGISTRATION_PHASES = new Set<TournamentStatus>(["draft", "registration", "check_in"]);
-const BRACKET_PHASES = new Set<TournamentStatus>(["live", "playoffs", "completed", "archived"]);
-
-function getDefaultTournamentPath({
-  slug,
-  status,
-  hasStages
-}: {
-  slug: string;
-  status: TournamentStatus;
-  hasStages: boolean;
-}) {
-  if (BRACKET_PHASES.has(status) && hasStages) {
-    return `/tournaments/${slug}/bracket`;
-  }
-
-  if (REGISTRATION_PHASES.has(status)) {
-    return `/tournaments/${slug}/participants`;
-  }
-
-  return null;
-}
 
 export default async function TournamentIndexPage({
   params,
   searchParams
 }: TournamentIndexPageProps) {
-  const resolvedParams = await params;
-  const resolvedSearchParams = await searchParams;
-  const slug = resolvedParams.slug;
-  const teamsPath = `/tournaments/${slug}/teams`;
+  const { slug } = await params;
+  const { tab, page, search } = await searchParams;
 
-  const tab = resolvedSearchParams.tab;
-
-  if (tab && !isTab(tab)) {
-    redirect(`/tournaments/${slug}`);
-  }
-
-  if (tab && tab !== "teams") {
+  if (tab) {
+    const target = LEGACY_TAB_PATH[tab];
+    if (!target) redirect(`/tournaments/${slug}`);
     const qs = new URLSearchParams();
     if (tab === "matches") {
-      if (resolvedSearchParams.page) qs.set("page", resolvedSearchParams.page);
-      if (resolvedSearchParams.search) qs.set("search", resolvedSearchParams.search);
+      if (page) qs.set("page", page);
+      if (search) qs.set("search", search);
     }
-    const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    redirect(`/tournaments/${slug}/${tab}${suffix}`);
-  }
-
-  if (tab === "teams") {
-    redirect(teamsPath);
+    const joiner = target.includes("?") ? "&" : "?";
+    const suffix = qs.toString() ? `${joiner}${qs.toString()}` : "";
+    redirect(`/tournaments/${slug}${target}${suffix}`);
   }
 
   const overviewState = await getTournamentOverviewState(slug);
@@ -83,15 +52,5 @@ export default async function TournamentIndexPage({
     return null;
   }
 
-  const defaultPath = getDefaultTournamentPath({
-    slug,
-    status: overviewState.overview.status,
-    hasStages: overviewState.overview.stages.length > 0
-  });
-
-  if (defaultPath) {
-    redirect(defaultPath);
-  }
-
-  redirect(teamsPath);
+  return <TournamentOverviewRoute />;
 }

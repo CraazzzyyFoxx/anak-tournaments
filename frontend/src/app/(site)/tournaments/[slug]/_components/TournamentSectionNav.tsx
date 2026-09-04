@@ -9,13 +9,10 @@ import {
   ArrowRight,
   BarChart3,
   Calendar,
-  CalendarClock,
   ClipboardList,
+  LayoutDashboard,
   LayoutGrid,
-  ListOrdered,
-  Map,
   Radio,
-  Trophy,
   Users
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -32,16 +29,13 @@ import {
 } from "./tournament-section-nav";
 
 const icons: Record<TournamentSectionId, React.ComponentType<{ className?: string }>> = {
+  overview: LayoutDashboard,
   bracket: LayoutGrid,
-  stream: Radio,
   teams: Users,
-  participants: ClipboardList,
-  schedule: CalendarClock,
   matches: Calendar,
-  maps: Map,
-  heroes: Trophy,
-  standings: BarChart3,
-  draft: ListOrdered
+  stats: BarChart3,
+  stream: Radio,
+  participants: ClipboardList
 };
 
 const initialRailState: TournamentRailScrollState = {
@@ -58,12 +52,18 @@ type TournamentSectionNavProps = {
   tournamentId: string;
   status: TournamentStatus;
   stages?: StageSummary[];
-  teamFormation?: string;
-  hasSchedule?: boolean;
   hasTeams?: boolean;
   hasStreams?: boolean;
-  // Retained for call-site compatibility; both variants render the same adaptive rail.
-  variant?: "desktop" | "mobile";
+  /**
+   * Rendered in the rail's leading slot only while the page's big title is out
+   * of view, so the viewer never loses the tournament's name without the rail
+   * growing a second header of its own.
+   */
+  collapsedTitle?: React.ReactNode;
+  /** Rendered in the trailing slot under the same condition. */
+  collapsedActions?: React.ReactNode;
+  /** Whether the big title is currently scrolled out of view. */
+  collapsed?: boolean;
   className?: string;
 };
 
@@ -71,10 +71,11 @@ export default function TournamentSectionNav({
   tournamentId,
   status,
   stages = [],
-  teamFormation,
-  hasSchedule,
   hasTeams,
   hasStreams,
+  collapsedTitle,
+  collapsedActions,
+  collapsed = false,
   className
 }: Readonly<TournamentSectionNavProps>) {
   const t = useTranslations();
@@ -90,13 +91,11 @@ export default function TournamentSectionNav({
         tournamentId,
         status,
         stages,
-        teamFormation,
-        hasSchedule,
         hasTeams,
         hasStreams,
         pathname
       }),
-    [hasSchedule, hasTeams, hasStreams, pathname, stages, status, teamFormation, tournamentId]
+    [hasTeams, hasStreams, pathname, stages, status, tournamentId]
   );
   const setActiveRef = (node: HTMLElement | null) => {
     activeRef.current = node;
@@ -135,7 +134,11 @@ export default function TournamentSectionNav({
   };
 
   return (
-    <div className={cn(styles.navRegion, className)}>
+    <div className={cn(styles.navRegion, className)} data-collapsed={collapsed || undefined}>
+      <div className={styles.railRow}>
+      {collapsed && collapsedTitle ? (
+        <div className={styles.railLead}>{collapsedTitle}</div>
+      ) : null}
       <nav
         ref={frameRef}
         className={cn(styles.railFrame, railState.hasOverflow && styles.railFrameWithControls)}
@@ -235,6 +238,10 @@ export default function TournamentSectionNav({
           <ArrowRight aria-hidden="true" />
         </button>
       </nav>
+      {collapsed && collapsedActions ? (
+        <div className={styles.railTrail}>{collapsedActions}</div>
+      ) : null}
+      </div>
     </div>
   );
 }

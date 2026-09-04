@@ -137,6 +137,17 @@ const nextConfig = {
       // balancer tool, and this path was a runtime redirect pretending to be
       // a route.
       { source: "/admin/pickup", destination: "/balancer/pickup", permanent: true },
+
+      // ── Public tournament page (docs/tournament-redesign/plan.md §1.1) ───
+      //
+      // Four thin tabs folded into their neighbours. Phases and the map pool
+      // are cards on the overview; standings is a view of the bracket; hero
+      // stats is a tab of the statistics section. Unmatched query strings
+      // (`?stage=`) carry through on their own.
+      { source: "/tournaments/:slug/schedule", destination: "/tournaments/:slug#phases", permanent: true },
+      { source: "/tournaments/:slug/maps", destination: "/tournaments/:slug#map-pool", permanent: true },
+      { source: "/tournaments/:slug/standings", destination: "/tournaments/:slug/bracket?view=standings", permanent: true },
+      { source: "/tournaments/:slug/heroes", destination: "/tournaments/:slug/stats?tab=heroes", permanent: true },
     ];
   },
   images: {

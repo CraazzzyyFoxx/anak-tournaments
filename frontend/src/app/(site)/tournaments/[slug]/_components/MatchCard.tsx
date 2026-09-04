@@ -1,0 +1,145 @@
+"use client";
+
+import Link from "next/link";
+import { useTranslations } from "next-intl";
+
+import TeamName from "@/components/TeamName";
+import { cn } from "@/lib/utils";
+import type { Encounter } from "@/types/encounter.types";
+
+/** Encounter statuses the platform treats as settled. Mirrors `BracketView`. */
+export const COMPLETED_ENCOUNTER_STATUSES: Record<string, true> = {
+  completed: true,
+  finished: true,
+  closed: true
+};
+
+export function isEncounterCompleted(encounter: Pick<Encounter, "status">): boolean {
+  return COMPLETED_ENCOUNTER_STATUSES[encounter.status] === true;
+}
+
+export function isEncounterLive(
+  encounter: Pick<Encounter, "status" | "started_at" | "ended_at">
+): boolean {
+  return !isEncounterCompleted(encounter) && Boolean(encounter.started_at) && !encounter.ended_at;
+}
+
+export type MatchCardProps = {
+  encounter: Encounter;
+  /** Mono eyebrow, e.g. "PLAYOFF · LOWER R3 · BO3 · 18:40" — built by the caller. */
+  eyebrow: string;
+  /** Where the card leads: the bracket node, or the encounter page. */
+  href: string;
+  /** Number of participant streams on air for this match, when known. */
+  streamsCount?: number;
+  /** `sm` — the overview's mini-bracket tile: no maps row, tighter rows. */
+  size?: "md" | "sm";
+  className?: string;
+};
+
+/**
+ * One match as a card: eyebrow, two team rows with a bold score, and the maps
+ * of the series. The whole card is one link. Used for live and upcoming
+ * matches on the overview and the matches section; settled matches go in a
+ * `MatchRow`.
+ *
+ * Markup mirrors the bracket node (`BracketView`'s `MatchCard`) so the two
+ * surfaces speak one visual language; it is a separate component because the
+ * bracket node carries hover-highlight and pointer bookkeeping this card has
+ * no use for.
+ */
+export function MatchCard({
+  encounter,
+  eyebrow,
+  href,
+  streamsCount,
+  size = "md",
+  className
+}: Readonly<MatchCardProps>) {
+  const t = useTranslations();
+  const live = isEncounterLive(encounter);
+  const completed = isEncounterCompleted(encounter);
+  const home = encounter.score?.home ?? 0;
+  const away = encounter.score?.away ?? 0;
+  const hasScore = completed || home !== 0 || away !== 0;
+  const winner: "home" | "away" | null = completed ? (home > away ? "home" : away > home ? "away" : null) : null;
+  const rows = size === "sm" ? "h-7 text-[12px]" : "h-9 text-[13px]";
+
+  const row = (side: "home" | "away") => {
+    const team = side === "home" ? encounter.home_team : encounter.away_team;
+    const score = side === "home" ? home : away;
+    const won = winner === side;
+    const lost = winner !== null && !won;
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-between gap-2 px-2.5",
+          rows,
+          side === "home" && "border-b border-[color:var(--aqt-border)]",
+          won && "bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] font-semibold text-[color:var(--aqt-fg)]",
+          lost && "text-[color:var(--aqt-fg-dim)]",
+          winner === null && "text-[color:var(--aqt-fg-muted)]"
+        )}
+      >
+        <TeamName team={team} fallback={t("common.tbd")} size={size === "sm" ? "xs" : "sm"} />
+        <span
+          className={cn(
+            "shrink-0 font-semibold tabular-nums",
+            size === "sm" ? "text-[13px]" : "text-[15px]",
+            won ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]"
+          )}
+        >
+          {hasScore ? score : "–"}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "block overflow-hidden rounded-[10px] border bg-[color:var(--aqt-card)] transition-colors hover:border-[color:var(--aqt-border-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+        live
+          ? "border-[color:color-mix(in_srgb,var(--aqt-rose)_45%,transparent)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--aqt-rose)_30%,transparent)]"
+          : "border-[color:var(--aqt-border)]",
+        className
+      )}
+      data-live={live || undefined}
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+        <span className="truncate">{eyebrow}</span>
+        {live ? (
+          <span className="status-pill live shrink-0" style={{ padding: "0 6px", fontSize: 10 }}>
+            <span aria-hidden className="dot" />
+            {t("common.live")}
+            {streamsCount ? ` · ${streamsCount}` : null}
+          </span>
+        ) : null}
+      </div>
+      {row("home")}
+      {row("away")}
+      {size === "md" && encounter.matches?.length > 0 ? (
+        <ul className="flex flex-wrap gap-1 border-t border-[color:var(--aqt-border)] px-2.5 py-1.5">
+          {encounter.matches.map((map) => {
+            const played = map.score && (map.score.home !== 0 || map.score.away !== 0);
+            return (
+              <li
+                key={map.id}
+                className={cn(
+                  "rounded border px-1.5 py-0.5 font-mono text-[10px]",
+                  played
+                    ? "border-[color:var(--aqt-fg-muted)] text-[color:var(--aqt-fg)]"
+                    : "border-dashed border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-faint)]"
+                )}
+              >
+                {map.map?.name ?? "—"}
+                {played ? ` ${map.score.home}:${map.score.away}` : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </Link>
+  );
+}
