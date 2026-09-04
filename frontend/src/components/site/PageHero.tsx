@@ -179,7 +179,10 @@ export function PageHero({
         className={cn(
           "grid",
           compact ? "gap-4 px-5 py-3.5 md:px-6 md:py-4" : "gap-8 px-6 py-8 md:px-10 md:py-9",
-          aside && "lg:grid-cols-[1.5fr_1fr] lg:gap-12",
+          // A compact hero is a page HEADER: its right column holds the action
+          // row (wireframes §2), so it takes only the width the buttons need
+          // instead of a third of the header away from the title.
+          aside && (compact ? "lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-8" : "lg:grid-cols-[1.5fr_1fr] lg:gap-12"),
           align === "end" && "lg:items-end",
           align === "center" && "lg:items-center",
           align === "start" && "lg:items-start"

@@ -272,11 +272,17 @@ export default function TournamentClientLayout({
               </span>
             ) : undefined
           }
-          actions={
-            <>
+          /* Right-hand action column (wireframes §2 ④): registration and the
+             organizer's links sit across from the title, not underneath the
+             description where they read as part of the prose. `empty:hidden`
+             because an ended tournament with no links renders nothing here. */
+          aside={
+            /* Capped, not max-content: five link kinds plus the CTA would
+               otherwise size the auto column wide enough to squeeze the h1. */
+            <div className="flex flex-wrap items-center gap-2.5 empty:hidden lg:max-w-[24rem] lg:justify-end">
               {registerButton}
               <TournamentLinkChips links={tournament.links} />
-            </>
+            </div>
           }
         />
       </div>

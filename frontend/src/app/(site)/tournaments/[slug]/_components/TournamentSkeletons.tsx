@@ -96,6 +96,12 @@ export function TournamentShellSkeleton() {
             </>
           }
           lede={<SkeletonBlock style={{ width: "min(28rem, 74vw)", height: "0.7rem" }} />}
+          aside={
+            <div className="flex flex-wrap items-center gap-2.5 lg:justify-end">
+              <SkeletonBlock style={{ width: "8rem", height: "2.25rem" }} />
+              <SkeletonBlock style={{ width: "5rem", height: "2.25rem" }} />
+            </div>
+          }
         />
 
         <div className={styles.navRegion} data-shell-region="tabs">
