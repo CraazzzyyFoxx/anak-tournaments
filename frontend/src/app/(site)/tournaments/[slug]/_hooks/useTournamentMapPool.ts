@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import mapService from "@/services/map.service";
 import pickBanService from "@/services/pickBan.service";
 import tournamentService from "@/services/tournament.service";
@@ -20,21 +21,43 @@ export type MapPoolView = {
   total: number;
 };
 
-export type MapPoolStageView = {
+/** One slot of a slot-mode config: the candidates for map N of the series. */
+export type MapPoolSlotView = {
+  position: number;
+  maps: MapRead[];
+};
+
+/**
+ * One scope a veto config is saved at: the tournament, a stage, or — the case
+ * organizers actually author — a single round of a stage.
+ */
+export type MapPoolScopeView = {
+  /** `stage:<id>` / `round:<stageId>:<round>`, the admin scope vocabulary. */
+  key: string;
   stageId: number;
+  stageName: string;
+  /** "Round 2" / "Lower R1"; `null` for a config that covers the whole stage. */
+  round: string | null;
+  /** The scope in one line — "Playoff · Lower R1" — for labels and titles. */
   title: string;
   pool: MapPoolView;
+  /**
+   * Slot mode picks one map per series slot from its own candidate list, so a
+   * round's pool is a list of lists, not one bag of maps. `null` for a flat
+   * pool-mode config, where every map is a candidate for every map of the series.
+   */
+  slots: MapPoolSlotView[] | null;
 };
 
 export type TournamentMapPool = {
   /** Every map any veto config of the tournament names, grouped by game mode. */
   pool: MapPoolView;
   /**
-   * Per-stage pools, present only when at least two stages carry pools that
-   * differ from each other. When every stage plays the same maps (the common
-   * case) this is `null` and `pool` is the whole story.
+   * The pools the organizer actually authored, per stage and per round, in play
+   * order. `null` when a single config decides the whole tournament and `pool`
+   * is already the whole story.
    */
-  stages: MapPoolStageView[] | null;
+  scopes: MapPoolScopeView[] | null;
   isPending: boolean;
   isError: boolean;
   isFetching: boolean;
@@ -79,14 +102,26 @@ export function groupByGamemode(maps: MapRead[]): MapPoolView {
 }
 
 /**
+ * Sort weight of a round inside its stage: the stage-wide pool first, then the
+ * upper bracket climbing (1, 2, 3…), then the lower bracket (-1, -2…) — the
+ * order the bracket itself reads in.
+ */
+function roundOrder(round: number | null): number {
+  if (round == null) return 0;
+  return round > 0 ? round : 500 - round;
+}
+
+/**
  * The tournament's map pool, derived from its pick-ban configs.
  *
  * There is no "map pool" entity: the pool is whatever the veto configuration
- * can produce. The tournament-wide pool is the union across every config; a
- * stage's pool is the union of its own configs plus the tournament-default
- * ones that apply to it when it has none of its own.
+ * can produce. `pool` is the union across every config — the whole tournament's
+ * map list. `scopes` keeps the shape the organizer authored: pools are usually
+ * saved per ROUND (a Bo3 round names three slot pools of its own), and merging
+ * those into one bag hides which maps a given round can actually play.
  */
 export function useTournamentMapPool(tournamentId: number): TournamentMapPool {
+  const roundLabel = useBracketRoundLabel();
   // No `.catch(() => ({ configs: [] }))` here: a failed read must stay
   // distinguishable from "the organizer configured nothing".
   const configsQuery = useQuery({
@@ -106,32 +141,49 @@ export function useTournamentMapPool(tournamentId: number): TournamentMapPool {
   });
 
   const derived = useMemo(() => {
-    const configs = configsQuery.data?.configs ?? [];
+    const configs = (configsQuery.data?.configs ?? []).filter((config) => config.kind === "map");
     const maps = (mapsQuery.data?.results ?? []).filter((map) => map.in_competitive !== false);
     const mapsById = new Map(maps.map((map) => [map.id, map]));
-    const resolve = (ids: Set<number>) =>
+    const resolve = (ids: Iterable<number>) =>
       [...ids].map((id) => mapsById.get(id)).filter((map): map is MapRead => map !== undefined);
 
     const pool = groupByGamemode(resolve(collectPoolIds(configs)));
 
-    const tournamentWide = configs.filter((config) => config.stage_id == null);
-    const stages = [...(stagesQuery.data ?? [])].sort((a, b) => a.order - b.order);
-    const perStage: MapPoolStageView[] = stages.map((stage) => {
-      const own = configs.filter((config) => config.stage_id === stage.id);
-      const effective = own.length > 0 ? own : tournamentWide;
-      return {
-        stageId: stage.id,
-        title: stage.name,
-        pool: groupByGamemode(resolve(collectPoolIds(effective)))
-      };
-    });
-    const signature = (view: MapPoolView) =>
-      view.byGamemode.map((g) => g.maps.map((m) => m.id).join(",")).join("|");
-    const differ =
-      perStage.length > 1 && new Set(perStage.map((s) => signature(s.pool))).size > 1;
+    const stagesById = new Map((stagesQuery.data ?? []).map((stage) => [stage.id, stage] as const));
+    const scopes: MapPoolScopeView[] = configs
+      .filter((config) => config.stage_id != null)
+      .map((config) => {
+        const stageId = config.stage_id as number;
+        const stage = stagesById.get(stageId);
+        const stageName = stage?.name ?? `#${stageId}`;
+        const slots = [...config.slots]
+          .sort((left, right) => left.position - right.position)
+          .map((slot) => ({
+            position: slot.position,
+            maps: resolve(
+              new Set(
+                slot.reserve_item_id == null
+                  ? slot.candidates
+                  : [...slot.candidates, slot.reserve_item_id]
+              )
+            )
+          }));
+        const round = config.round == null ? null : roundLabel(config.round, []);
+        return {
+          key: config.round == null ? `stage:${stageId}` : `round:${stageId}:${config.round}`,
+          stageId,
+          stageName,
+          round,
+          title: round == null ? stageName : `${stageName} · ${round}`,
+          pool: groupByGamemode(resolve(collectPoolIds([config]))),
+          slots: slots.length > 0 ? slots : null,
+          order: (stage?.order ?? stageId) * 1000 + roundOrder(config.round)
+        };
+      })
+      .sort((left, right) => left.order - right.order);
 
-    return { pool, stages: differ ? perStage : null };
-  }, [configsQuery.data, mapsQuery.data, stagesQuery.data]);
+    return { pool, scopes: scopes.length > 1 ? scopes : null };
+  }, [configsQuery.data, mapsQuery.data, stagesQuery.data, roundLabel]);
 
   return {
     ...derived,

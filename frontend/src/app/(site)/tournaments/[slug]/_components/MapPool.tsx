@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { cn } from "@/lib/utils";
 
-import type { MapPoolStageView, MapPoolView } from "../_hooks/useTournamentMapPool";
+import type { MapPoolScopeView, MapPoolSlotView, MapPoolView } from "../_hooks/useTournamentMapPool";
 
 export type MapPlayedCount = {
   played: number;
@@ -18,11 +18,11 @@ export type MapPlayedCount = {
 export type MapPoolProps = {
   pool: MapPoolView;
   /**
-   * When stages play different pools, the caller passes them and the component
-   * shows a stage switcher inside the card. `null` = one pool for the whole
-   * tournament (the common case).
+   * The pools the organizer authored per stage and per round. The card then
+   * shows a scope switcher, because a round's pool is the one a reader of a
+   * given match actually plays on. `null` = one pool decides everything.
    */
-  stages?: MapPoolStageView[] | null;
+  scopes?: MapPoolScopeView[] | null;
   /**
    * `tiles` — grid of mode columns with map names (overview, registration).
    * `summary` — one line of per-mode counts with a disclosure (overview, live).
@@ -51,7 +51,7 @@ const EYEBROW =
  */
 export function MapPool({
   pool,
-  stages = null,
+  scopes = null,
   variant,
   playedCounts,
   matchesHref,
@@ -59,30 +59,50 @@ export function MapPool({
   className
 }: Readonly<MapPoolProps>) {
   const t = useTranslations();
-  const [stageId, setStageId] = useState<number | null>(null);
+  const [scopeKey, setScopeKey] = useState<string | null>(null);
 
-  const shown =
-    stages && stageId !== null ? (stages.find((s) => s.stageId === stageId)?.pool ?? pool) : pool;
+  const scope = scopeKey === null ? null : (scopes?.find((item) => item.key === scopeKey) ?? null);
+  const shown = scope?.pool ?? pool;
 
   if (pool.total === 0) return null;
 
-  const stageSwitcher =
-    stages && stages.length > 1 ? (
-      <FilterChipGroup label={t("tournamentDetail.mapPool.stageLabel")} className="mb-3">
-        <FilterChip active={stageId === null} onClick={() => setStageId(null)}>
-          {t("common.all")}
-        </FilterChip>
-        {stages.map((stage) => (
-          <FilterChip
-            key={stage.stageId}
-            active={stageId === stage.stageId}
-            count={stage.pool.total}
-            onClick={() => setStageId(stage.stageId)}
-          >
-            {stage.title}
+  // One chip row per stage, so a tournament that configures every round of two
+  // stages (thirteen scopes is a real count) reads as two short rows of round
+  // chips instead of a wall of "Playoff · Lower R3".
+  const stageRows: { stageId: number; stageName: string; items: MapPoolScopeView[] }[] = [];
+  for (const item of scopes ?? []) {
+    const row = stageRows.at(-1);
+    if (row?.stageId === item.stageId) row.items.push(item);
+    else stageRows.push({ stageId: item.stageId, stageName: item.stageName, items: [item] });
+  }
+
+  const scopeSwitcher =
+    scopes && scopes.length > 1 ? (
+      <div className="mb-3 grid gap-1.5">
+        <FilterChipGroup label={t("tournamentDetail.mapPool.scopeLabel")}>
+          <FilterChip active={scopeKey === null} onClick={() => setScopeKey(null)}>
+            {t("tournamentDetail.mapPool.wholeTournament")}
           </FilterChip>
+        </FilterChipGroup>
+        {stageRows.map((row) => (
+          <div key={row.stageId} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            <span className={cn(EYEBROW, "shrink-0")}>{row.stageName}</span>
+            <FilterChipGroup label={row.stageName}>
+              {row.items.map((item) => (
+                <FilterChip
+                  key={item.key}
+                  active={scopeKey === item.key}
+                  count={item.pool.total}
+                  title={item.title}
+                  onClick={() => setScopeKey(item.key)}
+                >
+                  {item.round ?? t("tournamentDetail.mapPool.wholeStage")}
+                </FilterChip>
+              ))}
+            </FilterChipGroup>
+          </div>
         ))}
-      </FilterChipGroup>
+      </div>
     ) : null;
 
   const title = t("tournamentDetail.mapPool.title", { count: shown.total });
@@ -97,8 +117,8 @@ export function MapPool({
           </span>
         </summary>
         <div className="mt-3">
-          {stageSwitcher}
-          <Tiles pool={shown} />
+          {scopeSwitcher}
+          <Tiles pool={shown} slots={scope?.slots ?? null} />
         </div>
       </details>
     );
@@ -107,7 +127,7 @@ export function MapPool({
   if (variant === "table") {
     return (
       <div id={id} className={cn("scroll-mt-28", className)}>
-        {stageSwitcher}
+        {scopeSwitcher}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -181,22 +201,47 @@ export function MapPool({
   return (
     <div id={id} className={cn("scroll-mt-28", className)}>
       <h2 className={cn(EYEBROW, "mb-3")}>{title}</h2>
-      {stageSwitcher}
-      <Tiles pool={shown} />
+      {scopeSwitcher}
+      <Tiles pool={shown} slots={scope?.slots ?? null} />
     </div>
   );
 }
 
-function Tiles({ pool }: Readonly<{ pool: MapPoolView }>) {
+/**
+ * Columns of map names. Grouped by game mode for a whole pool; by SERIES SLOT
+ * when the scope is slot-mode, because there each list is the pool for exactly
+ * one map of the series — merging them would claim maps can be played where
+ * they cannot.
+ */
+function Tiles({
+  pool,
+  slots
+}: Readonly<{ pool: MapPoolView; slots: MapPoolSlotView[] | null }>) {
+  const t = useTranslations();
+  const columns = slots
+    ? slots.map((slot) => ({
+        key: `slot-${slot.position}`,
+        label: t("tournamentDetail.mapPool.slot", { n: slot.position }),
+        maps: slot.maps
+      }))
+    : pool.byGamemode.map((group) => ({
+        key: group.gamemode,
+        label: group.gamemode,
+        maps: group.maps
+      }));
+
   return (
-    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-      {pool.byGamemode.map((group) => (
-        <div key={group.gamemode} className="border-t border-[color:var(--aqt-border)] pt-1.5">
+    <div
+      className="grid gap-1.5"
+      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(8.5rem, 1fr))" }}
+    >
+      {columns.map((column) => (
+        <div key={column.key} className="border-t border-[color:var(--aqt-border)] pt-1.5">
           <div className="mb-1 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
-            {group.gamemode}
+            {column.label}
           </div>
           <ul className="space-y-0.5 text-[13px]">
-            {group.maps.map((map) => (
+            {column.maps.map((map) => (
               <li key={map.id} className="truncate" title={map.name}>
                 {map.name}
               </li>

@@ -1987,7 +1987,10 @@
     },
     "mapPool": {
       "title": "Мап-пул · {count}",
-      "stageLabel": "Мап-пул по стадиям",
+      "scopeLabel": "Мап-пул по стадиям и раундам",
+      "wholeTournament": "Весь турнир",
+      "wholeStage": "Весь этап",
+      "slot": "Карта {n}",
       "col": {
         "map": "Карта",
         "mode": "Режим",

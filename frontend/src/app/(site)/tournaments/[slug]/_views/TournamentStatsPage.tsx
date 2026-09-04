@@ -300,7 +300,7 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
           <MapPool
             id="map-pool"
             pool={mapPool.pool}
-            stages={mapPool.stages}
+            scopes={mapPool.scopes}
             variant="table"
             playedCounts={playedCounts}
             matchesHref={(mapId) => tournamentHref({ slug }, `/matches?map=${mapId}`)}

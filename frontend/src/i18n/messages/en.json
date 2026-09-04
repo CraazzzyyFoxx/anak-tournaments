@@ -1987,7 +1987,10 @@
     },
     "mapPool": {
       "title": "Map pool · {count}",
-      "stageLabel": "Map pool by stage",
+      "scopeLabel": "Map pool by stage and round",
+      "wholeTournament": "Whole tournament",
+      "wholeStage": "Whole stage",
+      "slot": "Map {n}",
       "col": {
         "map": "Map",
         "mode": "Mode",

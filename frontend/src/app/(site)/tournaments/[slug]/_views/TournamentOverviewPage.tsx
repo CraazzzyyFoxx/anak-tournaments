@@ -506,14 +506,14 @@ export default function TournamentOverviewPage({
   const mapPoolTiles =
     mapPool.pool.total > 0 ? (
       <OverviewCard>
-        <MapPool id="map-pool" pool={mapPool.pool} stages={mapPool.stages} variant="tiles" />
+        <MapPool id="map-pool" pool={mapPool.pool} scopes={mapPool.scopes} variant="tiles" />
       </OverviewCard>
     ) : null;
 
   const mapPoolSummary =
     mapPool.pool.total > 0 ? (
       <OverviewCard id="map-pool">
-        <MapPool pool={mapPool.pool} stages={mapPool.stages} variant="summary" />
+        <MapPool pool={mapPool.pool} scopes={mapPool.scopes} variant="summary" />
         <div className="mt-3">
           <CardLink href={`${overviewHref}/stats?tab=maps`}>
             {t("tournamentDetail.overview.mapPoolStats")}
