@@ -291,14 +291,14 @@ table.t td.num{text-align:right;font-variant-numeric:tabular-nums}
 <div class="frame">
 <div class="bar"><i></i><i></i><i></i> состояние A: вверху страницы, турнир в фазе регистрации</div>
 <div class="main">
-<div class="thead big">
+<div style="height:56px;margin:-14px -16px 0;background:linear-gradient(90deg,#ffe9b0,#ff9d4d);display:flex;align-items:center;justify-content:center;font-size:11px;color:#5a3a00;border-bottom:1px solid var(--soft)">обложка турнира · <code>cover_image_url</code> · полоса 80px, ниже — обычный фон рамки <span class="n">7</span></div>
+<div class="thead big" style="margin-top:12px">
   <div style="min-width:0">
     <div class="mt" style="margin-bottom:6px"><span>Турниры</span> / <span>15–16 авг 2026</span> <span class="n">1</span></div>
-    <h1>Турнир Тхао #4. Флекс турнир</h1>
-    <div class="mt" style="margin-top:8px"><span class="pill dark">Регистрация</span> <span class="pill">→ чек-ин · сб 14:00 · через 1 д 6 ч</span> <span class="n">2</span> <span class="pill">Группы → Плей-офф</span> <span class="pill">Драфт</span> <span class="pill">72 / 120 игроков</span></div>
-    <p class="lede">Специфика турнира в том, что игроки могут менять роли между матчами и между картами. <span class="n">3</span></p>
+    <h1><b style="display:inline-block;width:26px;height:26px;background:#0b3;border-radius:6px;vertical-align:-4px;margin-right:8px"></b>Турнир Тхао #4. Флекс турнир <span class="n">3</span></h1>
+    <div class="mt" style="margin-top:8px"><span class="pill dark">Регистрация</span> <span class="pill">→ чек-ин · сб 14:00 · через 1 д 6 ч</span> <span class="n">2</span> <span class="pill">Лига</span> <span class="pill">72 / 120 игроков</span></div>
   </div>
-  <div class="acts"><span class="btn pri">Регистрация</span> <span class="btn">Discord</span> <span class="btn">Правила</span> <span class="n">4</span></div>
+  <div class="acts"><span class="btn pri">Регистрация</span> <span class="btn">Драфт →</span> <span class="n">4</span></div>
 </div>
 <div class="rail" style="margin-top:8px">
   <span class="on">Обзор</span><span>Участники</span><span class="dim">Команды</span><span class="dim">Сетка</span><span class="dim">Матчи</span><span class="dim">Статистика</span>
@@ -325,10 +325,11 @@ table.t td.num{text-align:right;font-variant-numeric:tabular-nums}
 <ol class="notes">
 <li><b class="n">1</b> Крошка и даты — одна строка. «Лига» — чип в строке 2.</li>
 <li><b class="n">2</b> <b>Чип следующей фазы</b> — то, ради чего сейчас заходят в Schedule. Первая фаза из <code>phase_schedule</code> с <code>starts_at &gt; now</code>. Клик → Обзор, #phases. В live: «→ плей-офф · вс 12:00»; в completed чипа нет. HeroStat-блок (Teams / Participants / Rostered / Stages) удаляется — счётчик один, в чипах.</li>
-<li><b class="n">3</b> Описание — одна строка с обрезкой, «ещё» разворачивает.</li>
-<li><b class="n">4</b> Регистрация (только не-ended), ссылки организатора, «Драфт →» после запуска драфта — внешний переход, поэтому кнопка, а не вкладка.</li>
+<li><b class="n">3</b> <b>Логотип</b> (<code>logo_url</code>, 44px) слева от h1. Заголовок несёт только <b>состояние</b> турнира: статус, следующая фаза, лига, счётчик. Формат, формирование команд и описание — карточка «Формат» в Обзоре (§3 ③): в шапке они были дублем той же карточки, а описание в одну строку с обрезкой всё равно не читалось.</li>
+<li><b class="n">4</b> Только <b>действия</b>: Регистрация (не-ended) и «Драфт →» после запуска драфта (внешний переход, поэтому кнопка, а не вкладка). Ссылок организатора здесь нет — они справочные и переехали в карточку «Ссылки» (§3), где полупрозрачный чип не лежит на картинке.</li>
 <li><b class="n">5</b> Порядок рейла зависит от фазы: до старта «Обзор · Участники · (Команды)», остальное с замком и причиной (<code>resolveNavLockReason</code>). После старта — «Обзор · Сетка · Команды · Матчи · Статистика · (Стрим) · Участники».</li>
 <li><b class="n">6</b> <b>Никакого второго хедера.</b> Хедер сайта уже sticky (<code>Header.tsx</code>, h-14). Большой заголовок турнира — обычный блок, уезжает со скроллом. Липнет только рейл (<code>top: 3.5rem</code>); когда h1 вышел из viewport (IntersectionObserver, один boolean), в левый слот рейла подставляется короткое имя, в правый — чип фазы и CTA. Итого две полосы: сайт + вкладки. Если и это много — рейл можно не липить; цена — на длинной сетке вкладки теряются.</li>
+<li><b class="n">7</b> <b>Обложка</b> — <code>cover_image_url</code>, уже загружается в админке («Branding», обещает «Shown on the public tournament page») и уже видна в карточке списка; шапка её игнорировала. Полоса <code>COVER_BAND_PX = 80</code>: картинка ровно этой высоты, снизу растворяется в <code>--aqt-bg</code>, текст лежит на обычном фоне рамки — контраст не зависит от загруженного файла. Скрим НЕ горизонтальный: в компактной шапке текст идёт на всю ширину, и левовзвешенный градиент оставлял картинку видимой только в углу с кнопками. Полоса рисуется НАД сеткой и свечением — под ними арт получал тиловый оттенок и решётку 48px. Нет обложки → рамка ровно как раньше, ничего не резервируется. <code>object-cover</code> внутри полосы показывает вертикальный центр исходника (у 3:1 верх и низ обрезаются).</li>
 </ol>
 </section>
 
@@ -446,6 +447,15 @@ table.t td.num{text-align:right;font-variant-numeric:tabular-nums}
         <div class="stat"><small>Сыграно</small><b>84/90</b></div>
       </div>
     </div>
+    <div class="box" style="margin-top:10px"><h4>Формат <span class="n">9</span></h4>
+      <div class="kv">
+        <dt>Стадии</dt><dd>Группы → Плей-офф</dd>
+        <dt>Команды</dt><dd>Драфт · T · D · D · S · S</dd>
+      </div>
+    </div>
+    <div class="box" style="margin-top:10px"><h4>Ссылки <span class="n">10</span></h4>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="btn sm">Discord</span><span class="btn sm">Правила</span><span class="btn sm">Challonge</span></div>
+    </div>
   </div>
 </div>
 </div>
@@ -496,6 +506,16 @@ table.t td.num{text-align:right;font-variant-numeric:tabular-nums}
         <div class="stat"><small>Дней</small><b>2</b></div>
       </div>
     </div>
+    <div class="box" style="margin-top:10px"><h4>Формат <span class="n">9</span></h4>
+      <div class="kv">
+        <dt>Стадии</dt><dd>Группы → Плей-офф</dd>
+        <dt>Команды</dt><dd>Драфт · T · D · D · S · S</dd>
+        <dt>Описание</dt><dd>Игроки могут менять роли между матчами.</dd>
+      </div>
+    </div>
+    <div class="box" style="margin-top:10px"><h4>Ссылки <span class="n">10</span></h4>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="btn sm">Discord</span><span class="btn sm">Правила</span><span class="btn sm">VOD</span></div>
+    </div>
   </div>
 </div>
 </div>
@@ -504,12 +524,14 @@ table.t td.num{text-align:right;font-variant-numeric:tabular-nums}
 <ol class="notes">
 <li><b class="n">1</b> <b>Таймлайн фаз</b> — бывший Schedule как один горизонтальный степпер с маркером «сейчас». Первый блок страницы в регистрации. Данные — <code>phase_schedule</code> как есть. Часовой пояс — Intl на клиенте.</li>
 <li><b class="n">2</b> Прогресс регистрации по ролям — для draft/balancer турниров это то, что смотрят («танков не хватает»). Для командной регистрации — «команд 14 / 16».</li>
-<li><b class="n">3</b> Формат и описание переезжают из hero сюда целиком.</li>
+<li><b class="n">3</b> Формат, формирование команд и описание переезжают из шапки сюда целиком — и остаются во <b>всех трёх</b> вариантах (⑨).</li>
 <li><b class="n">4</b> <b>Мап-пул</b> — бывшая вкладка Maps: плитки по режимам, 12–20 карт в одной карточке. Компонент <code>MapPool</code> один, здесь и в Статистике (§8).</li>
 <li><b class="n">5</b> Live-матчи — первые и в рамке. Карточка та же, что в Матчах. Нет live → «Ближайшие матчи» (если есть расписание, §7) или «Последние результаты».</li>
 <li><b class="n">6</b> Мини-сетка активной стадии, клик → Сетка с <code>?match=ID</code>. Для группового этапа — компактная таблица группы.</li>
 <li><b class="n">7</b> Фазы после старта — вертикально, в правой колонке. Тот же <code>PhaseTimeline</code>, вторая ориентация.</li>
 <li><b class="n">8</b> Completed открывается с итога, а не с сетки, где финал в правом углу.</li>
+<li><b class="n">9</b> <b>Формат</b> — один блок на все три варианта, а не только до старта: шапка теперь несёт состояние турнира, и это единственное место, где читается описание. «Что это за турнир» не перестаёт быть вопросом после первого матча.</li>
+<li><b class="n">10</b> <b>Ссылки</b> — Discord, правила, внешняя сетка, VOD. Всегда <b>последняя</b> карточка правой колонки во всех трёх вариантах: один предсказуемый адрес лучше блока, который кочует по фазам. Официальная трансляция сюда не попадает — она у <code>TournamentBroadcastDock</code> со статусом и плеером; турнир, у которого есть только стрим-ссылка, карточку не получает вовсе.</li>
 </ol>
 </section>
 
@@ -879,6 +901,7 @@ table.t td.num{text-align:right;font-variant-numeric:tabular-nums}
 <li><b>Композиция:</b> одно нарушение сетки — таймлайн фаз / live-матчи на всю ширину над 7/3.</li>
 <li><b>Движение:</b> flip счёта в live-карточке и тик обратного отсчёта до фазы. Остальное статично.</li>
 <li><b>Якорь узнаваемости:</b> моно-подпись <code>ROUND 2 · BO5</code> / <code>ЧЕК-ИН · СБ 14:00</code> над каждым блоком.</li>
+<li><b>Поверхность блока:</b> карточка — <code>--aqt-card</code> (8% L над 5% страницы), волосяная рамка, радиус 12px; тот же язык, что <code>.aqt-card-surface</code> и карточки списка турниров. Раньше блок был только моно-подписью над верхней линейкой («третья рамка вокруг каждого списка» казалась дашбордом) — но при 3–6 блоках в колонке границу между ними приходилось угадывать по отбивке, а таймлайн, подиум и сетка цифр упираются в одни и те же края. Моно-подпись осталась, но внутри карточки.</li>
 </ul>
 </div>
 <div class="box fill">

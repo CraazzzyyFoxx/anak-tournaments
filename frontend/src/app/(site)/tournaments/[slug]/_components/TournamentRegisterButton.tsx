@@ -17,6 +17,7 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import registrationService from "@/services/registration.service";
 import { tournamentHref } from "@/lib/tournament-url";
+import { TOURNAMENT_ACTION_CLASS } from "./tournamentActionClass";
 import type { Tournament } from "@/types/tournament.types";
 
 import { useTranslations } from "next-intl";
@@ -122,7 +123,7 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
       <button
         type="button"
         onClick={handleAuthClick}
-        className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
+        className={TOURNAMENT_ACTION_CLASS}
       >
         <LogIn className="size-4" aria-hidden />
         {t("registration.button.loginToRegister")}

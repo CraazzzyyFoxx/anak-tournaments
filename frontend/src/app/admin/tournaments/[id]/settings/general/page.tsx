@@ -171,7 +171,11 @@ function BrandingCard({
               onError={(message) => notify.error(message)}
               disabled={disabled}
             />
-            <p className="text-xs text-muted-foreground">Wide image, roughly 3:1.</p>
+            <p className="text-xs text-muted-foreground">
+              Wide image, roughly 3:1. The public page shows it as an 80px band above the
+              tournament name, so keep the key art vertically centred — the top and bottom of the
+              image are cropped.
+            </p>
           </div>
 
           <div className="flex flex-col gap-2">

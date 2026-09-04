@@ -416,15 +416,28 @@
 }
 
 /* ── Section vocabulary (wireframes §11, "broadcast scoreboard") ──
-   A block is a mono eyebrow over a hairline, never a framed card: the page
-   already sits inside the hero's frame and the site's chrome, and a third
-   border around every list is what made the sections read as a dashboard.
-   The eyebrow (`ROUND 2 · BO5`, `MAP POOL · 12`) is the page's recognisable
-   anchor, so it is the same class wherever a block starts. */
+   A block is a CARD: the site's first-level surface (`--aqt-card` at 8% L over
+   the page's 5%), a hairline and a 12px radius — the same treatment as
+   `.aqt-card-surface` and the tournament list's cards, so the overview speaks
+   the site's existing vocabulary.
+
+   This replaced a bare mono eyebrow over a top hairline. The hairline version
+   was chosen to avoid "a third border around every list", but with three to six
+   blocks per column the reader had to infer where one ended and the next began
+   from spacing alone — and the phase timeline, the podium and the numbers grid
+   all bleed to the same edges, so there was no edge to read. Separation is what
+   the eye needs here; the eyebrow stays as the block's anchor (§11), now inside
+   the card instead of straddling a rule.
+
+   Deliberately no `overflow: hidden` (unlike `.aqt-card-surface`): the
+   mini-bracket scrolls horizontally inside its own block, and the anchors
+   (`#phases`, `#map-pool`) must stay scrollable-to. */
 .block {
   min-width: 0;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--aqt-border);
+  padding: 0.875rem 1rem 1rem;
+  border: 1px solid var(--aqt-border);
+  border-radius: 0.75rem;
+  background: var(--aqt-card);
 }
 
 .blockHead {

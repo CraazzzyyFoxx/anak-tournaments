@@ -125,11 +125,15 @@ type PodiumProps = { first: TeamRef & { roster: string[] }; second: TeamRef & { 
 
 ### P0 — Оболочка (§2). Оркестратор.
 
-**WU-0.1 Компактный заголовок.** `_components/TournamentClientLayout.tsx`.
-- Убрать `aside` с четырьмя `HeroStat`. Убрать `meta`-пилюли `FORMAT` / `TEAM FORMATION` как отдельные блоки — вместо них одна строка чипов: статус · `NextPhaseChip` · формат (`formatLabel`) · team formation · счётчик («72 / 120 игроков» в регистрации, «20 команд · 116 игроков» после). §2 ②.
-- `lede` — одна строка с `line-clamp-1` и кнопкой «ещё» (`<details>`). §2 ③.
-- `actions`: `TournamentRegisterButton` (не-ended), `TournamentLinkChips`, «Драфт →» (когда `team_formation === "draft"` и статус ≥ check_in) — переезжает из рейла сюда. §2 ④.
-- `PageHero` остаётся как контейнер; если его пропсы не дают убрать `aside`-колонку без пустого места — добавить в `components/site/PageHero.tsx` вариант `compact`, не форкать.
+**WU-0.1 Заголовок = обложка + состояние.** `_components/TournamentClientLayout.tsx`, `components/site/PageHero.tsx`. **Сделано.**
+- Обложка: `coverUrl={tournament.cover_image_url}` в `PageHero`. В `PageHero` — `COVER_BAND_PX = 80`: картинка ровно этой высоты сверху, растворяется в `--aqt-bg`, тот же `80px` идёт в `paddingTop` контента (одно число на оба, иначе заголовок садится на арт). Полоса рисуется НАД сеткой и свечением. Нет обложки → рамка как раньше, ничего не резервируется. §2 ⑦.
+- Логотип: `logo_url`, 44px, внутри `title` слева от имени (`title` уже `ReactNode`, новый проп не нужен). §2 ③.
+- Убрать `aside` с четырьмя `HeroStat`. `meta` — только состояние: статус · `NextPhaseChip` · лига · счётчик («72 / 120 игроков» в регистрации, «20 команд · 116 игроков» после). §2 ②.
+- Убрать из шапки `FORMAT`, team formation и `lede` — они дубль карточки «Формат», которая теперь есть во всех трёх вариантах Обзора (WU-2.x, §3 ⑨). Описание читается там целиком, а не одной обрезанной строкой.
+- `aside` — только действия: `TournamentRegisterButton` (не-ended) и «Драфт →» (`team_formation === "draft"` и статус ≠ registration). `TournamentLinkChips` из шапки убрать: чипы с `--aqt-overlay-2` лежали бы на картинке. §2 ④.
+- Геометрию секондари-кнопки вынести в `_components/tournamentActionClass.ts` (`TOURNAMENT_ACTION_CLASS`) — до этого одна и та же строка классов была скопирована в `TournamentLinkChips` и `TournamentRegisterButton`, «Драфт →» стал бы третьей копией.
+- Подсказку в админке (`admin/tournaments/[id]/settings/general`) поправить: полоса 80px, верх и низ 3:1-картинки обрезаются.
+- Замеры (Chrome headless, реальный рендер): 1280 → шапка 211px с обложкой / 147px без; 375 → 333px / 267px, `scrollWidth === clientWidth === 375`. Обложка стоит +66px первого экрана и только когда организатор её загрузил.
 
 **WU-0.2 Рейл.** `_components/TournamentSectionNav.tsx`, `_components/tournament-section-nav.ts` (+ `.test.ts`).
 - Секции: `overview | bracket | teams | matches | stats | stream | participants | draft`. `schedule`, `maps`, `heroes`, `standings` удалить из `TournamentSectionId` и из `tournamentSections`. `draft` из рейла убрать (он в шапке).
@@ -164,7 +168,8 @@ type PodiumProps = { first: TeamRef & { roster: string[] }; second: TeamRef & { 
 - §3B: live-encounters (по статусу/`started_at`) → `MatchCard` ×N; нет live → «Ближайшие» (если есть `scheduled_at` в будущем) → иначе «Последние результаты» ×4 `MatchRow`. Мини-сетка: **не** рендерить `BracketView`; показать 3–4 колонки текущего и соседних раундов активной стадии компактными `MatchCard`-мини (пропс `size="sm"` в MatchCard). Клик → `/bracket?stage=&match=`. Для round_robin/swiss активной стадии — компактная таблица группы из данных standings (запрос — тот, что у `TournamentStandingsPage`).
 - §3C: `Podium` (первый/второй — финал; третий — победитель lower-финала при double elim, иначе третий по standings); сетка последней стадии как в §3B; топ-5 героев — `heroService.getHeroPlaytime` с тем же query key, что в `TournamentHeroPlaytimePage`; «Мап-пул · N» summary; цифры.
 - Правая колонка в §3B/§3C: `PhaseTimeline vertical`, стрим-постер (только если `streams.official.length > 0`; без автоплея — Dock уже есть), `MapPool summary`, «Цифры».
-- Тест: три ветки по статусу, `#phases` присутствует в регистрации, при отсутствии live рендерится fallback.
+- **Справочный хвост — во всех трёх ветках** (§3 ⑨⑩), потому что шапка его больше не несёт: карточка «Формат» (`formatLabel` + стадии + team formation с глифами `roster_shape` + полное `description`) и последней — «Ссылки» (`TournamentLinkChips`). В §3A «Формат» остаётся в левой колонке под прогрессом регистрации (иначе левая колонка — одна карточка), в §3B/§3C — в правой перед «Ссылками». Признак «рисовать ли заголовок карточки ссылок» — `visibleTournamentLinks(links).length > 0`, экспортируемый из `TournamentLinkChips`: реестр чипов один, и турнир с одной только стрим-ссылкой карточку не получает. В §3A правая колонка теперь появляется и ради одних ссылок (`hasAside`), не только ради мап-пула.
+- Тест: три ветки по статусу, `#phases` присутствует в регистрации, при отсутствии live рендерится fallback; «Формат» и «Ссылки» присутствуют во всех трёх статусах; ссылки без мап-пула дают правую колонку; стрим-ссылка карточку не создаёт.
 
 ### P3 — Матчи (§7). Сабагент B.
 

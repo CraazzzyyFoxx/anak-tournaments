@@ -24,6 +24,7 @@ import type { Encounter } from "@/types/encounter.types";
 import type { MapRead } from "@/types/map.types";
 import type { Registration } from "@/types/registration.types";
 import type { Team } from "@/types/team.types";
+import type { TournamentLink } from "@/types/stream.types";
 import type { PickBanConfig, Stage, StageSummary, Tournament, TournamentStatus } from "@/types/tournament.types";
 
 import TournamentOverviewPage from "./TournamentOverviewPage";
@@ -739,5 +740,70 @@ describe("once it is over (§3C)", () => {
     const podium = container.querySelector(`[aria-label="${en.tournamentDetail.podium.label}"]`);
     expect(podium?.textContent).toContain("Gamma");
     expect(podium?.textContent).toContain(en.tournamentDetail.podium.place3);
+  });
+});
+
+/**
+ * The header carries the tournament's STATE and its actions; what the
+ * tournament IS, and where the organizer's channels are, live here — in every
+ * branch, because the header no longer holds either. Before this the format
+ * card existed only before the start, and the links only in the header's action
+ * row, which put translucent chips on top of the cover banner.
+ */
+describe("the reference tail", () => {
+  const DISCORD: TournamentLink = {
+    id: 1,
+    tournament_id: TOURNAMENT_ID,
+    kind: "discord",
+    label: null,
+    url: "https://discord.gg/anak",
+    sort_order: 0,
+    is_active: true
+  };
+
+  for (const status of ["check_in", "live", "completed"] as const) {
+    it(`states the format, the full description and the links in the ${status} branch`, async () => {
+      tournament = makeTournament(status, { links: [DISCORD] });
+      getAllEncounters.mockResolvedValue({
+        results: playedBracket(),
+        total: 4,
+        page: 1,
+        per_page: -1
+      });
+      await mount();
+
+      const titles = headings();
+      expect(titles).toContain(COPY.format.title);
+      expect(titles).toContain(en.tournamentDetail.links.heading);
+      // The whole description, not the header's one clamped line.
+      expect(container.textContent).toContain("Players may swap roles between matches.");
+      expect(
+        Array.from(container.querySelectorAll("a")).some(
+          (node) => node.getAttribute("href") === DISCORD.url
+        )
+      ).toBe(true);
+    });
+  }
+
+  it("gives the links their own aside before the start, with no map pool to share it", async () => {
+    // The registration branch's aside is optional — it used to appear only for
+    // a map pool, so links alone would have had nowhere to render.
+    tournament = makeTournament("check_in", { links: [DISCORD] });
+    listPublicConfigs.mockResolvedValue({ configs: [] });
+    await mount();
+
+    expect(headings()).toContain(en.tournamentDetail.links.heading);
+    expect(container.querySelector("#map-pool")).toBeNull();
+  });
+
+  it("draws no links heading when the only link is the official broadcast", async () => {
+    // `TournamentLinkChips` renders nothing for a stream — the dock owns it —
+    // so a card around it would be a heading over an empty row.
+    tournament = makeTournament("live", {
+      links: [{ ...DISCORD, kind: "stream", url: "https://twitch.tv/cast" }]
+    });
+    await mount();
+
+    expect(headings()).not.toContain(en.tournamentDetail.links.heading);
   });
 });

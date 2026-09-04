@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import type { ComponentType } from "react";
 
 import type { TournamentLink, TournamentLinkKind } from "@/types/stream.types";
+import { TOURNAMENT_ACTION_CLASS } from "./tournamentActionClass";
 
 type TournamentLinkChipsProps = {
   /** `tournament.links` — absent whenever the read did not ask for the entity. */
@@ -47,25 +48,43 @@ const CHIP_META: Record<TournamentLinkKind, ChipMeta | null> = {
 };
 
 /**
- * Everything around the event that is not the broadcast: the Discord invite, the
- * rules doc, an external bracket, VOD playlists.
+ * The links that actually render as chips: active, and with a chip in the
+ * registry (`stream` has none — official broadcasts belong to the dock).
  *
  * Ordered by `(sort_order, id)` — the same order the backend returns and the
  * organizer sets in the admin Links tab, mirrored here so a client-side sort can
  * never disagree with the table they were just looking at.
+ *
+ * Exported because the caller has to decide whether to draw a heading around
+ * them: the component renders nothing for an empty set, but a card's title and
+ * hairline would still be on screen above it.
  */
-export function TournamentLinkChips({ links, className }: Readonly<TournamentLinkChipsProps>) {
-  const t = useTranslations();
-
+export function visibleTournamentLinks(links: TournamentLink[] | undefined) {
   // `flatMap` rather than filter-then-index: it resolves the registry entry once
   // and carries it forward, so the render needs neither a second lookup nor a
   // cast to convince the compiler the entry is there.
-  const chips = (links ?? [])
+  return (links ?? [])
     .flatMap((link) => {
       const meta = link.is_active ? CHIP_META[link.kind] : null;
       return meta ? [{ link, meta }] : [];
     })
     .sort((a, b) => a.link.sort_order - b.link.sort_order || a.link.id - b.link.id);
+}
+
+/**
+ * Everything around the event that is not the broadcast: the Discord invite, the
+ * rules doc, an external bracket, VOD playlists.
+ *
+ * Rendered in the overview's Links card, not in the page header. They are
+ * reference material a reader consults once, and the header's job is the state
+ * of the tournament plus what a reader can act on — a header that also carried
+ * five translucent chips put them on top of the cover banner, where a
+ * `--aqt-overlay-2` box has no surface to sit on.
+ */
+export function TournamentLinkChips({ links, className }: Readonly<TournamentLinkChipsProps>) {
+  const t = useTranslations();
+
+  const chips = visibleTournamentLinks(links);
 
   // Nothing at all rather than an empty heading: this is a public page, and "the
   // organizer has not added links" is not news a spectator came for. The admin
@@ -85,13 +104,7 @@ export function TournamentLinkChips({ links, className }: Readonly<TournamentLin
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                // Byte-for-byte the secondary action already standing in this
-                // row: `TournamentRegisterButton` renders exactly this box for a
-                // logged-out viewer. Same 36px height, radius and type size as
-                // the teal Register button beside it — `.meta-pill` geometry
-                // (11.5px, 24px tall) made these read as metadata that had
-                // wandered into the action row.
-                className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3.5 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] no-underline outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
+                className={TOURNAMENT_ACTION_CLASS}
               >
                 <Icon className="size-4 opacity-80" aria-hidden />
                 {/* `label` is NULL-able with exactly this meaning (see the column

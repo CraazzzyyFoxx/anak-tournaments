@@ -36,6 +36,10 @@ import { MatchRow } from "../_components/MatchRow";
 import { PhaseTimeline } from "../_components/PhaseTimeline";
 import { Podium, type PodiumTeam } from "../_components/Podium";
 import { formatLabel, tournamentPlayersCount } from "../_components/TournamentClientLayout";
+import {
+  TournamentLinkChips,
+  visibleTournamentLinks
+} from "../_components/TournamentLinkChips";
 import { TournamentPageState } from "../_components/TournamentPageState";
 import { TournamentOverviewSkeleton } from "../_components/TournamentSkeletons";
 import { UpdatingBadge } from "../_components/UpdatingBadge";
@@ -223,8 +227,9 @@ function rosterBattletags(team: Team | null | undefined): string {
 // ---------------------------------------------------------------------------
 
 /**
- * One block of the overview: a mono eyebrow over a hairline (wireframes §11),
- * not a framed card — see `.block` in the module CSS for why.
+ * One block of the overview: a card on the site's first-level surface with a
+ * mono eyebrow (wireframes §11) — see `.block` in the module CSS for the
+ * treatment and why it is framed.
  */
 function OverviewCard({
   title,
@@ -521,6 +526,84 @@ export default function TournamentOverviewPage({
     </OverviewCard>
   );
 
+  // Slots as role glyphs, not "2 × Урон": the icon is the site's role
+  // vocabulary everywhere else, and `RosterSlotGlyph` still announces the slot
+  // name for screen readers.
+  const rosterShape = tournament.roster_shape;
+  const rosterSlots = rosterShape
+    ? ROSTER_SLOT_CODES.filter((code) => (rosterShape.slots[code] ?? 0) > 0).map((code) => ({
+        code,
+        count: rosterShape.slots[code] as number
+      }))
+    : [];
+
+  /**
+   * ③ Format, team formation and the full description — what the header used to
+   * carry as two pills and one clamped line.
+   *
+   * Present in EVERY branch, not only before the start: the header is now the
+   * tournament's state and its actions, so this is the only place the
+   * description is readable, and "what is this tournament" does not stop being
+   * a question once the first match is played.
+   */
+  const formatCard = (
+    <OverviewCard title={t("tournamentDetail.overview.format.title")}>
+      <dl className="grid gap-2.5">
+        {tournament.stages.length > 0 ? (
+          <KeyValue term={t("common.format")}>
+            {formatLabel(tournament.stages, t)}
+            <span className="text-[color:var(--aqt-fg-faint)]">
+              {" — "}
+              {[...tournament.stages]
+                .sort((left, right) => left.order - right.order)
+                .map((item) => item.name)
+                .join(" → ")}
+            </span>
+          </KeyValue>
+        ) : null}
+        <KeyValue term={t("common.teamFormation")}>
+          {t(
+            `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`
+          )}
+          {rosterSlots.length > 0 ? (
+            <span className="ml-2 inline-flex items-center gap-2 align-middle">
+              {rosterSlots.map(({ code, count }) => (
+                <span key={code} className="inline-flex items-center gap-1">
+                  <RosterSlotGlyph code={code} size={14} />
+                  <span className="aqt-tnum text-[color:var(--aqt-fg-faint)]">×{count}</span>
+                </span>
+              ))}
+            </span>
+          ) : null}
+        </KeyValue>
+        {tournament.description ? (
+          <KeyValue term={t("tournamentDetail.overview.format.description")}>
+            <span className="block whitespace-pre-line leading-relaxed">
+              {tournament.description}
+            </span>
+          </KeyValue>
+        ) : null}
+      </dl>
+    </OverviewCard>
+  );
+
+  /**
+   * The organizer's Discord, rules and external bracket — moved out of the
+   * header (see `TournamentLinkChips` for why) and always the LAST card of the
+   * right column in all three branches. One predictable address beats a block
+   * that migrates by phase.
+   *
+   * `null` when nothing renders: `visibleTournamentLinks` owns that judgement,
+   * so a tournament whose only link is the official stream does not get a
+   * heading over an empty row.
+   */
+  const linksCard =
+    visibleTournamentLinks(tournament.links).length > 0 ? (
+      <OverviewCard title={t("tournamentDetail.links.heading")}>
+        <TournamentLinkChips links={tournament.links} />
+      </OverviewCard>
+    ) : null;
+
   // ---- the mini bracket / group table (§3 ⑥) -------------------------------
 
   const miniBracket =
@@ -629,16 +712,9 @@ export default function TournamentOverviewPage({
         ? format.relativeTime(new Date(latestAt), clockNow)
         : null;
     const isTeamRegistration = tournament.team_formation === "registration";
-    const rosterShape = tournament.roster_shape;
-    // Slots as role glyphs, not "2 × Урон": the icon is the site's role
-    // vocabulary everywhere else, and `RosterSlotGlyph` still announces the
-    // slot name for screen readers.
-    const rosterSlots = rosterShape
-      ? ROSTER_SLOT_CODES.filter((code) => (rosterShape.slots[code] ?? 0) > 0).map((code) => ({
-          code,
-          count: rosterShape.slots[code] as number
-        }))
-      : [];
+    // Both aside cards are optional, and an aside column holding nothing reads
+    // as a broken layout rather than as restraint.
+    const hasAside = mapPoolCard !== null || linksCard !== null;
     // The share of each role in the field — what a draft/balancer organizer
     // reads ("tanks are short"). Role tints, the same dots on the figures above.
     const roleShares = ROSTER_SLOT_CODES.filter((code) => roleCounts[code] > 0);
@@ -653,11 +729,8 @@ export default function TournamentOverviewPage({
           <PhaseTimeline tournament={tournament} orientation="horizontal" />
         </OverviewCard>
 
-        {/* One column when there is no map pool yet: an aside holding nothing
-            reads as a broken layout, not as restraint. The organizer links live
-            in the hero's action row already, so they are not repeated here. */}
-        <div className={cn("grid gap-4", mapPoolCard && "lg:grid-cols-[6fr_4fr]")}>
-          <div className={cn("grid content-start gap-4", !mapPoolCard && "lg:grid-cols-2")}>
+        <div className={cn("grid gap-4", hasAside && "lg:grid-cols-[6fr_4fr]")}>
+          <div className={cn("grid content-start gap-4", !hasAside && "lg:grid-cols-2")}>
             {/* ② "Tanks are short" is what a draft/balancer tournament is read
                 for; a team-registration one counts teams instead. */}
             <OverviewCard
@@ -718,53 +791,17 @@ export default function TournamentOverviewPage({
               )}
             </OverviewCard>
 
-            {/* ③ Format and the full description move out of the hero — the whole
-                text, since the hero shows one clamped line. Team formation is
-                repeated from the header chip so the block always has a body. */}
-            <OverviewCard title={t("tournamentDetail.overview.format.title")}>
-              <dl className="grid gap-2.5">
-                {tournament.stages.length > 0 ? (
-                  <KeyValue term={t("common.format")}>
-                    {formatLabel(tournament.stages, t)}
-                    <span className="text-[color:var(--aqt-fg-faint)]">
-                      {" — "}
-                      {[...tournament.stages]
-                        .sort((left, right) => left.order - right.order)
-                        .map((item) => item.name)
-                        .join(" → ")}
-                    </span>
-                  </KeyValue>
-                ) : null}
-                <KeyValue term={t("common.teamFormation")}>
-                  {t(
-                    `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`
-                  )}
-                  {rosterSlots.length > 0 ? (
-                    <span className="ml-2 inline-flex items-center gap-2 align-middle">
-                      {rosterSlots.map(({ code, count }) => (
-                        <span key={code} className="inline-flex items-center gap-1">
-                          <RosterSlotGlyph code={code} size={14} />
-                          <span className="aqt-tnum text-[color:var(--aqt-fg-faint)]">
-                            ×{count}
-                          </span>
-                        </span>
-                      ))}
-                    </span>
-                  ) : null}
-                </KeyValue>
-                {tournament.description ? (
-                  <KeyValue term={t("tournamentDetail.overview.format.description")}>
-                    <span className="block whitespace-pre-line leading-relaxed">
-                      {tournament.description}
-                    </span>
-                  </KeyValue>
-                ) : null}
-              </dl>
-            </OverviewCard>
+            {formatCard}
           </div>
 
-          {/* ④ The Maps section, as a strip of pictures that opens it. */}
-          {mapPoolCard ? <div className="grid content-start gap-4">{mapPoolCard}</div> : null}
+          {/* ④ The Maps section as a strip of pictures that opens it, then the
+              organizer's links — the same tail the other two branches end on. */}
+          {hasAside ? (
+            <div className="grid content-start gap-4">
+              {mapPoolCard}
+              {linksCard}
+            </div>
+          ) : null}
         </div>
       </section>
     );
@@ -950,6 +987,10 @@ export default function TournamentOverviewPage({
                 />
               </div>
             </OverviewCard>
+            {/* Reference tail, identical in the completed branch: what this
+                tournament is, then where the organizer's channels are. */}
+            {formatCard}
+            {linksCard}
           </div>
         </div>
       </section>
@@ -1151,6 +1192,8 @@ export default function TournamentOverviewPage({
               ) : null}
             </div>
           </OverviewCard>
+          {formatCard}
+          {linksCard}
         </div>
       </div>
     </section>

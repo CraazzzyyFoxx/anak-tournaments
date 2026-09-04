@@ -223,6 +223,28 @@ describe("tournament overview server contract", () => {
     expect(source).toContain("tournament.stages");
   });
 
+  it("makes the header the tournament's identity and state, not its reference sheet", () => {
+    const sourceFile = parsedSource("_components/TournamentClientLayout.tsx");
+    const source = sourceFor("_components/TournamentClientLayout.tsx");
+    const hero = jsxElements(sourceFile, "PageHero");
+
+    expect(hero).toHaveLength(1);
+    // The organizer's banner and mark, which until now only the list card
+    // rendered while the admin's Branding panel promised the public page.
+    expect(hasJsxAttribute(sourceFile, hero[0]!, "coverUrl", "tournament.cover_image_url")).toBe(
+      true
+    );
+    expect(source).toContain("tournament.logo_url");
+    // Reference material lives in the overview's cards. Chips and a clamped
+    // description over artwork is the regression this pins.
+    expect(jsxElements(sourceFile, "TournamentLinkChips")).toHaveLength(0);
+    expect(hasJsxAttribute(sourceFile, hero[0]!, "lede")).toBe(false);
+    expect(source).not.toContain('t("common.format")');
+    expect(source).not.toContain('t("common.teamFormation")');
+    // ...but the draft room is an action, so it stays in the action row.
+    expect(source).toContain("/draft/${tournament.slug}");
+  });
+
   it("reuses overview summaries for metadata and the index redirect", () => {
     const layout = parsedSource("layout.tsx");
     const page = parsedSource("page.tsx");

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 
 import TournamentBroadcastDock from "./TournamentBroadcastDock";
-import TournamentLinkChips from "./TournamentLinkChips";
+import { TOURNAMENT_ACTION_CLASS } from "./tournamentActionClass";
 import TournamentRegisterButton from "./TournamentRegisterButton";
 import { NextPhaseChip } from "./NextPhaseChip";
 import {
@@ -173,34 +173,18 @@ export default function TournamentClientLayout({
   const showDraftLink =
     tournament.team_formation === "draft" && tournament.status !== "registration";
 
-  // The cast must list every value the column can hold. It said
-  // `"balancer" | "draft"` while `team_formation` is a free string, so a
-  // "registration" tournament rendered the raw key path `common.registration`.
-  const formation = (
-    <>
-      <span className="k">{t("common.teamFormation")}</span>
-      <span className="v">
-        {t(
-          `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`
-        )}
-      </span>
-    </>
-  );
-  // The draft room hangs off the pill that already says the tournament IS a
-  // draft, rather than standing as a lone button on its own action row — for an
-  // ended tournament with no links that row held nothing else.
-  const formationPill = showDraftLink ? (
-    <Link
-      href={`/draft/${tournament.slug}`}
-      aria-label={t("common.draft")}
-      className="meta-pill no-underline transition-colors hover:border-[color:var(--aqt-teal)] hover:text-[color:var(--aqt-fg)]"
-    >
-      {formation}
-      <ExternalLink className="size-3" aria-hidden />
+  // The draft room is an external route, so it cannot be a rail tab; it stands
+  // in the action row as its own button (wireframes §2 ④). Team formation used
+  // to carry this link as a pill, because the row then held nothing else for an
+  // ended tournament — with the organizer's links moved into the overview that
+  // trade is gone, and the formation itself reads in the Format card, beside the
+  // roster shape a pill could not show.
+  const draftButton = showDraftLink ? (
+    <Link href={`/draft/${tournament.slug}`} className={TOURNAMENT_ACTION_CLASS}>
+      {t("common.draft")}
+      <ExternalLink className="size-3.5 opacity-80" aria-hidden />
     </Link>
-  ) : (
-    <span className="meta-pill">{formation}</span>
-  );
+  ) : null;
 
   const registerButton = !isEnded ? <TournamentRegisterButton tournament={tournament} /> : null;
   const nextPhaseChip = <NextPhaseChip tournament={tournament} href={`${overviewHref}#phases`} />;
@@ -223,6 +207,10 @@ export default function TournamentClientLayout({
       <div ref={heroRef}>
         <PageHero
           compact
+          /* The organizer's banner, when there is one. Absent — the common case
+             — the frame renders exactly what it rendered before: teal hairline,
+             masked grid, one glow. Nothing is reserved for a missing image. */
+          coverUrl={tournament.cover_image_url}
           align="start"
           eyebrow={
             <HeroCoord className="inline-flex flex-wrap items-center gap-2">
@@ -236,7 +224,28 @@ export default function TournamentClientLayout({
               <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
             </HeroCoord>
           }
-          title={tournament.name}
+          title={
+            <span className="flex items-center gap-3">
+              {tournament.logo_url ? (
+                /* Plain `<img>`, like every other S3 image on the site: the URL
+                   points at whatever host the deployment configured, and
+                   `next/image` hard-errors on a hostname missing from
+                   `remotePatterns`. Decorative — the h1 beside it is the name. */
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={tournament.logo_url}
+                  alt=""
+                  aria-hidden
+                  width={44}
+                  height={44}
+                  loading="lazy"
+                  decoding="async"
+                  className="size-11 shrink-0 rounded-md border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] object-cover"
+                />
+              ) : null}
+              <span className="min-w-0">{tournament.name}</span>
+            </span>
+          }
           meta={
             <>
               {/* The status pill keeps the site-wide status colours (the same
@@ -248,13 +257,6 @@ export default function TournamentClientLayout({
               </span>
               {nextPhaseChip}
               {tournament.is_league && <span className="meta-pill">{t("common.league")}</span>}
-              {stages.length > 0 ? (
-                <span className="meta-pill">
-                  <span className="k">{t("common.format")}</span>
-                  <span className="v">{formatLabel(stages, t)}</span>
-                </span>
-              ) : null}
-              {formationPill}
               <span className="meta-pill aqt-tnum">
                 {teamsCount > 0
                   ? t("tournamentDetail.header.teamsAndPlayers", { teams: teamsCount, players })
@@ -262,26 +264,16 @@ export default function TournamentClientLayout({
               </span>
             </>
           }
-          lede={
-            tournament.description ? (
-              /* One line; the whole text lives in the overview's Format card,
-                 so this is a teaser, not the place to read it. A span, because
-                 PageHero wraps the lede in a <p>. */
-              <span className="line-clamp-1 block" title={tournament.description}>
-                {tournament.description}
-              </span>
-            ) : undefined
-          }
-          /* Right-hand action column (wireframes §2 ④): registration and the
-             organizer's links sit across from the title, not underneath the
-             description where they read as part of the prose. `empty:hidden`
-             because an ended tournament with no links renders nothing here. */
+          /* Right-hand action column (wireframes §2 ④): what a reader can DO,
+             across from the title. The organizer's informational links are NOT
+             here — they are reference material, and they live in the overview's
+             Links card, where a translucent chip is not sitting on artwork.
+             `empty:hidden` because an ended tournament without a draft room
+             renders nothing at all in this column. */
           aside={
-            /* Capped, not max-content: five link kinds plus the CTA would
-               otherwise size the auto column wide enough to squeeze the h1. */
-            <div className="flex flex-wrap items-center gap-2.5 empty:hidden lg:max-w-[24rem] lg:justify-end">
+            <div className="flex flex-wrap items-center gap-2.5 empty:hidden lg:justify-end">
               {registerButton}
-              <TournamentLinkChips links={tournament.links} />
+              {draftButton}
             </div>
           }
         />

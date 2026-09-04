@@ -21,6 +21,13 @@ import type { PlayerRoleTint } from "@/lib/player-role";
  *  name is historical, so it stays an alias over the one tint vocabulary. */
 type HeroRoleTint = PlayerRoleTint;
 
+/**
+ * Height of the band a cover banner occupies, and the top padding the copy
+ * takes to clear it. One number for both: the picture ends exactly where the
+ * text begins, so no title can land on artwork.
+ */
+export const COVER_BAND_PX = 80;
+
 interface HeroFrameProps {
   children: React.ReactNode;
   className?: string;
@@ -36,11 +43,20 @@ interface HeroFrameProps {
   roleTint?: HeroRoleTint;
   /**
    * Optional banner image behind the hero (a tournament cover). Sits UNDER the
-   * grid and glow so the frame keeps its identity, and carries its own scrim:
-   * the hero's text tokens are tuned for `--aqt-bg`, and a bright banner would
-   * otherwise drop the title below the 4.5:1 contrast floor. The scrim is a
-   * left-weighted gradient because the copy lives in the left column, so the
-   * right side stays legible as an image.
+   * grid and glow so the frame keeps its identity.
+   *
+   * The image is `COVER_BAND_PX` TALL, not full-bleed behind the copy. Two
+   * reasons, both learnt from rendering it the other way:
+   *
+   * - Contrast stops depending on the upload. The copy sits on the frame's own
+   *   `bg`, exactly as it does with no cover, instead of on a scrimmed photo
+   *   whose luminance nobody controls.
+   * - `object-cover` crops to the box it fills. A full-bleed image in a ~200px
+   *   header showed the TOP of the crop in the band and hid the middle under
+   *   the scrim — so the organizer's centred key art was the one part never
+   *   visible. Cropping into the band itself puts the source's centre on screen.
+   *
+   * The band fades into `bg` over its lower half so there is no seam.
    */
   coverUrl?: string | null;
 }
@@ -76,26 +92,6 @@ export function HeroFrame({
           className="pointer-events-none absolute inset-x-0 top-0 z-[2] h-0.5 bg-[color:var(--aqt-teal)]"
         />
       )}
-      {/* Cover banner + its contrast scrim, beneath every decorative layer. */}
-      {coverUrl ? (
-        <span aria-hidden className="pointer-events-none absolute inset-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={coverUrl}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="h-full w-full object-cover"
-          />
-          <span
-            className="absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(90deg, color-mix(in srgb, var(--aqt-bg) 92%, transparent) 0%, color-mix(in srgb, var(--aqt-bg) 82%, transparent) 45%, color-mix(in srgb, var(--aqt-bg) 55%, transparent) 100%)",
-            }}
-          />
-        </span>
-      ) : null}
       {/* faint square grid, radially masked so it fades out */}
       <span
         aria-hidden
@@ -124,6 +120,36 @@ export function HeroFrame({
             background: `radial-gradient(70% 120% at 12% -20%, color-mix(in srgb, var(--aqt-${roleTint}) 16%, transparent), transparent 55%)`,
           }}
         />
+      ) : null}
+      {/* Cover band, ABOVE the grid and glow: those layers are the frame's
+          identity where the frame shows — the copy area, which is most of the
+          header — but painted over the artwork they tinted its left third teal
+          and laid a 48px lattice on it. The band stays under the accent
+          hairline (z-2) and the content (z-1). */}
+      {coverUrl ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0"
+          style={{ height: COVER_BAND_PX }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={coverUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover"
+          />
+          <span
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(to bottom, transparent 0%," +
+                " color-mix(in srgb, var(--aqt-bg) 25%, transparent) 55%," +
+                " var(--aqt-bg) 100%)",
+            }}
+          />
+        </span>
       ) : null}
       <div className="relative z-[1]">{children}</div>
     </section>
@@ -176,6 +202,10 @@ export function PageHero({
   return (
     <HeroFrame className={className} coverUrl={coverUrl}>
       <div
+        /* The copy starts below the banner's visible strip. Inline, because the
+           same number drives the scrim's ramp — a Tailwind class here would let
+           the two drift apart silently. */
+        style={coverUrl ? { paddingTop: COVER_BAND_PX } : undefined}
         className={cn(
           "grid",
           compact ? "gap-4 px-5 py-3.5 md:px-6 md:py-4" : "gap-8 px-6 py-8 md:px-10 md:py-9",

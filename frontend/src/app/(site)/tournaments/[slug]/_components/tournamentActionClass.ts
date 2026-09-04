@@ -1,0 +1,20 @@
+/**
+ * The tournament header's SECONDARY action box: the same 36px height, radius and
+ * type size as the teal register button standing beside it, in the muted
+ * palette.
+ *
+ * One const rather than a copy per call site. The geometry is load-bearing —
+ * `.meta-pill` (11.5px type, 24px tall) made these read as metadata that had
+ * wandered into the action row — and three drifting copies of the string is how
+ * that regression comes back.
+ *
+ * Deliberately not a `globals.css` rule like `.meta-pill`: these boxes are
+ * Tailwind-sized, and a CSS class would express one look in two languages.
+ */
+export const TOURNAMENT_ACTION_CLASS =
+  "inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)] " +
+  "bg-[color:var(--aqt-overlay-2)] px-4 py-2 text-sm font-medium " +
+  "text-[color:var(--aqt-fg-muted)] no-underline outline-none transition-colors " +
+  "hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] " +
+  "focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] " +
+  "focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]";
