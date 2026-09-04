@@ -18,15 +18,15 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from shared.core.enums import DraftFormat, DraftPickStatus, DraftPlayerStatus, DraftStatus, HeroClass
+from shared.core.enums import DraftFormat, DraftPickStatus, DraftPlayerStatus, DraftStatus
 from shared.core.errors import ApiHTTPException
 from shared.domain.roster_shape import parse_roster_slots
 from shared.models.balancer.draft import DraftPick
-from shared.models.identity.user import User
+from shared.models.registration.registration import BalancerRegistration, BalancerRegistrationRole
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Tournament
 from src import models
-from src.domain.draft.entities import CaptainSeed, PlayerSeed
+from src.domain.draft.entities import PoolSeat
 from src.services.draft import lifecycle, selection
 
 # The 5-slot roster these tests draft for, replacing `rounds=4, team_size=5`:
@@ -71,21 +71,21 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             ws = Workspace(slug=f"ws-{self._suffix}", name=f"WS {self._suffix}")
             s.add(ws)
             await s.flush()
-            tourn = Tournament(workspace_id=ws.id, name=f"T {self._suffix}", status="draft")
+            # ``slug`` is NOT NULL and globally unique (migration tslug0001).
+            tourn = Tournament(
+                workspace_id=ws.id,
+                name=f"T {self._suffix}",
+                slug=f"t-{self._suffix}",
+                status="draft",
+            )
             s.add(tourn)
             await s.flush()
-            users = []
-            # We need 3 captains with different ranks
-            ranks = [2000, 3000, 2500]  # Cap0 (2000), Cap1 (3000), Cap2 (2500)
-            for i, _r in enumerate(ranks):
-                u = User(name=f"cap-{self._suffix}-{i}")
-                s.add(u)
-                users.append(u)
-            await s.flush()
+            # Three captains with different ranks: the ``weakest_first`` /
+            # ``strongest_first`` / ``team_avg_*`` round rules all read them, and
+            # they now live on the registration, not on the draft seat.
             self.workspace_id = ws.id
             self.tournament_id = tourn.id
-            self.captain_user_ids = [u.id for u in users]
-            self.captain_ranks = ranks
+            self.captain_ranks = [2000, 3000, 2500]  # Cap0, Cap1, Cap2
             await s.commit()
 
     async def asyncTearDown(self) -> None:
@@ -103,30 +103,65 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             await s.execute(sa.delete(models.Player).where(models.Player.tournament_id == self.tournament_id))
             await s.execute(sa.delete(models.Team).where(models.Team.tournament_id == self.tournament_id))
             await s.execute(sa.delete(Tournament).where(Tournament.id == self.tournament_id))
-            await s.execute(sa.delete(User).where(User.id.in_(self.captain_user_ids)))
             await s.execute(sa.delete(Workspace).where(Workspace.id == self.workspace_id))
             await s.commit()
         await self.engine.dispose()
 
-    def _captains(self) -> list[CaptainSeed]:
-        roles = [HeroClass.tank, HeroClass.damage, HeroClass.support]
-        return [
-            CaptainSeed(
-                name=f"Cap{i}",
-                draft_position=i + 1,
-                user_id=uid,
-                rank_value=self.captain_ranks[i],
-                primary_role=roles[i % 3],
+    async def _registration(self, s, *, tag: str, ranks: dict[str, int | None]) -> int:
+        """One approved, in-pool ``balancer.registration`` with its role rows."""
+        reg = BalancerRegistration(
+            tournament_id=self.tournament_id,
+            battle_tag=tag,
+            battle_tag_normalized=tag.lower(),
+            display_name=tag,
+            status="approved",
+            balancer_status="ready",
+        )
+        s.add(reg)
+        await s.flush()
+        for priority, (role, rank) in enumerate(ranks.items()):
+            s.add(
+                BalancerRegistrationRole(
+                    registration_id=reg.id,
+                    role=role,
+                    is_primary=priority == 0,
+                    priority=priority,
+                    rank_value=rank,
+                    is_active=True,
+                )
             )
-            for i, uid in enumerate(self.captain_user_ids)
-        ]
+        await s.flush()
+        return reg.id
 
-    def _players(self) -> list[PlayerSeed]:
-        roles = [HeroClass.tank, HeroClass.damage, HeroClass.support]
-        return [
-            PlayerSeed(primary_role=roles[i % 3], rank_value=2800 + i * 10, battle_tag=f"P{i}#1")
-            for i in range(15)
-        ]
+    async def _captain_seats(self, s) -> list[PoolSeat]:
+        roles = ["tank", "dps", "support"]
+        seats = []
+        for i, rank in enumerate(self.captain_ranks):
+            registration_id = await self._registration(
+                s, tag=f"Cap{self._suffix}-{i}#1", ranks={roles[i % 3]: rank}
+            )
+            seats.append(PoolSeat(registration_id=registration_id, draft_position=i + 1, team_name=f"Cap{i}"))
+        return seats
+
+    async def _player_seats(self, s, *, ranks: dict[int, int] | None = None) -> list[PoolSeat]:
+        """15 pool registrations, roles cycling tank / dps / support by index.
+
+        ``ranks`` pins ``{index: rank}`` so a test can steer a team average: the
+        rank is a property of the registration now, so it has to be set here
+        rather than poked onto the seat after seeding.
+        """
+        roles = ["tank", "dps", "support"]
+        pinned = ranks or {}
+        seats = []
+        for i in range(15):
+            registration_id = await self._registration(
+                s, tag=f"P{self._suffix}-{i}#1", ranks={roles[i % 3]: pinned.get(i, 2800 + i * 10)}
+            )
+            seats.append(PoolSeat(registration_id=registration_id))
+        return seats
+
+    async def _seats(self, s, *, player_ranks: dict[int, int] | None = None) -> list[PoolSeat]:
+        return [*await self._captain_seats(s), *await self._player_seats(s, ranks=player_ranks)]
 
     async def test_custom_format_static_rules(self) -> None:
         async with self.Session() as s:
@@ -139,7 +174,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 fmt=DraftFormat.CUSTOM,
                 settings={"round_rules": rules},
             )
-            await lifecycle.lifecycle_service.seed(s, draft, captains=self._captains(), players=self._players())
+            await lifecycle.lifecycle_service.seed(s, draft, seats=await self._seats(s))
             await s.commit()
 
             picks = (
@@ -193,7 +228,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 fmt=DraftFormat.CUSTOM,
                 settings={"round_rules": ["linear", "linear", "linear", "linear"]},
             )
-            await lifecycle.lifecycle_service.seed(s, draft, captains=self._captains(), players=self._players())
+            await lifecycle.lifecycle_service.seed(s, draft, seats=await self._seats(s))
             await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
 
@@ -242,7 +277,11 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 fmt=DraftFormat.CUSTOM,
                 settings={"round_rules": rules},
             )
-            await lifecycle.lifecycle_service.seed(s, draft, captains=self._captains(), players=self._players())
+            # Steer the round-2 averages through the REGISTRATIONS: pool players
+            # 0/1/2 are tank/dps/support by index, so this pins the three ranks
+            # the picks below freeze onto their teams.
+            seats = await self._seats(s, player_ranks={0: 2000, 1: 3500, 2: 1000})
+            await lifecycle.lifecycle_service.seed(s, draft, seats=seats)
             await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
 
@@ -254,25 +293,17 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                     )
                 )
             ).all()
+            by_registration = {p.registration_id: p for p in available}
+            # seats[0:3] are the captains; the pool block starts at index 3.
+            tank_2000, dps_3500, support_1000 = (seats[3 + index].registration_id for index in (0, 1, 2))
+            spare_dps = by_registration[seats[3 + 4].registration_id]
 
-            # Filter available players by role to satisfy draft limits
-            dps_players = [p for p in available if p.primary_role == HeroClass.damage.slot_code]
-            support_players = [p for p in available if p.primary_role == HeroClass.support.slot_code]
-            tank_players = [p for p in available if p.primary_role == HeroClass.tank.slot_code]
-
-            # Pick 1 (Cap0: TANK) picks a DPS player
-            p1 = dps_players[0]
-            p1.rank_value = 3500
-
-            # Pick 2 (Cap1: DPS) picks a SUPPORT player
-            p2 = support_players[0]
-            p2.rank_value = 1000
-
-            # Pick 3 (Cap2: SUPPORT) picks a TANK player
-            p3 = tank_players[0]
-            p3.rank_value = 2000
-
-            await s.flush()
+            # Pick 1 (Cap0: TANK) picks the DPS player at 3500
+            p1 = by_registration[dps_3500]
+            # Pick 2 (Cap1: DPS) picks the SUPPORT player at 1000
+            p2 = by_registration[support_1000]
+            # Pick 3 (Cap2: SUPPORT) picks the TANK player at 2000
+            p3 = by_registration[tank_2000]
 
             # Execute Pick 1 (Cap0)
             current = await s.get(DraftPick, draft.current_pick_id)
@@ -348,7 +379,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                     s,
                     draft,
                     picks[3],
-                    player_id=dps_players[1].id,
+                    player_id=spare_dps.id,
                     expected_version=picks[3].version,
                     target_role=None,
                     actor_user_id=None,

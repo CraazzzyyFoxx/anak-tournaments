@@ -19,8 +19,32 @@ from types import SimpleNamespace
 # to rely on whichever sibling test module happened to be collected first.
 
 
+from shared.core.enums import HeroClass  # noqa: E402
+from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
 from src.schemas.registration_build import _reg_to_read  # noqa: E402
-from shared.domain.member_rank import ResolvedRank  # noqa: E402
+
+
+def _roster(rank: int | None, source: str = "registration") -> PlayerRoster:
+    """A one-role roster, as the engine would hand it to the serializer."""
+    return PlayerRoster(
+        registration_id=1,
+        battle_tag="Player#1234",
+        display_name=None,
+        player_id=42,
+        auth_user_id=None,
+        workspace_member_id=None,
+        roles=(
+            RosterRole(
+                role=HeroClass.tank,
+                rank=rank,
+                source=source if rank is not None else "none",
+                is_primary=True,
+                priority=0,
+                subrole=None,
+            ),
+        ),
+        is_full_flex=False,
+    )
 
 
 def _reg_stub() -> SimpleNamespace:
@@ -71,12 +95,11 @@ def test_ranks_stay_hidden_unless_the_form_publishes_them():
         SimpleNamespace(role="tank", subrole=None, is_primary=True, priority=0, rank_value=3200, hero_entries=[])
     ]
 
-    hidden = _reg_to_read(stub, workspace_id=1)
-    shown = _reg_to_read(stub, workspace_id=1, show_ranks=True)
+    hidden = _reg_to_read(stub, workspace_id=1, roster=_roster(3200))
+    shown = _reg_to_read(stub, workspace_id=1, show_ranks=True, roster=_roster(3200))
 
     assert hidden.roles[0].rank_value is None
     assert shown.roles[0].rank_value == 3200
-
 
 
 def test_follow_reg_uses_inherited_workspace_rank():
@@ -85,14 +108,23 @@ def test_follow_reg_uses_inherited_workspace_rank():
         SimpleNamespace(role="tank", subrole=None, is_primary=True, priority=0, rank_value=None, hero_entries=[])
     ]
 
-    read = _reg_to_read(
-        stub,
-        workspace_id=1,
-        show_ranks=True,
-        resolved_ranks={"tank": ResolvedRank(3200, "workspace")},
-    )
+    read = _reg_to_read(stub, workspace_id=1, show_ranks=True, roster=_roster(3200, "workspace"))
 
     assert read.roles[0].rank_value == 3200
+
+
+def test_a_role_the_engine_did_not_rate_publishes_no_rank():
+    """The raw column is never a fallback: an unrated role is unplayable, and
+    printing its stored number advertised a rating nothing else honours."""
+    stub = _reg_stub()
+    stub.roles = [
+        SimpleNamespace(role="dps", subrole=None, is_primary=True, priority=0, rank_value=3200, hero_entries=[])
+    ]
+
+    read = _reg_to_read(stub, workspace_id=1, show_ranks=True, roster=_roster(2500))
+
+    assert read.roles[0].rank_value is None
+
 
 def test_read_payload_includes_profile_visibility():
     read = _reg_to_read(_reg_stub(), workspace_id=1, profiles_open=True)

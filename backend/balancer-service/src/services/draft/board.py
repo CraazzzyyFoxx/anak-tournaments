@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
@@ -20,23 +21,14 @@ from shared.repository.draft import (
 )
 from shared.services import realtime_topics
 from src import schemas
-from src.domain.draft import ranks
 from src.services.draft import loaders
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
-
-# Where seeding parks the registration's custom-field ANSWERS (lifecycle.
-# _registration_additional_info). Private: the answers a spectator may read are
-# chosen per field by the organizer and projected into ``custom_fields`` below,
-# so the raw bag is stripped from every public snapshot.
-REGISTRATION_CUSTOM_FIELDS_KEY = "registration_custom_fields"
-
-# Registration `notes` stay public: captains read them in the Player Inspector
-# while drafting. Only organizer-side metadata is stripped from the snapshot.
-_PRIVATE_ADDITIONAL_INFO_KEYS = frozenset({"admin_notes", "audit_reason", REGISTRATION_CUSTOM_FIELDS_KEY})
+from src.services.draft.rosters import DraftRosterService, draft_rosters
 
 # Safety-net TTL for the public board cache: the event-id in the key already
-# invalidates on every persisted draft event, so the TTL only bounds staleness
-# for hypothetical writes that bypass the event log and expires dead keys.
+# invalidates on every persisted draft/registration event, so the TTL only
+# bounds staleness for hypothetical writes that bypass the event log and
+# expires dead keys.
 _BOARD_CACHE_TTL = "5s"
 
 
@@ -44,12 +36,6 @@ def _board_cache_key(session_id: int, last_event_id: int | None) -> str:
     # The "backend:" prefix routes the key to the backend configured by
     # cache.setup() (cashews routes strictly by key prefix).
     return f"backend:balancer:draft_board:{session_id}:{last_event_id or 0}"
-
-
-def public_additional_info(additional_info: dict | None) -> dict:
-    """Remove organizer-only metadata from the public draft snapshot."""
-
-    return {key: value for key, value in (additional_info or {}).items() if key not in _PRIVATE_ADDITIONAL_INFO_KEYS}
 
 
 class VisibleCustomField(NamedTuple):
@@ -61,16 +47,18 @@ class VisibleCustomField(NamedTuple):
 
 
 def player_custom_fields(
-    additional_info: dict[str, Any] | None,
+    answers: Mapping[str, Any] | None,
     fields: list[VisibleCustomField],
 ) -> list[schemas.DraftPlayerCustomFieldRead]:
     """Answer + current label for each visible field this player actually filled.
 
+    ``answers`` is the registration's own ``custom_fields_json``, read live --
+    the draft no longer keeps a copy, so which answers a spectator may see is
+    decided by the CURRENT form (``show_in_draft``) against the CURRENT answers.
     Unanswered fields are dropped rather than rendered empty: the inspector is a
     pick aid, and a column of dashes is noise there (unlike the admin table).
     """
-    answers = (additional_info or {}).get(REGISTRATION_CUSTOM_FIELDS_KEY)
-    if not isinstance(answers, dict):
+    if not answers:
         return []
     return [
         schemas.DraftPlayerCustomFieldRead(key=field.key, label=field.label, type=field.type, value=answers[field.key])
@@ -88,12 +76,14 @@ class DraftBoardService:
         players_repo: DraftPlayerRepository = DraftPlayerRepository(),
         picks_repo: DraftPickRepository = DraftPickRepository(),
         feasibility: DraftFeasibilityService = feasibility_service,
+        rosters: DraftRosterService = draft_rosters,
     ) -> None:
         self.sessions_repo = sessions_repo
         self.teams_repo = teams_repo
         self.players_repo = players_repo
         self.picks_repo = picks_repo
         self.feasibility = feasibility
+        self.rosters = rosters
 
     async def get_active_session(self, session: AsyncSession, tournament_id: int) -> DraftSession | None:
         active = await self.sessions_repo.get_active_for_tournament(session, tournament_id)
@@ -149,9 +139,18 @@ class DraftBoardService:
         # cache key: every draft mutation persists a WorkspaceEvent in the same
         # transaction (services.draft.realtime), so new event -> new key -> fresh
         # board, and an unchanged id can safely serve the cached snapshot.
-        topic = realtime_topics.draft(draft_session.tournament_id)
+        # Two topics, because roles and ranks are no longer copied into the draft:
+        # a rank typed in the balancer changes what this board shows, and a
+        # registration edit publishes on the BRACKET topic
+        # (tournament-service ``realtime_commit`` -> ``registration_changed``).
+        # Keying on the draft topic alone would serve the pre-edit ranks until
+        # the TTL expired.
+        topics = (
+            realtime_topics.draft(draft_session.tournament_id),
+            realtime_topics.bracket(draft_session.tournament_id),
+        )
         last_event_id = await session.scalar(
-            sa.select(sa.func.max(WorkspaceEvent.id)).where(WorkspaceEvent.topic == topic)
+            sa.select(sa.func.max(WorkspaceEvent.id)).where(WorkspaceEvent.topic.in_(topics))
         )
         cache_key = _board_cache_key(draft_session.id, last_event_id)
         if cache.is_setup():
@@ -163,20 +162,20 @@ class DraftBoardService:
                 # server_time drives client clock sync; never serve a stale one.
                 return cached.model_copy(update={"server_time": datetime.now(UTC)})
 
-        # DraftTeamRead reads captain_user_id, DraftPickRead reads picked_by_user_id,
-        # DraftPlayerRead reads user_id/secondary_roles_json/role_ranks/role_top_heroes
-        # — eager-load the relationships those compat properties resolve through.
         teams = await self.teams_repo.list_by_session(session, draft_session.id, options=loaders.team_options())
         picks = await self.picks_repo.list_by_session(session, draft_session.id, options=loaders.pick_options())
         players = await self.players_repo.list_by_session(
             session, draft_session.id, options=loaders.player_options()
         )
+        # ONE resolve for the whole board: roles, ranks, sub-role, flex, notes and
+        # custom-field answers all come from here, live off the registration.
+        rosters = await self.rosters.load(session, draft_session, players)
 
-        # Skipped entirely for pools that carry no registration answers (manual or
-        # balance-sourced seeds), so those drafts pay nothing for the feature.
+        # Skipped entirely for a pool where nobody answered a custom field, so
+        # those drafts pay nothing for the feature.
         custom_field_defs = (
             await self.visible_custom_fields(session, draft_session.tournament_id)
-            if any(REGISTRATION_CUSTOM_FIELDS_KEY in (p.additional_info or {}) for p in players)
+            if any((rosters[p.id].custom_fields if p.id in rosters else None) for p in players)
             else []
         )
 
@@ -187,32 +186,17 @@ class DraftBoardService:
             if draft_session.current_pick_id
             else None
         )
-        # Per-player `effective_rank` is a function of the shape, so resolve it here
-        # too; both levels of the lookup are cached, so this costs nothing beyond the
-        # resolve `session_read` already does.
         shape = await self.feasibility.resolve_shape(session, draft_session)
         snapshot = schemas.DraftBoardSnapshot(
             session=await self.session_read(session, draft_session),
             teams=[schemas.DraftTeamRead.model_validate(t) for t in teams],
             picks=[schemas.DraftPickRead.model_validate(p) for p in picks],
             players=[
-                schemas.DraftPlayerRead.model_validate(p).model_copy(
-                    update={
-                        "additional_info": public_additional_info(p.additional_info),
-                        "custom_fields": player_custom_fields(p.additional_info, custom_field_defs),
-                        # Shape-aware, so it cannot be an ORM property: a role-less
-                        # roster makes the player's best role rank the one that
-                        # represents them. See domain.draft.ranks.slot_rank.
-                        #
-                        # Under role slots it is the rank ON THEIR OWN ROLE, read
-                        # from the per-role catalogue. `rank_value` is not that
-                        # rank: an all-roles registration form stores the player's
-                        # MAXIMUM there (rules.map_registration), so passing it
-                        # showed a 2800 support at their 4000 dps rank in every
-                        # role-less place the client renders — pool card,
-                        # inspector header, shortlist.
-                        "effective_rank": ranks.slot_rank(p, p.primary_role, shape),
-                    }
+                schemas.DraftPlayerRead.from_seat(
+                    p,
+                    rosters.get(p.id),
+                    shape=shape,
+                    custom_fields=custom_field_defs,
                 )
                 for p in players
             ],

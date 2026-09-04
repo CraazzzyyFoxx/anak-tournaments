@@ -19,6 +19,7 @@ from typing import Any
 
 from shared.core.enums import HERO_TYPE_CLASSES, DraftPickStatus, DraftPlayerStatus, HeroClass
 from shared.domain.roster_shape import FLEX_SLOT_CODE, ROSTER_SLOT_CODES, RosterShape
+from shared.domain.roster import PlayerRoster
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
 from src.domain.draft.entities import (
     DraftAssignment,
@@ -50,7 +51,7 @@ __all__ = (
 
 
 def _as_role(value: Any) -> HeroClass | None:
-    """Parse a role slot code; ``flex`` is not a playable role (see ``is_flex``)."""
+    """Parse a role slot code; ``flex`` is a roster slot, never a rated role."""
     role = HeroClass.parse(value)
     return role if role is not HeroClass.flex else None
 
@@ -61,8 +62,16 @@ def build_feasibility_state(
     teams: Collection[DraftTeam],
     players: Collection[DraftPlayer],
     picks: Collection[DraftPick],
+    rosters: Mapping[int, PlayerRoster],
 ) -> DraftFeasibilityState:
-    """Translate eager-loaded ORM snapshot rows into the pure matching input."""
+    """Translate a snapshot into the pure matching input.
+
+    Which roles a player can fill is asked of ``rosters`` -- the one engine's
+    answer, keyed by ``DraftPlayer.id`` -- so feasibility, the pick options and
+    the board can never disagree about it. A player the balancer ranks on no
+    role contributes no eligibility, which is what makes the draft REPORT the
+    shortage instead of quietly picking them at rank 0.
+    """
 
     team_ids = tuple(team.id for team in sorted(teams, key=lambda team: (team.draft_position, team.id)))
     picked_role_by_player = {
@@ -79,16 +88,12 @@ def build_feasibility_state(
     eligible_players: list[EligiblePlayer] = []
     assignments: list[DraftAssignment] = []
     for player in players:
-        primary_role = _as_role(player.primary_role)
+        roster = rosters.get(player.id)
+        lead = roster.primary if roster is not None else None
         if player.status == DraftPlayerStatus.AVAILABLE.value:
-            playable_roles = (
-                frozenset(HERO_TYPE_CLASSES)
-                if player.is_flex
-                else frozenset(role for entry in player.roles if (role := _as_role(entry.role)) is not None)
-            )
-            if primary_role is not None:
-                playable_roles = playable_roles | {primary_role}
-            eligible_players.append(EligiblePlayer(player_id=player.id, playable_roles=playable_roles))
+            playable_roles = roster.playable_roles if roster is not None else frozenset()
+            if playable_roles:
+                eligible_players.append(EligiblePlayer(player_id=player.id, playable_roles=playable_roles))
             continue
         if player.status != DraftPlayerStatus.PICKED.value or player.drafted_by_team_id is None:
             continue
@@ -107,7 +112,7 @@ def build_feasibility_state(
                 )
             )
             continue
-        assigned_role = picked_role_by_player.get(player.id) or primary_role
+        assigned_role = picked_role_by_player.get(player.id) or (lead.role if lead is not None else None)
         if assigned_role is not None:
             assignments.append(
                 DraftAssignment(

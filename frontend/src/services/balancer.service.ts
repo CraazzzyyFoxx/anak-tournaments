@@ -128,26 +128,27 @@ export default class balancerService {
     }
   }
 
-  static async createBalanceJob(
-    file: File,
-    config?: BalancerConfig,
-    tournamentId?: number | null
-  ): Promise<BalanceJobCreateResponse> {
-    const formData = new FormData();
-    formData.append("player_data_file", file);
-
-    if (config && Object.keys(config).length > 0) {
-      formData.append("config_overrides", JSON.stringify(config));
-    }
-
-    // Enables realtime job-status fan-out to everyone with this tournament's
-    // balancer page open (the topic is tournament-scoped).
-    if (tournamentId != null) {
-      formData.append("tournament_id", String(tournamentId));
-    }
-
+  /**
+   * Runs the tournament's own pool through the solver. The player payload is
+   * assembled server-side from the roster engine — the browser sends only the
+   * config it wants, never a rebuilt copy of everyone's roles and ranks.
+   *
+   * The route is tournament-scoped, so job status fans out over that
+   * tournament's realtime topic to everyone with the balancer page open.
+   */
+  static async createTournamentBalanceJob(params: {
+    tournament_id: number;
+    config_overrides?: BalancerConfig | null;
+  }): Promise<BalanceJobCreateResponse> {
     try {
-      const response = await apiFetch("/api/balancer/jobs", { method: "POST", body: formData, timeout: 20_000 });
+      const response = await apiFetch(
+        `/api/balancer/tournaments/${params.tournament_id}/balance`,
+        {
+          method: "POST",
+          body: { config_overrides: params.config_overrides ?? null },
+          timeout: 20_000
+        }
+      );
       return response.json();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {

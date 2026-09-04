@@ -7,7 +7,6 @@ import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -66,7 +65,6 @@ export function ResolveRoleConflictDialog({
   const [playerId, setPlayerId] = useState<number | null>(null);
   const [role, setRole] = useState<DraftRole | null>(null);
   const [rankValue, setRankValue] = useState<number | null>(null);
-  const [rankAbsent, setRankAbsent] = useState(false);
   const [reason, setReason] = useState("");
   const [preview, setPreview] = useState<DraftRoleEditResponse | null>(null);
   const players = useMemo(
@@ -78,12 +76,13 @@ export function ResolveRoleConflictDialog({
 
   const resetPreview = () => setPreview(null);
   const request = (previewOnly: boolean): DraftRoleEditRequest | null => {
-    if (!player || !role || !reason.trim()) return null;
-    if (rankValue == null && !rankAbsent) return null;
+    // A rank is not optional here: a role with no rank is not playable, so the
+    // edit would add a role the draft can never offer. The server enforces
+    // `gt=0`; refusing to build the body is how the organizer sees it first.
+    if (!player || !role || !reason.trim() || rankValue == null || rankValue <= 0) return null;
     return {
       role,
       rank_value: rankValue,
-      rank_absence_confirmed: rankAbsent,
       reason: reason.trim(),
       expected_version: player.version,
       preview_only: previewOnly
@@ -118,21 +117,13 @@ export function ResolveRoleConflictDialog({
     onError: (error) => notify.apiError(error, { title: t("commitFailed") })
   });
 
-  const canCommit = canCommitRoleEdit({
-    player,
-    role,
-    rankValue,
-    rankAbsent,
-    reason,
-    preview
-  });
+  const canCommit = canCommitRoleEdit({ player, role, rankValue, reason, preview });
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
       setPlayerId(null);
       setRole(null);
       setRankValue(null);
-      setRankAbsent(false);
       setReason("");
       setPreview(null);
     }
@@ -187,14 +178,18 @@ export function ResolveRoleConflictDialog({
               <SelectContent>
                 {players.map((candidate) => (
                   <SelectItem key={candidate.id} value={candidate.id.toString()}>
-                    {playerName(candidate)} · {candidate.primary_role}
+                    {playerName(candidate)} · {candidate.primary_role ?? t("noRole")}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             {player && (
               <p className="text-xs text-[color:var(--aqt-fg-muted)]">
-                {t("declaredRoles")}: {[player.primary_role, ...(player.secondary_roles_json ?? [])].join(", ")}
+                {t("declaredRoles")}:{" "}
+                {(player.primary_role
+                  ? [player.primary_role, ...player.secondary_roles]
+                  : player.secondary_roles
+                ).join(", ") || t("noRole")}
               </p>
             )}
           </div>
@@ -228,26 +223,14 @@ export function ResolveRoleConflictDialog({
             <NumberInput
               id="role-conflict-rank"
               integer
-              min={0}
-              disabled={rankAbsent}
+              min={1}
               value={rankValue}
               onValueChange={(next) => {
                 setRankValue(next);
                 resetPreview();
               }}
             />
-            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
-              <Checkbox
-                checked={rankAbsent}
-                aria-label={t("rankAbsent")}
-                onCheckedChange={(checked) => {
-                  setRankAbsent(checked === true);
-                  if (checked) setRankValue(null);
-                  resetPreview();
-                }}
-              />
-              {t("rankAbsent")}
-            </label>
+            <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("rankRequired")}</p>
           </div>
 
           <div className="space-y-2 sm:col-span-2">

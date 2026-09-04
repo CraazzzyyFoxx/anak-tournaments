@@ -23,6 +23,7 @@ interface DraftPoolStepProps {
 const ROLES: DraftRole[] = ["tank", "dps", "support"];
 const BLOCKER_MESSAGE_KEYS = {
   not_enough_players: "blockers.not_enough_players",
+  pool_unranked: "blockers.pool_unranked",
   "role_shortage:tank": "blockers.role_shortage_tank",
   "role_shortage:dps": "blockers.role_shortage_dps",
   "role_shortage:support": "blockers.role_shortage_support"
@@ -123,7 +124,9 @@ export function DraftPoolStep({ readiness, feasibility, loading, failed }: Reado
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                 {readiness.blockers.map((blocker) => (
                   <li key={blocker}>
-                    {t(BLOCKER_MESSAGE_KEYS[blocker as keyof typeof BLOCKER_MESSAGE_KEYS])}
+                    {t(BLOCKER_MESSAGE_KEYS[blocker as keyof typeof BLOCKER_MESSAGE_KEYS], {
+                      count: readiness.missingRanks
+                    })}
                   </li>
                 ))}
                 {feasibility?.slot_deficits.map((deficit) => (

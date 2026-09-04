@@ -212,7 +212,13 @@ class BalancerRegistrationRoleRead(BaseModel):
     is_primary: bool = False
     rank_value: int | None = None
     rank_source: Literal["registration", "workspace", "ow", "none"] = "none"
+    #: Playability, not the checkbox: the role is active AND the rank resolver
+    #: found a number for it. This is exactly what the balancer and the draft
+    #: act on -- the one predicate, reported once.
     is_active: bool = True
+    #: The raw ``registration_role.is_active`` column: what the registrant (or
+    #: the sheet, or the editor) declared. The role editor toggles THIS.
+    is_declared_active: bool = True
     top_heroes: list[str] = Field(default_factory=list)  # ordered hero slugs (read-only display)
     # Latest OW2 rank for this role, normalised to the workspace grid. Injected from
     # UserRankSnapshot at list time; None when no snapshot maps to a grid tier.
@@ -426,6 +432,11 @@ class BalancerRegistrationRead(BaseRead):
     # Composed subscription verdict ("satisfied"/"refused"/"undetermined");
     # only "refused" blocks admission, mirroring ``profiles_open is False``.
     subscription_outcome: str | None = None
+    #: The player's strongest playable rank -- what a role-less slot is worth and
+    #: what the pool sorts by. ``None`` when no role of theirs is playable at all.
+    #: Server-side because it is the engine's own answer: the admin table used to
+    #: re-derive it with a ``Math.max`` over the active roles' ranks.
+    best_rank: int | None = None
     roles: list[BalancerRegistrationRoleRead] = Field(default_factory=list)
 
 

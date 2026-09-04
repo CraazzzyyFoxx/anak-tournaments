@@ -96,7 +96,8 @@ function normalizeRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlaye
       priority: normalized.length + 1,
       division_number: entry.division_number ?? null,
       rank_value: entry.rank_value,
-      is_active: entry.is_active ?? true,
+      is_active: entry.is_active ?? false,
+      is_declared_active: entry.is_declared_active ?? true,
       ow_rank_value: entry.ow_rank_value ?? null,
       rank_source: entry.rank_source
     });
@@ -156,7 +157,10 @@ function applyHistoryPreviewToRoleEntries(
       ...existingEntry,
       rank_value: normalizedRank,
       division_number: historyEntry.division_number,
-      is_active: true
+      // Applying history both enables the role and gives it a rank, so it is
+      // declared on AND in play.
+      is_active: true,
+      is_declared_active: true
     });
   }
 
@@ -217,6 +221,11 @@ function SortableRoleEntry({
   const { ref, style, handleProps } = useSortableRow(id);
 
   const accent = ROLE_RANK_ACCENTS[entry.role];
+  // This card is the organizer's EDITING view, so every visual here follows the
+  // declared flag. `is_active` is the resolver's "in play" verdict and belongs
+  // to the pool/validation views: dimming a declared-on role because its rank is
+  // still missing would grey out exactly the field that fixes it.
+  const declaredActive = entry.is_declared_active;
 
   const roleSubtypeOptions = subtypeOptions[entry.role] || [];
   const subtypeLabel = entry.subtype
@@ -238,7 +247,7 @@ function SortableRoleEntry({
       style={style}
       className={cn(
         "grid gap-2 rounded-xl border p-2.5 transition-colors md:grid-cols-[32px_minmax(0,1fr)]",
-        entry.is_active
+        declaredActive
           ? cn("border-[color:var(--aqt-border-2)] bg-white/3", accent.row)
           : "border-[color:var(--aqt-border)] bg-white/2 opacity-80"
       )}
@@ -258,7 +267,7 @@ function SortableRoleEntry({
             <span
               className={cn(
                 "text-xs font-semibold",
-                entry.is_active ? accent.text : "text-[color:var(--aqt-fg-muted)]"
+                declaredActive ? accent.text : "text-[color:var(--aqt-fg-muted)]"
               )}
             >
               {ROLE_DISPLAY[entry.role]}
@@ -273,18 +282,20 @@ function SortableRoleEntry({
           <div className="flex items-center gap-1.5">
             <div className="flex h-6 items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-black/15 px-2">
               <Switch
-                checked={entry.is_active}
+                checked={declaredActive}
                 className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 data-[state=checked]:[&>span]:translate-x-3"
-                onCheckedChange={(checked) => onUpdate(index, { ...entry, is_active: checked })}
-                aria-label={entry.is_active ? "Disable role" : "Enable role"}
+                onCheckedChange={(checked) =>
+                  onUpdate(index, { ...entry, is_declared_active: checked })
+                }
+                aria-label={declaredActive ? "Disable role" : "Enable role"}
               />
               <span
                 className={cn(
                   "text-[11px] font-semibold uppercase tracking-wide",
-                  entry.is_active ? accent.text : "text-[color:var(--aqt-fg-dim)]"
+                  declaredActive ? accent.text : "text-[color:var(--aqt-fg-dim)]"
                 )}
               >
-                {entry.is_active ? "Active" : "Off"}
+                {declaredActive ? "Active" : "Off"}
               </span>
             </div>
 
@@ -317,7 +328,7 @@ function SortableRoleEntry({
               <SelectTrigger
                 className={cn(
                   "h-7 w-full border-[color:var(--aqt-border-2)] bg-black/15 px-2 text-xs text-[color:var(--aqt-fg)]",
-                  !entry.is_active && "text-[color:var(--aqt-fg-dim)]"
+                  !declaredActive && "text-[color:var(--aqt-fg-dim)]"
                 )}
               >
                 <SelectValue placeholder="Sub-role" />
@@ -339,7 +350,7 @@ function SortableRoleEntry({
               entry.rank_source && entry.rank_source !== "none" ? entry.rank_source : null
             }
             accent={accent}
-            active={entry.is_active}
+            active={declaredActive}
             onClear={
               entry.rank_value == null
                 ? null
@@ -723,7 +734,10 @@ export function PlayerEditModal({
         priority: roleEntries.length + 1,
         division_number: null,
         rank_value: null,
-        is_active: true,
+        // Declared on by the organizer's action, but not in play until it is
+        // ranked — which is the server's call, not ours.
+        is_active: false,
+        is_declared_active: true,
         ow_rank_value: null
       }
     ];

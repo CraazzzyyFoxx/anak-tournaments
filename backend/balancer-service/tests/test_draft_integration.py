@@ -39,15 +39,20 @@ from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.models.balancer.draft import DraftPick  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
-from shared.models.tenancy.workspace import Workspace  # noqa: E402
+from shared.models.registration.registration import (  # noqa: E402
+    BalancerRegistration,
+    BalancerRegistrationRole,
+)
+from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
 from src import models  # noqa: E402
-from src.domain.draft.entities import CaptainSeed, PlayerSeed  # noqa: E402
+from src.domain.draft.entities import PoolSeat  # noqa: E402
 from src.services.draft import board as draft_board  # noqa: E402
 from src.services.draft import clock as draft_clock  # noqa: E402
 from src.services.draft import export as draft_export  # noqa: E402
 from src.services.draft import lifecycle, loaders, selection  # noqa: E402
 from src.services.draft import realtime as draft_realtime  # noqa: E402
+from src.services.draft.rosters import draft_rosters  # noqa: E402
 
 # The 3-slot roster these tests draft for. It replaces the old
 # `rounds=2, team_size=3` pair: `role_targets_for_team_size(3)` resolved to
@@ -92,7 +97,15 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             ws = Workspace(slug=f"ws-{self._suffix}", name=f"WS {self._suffix}")
             s.add(ws)
             await s.flush()
-            tourn = Tournament(workspace_id=ws.id, name=f"T {self._suffix}", status=DraftStatus.SETUP.value)
+            # ``slug`` is NOT NULL and globally unique (migration tslug0001): the
+            # public tournament route carries no workspace segment, so the
+            # per-test suffix has to go into the slug too, not just the name.
+            tourn = Tournament(
+                workspace_id=ws.id,
+                name=f"T {self._suffix}",
+                slug=f"t-{self._suffix}",
+                status=DraftStatus.SETUP.value,
+            )
             # Tournament.status is TournamentStatus; reuse "draft" value via enum string.
             tourn.status = "draft"
             # The draft resolves its shape from the tournament/workspace override,
@@ -115,10 +128,21 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 s.add(au)
                 auth_users.append(au)
             await s.flush()
+            # A draft seat is now a reference to a balancer registration, and a
+            # registration's identity is its workspace_member. Captain identity
+            # (both the domain player id and the auth user id the on-clock guard
+            # accepts) therefore has to exist BEFORE any registration is written.
+            for user, auth_user in zip(users, auth_users, strict=True):
+                user.auth_user_id = auth_user.id
+            members = [WorkspaceMember(workspace_id=ws.id, player_id=u.id) for u in users]
+            for member in members:
+                s.add(member)
+            await s.flush()
             self.workspace_id = ws.id
             self.tournament_id = tourn.id
             self.captain_user_ids = [u.id for u in users]
             self.captain_auth_user_ids = [u.id for u in auth_users]
+            self.captain_member_ids = [m.id for m in members]
             await s.commit()
 
     async def asyncTearDown(self) -> None:
@@ -146,20 +170,74 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
         await self.engine.dispose()
 
-    def _captains(self) -> list[CaptainSeed]:
-        return [
-            CaptainSeed(name=f"Cap{i}", draft_position=i + 1, user_id=uid)
-            for i, uid in enumerate(self.captain_user_ids)
-        ]
+    async def _registration(
+        self,
+        s,
+        *,
+        tag: str,
+        ranks: dict[str, int | None],
+        primary: str | None = None,
+        workspace_member_id: int | None = None,
+    ) -> int:
+        """One approved, in-pool ``balancer.registration`` with its role rows.
 
-    def _players(self) -> list[PlayerSeed]:
-        # Captains default to TANK in this fixture. A 3-player roster therefore
-        # needs two DPS picks per team; keep enough DPS players for start preflight.
-        roles = [HeroClass.damage] * 6 + [HeroClass.tank, HeroClass.support, HeroClass.support]
-        return [
-            PlayerSeed(primary_role=role, rank_value=3000 + i * 50, battle_tag=f"P{i}#1")
-            for i, role in enumerate(roles)
-        ]
+        ``ranks`` is ``{slot_code: rank}`` in priority order; a ``None`` rank
+        leaves the role DECLARED but unranked, which is what makes it unplayable
+        and the registration unseatable.
+        """
+        reg = BalancerRegistration(
+            tournament_id=self.tournament_id,
+            battle_tag=tag,
+            battle_tag_normalized=tag.lower(),
+            display_name=tag,
+            status="approved",
+            balancer_status="ready",
+            workspace_member_id=workspace_member_id,
+        )
+        s.add(reg)
+        await s.flush()
+        lead = primary or next(iter(ranks))
+        for priority, (role, rank) in enumerate(ranks.items()):
+            s.add(
+                BalancerRegistrationRole(
+                    registration_id=reg.id,
+                    role=role,
+                    is_primary=role == lead,
+                    priority=priority,
+                    rank_value=rank,
+                    is_active=True,
+                )
+            )
+        await s.flush()
+        return reg.id
+
+    async def _captain_seats(self, s) -> list[PoolSeat]:
+        """Three TANK captains, each bound to a workspace member (= an identity)."""
+        seats = []
+        for i, member_id in enumerate(self.captain_member_ids):
+            registration_id = await self._registration(
+                s,
+                tag=f"Cap{self._suffix}-{i}#1",
+                ranks={"tank": 3400 + i * 10},
+                workspace_member_id=member_id,
+            )
+            seats.append(PoolSeat(registration_id=registration_id, draft_position=i + 1, team_name=f"Cap{i}"))
+        return seats
+
+    async def _player_seats(self, s) -> list[PoolSeat]:
+        # Captains are TANK in this fixture. A 3-slot roster therefore needs two
+        # DPS picks per team; keep enough DPS players for the start preflight.
+        roles = ["dps"] * 6 + ["tank", "support", "support"]
+        seats = []
+        for i, role in enumerate(roles):
+            registration_id = await self._registration(
+                s, tag=f"P{self._suffix}-{i}#1", ranks={role: 3000 + i * 50}
+            )
+            seats.append(PoolSeat(registration_id=registration_id))
+        return seats
+
+    async def _seats(self, s) -> list[PoolSeat]:
+        return [*await self._captain_seats(s), *await self._player_seats(s)]
 
     async def _new_session(self, s):
         draft = await lifecycle.lifecycle_service.create_session(
@@ -168,7 +246,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             workspace_id=self.workspace_id,
             shape=_SHAPE,
         )
-        await lifecycle.lifecycle_service.seed(s, draft, captains=self._captains(), players=self._players())
+        await lifecycle.lifecycle_service.seed(s, draft, seats=await self._seats(s))
         await s.commit()
         return draft
 
@@ -286,15 +364,18 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 workspace_id=self.workspace_id,
                 shape=_SHAPE,
             )
-            # Primary TANK@3000 who can flex DPS@2500.
-            special = PlayerSeed(
-                primary_role=HeroClass.tank,
-                battle_tag="Flex#1",
-                secondary_roles=[HeroClass.damage],
-                rank_value=3000,
-                role_ranks={"tank": 3000, "dps": 2500},
+            # A registration that leads TANK@3000 and can also play DPS@2500.
+            flex_registration_id = await self._registration(
+                s,
+                tag=f"Flex{self._suffix}#1",
+                ranks={"tank": 3000, "dps": 2500},
+                primary="tank",
             )
-            await lifecycle.lifecycle_service.seed(s, draft, captains=self._captains(), players=[special, *self._players()])
+            await lifecycle.lifecycle_service.seed(
+                s,
+                draft,
+                seats=[*await self._seats(s), PoolSeat(registration_id=flex_registration_id)],
+            )
             await s.commit()
             await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
@@ -308,7 +389,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             chosen = await s.scalar(
                 sa.select(lifecycle.DraftPlayer).where(
                     lifecycle.DraftPlayer.session_id == draft.id,
-                    lifecycle.DraftPlayer.battle_tag == "Flex#1",
+                    lifecycle.DraftPlayer.registration_id == flex_registration_id,
                 )
             )
             res = await selection.selection_service.select(
@@ -336,15 +417,10 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 workspace_id=self.workspace_id,
                 shape=_SHAPE,
             )
-            captains = [
-                CaptainSeed(
-                    name=f"AuthCap{i}",
-                    draft_position=i + 1,
-                    auth_user_id=auth_user_id,
-                )
-                for i, auth_user_id in enumerate(self.captain_auth_user_ids)
-            ]
-            await lifecycle.lifecycle_service.seed(s, draft, captains=captains, players=self._players())
+            # Captain identity comes from the registration's member: the auth
+            # user id resolves through ``workspace_member.player.auth_user_id``,
+            # so no imported team row is involved anywhere on this path.
+            await lifecycle.lifecycle_service.seed(s, draft, seats=await self._seats(s))
             await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
 
@@ -710,35 +786,11 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
     async def _build_balancer_pool(self, s, n: int) -> list[int]:
         """Create n approved, in-pool BalancerRegistration rows (with roles). Returns ids."""
-        from shared.models.registration.registration import BalancerRegistration, BalancerRegistrationRole
-
         roles = ["tank", "dps", "support"]
-        ids: list[int] = []
-        for i in range(n):
-            tag = f"Pool{self._suffix}-{i}#1"
-            reg = BalancerRegistration(
-                tournament_id=self.tournament_id,
-                battle_tag=tag,
-                battle_tag_normalized=tag.lower(),
-                display_name=tag,
-                status="approved",
-                balancer_status="ready",
-            )
-            s.add(reg)
-            await s.flush()
-            s.add(
-                BalancerRegistrationRole(
-                    registration_id=reg.id,
-                    role=roles[i % 3],
-                    is_primary=True,
-                    priority=1,
-                    rank_value=3000 + i * 25,
-                    is_active=True,
-                )
-            )
-            ids.append(reg.id)
-        await s.flush()
-        return ids
+        return [
+            await self._registration(s, tag=f"Pool{self._suffix}-{i}#1", ranks={roles[i % 3]: 3000 + i * 25})
+            for i in range(n)
+        ]
 
     async def test_seed_from_pool_uses_existing_balancer_pool(self) -> None:
         async with self.Session() as s:
@@ -761,12 +813,17 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             self.assertEqual(len(players), 9)  # 3 captains + 6 pool, all derived from balancer
             captains = [p for p in players if p.is_captain]
             self.assertEqual(len(captains), 3)
-            # roles came from the balancer pool (not a TANK placeholder for all)
-            self.assertEqual({p.primary_role for p in players}, {"tank", "dps", "support"})
+            # Roles and ranks are NOT copied onto the seat any more; they are
+            # resolved from the registration on every read, which is what makes a
+            # rank typed in the balancer after seeding show up without a re-seed.
+            rosters = await draft_rosters.load(s, draft, list(players))
+            self.assertEqual(len(rosters), 9)
+            leads = {rosters[p.id].primary.role.slot_code for p in players}
+            self.assertEqual(leads, {"tank", "dps", "support"})
             available = [p for p in players if p.status == DraftPlayerStatus.AVAILABLE.value]
             self.assertEqual(len(available), 6)
-            # ranks carried over from the pool
-            self.assertTrue(all(p.rank_value and p.rank_value >= 3000 for p in players))
+            # ranks read back from the pool
+            self.assertTrue(all(rosters[p.id].best_rank >= 3000 for p in players))
 
     async def test_seed_from_pool_weakest_first_orders_seats_by_rank(self) -> None:
         from shared.core.enums import DraftCaptainOrder
@@ -795,10 +852,47 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 )
             ).all()
             cap_by_team = {c.drafted_by_team_id: c for c in captains}
+            rosters = await draft_rosters.load(s, draft, list(captains))
             ordered = sorted(teams, key=lambda team: team.draft_position)
-            ranks_in_seat_order = [cap_by_team[team.id].rank_value for team in ordered]
+            ranks_in_seat_order = [rosters[cap_by_team[team.id].id].best_rank for team in ordered]
             # position 1 picks first = weakest captain
             self.assertEqual(ranks_in_seat_order, [3000, 3025, 3050])
+
+    async def test_seed_refuses_a_registration_the_balancer_ranks_on_no_role(self) -> None:
+        # The old seeder labelled such a player ``damage`` with a NULL rank and
+        # let them into the pool, where autopick scored them 0 and took them
+        # last. There is no honest default, so seeding must refuse and name who
+        # needs a rank -- before writing any team, player or pick row.
+        async with self.Session() as s:
+            draft = await lifecycle.lifecycle_service.create_session(
+                s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, shape=_SHAPE
+            )
+            draft_id = draft.id
+            seats = await self._seats(s)
+            unranked_id = await self._registration(
+                s, tag=f"NoRank{self._suffix}#1", ranks={"dps": None, "support": None}
+            )
+            await s.commit()
+
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await lifecycle.lifecycle_service.seed(
+                    s, draft, seats=[*seats, PoolSeat(registration_id=unranked_id)]
+                )
+
+            self.assertEqual(ctx.exception.status_code, 422)
+            self.assertEqual(ctx.exception.detail[0]["code"], "draft_pool_unranked")
+            self.assertIn(f"NoRank{self._suffix}#1", ctx.exception.detail[0]["msg"])
+            await s.rollback()
+            # ``rollback`` expires every instance, so the status is re-read from
+            # the database rather than off the in-memory row -- which is the
+            # stronger assertion anyway: the refused seed left SETUP committed.
+            status = await s.scalar(
+                sa.select(lifecycle.DraftSession.status).where(lifecycle.DraftSession.id == draft_id)
+            )
+            self.assertEqual(status, DraftStatus.SETUP.value)
+            for model in (lifecycle.DraftTeam, lifecycle.DraftPlayer, DraftPick):
+                rows = (await s.scalars(sa.select(model.id).where(model.session_id == draft_id))).all()
+                self.assertEqual(list(rows), [], f"{model.__name__} rows were written on the refused seed")
 
     async def test_can_create_new_draft_after_cancel(self) -> None:
         async with self.Session() as s:

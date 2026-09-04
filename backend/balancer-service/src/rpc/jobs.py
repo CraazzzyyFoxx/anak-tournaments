@@ -19,20 +19,33 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import json
 from typing import Any
 
+import sqlalchemy as sa
 from faststream.rabbit import RabbitMessage
 from starlette.datastructures import Headers, UploadFile
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.models.tournament import Tournament
 from shared.rpc.identity import MissingIdentityError
 from src.core import db
 from src.core.auth import _resolve_user_from_token
+from src import schemas
 from src.rpc import _common as c
 from src.services.balancer import jobs
 
 _SF = db.async_session_maker
+
+
+async def _tournament_workspace_id(session: Any, tournament_id: int) -> int:
+    workspace_id = await session.scalar(
+        sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id)
+    )
+    if workspace_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    return int(workspace_id)
 
 
 async def _resolve_user(data: dict[str, Any]) -> Any:
@@ -98,6 +111,32 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         return await c.envelope(logger, "jobs.create", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.jobs.create_for_tournament")
+    async def _create_for_tournament(data: dict, msg: RabbitMessage) -> dict:
+        """Balance a tournament's own pool: nothing is uploaded.
+
+        The xv-1 payload is built server-side from ``shared.services.roster`` --
+        the same engine the draft reads -- so the algorithm and the draft can no
+        longer be fed two different rank sources.
+        """
+
+        async def op(session: Any) -> Any:
+            user = await _resolve_user(data)
+            tournament_id = int(data["id"])
+            workspace_id = await _tournament_workspace_id(session, tournament_id)
+            payload = schemas.TournamentBalanceRequest.model_validate(c.payload(data) or {})
+            overrides = payload.config_overrides
+            return await jobs.create_tournament_job(
+                session=session,
+                tournament_id=tournament_id,
+                raw_config=json.dumps(overrides.model_dump(exclude_none=True)) if overrides else None,
+                workspace_id=workspace_id,
+                user=user,
+                broker=broker,
+            )
+
+        return await c.envelope(logger, "jobs.create_for_tournament", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.jobs.status")
     async def _status(data: dict, msg: RabbitMessage) -> dict:

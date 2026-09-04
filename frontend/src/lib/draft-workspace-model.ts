@@ -85,8 +85,12 @@ export function optionForSelection(
 export function playerRoles(player: DraftPlayer): DraftRole[] {
   const declared = player.is_flex
     ? (["tank", "dps", "support"] as DraftRole[])
-    : ((player.secondary_roles_json ?? []) as DraftRole[]);
-  return Array.from(new Set<DraftRole>([player.primary_role, ...declared]));
+    : (player.secondary_roles as DraftRole[]);
+  // `primary_role` is null once the player has no playable role left; nothing
+  // may be substituted for it.
+  return Array.from(
+    new Set<DraftRole>(player.primary_role ? [player.primary_role, ...declared] : declared)
+  );
 }
 
 /**
@@ -166,7 +170,7 @@ export function groupPicksByRound(picks: DraftPick[]): DraftRoundGroup[] {
     }));
 }
 
-export function rosterRoleForPlayer(player: DraftPlayer, picks: DraftPick[]): DraftRole {
+export function rosterRoleForPlayer(player: DraftPlayer, picks: DraftPick[]): DraftRole | null {
   const pick = picks.find((p) => p.picked_player_id === player.id && p.target_role != null);
   return (pick?.target_role as DraftRole | undefined) ?? player.primary_role;
 }
@@ -180,11 +184,12 @@ export function rosterRoleForPlayer(player: DraftPlayer, picks: DraftPick[]): Dr
  */
 export function slotRankForPlayer(
   player: DraftPlayer,
-  role: DraftRole,
+  role: DraftRole | null,
   shape: Pick<RosterShape, "has_role_slots">
 ): number | null {
   if (!shape.has_role_slots) return player.effective_rank;
-  return player.role_ranks?.[role] ?? player.rank_value ?? null;
+  if (role == null) return null;
+  return player.role_ranks?.[role] ?? null;
 }
 
 /**

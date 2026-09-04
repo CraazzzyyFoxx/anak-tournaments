@@ -4106,6 +4106,7 @@
     "blockingIssues": "Blocking issues",
     "blockers": {
       "not_enough_players": "There are fewer eligible players than roster slots.",
+      "pool_unranked": "{count} pool players have no rank — add their ranks in the balancer.",
       "role_shortage_tank": "There are not enough eligible tank players.",
       "role_shortage_dps": "There are not enough eligible damage players.",
       "role_shortage_support": "There are not enough eligible support players."
@@ -4334,10 +4335,11 @@
       "player": "Remaining player",
       "selectPlayer": "Choose a player",
       "declaredRoles": "Declared roles",
+      "noRole": "no role",
       "newRole": "Additional role",
       "selectRole": "Choose the missing role",
       "rank": "Rank on this role",
-      "rankAbsent": "No rank is available — confirm explicitly",
+      "rankRequired": "A rank is required: a role without one is not playable, so the draft would never offer it. If you do not know it, set it in the balancer.",
       "reason": "Private audit reason",
       "reasonPlaceholder": "Why is this role being added?",
       "reasonPrivate": "The reason is visible only to organizers and is never published to the draft board.",
@@ -4460,6 +4462,20 @@
     "role": "Role",
     "chooseRole": "Choose role",
     "primaryRole": "Primary role",
+    "noRole": "No role",
+    "noRoleHint": "This player has no ranked role, so there is nothing to pick them on. Add a rank in the balancer.",
+    "rankSource": {
+      "registration": "Declared on registration",
+      "workspace": "Workspace rank",
+      "ow": "Overwatch rank",
+      "none": "No rank source"
+    },
+    "rankSourceShort": {
+      "registration": "REG",
+      "workspace": "WS",
+      "ow": "OW",
+      "none": "?"
+    },
     "rank": "Rank",
     "optionReason": {
       "slot_filled": "This roster slot is already filled.",

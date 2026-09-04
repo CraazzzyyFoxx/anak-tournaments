@@ -41,6 +41,7 @@ from faststream.rabbit.annotations import RabbitMessage
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import WorkspaceRepository
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.roster import roster_engine
 from src import models, schemas
 from src.clients.challonge import challonge_client
 from src.core import auth
@@ -52,7 +53,6 @@ from src.services.division_grid import import_jobs as division_grid_import_jobs
 from src.services.division_grid import marketplace as division_grid_marketplace
 from src.services.division_grid import portable as division_grid_portable
 from src.services.division_grid.service import division_grid_service
-from src.services.registration import export as reg_export
 from src.services.registration import sheet_sync
 from src.services.registration.serializers import serialize_feed
 from src.services.tournament import flows as tournament_flows
@@ -438,7 +438,10 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="player", action="read"
             )
-            payload = await reg_export.export_service.export_active_registrations(session, tournament_id)
+            # One payload, one source: the same rosters the balance job and the
+            # draft read, serialized by the engine rather than re-derived here.
+            rosters = await roster_engine.for_tournament(session, tournament_id, pool_only=True)
+            payload = roster_engine.balancer_input(rosters.values())
             return _dump(schemas.BalancerPlayerExportResponse(**payload))
 
         return await _run(logger, op)

@@ -86,11 +86,8 @@ export function PlayerInspector({
     (option) => option.role !== selectedOption?.role
   );
   const profileSlug = player.battle_tag ? getPlayerSlug(player.battle_tag) : null;
-  const headerDivision = player.division_number ?? resolveDivisionFromRank(divisionGrid, player.effective_rank);
-  const notes =
-    typeof player.additional_info.notes === "string" && player.additional_info.notes.trim() !== ""
-      ? player.additional_info.notes
-      : null;
+  const headerDivision = resolveDivisionFromRank(divisionGrid, player.effective_rank);
+  const notes = player.notes?.trim() ? player.notes : null;
   // Server-side projection: only fields the organizer flagged `show_in_draft`
   // arrive here, already carrying their current label and type.
   const customFields = player.custom_fields ?? [];
@@ -123,25 +120,37 @@ export function PlayerInspector({
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5 empty:hidden">
         {player.is_flex && <span className={BADGE_CLASS}>{t("flex")}</span>}
+        {player.primary_role == null && <span className={BADGE_CLASS}>{t("noRole")}</span>}
       </div>
 
       <div className="mt-3">
         <p className="mb-2 text-xs text-[color:var(--aqt-fg-muted)]">{t("chooseRole")}</p>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        {roles.length === 0 && (
+          <p className="text-sm text-[color:var(--aqt-fg-muted)]">{t("noRoleHint")}</p>
+        )}
+        <div className="flex flex-col gap-2 sm:flex-row empty:hidden">
           {roles.map((entry) => {
             const option = optionForSelection(options, player.id, entry);
             const blocked = safetyRequired && option?.is_safe !== true;
-            // The role's OWN rank, with no fallback. `rank_value` is the primary
-            // role's, so lending it to a role the player was never ranked on
-            // invents a rating the captain then picks on — three identical
-            // division icons for one real number. An unranked role renders the
-            // em-dash below; the player's overall strength stays in the header,
-            // where `effective_rank` answers it once.
+            // The role's OWN rank, with no fallback. Lending another role's
+            // number to a role the player was never ranked on invents a rating
+            // the captain then picks on — three identical division icons for one
+            // real number. An unranked role renders the em-dash below; the
+            // player's overall strength stays in the header, where
+            // `effective_rank` answers it once.
             const roleRank = player.role_ranks[entry] ?? null;
             const roleDivision = resolveDivisionFromRank(divisionGrid, roleRank);
+            // Provenance only when it is NOT the registration itself, so the
+            // organizer can tell an inherited or Overwatch-derived rank apart
+            // from one the player declared.
+            const roleSource = player.role_sources[entry] ?? null;
+            const borrowedSource =
+              roleRank != null && roleSource != null && roleSource !== "registration"
+                ? roleSource
+                : null;
             const heroes = roleTopHeroes(player, entry);
             const active = role === entry;
-            const isPrimary = entry === player.primary_role;
+            const isPrimary = player.primary_role != null && entry === player.primary_role;
             return (
               <button
                 key={entry}
@@ -150,7 +159,12 @@ export function PlayerInspector({
                 // focusable so its reason is reachable without a mouse.
                 aria-disabled={blocked || undefined}
                 aria-pressed={active}
-                title={[t(`roles.${entry}`), isPrimary ? t("primaryRole") : null, roleRank != null ? `${roleRank} SR` : null].filter(Boolean).join(" · ")}
+                title={[
+                  t(`roles.${entry}`),
+                  isPrimary ? t("primaryRole") : null,
+                  roleRank != null ? `${roleRank} SR` : null,
+                  borrowedSource ? t(`rankSource.${borrowedSource}`) : null
+                ].filter(Boolean).join(" · ")}
                 onClick={() => {
                   if (!blocked) onRoleChange(entry);
                 }}
@@ -177,6 +191,11 @@ export function PlayerInspector({
                         </Avatar>
                       ))}
                     </AvatarStack>
+                  )}
+                  {borrowedSource && (
+                    <span className="font-mono text-[10px] uppercase tracking-wide text-[color:var(--aqt-fg-faint)]">
+                      {t(`rankSourceShort.${borrowedSource}`)}
+                    </span>
                   )}
                   {blocked ? (
                     <Ban className="h-4 w-4 text-[color:var(--aqt-live)]" role="img" aria-label={t("unsafeOption")} />

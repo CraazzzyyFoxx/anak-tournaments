@@ -16,17 +16,18 @@ const { DraftClockRing } = await import("./DraftClockRing");
 
 const player = {
   id: 7,
+  registration_id: 70,
   battle_tag: "Ana#1234",
   status: "available",
   primary_role: "support",
   sub_role: null,
   is_flex: false,
   is_captain: false,
-  rank_value: 3000,
   effective_rank: 3000,
-  division_number: 4,
+  secondary_roles: [],
   role_ranks: {},
-  additional_info: {}
+  role_sources: {},
+  notes: null
 } as unknown as DraftPlayer;
 
 function renderPool(headingId: string) {

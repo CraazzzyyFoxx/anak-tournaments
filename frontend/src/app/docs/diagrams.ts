@@ -1043,9 +1043,9 @@ export const domains: DiagramDomain[] = [
     title: "Live-драфт",
     schemaLabel: "balancer.draft_*",
     schemas: ["balancer"],
-    tableCount: 6,
+    tableCount: 4,
     description:
-      "Snake-драфт: сессия на турнир, команды с капитанами, пул игроков и последовательность пиков (server-authoritative часы, optimistic-concurrency version).",
+      "Snake-драфт: сессия на турнир, команды с капитанами, пул игроков и последовательность пиков (server-authoritative часы, optimistic-concurrency version). Роли и ранги в драфте НЕ хранятся: draft_player ссылается на balancer.registration, а движок ростера резолвит их на чтении.",
     mermaid: `erDiagram
     DRAFT_SESSION {
         int id PK
@@ -1069,28 +1069,16 @@ export const domains: DiagramDomain[] = [
     }
     DRAFT_PLAYER {
         int id PK
-        int session_id FK "UK(session, workspace_member_id)"
+        int session_id FK "→ balancer.draft_session (CASCADE); UK(session, registration_id); IDX(session, status)"
+        int registration_id FK "NOT NULL → balancer.registration (RESTRICT); единственный источник ролей/рангов"
         int workspace_member_id FK "nullable → workspace_member (SET NULL); dbarch03 удалил user_id"
-        int drafted_by_team_id FK "nullable"
-        string battle_tag
-        string primary_role
-        string status "available/drafted/…"
-        int rank_value "nullable"
-        json additional_info "прочий per-player bag (role_ranks/top_heroes/secondary вынесены в дочерние)"
+        int drafted_by_team_id FK "nullable → balancer.draft_team (SET NULL)"
+        string status "available/picked/removed"
+        bool is_captain
+        int version "optimistic lock"
     }
-    DRAFT_PLAYER_ROLE {
+    BAL_REGISTRATION {
         int id PK
-        int draft_player_id FK "UK(draft_player, role)"
-        string role
-        int rank_value "nullable"
-        bool is_secondary
-        int priority
-    }
-    DRAFT_PLAYER_ROLE_HERO {
-        int id PK
-        int draft_player_role_id FK "UK(role, priority); UK(role, hero)"
-        int hero_id FK "→ overwatch.hero"
-        int priority
     }
     DRAFT_PICK {
         int id PK
@@ -1100,6 +1088,8 @@ export const domains: DiagramDomain[] = [
         int picked_by_workspace_member_id FK "nullable → workspace_member (SET NULL); dbarch03 удалил picked_by_user_id"
         int overall_no
         int round_no
+        string target_role "nullable; заморожен как факт о состоявшемся пике"
+        int target_rank_value "nullable; единственная сохранённая производная от ранга"
         string status "upcoming/…"
         int version "optimistic lock"
     }
@@ -1115,9 +1105,6 @@ export const domains: DiagramDomain[] = [
     WORKSPACE_MEMBER {
         int id PK
     }
-    HERO {
-        int id PK
-    }
     TOURNAMENT_TEAM {
         int id PK
     }
@@ -1130,9 +1117,7 @@ export const domains: DiagramDomain[] = [
     DRAFT_SESSION ||--o{ DRAFT_PICK : "пики"
     DRAFT_TEAM ||--o{ DRAFT_PICK : "чей пик"
     DRAFT_TEAM |o--o{ DRAFT_PLAYER : "задрафтован в"
-    DRAFT_PLAYER ||--o{ DRAFT_PLAYER_ROLE : "роли (primary + off-role)"
-    DRAFT_PLAYER_ROLE ||--o{ DRAFT_PLAYER_ROLE_HERO : "топ-герои"
-    HERO ||--o{ DRAFT_PLAYER_ROLE_HERO : "герой"
+    BAL_REGISTRATION ||--o{ DRAFT_PLAYER : "заявка (роли/ранги резолвятся live)"
     DRAFT_PLAYER |o--o{ DRAFT_PICK : "выбранный игрок"
     DRAFT_PICK |o--o| DRAFT_SESSION : "текущий пик"
     WORKSPACE_MEMBER |o--o{ DRAFT_TEAM : "капитан (member)"
@@ -1538,8 +1523,8 @@ export const changeLog: DocEntry[] = [
     body: "`map_veto_config.map_pool_ids` (JSON) → дочерняя `map_veto_config_map`; `veto_sequence_json` остался JSON."
   },
   {
-    term: "Draft-нормализация (dbarch03)",
-    body: "`draft_player.role_ranks`/`role_top_heroes`/`secondary_roles_json` (JSON) → `draft_player_role` + `draft_player_role_hero`."
+    term: "Драфт без ролей и рангов (draftreg1)",
+    body: "Роли и ранги в драфте не хранятся вообще. `dbarch03` вынес их из JSON в `balancer.draft_player_role` + `draft_player_role_hero`, а `draftreg1` снёс обе таблицы вместе с колонками `draft_player.primary_role`/`sub_role`/`is_flex`/`division_number`/`rank_value`/`battle_tag`/`additional_info`. Осталась ссылка `draft_player.registration_id → balancer.registration` (NOT NULL, RESTRICT, UK `(session_id, registration_id)` вместо `uq_draft_player_session_member`), а роли и ранги резолвятся на чтении из `balancer.registration_role` движком `shared.services.roster`. RESTRICT намеренно: заявка удаляется мягко, поэтому жёсткое удаление — это попытка стереть строку, от которой зависит драфт, и она отклоняется, а не рушит историю. Единственная сохранённая производная — `draft_pick.target_role`/`target_rank_value`, замороженные как исторический факт о состоявшемся пике."
   },
   {
     term: "Predictions (dbarch06)",

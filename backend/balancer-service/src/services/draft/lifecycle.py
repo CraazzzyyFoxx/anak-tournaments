@@ -16,9 +16,8 @@ from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from shared.balancer_registration_statuses import balancer_pool_included_clause
+
 from shared.core import draft_state
 from shared.core.enums import (
     DraftCaptainOrder,
@@ -26,17 +25,11 @@ from shared.core.enums import (
     DraftPickStatus,
     DraftPlayerStatus,
     DraftStatus,
-    HeroClass,
     TournamentStatus,
 )
 from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
-from shared.models.registration.registration import (
-    BalancerRegistration,
-    BalancerRegistrationForm,
-    BalancerRegistrationRole,
-    BalancerRegistrationRoleHero,
-)
+from shared.domain.roster import PlayerRoster
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
 from shared.repository.draft import (
@@ -47,9 +40,10 @@ from shared.repository.draft import (
 )
 from shared.repository.workspace import get_or_create_workspace_member
 from src.domain.draft import rules
-from src.domain.draft.entities import CaptainSeed, PlayerSeed
+from src.domain.draft.entities import PoolSeat
 from src.domain.draft.errors import err as _err
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
+from src.services.draft.rosters import DraftRosterService, draft_rosters
 
 __all__ = ("DraftLifecycleService", "lifecycle_service")
 
@@ -63,12 +57,14 @@ class DraftLifecycleService:
         players_repo: DraftPlayerRepository = DraftPlayerRepository(),
         picks_repo: DraftPickRepository = DraftPickRepository(),
         feasibility: DraftFeasibilityService = feasibility_service,
+        rosters: DraftRosterService = draft_rosters,
     ) -> None:
         self.sessions_repo = sessions_repo
         self.teams_repo = teams_repo
         self.players_repo = players_repo
         self.picks_repo = picks_repo
         self.feasibility = feasibility
+        self.rosters = rosters
 
     async def assert_no_active_draft(self, session: AsyncSession, tournament_id: int) -> None:
         if await self.sessions_repo.exists_active_for_tournament(session, tournament_id):
@@ -151,9 +147,13 @@ class DraftLifecycleService:
         if not picks:
             return 0
 
+        captains = await self.players_repo.list_drafted_captains(session, draft_session.id)
+        rosters = await self.rosters.load(session, draft_session, captains)
         captain_ranks = {
-            captain.drafted_by_team_id: (captain.rank_value if captain.rank_value is not None else -1)
-            for captain in await self.players_repo.list_drafted_captains(session, draft_session.id)
+            captain.drafted_by_team_id: (rosters.get(captain.id).best_rank or -1)
+            if rosters.get(captain.id) is not None
+            else -1
+            for captain in captains
         }
         fmt = DraftFormat(draft_session.format)
         round_rules = draft_session.settings_json.get("round_rules") or []
@@ -186,16 +186,37 @@ class DraftLifecycleService:
         session: AsyncSession,
         draft_session: DraftSession,
         *,
-        captains: list[CaptainSeed],
-        players: list[PlayerSeed],
+        seats: list[PoolSeat],
     ) -> DraftSession:
-        """Materialize teams + pool + all picks, then transition SETUP/READY -> READY."""
+        """Materialize teams + pool + all picks, then transition SETUP/READY -> READY.
+
+        A seat carries a registration id and nothing else. Roles and ranks are
+        NOT copied here -- they are resolved from the registration on every read,
+        which is what makes a rank typed in the balancer after seeding show up in
+        the draft without a re-seed.
+        """
         if draft_session.status not in (DraftStatus.SETUP.value, DraftStatus.READY.value):
             raise _err("draft_not_seedable", "Draft can only be seeded in SETUP or READY")
+        captains = [seat for seat in seats if seat.draft_position is not None]
         if not captains:
             raise _err("draft_no_captains", "At least one captain is required to seed a draft")
 
         draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.READY)
+
+        rosters = await self.rosters.pool(session, draft_session.tournament_id)
+        missing = [seat.registration_id for seat in seats if seat.registration_id not in rosters]
+        if missing:
+            raise _err(
+                "registration_not_in_pool",
+                f"Registrations {sorted(missing)} are not in the balancer pool for this tournament",
+                status_code=422,
+            )
+        # A registration the balancer ranks on no role has nothing to be drafted
+        # on: seating it used to mint a ``damage`` player at rank 0. Refuse, and
+        # name who needs a rank.
+        unranked = [rosters[seat.registration_id] for seat in seats if not rosters[seat.registration_id].is_draftable]
+        if unranked:
+            raise rules.unranked_pool_error(unranked)
 
         # Re-seed: clear any prior teams/players/picks (cascade via relationships).
         await self.picks_repo.delete_by_session(session, draft_session.id)
@@ -204,13 +225,16 @@ class DraftLifecycleService:
         draft_session.current_pick_id = None
         await session.flush()
 
-        ordered_captains = sorted(captains, key=lambda c: c.draft_position)
+        ordered_captains = sorted(captains, key=lambda seat: seat.draft_position or 0)
 
         # Resolve domain player ids -> workspace_member rows for this session's
-        # workspace (dbarch03: draft identity is anchored on workspace_member). Done
-        # once up front so every team/player row reuses the same member id.
-        player_ids = {c.user_id for c in ordered_captains if c.user_id is not None}
-        player_ids |= {p.user_id for p in players if p.user_id is not None}
+        # workspace (dbarch03: draft identity is anchored on workspace_member).
+        # Done once up front so every team/player row reuses the same member id.
+        player_ids = {
+            roster.player_id
+            for roster in (rosters[seat.registration_id] for seat in seats)
+            if roster.player_id is not None
+        }
         member_by_player: dict[int, int] = {}
         if player_ids:
             # Batch-prefetch existing membership rows (the common case on re-seed)
@@ -231,71 +255,59 @@ class DraftLifecycleService:
             )
             member_by_player[player_id] = member.id
 
-        def _member_id(user_id: int | None) -> int | None:
-            return member_by_player.get(user_id) if user_id is not None else None
+        def _member_id(roster: PlayerRoster) -> int | None:
+            return member_by_player.get(roster.player_id) if roster.player_id is not None else None
 
         teams: list[DraftTeam] = []
         team_by_position: dict[int, DraftTeam] = {}
-        for cap in ordered_captains:
+        for position, seat in enumerate(ordered_captains, start=1):
+            roster = rosters[seat.registration_id]
             team = DraftTeam(
                 session_id=draft_session.id,
-                captain_workspace_member_id=_member_id(cap.user_id),
-                captain_auth_user_id=cap.auth_user_id,
-                name=cap.name,
-                draft_position=cap.draft_position,
+                captain_workspace_member_id=_member_id(roster),
+                captain_auth_user_id=roster.auth_user_id,
+                name=seat.team_name or roster.battle_tag or roster.display_name or f"Team {position}",
+                draft_position=position,
             )
             teams.append(team)
-            team_by_position[cap.draft_position] = team
+            team_by_position[position] = team
         await self.teams_repo.create_many(session, teams)
 
-        # Captains become PICKED players already on their roster.
+        captain_registration_ids = {seat.registration_id for seat in ordered_captains}
         players_to_create: list[DraftPlayer] = []
-        for cap in ordered_captains:
-            team = team_by_position[cap.draft_position]
-            # Real role from the pool when available; TANK placeholder otherwise.
-            cap_primary = cap.primary_role or HeroClass.tank
+        for position, seat in enumerate(ordered_captains, start=1):
+            # Captains become PICKED players already on their own roster.
+            roster = rosters[seat.registration_id]
             players_to_create.append(
                 DraftPlayer(
                     session_id=draft_session.id,
-                    workspace_member_id=_member_id(cap.user_id),
-                    battle_tag=cap.battle_tag,
-                    primary_role=cap_primary.slot_code,
-                    sub_role=cap.sub_role,
-                    is_flex=cap.is_flex,
-                    division_number=cap.division_number,
-                    rank_value=cap.rank_value,
+                    registration_id=seat.registration_id,
+                    workspace_member_id=_member_id(roster),
                     is_captain=True,
                     status=DraftPlayerStatus.PICKED.value,
-                    drafted_by_team_id=team.id,
-                    additional_info=cap.additional_info,
-                    roles=rules.seed_role_rows(cap_primary, [], cap.role_ranks, cap.role_top_heroes),
+                    drafted_by_team_id=team_by_position[position].id,
                 )
             )
-        # Pool players.
-        for p in players:
+        for seat in seats:
+            if seat.registration_id in captain_registration_ids:
+                continue
+            roster = rosters[seat.registration_id]
             players_to_create.append(
                 DraftPlayer(
                     session_id=draft_session.id,
-                    workspace_member_id=_member_id(p.user_id),
-                    battle_tag=p.battle_tag,
-                    primary_role=p.primary_role.slot_code,
-                    sub_role=p.sub_role,
-                    is_flex=p.is_flex,
-                    division_number=p.division_number,
-                    rank_value=p.rank_value,
+                    registration_id=seat.registration_id,
+                    workspace_member_id=_member_id(roster),
                     status=DraftPlayerStatus.AVAILABLE.value,
-                    additional_info=p.additional_info,
-                    roles=rules.seed_role_rows(p.primary_role, p.secondary_roles, p.role_ranks, p.role_top_heroes),
                 )
             )
         await self.players_repo.create_many(session, players_to_create)
 
         # Pre-create all picks in deterministic order based on round rules.
-        seats = [team_by_position[pos] for pos in sorted(team_by_position)]
         team_captain_ranks = {
-            team_by_position[cap.draft_position].id: (cap.rank_value if cap.rank_value is not None else -1)
-            for cap in ordered_captains
+            team_by_position[position].id: (rosters[seat.registration_id].best_rank or -1)
+            for position, seat in enumerate(ordered_captains, start=1)
         }
+        seats_in_order = [team_by_position[position] for position in sorted(team_by_position)]
 
         fmt = DraftFormat(draft_session.format)
         round_rules = draft_session.settings_json.get("round_rules") or []
@@ -304,7 +316,7 @@ class DraftLifecycleService:
         overall_no = 1
         for round_idx in range(draft_session.rounds):
             round_seats = rules.round_seat_order(
-                seats,
+                seats_in_order,
                 fmt=fmt,
                 round_rules=round_rules,
                 round_idx=round_idx,
@@ -333,35 +345,6 @@ class DraftLifecycleService:
         await session.flush()
         return draft_session
 
-    async def load_pool(self, session: AsyncSession, tournament_id: int) -> list[BalancerRegistration]:
-        """Load the balancer pool = registrations included in the balancer.
-
-        Mirrors the panel's ``isRegistrationIncludedInBalancer``: approved, not
-        deleted, and the current balancer_status doesn't exclude it (not_in_balancer
-        / excluded / a workspace custom status configured to exclude).
-        """
-        workspace_id_expr = sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id).scalar_subquery()
-        return list(
-            await session.scalars(
-                sa.select(BalancerRegistration)
-                .where(
-                    BalancerRegistration.tournament_id == tournament_id,
-                    BalancerRegistration.status == "approved",
-                    BalancerRegistration.deleted_at.is_(None),
-                    balancer_pool_included_clause(BalancerRegistration.balancer_status, workspace_id_expr),
-                )
-                .options(
-                    selectinload(BalancerRegistration.roles)
-                    .selectinload(BalancerRegistrationRole.hero_entries)
-                    .selectinload(BalancerRegistrationRoleHero.hero),
-                    # Needed by rules.registration_player_id / registration_auth_user_id
-                    # (the member is the registration's only identity anchor).
-                    selectinload(BalancerRegistration.workspace_member).selectinload(WorkspaceMember.player),
-                )
-                .order_by(BalancerRegistration.battle_tag_normalized.asc())
-            )
-        )
-
     async def seed_from_pool(
         self,
         session: AsyncSession,
@@ -375,88 +358,43 @@ class DraftLifecycleService:
         """Seed a draft from the balancer registration pool.
 
         ``captain_registration_ids`` are ``balancer.registration`` ids chosen as
-        captains. ``captain_order`` decides seat order (who picks first) — e.g.
-        WEAKEST_FIRST seats the lowest-rated captain at position 1. Every other
-        in-pool registration becomes an available draft player; roles/ranks come from
-        the registration.
+        captains; ``captain_order`` decides seat order (WEAKEST_FIRST seats the
+        lowest-rated captain at position 1). Every other in-pool registration
+        becomes an available draft player. Ordering reads the engine's ranks --
+        the same numbers the balancer sorted the captain picker by.
         """
-        pool = await self.load_pool(session, draft_session.tournament_id)
-        # First read of the registration form from balancer-service. One query per
-        # seed; the mode decides whether role is a constraint at all.
-        all_roles = rules.all_roles_required(
-            await session.scalar(
-                sa.select(BalancerRegistrationForm).where(
-                    BalancerRegistrationForm.tournament_id == draft_session.tournament_id
-                )
-            )
-        )
-        by_id = {reg.id: reg for reg in pool}
+        rosters = await self.rosters.pool(session, draft_session.tournament_id)
         if not captain_registration_ids:
             raise _err("draft_no_captains", "Select at least one captain from the pool")
-
-        team_names = team_names or {}
-        mapped_by_id: dict[int, dict] = {}
-        for rid in captain_registration_ids:
-            reg = by_id.get(rid)
-            if reg is None:
+        for registration_id in captain_registration_ids:
+            if registration_id not in rosters:
                 raise _err(
                     "captain_not_in_pool",
-                    f"Captain registration {rid} is not in the balancer pool for this tournament",
+                    f"Captain registration {registration_id} is not in the balancer pool for this tournament",
                     status_code=422,
                 )
-            mapped_by_id[rid] = rules.map_registration(reg, all_roles=all_roles)
 
+        team_names = team_names or {}
         ordered_ids = rules.order_captain_ids(
-            [(rid, mapped_by_id[rid]["rank_value"]) for rid in captain_registration_ids],
+            [(registration_id, rosters[registration_id].best_rank) for registration_id in captain_registration_ids],
             captain_order,
             rng_seed,
         )
-
-        captains: list[CaptainSeed] = []
-        for position, rid in enumerate(ordered_ids, start=1):
-            reg = by_id[rid]
-            mapped = mapped_by_id[rid]
-            captains.append(
-                CaptainSeed(
-                    name=team_names.get(rid) or reg.battle_tag or reg.display_name or f"Team {position}",
-                    draft_position=position,
-                    user_id=rules.registration_player_id(reg),
-                    auth_user_id=rules.registration_auth_user_id(reg),
-                    battle_tag=reg.battle_tag,
-                    primary_role=mapped["primary_role"],
-                    sub_role=mapped["sub_role"],
-                    is_flex=mapped["is_flex"],
-                    division_number=mapped["division_number"],
-                    rank_value=mapped["rank_value"],
-                    role_ranks=mapped.get("role_ranks") or {},
-                    role_top_heroes=mapped.get("role_top_heroes") or {},
-                    additional_info=mapped.get("additional_info") or {},
-                )
+        captain_ids = set(ordered_ids)
+        seats = [
+            PoolSeat(
+                registration_id=registration_id,
+                draft_position=position,
+                team_name=team_names.get(registration_id),
             )
-
-        captain_ids = set(captain_registration_ids)
-        players: list[PlayerSeed] = []
-        for reg in pool:
-            if reg.id in captain_ids:
-                continue
-            mapped = rules.map_registration(reg, all_roles=all_roles)
-            players.append(
-                PlayerSeed(
-                    primary_role=mapped["primary_role"],
-                    user_id=rules.registration_player_id(reg),
-                    battle_tag=reg.battle_tag,
-                    secondary_roles=mapped["secondary_roles"],
-                    sub_role=mapped["sub_role"],
-                    is_flex=mapped["is_flex"],
-                    division_number=mapped["division_number"],
-                    rank_value=mapped["rank_value"],
-                    role_ranks=mapped.get("role_ranks") or {},
-                    role_top_heroes=mapped.get("role_top_heroes") or {},
-                    additional_info=mapped.get("additional_info") or {},
-                )
-            )
-
-        return await self.seed(session, draft_session, captains=captains, players=players)
+            for position, registration_id in enumerate(ordered_ids, start=1)
+        ]
+        seats.extend(
+            PoolSeat(registration_id=registration_id)
+            for registration_id in sorted(rosters)
+            if registration_id not in captain_ids
+        )
+        return await self.seed(session, draft_session, seats=seats)
 
     async def _first_upcoming(self, session: AsyncSession, draft_session_id: int) -> DraftPick | None:
         return await self.picks_repo.first_upcoming(session, draft_session_id)

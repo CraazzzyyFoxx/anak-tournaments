@@ -1,12 +1,11 @@
 """Eager-load option sets for draft rows.
 
-dbarch03 re-anchored draft identity on ``workspace_member`` and normalized the
-per-role JSON into child tables, so the compatibility read properties
-(``DraftPlayer.user_id`` / ``role_ranks`` / ``secondary_roles_json`` /
-``role_top_heroes``, ``DraftTeam.captain_user_id``, ``DraftPick.picked_by_user_id``)
-now read relationships. Async code must eager-load those relationships — a lazy
-load would raise ``MissingGreenlet`` — so every draft-row query/``session.get``
-passes the matching option set from here.
+``DraftPlayer`` no longer carries roles or ranks (``draftreg1`` deleted the
+snapshot), so what has to be eager-loaded is its identity: the member behind
+``user_id``, and the registration the roster engine resolves from -- with the
+engine's own option set attached, so one query feeds both.
+
+Async code must eager-load these; a lazy load would raise ``MissingGreenlet``.
 """
 
 from __future__ import annotations
@@ -15,24 +14,20 @@ from typing import Any
 
 from sqlalchemy.orm import selectinload
 
-from shared.models.balancer.draft import (
-    DraftPick,
-    DraftPlayer,
-    DraftPlayerRole,
-    DraftPlayerRoleHero,
-    DraftTeam,
-)
+from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
+from shared.services.roster import registration_load_options
 
-__all__ = ("player_options", "team_options", "pick_options")
+__all__ = ("pick_options", "player_options", "team_options")
 
 
 def player_options() -> list[Any]:
-    """Everything ``DraftPlayer``'s read properties touch: member + roles(+heroes)."""
+    """The member (``user_id``) plus the registration the engine reads."""
     return [
         selectinload(DraftPlayer.member),
-        selectinload(DraftPlayer.roles)
-        .selectinload(DraftPlayerRole.hero_entries)
-        .selectinload(DraftPlayerRoleHero.hero),
+        *(
+            selectinload(DraftPlayer.registration).options(option)
+            for option in registration_load_options()
+        ),
     ]
 
 

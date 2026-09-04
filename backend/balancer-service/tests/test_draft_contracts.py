@@ -25,7 +25,7 @@ from shared.core.enums import (  # noqa: E402
     HeroClass,
 )
 from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE, parse_roster_slots  # noqa: E402
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftPlayerRole, DraftSession  # noqa: E402
+from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession  # noqa: E402
 from src import (  # noqa: E402
     openapi_docs,
     openapi_schemas,
@@ -36,6 +36,7 @@ from src.domain.draft.entities import DraftPickOption  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
 from src.services.draft import board, lifecycle  # noqa: E402
 from src.services.draft.feasibility import feasibility_service  # noqa: E402
+from tests.factories import roster  # noqa: E402
 
 
 class _FakeBroker:
@@ -108,36 +109,37 @@ def test_read_models_and_handlers_cross_the_role_vocabulary_both_ways() -> None:
     assert draft_rpc._to_role("dps") is HeroClass.damage
     assert draft_rpc._to_role(None) is None
     shape = DEFAULT_ROSTER_SHAPE
-    player = DraftPlayer(id=1, session_id=1, primary_role="dps", is_flex=False, status="available")
-    player.roles = []
     decision = rules.resolve_pick_slot(
         shape,
         dict.fromkeys(shape.slots, 0),
-        player,
+        roster(101, ranks={"dps": 4000}),
         draft_rpc._to_role("dps"),
     )
     assert decision.recorded_role == "dps"
 
 
-def test_role_edit_contract_requires_reason_and_explicit_missing_rank_confirmation() -> None:
-    with pytest.raises(ValidationError):
-        schemas.DraftRoleEditRequest(
-            role="support",
-            rank_value=None,
-            rank_absence_confirmed=False,
-            reason="  ",
-            expected_version=2,
-        )
+def test_role_edit_contract_requires_a_reason_and_a_positive_rank() -> None:
+    # ``rank_absence_confirmed`` is gone with the draft's roles snapshot: a role
+    # without a rank is not playable, so "add it and confirm the rank is
+    # missing" added a role nobody could ever be drafted on.
+    for invalid in (
+        {"role": "support", "rank_value": 2500, "reason": "  ", "expected_version": 2},
+        {"role": "support", "rank_value": None, "reason": "Missing role", "expected_version": 2},
+        {"role": "support", "rank_value": 0, "reason": "Missing role", "expected_version": 2},
+        {"role": "support", "reason": "Missing role", "expected_version": 2},
+    ):
+        with pytest.raises(ValidationError):
+            schemas.DraftRoleEditRequest(**invalid)
 
     request = schemas.DraftRoleEditRequest(
         role="support",
-        rank_value=None,
-        rank_absence_confirmed=True,
+        rank_value=2500,
         reason="Role was missing from registration",
         expected_version=2,
         preview_only=True,
     )
     assert request.role == "support"
+    assert request.rank_value == 2500
     assert request.preview_only is True
 
 
@@ -160,20 +162,56 @@ def test_seed_contract_supports_dry_run_and_optimistic_version() -> None:
     assert diff.session_version_after == 8
 
 
-def test_public_player_metadata_keeps_notes_strips_organizer_keys() -> None:
-    public = board.public_additional_info(
-        {
-            "notes": "registration note shown to captains",
-            "admin_notes": "organizer only",
-            "audit_reason": "private reason",
-            "pronouns": "they/them",
-        }
+def test_player_read_carries_registration_notes_and_never_the_organizer_ones() -> None:
+    # ``board.public_additional_info`` is gone: there is no metadata bag to
+    # filter any more. The projection itself is the boundary -- ``notes`` is
+    # what captains read in the Player Inspector, ``admin_notes`` has no field
+    # on the wire at all, and answers only arrive through the opt-in
+    # ``custom_fields`` list.
+    read = schemas.DraftPlayerRead.from_seat(
+        DraftPlayer(id=20, session_id=1, registration_id=120, status="available", is_captain=False, version=1),
+        roster(
+            120,
+            ranks={"support": 2800},
+            notes="registration note shown to captains",
+            admin_notes="organizer only",
+            custom_fields={"phone": "+70000000000"},
+        ),
+        shape=DEFAULT_ROSTER_SHAPE,
+        custom_fields=[],
     )
 
-    assert public == {
-        "notes": "registration note shown to captains",
-        "pronouns": "they/them",
-    }
+    assert read.notes == "registration note shown to captains"
+    assert "admin_notes" not in schemas.DraftPlayerRead.model_fields
+    assert read.custom_fields == []
+    assert "organizer only" not in read.model_dump_json()
+    assert "+70000000000" not in read.model_dump_json()
+
+
+def test_player_read_of_a_seat_with_no_roster_states_no_role_instead_of_guessing() -> None:
+    # Possible mid-draft when an organizer clears every rank, or when the
+    # registration is soft-deleted. The old seeder's answer was to label such a
+    # player ``damage`` at rank 0; clients must render "no role" instead, and
+    # feasibility reports the shortage.
+    read = schemas.DraftPlayerRead.from_seat(
+        DraftPlayer(id=20, session_id=1, registration_id=120, status="available", is_captain=False, version=1),
+        None,
+        shape=DEFAULT_ROSTER_SHAPE,
+        custom_fields=[board.VisibleCustomField(key="vk", label="VK profile", type="url")],
+    )
+
+    assert read.registration_id == 120
+    assert read.primary_role is None
+    assert read.sub_role is None
+    assert read.battle_tag is None
+    assert read.is_flex is False
+    assert read.secondary_roles == []
+    assert read.role_ranks == {}
+    assert read.role_sources == {}
+    assert read.role_top_heroes == {}
+    assert read.notes is None
+    assert read.effective_rank is None
+    assert read.custom_fields == []
 
 
 def test_pick_event_payload_contains_resolved_role_rank_and_version() -> None:
@@ -355,14 +393,6 @@ def test_seed_diff_builder_reports_before_and_after_counts() -> None:
     )
 
 
-class _FakeRegistration:
-    """The two registration attributes draft seeding reads for its metadata bag."""
-
-    def __init__(self, *, notes: str | None = None, custom_fields_json: dict | None = None) -> None:
-        self.notes = notes
-        self.custom_fields_json = custom_fields_json
-
-
 class _FormSession:
     """Answers the single ``custom_fields_json`` scalar read the board makes."""
 
@@ -371,19 +401,6 @@ class _FormSession:
 
     async def scalar(self, _statement) -> list | None:
         return self._custom_fields_json
-
-
-def test_seeded_metadata_keeps_registration_answers_out_of_the_public_snapshot() -> None:
-    info = rules.registration_additional_info(
-        _FakeRegistration(notes="plays support", custom_fields_json={"vk": "vk.com/p", "age": 21})
-    )
-
-    assert info == {
-        "notes": "plays support",
-        board.REGISTRATION_CUSTOM_FIELDS_KEY: {"vk": "vk.com/p", "age": 21},
-    }
-    # Spectators see the projection below, never the raw answer bag.
-    assert board.public_additional_info(info) == {"notes": "plays support"}
 
 
 def test_visible_custom_fields_takes_only_flagged_definitions_in_form_order() -> None:
@@ -413,18 +430,19 @@ def test_player_custom_fields_renders_answers_and_drops_the_unanswered() -> None
         board.VisibleCustomField(key="bio", label="Bio", type="text"),
     ]
 
-    projected = board.player_custom_fields(
-        {board.REGISTRATION_CUSTOM_FIELDS_KEY: {"vk": "vk.com/p", "rules": False, "bio": ""}},
-        fields,
-    )
+    # The answers ARE the registration's ``custom_fields_json``, read live off
+    # the roster -- the draft keeps no copy, so which answers a spectator may
+    # see is decided by the CURRENT form against the CURRENT answers.
+    projected = board.player_custom_fields({"vk": "vk.com/p", "rules": False, "bio": ""}, fields)
 
     # "rules": False is an ANSWER (a rendered "No"), unlike the blank bio.
     assert [(f.key, f.label, f.type, f.value) for f in projected] == [
         ("vk", "VK profile", "url", "vk.com/p"),
         ("rules", "Rules read", "checkbox", False),
     ]
-    # A manually seeded player carries no registration bag at all.
-    assert board.player_custom_fields({"notes": "manual entry"}, fields) == []
+    # A registration that answered nothing, and a seat with no roster at all.
+    assert board.player_custom_fields({"unrelated": "x"}, fields) == []
+    assert board.player_custom_fields(None, fields) == []
 
 
 class _ScalarsResult:
@@ -449,7 +467,9 @@ class _ExecuteResult:
 class _BoardSession:
     """Answers ``build_board``'s reads in call order, with no DB behind them.
 
-    ``scalar``: max(WorkspaceEvent.id), then the form's ``custom_fields_json``.
+    ``scalar``: max(WorkspaceEvent.id) over the draft AND bracket topics, then
+    the form's ``custom_fields_json`` (read only when some registration
+    actually answered one).
     ``execute``: teams, picks, players (repository ``list_by_session`` reads).
     """
 
@@ -462,6 +482,28 @@ class _BoardSession:
 
     async def execute(self, _statement) -> _ExecuteResult:
         return _ExecuteResult(self._results.pop(0))
+
+
+class _FakeRosters:
+    """``DraftRosterService`` stand-in: the engine's answer per seat."""
+
+    def __init__(self, rosters: dict[int, object]) -> None:
+        self._rosters = rosters
+
+    async def load(self, _session, _draft_session, players) -> dict:
+        return {player.id: self._rosters[player.id] for player in players if player.id in self._rosters}
+
+
+def _seat(player_id: int) -> DraftPlayer:
+    return DraftPlayer(
+        id=player_id,
+        session_id=1,
+        registration_id=100 + player_id,
+        status=DraftPlayerStatus.AVAILABLE.value,
+        is_captain=False,
+        drafted_by_team_id=None,
+        version=1,
+    )
 
 
 def _live_draft(session_id: int = 1) -> DraftSession:
@@ -497,23 +539,21 @@ def test_board_projects_flagged_answers_and_never_ships_the_rest(monkeypatch) ->
 
     monkeypatch.setattr(feasibility_service, "resolve_shape", _shape)
     draft = _live_draft()
-    player = DraftPlayer(
-        id=20,
-        session_id=1,
-        battle_tag="Ana#1",
-        primary_role=HeroClass.support.slot_code,
-        sub_role=None,
-        is_flex=False,
-        division_number=None,
-        rank_value=3000,
-        status=DraftPlayerStatus.AVAILABLE.value,
-        is_captain=False,
-        drafted_by_team_id=None,
-        additional_info={
-            "notes": "prefers Ana",
-            board.REGISTRATION_CUSTOM_FIELDS_KEY: {"vk": "vk.com/ana", "phone": "+70000000000"},
-        },
-        version=1,
+    player = _seat(20)
+    monkeypatch.setattr(
+        board.board_service,
+        "rosters",
+        _FakeRosters(
+            {
+                20: roster(
+                    120,
+                    ranks={"support": 3000},
+                    battle_tag="Ana#1",
+                    notes="prefers Ana",
+                    custom_fields={"vk": "vk.com/ana", "phone": "+70000000000"},
+                )
+            }
+        ),
     )
     session = _BoardSession(
         custom_fields_json=[
@@ -529,37 +569,23 @@ def test_board_projects_flagged_answers_and_never_ships_the_rest(monkeypatch) ->
     assert [(f.key, f.label, f.type, f.value) for f in read.custom_fields] == [
         ("vk", "VK profile", "url", "vk.com/ana")
     ]
-    assert read.additional_info == {"notes": "prefers Ana"}
+    assert read.battle_tag == "Ana#1"
+    assert read.notes == "prefers Ana"
     # The un-flagged answer leaves the service in NO shape — the whole point of
     # the opt-in is that the public board carries only what the organizer chose.
     assert "phone" not in snapshot.model_dump_json()
 
 
 def test_board_ranks_a_player_on_their_own_role_under_role_slots(monkeypatch) -> None:
-    # A support main rated 2800 on support and 4000 on dps. `rank_value` holds
-    # 4000 because an all-roles registration form stores the maximum there
-    # (rules.map_registration), so the board must read the catalogue instead:
-    # the pool card, the inspector header and the shortlist all render
-    # `effective_rank`, and they were showing this player as a 4000.
-    player = DraftPlayer(
-        id=21,
-        session_id=1,
-        battle_tag="Ana#2",
-        primary_role=HeroClass.support.slot_code,
-        sub_role=None,
-        is_flex=False,
-        division_number=None,
-        rank_value=4000,
-        status=DraftPlayerStatus.AVAILABLE.value,
-        is_captain=False,
-        drafted_by_team_id=None,
-        additional_info={},
-        version=1,
-        roles=[
-            DraftPlayerRole(role="support", rank_value=2800, is_secondary=False, priority=0),
-            DraftPlayerRole(role="dps", rank_value=4000, is_secondary=True, priority=1),
-        ],
-    )
+    # A support main rated 2800 on support and 4000 on dps: the pool card, the
+    # inspector header and the shortlist all render `effective_rank`, and they
+    # were showing this player as a 4000. Under a shape with role slots the
+    # number that represents them is the rank of the role they actually lead
+    # with; the maximum belongs to a role-less roster, where nobody is assigned
+    # a role at all. Contract: DraftPlayerRead.effective_rank's docstring.
+    player = _seat(21)
+    resolved = roster(121, ranks={"support": 2800, "dps": 4000}, primary="support", battle_tag="Ana#2")
+    monkeypatch.setattr(board.board_service, "rosters", _FakeRosters({21: resolved}))
 
     async def _role_shape(*_args, **_kwargs):
         return DEFAULT_ROSTER_SHAPE
@@ -571,12 +597,15 @@ def test_board_ranks_a_player_on_their_own_role_under_role_slots(monkeypatch) ->
         )
     )
     assert role_slots.players[0].effective_rank == 2800
+    # The per-role catalogue keeps every playable number beside it, so the role
+    # chooser still shows the 4000 on the DPS row.
+    assert role_slots.players[0].role_ranks == {"support": 2800, "dps": 4000}
 
     async def _flex_shape(*_args, **_kwargs):
         return parse_roster_slots({"flex": 5})
 
-    # A role-less roster assigns nobody a role, so the maximum stands in — the
-    # existing flex rule, unchanged.
+    # A role-less roster assigns nobody a role, so the best playable rank stands
+    # in — the existing flex rule, unchanged.
     monkeypatch.setattr(feasibility_service, "resolve_shape", _flex_shape)
     all_flex = asyncio.run(
         board.board_service.build_board(  # type: ignore[arg-type]
@@ -584,3 +613,25 @@ def test_board_ranks_a_player_on_their_own_role_under_role_slots(monkeypatch) ->
         )
     )
     assert all_flex.players[0].effective_rank == 4000
+
+
+def test_board_renders_a_seat_whose_registration_resolved_to_nothing(monkeypatch) -> None:
+    # A soft-deleted registration mid-draft: the seat must still render (its
+    # frozen picks stay readable) with no role and no rank rather than 500 the
+    # whole board.
+    async def _shape(*_args, **_kwargs):
+        return DEFAULT_ROSTER_SHAPE
+
+    monkeypatch.setattr(feasibility_service, "resolve_shape", _shape)
+    monkeypatch.setattr(board.board_service, "rosters", _FakeRosters({}))
+
+    snapshot = asyncio.run(
+        board.board_service.build_board(  # type: ignore[arg-type]
+            _BoardSession(custom_fields_json=[], players=[_seat(22)]), _live_draft(session_id=93)
+        )
+    )
+
+    read = snapshot.players[0]
+    assert read.primary_role is None
+    assert read.effective_rank is None
+    assert read.role_ranks == {}

@@ -3654,6 +3654,16 @@
       },
       "summary": "Create balance job"
     },
+    "rpc.balancer.jobs.create_for_tournament": {
+      "request": {
+        "array": false,
+        "ref": "balancer.TournamentBalanceRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "balancer.CreateJobResponse"
+      }
+    },
     "rpc.balancer.jobs.result": {
       "description": "Returns the computed result of a completed balance job by its uuid, scoped to the requesting token or API key.",
       "response": {
@@ -8154,6 +8164,10 @@
         "ref": "tournament.StageRead"
       },
       "summary": "Auto-wire stage from groups"
+    },
+    "rpc.tournament.stage_bracket_preview": {
+      "description": "Returns the bracket a stage would generate \u2014 the real generator's pairings, seed order, advancement edges and per-round best-of, with skeleton-local ids because nothing is written; wired teams appear by name, an unseeded playoff is projected from the preceding group stage. Requires stage-read permission on its workspace.",
+      "summary": "Preview stage bracket"
     },
     "rpc.tournament.stage_deactivate": {
       "description": "Reverts an accidentally-activated stage back to Draft/preview; refuses (409) once any of its matches has been reported or started; requires stage-update permission on its workspace.",
@@ -17788,6 +17802,536 @@
       "title": "BalancerTournamentConfigUpsert",
       "type": "object"
     },
+    "balancer.ConfigOverrides": {
+      "additionalProperties": false,
+      "description": "Optional public configuration overrides for the balancing algorithm.",
+      "properties": {
+        "average_mmr_balance_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weight for MMR difference between teams",
+          "title": "Average Mmr Balance Weight"
+        },
+        "convergence_epsilon": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum relative improvement required to continue once convergence patience is reached.",
+          "title": "Convergence Epsilon"
+        },
+        "convergence_patience": {
+          "anyOf": [
+            {
+              "maximum": 5000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of generations without meaningful Pareto improvement before early stop logic can trigger.",
+          "title": "Convergence Patience"
+        },
+        "crossover_rate": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Probability of crossover when producing Rust MOO offspring.",
+          "title": "Crossover Rate"
+        },
+        "dps_impact_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Importance multiplier for Damage role contribution in the effective team total.",
+          "title": "Dps Impact Weight"
+        },
+        "effective_total_std_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Penalty multiplier for the weighted effective team-total standard deviation.",
+          "title": "Effective Total Std Weight"
+        },
+        "generation_count": {
+          "anyOf": [
+            {
+              "maximum": 5000,
+              "minimum": 10,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of generations",
+          "title": "Generation Count"
+        },
+        "greedy_seed_count": {
+          "anyOf": [
+            {
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How many initial individuals are built from greedy seeding before random fill.",
+          "title": "Greedy Seed Count"
+        },
+        "internal_role_spread_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weight for uneven role-average strength inside the same team",
+          "title": "Internal Role Spread Weight"
+        },
+        "intra_team_std_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weight for the standard deviation of ratings inside each team. Higher values push the optimizer to spread top players across teams.",
+          "title": "Intra Team Std Weight"
+        },
+        "island_count": {
+          "anyOf": [
+            {
+              "maximum": 64,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of independent Rust MOO islands explored in parallel.",
+          "title": "Island Count"
+        },
+        "low_rank_collision_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Penalty weight per pair of low-rank players in the same team.",
+          "title": "Low Rank Collision Weight"
+        },
+        "low_rank_threshold": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rating threshold (canonical scale) at or below which a player's best role rating marks them low-rank. 0 disables the low-rank pair penalty.",
+          "title": "Low Rank Threshold"
+        },
+        "max_result_variants": {
+          "anyOf": [
+            {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum number of result variants to return for the selected solver",
+          "title": "Max Result Variants"
+        },
+        "max_role_discomfort_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weight for maximum discomfort penalty",
+          "title": "Max Role Discomfort Weight"
+        },
+        "max_team_gap_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Penalty weight for the rating gap between strongest and weakest team",
+          "title": "Max Team Gap Weight"
+        },
+        "mutation_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Probability of mutation",
+          "title": "Mutation Rate"
+        },
+        "mutation_rate_max": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Upper bound for adaptive mutation rate during the Rust MOO search.",
+          "title": "Mutation Rate Max"
+        },
+        "mutation_rate_min": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Lower bound for adaptive mutation rate during the Rust MOO search.",
+          "title": "Mutation Rate Min"
+        },
+        "mutation_strength": {
+          "anyOf": [
+            {
+              "maximum": 10,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of mutation operations per mutation",
+          "title": "Mutation Strength"
+        },
+        "polish_max_passes": {
+          "anyOf": [
+            {
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum local-polishing passes applied to final archive solutions.",
+          "title": "Polish Max Passes"
+        },
+        "population_size": {
+          "anyOf": [
+            {
+              "maximum": 1000,
+              "minimum": 10,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Population size for the moo solver",
+          "title": "Population Size"
+        },
+        "rank_comfort_tilt": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ranking tilt between balance and comfort (0.5 = balanced)",
+          "title": "Rank Comfort Tilt"
+        },
+        "role_discomfort_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weight for player role discomfort",
+          "title": "Role Discomfort Weight"
+        },
+        "role_line_balance_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weight for balancing roles between teams",
+          "title": "Role Line Balance Weight"
+        },
+        "role_mask": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ignored legacy role mask, kept only so configs saved before roster shapes still validate",
+          "title": "Role Mask"
+        },
+        "stagnation_kick_patience": {
+          "anyOf": [
+            {
+              "maximum": 5000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Generations without archive improvement before a stronger mutation kick is applied.",
+          "title": "Stagnation Kick Patience"
+        },
+        "sub_role_collision_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Penalty weight per pair of players in the same team sharing the same role subclass. Use 0 to disable.",
+          "title": "Sub Role Collision Weight"
+        },
+        "support_impact_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Importance multiplier for Support role contribution in the effective team total.",
+          "title": "Support Impact Weight"
+        },
+        "tank_gap_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Penalty multiplier for the rating gap between the strongest and weakest Tank lines.",
+          "title": "Tank Gap Weight"
+        },
+        "tank_impact_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Importance multiplier for Tank role contribution in the effective team total.",
+          "title": "Tank Impact Weight"
+        },
+        "tank_std_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Penalty multiplier for Tank-line standard deviation across teams.",
+          "title": "Tank Std Weight"
+        },
+        "team_max_pain_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weight for the per-team maximum role discomfort averaged over teams.",
+          "title": "Team Max Pain Weight"
+        },
+        "team_total_balance_weight": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weight for aligning total rating sums among all teams",
+          "title": "Team Total Balance Weight"
+        },
+        "time_limit_ms": {
+          "anyOf": [
+            {
+              "maximum": 600000,
+              "minimum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hard wall-clock budget for the native optimizer in milliseconds; the best result found so far is returned when exceeded.",
+          "title": "Time Limit Ms"
+        },
+        "use_captains": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether to use captain assignment",
+          "title": "Use Captains"
+        }
+      },
+      "title": "ConfigOverrides",
+      "type": "object"
+    },
     "balancer.CreateJobResponse": {
       "properties": {
         "job_id": {
@@ -17980,143 +18524,6 @@
       ],
       "title": "DraftFormat",
       "type": "string"
-    },
-    "balancer.DraftManualCaptainInput": {
-      "properties": {
-        "battle_tag": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Battle Tag"
-        },
-        "draft_position": {
-          "title": "Draft Position",
-          "type": "integer"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "user_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "User Id"
-        }
-      },
-      "required": [
-        "name",
-        "draft_position"
-      ],
-      "title": "DraftManualCaptainInput",
-      "type": "object"
-    },
-    "balancer.DraftManualPlayerInput": {
-      "properties": {
-        "battle_tag": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Battle Tag"
-        },
-        "division_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Division Number"
-        },
-        "is_flex": {
-          "default": false,
-          "title": "Is Flex",
-          "type": "boolean"
-        },
-        "primary_role": {
-          "enum": [
-            "tank",
-            "dps",
-            "support"
-          ],
-          "title": "Primary Role",
-          "type": "string"
-        },
-        "rank_value": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Rank Value"
-        },
-        "secondary_roles": {
-          "items": {
-            "enum": [
-              "tank",
-              "dps",
-              "support"
-            ],
-            "type": "string"
-          },
-          "title": "Secondary Roles",
-          "type": "array"
-        },
-        "sub_role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Sub Role"
-        },
-        "user_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "User Id"
-        }
-      },
-      "required": [
-        "primary_role"
-      ],
-      "title": "DraftManualPlayerInput",
-      "type": "object"
     },
     "balancer.DraftPickAutopickRequest": {
       "properties": {
@@ -18509,12 +18916,8 @@
       "type": "object"
     },
     "balancer.DraftPlayerRead": {
+      "description": "A seat, projected. Every role/rank field below is RESOLVED, never stored.\n\nBuilt by :meth:`from_seat` from the ``DraftPlayer`` row plus the\n``PlayerRoster`` the engine resolved for its registration, so what the\ndraft shows and what the balancer shows are the same numbers by\nconstruction.",
       "properties": {
-        "additional_info": {
-          "additionalProperties": true,
-          "title": "Additional Info",
-          "type": "object"
-        },
         "battle_tag": {
           "anyOf": [
             {
@@ -18532,17 +18935,6 @@
           },
           "title": "Custom Fields",
           "type": "array"
-        },
-        "division_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Division Number"
         },
         "drafted_by_team_id": {
           "anyOf": [
@@ -18579,26 +18971,45 @@
           "title": "Is Flex",
           "type": "boolean"
         },
-        "primary_role": {
-          "title": "Primary Role",
-          "type": "string"
-        },
-        "rank_value": {
+        "notes": {
           "anyOf": [
             {
-              "type": "integer"
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
-          "title": "Rank Value"
+          "default": null,
+          "title": "Notes"
+        },
+        "primary_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Primary Role"
+        },
+        "registration_id": {
+          "title": "Registration Id",
+          "type": "integer"
         },
         "role_ranks": {
           "additionalProperties": {
             "type": "integer"
           },
           "title": "Role Ranks",
+          "type": "object"
+        },
+        "role_sources": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Role Sources",
           "type": "object"
         },
         "role_top_heroes": {
@@ -18612,20 +19023,12 @@
           "title": "Role Top Heroes",
           "type": "object"
         },
-        "secondary_roles_json": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Secondary Roles Json"
+        "secondary_roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Secondary Roles",
+          "type": "array"
         },
         "session_id": {
           "title": "Session Id",
@@ -18664,13 +19067,12 @@
       "required": [
         "id",
         "session_id",
+        "registration_id",
         "user_id",
         "battle_tag",
         "primary_role",
         "sub_role",
         "is_flex",
-        "division_number",
-        "rank_value",
         "status",
         "is_captain",
         "drafted_by_team_id",
@@ -18723,6 +19125,7 @@
       "type": "string"
     },
     "balancer.DraftRoleEditRequest": {
+      "description": "Give a pool player one more playable role, mid-draft.\n\nWrites the REGISTRATION, not a draft-local copy: the balancer is the only\nwriter of roles and ranks. ``rank_value`` is required -- a role with no rank\nis not playable, so adding one without a number would change nothing.",
       "properties": {
         "expected_version": {
           "title": "Expected Version",
@@ -18733,22 +19136,10 @@
           "title": "Preview Only",
           "type": "boolean"
         },
-        "rank_absence_confirmed": {
-          "default": false,
-          "title": "Rank Absence Confirmed",
-          "type": "boolean"
-        },
         "rank_value": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Rank Value"
+          "exclusiveMinimum": 0,
+          "title": "Rank Value",
+          "type": "integer"
         },
         "reason": {
           "title": "Reason",
@@ -18766,6 +19157,7 @@
       },
       "required": [
         "role",
+        "rank_value",
         "reason",
         "expected_version"
       ],
@@ -18862,17 +19254,11 @@
       "type": "object"
     },
     "balancer.DraftSeedRequest": {
+      "description": "Who captains. Everything else about a player comes from their registration.\n\nThere is no manual variant any more: a draft player is a reference to a\nbalancer registration, so a seat with hand-typed roles and ranks could not\nbe resolved by the engine and would reintroduce exactly the second source of\ntruth this contract exists to remove.",
       "properties": {
         "captain_order": {
           "$ref": "#/components/schemas/balancer.DraftCaptainOrder",
           "default": "manual"
-        },
-        "captains": {
-          "items": {
-            "$ref": "#/components/schemas/balancer.DraftManualCaptainInput"
-          },
-          "title": "Captains",
-          "type": "array"
         },
         "expected_version": {
           "anyOf": [
@@ -18885,13 +19271,6 @@
           ],
           "default": null,
           "title": "Expected Version"
-        },
-        "players": {
-          "items": {
-            "$ref": "#/components/schemas/balancer.DraftManualPlayerInput"
-          },
-          "title": "Players",
-          "type": "array"
         },
         "pool_captains": {
           "items": {
@@ -20009,6 +20388,25 @@
         "roster"
       ],
       "title": "TeamData",
+      "type": "object"
+    },
+    "balancer.TournamentBalanceRequest": {
+      "description": "Balance a tournament's own pool. Carries no players on purpose.\n\nThe xv-1 input is built server-side from ``shared.services.roster`` -- the\nsame engine the draft reads -- so the caller cannot hand the algorithm a\ndifferent set of ranks than the draft sees. Use ``BalanceRequest`` /the\nmultipart upload only for a payload that is genuinely not a tournament pool.",
+      "properties": {
+        "config_overrides": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/balancer.ConfigOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional configuration overrides"
+        }
+      },
+      "title": "TournamentBalanceRequest",
       "type": "object"
     },
     "balancer.WorkspaceBalancerConfigRead": {
@@ -27230,6 +27628,18 @@
           "default": null,
           "title": "Battle Tag Normalized"
         },
+        "best_rank": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Best Rank"
+        },
         "boosty_nick": {
           "anyOf": [
             {
@@ -27585,6 +27995,11 @@
         "is_active": {
           "default": true,
           "title": "Is Active",
+          "type": "boolean"
+        },
+        "is_declared_active": {
+          "default": true,
+          "title": "Is Declared Active",
           "type": "boolean"
         },
         "is_primary": {

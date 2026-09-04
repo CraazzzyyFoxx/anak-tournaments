@@ -52,7 +52,10 @@ export interface BalancerPlayerRoleEntry {
   priority: number;
   division_number: number | null;
   rank_value: number | null;
+  /** "In play" — see `AdminRegistrationRole.is_active`. Read-only, never edited. */
   is_active: boolean;
+  /** The organizer's checkbox. This is what a role toggle binds to. */
+  is_declared_active: boolean;
   ow_rank_value: number | null;
   rank_source?: RegistrationRankSource;
 }
@@ -344,13 +347,37 @@ export interface AdminRegistrationRole {
   subrole: BalancerRoleSubtype | null;
   is_primary: boolean;
   priority: number;
+  /**
+   * Resolved by the roster engine, never the raw registration column: `null`
+   * for a role it could not rate (with `rank_source: "none"`).
+   */
   rank_value: number | null;
+  /**
+   * "In play", NOT "the organizer's checkbox": the role is declared active AND
+   * the resolver found a rank for it. This is the ONE playability predicate —
+   * anything asking "can this role be fielded" reads it and nothing else.
+   * Never bind an editable toggle to it: an unrated role would flip its own
+   * checkbox off. Use `is_declared_active` for that.
+   */
   is_active: boolean;
+  /** The raw `registration_role.is_active` column — what the organizer ticked. */
+  is_declared_active: boolean;
   top_heroes?: string[] | null;
   /** Latest OW2 rank for this role, normalised to the workspace grid (from the backend). */
   ow_rank_value?: number | null;
   rank_source?: RegistrationRankSource;
 }
+
+/**
+ * Role rows as SENT. `is_active` here writes the RAW declared column, which is
+ * why the resolved read-only fields are absent: echoing `is_declared_active`,
+ * `rank_source` or `ow_rank_value` back would be the client asserting the
+ * resolver's own output as input.
+ */
+export type AdminRegistrationRoleInput = Omit<
+  AdminRegistrationRole,
+  "is_declared_active" | "rank_source" | "ow_rank_value"
+>;
 
 export type BalancerStatus = string;
 
@@ -409,6 +436,13 @@ export interface AdminRegistration {
   twitch_nick: string | null;
   boosty_nick?: string | null;
   stream_pov: boolean;
+  /**
+   * The roster engine's max rank across this registration's PLAYABLE roles,
+   * `null` when none is playable. Read this instead of maxing `roles` client-
+   * side: with `is_active` meaning playability, the two are the same number by
+   * construction, and only one of them can drift.
+   */
+  best_rank: number | null;
   roles: AdminRegistrationRole[];
   notes: string | null;
   admin_notes: string | null;
@@ -456,7 +490,7 @@ export interface AdminRegistrationCreateInput {
   status?: string | null;
   balancer_status?: string | null;
   is_flex?: boolean;
-  roles?: AdminRegistrationRole[];
+  roles?: AdminRegistrationRoleInput[];
   /** Site account to anchor this registration on (its player). */
   auth_user_id?: number | null;
 }
@@ -478,7 +512,7 @@ export interface AdminRegistrationUpdateInput {
   /** `ready`/`incomplete` are rejected server-side (computed from role ranks
    *  only); use `not_in_balancer`, `excluded`, or a custom slug. */
   balancer_status?: string | null;
-  roles?: AdminRegistrationRole[] | null;
+  roles?: AdminRegistrationRoleInput[] | null;
   /** When set, (re)anchor the registration on this site account's player. */
   auth_user_id?: number | null;
   /** Only meaningful together with balancer_status === "excluded". */

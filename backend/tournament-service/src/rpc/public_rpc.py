@@ -77,9 +77,9 @@ from src.schemas.registration import (
 from src.schemas.registration_build import (
     AdmissionChips,
     _form_to_read,
+    _public_rosters,
     _reg_to_read,
     _resolve_tournament_workspace,
-    _resolved_public_ranks,
 )
 from src.schemas.registration_team import (
     RegistrationFreeAgentListResponse,
@@ -462,7 +462,7 @@ def register(broker: Any, logger: Any) -> None:
                     profiles_open=chips.profiles_open,
                     subscription_outcome=chips.subscription_outcome,
                     subscription_verdicts=chips.subscription_verdicts,
-                    resolved_ranks=(await _resolved_public_ranks(session, [reg], show_ranks=show_ranks)).get(reg.id),
+                    roster=(await _public_rosters(session, [reg], show_ranks=show_ranks)).get(reg.id),
                 )
             )
 
@@ -510,9 +510,7 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=form.workspace_id,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks,
-                    resolved_ranks=(
-                        await _resolved_public_ranks(session, [updated], show_ranks=form.show_ranks)
-                    ).get(updated.id),
+                    roster=(await _public_rosters(session, [updated], show_ranks=form.show_ranks)).get(updated.id),
                 )
             )
 
@@ -584,10 +582,8 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=workspace_id,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks if form else False,
-                    resolved_ranks=(
-                        await _resolved_public_ranks(
-                            session, [checked_in], show_ranks=form.show_ranks if form else False
-                        )
+                    roster=(
+                        await _public_rosters(session, [checked_in], show_ranks=form.show_ranks if form else False)
                     ).get(checked_in.id),
                 )
             )

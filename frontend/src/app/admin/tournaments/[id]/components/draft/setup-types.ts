@@ -23,9 +23,9 @@ export interface DraftCaptainSetup {
   randomSeed: number;
 }
 
-export interface DraftRegistrationSummary {
-  role: DraftRole;
+interface DraftRegistrationSummary {
   roles: DraftRole[];
+  /** `null` when no role is playable — the seed will reject this registration. */
   rank: number | null;
 }
 
@@ -33,19 +33,21 @@ export function isInDraftPool(registration: AdminRegistration): boolean {
   return !registration.deleted_at && !registration.balancer_status_meta.excludes_from_balancer;
 }
 
-export function summarizeRegistration(registration: AdminRegistration): DraftRegistrationSummary {
-  const active = (registration.roles ?? [])
+/**
+ * The registration's playable roles and the rank of its leading one, read
+ * straight off the rows the server already resolved: `is_active` IS "playable"
+ * and `rank_value` IS the resolved rank (roster engine,
+ * `shared.services.roster`). Nothing is recomputed here — no flex mode, no max
+ * across roles, no default role.
+ */
+export function poolRegistrationSummary(registration: AdminRegistration): DraftRegistrationSummary {
+  const playable = (registration.roles ?? [])
     .filter((entry) => entry.is_active)
     .sort((left, right) => left.priority - right.priority);
-  const primary = active.find((entry) => entry.is_primary) ?? active[0];
-  const ranks = active
-    .map((entry) => entry.rank_value)
-    .filter((value): value is number => value != null);
-  const roles = Array.from(new Set(active.map((entry) => entry.role))) as DraftRole[];
+  const lead = playable.find((entry) => entry.is_primary) ?? playable[0] ?? null;
   return {
-    role: (primary?.role as DraftRole | undefined) ?? "dps",
-    roles: roles.length > 0 ? roles : ["dps"],
-    rank: primary?.rank_value ?? (ranks.length > 0 ? Math.max(...ranks) : null)
+    roles: Array.from(new Set(playable.map((entry) => entry.role))) as DraftRole[],
+    rank: lead?.rank_value ?? null
   };
 }
 

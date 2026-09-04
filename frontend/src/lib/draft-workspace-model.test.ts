@@ -16,8 +16,8 @@ import {
 } from "./draft-workspace-model";
 
 const players = [
-  { id: 1, battle_tag: "Zeta#1", primary_role: "support", secondary_roles_json: [], rank_value: 2700 },
-  { id: 2, battle_tag: "Alpha#2", primary_role: "tank", secondary_roles_json: ["dps"], rank_value: 3100 }
+  { id: 1, battle_tag: "Zeta#1", primary_role: "support", secondary_roles: [], effective_rank: 2700 },
+  { id: 2, battle_tag: "Alpha#2", primary_role: "tank", secondary_roles: ["dps"], effective_rank: 3100 }
 ] as DraftPlayer[];
 
 describe("draft workspace model", () => {
@@ -59,11 +59,11 @@ describe("draft workspace model", () => {
 });
 
 const mkPlayer = (p: Partial<DraftPlayer>): DraftPlayer => ({
-  id: 1, session_id: 1, user_id: null, battle_tag: "Ana#1", primary_role: "support",
-  sub_role: null, is_flex: false, division_number: null, rank_value: 3000, effective_rank: 3000,
+  id: 1, session_id: 1, registration_id: 10, user_id: null, battle_tag: "Ana#1",
+  primary_role: "support", sub_role: null, is_flex: false, effective_rank: 3000,
   status: "available", is_captain: false, drafted_by_team_id: null,
-  secondary_roles_json: null, role_ranks: {}, role_top_heroes: {}, additional_info: {}, custom_fields: [],
-  version: 1, ...p,
+  secondary_roles: [], role_ranks: {}, role_sources: {}, role_top_heroes: {}, notes: null,
+  custom_fields: [], version: 1, ...p,
 });
 
 describe("extended filterDraftPlayers search", () => {
@@ -81,18 +81,18 @@ describe("extended filterDraftPlayers search", () => {
     // A flex player declared tank+dps, but the server counts them as supply for
     // support too and only keeps the draft feasible if they can be picked
     // there. Hiding support left them unpickable on every offered role.
-    const flex = mkPlayer({ id: 3, primary_role: "dps", secondary_roles_json: ["tank"], is_flex: true });
+    const flex = mkPlayer({ id: 3, primary_role: "dps", secondary_roles: ["tank"], is_flex: true });
     expect(playerRoles(flex)).toEqual(["dps", "tank", "support"]);
     expect(filterDraftPlayers([flex], { role: "support", sort: "rank", query: "" }).map((p) => p.id)).toEqual([3]);
     // Not flex: still exactly what was declared.
-    const strict = mkPlayer({ id: 4, primary_role: "dps", secondary_roles_json: ["tank"] });
+    const strict = mkPlayer({ id: 4, primary_role: "dps", secondary_roles: ["tank"] });
     expect(playerRoles(strict)).toEqual(["dps", "tank"]);
     expect(filterDraftPlayers([strict], { role: "support", sort: "rank", query: "" })).toEqual([]);
   });
   it("preselects the primary role when it is safe, not the server's first safe option", () => {
     // The server emits options in tank, dps, support order, so a support main
     // who also plays tank used to open on tank.
-    const player = mkPlayer({ id: 5, primary_role: "support", secondary_roles_json: ["tank"] });
+    const player = mkPlayer({ id: 5, primary_role: "support", secondary_roles: ["tank"] });
     const option = (role: DraftRole, is_safe: boolean): DraftPickOption => ({
       player_id: 5, role, is_safe, reason_code: is_safe ? null : "role_shortage",
       unmatched_slots: [], blocking_player_ids: [], suggestion_score: null
@@ -144,10 +144,17 @@ describe("roster role/rank", () => {
     expect(rosterRoleForPlayer(player, picks)).toBe("dps");
     expect(slotRankForPlayer(player, "dps", ROLE_SLOTS)).toBe(3500);
   });
-  it("falls back to primary role + rank_value", () => {
-    const player = mkPlayer({ id: 6, primary_role: "tank", rank_value: 2800, role_ranks: {} });
+  it("falls back to the primary role and that role's own rank", () => {
+    const player = mkPlayer({ id: 6, primary_role: "tank", role_ranks: { tank: 2800 } });
     expect(rosterRoleForPlayer(player, [])).toBe("tank");
     expect(slotRankForPlayer(player, "tank", ROLE_SLOTS)).toBe(2800);
+  });
+  it("reports no role and no rank once every role lost its rank", () => {
+    // An organizer can strip the ranks mid-draft; nothing may stand in.
+    const player = mkPlayer({ id: 8, primary_role: null, secondary_roles: [], role_ranks: {} });
+    expect(rosterRoleForPlayer(player, [])).toBe(null);
+    expect(slotRankForPlayer(player, null, ROLE_SLOTS)).toBe(null);
+    expect(playerRoles(player)).toEqual([]);
   });
   it("shows the server's effective rank under an all-flex shape", () => {
     // No slot asks for a role, so the requested one may not lower the rank:
@@ -155,7 +162,6 @@ describe("roster role/rank", () => {
     const player = mkPlayer({
       id: 7,
       primary_role: "support",
-      rank_value: 3000,
       role_ranks: { dps: 3500, support: 3000 },
       effective_rank: 3500
     });

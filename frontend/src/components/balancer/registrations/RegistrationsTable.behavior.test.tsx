@@ -105,6 +105,7 @@ function registration(id: number, overrides: Partial<AdminRegistration> = {}): A
     discord_nick: null,
     twitch_nick: null,
     stream_pov: false,
+    best_rank: null,
     roles: [],
     notes: null,
     admin_notes: null,

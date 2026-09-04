@@ -57,7 +57,7 @@ describe("draft setup model", () => {
     expect(canCancelDraftSetup("ready", "cancelled")).toBe(false);
   });
 
-  it("reports pool blockers without hiding missing ranks or accounts", () => {
+  it("blocks the seed on missing ranks and still counts accounts and exclusions", () => {
     const readiness = derivePoolReadiness(
       [
         { id: 1, roles: ["tank"], rank: 3000, hasAccount: true, excluded: false },
@@ -75,6 +75,9 @@ describe("draft setup model", () => {
     expect(readiness.missingAccounts).toBe(1);
     expect(readiness.excludedPlayers).toBe(1);
     expect(readiness.blockers).toContain("not_enough_players");
+    // The server refuses to seed an unranked pool player, so the wizard must
+    // say so rather than let the organizer walk into a 4xx.
+    expect(readiness.blockers).toContain("pool_unranked");
   });
 
   it("reorders captains deterministically for manual order", () => {

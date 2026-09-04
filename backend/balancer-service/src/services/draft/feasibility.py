@@ -30,6 +30,7 @@ from src.domain.draft.feasibility import (
     evaluate_pick_options,
 )
 from src.services.draft import loaders
+from src.services.draft.rosters import DraftRosterService, draft_rosters
 
 __all__ = ("DraftFeasibilityService", "feasibility_service")
 
@@ -41,17 +42,28 @@ class DraftFeasibilityService:
         teams_repo: DraftTeamRepository = DraftTeamRepository(),
         players_repo: DraftPlayerRepository = DraftPlayerRepository(),
         picks_repo: DraftPickRepository = DraftPickRepository(),
+        rosters: DraftRosterService = draft_rosters,
     ) -> None:
         self.teams_repo = teams_repo
         self.players_repo = players_repo
         self.picks_repo = picks_repo
+        self.rosters = rosters
 
     async def load_snapshot(self, session: AsyncSession, draft_session: DraftSession) -> DraftSnapshot:
-        """Load the session's rows once; players carry the eager-load option set."""
+        """Load the session's rows once, and resolve their rosters once with them.
+
+        Roles and ranks ride in the snapshot rather than being fetched per step,
+        so a single request cannot see two different answers for the same player.
+        """
         teams = await self.teams_repo.list_by_session(session, draft_session.id)
         players = await self.players_repo.list_by_session(session, draft_session.id, options=loaders.player_options())
         picks = await self.picks_repo.list_by_session(session, draft_session.id)
-        return DraftSnapshot(teams=tuple(teams), players=tuple(players), picks=tuple(picks))
+        return DraftSnapshot(
+            teams=tuple(teams),
+            players=tuple(players),
+            picks=tuple(picks),
+            rosters=await self.rosters.load(session, draft_session, players),
+        )
 
     async def resolve_shape(self, session: AsyncSession, draft_session: DraftSession) -> RosterShape:
         """The roster shape this draft's teams must fill.
@@ -78,6 +90,7 @@ class DraftFeasibilityService:
             teams=snapshot.teams,
             players=snapshot.players,
             picks=snapshot.picks,
+            rosters=snapshot.rosters,
         )
 
     async def load_feasibility_state(self, session: AsyncSession, draft_session: DraftSession) -> DraftFeasibilityState:

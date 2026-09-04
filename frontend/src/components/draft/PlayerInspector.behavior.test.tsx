@@ -17,21 +17,21 @@ function player(overrides: Partial<DraftPlayer> = {}): DraftPlayer {
   return {
     id: 7,
     session_id: 1,
+    registration_id: 70,
     user_id: null,
     battle_tag: "Ana#1234",
     primary_role: "support",
     sub_role: null,
     is_flex: false,
-    division_number: null,
-    rank_value: 3000,
     effective_rank: 3000,
     status: "available",
     is_captain: false,
     drafted_by_team_id: null,
-    secondary_roles_json: null,
+    secondary_roles: [],
     role_ranks: {},
+    role_sources: {},
     role_top_heroes: {},
-    additional_info: {},
+    notes: null,
     custom_fields: [],
     version: 1,
     ...overrides
@@ -69,7 +69,7 @@ describe("player inspector flex roles", () => {
     // unpickable — with nothing drafted yet.
     const html = renderToStaticMarkup(
       <PlayerInspector
-        player={player({ primary_role: "dps", secondary_roles_json: ["tank"], is_flex: true })}
+        player={player({ primary_role: "dps", secondary_roles: ["tank"], is_flex: true })}
         role="dps"
         options={{
           pick_id: 1,
@@ -120,7 +120,7 @@ describe("player inspector registration answers", () => {
   });
 
   test("shows the notes block and the answers block independently", () => {
-    const notesOnly = render(player({ additional_info: { notes: "prefers Ana" } }));
+    const notesOnly = render(player({ notes: "prefers Ana" }));
     expect(notesOnly).toContain("prefers Ana");
 
     const answersOnly = render(
@@ -140,18 +140,18 @@ describe("player inspector role ranks", () => {
   // Ranked on support only, but flex — so tank is offered without a rating.
   const flexPlayer = player({
     primary_role: "support",
-    secondary_roles_json: ["tank"],
+    secondary_roles: ["tank"],
     is_flex: true,
-    rank_value: 2814,
     effective_rank: 2814,
-    role_ranks: { support: 2814 }
+    role_ranks: { support: 2814 },
+    role_sources: { support: "registration" }
   });
 
   test("a role the player has no rank on shows no rank, not the primary's", () => {
     const html = render(flexPlayer, GRID);
 
     // Support carries its own rank; tank carries the em-dash, because lending it
-    // `rank_value` would invent a rating the captain then picks on.
+    // another role's number would invent a rating the captain then picks on.
     expect(html).toContain("2814 SR");
     expect(html).toContain("roles.tank");
     expect(html).not.toContain("roles.tank · 2814 SR");
@@ -159,15 +159,13 @@ describe("player inspector role ranks", () => {
   });
 
   test("the header shows the rank the server resolved for this draft, not the maximum", () => {
-    // A support main: 2814 on support, 3900 on dps. `rank_value` carries 3900
-    // because an all-roles registration form stores the maximum there, so the
-    // header has to render `effective_rank` — the server's rank for the player's
-    // own role (services.draft.board) — or it advertises a 3900 support.
+    // A support main: 2814 on support, 3900 on dps. The header renders
+    // `effective_rank` — the ONE rank the roster engine resolved for this draft
+    // — or it advertises a 3900 support.
     const html = render(
       player({
         primary_role: "support",
-        secondary_roles_json: ["dps"],
-        rank_value: 3900,
+        secondary_roles: ["dps"],
         effective_rank: 2814,
         role_ranks: { support: 2814, dps: 3900 }
       }),
@@ -183,5 +181,29 @@ describe("player inspector role ranks", () => {
     // The rows stay per-role: both ranks are still readable.
     expect(html).toContain("2814 SR");
     expect(html).toContain("3900 SR");
+  });
+
+  test("a rank the registration did not declare is labelled with its source", () => {
+    // An organizer has to be able to tell an inherited or Overwatch-derived
+    // rank from one the player typed in.
+    const html = render(
+      player({
+        role_ranks: { support: 2814 },
+        role_sources: { support: "ow" }
+      }),
+      GRID
+    );
+
+    expect(html).toContain("rankSourceShort.ow");
+    expect(html).toContain("rankSource.ow");
+  });
+
+  test("a player left without any playable role shows no role at all", () => {
+    const html = render(player({ primary_role: null, secondary_roles: [] }), GRID);
+
+    expect(html).toContain("noRole");
+    expect(html).toContain("noRoleHint");
+    // No role button was invented for them.
+    expect(html).not.toContain('sr-only">roles.');
   });
 });

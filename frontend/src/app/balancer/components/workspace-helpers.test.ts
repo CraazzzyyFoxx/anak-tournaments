@@ -13,7 +13,6 @@ import {
   createSyntheticPlayerFromRegistration,
   getPlayerValidationIssues,
   isRegistrationIncludedInBalancer,
-  ratesByMaxRank,
   type PlayerValidationIssue,
 } from "@/app/balancer/components/workspace-helpers";
 import { buildRegistrationUpdateFromPlayerPayload } from "@/app/balancer/components/useBalancerMutations";
@@ -22,7 +21,6 @@ import type {
   AdminRegistrationRole,
   BalancerApplication,
   BalancerPlayerRecord,
-  BuiltInFieldConfig,
 } from "@/types/balancer-admin.types";
 import type { BalanceResponse, PlayerData } from "@/types/balancer.types";
 import { DEFAULT_DIVISION_GRID } from "@/lib/division-grid";
@@ -123,6 +121,7 @@ function createRegistration(overrides: Partial<AdminRegistration> = {}): AdminRe
     discord_nick: null,
     twitch_nick: null,
     stream_pov: false,
+    best_rank: 900,
     roles: [
       {
         role: "support",
@@ -131,6 +130,7 @@ function createRegistration(overrides: Partial<AdminRegistration> = {}): AdminRe
         priority: 0,
         rank_value: 900,
         is_active: true,
+        is_declared_active: true,
       },
       {
         role: "dps",
@@ -139,6 +139,7 @@ function createRegistration(overrides: Partial<AdminRegistration> = {}): AdminRe
         priority: 1,
         rank_value: 700,
         is_active: true,
+        is_declared_active: true,
       },
     ],
     notes: null,
@@ -544,12 +545,17 @@ describe("synthetic registration helpers", () => {
   });
 });
 
-describe("every-role effective ranks", () => {
+describe("registration role pass-through", () => {
   const role = (
     roleCode: "tank" | "dps" | "support",
     rank: number | null,
     ow: number | null = null,
-    extra: { is_active?: boolean; subrole?: string | null; priority?: number } = {},
+    extra: {
+      is_active?: boolean;
+      is_declared_active?: boolean;
+      subrole?: string | null;
+      priority?: number;
+    } = {},
   ): AdminRegistrationRole => ({
     role: roleCode,
     subrole: extra.subrole ?? null,
@@ -557,104 +563,66 @@ describe("every-role effective ranks", () => {
     priority: extra.priority ?? 0,
     rank_value: rank,
     is_active: extra.is_active ?? true,
+    is_declared_active: extra.is_declared_active ?? true,
     ow_rank_value: ow,
   });
 
-  const flattened = (roles: AdminRegistrationRole[]) =>
-    createSyntheticPlayerFromRegistration(createRegistration({ roles }), DEFAULT_DIVISION_GRID, {
-      allRoles: true,
-    });
+  const built = (roles: AdminRegistrationRole[]) =>
+    createSyntheticPlayerFromRegistration(createRegistration({ roles }), DEFAULT_DIVISION_GRID);
 
-  it("applies the max rank to all three roles", () => {
-    const player = flattened([role("dps", 3900), role("support", 2400, null, { priority: 1 })]);
+  // The roster engine already applied every flex rule server-side, so the
+  // client copies the rows it was given instead of re-deriving them. A second
+  // opinion here is exactly the drift this replaced.
+  it("copies the API's resolved roles verbatim", () => {
+    const player = built([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
 
-    expect(player.role_entries_json.map((entry) => entry.role)).toEqual(["tank", "dps", "support"]);
-    expect(player.role_entries_json.every((entry) => entry.rank_value === 3900)).toBe(true);
-  });
-
-  it("covers the unranked roles from a single ranked one", () => {
-    const player = flattened([role("dps", 3900)]);
-
-    expect(player.role_entries_json.every((entry) => entry.rank_value === 3900)).toBe(true);
-    expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
-  });
-
-  it("attaches the effective OW rank to the role that produced it", () => {
-    // Replicating it across all three would emit the same rank_delta_warning
-    // three times; leaving it per-role would compare an effective rank against
-    // an unrelated role's OW rank. One comparison, one carrier.
-    const player = flattened([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
-
-    const owByRole: Record<string, number | null> = Object.fromEntries(
-      player.role_entries_json.map((entry) => [entry.role, entry.ow_rank_value]),
-    );
-    expect(owByRole.dps).toBe(4100);
-    expect(owByRole.support).toBeNull();
-    expect(owByRole.tank).toBeNull();
-  });
-
-  it("yields one rank-delta chip instead of three", () => {
-    const player = flattened([role("dps", 3900, 4400), role("support", 2400, 2000, { priority: 1 })]);
-
-    const issues = getPlayerValidationIssues(player, null, { rank_delta_threshold: 300 });
-
-    expect(issues.filter((issue) => issue.code === "rank_delta_warning").length).toBe(1);
-  });
-
-  it("keeps a within-threshold delta silent", () => {
-    const player = flattened([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
-
-    const issues = getPlayerValidationIssues(player, null, { rank_delta_threshold: 300 });
-
-    expect(issues.length).toBe(0);
-  });
-
-  it("counts an inactive role's rank and makes the role playable", () => {
-    const player = flattened([role("tank", 3100, null, { is_active: false })]);
-
-    expect(player.role_entries_json.every((entry) => entry.rank_value === 3100)).toBe(true);
-    expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
-  });
-
-  it("leaves a rankless registration out of the pool without disabling its roles", () => {
-    const player = flattened([role("dps", null)]);
-
-    expect(player.role_entries_json.every((entry) => entry.rank_value === null)).toBe(true);
-    // The roles stay playable — the mode says so, and the autofill that fills the
-    // ranks only looks at active roles. The missing rank is what keeps the player
-    // out of a balance run.
-    expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
-    expect(
-      getPlayerValidationIssues(player, null).some((issue) => issue.code === "missing_ranked_role"),
-    ).toBe(true);
+    expect(player.role_entries_json.map((entry) => entry.role)).toEqual(["dps", "support"]);
+    expect(player.role_entries_json.map((entry) => entry.rank_value)).toEqual([3900, 2400]);
+    expect(player.role_entries_json.map((entry) => entry.ow_rank_value)).toEqual([4100, 2000]);
+    expect(player.role_entries_json.map((entry) => entry.subtype)).toEqual([null, null]);
   });
 
   it("keeps each role's own specialization", () => {
-    const player = flattened([
+    const player = built([
       role("dps", 3900, null, { subrole: "hitscan" }),
       role("support", 2400, null, { subrole: "main_heal", priority: 1 }),
     ]);
 
-    const subtypeByRole: Record<string, string | null> = Object.fromEntries(
-      player.role_entries_json.map((entry) => [entry.role, entry.subtype]),
-    );
-    expect(subtypeByRole.dps).toBe("hitscan");
-    expect(subtypeByRole.support).toBe("main_heal");
-    expect(subtypeByRole.tank).toBeNull();
+    expect(player.role_entries_json.map((entry) => entry.subtype)).toEqual([
+      "hitscan",
+      "main_heal",
+    ]);
   });
 
-  it("changes nothing when the mode is optional", () => {
-    const roles = [role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })];
-    const registration = createRegistration({ roles });
+  it("leaves an inactive role inactive — playability is the server's call", () => {
+    const player = built([role("tank", 3100, null, { is_active: false })]);
 
-    const player = createSyntheticPlayerFromRegistration(registration);
+    expect(player.role_entries_json.map((entry) => entry.is_active)).toEqual([false]);
+  });
 
-    expect(player.role_entries_json.map((entry) => entry.rank_value)).toEqual([3900, 2400]);
-    expect(player.role_entries_json.map((entry) => entry.ow_rank_value)).toEqual([4100, 2000]);
+  it("carries the resolved and the declared flag separately", () => {
+    // A role the organizer ticked on but the resolver could not rate: the
+    // editor needs the tick, the pool needs the verdict, and collapsing the two
+    // is what makes the checkbox flip itself off.
+    const player = built([role("tank", null, null, { is_active: false, is_declared_active: true })]);
+
+    expect(player.role_entries_json.map((entry) => entry.is_active)).toEqual([false]);
+    expect(player.role_entries_json.map((entry) => entry.is_declared_active)).toEqual([true]);
+  });
+
+  it("keeps a rankless registration out of a balance run", () => {
+    const player = built([role("dps", null)]);
+
+    expect(
+      getPlayerValidationIssues(player, null).some((issue) => issue.code === "missing_ranked_role"),
+    ).toBe(true);
   });
 });
 
 describe("registration rank pin save", () => {
+  // `is_active` on the entry is the resolver's "in play" verdict, so the patch
+  // must carry `is_declared_active` — the organizer's checkbox — instead. This
+  // fixture pins them apart on purpose: declared ON, resolved OFF.
   const roleEntries = [
     {
       role: "support" as const,
@@ -662,7 +630,8 @@ describe("registration rank pin save", () => {
       priority: 1,
       division_number: 1,
       rank_value: 900,
-      is_active: true,
+      is_active: false,
+      is_declared_active: true,
       ow_rank_value: null,
     },
   ];
@@ -703,35 +672,16 @@ describe("registration rank pin save", () => {
       },
     ]);
   });
-});
 
-
-describe("ratesByMaxRank", () => {
-  const config = (overrides: Partial<BuiltInFieldConfig> = {}): BuiltInFieldConfig =>
-    ({ enabled: true, required: false, ...overrides }) as BuiltInFieldConfig;
-
-  it("is on for all_roles and forced", () => {
-    expect(ratesByMaxRank(config({ mode: "all_roles" }))).toBe(true);
-    expect(ratesByMaxRank(config({ mode: "forced" }))).toBe(true);
-  });
-
-  it("is off for optional and for an absent mode", () => {
-    expect(ratesByMaxRank(config({ mode: "optional" }))).toBe(false);
-    expect(ratesByMaxRank(config())).toBe(false);
-  });
-
-  it("is off for a disabled field whatever the stored mode", () => {
-    // Disabling the field bans flex outright, so a stale mode must not survive it.
-    expect(ratesByMaxRank(config({ enabled: false, mode: "forced" }))).toBe(false);
-  });
-
-  it("fails closed on an unreadable config", () => {
-    // The caller passes a query result: guessing an every-role mode while the
-    // form is still loading would inflate every player's effective rank.
-    expect(ratesByMaxRank(undefined)).toBe(false);
-    expect(ratesByMaxRank(null)).toBe(false);
+  it("writes the declared flag, never the resolved one", () => {
+    const patch = buildRegistrationUpdateFromPlayerPayload({
+      role_entries_json: [{ ...roleEntries[0], is_active: true, is_declared_active: false }],
+      is_flex: false,
+    });
+    expect(patch.roles?.[0]?.is_active).toBe(false);
   });
 });
+
 
 describe("convertBalanceResponseToInternalPayload", () => {
   const player = (overrides: Partial<PlayerData> = {}): PlayerData => ({

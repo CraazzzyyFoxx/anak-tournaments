@@ -53,7 +53,7 @@ import {
   validateSetupStep
 } from "./setup-model";
 import type { DraftCaptainSetup, DraftSetupConfig } from "./setup-types";
-import { isInDraftPool, summarizeRegistration } from "./setup-types";
+import { isInDraftPool, poolRegistrationSummary } from "./setup-types";
 
 interface DraftSetupWizardProps {
   tournamentId: number;
@@ -172,7 +172,7 @@ export function DraftSetupWizard({
   const candidates = useMemo(
     () =>
       allRegistrations.map((registration) => {
-        const summary = summarizeRegistration(registration);
+        const summary = poolRegistrationSummary(registration);
         return {
           id: registration.id,
           roles: summary.roles,
@@ -192,7 +192,7 @@ export function DraftSetupWizard({
   const ranks = useMemo(
     () =>
       new Map(
-        pool.map((registration) => [registration.id, summarizeRegistration(registration).rank])
+        pool.map((registration) => [registration.id, poolRegistrationSummary(registration).rank])
       ),
     [pool]
   );

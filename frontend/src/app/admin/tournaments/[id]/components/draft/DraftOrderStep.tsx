@@ -36,7 +36,7 @@ import type { DraftCaptainOrder, DraftFormat } from "@/types/draft.types";
 import { moveCaptain, orderCaptainIds } from "./setup-model";
 import { DraftSetupPreview } from "./DraftSetupPreview";
 import type { DraftCaptainSetup } from "./setup-types";
-import { registrationLabel, summarizeRegistration } from "./setup-types";
+import { poolRegistrationSummary, registrationLabel } from "./setup-types";
 
 interface DraftOrderStepProps {
   value: DraftCaptainSetup;
@@ -61,7 +61,7 @@ export function DraftOrderStep({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
   const ranks = new Map(
-    pool.map((registration) => [registration.id, summarizeRegistration(registration).rank])
+    pool.map((registration) => [registration.id, poolRegistrationSummary(registration).rank])
   );
   const orderedIds = orderCaptainIds(value.ids, value.order, ranks, value.randomSeed);
 
@@ -127,7 +127,7 @@ export function DraftOrderStep({
                     id={id}
                     position={index + 1}
                     label={registrationLabel(registration)}
-                    rank={summarizeRegistration(registration).rank}
+                    rank={poolRegistrationSummary(registration).rank}
                   />
                 );
               })}
@@ -154,7 +154,7 @@ export function DraftOrderStep({
                   {registrationLabel(registration)}
                 </span>
                 <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                  {summarizeRegistration(registration).rank ?? "—"}
+                  {poolRegistrationSummary(registration).rank ?? "—"}
                 </span>
               </div>
             );

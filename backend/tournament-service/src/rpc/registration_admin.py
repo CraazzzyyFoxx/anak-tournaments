@@ -57,6 +57,7 @@ from shared.services.rank_snapshots import (
     fetch_latest_ow_ranks_by_account,
     normalize_ow_ranks_to_grid,
 )
+from shared.services.roster import roster_engine
 from src import models, schemas
 from src.core import auth
 from src.domain.registration.ow_rank_selection import select_main_account_ow_ranks
@@ -74,7 +75,6 @@ from src.services.registration import export as reg_export
 from src.services.registration import (
     lifecycle,
     rank_autofill,
-    rank_resolution,
     rank_sources,
     status_catalog,
     subscription_config,
@@ -180,15 +180,13 @@ async def _registration_response(session: Any, ctx: _Ctx, registration: Any) -> 
         workspace_id=ctx.ws_id,
         actor_user_id=ctx.user.id,
     )
-    resolved = await rank_resolution.resolve_registration_ranks(
-        session, [registration], workspace_id=ctx.ws_id
-    )
+    rosters = await roster_engine.resolve(session, [registration], workspace_id=ctx.ws_id)
     return _dump(
         serialize_registration(
             registration,
             workspace_id=ctx.ws_id,
             status_meta_map=status_meta_map,
-            resolved_ranks=resolved.get(registration.id),
+            roster=rosters.get(registration.id),
         )
     )
 
@@ -433,13 +431,16 @@ def register(broker: Any, logger: Any) -> None:
                 if registration.workspace_member is not None
             }
             ow_ranks = normalize_ow_ranks_to_grid(raw_ow_ranks_by_registration, grid)
-            resolved_by_reg = await rank_resolution.resolve_registration_ranks(
-                session, registrations, workspace_id=ctx.ws_id, grid=grid
+            # The form and the grid are already in hand, so the engine reuses them
+            # instead of re-reading either; this is the same roster the balancer
+            # payload and the draft pool are built from.
+            form = await reg_common._common_service.get_registration_form(session, ctx.id)
+            rosters = await roster_engine.resolve(
+                session, registrations, workspace_id=ctx.ws_id, tournament_id=ctx.id, form=form, grid=grid
             )
             # Same resolution the public participants list uses, so the admin
             # Admission / Subscription / Profile columns are byte-identical to what
             # the player sees on their own card.
-            form = await reg_common._common_service.get_registration_form(session, ctx.id)
             admissions = await reg_svc.registration_service.resolve_admission_list(session, registrations, form=form)
             out = []
             for registration in registrations:
@@ -454,7 +455,7 @@ def register(broker: Any, logger: Any) -> None:
                             admission=chips.admission,
                             profiles_open=chips.profiles_open,
                             subscription_outcome=chips.subscription_outcome,
-                            resolved_ranks=resolved_by_reg.get(registration.id),
+                            roster=rosters.get(registration.id),
                         )
                     )
                 )
@@ -605,11 +606,10 @@ def register(broker: Any, logger: Any) -> None:
     async def _reg_include_balancer(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = await _registration_ctx(session, data, "update")
-            # The balancer status this lands on is derived from the row's role
-            # ranks, so the after-image reuses the very function the service
-            # applies -- a pure read of the roles loaded right here. Hence the
-            # explicit stage instead of _stage_transition: the after-value is
-            # computed, not a literal.
+            # The balancer status this lands on is derived from the resolved
+            # roster, so the after-image reuses the very function the service
+            # applies. Hence the explicit stage instead of _stage_transition: the
+            # after-value is computed, not a literal.
             current = await lifecycle.lifecycle_service.get_registration_by_id(session, ctx.id)
             await reg_audit.audit_service.stage(
                 session,
@@ -624,7 +624,9 @@ def register(broker: Any, logger: Any) -> None:
                     "exclude_reason": current.exclude_reason,
                 },
                 after={
-                    "balancer_status": reg_common.included_balancer_status(current),
+                    "balancer_status": reg_common.included_balancer_status(
+                        await reg_common.resolve_roster(session, current)
+                    ),
                     "exclude_reason": None,
                 },
             )

@@ -169,6 +169,9 @@ class RegistrationAuditTests(IsolatedAsyncioTestCase):
         async def fake_emit(*_args, **_kwargs):
             return None
 
+        async def fake_rosters(*_args, **_kwargs):
+            return {}
+
         with (
             patch.object(helpers.db, "async_session_maker", FakeSessionMaker(session)),
             patch.object(registration_admin.auth, "get_registration_workspace_id", fake_ws_id),
@@ -177,6 +180,7 @@ class RegistrationAuditTests(IsolatedAsyncioTestCase):
             patch.object(registration_admin, "get_status_metas_map", fake_status_metas),
             patch.object(registration_admin, "emit_balancer_registrations_changed", fake_emit),
             patch.object(registration_admin, "serialize_registration", lambda *a, **k: {}),
+            patch.object(registration_admin.roster_engine, "resolve", fake_rosters),
         ):
             envelope = await broker.handlers[subject](data, None)
         return envelope, session, trace

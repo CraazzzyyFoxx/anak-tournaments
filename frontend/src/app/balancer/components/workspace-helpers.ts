@@ -1,13 +1,11 @@
 import {
   AdminRegistration,
-  AdminRegistrationRole,
   BalancerApplication,
   BalancerPlayerExportResponse,
   BalancerPlayerRecord,
   BalancerPlayerRoleEntry,
   BalancerRoleCode,
   BalancerRosterKey,
-  BuiltInFieldConfig,
   InternalBalancePayload,
   InternalBalancePlayer,
   RegistrationRankAutofillResponse,
@@ -452,44 +450,6 @@ export function convertBalanceResponseToInternalPayload(
   });
 }
 
-export function buildBalancerInput(players: BalancerPlayerRecord[]): Record<string, unknown> {
-  const payload = players.reduce<Record<string, unknown>>((accumulator, player) => {
-    const roleEntries = getActiveRoleEntries(player.role_entries_json);
-    const hasRankedRole = roleEntries.some((entry) => entry.rank_value !== null);
-    if (!hasRankedRole) {
-      return accumulator;
-    }
-
-    const toClassConfig = (role: "tank" | "dps" | "support") => {
-      const roleEntry = roleEntries.find((entry) => entry.role === role);
-      return {
-        isActive: Boolean(roleEntry?.is_active && roleEntry?.rank_value),
-        rank: roleEntry?.rank_value ?? 0,
-        priority: roleEntry?.priority ?? 99,
-        subtype: roleEntry?.subtype ?? null
-      };
-    };
-
-    accumulator[String(player.id)] = {
-      identity: {
-        name: player.battle_tag,
-        isFullFlex: player.is_flex
-      },
-      stats: {
-        classes: Object.fromEntries(
-          ROLE_ORDER.map((role) => [API_ROLE_KEYS[role], toClassConfig(role)])
-        )
-      }
-    };
-    return accumulator;
-  }, {});
-
-  return {
-    format: "xv-1",
-    players: payload
-  };
-}
-
 function getRegistrationDisplayName(registration: AdminRegistration): string {
   return registration.battle_tag ?? registration.display_name ?? `registration-${registration.id}`;
 }
@@ -511,97 +471,9 @@ export function isRegistrationAvailableForBalancer(registration: AdminRegistrati
   return registration.status === "approved" && !registration.deleted_at;
 }
 
-/** Options for `createSyntheticPlayerFromRegistration`. */
-export interface SyntheticPlayerOptions {
-  /**
-   * `flex_role.mode` is `all_roles` or `forced`: rate the player by their
-   * highest rank across all roles.
-   */
-  allRoles?: boolean;
-}
-
-/**
- * Whether a form's `flex_role` config rates players by their highest rank across
- * all roles — true for `all_roles` and `forced`, false otherwise.
- *
- * Fails closed on an unreadable config: an unloaded or failed form read is
- * treated as `optional`, because guessing an every-role mode would silently
- * inflate every player's effective rank.
- *
- * Mirrors `_all_roles_required` in balancer-service and `all_roles_required` in
- * tournament-service. Pinned by `forced-flex-parity.test.ts`.
- */
-export function ratesByMaxRank(config: BuiltInFieldConfig | null | undefined): boolean {
-  if (!config || config.enabled === false) return false;
-  return config.mode === "all_roles" || config.mode === "forced";
-}
-
-/**
- * Effective per-role entries for a registrant on a tournament where every role
- * is playable: one rank for all three roles, the maximum across the roles that
- * carry one.
- *
- * This is what makes those modes work. In the balancer, eligibility for a role is
- * the presence of a rating for it — `isActive && rank > 0` in the payload,
- * `role in ratings` in the solver — not the `isFullFlex` flag, which only zeroes
- * discomfort. Without flattening, a player ranked on DPS alone could never be
- * placed as tank however flex they declared themselves.
- *
- * `ow_rank_value` is NOT replicated across the three entries. One effective rank
- * against one effective OW rank is a single comparison, so it is attached to the
- * role that actually produced the OW maximum and left null on the other two.
- * `computeRankDeltasByRole` needs both values, so the admin gets exactly one
- * `rank_delta_warning` carrying the meaningful number — replicating the OW rank
- * would emit the same chip three times, and leaving it per-role would compare an
- * effective rank against an unrelated role's OW rank and fire a spurious one. A
- * player carrying any issue is refused by the balance run (`runBalanceMutation`),
- * so getting this wrong does not just clutter the UI.
- *
- * `is_active` is unconditionally true, mirroring the `all_roles` branch of
- * `_map_registration` in balancer-service, which bypasses the flag outright. The
- * mode declares every role mandatory and playable, so nothing about the
- * registrant's rows may take one away: a Google-Sheets row whose rank did not
- * parse and a public-form submission (which carries no ranks at all) both arrive
- * with roles that would otherwise render disabled and drop out of the pool.
- * Deriving the flag from `effRank` did exactly that for every `all_roles`
- * registration until an admin filled the ranks by hand — and the autofill that
- * would have filled them only looks at active roles.
- *
- * Keeping the roles active does not sneak a rankless player into a balance run:
- * `playerHasRankedRole` still requires a rank, so `missing_ranked_role` fires and
- * `buildBalancerInput` drops the player.
- */
-export function flattenRolesToMaxRank(
-  roles: AdminRegistrationRole[],
-  grid: DivisionGrid
-): BalancerPlayerRoleEntry[] {
-  const maxOf = (pick: (role: AdminRegistrationRole) => number | null | undefined) => {
-    const values = roles.map(pick).filter((value): value is number => value != null);
-    return values.length > 0 ? Math.max(...values) : null;
-  };
-  const effRank = maxOf((role) => role.rank_value);
-  const effOwRank = maxOf((role) => role.ow_rank_value);
-  const owSourceRole = roles.find((role) => role.ow_rank_value === effOwRank)?.role ?? null;
-
-  return ROLE_ORDER.map((code, index) => {
-    const source = roles.find((role) => role.role === code);
-    return {
-      role: code,
-      subtype: source?.subrole ?? null,
-      priority: source?.priority ?? index,
-      division_number: resolveDivisionFromRankHelper(effRank, grid),
-      rank_value: effRank,
-      is_active: true,
-      ow_rank_value: code === owSourceRole ? effOwRank : null,
-      rank_source: source?.rank_source ?? roles.find((role) => role.rank_value === effRank)?.rank_source
-    };
-  });
-}
-
 export function createSyntheticPlayerFromRegistration(
   registration: AdminRegistration,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
-  options: SyntheticPlayerOptions = {}
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID
 ): BalancerPlayerRecord {
   const battleTag = getRegistrationDisplayName(registration);
   const isFlex = isRegistrationFlex(registration);
@@ -612,18 +484,20 @@ export function createSyntheticPlayerFromRegistration(
     battle_tag: battleTag,
     battle_tag_normalized: registration.battle_tag_normalized ?? battleTag.toLowerCase(),
     user_id: registration.user_id,
-    role_entries_json: options.allRoles
-      ? flattenRolesToMaxRank(registration.roles, grid)
-      : registration.roles.map((role) => ({
-          role: role.role,
-          subtype: role.subrole,
-          priority: role.priority,
-          division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
-          rank_value: role.rank_value,
-          is_active: role.is_active,
-          ow_rank_value: role.ow_rank_value ?? null,
-          rank_source: role.rank_source
-        })),
+    // Roles come from the API exactly as the roster engine resolved them:
+    // `is_active` IS "playable" and `rank_value` IS the resolved rank, flex
+    // modes included. Nothing is re-derived here.
+    role_entries_json: registration.roles.map((role) => ({
+      role: role.role,
+      subtype: role.subrole,
+      priority: role.priority,
+      division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
+      rank_value: role.rank_value,
+      is_active: role.is_active,
+      is_declared_active: role.is_declared_active,
+      ow_rank_value: role.ow_rank_value ?? null,
+      rank_source: role.rank_source
+    })),
     is_flex: isFlex,
     is_in_pool: isRegistrationIncludedInBalancer(registration),
     ready_blocked: isRegistrationReadyBlocked(registration),

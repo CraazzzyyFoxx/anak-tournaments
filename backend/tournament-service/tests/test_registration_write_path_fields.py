@@ -41,6 +41,9 @@ from src import (
     models,  # noqa: E402
     schemas,  # noqa: E402
 )
+from shared.core.enums import HeroClass  # noqa: E402
+from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
+from shared.services.roster import roster_engine  # noqa: E402
 from src.schemas.registration import RegistrationCreate, RegistrationUpdate  # noqa: E402
 from src.services.registration import lifecycle as reg_lifecycle  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
@@ -89,14 +92,39 @@ async def _fake_resolve(*_args: Any, **_kwargs: Any) -> dict:
 
 
 def _wp_patches():
-    # Identity provisioning is patched out (it would hit the DB), and the rank
-    # resolver with it: this suite asserts which registration FIELDS a write path
+    # Identity provisioning is patched out (it would hit the DB), and the roster
+    # engine with it: this suite asserts which registration FIELDS a write path
     # persists, not what the balancer status derives from them.
     return (
         mock.patch.object(
             reg_service.registration_service, "ensure_player_identity", mock.AsyncMock(return_value=None)
         ),
-        mock.patch("src.services.registration.rank_resolution.resolved_value_map", _fake_resolve),
+        mock.patch.object(roster_engine, "for_tournament", _fake_resolve),
+    )
+
+
+def _roster_of(registration: models.BalancerRegistration) -> PlayerRoster:
+    """What the engine would answer for a row with no tenancy behind it: the
+    registration's own layer only, over the roles it declares active."""
+    return PlayerRoster(
+        registration_id=registration.id,
+        battle_tag=registration.battle_tag,
+        display_name=registration.display_name,
+        player_id=None,
+        auth_user_id=None,
+        workspace_member_id=None,
+        roles=tuple(
+            RosterRole(
+                role=HeroClass.from_slot_code(role.role),
+                rank=role.rank_value,
+                source="registration" if role.rank_value is not None else "none",
+                is_primary=bool(role.is_primary),
+                priority=priority,
+                subrole=role.subrole,
+            )
+            for priority, role in enumerate(role for role in registration.roles if role.is_active)
+        ),
+        is_full_flex=False,
     )
 
 
@@ -363,9 +391,14 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
             "roles": None,
             **overrides,
         }
+
+        async def _rosters(*_a: Any, **_k: Any) -> dict:
+            return {registration.id: _roster_of(registration)}
+
         with (
             mock.patch.object(reg_lifecycle.lifecycle_service, "get_registration_by_id", mock.AsyncMock(return_value=registration)),
             mock.patch.object(reg_lifecycle.lifecycle_service.common, "_register_registration_changed", lambda *_a, **_k: None),
+            mock.patch.object(roster_engine, "for_tournament", _rosters),
         ):
             await reg_lifecycle.lifecycle_service.update_registration_profile(_RecordingSession(), registration.id, **payload)
 

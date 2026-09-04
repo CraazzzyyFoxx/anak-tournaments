@@ -87,7 +87,10 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
             session.add(workspace)
             await session.flush()
 
-            tournament = Tournament(workspace_id=workspace.id, name=f"T {self.suffix}")
+            # ``slug`` is NOT NULL and globally unique (migration tslug0001).
+            tournament = Tournament(
+                workspace_id=workspace.id, name=f"T {self.suffix}", slug=f"t-{self.suffix}"
+            )
             tournament.status = "registration"
             tournament.roster_slots_json = dict(_SHAPE)
             session.add(tournament)

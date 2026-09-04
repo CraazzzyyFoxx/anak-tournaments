@@ -41,27 +41,37 @@ const team: DraftTeam = {
   exported_team_id: null
 };
 
+// Two tiers so a rank resolves to a division: with an empty grid every rank
+// resolves to null and the row renders an em-dash instead of a title carrying
+// the number the assertions read.
+const GRID = {
+  tiers: [
+    { slug: "high", number: 9, name: "High", sort_order: 0, rank_min: 4000, rank_max: 4999, icon_url: "/high.png" },
+    { slug: "low", number: 4, name: "Low", sort_order: 1, rank_min: 2000, rank_max: 2999, icon_url: "/low.png" }
+  ]
+};
+
 // Drafted on support at 2800, but their best role is dps at 4000 — the two ranks
-// the shape has to choose between. `effective_rank` is what the server resolved
-// for THIS draft (services.draft.ranks.slot_rank).
+// the shape has to choose between. `effective_rank` is what the roster engine
+// resolved for THIS draft.
 const drafted: DraftPlayer = {
   id: 7,
   session_id: 1,
+  registration_id: 70,
   user_id: null,
   battle_tag: "Ana#1234",
   primary_role: "support",
   sub_role: null,
   is_flex: false,
-  division_number: 4,
-  rank_value: 2800,
   effective_rank: 4000,
   status: "picked",
   is_captain: false,
   drafted_by_team_id: 1,
-  secondary_roles_json: ["dps"],
+  secondary_roles: ["dps"],
   role_ranks: { support: 2800, dps: 4000 },
+  role_sources: { support: "registration", dps: "registration" },
   role_top_heroes: {},
-  additional_info: {},
+  notes: null,
   custom_fields: [],
   version: 1
 };
@@ -76,15 +86,20 @@ const pick = {
   status: "completed"
 } as unknown as DraftPick;
 
-function render(shape: RosterShape, variant: "grid" | "column") {
+function render(
+  shape: RosterShape,
+  variant: "grid" | "column",
+  players: DraftPlayer[] = [drafted],
+  picks: DraftPick[] = [pick]
+) {
   return renderToStaticMarkup(
     <TeamRosters
       teams={[team]}
-      players={[drafted]}
-      picks={[pick]}
+      players={players}
+      picks={picks}
       shape={shape}
       variant={variant}
-      divisionGrid={{ tiers: [] }}
+      divisionGrid={GRID}
     />
   );
 }
@@ -109,5 +124,22 @@ describe.each(["grid", "column"] as const)("team roster rows (%s)", (variant) =>
     expect(html).not.toContain('title="roles.support"');
     expect(html).toContain("4000 SR");
     expect(html).not.toContain("2800 SR");
+  });
+
+  test("a player left without a playable role gets no stand-in role", () => {
+    // An organizer can strip every rank mid-draft. Falling back to a default
+    // role would put a tank icon on a player nobody can field.
+    // No pick froze a role for them either, so nothing can stand in.
+    const html = render(
+      ROLE_SHAPE,
+      variant,
+      [{ ...drafted, primary_role: null, secondary_roles: [], role_ranks: {} }],
+      []
+    );
+    // The row's own slot label is `noRole`, so no role was substituted — the
+    // shape's slot counters above still name every role, which is why the
+    // assertion targets the row label rather than the whole document.
+    expect(html).toContain('title="noRole"');
+    expect(html).not.toContain("SR");
   });
 });

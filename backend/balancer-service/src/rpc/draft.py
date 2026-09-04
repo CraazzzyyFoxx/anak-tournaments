@@ -44,8 +44,7 @@ from src.core.auth import (
 )
 from src.core.config import config
 from src.domain.draft import fit as sug
-from src.domain.draft import rules
-from src.domain.draft.entities import CaptainSeed, DraftResult, PlayerSeed
+from src.domain.draft.entities import DraftResult
 from src.rpc import _common as c
 from src.services.draft import clock as clock_svc
 from src.services.draft import loaders
@@ -384,7 +383,6 @@ def register(broker: Any, logger: Any) -> None:
                 player_id=player_id,
                 role=HeroClass.from_slot_code(payload.role),
                 rank_value=payload.rank_value,
-                rank_absence_confirmed=payload.rank_absence_confirmed,
                 reason=payload.reason,
                 expected_version=payload.expected_version,
                 actor_auth_user_id=user.id,
@@ -429,28 +427,26 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=409, detail="Draft has no current pick")
             current = await _picks_repo.get(session, draft.current_pick_id)
             snapshot = await feasibility_service.load_snapshot(session, draft)
-            # Fit construction reads secondary_roles_json/user_id/role_ranks;
-            # snapshot players carry loaders.player_options() so those never
-            # lazy-load.
             available = [p for p in snapshot.players if p.status == "available"]
             shape = await feasibility_service.resolve_shape(session, draft)
-            counts = rules.team_slot_counts(snapshot.players, snapshot.picks, current.draft_team_id, shape)
+            counts = rules.team_slot_counts(
+                snapshot.players, snapshot.picks, current.draft_team_id, shape, snapshot.rosters
+            )
             capacity = rules.role_openings(shape, counts)
+            # Same construction as autopick's, from the same snapshot rosters, so
+            # a suggestion and the autopick that follows it cannot disagree.
             fit_players = [
                 sug.FitPlayer(
                     player_id=p.id,
-                    rank_value=p.rank_value or 0,
-                    playable_roles=(
-                        frozenset(HERO_TYPE_CLASSES)
-                        if p.is_flex
-                        else frozenset(HeroClass.from_slot_code(r) for r in {p.primary_role, *(p.secondary_roles_json or [])})
-                    ),
-                    preference_order=(HeroClass.from_slot_code(p.primary_role),),
-                    is_flex=p.is_flex,
+                    rank_value=roster.best_rank or 0,
+                    playable_roles=roster.playable_roles,
+                    preference_order=((lead.role,) if (lead := roster.primary) is not None else ()),
+                    is_flex=roster.is_full_flex,
                     user_id=p.user_id,
-                    rank_by_role={HeroClass.from_slot_code(k): v for k, v in (p.role_ranks or {}).items()},
+                    rank_by_role={HeroClass.from_slot_code(code): rank for code, rank in roster.role_ranks.items()},
                 )
                 for p in available
+                if (roster := snapshot.roster(p.id)) is not None and roster.is_draftable
             ]
             options = await feasibility_service.evaluate_session_pick_options(
                 session,
@@ -533,45 +529,19 @@ def register(broker: Any, logger: Any) -> None:
             version_before = draft.version
             savepoint = await session.begin_nested() if payload.preview_only else None
             try:
-                if payload.pool_captains:
-                    await lifecycle_service.seed_from_pool(
-                        session,
-                        draft,
-                        captain_registration_ids=[c_.registration_id for c_ in payload.pool_captains],
-                        team_names={c_.registration_id: c_.name for c_ in payload.pool_captains if c_.name},
-                        captain_order=payload.captain_order,
-                        rng_seed=payload.seed,
-                    )
-                elif payload.captains:
-                    captains = [
-                        CaptainSeed(
-                            name=cap.name,
-                            draft_position=cap.draft_position,
-                            user_id=cap.user_id,
-                            battle_tag=cap.battle_tag,
-                        )
-                        for cap in payload.captains
-                    ]
-                    players = [
-                        PlayerSeed(
-                            primary_role=p.primary_role,
-                            user_id=p.user_id,
-                            battle_tag=p.battle_tag,
-                            secondary_roles=p.secondary_roles,
-                            sub_role=p.sub_role,
-                            is_flex=p.is_flex,
-                            division_number=p.division_number,
-                            rank_value=p.rank_value,
-                            role_ranks=({p.primary_role.value: p.rank_value} if p.rank_value is not None else {}),
-                        )
-                        for p in payload.players
-                    ]
-                    await lifecycle_service.seed(session, draft, captains=captains, players=players)
-                else:
+                if not payload.pool_captains:
                     raise HTTPException(
                         status_code=422,
-                        detail="Provide pool_captains (from the balancer pool) or manual captains",
+                        detail="Provide pool_captains: a draft seat is a balancer registration",
                     )
+                await lifecycle_service.seed_from_pool(
+                    session,
+                    draft,
+                    captain_registration_ids=[c_.registration_id for c_ in payload.pool_captains],
+                    team_names={c_.registration_id: c_.name for c_ in payload.pool_captains if c_.name},
+                    captain_order=payload.captain_order,
+                    rng_seed=payload.seed,
+                )
 
                 after = await lifecycle_service.seed_row_counts(session, draft.id)
                 report = await feasibility_service.analyze_session(session, draft)

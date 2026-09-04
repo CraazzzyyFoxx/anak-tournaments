@@ -400,14 +400,11 @@ export function buildBalancerRegistrationColumns(
     {
       id: "roles",
       header: "Roles",
-      // Highest active rank, so the strongest players sort together regardless
-      // of which role they filled.
-      accessorFn: (registration) => {
-        const ranks = registration.roles
-          .filter((role) => role.is_active && role.rank_value != null)
-          .map((role) => role.rank_value as number);
-        return ranks.length > 0 ? Math.max(...ranks) : 0;
-      },
+      // Highest playable rank, so the strongest players sort together regardless
+      // of which role they filled. Taken from the server's `best_rank` — maxing
+      // the roles here computed the same number a second time, which is the one
+      // way it could ever disagree with the engine.
+      accessorFn: (registration) => registration.best_rank ?? 0,
       cell: ({ row }) => <RolesCell roles={row.original.roles} catalog={subroleCatalog} />,
       meta: adminColumnMeta<AdminRegistration>({
         category: "core",

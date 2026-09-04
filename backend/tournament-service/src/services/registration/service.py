@@ -19,6 +19,7 @@ from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider, normalize_social_handle
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES, normalize_sub_role
+from shared.domain.roster import FlexRoleMode, flex_role_mode
 from shared.hero_catalog import DEFAULT_MAX_TOP_HEROES, HeroCatalog, build_hero_entries
 from shared.rbac import assign_workspace_system_role
 from shared.repository import (
@@ -48,17 +49,15 @@ from src.schemas.registration import (
 from src.schemas.registration_build import (
     AdmissionChips,
     _build_tournament_history,
+    _public_rosters,
     _reg_to_read,
     _resolve_top_heroes_config,
     _resolve_tournament_workspace,
-    _resolved_public_ranks,
     registration_read_loaders,
 )
 from src.services.registration._common import (
-    FlexRoleMode,
     _common_service,
     apply_all_roles,
-    flex_role_mode,
 )
 from src.services.registration.validation import validate_registration_input, validation_service
 from src.services.registration.windows import is_check_in_window_active, is_registration_open
@@ -848,13 +847,13 @@ class RegistrationService:
             ],
         )
         status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
-        resolved_by_reg = await _resolved_public_ranks(session, [registration], show_ranks=form.show_ranks)
+        rosters = await _public_rosters(session, [registration], show_ranks=form.show_ranks)
         return _reg_to_read(
             registration,
             workspace_id=workspace_id,
             status_meta_map=status_meta_map,
             show_ranks=form.show_ranks,
-            resolved_ranks=resolved_by_reg.get(registration.id),
+            roster=rosters.get(registration.id),
         )
 
     async def resolve_admission_list(
@@ -959,7 +958,7 @@ class RegistrationService:
         form = await _common_service.get_registration_form(session, tournament_id)
         admissions = await self.resolve_admission_list(session, registrations, form=form)
         show_ranks = form.show_ranks if form is not None else False
-        resolved_by_reg = await _resolved_public_ranks(session, registrations, show_ranks=show_ranks)
+        rosters = await _public_rosters(session, registrations, show_ranks=show_ranks)
 
         history_map, history_count_map, division_grids = await _build_tournament_history(
             session,
@@ -982,7 +981,7 @@ class RegistrationService:
                         profiles_open=chips.profiles_open,
                         subscription_outcome=chips.subscription_outcome,
                         subscription_verdicts=chips.subscription_verdicts,
-                        resolved_ranks=resolved_by_reg.get(r.id),
+                        roster=rosters.get(r.id),
                     ).model_dump(),
                     tournament_history=history_map.get(r.id, []),
                     tournament_history_count=history_count_map.get(r.id, 0),

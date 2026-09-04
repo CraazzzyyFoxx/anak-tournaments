@@ -17,6 +17,7 @@ from shared.services.balancer_realtime import (
     BALANCER_JOB_RUNNING,
     BALANCER_JOB_SUCCEEDED,
 )
+from shared.services.roster import roster_engine
 from shared.services.roster_shape_access import get_effective_roster_shape
 from src.core.job_store import get_job_store
 from src.core.metrics import (
@@ -210,6 +211,94 @@ async def create_job(
             actor_user_id=user.id,
         )
 
+    return CreateJobResponse(job_id=job_id, status="queued", **_build_job_urls(job_id))
+
+
+async def create_tournament_job(
+    *,
+    session,
+    tournament_id: int,
+    raw_config: str | None,
+    workspace_id: int,
+    user,
+    broker,
+) -> CreateJobResponse:
+    """Queue a balance for a tournament's own pool -- no upload, no client build.
+
+    The algorithm's input used to be assembled in the BROWSER from the admin
+    registration list, which is how the balancer and the draft ended up reading
+    two different rank sources. It is built here now, by the same engine the
+    draft reads (``shared.services.roster``), so the two cannot diverge again.
+    """
+    job_store = get_job_store()
+    api_key_limiter = get_api_key_limiter()
+
+    await api_key_limiter.check_request(user)
+    _access_policy.ensure_workspace_access(user, workspace_id)
+
+    rosters = await roster_engine.for_tournament(session, tournament_id, pool_only=True)
+    player_data = roster_engine.balancer_input(rosters.values())
+    if not player_data["players"]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No pool registration has a ranked role; set ranks in the balancer first",
+        )
+    config_overrides = _payload_parser.parse_config_overrides(raw_config)
+    validate_api_key_config_policy(user, config_overrides)
+    _enforce_player_limit(user, player_data)
+
+    roster_shape = await get_effective_roster_shape(
+        session,
+        tournament_id=tournament_id,
+        workspace_id=workspace_id,
+    )
+
+    job_id = uuid.uuid4().hex
+    api_key_id = get_api_key_id(user) if is_api_key_principal(user) else None
+    principal = get_principal(user)
+    await api_key_limiter.reserve_job(user, job_id)
+
+    try:
+        meta = await _runtime(job_store).create(
+            None,
+            JobSpec(
+                kind="balance",
+                workspace_id=workspace_id,
+                extra={
+                    "player_data": player_data,
+                    "config_overrides": config_overrides,
+                    "job_id": job_id,
+                    "tournament_id": tournament_id,
+                    "created_by": user.id,
+                    "credential_type": getattr(user, "_credential_type", "access_token"),
+                    "api_key_id": api_key_id,
+                    "role_mask": roster_shape.slots,
+                },
+            ),
+        )
+        job_id = str(meta.get("job_id") or job_id)
+    except Exception:
+        if principal is not None:
+            await api_key_limiter.release_job(principal[0], principal[1], job_id)
+        raise
+
+    try:
+        await BalancerJobPublisher(broker, logger).publish_job_requested(job_id)
+    except Exception as exc:
+        await _runtime(job_store).mark_failed(None, job_id, error=f"Failed to enqueue balancer job: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to enqueue balancer job",
+        ) from exc
+
+    await emit_balancer_job_event(
+        tournament_id,
+        BALANCER_JOB_QUEUED,
+        job_id=job_id,
+        status="queued",
+        workspace_id=workspace_id,
+        actor_user_id=user.id,
+    )
     return CreateJobResponse(job_id=job_id, status="queued", **_build_job_urls(job_id))
 
 

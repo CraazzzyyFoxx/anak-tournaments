@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 import sqlalchemy as sa
@@ -11,7 +10,7 @@ from shared.balancer_registration_statuses import (
     build_status_meta_from_model,
     build_unknown_status_meta,
 )
-from shared.domain.member_rank import ResolvedRank
+from shared.domain.roster import PlayerRoster, RosterRole
 from src import models, schemas
 from src.schemas.admission import AdmissionRead
 from src.schemas.registration import RegistrationFormRead
@@ -39,20 +38,26 @@ def _role_top_heroes(role: models.BalancerRegistrationRole) -> list[str]:
 def serialize_registration_role(
     role: models.BalancerRegistrationRole,
     ow_rank_value: int | None = None,
-    resolved: ResolvedRank | None = None,
+    entry: RosterRole | None = None,
 ) -> schemas.BalancerRegistrationRoleRead:
-    if resolved is None:
-        # No resolver ran (single-object serialization): the role's own number is
-        # the registration layer. Inherited layers need a batch call to see.
-        resolved = ResolvedRank(role.rank_value, "registration" if role.rank_value is not None else "none")
+    """One role row, rated by the engine.
+
+    ``entry`` is this role's resolved :class:`RosterRole`; ``None`` means the
+    engine did not put the role in the roster at all, which is the honest
+    "unplayable, no number" answer. The declared flag is reported separately from
+    playability on purpose: ``is_active`` is what the balancer and the draft act
+    on (active AND ranked), ``is_declared_active`` is the checkbox the editor
+    toggles.
+    """
     return schemas.BalancerRegistrationRoleRead(
         role=role.role,
         subrole=role.subrole,
         priority=role.priority,
         is_primary=role.is_primary,
-        rank_value=resolved.value,
-        rank_source=resolved.source,
-        is_active=role.is_active,
+        rank_value=entry.rank if entry is not None else None,
+        rank_source=entry.source if entry is not None else "none",
+        is_active=entry is not None and entry.is_playable,
+        is_declared_active=bool(role.is_active),
         top_heroes=_role_top_heroes(role),
         ow_rank_value=ow_rank_value,
     )
@@ -67,7 +72,7 @@ def serialize_registration(
     admission: AdmissionRead | None = None,
     profiles_open: bool | None = None,
     subscription_outcome: str | None = None,
-    resolved_ranks: Mapping[str, ResolvedRank] | None = None,
+    roster: PlayerRoster | None = None,
 ) -> schemas.BalancerRegistrationRead:
     binding = loaded_relationship_or_none(registration, "google_sheet_binding")
     roles = loaded_relationship_or_none(registration, "roles") or []
@@ -78,6 +83,9 @@ def serialize_registration(
     # workspace_member (loaded_relationship_or_none never lazy-loads).
     workspace_member = loaded_relationship_or_none(registration, "workspace_member")
     sorted_roles = sorted(roles, key=lambda item: (item.priority, item.role))
+    # Every role row is still reported (the editor toggles the ones the engine
+    # left out of the roster); the roster is what rates them.
+    entry_by_role = {entry.role.slot_code: entry for entry in roster.roles} if roster is not None else {}
     resolved_status_meta = (
         status_meta_map["registration"].get(registration.status) if status_meta_map is not None else None
     ) or build_unknown_status_meta("registration", registration.status)
@@ -119,11 +127,12 @@ def serialize_registration(
         admission=admission if admission is not None else AdmissionRead.unknown(),
         profiles_open=profiles_open,
         subscription_outcome=subscription_outcome,
+        best_rank=roster.best_rank if roster is not None else None,
         roles=[
             serialize_registration_role(
                 role,
                 (ow_ranks_for_user or {}).get(role.role),
-                (resolved_ranks or {}).get(role.role),
+                entry_by_role.get(role.role),
             )
             for role in sorted_roles
         ],

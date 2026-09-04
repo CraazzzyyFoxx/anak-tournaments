@@ -11,10 +11,8 @@ import type {
 const ROLES: DraftRole[] = ["tank", "dps", "support"];
 
 export function availableRolesForPlayer(player: DraftPlayer): DraftRole[] {
-  const declared = new Set<DraftRole>([
-    player.primary_role,
-    ...((player.secondary_roles_json ?? []) as DraftRole[])
-  ]);
+  const declared = new Set<DraftRole>(player.secondary_roles as DraftRole[]);
+  if (player.primary_role) declared.add(player.primary_role);
   return ROLES.filter((role) => !declared.has(role));
 }
 
@@ -22,15 +20,17 @@ interface RoleEditCommitState {
   player: DraftPlayer | null;
   role: DraftRole | null;
   rankValue: number | null;
-  rankAbsent: boolean;
   reason: string;
   preview: DraftRoleEditResponse | null;
 }
 
 export function canCommitRoleEdit(state: RoleEditCommitState): boolean {
-  const { player, role, rankValue, rankAbsent, reason, preview } = state;
+  const { player, role, rankValue, reason, preview } = state;
   if (!player || !role || !preview || !reason.trim()) return false;
-  if (rankValue == null && !rankAbsent) return false;
+  // A rankless role is not playable, so the edit would add a role the draft can
+  // never offer. The server requires `rank_value > 0`; there is no "no rank"
+  // path to allow any more.
+  if (rankValue == null || rankValue <= 0) return false;
   return (
     preview.player_id === player.id &&
     preview.player_version === player.version &&

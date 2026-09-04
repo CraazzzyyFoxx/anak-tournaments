@@ -11,6 +11,7 @@ from .balancer import (
     PlayerData,
     Statistics,
     TeamData,
+    TournamentBalanceRequest,
 )
 from .team import BalancerTeam, InternalBalancerTeam, InternalBalancerTeamsPayload
 from .admin.balancer import (
@@ -67,6 +68,7 @@ __all__ = [
     "TeamData",
     "PlayerData",
     "Statistics",
+    "TournamentBalanceRequest",
     "BalanceExportResponse",
     "BalanceRead",
     "BalanceSaveRequest",

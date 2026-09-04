@@ -83,12 +83,19 @@ var RosterRoutes = []edge.RouteSpec{
 }
 
 // JobRoutes are the authenticated public job API reads (status poll + result)
-// from src/routes/balancer.py. job_id is a uuid hex string (not int). Job
-// creation is a multipart upload handled separately (binary.go); the SSE stream
-// is not migrated (dead code — progress flows over the WS topic).
+// from src/routes/balancer.py, plus the tournament balance trigger. job_id is a
+// uuid hex string (not int).
+//
+// The tournament trigger carries NO player payload: the xv-1 input is built
+// server-side from shared.services.roster, the same engine the draft reads, so
+// the browser can no longer hand the algorithm a different set of ranks than
+// the draft sees. The multipart upload route (binary.go) stays for the
+// bring-your-own-file case; the SSE stream is not migrated (dead code —
+// progress flows over the WS topic).
 var JobRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/jobs/{job_id}", Queue: "rpc.balancer.jobs.status", IDParam: "job_id", Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "GET", Pattern: "/api/balancer/jobs/{job_id}/result", Queue: "rpc.balancer.jobs.result", IDParam: "job_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/balancer/tournaments/{tournament_id}/balance", Queue: "rpc.balancer.jobs.create_for_tournament", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired, Success: 202},
 }
 
 // DraftReadRoutes are the public draft spectating reads (no auth), from

@@ -43,7 +43,7 @@ export function CaptainShortlist({ players, onSelect, onRemove, divisionGrid }: 
         </TooltipProvider>
       </span>
       {players.map((player) => {
-        const division = player.division_number ?? resolveDivisionFromRank(divisionGrid, player.effective_rank);
+        const division = resolveDivisionFromRank(divisionGrid, player.effective_rank);
         return (
           <div key={player.id} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card)] py-1 pl-1.5 pr-1 text-xs font-semibold transition-colors hover:border-[color:var(--aqt-teal)]">
             <button type="button" className="flex min-w-0 items-center gap-1.5 rounded outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]" onClick={() => onSelect(player)}>

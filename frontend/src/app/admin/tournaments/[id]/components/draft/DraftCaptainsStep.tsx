@@ -26,7 +26,7 @@ import type { DivisionGrid } from "@/types/workspace.types";
 
 import { filterCaptainRows, type DraftCaptainSort } from "./setup-model";
 import type { DraftCaptainSetup } from "./setup-types";
-import { registrationLabel, summarizeRegistration } from "./setup-types";
+import { poolRegistrationSummary, registrationLabel } from "./setup-types";
 import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 interface DraftCaptainsStepProps {
@@ -57,7 +57,7 @@ export function DraftCaptainsStep({
   const rows = useMemo(
     () =>
       pool.map((registration) => {
-        const summary = summarizeRegistration(registration);
+        const summary = poolRegistrationSummary(registration);
         return {
           id: registration.id,
           label: registrationLabel(registration),
