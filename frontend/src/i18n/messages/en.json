@@ -175,11 +175,6 @@
     "tournamentNotFound": "Tournament not found.",
     "tournaments": "Tournaments",
     "league": "League",
-    "formatLabel": {
-      "groupsPlayoff": "Groups → Playoff",
-      "playoffBracket": "Playoff bracket",
-      "groupStage": "Group stage"
-    },
     "statusBadge": {
       "draft": "Draft",
       "registration": "Registration",

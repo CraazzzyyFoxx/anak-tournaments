@@ -35,7 +35,7 @@ import { MatchCard, isEncounterCompleted, isEncounterLive } from "../_components
 import { MatchRow } from "../_components/MatchRow";
 import { PhaseTimeline } from "../_components/PhaseTimeline";
 import { Podium, type PodiumTeam } from "../_components/Podium";
-import { formatLabel, tournamentPlayersCount } from "../_components/TournamentClientLayout";
+import { tournamentPlayersCount } from "../_components/TournamentClientLayout";
 import {
   TournamentLinkChips,
   visibleTournamentLinks
@@ -81,6 +81,20 @@ const ELIMINATION_TYPES: Record<string, true> = {
   double_elimination: true
 };
 const GROUP_TYPES: Record<string, true> = { round_robin: true, swiss: true };
+
+/**
+ * How each stage type reads beside the organizer's own stage name. A registry
+ * over the backend's vocabulary rather than a chain of ternaries — the reason
+ * `CHIP_META` and `TOURNAMENT_STATUS_META` are registries — with existing keys,
+ * so no new copy. `stage_type` is a free column, so an unlisted value renders
+ * the name alone instead of a raw enum token.
+ */
+const STAGE_TYPE_LABEL: Record<string, "common.roundRobin" | "common.swiss" | "bracket.singleElimination" | "bracket.doubleElimination"> = {
+  round_robin: "common.roundRobin",
+  swiss: "common.swiss",
+  single_elimination: "bracket.singleElimination",
+  double_elimination: "bracket.doubleElimination"
+};
 
 /**
  * The stage the overview draws: the one being played now, and after the
@@ -550,15 +564,31 @@ export default function TournamentOverviewPage({
     <OverviewCard title={t("tournamentDetail.overview.format.title")}>
       <dl className="grid gap-2.5">
         {tournament.stages.length > 0 ? (
-          <KeyValue term={t("common.format")}>
-            {formatLabel(tournament.stages, t)}
-            <span className="text-[color:var(--aqt-fg-faint)]">
-              {" — "}
-              {[...tournament.stages]
-                .sort((left, right) => left.order - right.order)
-                .map((item) => item.name)
-                .join(" → ")}
-            </span>
+          /* The card's own heading already says "Format", and the derived label
+             (`Groups → Playoff`) restated the stage names right beside it —
+             "Groups → Playoff — Groups → Playoffs". The organizer's own stage
+             names carry it, with each stage's type where the name does not. */
+          <KeyValue term={t("common.stages")}>
+            {[...tournament.stages]
+              .sort((left, right) => left.order - right.order)
+              .map((stage, index) => {
+                const typeKey = STAGE_TYPE_LABEL[stage.stage_type];
+                return (
+                  <span key={stage.id}>
+                    {index > 0 ? (
+                      <span className="text-[color:var(--aqt-fg-faint)]">{" → "}</span>
+                    ) : null}
+                    {stage.name}
+                    {typeKey ? (
+                      <span className="text-[color:var(--aqt-fg-faint)]">
+                        {" ("}
+                        {t(typeKey).toLowerCase()}
+                        {")"}
+                      </span>
+                    ) : null}
+                  </span>
+                );
+              })}
           </KeyValue>
         ) : null}
         <KeyValue term={t("common.teamFormation")}>

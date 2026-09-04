@@ -22,7 +22,7 @@ import { TournamentRouteProvider } from "../_hooks/useTournamentId";
 import { useSyncActiveWorkspace } from "@/hooks/useSyncActiveWorkspace";
 import { useTournamentStreamRealtime } from "@/hooks/useTournamentStreamRealtime";
 import { useTournamentStreamsQuery } from "../_hooks/useTournamentStreams";
-import type { StageSummary, Tournament } from "@/types/tournament.types";
+import type { Tournament } from "@/types/tournament.types";
 
 import { useTranslations, useLocale } from "next-intl";
 import TournamentSectionNav from "./TournamentSectionNav";
@@ -35,20 +35,6 @@ type TournamentClientLayoutProps = {
   slug: string;
   children: React.ReactNode;
 };
-
-/** The translator the header helpers accept — next-intl's own, for the root namespace. */
-export type Translate = ReturnType<typeof useTranslations<never>>;
-
-export function formatLabel(stages: StageSummary[], t: Translate): string {
-  const hasGroup = stages.some((s) => s.stage_type === "round_robin" || s.stage_type === "swiss");
-  const hasElim = stages.some(
-    (s) => s.stage_type === "single_elimination" || s.stage_type === "double_elimination"
-  );
-  if (hasGroup && hasElim) return t("common.formatLabel.groupsPlayoff");
-  if (hasElim) return t("common.formatLabel.playoffBracket");
-  if (hasGroup) return t("common.formatLabel.groupStage");
-  return stages[0]?.stage_type?.replace(/_/g, " ") ?? "—";
-}
 
 /**
  * The one "players" figure every surface of the page quotes. Registrations

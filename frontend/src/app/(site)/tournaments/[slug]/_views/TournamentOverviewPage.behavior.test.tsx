@@ -785,6 +785,32 @@ describe("the reference tail", () => {
     });
   }
 
+  it("names the stages once, with each stage's type — not the card's own heading twice", async () => {
+    tournament = makeTournament("live", {
+      stages: [
+        makeStage({ id: 6, name: "Groups", stage_type: "round_robin", order: 0 }),
+        makeStage({ id: 7, name: "Playoffs", stage_type: "double_elimination", order: 1 })
+      ]
+    });
+    await mount();
+
+    const card = Array.from(container.querySelectorAll("section")).find((node) =>
+      node.querySelector("h2")?.textContent?.includes(COPY.format.title)
+    );
+    const text = card?.textContent ?? "";
+
+    // The first row is "Stages", not a second "Format" under the heading.
+    const terms = Array.from(card?.querySelectorAll("dt") ?? []).map((node) =>
+      node.textContent?.trim()
+    );
+    expect(terms[0]).toBe(en.common.stages);
+    expect(terms).not.toContain(COPY.format.title);
+    expect(text).toContain(`Groups (${en.common.roundRobin})`);
+    expect(text).toContain(`Playoffs (${en.bracket.doubleElimination.toLowerCase()})`);
+    // The derived label used to restate them: "Groups → Playoff — Groups → Playoffs".
+    expect(text).not.toContain("Groups → Playoff —");
+  });
+
   it("gives the links their own aside before the start, with no map pool to share it", async () => {
     // The registration branch's aside is optional — it used to appear only for
     // a map pool, so links alone would have had nowhere to render.

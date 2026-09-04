@@ -175,11 +175,6 @@
     "tournamentNotFound": "Турнир не найден.",
     "tournaments": "Турниры",
     "league": "Лига",
-    "formatLabel": {
-      "groupsPlayoff": "Группы → Плей-офф",
-      "playoffBracket": "Сетка плей-офф",
-      "groupStage": "Групповой этап"
-    },
     "statusBadge": {
       "draft": "Черновик",
       "registration": "Регистрация",
