@@ -5300,8 +5300,6 @@
     "broadcast": {
       "heading": "Official broadcast",
       "participantHeading": "Participant stream",
-      "channelLive": "Channel is live",
-      "channelOffline": "Channel is offline",
       "playerLabel": "Twitch player · {channel}",
       "participantPlayerLabel": "Participant stream · {channel}",
       "participantNotice": "No cast is live right now — this frame is the POV of {player}.",

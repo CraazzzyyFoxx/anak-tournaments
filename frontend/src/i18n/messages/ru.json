@@ -5300,8 +5300,6 @@
     "broadcast": {
       "heading": "Официальная трансляция",
       "participantHeading": "Стрим участника",
-      "channelLive": "Канал в эфире",
-      "channelOffline": "Канал не в эфире",
       "playerLabel": "Плеер Twitch · {channel}",
       "participantPlayerLabel": "Стрим участника · {channel}",
       "participantNotice": "Каста сейчас нет — в плеере POV участника {player}.",

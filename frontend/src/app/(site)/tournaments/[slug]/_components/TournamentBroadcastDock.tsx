@@ -10,7 +10,6 @@ import {
   embeddableTwitchChannel,
   getStreamStatus,
   sortStreamsByAudience,
-  STREAM_STATUS_META,
   streamPlatformLabel
 } from "@/lib/stream-platform";
 import { cn } from "@/lib/utils";
@@ -81,15 +80,12 @@ const ANCHOR =
  * broadcast has no playback position to lose. The restore control keeps the
  * broadcast one click away, so dismissing is never a dead end.
  *
- * ## Why the badge here is not the hero's status pill
+ * ## Why there is no live badge in the header
  *
- * `PageHero` already shows a live pill for the TOURNAMENT's status. This one
- * reports something else entirely — whether the CHANNEL is currently
- * broadcasting — and the two disagree routinely: a tournament is `live` for
- * hours while the stream drops between series. So the copy names its subject
- * ("Channel is live") instead of repeating the hero's bare "Live", while the
- * pill classes still come from `STREAM_STATUS_META` so the site keeps one
- * visual language for liveness.
+ * There was one ("Channel is live") and it said nothing the panel did not
+ * already: the frame below it is either playing the cast or replaced by a
+ * "Watch on …" link, and the collapsed restore button keeps its dot. A pill
+ * over a running player is a caption for something the viewer is looking at.
  *
  * Offline or unembeddable broadcasts keep their link: a YouTube or VK link has
  * no live detection at all (`live === null`), and hiding it would lose the only
@@ -148,7 +144,6 @@ export function TournamentBroadcastDock({ streams, className }: Readonly<Tournam
   const featured = officialFeatured ?? participantFallback ?? official[0];
   const featuredChannel = embeddableTwitchChannel(featured);
   const featuredStatus = getStreamStatus(featured.live);
-  const featuredMeta = STREAM_STATUS_META[featuredStatus];
   // In fallback mode `featured` is a participant, so nothing is subtracted here
   // and every official link survives — the fallback hides no way to the cast.
   const secondary = official.filter((entry) => entry !== featured);
@@ -200,8 +195,8 @@ export function TournamentBroadcastDock({ streams, className }: Readonly<Tournam
           this narrow. Same vocabulary (title font, bottom rule), tighter box.
           The close control is pinned to the corner rather than laid out in the
           row, so it stays where a viewer looks for it and cannot be pushed off
-          by however long "Channel is live" gets in the next locale; the row
-          reserves its width with `pe-11` and wraps under it if it must. */}
+          by a long heading; the row reserves its width with `pe-11` and wraps
+          under it if it must. */}
       <div className="relative flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[color:var(--aqt-border)] py-2.5 pe-11 ps-3">
         <h2 className="aqt-card-title min-w-0">
           <span className="aqt-card-title-ic">
@@ -209,14 +204,6 @@ export function TournamentBroadcastDock({ streams, className }: Readonly<Tournam
           </span>
           <span className="truncate">{heading}</span>
         </h2>
-        {featuredMeta.labelKey ? (
-          <span className={cn(featuredMeta.pillClassName, "shrink-0")}>
-            {featuredMeta.hasDot ? <span aria-hidden className="dot" /> : null}
-            {featuredStatus === "live"
-              ? t("stream.broadcast.channelLive")
-              : t("stream.broadcast.channelOffline")}
-          </span>
-        ) : null}
         <button
           ref={closeRef}
           type="button"
