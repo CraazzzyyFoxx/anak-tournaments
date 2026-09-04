@@ -202,10 +202,12 @@ export default function TournamentClientLayout({
               </span>
               {nextPhaseChip}
               {tournament.is_league && <span className="meta-pill">{t("common.league")}</span>}
-              <span className="meta-pill">
-                <span className="k">{t("common.format")}</span>
-                <span className="v">{formatLabel(stages, t)}</span>
-              </span>
+              {stages.length > 0 ? (
+                <span className="meta-pill">
+                  <span className="k">{t("common.format")}</span>
+                  <span className="v">{formatLabel(stages, t)}</span>
+                </span>
+              ) : null}
               <span className="meta-pill">
                 <span className="k">{t("common.teamFormation")}</span>
                 {/* The cast must list every value the column can hold. It said

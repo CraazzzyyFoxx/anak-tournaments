@@ -324,10 +324,19 @@ describe("participants pool", () => {
     // not "shown everywhere".
     expect(column("tank")?.textContent).not.toContain("CraazzzyyFox#1");
 
-    const mark = dps?.querySelector<HTMLElement>("[data-flex-mark]");
-    expect(mark?.getAttribute("title")).toContain("Plays several roles");
-    expect(mark?.getAttribute("title")).toContain("DPS");
-    expect(mark?.getAttribute("title")).toContain("Support");
+    // The explanation rides on the name link; the secondary-role copy is dimmed
+    // rather than carrying a glyph, which in a flex tournament every row would.
+    const marked = dps?.querySelector<HTMLElement>("[data-flex-mark]");
+    const link = marked?.querySelector("a");
+    expect(link?.getAttribute("title")).toContain("Plays several roles");
+    expect(link?.getAttribute("title")).toContain("DPS");
+    expect(link?.getAttribute("title")).toContain("Support");
+    const supportLink = support?.querySelector<HTMLElement>("[data-flex-mark] a");
+    const [primaryLink, secondaryLink] = link?.className.includes("font-medium")
+      ? [link, supportLink]
+      : [supportLink, link];
+    expect(primaryLink?.className).toContain("font-medium");
+    expect(secondaryLink?.className).not.toContain("font-medium");
     // Rank is per role, not per player: the same person sits at a different
     // height in each column.
     expect(dps?.textContent).toMatch(/D\d+ · 3540/);

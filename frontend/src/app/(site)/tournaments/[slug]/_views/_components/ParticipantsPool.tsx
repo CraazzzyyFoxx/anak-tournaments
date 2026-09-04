@@ -98,13 +98,19 @@ function topHeroes(role: RegistrationRole, heroesMap: Map<string, Hero>, limit: 
 
 function PoolRow({
   entry,
-  heroesMap
-}: Readonly<{ entry: PoolEntry; heroesMap: Map<string, Hero> }>) {
+  heroesMap,
+  showRank
+}: Readonly<{ entry: PoolEntry; heroesMap: Map<string, Hero>; showRank: boolean }>) {
   const t = useTranslations();
   const { registration, role, division, isFlex } = entry;
   const rank = role.rank_value ?? null;
   const heroes = topHeroes(role, heroesMap, 3);
   const battleTag = registration.battle_tag ?? "\u2014";
+  // A multi-role player is listed in every role column; in the columns of their
+  // secondary roles the name is dimmed. That says "also plays this" without a
+  // glyph — in a flex tournament nearly every row would carry the glyph and it
+  // would say nothing.
+  const secondary = isFlex && !role.is_primary;
   const flexTitle = isFlex
     ? t("tournamentDetail.participantsPool.flexTitle", {
         roles: (registration.roles ?? [])
@@ -114,37 +120,35 @@ function PoolRow({
     : null;
 
   return (
-    <li className="flex items-center gap-2 py-1">
+    <li className="flex items-center gap-2 py-1" data-flex-mark={isFlex || undefined}>
       <span className="flex min-w-0 flex-1 items-center gap-1">
         {registration.battle_tag ? (
           <a
             href={`/users/${getPlayerSlug(registration.battle_tag)}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="truncate font-medium text-[color:var(--aqt-fg)] transition hover:text-[color:var(--aqt-teal)] hover:underline"
-            title={battleTag}
+            className={cn(
+              "truncate transition hover:text-[color:var(--aqt-teal)] hover:underline",
+              secondary
+                ? "text-[color:var(--aqt-fg-muted)]"
+                : "font-medium text-[color:var(--aqt-fg)]"
+            )}
+            title={flexTitle ?? battleTag}
           >
             {battleTag}
           </a>
         ) : (
           <span className="truncate text-[color:var(--aqt-fg-dim)]">{battleTag}</span>
         )}
-        {flexTitle ? (
-          <span
-            className="shrink-0 text-[color:var(--aqt-fg-dim)]"
-            title={flexTitle}
-            data-flex-mark="true"
-          >
-            <span aria-hidden>{"\u2194"}</span>
-            <span className="sr-only">{flexTitle}</span>
-          </span>
-        ) : null}
+        {flexTitle ? <span className="sr-only">{flexTitle}</span> : null}
       </span>
-      <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-[color:var(--aqt-fg-muted)]">
-        {division != null && rank != null
-          ? t("tournamentDetail.participantsPool.rank", { division, rank })
-          : "\u2014"}
-      </span>
+      {showRank ? (
+        <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-[color:var(--aqt-fg-muted)]">
+          {division != null && rank != null
+            ? t("tournamentDetail.participantsPool.rank", { division, rank })
+            : "\u2014"}
+        </span>
+      ) : null}
       {heroes.length > 0 ? (
         <HeroStrip heroes={heroes} size="sm" limit={3} className="shrink-0" />
       ) : null}
@@ -155,8 +159,14 @@ function PoolRow({
 function RoleColumn({
   role,
   entries,
-  heroesMap
-}: Readonly<{ role: string; entries: PoolEntry[]; heroesMap: Map<string, Hero> }>) {
+  heroesMap,
+  showRank
+}: Readonly<{
+  role: string;
+  entries: PoolEntry[];
+  heroesMap: Map<string, Hero>;
+  showRank: boolean;
+}>) {
   const t = useTranslations();
   const visible = entries.slice(0, VISIBLE_PER_COLUMN);
   const rest = entries.slice(VISIBLE_PER_COLUMN);
@@ -188,7 +198,12 @@ function RoleColumn({
       ) : (
         <ul className="divide-y divide-[color:var(--aqt-border)]">
           {visible.map((entry) => (
-            <PoolRow key={entry.registration.id} entry={entry} heroesMap={heroesMap} />
+            <PoolRow
+              key={entry.registration.id}
+              entry={entry}
+              heroesMap={heroesMap}
+              showRank={showRank}
+            />
           ))}
         </ul>
       )}
@@ -199,7 +214,12 @@ function RoleColumn({
           </summary>
           <ul className="divide-y divide-[color:var(--aqt-border)]">
             {rest.map((entry) => (
-              <PoolRow key={entry.registration.id} entry={entry} heroesMap={heroesMap} />
+              <PoolRow
+                key={entry.registration.id}
+                entry={entry}
+                heroesMap={heroesMap}
+                showRank={showRank}
+              />
             ))}
           </ul>
         </details>
@@ -284,6 +304,8 @@ export default function ParticipantsPool({
         const leftRank = left.role.rank_value ?? -1;
         const rightRank = right.role.rank_value ?? -1;
         if (leftRank !== rightRank) return rightRank - leftRank;
+        // Players who main this role before those who only also play it.
+        if (left.role.is_primary !== right.role.is_primary) return left.role.is_primary ? -1 : 1;
         return (left.registration.battle_tag ?? "").localeCompare(
           right.registration.battle_tag ?? ""
         );
@@ -309,6 +331,16 @@ export default function ParticipantsPool({
       for (const entry of bucket) ids.add(entry.registration.id);
     }
     return ids.size;
+  }, [entriesByRole]);
+
+  // Before the organizer assigns ranks (the balancer does, after registration
+  // closes) no entry has one, and a column of em dashes is noise.
+  const showRank = useMemo(() => {
+    for (const bucket of entriesByRole.values()) {
+      if (bucket.some((entry) => entry.division != null && entry.role.rank_value != null))
+        return true;
+    }
+    return false;
   }, [entriesByRole]);
 
   if (shownPlayers === 0 && withdrawn.length === 0) {
@@ -338,6 +370,7 @@ export default function ParticipantsPool({
               role={role}
               entries={entriesByRole.get(role) ?? []}
               heroesMap={heroesMap}
+              showRank={showRank}
             />
           ))}
         </div>

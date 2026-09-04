@@ -6,7 +6,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useFormatter, useTranslations } from "next-intl";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { buildRoundGroups, stageFinalRounds, type RoundGroup } from "@/components/bracket-view.helpers";
+import {
+  buildRoundGroups,
+  stageFinalRounds,
+  type RoundGroup
+} from "@/components/bracket-view.helpers";
 import TeamName from "@/components/TeamName";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { normalizePlayerRole, playerRoleSlotCode } from "@/lib/player-role";
@@ -29,7 +33,6 @@ import { MatchRow } from "../_components/MatchRow";
 import { PhaseTimeline } from "../_components/PhaseTimeline";
 import { Podium, type PodiumTeam } from "../_components/Podium";
 import { formatLabel } from "../_components/TournamentClientLayout";
-import TournamentLinkChips from "../_components/TournamentLinkChips";
 import { TournamentPageState } from "../_components/TournamentPageState";
 import { TournamentOverviewSkeleton } from "../_components/TournamentSkeletons";
 import { UpdatingBadge } from "../_components/UpdatingBadge";
@@ -123,7 +126,8 @@ export function pickRoundWindow(
 ): RoundGroup[] {
   if (groups.length <= 4) return [...groups];
 
-  const index = currentRound === null ? -1 : groups.findIndex((group) => group.round === currentRound);
+  const index =
+    currentRound === null ? -1 : groups.findIndex((group) => group.round === currentRound);
   const start = index < 0 ? groups.length - 3 : Math.max(0, Math.min(index - 1, groups.length - 3));
   const window = groups.slice(start, start + 3);
   const decider = groups[groups.length - 1];
@@ -131,9 +135,13 @@ export function pickRoundWindow(
 }
 
 /** The completed encounter that decided the bracket: highest positive round. */
-export function findGrandFinal(encounters: readonly Encounter[], stageId: number): Encounter | null {
+export function findGrandFinal(
+  encounters: readonly Encounter[],
+  stageId: number
+): Encounter | null {
   const played = encounters.filter(
-    (encounter) => encounter.stage_id === stageId && encounter.round > 0 && isEncounterCompleted(encounter)
+    (encounter) =>
+      encounter.stage_id === stageId && encounter.round > 0 && isEncounterCompleted(encounter)
   );
   return played.reduce<Encounter | null>(
     (best, encounter) => (best === null || encounter.round > best.round ? encounter : best),
@@ -145,9 +153,13 @@ export function findGrandFinal(encounters: readonly Encounter[], stageId: number
  * The lower-bracket final: the deepest negative round. Its loser is third in a
  * double elimination bracket (§5 of the plan's default decisions).
  */
-export function findLowerFinal(encounters: readonly Encounter[], stageId: number): Encounter | null {
+export function findLowerFinal(
+  encounters: readonly Encounter[],
+  stageId: number
+): Encounter | null {
   const played = encounters.filter(
-    (encounter) => encounter.stage_id === stageId && encounter.round < 0 && isEncounterCompleted(encounter)
+    (encounter) =>
+      encounter.stage_id === stageId && encounter.round < 0 && isEncounterCompleted(encounter)
   );
   return played.reduce<Encounter | null>(
     (best, encounter) => (best === null || encounter.round < best.round ? encounter : best),
@@ -242,7 +254,11 @@ function CardLink({ href, children }: Readonly<{ href: string; children: React.R
   );
 }
 
-function StatTile({ label, value, hint }: Readonly<{ label: string; value: string; hint?: string }>) {
+function StatTile({
+  label,
+  value,
+  hint
+}: Readonly<{ label: string; value: string; hint?: string }>) {
   return (
     <div className="rounded-md border border-[color:var(--aqt-border)] px-2.5 py-2">
       <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
@@ -251,7 +267,9 @@ function StatTile({ label, value, hint }: Readonly<{ label: string; value: strin
       <div className="aqt-tnum text-lg font-semibold leading-tight">
         {value}
         {hint ? (
-          <span className="ml-1 text-[11px] font-normal text-[color:var(--aqt-fg-faint)]">{hint}</span>
+          <span className="ml-1 text-[11px] font-normal text-[color:var(--aqt-fg-faint)]">
+            {hint}
+          </span>
         ) : null}
       </div>
     </div>
@@ -361,7 +379,8 @@ export default function TournamentOverviewPage({
 
   const stageId = stage?.id ?? null;
   const stageEncounters = useMemo(
-    () => (stageId === null ? [] : encounters.filter((encounter) => encounter.stage_id === stageId)),
+    () =>
+      stageId === null ? [] : encounters.filter((encounter) => encounter.stage_id === stageId),
     [encounters, stageId]
   );
   const roundGroups = useMemo(() => buildRoundGroups(stageEncounters), [stageEncounters]);
@@ -379,7 +398,10 @@ export default function TournamentOverviewPage({
   }, [encounters, tournament?.stages]);
   const finalRounds = stageId === null ? [] : (finalRoundsByStage[stageId] ?? []);
 
-  const liveTeamStreams = useMemo(() => buildLiveTeamStreams(streamsQuery.data), [streamsQuery.data]);
+  const liveTeamStreams = useMemo(
+    () => buildLiveTeamStreams(streamsQuery.data),
+    [streamsQuery.data]
+  );
 
   const clock = (value: Date | string | null) => {
     if (value === null) return null;
@@ -398,9 +420,15 @@ export default function TournamentOverviewPage({
 
   /** `STAGE · ROUND · BoN[ · HH:MM]`; the card's eyebrow is uppercased by CSS. */
   const eyebrowOf = (encounter: Encounter) => {
-    const stageName = encounter.stage?.name ?? (encounter.stage_id === stageId ? stage?.name : undefined);
+    const stageName =
+      encounter.stage?.name ?? (encounter.stage_id === stageId ? stage?.name : undefined);
     const at = clock(encounter.scheduled_at);
-    return [stageName, encounterRound(encounter), encounter.best_of ? `Bo${encounter.best_of}` : null, at]
+    return [
+      stageName,
+      encounterRound(encounter),
+      encounter.best_of ? `Bo${encounter.best_of}` : null,
+      at
+    ]
       .filter((part): part is string => typeof part === "string" && part.length > 0)
       .join(" · ");
   };
@@ -419,7 +447,8 @@ export default function TournamentOverviewPage({
     // Nothing to wait for when the branch has no primary query: the overview
     // itself is already resolved by the time this runs.
     data: primary === null ? tournament : primary.data,
-    itemCount: primary === null ? 1 : variant === "registration" ? registrations.length : encounters.length,
+    itemCount:
+      primary === null ? 1 : variant === "registration" ? registrations.length : encounters.length,
     isPending: primary?.isPending ?? false,
     isError: primary?.isError ?? false,
     isFetching: primary?.isFetching ?? false
@@ -427,15 +456,15 @@ export default function TournamentOverviewPage({
 
   if (!tournament || variant === null) {
     if (tournamentQuery.isError) {
-      return <TournamentPageState state="initial-error" onRetry={() => void tournamentQuery.refetch()} />;
+      return (
+        <TournamentPageState state="initial-error" onRetry={() => void tournamentQuery.refetch()} />
+      );
     }
     return <TournamentOverviewSkeleton />;
   }
 
   if (presentation.initialState === "error") {
-    return (
-      <TournamentPageState state="initial-error" onRetry={() => void primary?.refetch()} />
-    );
+    return <TournamentPageState state="initial-error" onRetry={() => void primary?.refetch()} />;
   }
   if (presentation.initialState === "skeleton" || presentation.contentState === null) {
     return <TournamentOverviewSkeleton />;
@@ -463,13 +492,6 @@ export default function TournamentOverviewPage({
             {t("tournamentDetail.overview.mapPoolStats")}
           </CardLink>
         </div>
-      </OverviewCard>
-    ) : null;
-
-  const linksCard =
-    tournament.links && tournament.links.length > 0 ? (
-      <OverviewCard title={t("tournamentDetail.overview.links")}>
-        <TournamentLinkChips links={tournament.links} />
       </OverviewCard>
     ) : null;
 
@@ -553,7 +575,9 @@ export default function TournamentOverviewPage({
           <tbody>
             {stageStandings.map((row) => (
               <tr key={row.id} className="border-b border-[color:var(--aqt-border)]/60">
-                <td className="aqt-tnum py-1.5 pr-2 text-[color:var(--aqt-fg-faint)]">{row.position}</td>
+                <td className="aqt-tnum py-1.5 pr-2 text-[color:var(--aqt-fg-faint)]">
+                  {row.position}
+                </td>
                 <td className="py-1.5 pr-2">
                   <TeamName team={row.team ?? { name: t("common.tbd") }} size="xs" />
                 </td>
@@ -580,6 +604,13 @@ export default function TournamentOverviewPage({
       .filter((tag): tag is string => typeof tag === "string" && tag.length > 0);
     const isTeamRegistration = tournament.team_formation === "registration";
     const rosterShape = tournament.roster_shape;
+    const rosterLine = rosterShape
+      ? ROSTER_SLOT_CODES.filter((code) => (rosterShape.slots[code] ?? 0) > 0)
+          .map((code) => `${rosterShape.slots[code]} × ${t(`rosterShape.slotCodes.${code}`)}`)
+          .join(" · ")
+      : "";
+    const hasFormat =
+      tournament.stages.length > 0 || rosterLine.length > 0 || Boolean(tournament.description);
 
     const content = (
       <section className={styles.publicDataPage} aria-label={t("common.overview")}>
@@ -590,8 +621,16 @@ export default function TournamentOverviewPage({
           <PhaseTimeline tournament={tournament} orientation="horizontal" />
         </OverviewCard>
 
-        <div className="grid gap-4 lg:grid-cols-[6fr_4fr]">
-          <div className="grid content-start gap-4">
+        {/* One column when there is no map pool yet: an aside holding nothing
+            reads as a broken layout, not as restraint. The organizer links live
+            in the hero's action row already, so they are not repeated here. */}
+        <div className={cn("grid gap-4", mapPoolTiles && "lg:grid-cols-[6fr_4fr]")}>
+          <div
+            className={cn(
+              "grid content-start gap-4",
+              !mapPoolTiles && hasFormat && "lg:grid-cols-2"
+            )}
+          >
             {/* ② "Tanks are short" is what a draft/balancer tournament is read
                 for; a team-registration one counts teams instead. */}
             <OverviewCard
@@ -621,7 +660,11 @@ export default function TournamentOverviewPage({
                       value={String(tournament.registrations_count ?? registrations.length)}
                     />
                     {ROSTER_SLOT_CODES.filter((code) => roleCounts[code] > 0).map((code) => (
-                      <StatTile key={code} label={t(`common.roles.${code}`)} value={String(roleCounts[code])} />
+                      <StatTile
+                        key={code}
+                        label={t(`common.roles.${code}`)}
+                        value={String(roleCounts[code])}
+                      />
                     ))}
                   </div>
                   {latest.length > 0 ? (
@@ -633,49 +676,41 @@ export default function TournamentOverviewPage({
               )}
             </OverviewCard>
 
-            {/* ③ Format and the full description move out of the hero. */}
-            <OverviewCard title={t("tournamentDetail.overview.format.title")}>
-              <dl className="grid gap-2.5">
-                <KeyValue term={t("common.format")}>
-                  {formatLabel(tournament.stages, t)}
+            {/* ③ Format and the full description move out of the hero. Team
+                formation alone is already a header chip, so the card needs at
+                least one thing the header does not say. */}
+            {hasFormat ? (
+              <OverviewCard title={t("tournamentDetail.overview.format.title")}>
+                <dl className="grid gap-2.5">
                   {tournament.stages.length > 0 ? (
-                    <span className="text-[color:var(--aqt-fg-faint)]">
-                      {" — "}
-                      {[...tournament.stages]
-                        .sort((left, right) => left.order - right.order)
-                        .map((item) => item.name)
-                        .join(" → ")}
-                    </span>
+                    <KeyValue term={t("common.format")}>
+                      {formatLabel(tournament.stages, t)}
+                      <span className="text-[color:var(--aqt-fg-faint)]">
+                        {" — "}
+                        {[...tournament.stages]
+                          .sort((left, right) => left.order - right.order)
+                          .map((item) => item.name)
+                          .join(" → ")}
+                      </span>
+                    </KeyValue>
                   ) : null}
-                </KeyValue>
-                <KeyValue term={t("tournamentDetail.overview.format.teamFormation")}>
-                  {t(
-                    `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`
-                  )}
-                </KeyValue>
-                {rosterShape ? (
-                  <KeyValue term={t("tournamentDetail.overview.format.roster")}>
-                    {ROSTER_SLOT_CODES.filter((code) => (rosterShape.slots[code] ?? 0) > 0)
-                      .map((code) => `${rosterShape.slots[code]} × ${t(`rosterShape.slotCodes.${code}`)}`)
-                      .join(" · ")}
-                  </KeyValue>
-                ) : null}
-                {tournament.description ? (
-                  <KeyValue term={t("tournamentDetail.overview.format.description")}>
-                    <span className="block whitespace-pre-line leading-relaxed">
-                      {tournament.description}
-                    </span>
-                  </KeyValue>
-                ) : null}
-              </dl>
-            </OverviewCard>
+                  {rosterLine ? (
+                    <KeyValue term={t("tournamentDetail.overview.format.roster")}>{rosterLine}</KeyValue>
+                  ) : null}
+                  {tournament.description ? (
+                    <KeyValue term={t("tournamentDetail.overview.format.description")}>
+                      <span className="block whitespace-pre-line leading-relaxed">
+                        {tournament.description}
+                      </span>
+                    </KeyValue>
+                  ) : null}
+                </dl>
+              </OverviewCard>
+            ) : null}
           </div>
 
           {/* ④ The retired Maps tab, as tiles per game mode. */}
-          <div className="grid content-start gap-4">
-            {mapPoolTiles}
-            {linksCard}
-          </div>
+          {mapPoolTiles ? <div className="grid content-start gap-4">{mapPoolTiles}</div> : null}
         </div>
       </section>
     );
@@ -741,7 +776,9 @@ export default function TournamentOverviewPage({
       <OverviewCard
         title={t("tournamentDetail.overview.live.title")}
         action={
-          <CardLink href={`${overviewHref}/matches`}>{t("tournamentDetail.overview.live.all")}</CardLink>
+          <CardLink href={`${overviewHref}/matches`}>
+            {t("tournamentDetail.overview.live.all")}
+          </CardLink>
         }
       >
         <div className="grid gap-2 sm:grid-cols-2">
@@ -771,7 +808,9 @@ export default function TournamentOverviewPage({
       <OverviewCard
         title={t("tournamentDetail.overview.recent.title")}
         action={
-          <CardLink href={`${overviewHref}/matches`}>{t("tournamentDetail.overview.live.all")}</CardLink>
+          <CardLink href={`${overviewHref}/matches`}>
+            {t("tournamentDetail.overview.live.all")}
+          </CardLink>
         }
       >
         {matchRows(recent, false)}
@@ -819,7 +858,9 @@ export default function TournamentOverviewPage({
                       loading="lazy"
                     />
                   ) : null}
-                  <span className="block px-2.5 py-2 text-sm font-semibold">{official.channel}</span>
+                  <span className="block px-2.5 py-2 text-sm font-semibold">
+                    {official.channel}
+                  </span>
                   {official.viewer_count != null ? (
                     <span className="aqt-tnum block px-2.5 pb-2 text-[11px] text-[color:var(--aqt-fg-faint)]">
                       {t("tournamentDetail.overview.stream.viewers", {
@@ -834,7 +875,9 @@ export default function TournamentOverviewPage({
                   </CardLink>
                   {participantsOnAir > 0 ? (
                     <CardLink href={`${overviewHref}/stream`}>
-                      {t("tournamentDetail.overview.stream.participants", { count: participantsOnAir })}
+                      {t("tournamentDetail.overview.stream.participants", {
+                        count: participantsOnAir
+                      })}
                     </CardLink>
                   ) : null}
                 </div>
@@ -843,7 +886,10 @@ export default function TournamentOverviewPage({
             {mapPoolSummary}
             <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>
               <div className="grid gap-2 sm:grid-cols-2">
-                <StatTile label={t("tournamentDetail.overview.numbers.teams")} value={String(teamsCount)} />
+                <StatTile
+                  label={t("tournamentDetail.overview.numbers.teams")}
+                  value={String(teamsCount)}
+                />
                 <StatTile
                   label={t("tournamentDetail.overview.numbers.played")}
                   value={`${playedCount}/${encounters.length}`}
@@ -902,7 +948,9 @@ export default function TournamentOverviewPage({
     const first = podiumTeam(champion, roster.length > 0 ? roster : null);
     const second = podiumTeam(
       runnerUp,
-      t("tournamentDetail.overview.result.finalScore", { score: `${runnerUpScore}–${championScore}` })
+      t("tournamentDetail.overview.result.finalScore", {
+        score: `${runnerUpScore}–${championScore}`
+      })
     );
     let third: PodiumTeam | null = null;
     if (lowerFinal) {
@@ -929,7 +977,10 @@ export default function TournamentOverviewPage({
       }
       return t("tournamentDetail.overview.result.record", { wins: row.win, losses: row.lose });
     };
-    const first = podiumTeam(teamById.get(ranked[0]?.team_id ?? -1) ?? ranked[0]?.team, note(ranked[0], true));
+    const first = podiumTeam(
+      teamById.get(ranked[0]?.team_id ?? -1) ?? ranked[0]?.team,
+      note(ranked[0], true)
+    );
     const second = podiumTeam(
       teamById.get(ranked[1]?.team_id ?? -1) ?? ranked[1]?.team,
       note(ranked[1], false)
@@ -942,7 +993,9 @@ export default function TournamentOverviewPage({
   }
 
   const topHeroes = heroesQuery.data
-    ? [...heroesQuery.data.results].sort((left, right) => right.playtime - left.playtime).slice(0, 5)
+    ? [...heroesQuery.data.results]
+        .sort((left, right) => right.playtime - left.playtime)
+        .slice(0, 5)
     : [];
   const days = tournamentDaySpan(tournament.start_date, tournament.end_date);
 
@@ -1007,7 +1060,10 @@ export default function TournamentOverviewPage({
                         />
                       </span>
                       <span className="aqt-tnum text-[11px] text-[color:var(--aqt-fg-muted)]">
-                        {format.number(entry.playtime, { style: "percent", maximumFractionDigits: 1 })}
+                        {format.number(entry.playtime, {
+                          style: "percent",
+                          maximumFractionDigits: 1
+                        })}
                       </span>
                     </li>
                   );
@@ -1018,7 +1074,10 @@ export default function TournamentOverviewPage({
           {mapPoolSummary}
           <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>
             <div className="grid gap-2 sm:grid-cols-2">
-              <StatTile label={t("tournamentDetail.overview.numbers.teams")} value={String(teamsCount)} />
+              <StatTile
+                label={t("tournamentDetail.overview.numbers.teams")}
+                value={String(teamsCount)}
+              />
               <StatTile
                 label={t("tournamentDetail.overview.numbers.players")}
                 value={String(playersCount)}
@@ -1028,7 +1087,10 @@ export default function TournamentOverviewPage({
                 value={String(encounters.length)}
               />
               {days !== null ? (
-                <StatTile label={t("tournamentDetail.overview.numbers.days")} value={String(days)} />
+                <StatTile
+                  label={t("tournamentDetail.overview.numbers.days")}
+                  value={String(days)}
+                />
               ) : null}
             </div>
           </OverviewCard>
