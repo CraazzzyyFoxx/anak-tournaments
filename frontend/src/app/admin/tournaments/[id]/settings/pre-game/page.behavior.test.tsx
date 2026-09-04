@@ -263,6 +263,8 @@ interface MountOptions {
   configs?: PickBanConfig[];
   maps?: unknown[];
   stages?: Stage[];
+  /** Generated encounters; empty stands for a bracket that is not built yet. */
+  encounters?: Array<{ stage_id: number | null; round: number; best_of: number }>;
   /** Initial query string, e.g. `?scope=tournament&kind=hero&step=sides`. */
   url?: string;
 }
@@ -271,6 +273,7 @@ async function mount({
   configs = [],
   maps = MAPS,
   stages = STAGES,
+  encounters = ENCOUNTERS,
   url = "?scope=tournament&kind=map&step=pool"
 }: MountOptions = {}) {
   listConfigs.mockResolvedValue({ configs });
@@ -278,7 +281,7 @@ async function mount({
   getMaps.mockResolvedValue({ results: maps });
   getStages.mockResolvedValue(stages);
   getTournament.mockResolvedValue({ id: 84, workspace_id: 3, team_formation: "balancer" });
-  getEncounters.mockResolvedValue({ results: ENCOUNTERS });
+  getEncounters.mockResolvedValue({ results: encounters });
 
   search = new URL(url, "http://localhost").search;
   window.history.replaceState(null, "", `/admin/tournaments/84/settings/pre-game${search}`);
@@ -1041,5 +1044,44 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
     expect(text).toContain("Round 1");
     expect(text).toContain("Round 2");
     expect(text).toContain("Match 3");
+  });
+
+  // The case the feature is actually used in: a group stage's pools are
+  // authored before the bracket is generated, and the server's prediction
+  // returns nothing until teams are wired into the stage. A round robin plays
+  // rounds 1..max_rounds whoever the teams are, so the rounds are known anyway
+  // — without this the screen fell back to one flat list of groups, which is
+  // what an organizer read as "where is the split by round?".
+  it("lists a group stage's configured rounds before the bracket exists", async () => {
+    getStagePlannedRounds.mockResolvedValue([]);
+    await mount({
+      encounters: [],
+      configs: [STAGE_GROUPS],
+      url: "?scope=stage:10&kind=map&step=pool"
+    });
+
+    const text = editor().textContent ?? "";
+    // Stage 10 is a round robin with max_rounds 3.
+    expect(text).toContain("Round 1");
+    expect(text).toContain("Round 2");
+    expect(text).toContain("Round 3");
+    expect(text).not.toContain("Round 4");
+  });
+
+  // An elimination stage's round numbers are not guessable client-side, so
+  // there the groups really do cover the whole stage until the bracket exists —
+  // and the screen says so rather than showing a list that looks per-round.
+  it("says a stage's groups cover every round while the bracket cannot name them", async () => {
+    getStagePlannedRounds.mockResolvedValue([]);
+    await mount({
+      encounters: [],
+      configs: [{ ...STAGE_GROUPS, id: 13, stage_id: 11 }],
+      url: "?scope=stage:11&kind=map&step=pool"
+    });
+
+    const text = editor().textContent ?? "";
+    expect(text).toContain("apply to every round of it");
+    expect(text).toContain("Match 1");
+    expect(text).not.toContain("Round 1");
   });
 });

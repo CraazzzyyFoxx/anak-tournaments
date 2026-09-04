@@ -3018,6 +3018,7 @@
       "slotCountFromBracket": "One group per match of the series. The bracket has this scope playing up to {maps, plural, one {# match} other {# matches}}, so it has that many groups; a shorter series uses the first ones.",
       "roundGroupsHint": "Every round of this stage with its own groups, straight from the bracket. Saving stores one rule set per round, so Round 1 can play different maps from Round 2.",
       "roundGroupCount": "{count, plural, one {# match} other {# matches}}",
+      "roundsUnknownStageWide": "The bracket has not named this stage's rounds yet, so these groups apply to every round of it. Once it is generated — or once teams are wired into the stage — each round gets its own here.",
       "slotTitle": "Match {n}",
       "slotCandidates": "{count, plural, =0 {no candidates} one {# candidate} other {# candidates}}",
       "slotReserve": "Reserve:",

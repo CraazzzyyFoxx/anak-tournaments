@@ -145,11 +145,11 @@ export function PreGameEditor({
   // them out on save (`fanOutRoundDrafts`), which is the only way an organizer
   // sees Round 1's maps next to Round 2's.
   const isStageScope = scope.stageId != null && scope.round == null;
+  const stage = stages.find((candidate) => candidate.id === scope.stageId);
   const { rounds, loading: roundsLoading } = useStageRounds(
-    isStageScope ? scope.stageId : null,
+    isStageScope ? stage : null,
     encounters
   );
-  const stage = stages.find((candidate) => candidate.id === scope.stageId);
   const finalRounds = stageFinalRounds(scope.stageId, stage?.stage_type, rounds, encounters);
   const roundLabel = useBracketRoundLabel();
 
@@ -353,6 +353,7 @@ export function PreGameEditor({
               draft={draft}
               kind={kind}
               slotCount={slotCount}
+              isStageScope={isStageScope}
               roundsLoading={roundsLoading}
               roundLabelFor={(round) => roundLabel(round, finalRounds)}
               patchRoundSlot={patchRoundSlot}
@@ -490,6 +491,7 @@ function PoolStep({
   draft,
   kind,
   slotCount,
+  isStageScope,
   roundsLoading,
   roundLabelFor,
   catalogue,
@@ -507,6 +509,8 @@ function PoolStep({
   kind: PickBanKind;
   /** Groups the bracket calls for in a one-round scope; the list is this long. */
   slotCount: number;
+  /** A whole stage is on screen, so any groups here cover every round of it. */
+  isStageScope: boolean;
   /** The stage's rounds are still being predicted, so they cannot be listed. */
   roundsLoading: boolean;
   /** What the bracket calls a round — "Lower R1", "Grand Final", not "-1". */
@@ -632,7 +636,11 @@ function PoolStep({
       ) : (
         <div className="flex flex-col gap-3">
           <FieldDescription>
-            {roundsLoading ? t("roundHintLoading") : t("slotCountFromBracket", { maps: slotCount })}
+            {roundsLoading
+              ? t("roundHintLoading")
+              : isStageScope
+                ? t("roundsUnknownStageWide")
+                : t("slotCountFromBracket", { maps: slotCount })}
           </FieldDescription>
 
           {draft.slots.map((slot, index) => (

@@ -66,8 +66,8 @@ export function ScopeTree({
   );
 
   const expandedStageId = selected?.stageId ?? null;
-  const { rounds, loading: roundsLoading } = useStageRounds(expandedStageId, encounters);
   const expandedStage = sortedStages.find((stage) => stage.id === expandedStageId);
+  const { rounds, loading: roundsLoading } = useStageRounds(expandedStage, encounters);
   const finalRounds = stageFinalRounds(
     expandedStageId,
     expandedStage?.stage_type,
