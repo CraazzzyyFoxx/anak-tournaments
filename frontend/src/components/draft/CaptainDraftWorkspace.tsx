@@ -23,6 +23,7 @@ import type {
 import type { RealtimeConnectionState } from "@/types/realtime.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import type { useDraftMutations } from "@/hooks/useDraftData";
+import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 
 import { CaptainShortlist } from "./CaptainShortlist";
 import { DraftOrder } from "./DraftOrder";
@@ -61,7 +62,12 @@ export function CaptainDraftWorkspace({
   const t = useTranslations("draftRedesign");
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [selectedRole, setSelectedRole] = useState<DraftRole | null>(null);
-  const [shortlist, setShortlist] = useState<Set<number>>(() => new Set());
+  // Persisted per session so a reload (or an accidental tab close) keeps the shortlist.
+  const [shortlistIds, setShortlistIds] = useLocalStorageState<number[]>(
+    `aqt.draft.shortlist.${board.session.id}`,
+    []
+  );
+  const shortlist = useMemo(() => new Set(shortlistIds), [shortlistIds]);
   const [announcement, setAnnouncement] = useState("");
   const availablePlayers = useMemo(
     () => board.players.filter((player) => player.status === "available"),
@@ -106,12 +112,9 @@ export function CaptainDraftWorkspace({
     setAnnouncement("");
   };
   const toggleShortlist = (playerId: number) => {
-    setShortlist((current) => {
-      const next = new Set(current);
-      if (next.has(playerId)) next.delete(playerId);
-      else next.add(playerId);
-      return next;
-    });
+    setShortlistIds((current) =>
+      current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId]
+    );
   };
   const confirm = () => {
     if (!confirmAllowed || !currentPick || !selectedPlayer || !selectedRole) return;
