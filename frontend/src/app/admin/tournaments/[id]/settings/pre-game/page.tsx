@@ -138,8 +138,17 @@ function PreGamePhase({
   };
 
   const upsertMutation = useMutation({
-    mutationFn: ({ draft, seriesLength }: { draft: PickBanDraft; seriesLength: number }) =>
-      pickBanService.upsertConfig(tournamentId, pickBanDraftToInput(draft, seriesLength)),
+    // One write per job, sequentially: a stage-wide slot pool is one config per
+    // round of that stage, and a half-written stage is easier to reason about
+    // in order than out of it.
+    mutationFn: async (jobs: Array<{ draft: PickBanDraft; seriesLength: number }>) => {
+      for (const job of jobs) {
+        await pickBanService.upsertConfig(
+          tournamentId,
+          pickBanDraftToInput(job.draft, job.seriesLength)
+        );
+      }
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: configsQueryKey });
       notify.success(t("saved"));
@@ -232,7 +241,7 @@ function PreGamePhase({
               describeScope={describeScope}
               saving={upsertMutation.isPending}
               resetting={deleteMutation.isPending}
-              onSave={(draft, seriesLength) => upsertMutation.mutate({ draft, seriesLength })}
+              onSave={(jobs) => upsertMutation.mutate(jobs)}
               onResetToInherited={(configId) => deleteMutation.mutate(configId)}
             />
           )

@@ -2,19 +2,15 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { LoaderCircle } from "lucide-react";
 
 import { stageFinalRounds } from "@/components/bracket-view.helpers";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
-import adminService from "@/services/admin.service";
 import { cn } from "@/lib/utils";
 import type { PickBanConfig, PickBanKind, Stage } from "@/types/tournament.types";
-import {
-  stageRoundOptions,
-  type PickBanScopeEncounter
-} from "../../components/pickBanConfig.helpers";
+import type { PickBanScopeEncounter } from "../../components/pickBanConfig.helpers";
+import { useStageRounds } from "./useStageRounds";
 import {
   encodePreGameScope,
   scopeConfigState,
@@ -70,19 +66,7 @@ export function ScopeTree({
   );
 
   const expandedStageId = selected?.stageId ?? null;
-  const generatedRounds =
-    expandedStageId == null ? [] : stageRoundOptions(expandedStageId, encounters);
-  // Elimination round numbering isn't guessable client-side before the bracket
-  // exists (see `stageRoundOptions`), so the server predicts it from the
-  // stage's planned team inputs. Skipped once the real encounters exist.
-  const plannedRoundsQuery = useQuery({
-    queryKey: ["admin", "stage", expandedStageId, "planned-rounds"],
-    queryFn: () => adminService.getStagePlannedRounds(expandedStageId as number),
-    enabled: expandedStageId != null && generatedRounds.length === 0
-  });
-  const rounds = generatedRounds.length > 0 ? generatedRounds : (plannedRoundsQuery.data ?? []);
-  const roundsLoading =
-    expandedStageId != null && generatedRounds.length === 0 && plannedRoundsQuery.isPending;
+  const { rounds, loading: roundsLoading } = useStageRounds(expandedStageId, encounters);
   const expandedStage = sortedStages.find((stage) => stage.id === expandedStageId);
   const finalRounds = stageFinalRounds(
     expandedStageId,

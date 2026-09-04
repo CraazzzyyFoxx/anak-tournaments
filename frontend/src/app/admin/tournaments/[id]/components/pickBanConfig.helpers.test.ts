@@ -13,12 +13,14 @@ import {
   alignSlots,
   effectiveSequence,
   emptyPickBanDraft,
+  fanOutRoundDrafts,
   findScopeCollision,
   pickBanDraftFromConfig,
   pickBanDraftToInput,
   protectHasNoStep,
   resolveSeriesLength,
   resolveSlotCount,
+  roundSlotsForStage,
   roundsPlayed,
   stageRoundOptions,
   validatePickBanDraft,
@@ -310,6 +312,95 @@ describe("round groups are counted from the bracket", () => {
     expect(alignSlots(slots, 2)).toBe(slots);
     expect(alignSlots(slots, 1)).toEqual([slots[0]]);
     expect(alignSlots(slots, 3)).toEqual([...slots, { candidates: [], reserveItemId: null }]);
+  });
+});
+
+// A stage plays several rounds and a regulation routinely gives each its own
+// maps. The store has no round dimension inside a config -- the scope key is
+// `(stage, round)` -- so the stage screen holds every round at once and a save
+// is one upsert per round.
+describe("a stage's rounds each carry their own groups", () => {
+  const slotConfig = (round: number | null, candidates: number[][]) =>
+    config({
+      id: round == null ? 1 : 100 + round,
+      stage_id: 10,
+      round,
+      mode: "slots",
+      item_ids: [],
+      slots: candidates.map((group, index) => ({
+        position: index + 1,
+        reserve_item_id: null,
+        candidates: group,
+      })),
+    });
+
+  it("authors a round from its own config and the rest from what they inherit", () => {
+    const sections = roundSlotsForStage({
+      kind: "map",
+      stageId: 10,
+      rounds: [1, 2],
+      configs: [slotConfig(2, [[7, 8], [8, 9]])],
+      fallback: [{ candidates: [1, 2], reserveItemId: null }],
+      slotCountFor: () => 2,
+    });
+
+    expect(sections[0].round).toBe(1);
+    // Round 1 has no config: it starts from the stage's groups, padded to what
+    // its bracket plays rather than left short.
+    expect(sections[0].slots).toEqual([
+      { candidates: [1, 2], reserveItemId: null },
+      { candidates: [], reserveItemId: null },
+    ]);
+    expect(sections[1].slots.map((slot) => slot.candidates)).toEqual([
+      [7, 8],
+      [8, 9],
+    ]);
+  });
+
+  it("fans one stage draft out into a config per round, scoped to it", () => {
+    const stageDraft = draft({
+      mode: "slots",
+      stageId: 10,
+      round: null,
+      itemIds: [],
+      roundSlots: [
+        { round: 1, slots: [{ candidates: [1, 2], reserveItemId: null }] },
+        { round: -1, slots: [{ candidates: [3, 4], reserveItemId: null }] },
+      ],
+    });
+
+    const fanned = fanOutRoundDrafts(stageDraft);
+
+    expect(fanned.map((one) => one.round)).toEqual([1, -1]);
+    expect(fanned.map((one) => one.slots[0].candidates)).toEqual([
+      [1, 2],
+      [3, 4],
+    ]);
+    // Each one is a config of its own, and none of them carries the round
+    // dimension any further.
+    expect(fanned.every((one) => one.configId == null && one.roundSlots.length === 0)).toBe(true);
+    expect(pickBanDraftToInput(fanned[1], 3).round).toBe(-1);
+  });
+
+  it("leaves a draft with no round dimension alone", () => {
+    const single = draft({ mode: "slots", slots: [{ candidates: [1, 2], reserveItemId: null }] });
+
+    expect(fanOutRoundDrafts(single)).toEqual([single]);
+  });
+
+  it("reports an underfilled group per round, since each round is saved on its own", () => {
+    const stageDraft = draft({
+      mode: "slots",
+      stageId: 10,
+      roundSlots: [
+        { round: 1, slots: [{ candidates: [1, 2], reserveItemId: null }] },
+        { round: 2, slots: [{ candidates: [1], reserveItemId: null }] },
+      ],
+    });
+
+    expect(validatePickBanDraft(stageDraft, 3)).toEqual([
+      { key: "roundSlotTooFewCandidates", values: { round: 2, slot: 1 } },
+    ]);
   });
 });
 

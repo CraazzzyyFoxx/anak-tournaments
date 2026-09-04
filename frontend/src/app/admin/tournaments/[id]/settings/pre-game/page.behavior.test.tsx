@@ -336,6 +336,15 @@ function only(name: string): HTMLElement {
   return matches[0];
 }
 
+/** A Radix `SelectItem`: an option row, not a button, so `byName` misses it. */
+function option(label: string): HTMLElement {
+  const found = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (element) => (element.textContent ?? "").trim() === label
+  );
+  if (!found) throw new Error(`no option named "${label}" in the open listbox`);
+  return found;
+}
+
 /** The step strip's button for one step. */
 function stepButton(index: number, label: string) {
   return only(`${index} · ${label}`);
@@ -878,7 +887,7 @@ describe("Settings › Pre-game phase sizes a round-group pool from the bracket"
     ...TOURNAMENT_MAP_CONFIG,
     id: 8,
     stage_id: 10,
-    round: null,
+    round: 1,
     mode: "slots",
     item_ids: [],
     slots: [
@@ -890,20 +899,18 @@ describe("Settings › Pre-game phase sizes a round-group pool from the bracket"
   };
 
   async function openStoredGroups() {
-    await mount({ configs: [STORED_GROUPS], url: "?scope=stage:10&kind=map&step=pool" });
+    await mount({ configs: [STORED_GROUPS], url: "?scope=round:10:1&kind=map&step=pool" });
   }
 
-  it("keeps one group per map of the longest match, whatever was stored", async () => {
+  it("keeps one group per match of the longest series, whatever was stored", async () => {
     await openStoredGroups();
 
-    // Stage 10's generated encounters are Bo3, so the fourth group is gone and
-    // there is no control that could add a fifth. The groups are named after
-    // the maps of the series, not after bracket rounds — the scope tree calls
-    // those "Round 1" too, and organizers read one as the other.
-    expect(editor().textContent).toContain("Map 3");
-    expect(editor().textContent).not.toContain("Map 4");
+    // Round 1 of stage 10 is generated as a Bo3, so the fourth group is gone
+    // and there is no control that could add a fifth.
+    expect(editor().textContent).toContain("Match 3");
+    expect(editor().textContent).not.toContain("Match 4");
     expect(byName("Add a round")).toHaveLength(0);
-    expect(editor().textContent).toContain("playing up to 3 maps");
+    expect(editor().textContent).toContain("playing up to 3 matches");
   });
 
   it("saves a map added to a group, instead of an unplayable group blocking it", async () => {
@@ -918,5 +925,121 @@ describe("Settings › Pre-game phase sizes a round-group pool from the bracket"
     expect(body.mode).toBe("slots");
     expect(body.slots).toHaveLength(3);
     expect(body.slots[0].candidates).toEqual([1, 2, 4]);
+  });
+});
+
+// 2026-09-04: a regulation plays different maps in each round of a stage, and
+// a config's scope key is `(stage, round)` — so that is one config per round.
+// The stage screen used to author a single pool applied to every round of the
+// stage, with no way to see Round 1's maps next to Round 2's; organizers
+// encoded the rounds as groups instead, which the engine reads as maps of one
+// series. The stage screen now authors every round at once and fans the save
+// out over them.
+describe("Settings › Pre-game phase authors every round of a stage at once", () => {
+  const STAGE_GROUPS: PickBanConfig = {
+    ...TOURNAMENT_MAP_CONFIG,
+    id: 9,
+    stage_id: 10,
+    round: null,
+    mode: "slots",
+    item_ids: [],
+    slots: [
+      { position: 1, reserve_item_id: null, candidates: [1, 2] },
+      { position: 2, reserve_item_id: null, candidates: [2, 3] },
+      { position: 3, reserve_item_id: null, candidates: [3, 1] }
+    ]
+  };
+
+  /** Round 2 already plays its own maps; round 1 has no config of its own. */
+  const ROUND_TWO_GROUPS: PickBanConfig = {
+    ...STAGE_GROUPS,
+    id: 10,
+    round: 2,
+    slots: [
+      { position: 1, reserve_item_id: null, candidates: [4, 3] },
+      { position: 2, reserve_item_id: null, candidates: [3, 4] },
+      { position: 3, reserve_item_id: null, candidates: [4, 1] }
+    ]
+  };
+
+  it("lists each round of the stage with its own matches", async () => {
+    await mount({
+      configs: [STAGE_GROUPS, ROUND_TWO_GROUPS],
+      url: "?scope=stage:10&kind=map&step=pool"
+    });
+
+    // Stage 10 generates rounds 1 and 2, both Bo3: two round sections of three
+    // matches each, named the way the bracket names them.
+    const text = editor().textContent ?? "";
+    expect(text).toContain("Round 1");
+    expect(text).toContain("Round 2");
+    expect(text).toContain("3 matches");
+    // Round 2's own stored maps, not the stage-wide ones round 1 falls back to.
+    expect(text).toContain("Hollywood");
+  });
+
+  it("saves one config per round, each with that round's maps", async () => {
+    await mount({
+      configs: [STAGE_GROUPS, ROUND_TWO_GROUPS],
+      url: "?scope=stage:10&kind=map&step=pool"
+    });
+
+    // Round 1's first match: add Hollywood there and nowhere else.
+    await click(byName("Add maps")[0]);
+    await click(only("Hollywood"));
+    await click(only("Save rules"));
+
+    expect(upsertConfig).toHaveBeenCalledTimes(2);
+    const first = upsertConfig.mock.calls[0][1];
+    const second = upsertConfig.mock.calls[1][1];
+
+    expect(first.stage_id).toBe(10);
+    expect(first.round).toBe(1);
+    expect(first.slots.map((slot: { candidates: number[] }) => slot.candidates)).toEqual([
+      [1, 2, 4],
+      [2, 3],
+      [3, 1]
+    ]);
+
+    expect(second.round).toBe(2);
+    expect(second.slots.map((slot: { candidates: number[] }) => slot.candidates)).toEqual([
+      [4, 3],
+      [3, 4],
+      [4, 1]
+    ]);
+  });
+
+  it("switches a shared pool into per-round groups without leaving an empty list", async () => {
+    // A stage-wide pool config, so the shape starts as one shared pool.
+    await mount({
+      configs: [{ ...TOURNAMENT_MAP_CONFIG, id: 11, stage_id: 10, round: null }],
+      url: "?scope=stage:10&kind=map&step=pool"
+    });
+
+    await click(only("One shared pool"));
+    await click(option("One group per match"));
+
+    const text = editor().textContent ?? "";
+    expect(text).toContain("Round 1");
+    expect(text).toContain("Round 2");
+    expect(text).toContain("Match 1");
+    // Two rounds of three groups: every one of them is on screen asking to be
+    // filled, rather than an empty list with a validation error under it.
+    expect(byName("Add maps")).toHaveLength(6);
+    expect(text).toContain("no candidates");
+  });
+
+  it("reopens on the groups its rounds store, with nothing at the stage level", async () => {
+    // The state a save from this screen leaves behind: per-round configs only.
+    await mount({
+      configs: [ROUND_TWO_GROUPS, { ...ROUND_TWO_GROUPS, id: 12, round: 1 }],
+      url: "?scope=stage:10&kind=map&step=pool"
+    });
+
+    const text = editor().textContent ?? "";
+    expect(text).toContain("One group per match");
+    expect(text).toContain("Round 1");
+    expect(text).toContain("Round 2");
+    expect(text).toContain("Match 3");
   });
 });

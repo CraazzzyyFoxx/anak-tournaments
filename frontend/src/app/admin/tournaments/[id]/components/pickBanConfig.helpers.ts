@@ -81,9 +81,21 @@ export const PICK_BAN_NO_REPEAT_SCOPES: PickBanNoRepeatScope[] = [
 ];
 
 /** One slot as the editor holds it: no `position`, because list order is it. */
-interface PickBanDraftSlot {
+export interface PickBanDraftSlot {
   candidates: number[];
   reserveItemId: number | null;
+}
+
+/**
+ * One bracket round's groups, as a stage-wide editor holds them.
+ *
+ * A stored config has no round dimension — the scope key is `(stage, round)`,
+ * so per-round groups are N configs, not one. This is the shape the stage
+ * screen authors them in before it fans them back out on save.
+ */
+export interface PickBanDraftRoundSlots {
+  round: number;
+  slots: PickBanDraftSlot[];
 }
 
 /** Scope of the config a draft's values were prefilled from. */
@@ -115,8 +127,13 @@ export interface PickBanDraft {
   sequence: PickBanSequenceToken[];
   /** Pool mode only. */
   itemIds: number[];
-  /** Slots mode only. */
+  /** Slots mode, one round's scope. */
   slots: PickBanDraftSlot[];
+  /**
+   * Slots mode on a stage scope: each round of the stage with its own groups.
+   * Empty everywhere else, including a round scope, where `slots` is the round.
+   */
+  roundSlots: PickBanDraftRoundSlots[];
   /**
    * Scope of the saved config this draft's rule values were prefilled from, or
    * null when they are the organizer's own. Editor-only: an upsert stores
@@ -141,6 +158,7 @@ export function emptyPickBanDraft(kind: PickBanKind): PickBanDraft {
     sequence: [],
     itemIds: [],
     slots: [],
+    roundSlots: [],
     inheritedFrom: null,
   };
 }
@@ -166,6 +184,7 @@ export function pickBanDraftFromConfig(config: PickBanConfig): PickBanDraft {
       candidates: [...slot.candidates],
       reserveItemId: slot.reserve_item_id,
     })),
+    roundSlots: [],
     inheritedFrom: null,
   };
 }
@@ -311,6 +330,10 @@ function ruleValues(draft: PickBanDraft): unknown[] {
     draft.kind === "hero" || draft.orderMode === "custom" ? draft.sequence : [],
     draft.itemIds,
     draft.slots.map((slot) => [slot.candidates, slot.reserveItemId]),
+    draft.roundSlots.map((round) => [
+      round.round,
+      round.slots.map((slot) => [slot.candidates, slot.reserveItemId]),
+    ]),
   ];
 }
 
@@ -475,6 +498,69 @@ export function alignSlots(
   );
 }
 
+/**
+ * The groups of every round of a stage, for the stage screen.
+ *
+ * A round that already has its own slot-mode config is authored from it; the
+ * rest start as a copy of `fallback` — the groups the stage itself stores, or
+ * whatever it inherits — because "the same pool everywhere" is where a
+ * per-round pool is edited from, not a blank page. Each round is sized by
+ * `slotCountFor`, since a stage's final can be longer than its other rounds.
+ */
+export function roundSlotsForStage({
+  kind,
+  stageId,
+  rounds,
+  configs,
+  fallback,
+  slotCountFor,
+}: {
+  kind: PickBanKind;
+  stageId: number;
+  rounds: number[];
+  configs: PickBanConfig[];
+  fallback: PickBanDraftSlot[];
+  slotCountFor: (round: number) => number;
+}): PickBanDraftRoundSlots[] {
+  return rounds.map((round) => {
+    const own = configs.find(
+      (config) =>
+        config.kind === kind &&
+        config.stage_id === stageId &&
+        config.round === round &&
+        config.mode === "slots"
+    );
+    const slots =
+      own != null
+        ? own.slots.map((slot) => ({
+            candidates: [...slot.candidates],
+            reserveItemId: slot.reserve_item_id,
+          }))
+        : fallback.map((slot) => ({ ...slot, candidates: [...slot.candidates] }));
+    return { round, slots: alignSlots(slots, slotCountFor(round)) };
+  });
+}
+
+/**
+ * One draft per round of a stage-wide slot draft: the same rules, that round's
+ * groups, scoped to that round.
+ *
+ * The store has no round dimension inside a config (`ck` on `(stage, round)`),
+ * so a per-round pool is N configs and a save is N upserts. Nothing is written
+ * at the stage level: a stage-wide config would be shadowed by every one of
+ * them anyway.
+ */
+export function fanOutRoundDrafts(draft: PickBanDraft): PickBanDraft[] {
+  if (draft.mode !== "slots" || draft.roundSlots.length === 0) return [draft];
+  return draft.roundSlots.map((round) => ({
+    ...draft,
+    configId: null,
+    round: round.round,
+    slots: round.slots,
+    roundSlots: [],
+  }));
+}
+
 // ── validation ───────────────────────────────────────────────────────────────
 
 /**
@@ -495,13 +581,30 @@ export type PickBanValidationIssue =
   | { key: "heroDecider"; values?: undefined }
   | { key: "sequenceLongerThanPool"; values: { steps: number; items: number } }
   | { key: "emptySlots"; values?: undefined }
-  | { key: "slotTooFewCandidates"; values: { slot: number } };
+  | { key: "slotTooFewCandidates"; values: { slot: number } }
+  | { key: "roundSlotTooFewCandidates"; values: { round: number; slot: number } };
 
 export function validatePickBanDraft(
   draft: PickBanDraft,
   seriesLength: number
 ): PickBanValidationIssue[] {
   if (draft.mode === "slots") {
+    // A stage-wide draft authors every round of the stage at once; each round
+    // is saved as its own config, so each one has to stand on its own.
+    if (draft.roundSlots.length > 0) {
+      return draft.roundSlots.flatMap((round) =>
+        round.slots.flatMap((slot, index) =>
+          slot.candidates.length < SLOT_CANDIDATE_FLOOR
+            ? [
+                {
+                  key: "roundSlotTooFewCandidates" as const,
+                  values: { round: round.round, slot: index + 1 },
+                },
+              ]
+            : []
+        )
+      );
+    }
     if (draft.slots.length === 0) return [{ key: "emptySlots" }];
     return draft.slots.flatMap((slot, index) =>
       slot.candidates.length < SLOT_CANDIDATE_FLOOR

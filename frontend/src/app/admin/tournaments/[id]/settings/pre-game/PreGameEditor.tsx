@@ -26,6 +26,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { SaveBar } from "@/components/admin/kit/SaveBar";
+import { stageFinalRounds } from "@/components/bracket-view.helpers";
+import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import type {
   MapVetoMode,
@@ -46,6 +48,7 @@ import {
   buildStepToken,
   effectiveSequence,
   emptyPickBanDraft,
+  fanOutRoundDrafts,
   findInheritedConfig,
   parseStepToken,
   pickBanDraftFromConfig,
@@ -53,9 +56,11 @@ import {
   rescopePickBanDraft,
   resolveSeriesLength,
   resolveSlotCount,
+  roundSlotsForStage,
   roundsPlayed,
   validatePickBanDraft,
   type PickBanDraft,
+  type PickBanDraftSlot,
   type PickBanOrderMode,
   type PickBanScopeEncounter,
   type PickBanStepAction,
@@ -70,6 +75,7 @@ import {
   type PreGameScope,
   type PreGameStep
 } from "./pre-game-scope";
+import { useStageRounds } from "./useStageRounds";
 
 export interface PreGameEditorProps {
   scope: PreGameScope;
@@ -91,7 +97,11 @@ export interface PreGameEditorProps {
   describeScope: (scope: Pick<PickBanConfig, "stage_id" | "round">) => string;
   saving: boolean;
   resetting: boolean;
-  onSave: (draft: PickBanDraft, seriesLength: number) => void;
+  /**
+   * One upsert per entry, in order. Slot-mode groups authored on a stage screen
+   * are one config per round, so a save is N writes rather than one.
+   */
+  onSave: (jobs: Array<{ draft: PickBanDraft; seriesLength: number }>) => void;
   /** Drops this scope's own config so it inherits again. */
   onResetToInherited: (configId: number) => void;
 }
@@ -129,23 +139,88 @@ export function PreGameEditor({
 
   const slotCount = resolveSlotCount(scope.stageId, scope.round, stages, encounters);
 
-  // What this scope says today: its own saved config, or a copy of whatever it
-  // inherits — retyping the tournament's timer, rotation and pool onto every
-  // round is the work organizers skipped, leaving rounds on rules nobody chose.
+  // A stage covers several rounds of the bracket, and a regulation routinely
+  // plays different maps in each. A config's scope key is `(stage, round)`, so
+  // that is N configs: the stage screen authors all of them at once and fans
+  // them out on save (`fanOutRoundDrafts`), which is the only way an organizer
+  // sees Round 1's maps next to Round 2's.
+  const isStageScope = scope.stageId != null && scope.round == null;
+  const { rounds, loading: roundsLoading } = useStageRounds(
+    isStageScope ? scope.stageId : null,
+    encounters
+  );
+  const stage = stages.find((candidate) => candidate.id === scope.stageId);
+  const finalRounds = stageFinalRounds(scope.stageId, stage?.stage_type, rounds, encounters);
+  const roundLabel = useBracketRoundLabel();
+
+  // A stage screen that saved per-round groups leaves nothing at the stage
+  // level, so it has to reopen on what its rounds store — otherwise the groups
+  // an organizer just authored come back as "one shared pool".
+  // Earliest round first, so two rounds with different timers cannot make the
+  // screen open on whichever config the list happened to return first.
+  const roundSlotSource = isStageScope
+    ? rounds
+        .map((round) =>
+          configs.find(
+            (config) =>
+              config.kind === kind &&
+              config.stage_id === scope.stageId &&
+              config.round === round &&
+              config.mode === "slots"
+          )
+        )
+        .find((config) => config != null)
+    : undefined;
+
+  // What this scope says today: its own saved config, the rules its rounds
+  // play by, or a copy of whatever it inherits — retyping the tournament's
+  // timer, rotation and pool onto every round is the work organizers skipped,
+  // leaving rounds on rules nobody chose.
   //
   // Slot-mode groups are resized to the bracket on the way in: a stored count
   // the bracket has since outgrown would keep the room shut, and the extra
   // groups of a shrunk one are unplayable groups whose emptiness blocked the
   // save of every other change on the form.
   const baseDraft = useMemo(() => {
+    const source = savedConfig ?? roundSlotSource;
     const stored =
-      savedConfig != null
-        ? pickBanDraftFromConfig(savedConfig)
+      source != null
+        ? {
+            ...pickBanDraftFromConfig(source),
+            configId: savedConfig?.id ?? null,
+            stageId: scope.stageId,
+            round: scope.round
+          }
         : rescopePickBanDraft(emptyPickBanDraft(kind), scope.stageId, scope.round, configs);
-    return stored.mode === "slots"
-      ? { ...stored, slots: alignSlots(stored.slots, slotCount) }
-      : stored;
-  }, [savedConfig, kind, scope.stageId, scope.round, configs, slotCount]);
+    if (stored.mode !== "slots") return stored;
+    if (isStageScope && rounds.length > 0) {
+      return {
+        ...stored,
+        slots: [],
+        roundSlots: roundSlotsForStage({
+          kind,
+          stageId: scope.stageId as number,
+          rounds,
+          configs,
+          fallback: stored.slots,
+          slotCountFor: (round) => resolveSlotCount(scope.stageId, round, stages, encounters)
+        })
+      };
+    }
+    return { ...stored, slots: alignSlots(stored.slots, slotCount) };
+  }, [
+    savedConfig,
+    roundSlotSource,
+    kind,
+    scope.stageId,
+    scope.round,
+    configs,
+    slotCount,
+    isStageScope,
+    rounds,
+    stages,
+    encounters
+  ]);
 
   const [draft, setDraft] = useState<PickBanDraft>(baseDraft);
   // Re-baseline on a scope or kind switch, and when another admin's write
@@ -184,6 +259,49 @@ export function PreGameEditor({
       ...current,
       slots: current.slots.map((slot, at) => (at === index ? { ...slot, ...slotPatch } : slot))
     }));
+
+  const patchRoundSlot = (
+    roundIndex: number,
+    slotIndex: number,
+    slotPatch: Partial<PickBanDraft["slots"][number]>
+  ) =>
+    setDraft((current) => ({
+      ...current,
+      roundSlots: current.roundSlots.map((section, at) =>
+        at === roundIndex
+          ? {
+              ...section,
+              slots: section.slots.map((slot, index) =>
+                index === slotIndex ? { ...slot, ...slotPatch } : slot
+              )
+            }
+          : section
+      )
+    }));
+
+  /**
+   * Switching into per-group mode used to land on an empty list and a
+   * validation error. The bracket already says how many groups there are —
+   * and, on a stage, which rounds they belong to — so they are there to fill.
+   */
+  const changeMode = (mode: MapVetoMode) => {
+    if (mode !== "slots") return patch({ mode });
+    if (isStageScope && rounds.length > 0) {
+      return patch({
+        mode,
+        slots: [],
+        roundSlots: roundSlotsForStage({
+          kind,
+          stageId: scope.stageId as number,
+          rounds,
+          configs,
+          fallback: draft.slots,
+          slotCountFor: (round) => resolveSlotCount(scope.stageId, round, stages, encounters)
+        })
+      });
+    }
+    patch({ mode, slots: alignSlots(draft.slots, slotCount) });
+  };
 
   const StepStrip = (
     <nav aria-label={t("stepsLabel")} className="flex flex-wrap gap-1">
@@ -235,6 +353,10 @@ export function PreGameEditor({
               draft={draft}
               kind={kind}
               slotCount={slotCount}
+              roundsLoading={roundsLoading}
+              roundLabelFor={(round) => roundLabel(round, finalRounds)}
+              patchRoundSlot={patchRoundSlot}
+              onModeChange={changeMode}
               catalogue={catalogue}
               catalogueById={catalogueById}
               catalogueLoading={catalogueLoading}
@@ -320,7 +442,16 @@ export function PreGameEditor({
         // Save stays clickable with the reason on screen rather than greying
         // out a viewport away from the alert that explains it.
         onSave={() => {
-          if (issues.length === 0) onSave(draft, series.bestOf);
+          if (issues.length > 0) return;
+          onSave(
+            fanOutRoundDrafts(draft).map((one) => ({
+              draft: one,
+              seriesLength:
+                one.round == null
+                  ? series.bestOf
+                  : resolveSeriesLength(scope.stageId, one.round, stages, encounters).bestOf
+            }))
+          );
         }}
       />
 
@@ -359,25 +490,40 @@ function PoolStep({
   draft,
   kind,
   slotCount,
+  roundsLoading,
+  roundLabelFor,
   catalogue,
   catalogueById,
   catalogueLoading,
   canManage,
   patch,
   patchSlot,
+  patchRoundSlot,
+  onModeChange,
   toggleItem
 }: Readonly<{
   ids: string;
   draft: PickBanDraft;
   kind: PickBanKind;
-  /** Round groups the bracket calls for; the list is always this long. */
+  /** Groups the bracket calls for in a one-round scope; the list is this long. */
   slotCount: number;
+  /** The stage's rounds are still being predicted, so they cannot be listed. */
+  roundsLoading: boolean;
+  /** What the bracket calls a round — "Lower R1", "Grand Final", not "-1". */
+  roundLabelFor: (round: number) => string;
   catalogue: CatalogueItem[];
   catalogueById: Map<number, CatalogueItem>;
   catalogueLoading: boolean;
   canManage: boolean;
   patch: (values: Partial<PickBanDraft>) => void;
-  patchSlot: (index: number, slotPatch: Partial<PickBanDraft["slots"][number]>) => void;
+  patchSlot: (index: number, slotPatch: Partial<PickBanDraftSlot>) => void;
+  patchRoundSlot: (
+    roundIndex: number,
+    slotIndex: number,
+    slotPatch: Partial<PickBanDraftSlot>
+  ) => void;
+  /** Owns the round dimension the pool shape decides, so it lives upstairs. */
+  onModeChange: (mode: MapVetoMode) => void;
   toggleItem: (itemId: number) => void;
 }>) {
   const t = useTranslations("pickBan.admin");
@@ -396,15 +542,7 @@ function PoolStep({
           <Select
             value={draft.mode}
             disabled={!canManage}
-            onValueChange={(value) =>
-              patch({
-                mode: value as MapVetoMode,
-                // Switching into slot mode used to land on an empty list and a
-                // validation error; the bracket already says how many groups
-                // there are, so they are there to fill.
-                slots: value === "slots" ? alignSlots(draft.slots, slotCount) : draft.slots
-              })
-            }
+            onValueChange={(value) => onModeChange(value as MapVetoMode)}
           >
             <SelectTrigger id={`${ids}-mode`} aria-describedby={`${ids}-mode-hint`}>
               <SelectValue />
@@ -458,89 +596,163 @@ function PoolStep({
             }
           />
         </Field>
+      ) : draft.roundSlots.length > 0 ? (
+        <div className="flex flex-col gap-4">
+          <FieldDescription>{t("roundGroupsHint")}</FieldDescription>
+
+          {draft.roundSlots.map((section, roundIndex) => (
+            <div
+              key={section.round}
+              className="flex flex-col gap-2 rounded-xl border border-border bg-muted/20 p-3"
+            >
+              <FieldTitle className="text-sm">
+                {roundLabelFor(section.round)}
+                <Badge variant="outline">
+                  {t("roundGroupCount", { count: section.slots.length })}
+                </Badge>
+              </FieldTitle>
+
+              {section.slots.map((slot, index) => (
+                <SlotCard
+                  key={index}
+                  label={t("slotTitle", { n: index + 1 })}
+                  reserveLabel={t("slotReserveAria", { n: index + 1 })}
+                  slot={slot}
+                  kind={kind}
+                  catalogue={catalogue}
+                  catalogueById={catalogueById}
+                  catalogueLoading={catalogueLoading}
+                  canManage={canManage}
+                  onPatch={(slotPatch) => patchRoundSlot(roundIndex, index, slotPatch)}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <FieldDescription>{t("slotCountFromBracket", { maps: slotCount })}</FieldDescription>
+          <FieldDescription>
+            {roundsLoading ? t("roundHintLoading") : t("slotCountFromBracket", { maps: slotCount })}
+          </FieldDescription>
 
           {draft.slots.map((slot, index) => (
-            <div key={index} className="flex flex-col gap-2 rounded-lg border border-border p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <FieldTitle className="text-sm">
-                  {t("slotTitle", { n: index + 1 })}
-                  <Badge variant="secondary">
-                    {t("slotCandidates", { count: slot.candidates.length })}
-                  </Badge>
-                </FieldTitle>
-                <CataloguePicker
-                  mode="single"
-                  kind={kind}
-                  triggerLabel={t("slotReserveAria", { n: index + 1 })}
-                  triggerPrefix={t("slotReserve")}
-                  value={slot.reserveItemId}
-                  // The server rejects a reserve that is also a candidate,
-                  // so it is never offered here.
-                  options={catalogue.filter((option) => !slot.candidates.includes(option.id))}
-                  disabled={catalogueLoading || !canManage}
-                  onChange={(itemId) => patchSlot(index, { reserveItemId: itemId })}
-                />
-              </div>
-
-              <CatalogueChips
-                itemIds={slot.candidates}
-                catalogue={catalogueById}
-                disabled={!canManage}
-                onRemove={(itemId) =>
-                  patchSlot(index, {
-                    candidates: slot.candidates.filter((id) => id !== itemId)
-                  })
-                }
-                trailing={
-                  <CataloguePicker
-                    mode="multi"
-                    kind={kind}
-                    options={catalogue}
-                    selectedIds={slot.candidates}
-                    disabled={catalogueLoading || !canManage}
-                    onToggle={(itemId) =>
-                      patchSlot(index, {
-                        candidates: slot.candidates.includes(itemId)
-                          ? slot.candidates.filter((id) => id !== itemId)
-                          : [...slot.candidates, itemId],
-                        // A candidate can no longer be this slot's reserve.
-                        reserveItemId:
-                          slot.reserveItemId === itemId ? null : slot.reserveItemId
-                      })
-                    }
-                    onSelectVisible={(itemIds) =>
-                      patchSlot(index, {
-                        candidates: [
-                          ...slot.candidates,
-                          ...itemIds.filter((id) => !slot.candidates.includes(id))
-                        ],
-                        // The catalogue offered here isn't narrowed like the
-                        // reserve picker's is, so a bulk add can catch the
-                        // current reserve; drop it rather than leave a
-                        // candidate double-booked as its own slot's reserve.
-                        reserveItemId:
-                          slot.reserveItemId != null && itemIds.includes(slot.reserveItemId)
-                            ? null
-                            : slot.reserveItemId
-                      })
-                    }
-                    onClearVisible={(itemIds) =>
-                      patchSlot(index, {
-                        candidates: slot.candidates.filter((id) => !itemIds.includes(id))
-                      })
-                    }
-                  />
-                }
-              />
-              <FieldDescription>{t("slotReserveHint")}</FieldDescription>
-            </div>
+            <SlotCard
+              key={index}
+              label={t("slotTitle", { n: index + 1 })}
+              reserveLabel={t("slotReserveAria", { n: index + 1 })}
+              slot={slot}
+              kind={kind}
+              catalogue={catalogue}
+              catalogueById={catalogueById}
+              catalogueLoading={catalogueLoading}
+              canManage={canManage}
+              onPatch={(slotPatch) => patchSlot(index, slotPatch)}
+            />
           ))}
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * One group: its candidates in play order, its reserve, and the pickers for
+ * both. The same card whether it belongs to a single round's scope or to one
+ * round of a stage screen — only where the patch lands differs.
+ */
+function SlotCard({
+  label,
+  reserveLabel,
+  slot,
+  kind,
+  catalogue,
+  catalogueById,
+  catalogueLoading,
+  canManage,
+  onPatch
+}: Readonly<{
+  label: string;
+  reserveLabel: string;
+  slot: PickBanDraftSlot;
+  kind: PickBanKind;
+  catalogue: CatalogueItem[];
+  catalogueById: Map<number, CatalogueItem>;
+  catalogueLoading: boolean;
+  canManage: boolean;
+  onPatch: (slotPatch: Partial<PickBanDraftSlot>) => void;
+}>) {
+  const t = useTranslations("pickBan.admin");
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <FieldTitle className="text-sm">
+          {label}
+          <Badge variant="secondary">
+            {t("slotCandidates", { count: slot.candidates.length })}
+          </Badge>
+        </FieldTitle>
+        <CataloguePicker
+          mode="single"
+          kind={kind}
+          triggerLabel={reserveLabel}
+          triggerPrefix={t("slotReserve")}
+          value={slot.reserveItemId}
+          // The server rejects a reserve that is also a candidate, so it is
+          // never offered here.
+          options={catalogue.filter((option) => !slot.candidates.includes(option.id))}
+          disabled={catalogueLoading || !canManage}
+          onChange={(itemId) => onPatch({ reserveItemId: itemId })}
+        />
+      </div>
+
+      <CatalogueChips
+        itemIds={slot.candidates}
+        catalogue={catalogueById}
+        disabled={!canManage}
+        onRemove={(itemId) =>
+          onPatch({ candidates: slot.candidates.filter((id) => id !== itemId) })
+        }
+        trailing={
+          <CataloguePicker
+            mode="multi"
+            kind={kind}
+            options={catalogue}
+            selectedIds={slot.candidates}
+            disabled={catalogueLoading || !canManage}
+            onToggle={(itemId) =>
+              onPatch({
+                candidates: slot.candidates.includes(itemId)
+                  ? slot.candidates.filter((id) => id !== itemId)
+                  : [...slot.candidates, itemId],
+                // A candidate can no longer be this group's reserve.
+                reserveItemId: slot.reserveItemId === itemId ? null : slot.reserveItemId
+              })
+            }
+            onSelectVisible={(itemIds) =>
+              onPatch({
+                candidates: [
+                  ...slot.candidates,
+                  ...itemIds.filter((id) => !slot.candidates.includes(id))
+                ],
+                // The catalogue offered here isn't narrowed like the reserve
+                // picker's is, so a bulk add can catch the current reserve;
+                // drop it rather than leave a candidate double-booked as its
+                // own group's reserve.
+                reserveItemId:
+                  slot.reserveItemId != null && itemIds.includes(slot.reserveItemId)
+                    ? null
+                    : slot.reserveItemId
+              })
+            }
+            onClearVisible={(itemIds) =>
+              onPatch({ candidates: slot.candidates.filter((id) => !itemIds.includes(id)) })
+            }
+          />
+        }
+      />
+      <FieldDescription>{t("slotReserveHint")}</FieldDescription>
+    </div>
   );
 }
 
