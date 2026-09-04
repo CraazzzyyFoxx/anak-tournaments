@@ -76,6 +76,18 @@ describe("extended filterDraftPlayers search", () => {
     const out = filterDraftPlayers(players, { role: "all", sort: "rank", query: "tank" });
     expect(out.map((p) => p.id)).toEqual([1]);
   });
+  it("offers every role for a flex player, in the role list and the filter", () => {
+    // A flex player declared tank+dps, but the server counts them as supply for
+    // support too and only keeps the draft feasible if they can be picked
+    // there. Hiding support left them unpickable on every offered role.
+    const flex = mkPlayer({ id: 3, primary_role: "dps", secondary_roles_json: ["tank"], is_flex: true });
+    expect(playerRoles(flex)).toEqual(["dps", "tank", "support"]);
+    expect(filterDraftPlayers([flex], { role: "support", sort: "rank", query: "" }).map((p) => p.id)).toEqual([3]);
+    // Not flex: still exactly what was declared.
+    const strict = mkPlayer({ id: 4, primary_role: "dps", secondary_roles_json: ["tank"] });
+    expect(playerRoles(strict)).toEqual(["dps", "tank"]);
+    expect(filterDraftPlayers([strict], { role: "support", sort: "rank", query: "" })).toEqual([]);
+  });
 });
 
 describe("normalizeTopHeroes", () => {

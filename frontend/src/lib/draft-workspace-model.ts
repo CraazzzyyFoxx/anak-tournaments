@@ -46,17 +46,13 @@ export function filterDraftPlayers(
   const query = filters.query.toLocaleLowerCase();
   return players
     .filter((player) => {
-      const roles = new Set<DraftRole>([
-        player.primary_role,
-        ...((player.secondary_roles_json ?? []) as DraftRole[])
-      ]);
+      const roles = playerRoles(player);
       const haystack = [
         player.battle_tag ?? `#${player.id}`,
         player.sub_role ?? "",
-        ...[player.primary_role, ...((player.secondary_roles_json ?? []) as DraftRole[])]
-          .flatMap((r) => ROLE_LABELS[r] ?? [r]),
+        ...roles.flatMap((r) => ROLE_LABELS[r] ?? [r]),
       ].join(" ").toLocaleLowerCase();
-      return (filters.role === "all" || roles.has(filters.role)) && (!query || haystack.includes(query));
+      return (filters.role === "all" || roles.includes(filters.role)) && (!query || haystack.includes(query));
     })
     .sort((left, right) => {
       if (filters.sort === "name") {
@@ -76,13 +72,21 @@ export function optionForSelection(
   );
 }
 
+/**
+ * The roles this player may be picked on, primary first.
+ *
+ * `is_flex` means "no fixed role": the server lets a flex player fill any role
+ * slot (`rules.role_is_legal`) and its feasibility model counts them as supply
+ * for every role (`build_feasibility_state`), so the safe pick the solver is
+ * holding open can be a role the player never declared. Offering only the
+ * declared roles hid exactly that option and left a flex player unpickable —
+ * every offered role blocked with `role_shortage` — from the very first pick.
+ */
 export function playerRoles(player: DraftPlayer): DraftRole[] {
-  return Array.from(
-    new Set<DraftRole>([
-      player.primary_role,
-      ...((player.secondary_roles_json ?? []) as DraftRole[])
-    ])
-  );
+  const declared = player.is_flex
+    ? (["tank", "dps", "support"] as DraftRole[])
+    : ((player.secondary_roles_json ?? []) as DraftRole[]);
+  return Array.from(new Set<DraftRole>([player.primary_role, ...declared]));
 }
 
 export function buildRosterByTeam(players: DraftPlayer[]): Map<number, DraftPlayer[]> {
