@@ -192,6 +192,14 @@ class TournamentStreamsReader:
         tick — for a privacy switch, a 30-60s window during which the page still
         shows you is not acceptable, and the entries already in the hash have to
         be dropped at read time too.
+
+        Also the roster gate. Before the teams exist, every approved registrant
+        who is on air belongs on the page — that is the whole point of streaming
+        during ``check_in``. Once the tournament HAS rosters, a participant with
+        no team is someone the draft left out, and the block is about the
+        tournament being played, so they are dropped. ``rosters_formed`` is the
+        tournament-wide flag the same SELECT carries, so this costs no extra
+        query and cannot disagree with the team it renders.
         """
         if not player_ids:
             return {}
@@ -219,16 +227,21 @@ class TournamentStreamsReader:
             rank = (row.roster_id is None, row.is_substitution, row.roster_id or 0)
             if (previous := best.get(row.user_id)) is None or rank < previous[0]:
                 best[row.user_id] = (rank, row)
+        # The flag is a property of the tournament, so any row answers for all of
+        # them; ``any`` rather than indexing because ``rows`` may be empty.
+        rosters_formed = any(row.rosters_formed for row in rows)
         return {
             user_id: StreamPlayerRead(
                 id=user_id,
                 name=row.name,
                 avatar_url=row.avatar_url,
-                # No roster yet is the normal pre-draft state, so this is
-                # ``None``, not an error and not an empty name.
+                # Before the draft this is the normal state and the entry still
+                # serves; after it, ``rosters_formed`` has already excluded such
+                # a player below.
                 team=StreamTeamRead(id=row.team_id, name=row.team_name) if row.team_id is not None else None,
             )
             for user_id, (_, row) in best.items()
+            if row.team_id is not None or not rosters_formed
         }
 
     async def build(self, session: AsyncSession, redis: Redis, tournament_id: int) -> TournamentStreamsRead:
@@ -251,14 +264,15 @@ class TournamentStreamsReader:
             {pid for _, snapshot in live_participants if (pid := _player_id(snapshot)) is not None},
             tournament_id,
         )
-        # PRIVACY, fail-closed: an entry survives only when ``_load_players``
-        # returned a player for it. Two distinct cases converge here on
-        # purpose:
+        # Fail-closed: an entry survives only when ``_load_players`` returned a
+        # player for it. Three distinct cases converge here on purpose:
         #   * vetoed player -- ``_load_players`` withheld them, so the stale
         #     Redis entry goes with them;
         #   * ``player_id`` that matches no ``players.user`` row at all -- we
         #     cannot establish consent for a player we cannot read, so we do
-        #     not publish.
+        #     not publish;
+        #   * no team once the tournament's rosters exist -- the roster gate in
+        #     ``_load_players``.
         # This cannot swallow the organizer's broadcast: official links never
         # come from this list (``source == "official"`` is filtered out above)
         # and are rendered by ``_official_entry``, whose ``player`` is always

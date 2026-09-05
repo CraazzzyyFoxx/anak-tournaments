@@ -1,6 +1,6 @@
 """Contract guards on ``rpc.stream.tournament_streams``.
 
-Six properties, each of which fails silently in production if it drifts:
+Seven properties, each of which fails silently in production if it drifts:
 
 1. **The visibility gate runs first.** The gateway caches this response with
    ``respcache.TTLOnly`` — no viewer in the cache key — so a hidden tournament
@@ -21,6 +21,11 @@ Six properties, each of which fails silently in production if it drifts:
    poller left them in the Redis hash on the previous tick, and even when they are
    verified. And an entry whose ``player_id`` resolves to nothing is withheld for the
    same reason: consent we cannot read is consent we do not have.
+7. **The roster gate flips exactly once, on the data.** Before the tournament has
+   rosters every approved registrant on air is a participant; after it, a
+   streamer with no team is not. Keyed on an EXISTS over ``tournament.player``,
+   not on ``status``, so a hand-advanced tournament that never drafted still
+   shows everyone.
 
 No database and no Redis: the gate and the batched lookup are exercised against a
 fake session that answers the two statement shapes this path issues.
@@ -128,6 +133,7 @@ def _player_row(
     is_substitution: bool = False,
     team: tuple[int, str] | None = None,
     stream_visible: bool = True,
+    rosters_formed: bool | None = None,
 ) -> SimpleNamespace:
     """One row of the batched player+roster join.
 
@@ -136,6 +142,11 @@ def _player_row(
 
     ``stream_visible=False`` is the owner's veto on being broadcast — the row still
     comes back from the DB, and the read is what must refuse to publish it.
+
+    ``rosters_formed`` is tournament-wide, not per-row, so it defaults to "this
+    row has a team" — the shape the real query produces whenever the caller is
+    not deliberately mixing drafted and undrafted players. Pass it explicitly to
+    build the mixed tournament: a drafted field with one teamless streamer in it.
     """
     return SimpleNamespace(
         id=player_id,
@@ -146,6 +157,7 @@ def _player_row(
         is_substitution=is_substitution,
         team_id=None if team is None else team[0],
         team_name=None if team is None else team[1],
+        rosters_formed=(team is not None) if rosters_formed is None else rosters_formed,
     )
 
 
@@ -435,6 +447,90 @@ class ParticipantTeamTests(IsolatedAsyncioTestCase):
         self.assertEqual(len(session.executed), 1)
 
 
+class RosterGateTests(IsolatedAsyncioTestCase):
+    """Who counts as a participant, before and after the teams exist.
+
+    The block answers "who is on air in this tournament", and what that means
+    changes exactly once: while there are no rosters, every approved registrant
+    on air belongs on the page (streaming during ``check_in`` is the point);
+    once the tournament has rosters, a streamer with no team is someone the
+    draft left out and is not part of the tournament being played.
+
+    The switch is the DATA, not the status: ``rosters_formed`` is an EXISTS over
+    ``tournament.player`` for this tournament, so a tournament whose organizer
+    advanced the status by hand without drafting still shows everyone.
+    """
+
+    async def _run(self, rows: list[Any], channels: dict[str, int]) -> tuple[Any, _FakeSession]:
+        snapshots = {
+            f"twitch:{channel}": _snapshot(channel, source="self_declared", player_id=player_id)
+            for channel, player_id in channels.items()
+        }
+        session = _FakeSession(Tournament(id=1, workspace_id=5, is_hidden=False), rows)
+        with patch.object(reads._reader._targets, "official_stream_links", AsyncMock(return_value=[])):
+            result = await reads.tournament_streams(session, _FakeRedis(snapshots), {"tournament_id": "1"})
+        return result, session
+
+    async def test_before_the_draft_a_teamless_streamer_is_published(self) -> None:
+        result, _ = await self._run(
+            [_player_row(11, "Alice", rosters_formed=False)],
+            {"alice": 11},
+        )
+
+        self.assertEqual([entry.channel for entry in result.participants], ["alice"])
+        self.assertIsNone(result.participants[0].player.team)  # type: ignore[union-attr]
+
+    async def test_once_rosters_exist_a_teamless_streamer_is_withheld(self) -> None:
+        # Same row as above but for the tournament-wide flag: the ONLY difference
+        # is that somebody, somewhere in this tournament, now has a roster row.
+        result, _ = await self._run(
+            [_player_row(11, "Alice", rosters_formed=True)],
+            {"alice": 11},
+        )
+
+        self.assertEqual(result.participants, [])
+
+    async def test_the_gate_keeps_the_drafted_players_of_a_mixed_field(self) -> None:
+        # The real post-draft shape: Bob made a team, Alice did not, and both are
+        # live. A blanket gate would empty the block; no gate at all would keep
+        # Alice on a page about the tournament she is not playing in.
+        result, _ = await self._run(
+            [
+                _player_row(11, "Alice", rosters_formed=True),
+                _player_row(12, "Bob", roster_id=5, team=(3, "Team Rocket")),
+            ],
+            {"alice": 11, "bob": 12},
+        )
+
+        self.assertEqual([entry.channel for entry in result.participants], ["bob"])
+        self.assertEqual(result.participants[0].player.team.name, "Team Rocket")  # type: ignore[union-attr]
+
+    async def test_a_substitute_is_a_roster_row_and_stays_on_the_page(self) -> None:
+        # ``Player.team_id`` is NOT NULL, so a substitute carries a team like any
+        # other roster row -- the gate must not read "bench" as "not drafted".
+        result, _ = await self._run(
+            [_player_row(11, "Alice", roster_id=1, is_substitution=True, team=(9, "Bench"))],
+            {"alice": 11},
+        )
+
+        self.assertEqual([entry.channel for entry in result.participants], ["alice"])
+        self.assertEqual(result.participants[0].player.team.name, "Bench")  # type: ignore[union-attr]
+
+    async def test_the_gate_rides_the_existing_query(self) -> None:
+        channels = {f"p{index}": 20 + index for index in range(4)}
+        rows = [
+            _player_row(20 + index, f"P{index}", roster_id=100 + index, team=(3 + index, f"Team {index}"))
+            for index in range(4)
+        ]
+
+        result, session = await self._run(rows, channels)
+
+        self.assertEqual(len(result.participants), 4)
+        # ``rosters_formed`` is a column of the batched join, so asking whether
+        # the tournament is drafted must not cost a second statement.
+        self.assertEqual(len(session.executed), 1)
+
+
 class StreamVetoDisplayGateTests(IsolatedAsyncioTestCase):
     """The display half of ``players.user.stream_visible``.
 
@@ -491,9 +587,16 @@ class StreamVetoDisplayGateTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.participants[0].player.name, "Bob")  # type: ignore[union-attr]
 
     async def test_both_consent_paths_still_publish_without_a_veto(self) -> None:
-        """Regression guard: the gate must not become a blanket "hide participants"."""
+        """Regression guard: the gate must not become a blanket "hide participants".
+
+        Both players are drafted, so the roster gate (``RosterGateTests``) has
+        nothing to say here and a dropped entry can only mean the veto misfired.
+        """
         result, _ = await self._run(
-            [_player_row(11, "Alice"), _player_row(12, "Bob", roster_id=5, team=(3, "Team Rocket"))],
+            [
+                _player_row(11, "Alice", roster_id=4, team=(2, "Team Magma")),
+                _player_row(12, "Bob", roster_id=5, team=(3, "Team Rocket")),
+            ],
             channels={"alice": (11, "self_declared"), "bob": (12, "verified")},
         )
 

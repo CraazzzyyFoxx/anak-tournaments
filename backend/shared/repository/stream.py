@@ -87,6 +87,12 @@ class StreamRosterRow(NamedTuple):
     ``roster_id``/``team_id`` are ``None`` in the normal pre-draft state, not an
     error. ``stream_visible`` rides along so the caller can apply the owner's
     veto without a second round-trip.
+
+    ``rosters_formed`` is a property of the TOURNAMENT, not of the row: it is the
+    same value on every row and rides along for the same reason ``stream_visible``
+    does. It is what lets the caller tell "this player has no team because the
+    draft has not happened" from "this player has no team while everyone else
+    does" — the first serves, the second is filtered out.
     """
 
     user_id: int
@@ -97,6 +103,7 @@ class StreamRosterRow(NamedTuple):
     is_substitution: bool
     team_id: int | None
     team_name: str | None
+    rosters_formed: bool
 
 
 class StreamTargetRepository:
@@ -249,7 +256,10 @@ class StreamTargetRepository:
 
         The team rides along as a LEFT JOIN rather than a second batch — it hangs
         off rows this query already fetches, so one round-trip covers both and
-        there is no second statement to keep in step with the first.
+        there is no second statement to keep in step with the first. The
+        tournament-wide ``rosters_formed`` flag rides along for the same reason:
+        as an uncorrelated ``EXISTS`` it is one InitPlan, not a second round-trip
+        on a public, cacheable read.
 
         The join walks the anchor the roster actually uses. A caller's user id is
         a ``players.user.id``, and ``tournament.player`` no longer carries one
@@ -272,6 +282,13 @@ class StreamTargetRepository:
                 player.is_substitution,
                 team.id.label("team_id"),
                 team.name.label("team_name"),
+                # Uncorrelated on purpose: "does this tournament have rosters at
+                # all", not "does this user have one". ``Player.team_id`` is NOT
+                # NULL, so a roster row always carries a team and the existence
+                # of any row is exactly "the teams are formed".
+                sa.exists()
+                .where(models.Player.tournament_id == tournament_id)
+                .label("rosters_formed"),
             )
             .select_from(user)
             .outerjoin(member, member.player_id == user.id)
@@ -290,6 +307,7 @@ class StreamTargetRepository:
                 is_substitution=bool(row.is_substitution),
                 team_id=None if row.team_id is None else int(row.team_id),
                 team_name=row.team_name,
+                rosters_formed=bool(row.rosters_formed),
             )
             for row in rows
         ]
