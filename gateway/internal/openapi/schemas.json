@@ -39067,6 +39067,19 @@
     },
     "tournament.StageItemCreate": {
       "properties": {
+        "advance_count": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Advance Count"
+        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -39268,6 +39281,18 @@
     },
     "tournament.StageItemRead": {
       "properties": {
+        "advance_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Advance Count"
+        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -39308,6 +39333,18 @@
     },
     "tournament.StageItemSummaryRead": {
       "properties": {
+        "advance_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Advance Count"
+        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -39350,6 +39387,19 @@
     },
     "tournament.StageItemUpdate": {
       "properties": {
+        "advance_count": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Advance Count"
+        },
         "name": {
           "anyOf": [
             {
@@ -39764,6 +39814,18 @@
           "title": "Draw",
           "type": "integer"
         },
+        "full_buchholz": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Full Buchholz"
+        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -39940,6 +40002,18 @@
         "team_id": {
           "title": "Team Id",
           "type": "integer"
+        },
+        "tie_group": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tie Group"
         },
         "tiebreak_order": {
           "anyOf": [
