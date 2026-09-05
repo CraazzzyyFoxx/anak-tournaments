@@ -99,10 +99,14 @@ export function AdminInspector({
   // Panel mode has no focus trap (the table stays operable), so focus is only
   // moved to the heading on open and handed back to the row on close. The
   // sheet gets both from Radix.
+  //
+  // `preventScroll`: the panel is sticky, so it is already on screen — letting
+  // focus scroll it into view would yank the reader from row 8812 back to the
+  // top of the table on every row click.
   useEffect(() => {
     if (!isOpen || !isWide) return;
     returnFocusRef.current = document.activeElement;
-    headingRef.current?.focus();
+    headingRef.current?.focus({ preventScroll: true });
     return () => {
       const previous = returnFocusRef.current;
       if (previous instanceof HTMLElement && document.contains(previous)) previous.focus();

@@ -171,11 +171,18 @@ export function AdminLayoutClient({
 
           {/* Full-bleed on purpose: a centered 1720px cap left ~300px of dead
               gutter each side on a 2560 display. Wide tables scroll inside
-              their own container, so the page itself never needs the cap. */}
+              their own container, so the page itself never needs the cap.
+
+              `overflow-x-clip`, never `overflow-x-hidden`: `hidden` on one axis
+              forces the other to `auto`, which makes this div a scroll
+              container that never scrolls — and every `position: sticky` inside
+              (the row inspector) then sticks to it and never moves. `clip`
+              trims the same overflow while leaving the y axis `visible`, so the
+              window stays the scroll ancestor. */}
           <div
             id="admin-content"
             tabIndex={-1}
-            className="flex w-full flex-1 flex-col gap-4 overflow-x-hidden p-4 md:px-5"
+            className="flex w-full flex-1 flex-col gap-4 overflow-x-clip p-4 md:px-5"
           >
             {/* One drawer for the whole panel: every per-entity trail opens
                 here, so no screen mounts its own copy and none can nest. */}
