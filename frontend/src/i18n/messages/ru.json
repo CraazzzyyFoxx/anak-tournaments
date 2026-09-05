@@ -1961,8 +1961,8 @@
         "title": "Таблица · {stage}",
         "open": "таблица →",
         "pos": "#",
+        "posLabel": "Место",
         "team": "Команда",
-        "record": "В–П",
         "points": "Очки"
       },
       "phases": {

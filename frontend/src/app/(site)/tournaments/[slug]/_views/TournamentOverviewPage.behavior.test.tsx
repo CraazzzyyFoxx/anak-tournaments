@@ -656,7 +656,91 @@ describe("while it is being played (§3B)", () => {
     const titles = headings();
     expect(titles).toContain(COPY.groupTable.title.replace("{stage}", "Group A"));
     expect(titles).not.toContain(COPY.bracketMini.title.replace("{stage}", "Group A"));
-    expect(container.textContent).toContain("3–0");
+    expect(container.textContent).toContain("3·0·0");
+  });
+
+  it("keeps the two groups of one stage apart instead of interleaving their ranks", async () => {
+    tournament = makeTournament("live", {
+      stages: [makeStage({ id: 7, name: "Groups", stage_type: "round_robin" })]
+    });
+    const standingRow = (
+      id: number,
+      team: Team,
+      itemId: number,
+      itemName: string,
+      position: number,
+      record: [number, number, number],
+      points: number
+    ) => ({
+      id,
+      tournament_id: TOURNAMENT_ID,
+      team_id: team.id,
+      stage_id: 7,
+      stage_item_id: itemId,
+      position,
+      overall_position: id,
+      matches: record[0] + record[1] + record[2],
+      win: record[0],
+      draw: record[1],
+      lose: record[2],
+      points,
+      buchholz: null,
+      full_buchholz: null,
+      tie_group: null,
+      tb: null,
+      score_differential: null,
+      ranking_context: null,
+      tb_metrics: null,
+      source_rule_profile: null,
+      tiebreak_order: null,
+      team,
+      tournament: null,
+      stage: null,
+      stage_item: { id: itemId, name: itemName },
+      matches_history: []
+    });
+    // Both groups rank a 1 and a 2 of their own: merged into one list and
+    // sorted by `position` this is the 1,1,2,2 ladder that means nothing.
+    getStandings.mockResolvedValue([
+      standingRow(1, ALPHA, 11, "A", 1, [3, 2, 0], 4),
+      standingRow(2, GAMMA, 12, "B", 1, [3, 2, 0], 4),
+      standingRow(3, BETA, 11, "A", 2, [1, 3, 1], 2.5),
+      standingRow(4, DELTA, 12, "B", 2, [2, 0, 3], 2)
+    ]);
+    getAllEncounters.mockResolvedValue({
+      results: [makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 })],
+      total: 1,
+      page: 1,
+      per_page: -1
+    });
+    await mount();
+
+    const tables = Array.from(container.querySelectorAll("table")).filter((node) =>
+      node.querySelector("caption")?.textContent?.startsWith("Group")
+    );
+    expect(tables.map((node) => node.querySelector("caption")?.textContent)).toEqual([
+      "Group A",
+      "Group B"
+    ]);
+    expect(
+      tables.map((node) =>
+        Array.from(node.querySelectorAll("tbody tr")).map(
+          (cells) => cells.querySelectorAll("td")[1]?.textContent
+        )
+      )
+    ).toEqual([
+      ["Alpha", "Beta"],
+      ["Gamma", "Delta"]
+    ]);
+    // The record carries draws, and every points cell shares one decimal.
+    expect(tables[0].querySelectorAll("tbody td")[2]?.textContent).toBe("3·2·0");
+    expect(
+      tables.flatMap((node) =>
+        Array.from(node.querySelectorAll("tbody tr")).map(
+          (row) => row.querySelectorAll("td")[3]?.textContent
+        )
+      )
+    ).toEqual(["4.0", "2.5", "4.0", "2.0"]);
   });
 
   it("renders the official broadcast as a still that opens the stream page", async () => {

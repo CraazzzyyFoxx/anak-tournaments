@@ -236,6 +236,38 @@ function rosterBattletags(team: Team | null | undefined): string {
     .join(" · ");
 }
 
+/**
+ * The stage's standings split into the ladders they actually are.
+ *
+ * A group stage's `stage_item`s are independent tables, each ranking 1..N of
+ * its own field. Merged into one list and sorted by `position` they interleave
+ * into 1,1,2,2,… — a rank column that says nothing and rows that read as
+ * unsorted. Same split key the bracket page builds its per-group panels on;
+ * the label falls back to the team's group when `stage_item` was not expanded,
+ * and to `null` (one unnamed ladder) when neither is there.
+ */
+export function splitStandingsByGroup(
+  rows: readonly Standings[]
+): { key: string; name: string | null; rows: Standings[] }[] {
+  const groups = new Map<string, { key: string; name: string | null; rows: Standings[] }>();
+  for (const row of rows) {
+    const key = String(row.stage_item_id ?? "stage");
+    const group = groups.get(key) ?? {
+      key,
+      name: row.stage_item?.name ?? row.team?.group?.name ?? null,
+      rows: []
+    };
+    group.rows.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .sort((left, right) => (left.name ?? "").localeCompare(right.name ?? ""))
+    .map((group) => ({
+      ...group,
+      rows: [...group.rows].sort((left, right) => left.position - right.position)
+    }));
+}
+
 // ---------------------------------------------------------------------------
 // Small shared surfaces
 // ---------------------------------------------------------------------------
@@ -709,11 +741,13 @@ export default function TournamentOverviewPage({
       </OverviewCard>
     ) : null;
 
-  const stageStandings = stage
-    ? standings
-        .filter((row) => row.stage_id === stage.id)
-        .sort((left, right) => left.position - right.position)
-    : [];
+  const stageStandings = stage ? standings.filter((row) => row.stage_id === stage.id) : [];
+  const standingsGroups = splitStandingsByGroup(stageStandings);
+  // One decimal everywhere as soon as any row carries a half point: a
+  // right-aligned column of "4" beside "3.5" has no shared decimal to scan.
+  const pointsHaveFraction = stageStandings.some((row) => !Number.isInteger(row.points));
+  const formatPoints = (points: number) =>
+    pointsHaveFraction ? points.toFixed(1) : String(points);
 
   const groupTable =
     showsGroupTable && stage !== null && stageStandings.length > 0 ? (
@@ -725,40 +759,67 @@ export default function TournamentOverviewPage({
           </CardLink>
         }
       >
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[color:var(--aqt-border)] font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
-              <th scope="col" className="w-8 py-1.5 pr-2 text-left font-medium">
-                {t("tournamentDetail.overview.groupTable.pos")}
-              </th>
-              <th scope="col" className="py-1.5 pr-2 text-left font-medium">
-                {t("tournamentDetail.overview.groupTable.team")}
-              </th>
-              <th scope="col" className="py-1.5 pr-2 text-right font-medium">
-                {t("tournamentDetail.overview.groupTable.record")}
-              </th>
-              <th scope="col" className="py-1.5 text-right font-medium">
-                {t("tournamentDetail.overview.groupTable.points")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {stageStandings.map((row) => (
-              <tr key={row.id} className="border-b border-[color:var(--aqt-border)]/60">
-                <td className="aqt-tnum py-1.5 pr-2 text-[color:var(--aqt-fg-faint)]">
-                  {row.position}
-                </td>
-                <td className="py-1.5 pr-2">
-                  <TeamName team={row.team ?? { name: t("common.tbd") }} size="xs" />
-                </td>
-                <td className="aqt-tnum py-1.5 pr-2 text-right">
-                  {row.win}–{row.lose}
-                </td>
-                <td className="aqt-tnum py-1.5 text-right font-semibold">{row.points}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {/* Two groups sit side by side rather than stacking: it halves the card
+            and pulls the record back next to the name instead of stranding it
+            against the far edge of a 900px row. */}
+        <div className={cn("grid gap-x-8 gap-y-5", standingsGroups.length > 1 && "sm:grid-cols-2")}>
+          {standingsGroups.map((group) => (
+            <table className="w-full table-fixed text-sm" key={group.key}>
+              <caption
+                className={cn(
+                  "text-left",
+                  group.name === null
+                    ? "sr-only"
+                    : "pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]"
+                )}
+              >
+                {group.name === null
+                  ? t("tournamentDetail.overview.groupTable.title", { stage: stage.name })
+                  : `${t("common.group")} ${group.name}`}
+              </caption>
+              <thead>
+                <tr className="border-b border-[color:var(--aqt-border)] font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+                  <th scope="col" className="w-8 py-1.5 pr-2 text-left font-medium">
+                    <span aria-hidden>{t("tournamentDetail.overview.groupTable.pos")}</span>
+                    <span className="sr-only">
+                      {t("tournamentDetail.overview.groupTable.posLabel")}
+                    </span>
+                  </th>
+                  <th scope="col" className="py-1.5 pr-2 text-left font-medium">
+                    {t("tournamentDetail.overview.groupTable.team")}
+                  </th>
+                  <th scope="col" className="w-20 py-1.5 pr-2 text-right font-medium">
+                    {t("standings.colWDL")}
+                  </th>
+                  <th scope="col" className="w-12 py-1.5 text-right font-medium">
+                    {t("tournamentDetail.overview.groupTable.points")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.rows.map((row) => (
+                  <tr key={row.id}>
+                    <td className="aqt-tnum py-1.5 pr-2 text-[color:var(--aqt-fg-muted)]">
+                      {row.position}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <TeamName team={row.team ?? { name: t("common.tbd") }} size="xs" />
+                    </td>
+                    {/* W·D·L, not W–L: these stages draw, and a "3–0" printed
+                        for a 3W-2D-0L run contradicts both the matches played
+                        and the points beside it. */}
+                    <td className="aqt-tnum py-1.5 pr-2 text-right">
+                      {row.win}·{row.draw}·{row.lose}
+                    </td>
+                    <td className="aqt-tnum py-1.5 text-right font-semibold">
+                      {formatPoints(row.points)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ))}
+        </div>
       </OverviewCard>
     ) : null;
 

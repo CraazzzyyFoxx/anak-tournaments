@@ -1958,11 +1958,11 @@
         "open": "open →"
       },
       "groupTable": {
-        "title": "{stage} standings",
+        "title": "Standings · {stage}",
         "open": "standings →",
         "pos": "#",
+        "posLabel": "Position",
         "team": "Team",
-        "record": "W–L",
         "points": "Pts"
       },
       "phases": {
