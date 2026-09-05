@@ -135,6 +135,8 @@ const CARD_ROW_HEIGHT = 30;
 const ROUND_GAP_X = 48;
 const MATCH_GAP_Y = 10;
 const HEADER_HEIGHT = 24;
+// Breathing room between a round header and the first card under it.
+const HEADER_GAP_Y = 14;
 const SECTION_GAP_Y = 52;
 const PADDING_X = 16;
 const PADDING_Y = 14;
@@ -351,7 +353,7 @@ function buildLayout(
   );
   const upperStartX = PADDING_X;
   const upperHeaderY = PADDING_Y;
-  const upperTop = upperHeaderY + HEADER_HEIGHT;
+  const upperTop = upperHeaderY + HEADER_HEIGHT + HEADER_GAP_Y;
 
   upperRounds.forEach((group, columnIndex) => {
     const x = upperStartX + columnIndex * (CARD_WIDTH + ROUND_GAP_X);
@@ -382,7 +384,7 @@ function buildLayout(
 
   const hasLowerBracket = lowerRounds.length > 0;
   const lowerHeaderY = upperTop + upperSectionHeight + (hasLowerBracket ? SECTION_GAP_Y : 0);
-  const lowerTop = lowerHeaderY + HEADER_HEIGHT;
+  const lowerTop = lowerHeaderY + HEADER_HEIGHT + HEADER_GAP_Y;
   const maxLowerMatches = Math.max(1, ...lowerRounds.map((group) => group.matches.length));
   const lowerSectionHeight = hasLowerBracket
     ? Math.max(
@@ -424,7 +426,10 @@ function buildLayout(
     const x = PADDING_X + columnIndex * (CARD_WIDTH + ROUND_GAP_X);
     const totalHeight =
       group.matches.length * CARD_HEIGHT + Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
-    const startY = Math.max(0, (fullContentHeight - totalHeight) / 2);
+    // Centered in the bracket body, i.e. below the header row — otherwise the
+    // card lands on top of its own header.
+    const finalTop = PADDING_Y + HEADER_HEIGHT + HEADER_GAP_Y;
+    const startY = finalTop + Math.max(0, (fullContentHeight - finalTop - totalHeight) / 2);
 
     layoutBracketColumn({
       group,
@@ -964,6 +969,7 @@ export function BracketView<M extends BracketMatch>({
         {layout.headers.map((header) => (
           <div
             key={header.id}
+            data-round-header={header.id}
             className="absolute"
             style={{ left: header.x, top: header.y, width: CARD_WIDTH }}
           >

@@ -263,3 +263,31 @@ describe("BracketView opening round", () => {
     expect(scroller()).toBeNull();
   });
 });
+
+// The grand-final column is centred in the whole bracket height, which used to
+// put its card on top of its own round header.
+describe("BracketView round headers", () => {
+  const top = (el: Element) => Number.parseFloat((el as HTMLElement).style.top);
+
+  // A shallow bracket — one semi, one grand final — is the shape that broke:
+  // the GF column is centred in a bracket barely taller than one card.
+  it("keeps every card clear of the header row", () => {
+    render(
+      <BracketView
+        type="double_elimination"
+        encounters={[
+          encounter({ id: 1, round: 1, status: "open" }),
+          encounter({ id: 2, round: 2, status: "open" })
+        ]}
+      />
+    );
+
+    const headers = [...container.querySelectorAll("[data-round-header]")];
+    expect(headers).toHaveLength(2);
+
+    for (const card of container.querySelectorAll("[data-match-id]")) {
+      const above = headers.filter((header) => top(header) <= top(card));
+      expect(above.every((header) => top(card) - top(header) >= 24)).toBe(true);
+    }
+  });
+});
