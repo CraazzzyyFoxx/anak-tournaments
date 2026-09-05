@@ -48,4 +48,34 @@ describe("PageHero cover banner", () => {
     expect(markup).not.toContain("mix-blend-mode");
     expect(decorativeLayers(markup)).toEqual({ grid: true, glow: true });
   });
+
+  it("paints a right-edge bleed instead of a colour wash when asked", () => {
+    const markup = renderToStaticMarkup(
+      <PageHero
+        title="Overwatch Cup"
+        coverUrl="https://cdn.example.test/cover.png"
+        coverFade="right"
+      />
+    );
+
+    expect(markup).toContain('src="https://cdn.example.test/cover.png"');
+    expect(markup).toContain("linear-gradient(90deg, transparent 0%, #000 55%)");
+    expect(markup).not.toContain("mix-blend-mode");
+    expect(markup).not.toContain("blur(28px)");
+    expect(decorativeLayers(markup)).toEqual({ grid: true, glow: true });
+  });
+});
+
+
+describe("PageHero flush aside", () => {
+  it("pads the copy column, not the media column", () => {
+    const markup = renderToStaticMarkup(
+      <PageHero title="Overwatch Cup" asideFlush aside={<img src="/poster.png" alt="" />} />
+    );
+
+    expect(markup).toContain("lg:items-stretch");
+    expect(markup).toContain("minmax(0,20rem)");
+    expect(markup).toContain("max-lg:hidden");
+    expect(markup).not.toContain("lg:grid-cols-[1.5fr_1fr]");
+  });
 });

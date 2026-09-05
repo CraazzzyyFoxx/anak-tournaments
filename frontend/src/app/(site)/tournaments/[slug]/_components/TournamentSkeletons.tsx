@@ -83,10 +83,9 @@ export function TournamentShellSkeleton() {
     <SkeletonRegion variant="shell" message={t("common.loading")}>
       <div className="aqt-tn min-w-0 space-y-4">
         <PageHero
-          compact
           align="start"
           eyebrow={<SkeletonBlock style={{ width: "14rem", height: "0.65rem" }} />}
-          title={<SkeletonBlock style={{ width: "min(28rem, 70vw)", height: "2rem" }} />}
+          title={<SkeletonBlock style={{ width: "min(28rem, 70vw)", height: "2.4rem" }} />}
           meta={
             <>
               <SkeletonBlock style={{ width: "5rem", height: "1.75rem" }} />
@@ -94,13 +93,6 @@ export function TournamentShellSkeleton() {
               <SkeletonBlock style={{ width: "7rem", height: "1.75rem" }} />
               <SkeletonBlock style={{ width: "6rem", height: "1.75rem" }} />
             </>
-          }
-          lede={<SkeletonBlock style={{ width: "min(28rem, 74vw)", height: "0.7rem" }} />}
-          aside={
-            <div className="flex flex-wrap items-center gap-2.5 lg:justify-end">
-              <SkeletonBlock style={{ width: "8rem", height: "2.25rem" }} />
-              <SkeletonBlock style={{ width: "5rem", height: "2.25rem" }} />
-            </div>
           }
         />
 
@@ -365,11 +357,11 @@ export function TournamentStreamSkeleton() {
             down the page. Four rail rows: more than a handful of participants
             live at once is the rare case, not the one to reserve space for. */}
         <div className={styles.skeletonSurface}>
-          <div className="flex items-center justify-between gap-4 border-b border-[color:var(--aqt-border)] px-[18px] py-[14px]">
+          <div className="flex items-center justify-between gap-4 border-b border-[color:var(--aqt-border)] px-5 py-3">
             <SkeletonBlock style={{ width: "7rem", height: "1rem" }} />
             <SkeletonBlock style={{ width: "8rem", height: "1.4rem" }} />
           </div>
-          <div className="grid xl:grid-cols-[minmax(0,1fr)_368px]">
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-w-0 flex-col">
               <SkeletonBlock className="aspect-video min-h-[300px] w-full rounded-none border-0" />
               <div className="flex flex-col gap-2.5 p-4">
@@ -379,7 +371,7 @@ export function TournamentStreamSkeleton() {
                 <SkeletonBlock style={{ width: "9rem", height: "2.2rem" }} />
               </div>
             </div>
-            <div className="grid content-start gap-2 border-t border-[color:var(--aqt-border)] p-3 md:grid-cols-2 xl:grid-cols-1 xl:border-t-0 xl:border-s">
+            <div className="grid content-start gap-2 border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-3 md:grid-cols-2 xl:grid-cols-1 xl:border-t-0 xl:border-s">
               {Array.from({ length: 4 }, (_, row) => (
                 <div className="flex items-center gap-3 p-2" key={row}>
                   <SkeletonBlock className="aspect-video w-[104px] shrink-0" />

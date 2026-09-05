@@ -1,6 +1,5 @@
 "use client";
 
-import { Radio } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
@@ -129,16 +128,9 @@ const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
           description={t("stream.page.emptyDescription")}
         />
       ) : (
-        <div className="aqt-card-surface">
-          {/* The section had no heading at all before — only an `aria-label` on
-              the <section> — so the document went from the hero's <h1> straight
-              to a card <h3>. This is the missing <h2>, in the same
-              `.aqt-card-*` vocabulary the rest of the site's cards use. */}
-          <div className="aqt-card-head">
-            <h2 className="aqt-card-title">
-              <span className="aqt-card-title-ic">
-                <Radio className="size-4" aria-hidden />
-              </span>
+        <div className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--aqt-border)] px-5 py-3">
+            <h2 className="aqt-mono m-0 text-[12px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
               {t("common.stream")}
             </h2>
             <span className="flex shrink-0 items-center gap-2.5">
@@ -155,45 +147,43 @@ const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
             </span>
           </div>
 
-          <div className="aqt-card-body aqt-flush">
-            <div className="grid xl:grid-cols-[minmax(0,1fr)_368px]">
-              <StreamTheater
-                entry={featured}
-                isPlaying={(!hasOfficialBroadcast && !prefersReducedMotion) || hasStartedWatching}
-                onPlay={() => setHasStartedWatching(true)}
-                now={now}
-              />
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_340px]">
+            <StreamTheater
+              entry={featured}
+              isPlaying={(!hasOfficialBroadcast && !prefersReducedMotion) || hasStartedWatching}
+              onPlay={() => setHasStartedWatching(true)}
+              now={now}
+            />
 
-              {/* Capped rather than free-running: the rail must not grow taller
-                  than the player it belongs to, or the switcher scrolls the
-                  page away from the thing it is switching. */}
-              <ul
-                aria-label={t("stream.page.channels")}
-                className="m-0 grid list-none grid-cols-1 content-start gap-2 border-t border-[color:var(--aqt-border)] p-3 md:grid-cols-2 xl:max-h-[72vh] xl:grid-cols-1 xl:overflow-y-auto xl:border-t-0 xl:border-s"
-              >
-                {sorted.map((entry) => {
-                  const key = streamEntryKey(entry);
-                  const canEmbed = embeddableTwitchChannel(entry) !== null;
-                  return (
-                    <li key={key} className="min-w-0">
-                      <StreamRow
-                        entry={entry}
-                        isSelected={key === streamEntryKey(featured)}
-                        now={now}
-                        onSelect={
-                          canEmbed
-                            ? () => {
-                                setSelectedKey(key);
-                                setHasStartedWatching(true);
-                              }
-                            : null
-                        }
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            {/* Capped rather than free-running: the rail must not grow taller
+                than the player it belongs to, or the switcher scrolls the
+                page away from the thing it is switching. */}
+            <ul
+              aria-label={t("stream.page.channels")}
+              className="m-0 grid list-none grid-cols-1 content-start gap-2 border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-3 md:grid-cols-2 xl:max-h-[72vh] xl:grid-cols-1 xl:overflow-y-auto xl:border-t-0 xl:border-s"
+            >
+              {sorted.map((entry) => {
+                const key = streamEntryKey(entry);
+                const canEmbed = embeddableTwitchChannel(entry) !== null;
+                return (
+                  <li key={key} className="min-w-0">
+                    <StreamRow
+                      entry={entry}
+                      isSelected={key === streamEntryKey(featured)}
+                      now={now}
+                      onSelect={
+                        canEmbed
+                          ? () => {
+                              setSelectedKey(key);
+                              setHasStartedWatching(true);
+                            }
+                          : null
+                      }
+                    />
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
       )}

@@ -662,6 +662,36 @@ describe("while it is being played (§3B)", () => {
     expect(titles).not.toContain(COPY.bracketMini.title.replace("{stage}", "Group A"));
     expect(container.textContent).toContain("3–0");
   });
+
+  it("renders the official broadcast as a still that opens the stream page", async () => {
+    getTournamentStreams.mockResolvedValue({
+      official: [
+        {
+          platform: "twitch",
+          channel: "owtesports",
+          url: "https://twitch.tv/owtesports",
+          live: true,
+          title: "Grand final",
+          game_name: "Overwatch 2",
+          viewer_count: 1200,
+          thumbnail_url: "https://example.test/thumb.jpg",
+          started_at: null,
+          player: null
+        }
+      ],
+      participants: []
+    });
+    await mount();
+
+    expect(headings()).toContain(COPY.stream.title);
+    const still = Array.from(container.querySelectorAll("a")).find(
+      (node) =>
+        node.getAttribute("href") === `/tournaments/${SLUG}/stream` && node.querySelector("img")
+    );
+    expect(still?.querySelector("img")?.getAttribute("src")).toBe("https://example.test/thumb.jpg");
+    expect(still?.textContent).toContain("owtesports");
+    expect(still?.textContent).toContain(en.stream.status.live);
+  });
 });
 
 describe("once it is over (§3C)", () => {

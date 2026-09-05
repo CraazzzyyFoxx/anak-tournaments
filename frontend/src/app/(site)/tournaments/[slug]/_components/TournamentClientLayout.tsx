@@ -28,7 +28,7 @@ import { useTranslations, useLocale } from "next-intl";
 import TournamentSectionNav from "./TournamentSectionNav";
 import { TournamentShellSkeleton } from "./TournamentSkeletons";
 import TournamentShellError from "../TournamentShellError";
-import { PageHero, HeroCoord } from "@/components/site/PageHero";
+import { PageHero, HeroCoord, HeroStamp } from "@/components/site/PageHero";
 import { PageStateCard } from "@/components/ui/page-state-card";
 
 type TournamentClientLayoutProps = {
@@ -192,14 +192,13 @@ export default function TournamentClientLayout({
       )}
       <div ref={heroRef}>
         <PageHero
-          compact
-          /* The organizer's banner, when there is one. Absent — the common case
-             — the frame renders exactly what it rendered before: teal hairline,
-             masked grid, one glow. Nothing is reserved for a missing image. */
+          /* Cover fades in from the right. Without one, only the CTAs move
+             into that column — stamps stay under the title. */
           coverUrl={tournament.cover_image_url}
-          align="start"
+          coverFade={tournament.cover_image_url ? "right" : undefined}
+          align={tournament.cover_image_url ? "start" : "end"}
           eyebrow={
-            <HeroCoord className="inline-flex flex-wrap items-center gap-2">
+            <HeroCoord className="inline-flex flex-wrap items-center gap-x-4 gap-y-1">
               <Link
                 href="/tournaments"
                 className="transition-colors hover:text-[color:var(--aqt-teal)]"
@@ -208,10 +207,16 @@ export default function TournamentClientLayout({
               </Link>
               <span className="opacity-50">/</span>
               <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
+              {tournament.is_league ? (
+                <>
+                  <span className="opacity-50">/</span>
+                  <span>{t("common.league")}</span>
+                </>
+              ) : null}
             </HeroCoord>
           }
           title={
-            <span className="flex items-center gap-3">
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
               {tournament.logo_url ? (
                 /* Plain `<img>`, like every other S3 image on the site: the URL
                    points at whatever host the deployment configured, and
@@ -222,79 +227,51 @@ export default function TournamentClientLayout({
                   src={tournament.logo_url}
                   alt=""
                   aria-hidden
-                  width={44}
-                  height={44}
+                  width={56}
+                  height={56}
                   loading="lazy"
                   decoding="async"
-                  className="size-11 shrink-0 rounded-md border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] object-cover"
+                  className="size-14 shrink-0 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg)] object-cover"
                 />
               ) : null}
               <span className="min-w-0">{tournament.name}</span>
-            </span>
-          }
-          meta={
-            <>
-              {/* The status pill keeps the site-wide status colours (the same
-                  ones the tournaments list uses), so a reader coming from the
-                  list meets the same signal here. */}
-              <span className={cn("status-pill", statusVariant)}>
+              <span className={cn("status-pill shrink-0", statusVariant)}>
                 {isLive && <span className="dot" />}
                 {t(`common.statusBadge.${tournament.status}`)}
               </span>
-              {nextPhaseChip}
-              {tournament.is_league && <span className="meta-pill">{t("common.league")}</span>}
-              <span className="meta-pill aqt-tnum">
-                {teamsCount > 0
-                  ? t("tournamentDetail.header.teamsAndPlayers", { teams: teamsCount, players })
-                  : t("tournamentDetail.header.players", { players })}
+            </span>
+          }
+          stamp={
+            <span className="flex w-full flex-col items-start gap-5">
+              <span className="flex flex-wrap items-end gap-x-8 gap-y-3">
+                <NextPhaseChip
+                  variant="stamp"
+                  tournament={tournament}
+                  href={`${overviewHref}#phases`}
+                />
+                {teamsCount > 0 ? (
+                  <HeroStamp
+                    label={t("tournamentDetail.overview.numbers.teams")}
+                    value={teamsCount}
+                  />
+                ) : null}
+                <HeroStamp label={t("common.playersLabel")} value={players} />
               </span>
-            </>
+              {tournament.cover_image_url && (registerButton || draftButton) ? (
+                <span className="flex flex-wrap items-center gap-2.5">
+                  {registerButton}
+                  {draftButton}
+                </span>
+              ) : null}
+            </span>
           }
-          /* Actions move under the copy so the right column can hold the
-             poster: what a reader can DO, still one row, still above the rail.
-             The organizer's informational links are NOT here — they are
-             reference material and live in the overview's Links card.
-             `empty:hidden` because an ended tournament without a draft room
-             renders nothing at all here. */
-          actions={
-            <div className="flex flex-wrap items-center gap-2.5 empty:hidden">
-              {registerButton}
-              {draftButton}
-            </div>
-          }
-          /* The cover, WHOLE.
-
-             It is a poster — 16:9, with the tournament's name typeset inside it
-             and the organizer's logo in a corner. Every treatment that tried to
-             fit it to the header's shape destroyed exactly that content: an 80px
-             band showed 9% of its height, and the blurred wash (still behind
-             this, as its colour field) shows none of it. So the picture gets its
-             own aspect and the copy keeps the other column.
-
-             A FIXED box plus `object-contain`, not `max-h` with an intrinsic
-             width: a 16:9 upload — what the admin panel asks for — fills it
-             exactly, and any other ratio fits inside with transparent margins
-             instead of stretching. An auto-sized image also sized the grid's
-             auto column from its intrinsic 1920px and squeezed the title to
-             two characters per line.
-
-             `width`/`height` inline, not `w-[284px] max-h-40`: this build emits
-             only utilities already used elsewhere in the codebase, and both of
-             those were new here — `max-h-40` produced no rule at all, which is
-             how the poster came out full-size. */
           aside={
-            tournament.cover_image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={tournament.cover_image_url}
-                alt=""
-                aria-hidden
-                loading="lazy"
-                decoding="async"
-                className="rounded-lg object-contain"
-                style={{ width: 284, height: 160, maxWidth: "100%" }}
-              />
-            ) : null
+            tournament.cover_image_url || !(registerButton || draftButton) ? undefined : (
+              <div className="flex flex-wrap items-center gap-2.5 lg:justify-end">
+                {registerButton}
+                {draftButton}
+              </div>
+            )
           }
         />
       </div>

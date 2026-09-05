@@ -85,6 +85,12 @@ interface HeroFrameProps {
    * keeps the blend inside the hero instead of reaching the page behind it.
    */
   coverUrl?: string | null;
+  /**
+   * `"right"` — sharp cover on the trailing edge, masked off toward the copy.
+   * No colour-wash. Tournament detail uses this; every other hero keeps the
+   * default wash when `coverUrl` is set.
+   */
+  coverFade?: "right";
 }
 
 /** The decorative shell only — for heroes with bespoke inner content. */
@@ -94,8 +100,10 @@ export function HeroFrame({
   variant = "default",
   roleTint,
   coverUrl,
+  coverFade,
 }: Readonly<HeroFrameProps>) {
   const isProfile = variant === "profile";
+  const fadeRight = Boolean(coverUrl) && coverFade === "right";
   return (
     <section
       className={cn(
@@ -118,10 +126,30 @@ export function HeroFrame({
           className="pointer-events-none absolute inset-x-0 top-0 z-[2] h-0.5 bg-[color:var(--aqt-teal)]"
         />
       )}
-      {/* Cover wash, UNDER the grid and glow: those two are the frame's
-          identity and must survive on top of it. Blurred, so there is no crop
-          to get wrong, and blended, so there is no light to blow the copy out. */}
-      {coverUrl ? (
+      {fadeRight ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={coverUrl ?? ""}
+          alt=""
+          aria-hidden
+          loading="lazy"
+          decoding="async"
+          className="pointer-events-none absolute"
+          /* Inline: mask/object utilities are easy to miss in this build, and a
+             missing class fails silent — the poster then sizes the hero. */
+          style={{
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: "min(58%, 36rem)",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center",
+            WebkitMaskImage: "linear-gradient(90deg, transparent 0%, #000 55%)",
+            maskImage: "linear-gradient(90deg, transparent 0%, #000 55%)",
+          }}
+        />
+      ) : coverUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={coverUrl}
@@ -201,6 +229,11 @@ interface PageHeroProps {
   actions?: React.ReactNode;
   /** Optional right column — stat blocks, controls, a live-events panel. */
   aside?: React.ReactNode;
+  /**
+   * Media column kisses the frame as a 20rem end-cap: no padding, no gap.
+   * Copy keeps the padding. Not a 1fr split — that gave the poster half the hero.
+   */
+  asideFlush?: boolean;
   /** Optional mono "stamp" row at the bottom of the left column. */
   stamp?: React.ReactNode;
   className?: string;
@@ -209,6 +242,8 @@ interface PageHeroProps {
   align?: "start" | "end" | "center";
   /** Banner image behind the hero — see `HeroFrameProps.coverUrl`. */
   coverUrl?: string | null;
+  /** See `HeroFrameProps.coverFade`. */
+  coverFade?: "right";
   /**
    * Tight header for pages whose content starts right under it (a tournament's
    * section rail): half the padding, a ~2rem title, single-line rhythm. The
@@ -224,29 +259,43 @@ export function PageHero({
   meta,
   actions,
   aside,
+  asideFlush = false,
   stamp,
   className,
   titleClassName,
   align = "end",
   coverUrl,
+  coverFade,
   compact = false,
 }: Readonly<PageHeroProps>) {
+  const flush = Boolean(aside) && asideFlush;
+  const pad = compact
+    ? "px-5 py-3.5 md:px-6 md:py-4"
+    : "px-6 py-8 md:px-10 md:py-9";
+
   return (
-    <HeroFrame className={className} coverUrl={coverUrl}>
+    <HeroFrame className={className} coverUrl={coverUrl} coverFade={coverFade}>
       <div
         className={cn(
           "grid",
-          compact ? "gap-4 px-5 py-3.5 md:px-6 md:py-4" : "gap-8 px-6 py-8 md:px-10 md:py-9",
-          // A compact hero is a page HEADER: its right column holds the action
-          // row (wireframes §2), so it takes only the width the buttons need
-          // instead of a third of the header away from the title.
-          aside && (compact ? "lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-8" : "lg:grid-cols-[1.5fr_1fr] lg:gap-12"),
-          align === "end" && "lg:items-end",
-          align === "center" && "lg:items-center",
-          align === "start" && "lg:items-start"
+          flush
+            ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:items-stretch"
+            : cn(
+                compact ? `gap-4 ${pad}` : `gap-8 ${pad}`,
+                // A compact hero is a page HEADER: its right column holds the action
+                // row (wireframes §2), so it takes only the width the buttons need
+                // instead of a third of the header away from the title.
+                aside &&
+                  (compact
+                    ? "lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-8"
+                    : "lg:grid-cols-[1.5fr_1fr] lg:gap-12"),
+                align === "end" && "lg:items-end",
+                align === "center" && "lg:items-center",
+                align === "start" && "lg:items-start"
+              )
         )}
       >
-        <div className="min-w-0">
+        <div className={cn("min-w-0", flush && pad)}>
           {eyebrow ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">{eyebrow}</div>
           ) : null}
@@ -291,10 +340,28 @@ export function PageHero({
             </div>
           ) : null}
           {stamp ? (
-            <div className="mt-7 flex flex-wrap gap-x-8 gap-y-3">{stamp}</div>
+            <div
+              className={cn(
+                "flex flex-wrap items-end gap-x-8 gap-y-3",
+                meta || lede || actions ? "mt-7" : "mt-3"
+              )}
+            >
+              {stamp}
+            </div>
           ) : null}
         </div>
-        {aside ? <div className="min-w-0">{aside}</div> : null}
+        {aside ? (
+          <div
+            className={cn(
+              "min-w-0",
+              // Phone: the wash already tints the frame. A stacked 16:9 poster
+              // under the title is the banner that ate the page.
+              flush && "max-lg:hidden h-full lg:min-h-0"
+            )}
+          >
+            {aside}
+          </div>
+        ) : null}
       </div>
     </HeroFrame>
   );

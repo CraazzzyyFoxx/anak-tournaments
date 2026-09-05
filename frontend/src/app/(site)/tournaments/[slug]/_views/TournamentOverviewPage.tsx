@@ -18,6 +18,7 @@ import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { normalizePlayerRole, playerRoleSlotCode } from "@/lib/player-role";
 import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster-shape";
+import { getStreamStatus, STREAM_STATUS_META } from "@/lib/stream-platform";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { cn } from "@/lib/utils";
 import encounterService from "@/services/encounter.service";
@@ -27,7 +28,7 @@ import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import type { Encounter } from "@/types/encounter.types";
 import type { Registration } from "@/types/registration.types";
-import type { Team } from "@/types/team.types";
+import type { StreamEntry } from "@/types/stream.types";
 import type { StageSummary, Standings, TournamentStatus } from "@/types/tournament.types";
 
 import { MapPoolCard } from "../_components/MapPoolCard";
@@ -277,6 +278,77 @@ function CardLink({ href, children }: Readonly<{ href: string; children: React.R
     >
       {children}
     </Link>
+  );
+}
+
+function OverviewStreamCard({
+  official,
+  href,
+  action,
+  viewers
+}: Readonly<{
+  official: StreamEntry;
+  href: string;
+  action: React.ReactNode;
+  viewers: string | null;
+}>) {
+  const t = useTranslations();
+  const status = getStreamStatus(official.live);
+  const meta = STREAM_STATUS_META[status];
+
+  return (
+    <OverviewCard title={t("tournamentDetail.overview.stream.title")} action={action}>
+      <Link
+        href={href}
+        className="group relative block overflow-hidden rounded-lg bg-[color:var(--aqt-overlay-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+      >
+        {official.thumbnail_url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- remote poster from an arbitrary streaming host; not in `next.config` image domains.
+          <img
+            src={official.thumbnail_url}
+            alt=""
+            className="aspect-video w-full object-cover transition-[filter] duration-300 group-hover:brightness-110 motion-reduce:transition-none"
+            loading="lazy"
+          />
+        ) : (
+          <span aria-hidden className="block aspect-video w-full bg-[color:var(--aqt-overlay-3)]" />
+        )}
+        {meta.labelKey ? (
+          <span
+            className="absolute inset-x-0 top-0 z-[1] flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em]"
+            style={
+              status === "live"
+                ? {
+                    background: "color-mix(in srgb, var(--aqt-rose) 28%, transparent)",
+                    color: "var(--aqt-rose)"
+                  }
+                : {
+                    background: "var(--aqt-overlay-3)",
+                    color: "var(--aqt-fg-muted)"
+                  }
+            }
+          >
+            {meta.hasDot ? (
+              <span
+                aria-hidden
+                className="size-1.5 rounded-full bg-current [animation:aqtPulse_2s_ease-in-out_infinite] motion-reduce:animate-none"
+              />
+            ) : null}
+            {t(meta.labelKey)}
+          </span>
+        ) : null}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_42%,hsl(220_22%_4%/0.88))]"
+        />
+        <span className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 p-3">
+          <span className="text-sm font-semibold text-[color:var(--aqt-fg)]">{official.channel}</span>
+          {viewers ? (
+            <span className="aqt-tnum text-[11px] text-[color:var(--aqt-fg-muted)]">{viewers}</span>
+          ) : null}
+        </span>
+      </Link>
+    </OverviewCard>
   );
 }
 
@@ -986,44 +1058,26 @@ export default function TournamentOverviewPage({
             {/* Poster only, no autoplay: the broadcast dock already owns the
                 player, and a second one would fight it for the audio. */}
             {official ? (
-              <OverviewCard title={t("tournamentDetail.overview.stream.title")}>
-                <Link
-                  href={`${overviewHref}/stream`}
-                  className="block overflow-hidden rounded-md border border-[color:var(--aqt-border)] transition-colors hover:border-[color:var(--aqt-border-3)]"
-                >
-                  {official.thumbnail_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- remote poster from an arbitrary streaming host; not in `next.config` image domains.
-                    <img
-                      src={official.thumbnail_url}
-                      alt=""
-                      className="aspect-video w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : null}
-                  <span className="block px-2.5 py-2 text-sm font-semibold">
-                    {official.channel}
-                  </span>
-                  {official.viewer_count != null ? (
-                    <span className="aqt-tnum block px-2.5 pb-2 text-[11px] text-[color:var(--aqt-fg-faint)]">
-                      {t("tournamentDetail.overview.stream.viewers", {
-                        count: format.number(official.viewer_count)
-                      })}
-                    </span>
-                  ) : null}
-                </Link>
-                <div className="mt-2 grid gap-1">
+              <OverviewStreamCard
+                official={official}
+                href={`${overviewHref}/stream`}
+                action={
                   <CardLink href={`${overviewHref}/stream`}>
-                    {t("tournamentDetail.overview.stream.open")}
+                    {participantsOnAir > 0
+                      ? t("tournamentDetail.overview.stream.participants", {
+                          count: participantsOnAir
+                        })
+                      : t("tournamentDetail.overview.stream.open")}
                   </CardLink>
-                  {participantsOnAir > 0 ? (
-                    <CardLink href={`${overviewHref}/stream`}>
-                      {t("tournamentDetail.overview.stream.participants", {
-                        count: participantsOnAir
-                      })}
-                    </CardLink>
-                  ) : null}
-                </div>
-              </OverviewCard>
+                }
+                viewers={
+                  official.viewer_count != null
+                    ? t("tournamentDetail.overview.stream.viewers", {
+                        count: format.number(official.viewer_count)
+                      })
+                    : null
+                }
+              />
             ) : null}
             {mapPoolCard}
             <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>

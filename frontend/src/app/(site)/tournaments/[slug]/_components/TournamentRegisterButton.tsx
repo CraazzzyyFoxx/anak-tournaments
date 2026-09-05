@@ -17,7 +17,11 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import registrationService from "@/services/registration.service";
 import { tournamentHref } from "@/lib/tournament-url";
-import { TOURNAMENT_ACTION_CLASS } from "./tournamentActionClass";
+import {
+  TOURNAMENT_ACTION_CLASS,
+  TOURNAMENT_PRIMARY_ACTION_CLASS,
+  TOURNAMENT_TEXT_ACTION_CLASS,
+} from "./tournamentActionClass";
 import type { Tournament } from "@/types/tournament.types";
 
 import { useTranslations } from "next-intl";
@@ -26,9 +30,14 @@ import TeamRegistrationEntry from "@/components/registration/TeamRegistrationEnt
 
 type Props = {
   tournament: Tournament;
+  /** `"text"` — header stamp row. Default is the 36px box for the rail. */
+  tone?: "box" | "text";
 };
 
-export default function TournamentRegisterButton({ tournament }: Readonly<Props>) {
+export default function TournamentRegisterButton({
+  tournament,
+  tone = "box",
+}: Readonly<Props>) {
   const workspaceId = tournament.workspace_id;
   const tournamentId = tournament.id;
   const tournamentName = tournament.name;
@@ -123,7 +132,7 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
       <button
         type="button"
         onClick={handleAuthClick}
-        className={TOURNAMENT_ACTION_CLASS}
+        className={tone === "text" ? TOURNAMENT_TEXT_ACTION_CLASS : TOURNAMENT_PRIMARY_ACTION_CLASS}
       >
         <LogIn className="size-4" aria-hidden />
         {t("registration.button.loginToRegister")}
@@ -146,7 +155,7 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
       <button
         type="button"
         onClick={() => setShowModal(true)}
-        className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
+        className={tone === "text" ? TOURNAMENT_TEXT_ACTION_CLASS : TOURNAMENT_PRIMARY_ACTION_CLASS}
       >
         <UserPlus className="size-4" aria-hidden />
         {t("registration.button.register")}
