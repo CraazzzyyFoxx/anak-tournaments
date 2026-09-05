@@ -3090,6 +3090,22 @@
   background: color-mix(in srgb, var(--gold) 14%, transparent);
   color: var(--gold);
 }
+/* A tie the advance (or upper-bracket) line cuts through. Declared after
+   `tr.advance` so it wins on equal specificity: the row is amber even while it
+   is provisionally advancing, because that is exactly what is unsettled. */
+.aqt-tn table.st tr.tie {
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+}
+.aqt-tn table.st tr.tie:hover td {
+  background: color-mix(in srgb, var(--amber) 13%, transparent);
+}
+.aqt-tn tr.tie .st-rank {
+  color: var(--amber);
+}
+.aqt-tn .st-status.tie {
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+  color: var(--amber);
+}
 .aqt-tn .st-cut {
   height: 0;
   position: relative;

@@ -75,19 +75,22 @@ export function upperBracketCut(
 }
 
 /**
- * Does a tie cluster sit on both sides of `boundary`?
+ * The tie clusters sitting on both sides of `boundary`.
  *
- * If it does, the assigned order — not anything the teams earned on the pitch —
- * decides which side each of them lands on, which is the one thing a standings
- * table has to say out loud. Soft signal: callers warn and block nothing.
+ * For those teams the assigned order — not anything they earned on the pitch —
+ * decides which side of the line they land on, which is the one thing a
+ * standings table has to say out loud. Soft signal: callers mark the rows and
+ * block nothing.
  */
-export function tieStraddlesBoundary(rows: Standings[], boundary: number): boolean {
-  return rows.some(
-    (row) =>
-      row.tie_group != null &&
-      row.position <= boundary &&
-      rows.some((other) => other.tie_group === row.tie_group && other.position > boundary)
-  );
+export function straddlingTieGroups(rows: Standings[], boundary: number): Set<number> {
+  const groups = new Set<number>();
+  for (const row of rows) {
+    if (row.tie_group == null || row.position > boundary) continue;
+    if (rows.some((other) => other.tie_group === row.tie_group && other.position > boundary)) {
+      groups.add(row.tie_group);
+    }
+  }
+  return groups;
 }
 
 type ResultKind = "w" | "l" | "t";
@@ -224,14 +227,21 @@ const StandingsTable = ({
 
   const showCut = is_groups && sortedStandings.length > resolvedAdvanceCount;
 
-  const tieStraddlesCut = showCut && tieStraddlesBoundary(sortedStandings, resolvedAdvanceCount);
-
   // The second boundary inside the advancing block: Upper vs Lower bracket.
   const upperCut = is_groups
     ? upperBracketCut(stages, standings[0]?.stage ?? null, resolvedAdvanceCount)
     : null;
   const showUpperCut = upperCut != null && sortedStandings.length > upperCut;
-  const tieStraddlesUpperCut = showUpperCut && tieStraddlesBoundary(sortedStandings, upperCut);
+
+  // Which clusters are cut by which line. A cluster split by BOTH reports the
+  // advance line: being out beats starting a bracket down.
+  const tiedAtCut = showCut
+    ? straddlingTieGroups(sortedStandings, resolvedAdvanceCount)
+    : new Set<number>();
+  const tiedAtUpperCut =
+    showUpperCut && upperCut != null
+      ? straddlingTieGroups(sortedStandings, upperCut)
+      : new Set<number>();
   const tieClusterTitle = t("standings.tieCluster");
   const columnCount = is_groups ? 9 : 6;
 
@@ -254,7 +264,9 @@ const StandingsTable = ({
           <thead>
             {is_groups ? (
               <tr>
-                <th scope="col" style={{ width: 36 }}>
+                {/* Wide enough for a two-digit rank plus the tie `=` marker,
+                    which otherwise wraps under the number. */}
+                <th scope="col" className="whitespace-nowrap" style={{ width: 52 }}>
                   #
                 </th>
                 <th scope="col" className={styles.stickyTeamColumn}>
@@ -269,10 +281,13 @@ const StandingsTable = ({
                 <th scope="col" className="r" style={{ width: 48 }} title={t("common.headToHead")}>
                   {t("standings.colH2H")}
                 </th>
+                {/* Two numbers, and `13.0 · 17.5` is the widest they get: the
+                    column is sized for that so the pair never breaks onto a
+                    second line and doubles the row's height. */}
                 <th
                   scope="col"
-                  className="r"
-                  style={{ width: 96 }}
+                  className="r whitespace-nowrap"
+                  style={{ width: 116 }}
                   title={t("standings.buchholzMedianFull")}
                 >
                   {t("common.buchholz")}
@@ -321,14 +336,33 @@ const StandingsTable = ({
               const wPct = total > 0 ? (maps.won / total) * 100 : 0;
               const advancing = is_groups && position <= resolvedAdvanceCount;
               const crowned = !is_groups && crownTop && position === 1;
-              const rowClass = crowned ? "crown" : advancing ? "advance" : undefined;
+              // A tie the line cuts through is the row's real status: whether it
+              // advances (or starts a bracket down) is not settled by results.
+              const tieVerdict =
+                tieHead == null
+                  ? null
+                  : tiedAtCut.has(tieHead)
+                    ? ("advance" as const)
+                    : tiedAtUpperCut.has(tieHead)
+                      ? ("upper" as const)
+                      : null;
+              const tieVerdictTitle =
+                tieVerdict === "advance"
+                  ? t("standings.tieDecidesAdvance")
+                  : tieVerdict === "upper"
+                    ? t("standings.tieDecidesUpper")
+                    : undefined;
+              const rowClass = cn(
+                crowned ? "crown" : advancing ? "advance" : undefined,
+                tieVerdict ? "tie" : undefined
+              );
 
               return (
                 <React.Fragment
                   key={`${standing.stage_item_id ?? standing.stage_id ?? "s"}-${standing.team_id}`}
                 >
-                  <tr className={rowClass}>
-                    <td>
+                  <tr className={rowClass || undefined}>
+                    <td className="whitespace-nowrap">
                       {/* Every row of a cluster shows its head's position, so
                           4/4/6 reads as "these two were never separated". The
                           next distinct row keeps the position it earned.
@@ -372,7 +406,7 @@ const StandingsTable = ({
                         <td className="r font-mono tabular-nums text-[color:var(--fg-dim)]">
                           {standing.tb ? standing.tb : "—"}
                         </td>
-                        <td className="r font-mono tabular-nums text-[color:var(--fg-dim)]">
+                        <td className="r font-mono tabular-nums whitespace-nowrap text-[color:var(--fg-dim)]">
                           {standing.buchholz == null ? (
                             "—"
                           ) : (
@@ -396,7 +430,14 @@ const StandingsTable = ({
                           <FormChips results={results} />
                         </td>
                         <td className="c">
-                          {advancing ? (
+                          {/* The tie IS the status: the line cuts through this
+                              cluster, so "advancing" would be a promise the
+                              results have not made. */}
+                          {tieVerdict ? (
+                            <span className="st-status tie" title={tieVerdictTitle}>
+                              {t("standings.tieStatus")}
+                            </span>
+                          ) : advancing ? (
                             <span className="st-status adv">
                               <span className="arrow" />
                               {t("standings.advancing")}
@@ -439,47 +480,23 @@ const StandingsTable = ({
                   </tr>
 
                   {showUpperCut && index === upperCut - 1 && (
-                    <>
-                      <tr>
-                        <td
-                          colSpan={columnCount}
-                          className="st-cut st-upper-cut"
-                          data-label={t("standings.upperBracketCut", { count: upperCut })}
-                        />
-                      </tr>
-                      {tieStraddlesUpperCut && (
-                        <tr>
-                          <td
-                            colSpan={columnCount}
-                            className="st-tie-warning c text-[11px] text-[color:var(--amber)]"
-                          >
-                            {t("standings.tieAtUpperCut")}
-                          </td>
-                        </tr>
-                      )}
-                    </>
+                    <tr>
+                      <td
+                        colSpan={columnCount}
+                        className="st-cut st-upper-cut"
+                        data-label={t("standings.upperBracketCut", { count: upperCut })}
+                      />
+                    </tr>
                   )}
 
                   {showCut && index === resolvedAdvanceCount - 1 && (
-                    <>
-                      <tr>
-                        <td
-                          colSpan={columnCount}
-                          className="st-cut"
-                          data-label={t("common.topAdvance", { count: resolvedAdvanceCount })}
-                        />
-                      </tr>
-                      {tieStraddlesCut && (
-                        <tr>
-                          <td
-                            colSpan={columnCount}
-                            className="st-tie-warning c text-[11px] text-[color:var(--amber)]"
-                          >
-                            {t("standings.tieAtCut")}
-                          </td>
-                        </tr>
-                      )}
-                    </>
+                    <tr>
+                      <td
+                        colSpan={columnCount}
+                        className="st-cut"
+                        data-label={t("common.topAdvance", { count: resolvedAdvanceCount })}
+                      />
+                    </tr>
                   )}
                 </React.Fragment>
               );

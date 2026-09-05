@@ -204,10 +204,10 @@ describe("standings tie visibility", () => {
     const ranks = [...container.querySelectorAll("tbody .st-rank")].map((node) => node.textContent);
 
     expect(ranks).toEqual(["1", "2", "2", "4", "5"]);
-    expect(container.querySelector(".st-tie-warning")).toBeNull();
+    expect(container.querySelector("tbody tr.tie")).toBeNull();
   });
 
-  it("warns when a tie cluster spans the cut-line", async () => {
+  it("marks the rows a cut-line splits as TIE instead of promising them through", async () => {
     // Inherits the stage's advance_count of 2, so positions 2 and 3 — one
     // cluster — land on opposite sides of the line.
     const group = groupItem(101, null);
@@ -223,7 +223,17 @@ describe("standings tie visibility", () => {
       [groups]
     );
 
-    expect(container.querySelector(".st-tie-warning")?.textContent).toBe(en.standings.tieAtCut);
+    const tied = [...container.querySelectorAll("tbody tr.tie")];
+    expect(tied).toHaveLength(2);
+    // The row above the line would have said "Adv" — a promise the results
+    // never made, since the assigned order is what puts it there.
+    expect(tied.map((row) => row.querySelector(".st-status")?.textContent)).toEqual([
+      en.standings.tieStatus,
+      en.standings.tieStatus
+    ]);
+    expect(tied[0].querySelector(".st-status")?.getAttribute("title")).toBe(
+      en.standings.tieDecidesAdvance
+    );
   });
 });
 
@@ -260,8 +270,10 @@ describe("upper vs lower bracket boundary", () => {
 
     const upper = container.querySelector(".st-upper-cut");
     expect(upper?.getAttribute("data-label")).toBe("Top 2 → upper bracket");
-    expect(container.querySelector(".st-tie-warning")?.textContent).toBe(
-      en.standings.tieAtUpperCut
+    const tied = [...container.querySelectorAll("tbody tr.tie")];
+    expect(tied).toHaveLength(2);
+    expect(tied[0].querySelector(".st-status")?.getAttribute("title")).toBe(
+      en.standings.tieDecidesUpper
     );
   });
 
