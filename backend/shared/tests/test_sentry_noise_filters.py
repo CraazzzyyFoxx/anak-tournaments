@@ -88,6 +88,46 @@ class BeforeSendTests(TestCase):
                 event = {"event_id": "keep-me"}
                 self.assertIs(event, _before_send(event, _hint(exc)))
 
+    def test_drops_asyncpg_connection_closed_even_when_sqlalchemy_wraps_it(self) -> None:
+        """Postgres restart opens a Sentry group per in-flight query because
+        SQLAlchemy wraps ``ConnectionDoesNotExistError`` in ``DBAPIError``.
+        The filter must walk ``orig``/``__cause__``, not only ``type(exc).__mro__``.
+        """
+
+        class ConnectionDoesNotExistError(Exception):
+            pass
+
+        class DBAPIError(Exception):
+            def __init__(self, orig: BaseException) -> None:
+                super().__init__(orig)
+                self.orig = orig
+
+        self.assertIsNone(_before_send({}, _hint(ConnectionDoesNotExistError())))
+        self.assertIsNone(_before_send({}, _hint(DBAPIError(ConnectionDoesNotExistError()))))
+
+    def test_keeps_wrapped_query_defects(self) -> None:
+        """Unwrapping ``orig`` must not start dropping DivisionByZero / timeouts."""
+
+        class DivisionByZeroError(Exception):
+            pass
+
+        class QueryCanceledError(Exception):
+            pass
+
+        class DBAPIError(Exception):
+            def __init__(self, orig: BaseException) -> None:
+                super().__init__(orig)
+                self.orig = orig
+
+        for orig in (DivisionByZeroError(), QueryCanceledError()):
+            with self.subTest(orig=type(orig).__name__):
+                event = {"event_id": "keep-me"}
+                self.assertIs(event, _before_send(event, _hint(DBAPIError(orig))))
+
+    def test_drops_asyncio_invalid_state_from_cancelled_asyncpg_tls(self) -> None:
+        self.assertIsNone(_before_send({}, _hint(asyncio.InvalidStateError("invalid state"))))
+
+
     def test_drops_events_from_noisy_loggers(self) -> None:
         # faststream duplicates an exception it re-raises; the OTLP exporter
         # reports a collector it cannot reach and retries on its own.

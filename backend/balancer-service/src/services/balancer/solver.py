@@ -5,6 +5,7 @@ from typing import Any
 
 from loguru import logger
 
+from shared.core.errors import BaseAPIException as HTTPException
 from src.domain.balancer.runtime import balance_teams, balance_teams_tournament
 
 
@@ -14,13 +15,16 @@ async def run_balance(
     progress_callback,
     role_mask: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    variants = await asyncio.to_thread(
-        balance_teams_tournament,
-        input_data,
-        config_overrides,
-        progress_callback,
-        role_mask,
-    )
+    try:
+        variants = await asyncio.to_thread(
+            balance_teams_tournament,
+            input_data,
+            config_overrides,
+            progress_callback,
+            role_mask,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"variants": variants}
 
 
