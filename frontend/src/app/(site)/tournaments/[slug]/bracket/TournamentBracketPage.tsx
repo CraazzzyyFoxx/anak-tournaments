@@ -9,7 +9,7 @@ import { ConnectionIndicator } from "@/components/realtime/ConnectionIndicator";
 import StandingsTable from "@/components/StandingsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { SegmentedLinks } from "@/components/ui/segmented";
+import { SegmentedLinks, type SegmentedLinkItem } from "@/components/ui/segmented";
 import { toggleVariants, segmentedFrame } from "@/components/ui/toggle";
 import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
 import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
@@ -104,12 +104,7 @@ function GroupStagePanel({
   onReport?: (encounter: Encounter) => void;
   canEdit?: (encounter: Encounter) => boolean;
   canReport?: (encounter: Encounter) => boolean;
-  bracketTabs?: Array<{
-    key: string;
-    href: string;
-    label: string;
-    isActive: boolean;
-  }>;
+  bracketTabs?: readonly SegmentedLinkItem[];
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
   /** `?view=standings` opens the table first; anything else opens the matches. */
   defaultView?: "matches" | "standings";
@@ -132,7 +127,11 @@ function GroupStagePanel({
         {bracketTabs && bracketTabs.length > 1 ? (
           <div className="flex min-w-0 flex-col items-start gap-2">
             <div className="flex flex-wrap items-center gap-3">
-              <SegmentedLinks items={bracketTabs} label={t("tournamentDetail.stageTabsLabel")} />
+              <SegmentedLinks
+                items={bracketTabs}
+                label={t("tournamentDetail.stageTabsLabel")}
+                size="default"
+              />
               {stageItem && (
                 <span className="text-sm font-semibold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
                   / {stageItem.name}
@@ -324,13 +323,18 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
       ? [primaryStage]
       : [];
 
+  // The encounters query pulls the whole tournament, not just the selected
+  // stage, so it also answers "does that other tab lead anywhere?". Until it
+  // resolves nothing is disabled — a tab that flickers inert is worse than a
+  // tab that lands on an empty state.
+  const stageIdsWithMatches = useMemo(
+    () => new Set((encountersQuery.data?.results ?? []).map((encounter) => encounter.stage_id)),
+    [encountersQuery.data?.results]
+  );
+  const matchCountsKnown = encountersQuery.data !== undefined;
+
   const bracketTabs = useMemo(() => {
-    const tabs: Array<{
-      key: string;
-      href: string;
-      label: string;
-      isActive: boolean;
-    }> = [];
+    const tabs: SegmentedLinkItem[] = [];
 
     const groupScopeCount = groupStages.reduce(
       (count, stage) => count + Math.max(stage.items.length, 1),
@@ -343,6 +347,11 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
       viewParam === "groups" ||
       (!!activeStageId && groupStages.some((stage) => stage.id === activeStageId));
 
+    // The tab you are standing on stays live even when empty; you are already
+    // looking at its empty state.
+    const isDead = (isActive: boolean, stageIds: readonly number[]) =>
+      !isActive && matchCountsKnown && !stageIds.some((id) => stageIdsWithMatches.has(id));
+
     if (groupScopeCount > 1) {
       tabs.push({
         key: "group-stage",
@@ -351,19 +360,26 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
             ? tournamentHref(tournament, `/bracket?stage=${groupStages[0].id}`)
             : tournamentHref(tournament, "/bracket?view=groups"),
         label: t("common.groupStage"),
-        isActive: isGroupViewActive
+        isActive: isGroupViewActive,
+        disabled: isDead(
+          isGroupViewActive,
+          groupStages.map((stage) => stage.id)
+        )
       });
     } else if (groupStages.length === 1) {
       const stage = groupStages[0];
+      const isActive = !viewParam && stage.id === activeStageId;
       tabs.push({
         key: `stage-${stage.id}`,
         href: tournamentHref(tournament, `/bracket?stage=${stage.id}`),
         label: stage.name,
-        isActive: !viewParam && stage.id === activeStageId
+        isActive,
+        disabled: isDead(isActive, [stage.id])
       });
     }
 
     eliminationStages.forEach((stage) => {
+      const isActive = !viewParam && stage.id === activeStageId;
       tabs.push({
         key: `stage-${stage.id}`,
         href: tournamentHref(tournament, `/bracket?stage=${stage.id}`),
@@ -371,7 +387,8 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
           eliminationStages.length === 1 && groupStages.length > 0
             ? t("common.playoff")
             : stage.name,
-        isActive: !viewParam && stage.id === activeStageId
+        isActive,
+        disabled: isDead(isActive, [stage.id])
       });
     });
 
@@ -381,8 +398,10 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
     eliminationStages,
     fallbackStage?.id,
     queryPlan.initialStageId,
+    matchCountsKnown,
+    stageIdsWithMatches,
     viewParam,
-    tournament.id,
+    tournament,
     t
   ]);
 
@@ -538,6 +557,7 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                             <SegmentedLinks
                               items={bracketTabs}
                               label={t("tournamentDetail.stageTabsLabel")}
+                              size="default"
                             />
                             <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
                               {stage.stage_type.replace(/_/g, " ")}
