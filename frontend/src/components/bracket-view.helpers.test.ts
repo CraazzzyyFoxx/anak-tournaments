@@ -2,12 +2,14 @@ import { describe, expect, it } from "bun:test";
 
 import type { Encounter, EncounterSlotSource } from "@/types/encounter.types";
 import {
+  activeRoundNumber,
   bracketRoundLabel,
   buildRoundGroups,
   computeMatchNumbers,
   computeSlotHints,
   getDoubleEliminationFinalRounds,
   getRoundSectionMatchCapacity,
+  orderEliminationRounds,
   stageFinalRounds
 } from "@/components/bracket-view.helpers";
 
@@ -133,6 +135,42 @@ describe("bracket view helpers", () => {
       home: `L M${matchNumbers.get(1)}`,
       away: null
     });
+  });
+});
+
+// Both bracket surfaces open on the round in play, so this is what decides
+// which column the tree scrolls to and which chip the phone list selects.
+describe("active bracket round", () => {
+  const settled = (id: number, round: number) => ({
+    ...createEncounter(id, round),
+    status: "completed"
+  });
+
+  it("picks the first round in play order that still has an unsettled match", () => {
+    const encounters = [
+      settled(1, 1),
+      settled(2, 1),
+      settled(3, -1),
+      createEncounter(4, 2),
+      createEncounter(5, -2),
+      createEncounter(6, 3)
+    ];
+
+    const { groups } = orderEliminationRounds(encounters, "double_elimination");
+
+    expect(activeRoundNumber(groups)).toBe(2);
+  });
+
+  it("falls back to the last round once every match is settled", () => {
+    const encounters = [settled(1, 1), settled(2, 2), settled(3, 3)];
+
+    const { groups } = orderEliminationRounds(encounters, "single_elimination");
+
+    expect(activeRoundNumber(groups)).toBe(3);
+  });
+
+  it("has no round to open on an empty bracket", () => {
+    expect(activeRoundNumber([])).toBeNull();
   });
 });
 

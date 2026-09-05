@@ -180,6 +180,26 @@ export function orderEliminationRounds(
   };
 }
 
+/** Encounter statuses the platform treats as settled. Mirrors `BracketView`. */
+const SETTLED_STATUSES = new Set(["completed", "finished", "closed"]);
+
+/**
+ * The round a bracket is currently on: the first, in the given play order, that
+ * still holds an unsettled match — the last round once everything is played.
+ *
+ * Both bracket surfaces open here (the phone list selects it, the tree scrolls
+ * to it), because round 1 of a running playoff was decided days ago and is the
+ * least interesting column on screen. Pass rounds in play order —
+ * `orderEliminationRounds().groups`, not raw `buildRoundGroups` — or a lower
+ * final reads as "before" a grand final it follows.
+ */
+export function activeRoundNumber(groups: RoundGroup[]): number | null {
+  const inPlay = groups.find((group) =>
+    group.matches.some((match) => !SETTLED_STATUSES.has(match.status))
+  );
+  return (inPlay ?? groups[groups.length - 1])?.round ?? null;
+}
+
 /** The encounter fields `stageFinalRounds` reads. */
 export interface StageScopedRound {
   stage_id: number | null;

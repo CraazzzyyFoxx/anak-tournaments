@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import {
+  activeRoundNumber,
   buildRoundGroups,
   getDoubleEliminationFinalRounds
 } from "@/components/bracket-view.helpers";
@@ -44,10 +45,7 @@ export function MobileBracket({ encounters, type, highlightMatchId = null }: Rea
 
   const initialRound =
     rounds.find((g) => g.matches.some((m) => m.id === highlightMatchId))?.round ??
-    // Default to the round in play: the first one with an unsettled match.
-    rounds.find((g) => g.matches.some((m) => !["completed", "finished", "closed"].includes(m.status)))?.round ??
-    rounds[rounds.length - 1]?.round ??
-    null;
+    activeRoundNumber(rounds);
   const [round, setRound] = useState<number | null>(initialRound);
   const current = rounds.find((g) => g.round === round) ?? rounds[0];
 

@@ -22,11 +22,13 @@ import { EncounterRostersModal } from "@/components/EncounterRostersModal";
 import TeamName from "@/components/TeamName";
 import { withReturnTo } from "@/lib/return-to";
 import {
+  activeRoundNumber,
   buildRoundGroups as buildBracketRoundGroups,
   computeMatchNumbers as computeBracketMatchNumbers,
   computeSlotHints as computeBracketSlotHints,
   getDoubleEliminationFinalRounds as getBracketFinalRounds,
   getRoundSectionMatchCapacity,
+  orderEliminationRounds,
   type BracketMatch,
   type SlotHint
 } from "@/components/bracket-view.helpers";
@@ -841,6 +843,32 @@ export function BracketView<M extends BracketMatch>({
     node.scrollIntoView({ block: "center", inline: "center" });
   };
 
+  // Where the tree opens when nothing is deep-linked: the top-left corner of
+  // the round in play. A finished round 1 is not what a viewer came for, and
+  // the canvas is routinely wider than the viewport.
+  const focus = useMemo(() => {
+    if (highlightMatchId !== null) return null;
+    const round = activeRoundNumber(orderEliminationRounds(encounters, type).groups);
+    if (round === null) return null;
+    const column = layout.nodes.filter((node) => node.encounter.round === round);
+    if (column.length === 0) return null;
+    return {
+      x: Math.min(...column.map((node) => node.x)),
+      y: Math.min(...column.map((node) => node.y))
+    };
+  }, [encounters, type, layout.nodes, highlightMatchId]);
+
+  // Applied per scroller element, once. `dataset` rather than a ref flag
+  // because the inline canvas and the fullscreen one are two elements, and
+  // because a re-render (hover, a poll landing) must not yank a viewer who has
+  // already panned somewhere else.
+  const focusScroller = (el: HTMLDivElement | null) => {
+    if (!el || !focus || el.dataset.bracketFocused) return;
+    el.dataset.bracketFocused = "1";
+    el.scrollLeft = Math.max(0, focus.x - (el.clientWidth - CARD_WIDTH) / 2);
+    el.scrollTop = Math.max(0, focus.y - (el.clientHeight - CARD_HEIGHT) / 2);
+  };
+
   // Drag-to-pan with the mouse; touch keeps native scrolling. The scroller is
   // the event target, so the same handlers serve the inline and the fullscreen
   // copy without a shared ref pointing at whichever mounted last.
@@ -888,6 +916,7 @@ export function BracketView<M extends BracketMatch>({
 
   const canvas = (fullscreen: boolean) => (
     <div
+      ref={focusScroller}
       className={cn(
         "select-none overflow-auto",
         fullscreen ? "h-full w-full flex-1" : "max-h-[78vh]",

@@ -211,3 +211,55 @@ describe("BracketView live-stream indicator", () => {
     expect(container.querySelector("[data-live-team-stream]")).toBeNull();
   });
 });
+
+// The tree is routinely wider than its scroller, and round 1 of a running
+// playoff was decided days ago. So the canvas opens on the round in play.
+describe("BracketView opening round", () => {
+  const scroller = () => container.querySelector<HTMLDivElement>("[data-bracket-focused]");
+  /** The laid-out x of a match's card, which is its round's column. */
+  const columnX = (matchId: number) =>
+    Number.parseFloat(
+      container.querySelector<HTMLDivElement>(`[data-match-id="${matchId}"]`)!.style.left
+    );
+
+  const threeRounds = [
+    encounter({ id: 1, round: 1, status: "completed" }),
+    encounter({ id: 2, round: 1, status: "completed" }),
+    encounter({ id: 3, round: 2, status: "open" }),
+    encounter({ id: 4, round: 3, status: "open" })
+  ];
+
+  // The scroller has no measured width here, so the offset lands at the column
+  // rather than centred on it — enough to say WHICH column was chosen, which is
+  // the whole decision. Bracketing it by the next column keeps the assertion
+  // independent of the layout's spacing constants.
+  const opensOnColumnOf = (el: HTMLDivElement, matchId: number, nextMatchId: number) =>
+    el.scrollLeft >= columnX(matchId) && el.scrollLeft < columnX(nextMatchId);
+
+  it("scrolls the canvas to the first round that still has an unsettled match", () => {
+    render(<BracketView encounters={threeRounds} type="single_elimination" />);
+
+    // Round 2 (match 3), not round 1 (match 1) sitting at the canvas origin.
+    expect(opensOnColumnOf(scroller()!, 3, 4)).toBe(true);
+  });
+
+  it("leaves a settled bracket on its last round", () => {
+    render(
+      <BracketView
+        encounters={threeRounds.map((match) => ({ ...match, status: "completed" }))}
+        type="single_elimination"
+      />
+    );
+
+    // Round 3 (match 4) is last, so nothing lies to its right to bracket it.
+    expect(scroller()!.scrollLeft).toBeGreaterThanOrEqual(columnX(4));
+  });
+
+  it("yields to a deep link, which scrolls its own node into view instead", () => {
+    render(
+      <BracketView encounters={threeRounds} type="single_elimination" highlightMatchId={1} />
+    );
+
+    expect(scroller()).toBeNull();
+  });
+});
