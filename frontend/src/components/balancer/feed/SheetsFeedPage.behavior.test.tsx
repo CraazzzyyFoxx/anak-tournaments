@@ -11,6 +11,9 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NextIntlClientProvider } from "next-intl";
+
+import en from "@/i18n/messages/en.json";
 import type { AdminGoogleSheetFeed, MappingCatalog } from "@/types/balancer-admin.types";
 import SheetsFeedPage from "./SheetsFeedPage";
 
@@ -100,11 +103,13 @@ async function render() {
   root = createRoot(container);
   await act(async () => {
     root.render(
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
-      >
-        <SheetsFeedPage tournamentId={95} />
-      </QueryClientProvider>
+      <NextIntlClientProvider locale="en" messages={en}>
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+        >
+          <SheetsFeedPage tournamentId={95} />
+        </QueryClientProvider>
+      </NextIntlClientProvider>
     );
   });
   await settle();

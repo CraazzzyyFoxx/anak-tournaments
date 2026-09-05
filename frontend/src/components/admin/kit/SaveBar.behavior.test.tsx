@@ -13,6 +13,9 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NextIntlClientProvider } from "next-intl";
+
+import en from "@/i18n/messages/en.json";
 import { SaveBar } from "@/components/admin/kit/SaveBar";
 
 declare global {
@@ -36,7 +39,7 @@ async function render(props: Partial<React.ComponentProps<typeof SaveBar>> = {})
   root = createRoot(container);
   await act(async () => {
     root.render(
-      <>
+      <NextIntlClientProvider locale="en" messages={en}>
         <a href="/admin/settings/branding">Branding</a>
         <SaveBar
           dirty
@@ -45,7 +48,7 @@ async function render(props: Partial<React.ComponentProps<typeof SaveBar>> = {})
           onDiscard={onDiscard}
           {...props}
         />
-      </>
+      </NextIntlClientProvider>
     );
   });
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ export interface SaveBarProps {
   onDiscard: () => void;
   onSave: () => void;
   saving?: boolean;
+  /** Overrides the default "Save changes"; e.g. "Save rules". */
   primaryLabel?: string;
   secondary?: ReactNode;
   /**
@@ -50,6 +52,12 @@ export interface SaveBarProps {
  * dead "Save" button and a dirty one cannot be left behind by accident: it
  * shares `useUnsavedGuard` with `EntityFormDialog`, so navigating away goes
  * through the same discard prompt.
+ *
+ * Chrome matches `admin/BulkBar` and `ui/OverlayBar` -- the other two "act now"
+ * bars -- a rounded, bordered, blurred card floating above the content it acts
+ * on. It used to be a full-bleed strip with a top border only, which read as
+ * the page's footer rather than as a transient control, and was the one element
+ * of a settings screen not sitting in the card language around it.
  */
 export function SaveBar({
   dirty,
@@ -58,10 +66,11 @@ export function SaveBar({
   onDiscard,
   onSave,
   saving = false,
-  primaryLabel = "Save changes",
+  primaryLabel,
   secondary,
   guardNavigation = true
 }: Readonly<SaveBarProps>) {
+  const t = useTranslations("admin.saveBar");
   const router = useRouter();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
 
@@ -79,17 +88,17 @@ export function SaveBar({
     <>
       <div
         role="region"
-        aria-label="Unsaved changes"
-        className="sticky bottom-0 z-10 -mx-4 mt-4 flex flex-wrap items-center gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:-mx-5 md:px-5"
+        aria-label={t("unsavedChanges")}
+        className="sticky bottom-4 z-10 mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80"
       >
         <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{summary}</p>
         {secondary}
         <Button type="button" variant="outline" size="sm" onClick={onDiscard} disabled={saving}>
-          Discard
+          {t("discard")}
         </Button>
         <Button type="button" size="sm" onClick={onSave} disabled={saving}>
           {saving ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : null}
-          {primaryLabel}
+          {primaryLabel ?? t("save")}
         </Button>
       </div>
 
@@ -97,10 +106,9 @@ export function SaveBar({
         open={pendingHref !== null}
         onOpenChange={(open) => (open ? undefined : setPendingHref(null))}
         intent={{
-          title: "Discard unsaved changes?",
-          description:
-            "You have unsaved changes on this page. Leave now and the current edits will be lost.",
-          confirmLabel: "Discard changes",
+          title: t("discardTitle"),
+          description: t("discardDescription"),
+          confirmLabel: t("discardConfirm"),
           tone: "warning"
         }}
         onConfirm={() => {

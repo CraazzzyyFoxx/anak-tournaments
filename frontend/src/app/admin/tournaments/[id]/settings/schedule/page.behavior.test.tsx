@@ -155,7 +155,7 @@ describe("Settings › Schedule", () => {
 
     await act(async () => {
       [...document.querySelectorAll("button")]
-        .find((button) => button.textContent?.trim() === "Save changes")
+        .find((button) => button.textContent?.trim() === "save")
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();

@@ -167,19 +167,19 @@ describe("Workspace settings › Branding", () => {
     await render();
 
     expect(container.querySelector<HTMLInputElement>("#brand-primary")?.value).toBe("#0ea5a4");
-    expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
+    expect(container.querySelector('[aria-label="unsavedChanges"]')).toBeNull();
   });
 
   it("PATCHes the edited colour alone — no visibility, domain or general field", async () => {
     await render();
 
     await type(container.querySelector<HTMLInputElement>("#brand-primary")!, "#ff0055");
-    expect(container.querySelector('[aria-label="Unsaved changes"]')?.textContent).toContain(
+    expect(container.querySelector('[aria-label="unsavedChanges"]')?.textContent).toContain(
       "1 changed field"
     );
 
     await act(async () => {
-      button("Save changes")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button("save")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();
 
@@ -208,7 +208,7 @@ describe("Workspace settings › Branding", () => {
 
     await type(container.querySelector<HTMLInputElement>("#brand-primary")!, "#000000");
     await act(async () => {
-      button("Discard")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button("discard")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();
 

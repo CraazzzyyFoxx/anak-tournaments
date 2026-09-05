@@ -159,13 +159,20 @@ def register(broker: Any, logger: Any) -> None:
                             f"so send preset: '{BRACKET_PRESET}' or null"
                         ),
                     )
-                pick_ban_session.validate_pick_ban_slot_config(
-                    [slot.candidates for slot in body.slots],
-                    reserves=[slot.reserve_item_id for slot in body.slots],
-                )
+                # An empty slot list is a rules TEMPLATE: rotation, timer and the
+                # rest, authored at a wide scope for narrower ones to inherit,
+                # with the candidates filled in where matches are actually played
+                # (`PickBanSessionService._has_pool`).
+                if body.slots:
+                    pick_ban_session.validate_pick_ban_slot_config(
+                        [slot.candidates for slot in body.slots],
+                        reserves=[slot.reserve_item_id for slot in body.slots],
+                    )
             else:
                 _reject_other_modes_field(body.slots, "slots", mode=body.mode)
-                pick_ban_session.validate_pick_ban_config(body.sequence, body.item_ids, kind=body.kind)
+                pick_ban_session.validate_pick_ban_config(
+                    body.sequence, body.item_ids, kind=body.kind, pool_optional=True
+                )
             if body.round is not None and body.stage_id is None:
                 raise HTTPException(status_code=422, detail="round requires stage_id")
             config = await pick_ban_config.pick_ban_config_service.upsert_config(

@@ -850,6 +850,14 @@
     }
   },
   "admin": {
+    "saveBar": {
+      "unsavedChanges": "Unsaved changes",
+      "save": "Save changes",
+      "discard": "Discard",
+      "discardTitle": "Discard unsaved changes?",
+      "discardDescription": "You have unsaved changes on this page. Leave now and the current edits will be lost.",
+      "discardConfirm": "Discard changes"
+    },
     "roundSchedule": {
       "title": "Round schedule",
       "description": "One planned start time per round, written to every match of that round. A match moved on its own keeps its time unless you confirm overwriting it. Times are in your local time zone.",
@@ -2997,6 +3005,10 @@
       "scopeTaken": "A rule set already covers this scope. Saving replaces it.",
       "inheritedPrefill": "Prefilled from {scope} — the rules this scope plays by today. Change only what has to differ; saving stores these values as this scope's own.",
       "sameAsScope": "Same as {scope}",
+      "inheritedValue": "{scope}: {value}",
+      "useInheritedValue": "Use that",
+      "valueOn": "On",
+      "valueOff": "Off",
       "poolSection": "2 · What captains choose from",
       "poolSectionHint": "The candidates a match draws on, and how they are grouped.",
       "modeLabel": "Pool shape",
@@ -3108,15 +3120,14 @@
       "protectWithoutStep": "The protect step is on, but no step in this order uses it, so nothing changes. Switch the step order to Custom and add a Protect step.",
       "uniqueRole": "One hero per role per side each round",
       "uniqueRoleHint": "Stops a side from picking two heroes of the same role in the same round.",
+      "rulesTemplate": "The pool is empty, so this is a rules template: it saves, and narrower scopes open prefilled from it, but no room opens here until candidates are added.",
       "validationTitle": "Fix these before saving",
       "validation": {
-        "emptyPool": "Add at least one candidate to the pool.",
         "emptySequence": "Add at least one step to the order.",
         "multipleDeciders": "Only one decider step is allowed.",
         "deciderNotLast": "The decider must be the last step.",
         "noPickOrDecider": "The order needs at least one pick or a decider.",
         "sequenceLongerThanPool": "The order has {steps} steps but the pool only has {items} candidates.",
-        "emptySlots": "Add at least one match group.",
         "slotTooFewCandidates": "Match {slot} needs at least two candidates.",
         "roundSlotTooFewCandidates": "Round {round}, match {slot} needs at least two candidates.",
         "heroDecider": "A hero order has no decider: nothing is left to decide once the bans are in."
@@ -3143,6 +3154,7 @@
       "scopeTreeLabel": "Scope",
       "scopeState": {
         "own": "overridden",
+        "template": "rules only",
         "redundant": "same as above",
         "inherited": "inherited",
         "none": "no rules"

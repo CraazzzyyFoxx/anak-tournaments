@@ -200,7 +200,7 @@ describe("Settings › Challonge", () => {
     await type(container.querySelector<HTMLInputElement>("#settings-challonge")!, "owt-65");
     await act(async () => {
       [...document.querySelectorAll("button")]
-        .find((button) => button.textContent?.trim() === "Save changes")
+        .find((button) => button.textContent?.trim() === "save")
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();

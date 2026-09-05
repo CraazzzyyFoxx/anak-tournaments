@@ -344,11 +344,11 @@ describe("Divisions › draft editor", () => {
 
   it("cuts the ladder and surfaces the draft summary in the save bar", async () => {
     const container = await mount();
-    expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
+    expect(container.querySelector('[aria-label="unsavedChanges"]')).toBeNull();
 
     await click(byLabel("Start a new division at Champion 2"));
 
-    const bar = container.querySelector('[aria-label="Unsaved changes"]');
+    const bar = container.querySelector('[aria-label="unsavedChanges"]');
     expect(bar).toBeTruthy();
     expect(bar!.textContent).toContain("4 divisions");
     expect(bar!.textContent).toContain("1 edit");
@@ -357,7 +357,7 @@ describe("Divisions › draft editor", () => {
 
     // Undo puts it back and takes the bar away with it.
     await click(button("Undo last change"));
-    expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
+    expect(container.querySelector('[aria-label="unsavedChanges"]')).toBeNull();
   });
 
   it("saves the bands as tiers and the mappings alongside them", async () => {

@@ -20,6 +20,8 @@ import {
 
 const MARKER_CLASS: Record<ScopeConfigState, string> = {
   own: "bg-primary",
+  // Dashed-looking: rules are here, candidates are not.
+  template: "border border-primary bg-transparent",
   redundant: "bg-primary/40",
   inherited: "bg-muted-foreground/40",
   none: "border border-border bg-transparent"

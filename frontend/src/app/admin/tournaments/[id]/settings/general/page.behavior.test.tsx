@@ -227,19 +227,21 @@ describe("Settings › General", () => {
     await render();
 
     expect(container.querySelector<HTMLInputElement>("#settings-name")?.value).toBe("OWT 64");
-    expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
+    expect(container.querySelector('[aria-label="unsavedChanges"]')).toBeNull();
   });
 
   it("PATCHes the edited field alone, and never the schedule", async () => {
     await render();
 
     await type(container.querySelector<HTMLInputElement>("#settings-name")!, "OWT 65");
-    expect(container.querySelector('[aria-label="Unsaved changes"]')?.textContent).toContain(
+    // `next-intl` is mocked to the identity here (house convention for admin
+    // behavior tests), so `SaveBar`'s own copy renders as its message keys.
+    expect(container.querySelector('[aria-label="unsavedChanges"]')?.textContent).toContain(
       "1 changed field"
     );
 
     await act(async () => {
-      button("Save changes")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button("save")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();
 
@@ -255,7 +257,7 @@ describe("Settings › General", () => {
 
     await type(container.querySelector<HTMLInputElement>("#settings-name")!, "typo");
     await act(async () => {
-      button("Discard")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button("discard")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();
 

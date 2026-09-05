@@ -15,6 +15,7 @@ import {
   emptyPickBanDraft,
   fanOutRoundDrafts,
   findScopeCollision,
+  isRulesTemplate,
   pickBanDraftFromConfig,
   pickBanDraftToInput,
   protectHasNoStep,
@@ -173,8 +174,12 @@ describe("validation mirrors what the server would reject", () => {
     expect(validatePickBanDraft(draft(), 3)).toEqual([]);
   });
 
-  it("reports an empty pool", () => {
-    expect(validatePickBanDraft(draft({ itemIds: [] }), 3)).toEqual([{ key: "emptyPool" }]);
+  // A pool-less draft is a rules template, not a rejection: it is how the rules
+  // of a whole tournament are authored once for narrower scopes to inherit.
+  it("accepts an empty pool as a rules template", () => {
+    expect(validatePickBanDraft(draft({ itemIds: [] }), 3)).toEqual([]);
+    expect(isRulesTemplate(draft({ itemIds: [] }))).toBe(true);
+    expect(isRulesTemplate(draft())).toBe(false);
   });
 
   it("reports a custom order with no steps", () => {
@@ -211,10 +216,14 @@ describe("validation mirrors what the server would reject", () => {
     ).toEqual([{ key: "sequenceLongerThanPool", values: { steps: 3, items: 2 } }]);
   });
 
-  it("reports slot mode with no groups, and a group with nothing to ban", () => {
-    expect(validatePickBanDraft(draft({ mode: "slots", slots: [] }), 3)).toEqual([
-      { key: "emptySlots" },
-    ]);
+  it("accepts groups with no candidates as a template, and reports a half-filled one", () => {
+    expect(validatePickBanDraft(draft({ mode: "slots", slots: [] }), 3)).toEqual([]);
+    expect(
+      validatePickBanDraft(
+        draft({ mode: "slots", slots: [{ candidates: [], reserveItemId: null }] }),
+        3
+      )
+    ).toEqual([]);
     expect(
       validatePickBanDraft(
         draft({

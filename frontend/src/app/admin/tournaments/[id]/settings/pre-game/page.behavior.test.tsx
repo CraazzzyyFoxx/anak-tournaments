@@ -533,14 +533,16 @@ describe("Settings › Pre-game phase will not send a config the server rejects"
   it("keeps save inert with the reason on screen until the pool and the steps are both there", async () => {
     await mount({ url: "?scope=tournament&kind=hero&step=pool" });
 
-    expect(editor().textContent).toContain("Add at least one candidate to the pool.");
+    // An empty pool is not a rejection any more: it is a rules template, saved
+    // for narrower scopes to inherit and opening no room of its own.
+    expect(editor().textContent).toContain("this is a rules template");
 
     await click(only("Add heroes"));
     await click(only("Tracer"));
     await click(only("Genji"));
     await click(only("Reinhardt"));
 
-    expect(editor().textContent).not.toContain("Add at least one candidate to the pool.");
+    expect(editor().textContent).not.toContain("this is a rules template");
     // A hero order is never generated — it is one round's steps, hand-authored —
     // so an empty one is still a config the server would reject.
     expect(editor().textContent).toContain("Add at least one step to the order.");
@@ -556,6 +558,26 @@ describe("Settings › Pre-game phase will not send a config the server rejects"
     expect(editor().textContent).not.toContain("Add at least one step to the order.");
     await click(only("Save rules"));
     expect(upsertConfig).toHaveBeenCalledTimes(1);
+  });
+
+  // 2026-09-05: the rules and the pool share one row, so "set the rotation and
+  // the timer once for the whole tournament, pick the maps per stage" was
+  // unauthorable -- a tournament-wide pool is exactly what a per-stage
+  // regulation does not have, and the pool was required to save anything.
+  it("saves tournament-wide rules with no pool, as a template to inherit", async () => {
+    await mount({ url: "?scope=tournament&kind=map&step=sides" });
+
+    const timer = editor().querySelector<HTMLInputElement>("input");
+    await type(timer as HTMLInputElement, "45");
+
+    await click(only("Save rules"));
+
+    expect(upsertConfig).toHaveBeenCalledTimes(1);
+    const body = upsertConfig.mock.calls[0][1];
+    expect(body.stage_id).toBeNull();
+    expect(body.item_ids).toEqual([]);
+    expect(body.slots).toEqual([]);
+    expect(body.turn_timer_seconds).toBe(45);
   });
 
   it("sends the pool in pick order, with the round's own steps and no turn limit", async () => {
@@ -733,7 +755,9 @@ describe("Settings › Pre-game phase predicts a round scope before the bracket 
 
   function roundLabels() {
     return [...tree().querySelectorAll("a")].map((link) =>
-      (link.textContent ?? "").replace(/(overridden|inherited|no rules|same as above)$/, "").trim()
+      (link.textContent ?? "")
+        .replace(/(overridden|inherited|no rules|same as above|rules only)$/, "")
+        .trim()
     );
   }
 
@@ -888,6 +912,34 @@ describe("Settings › Pre-game phase prefills a narrower scope from the rules a
     await click(only("Remove the override"));
 
     expect(deleteConfig).toHaveBeenCalledWith(4);
+  });
+
+  // 2026-09-05: an override stores a COPY of the rules above it, and most are
+  // authored to change the pool, not the rules -- so a stage silently carried
+  // whatever the tournament said the day it was created, and nothing on screen
+  // distinguished "we chose this here" from "this came from above".
+  it("names what each rule inherits, and takes that value back in one click", async () => {
+    const stageWide: PickBanConfig = {
+      ...TOURNAMENT_MAP_CONFIG,
+      id: 4,
+      stage_id: 10,
+      turn_timer_seconds: 15
+    };
+    await mount({
+      configs: [TOURNAMENT_MAP_CONFIG, stageWide],
+      url: "?scope=stage:10&kind=map&step=sides"
+    });
+
+    // The rotation still agrees with the tournament; the timer is this scope's
+    // own choice, and the field says what it is overriding.
+    expect(editor().textContent).toContain("Same as Whole tournament");
+    expect(editor().textContent).toContain("Whole tournament: 30 seconds");
+    expect(editor().querySelector<HTMLInputElement>("input")?.value).toBe("15");
+
+    await click(only("Use that"));
+
+    expect(editor().querySelector<HTMLInputElement>("input")?.value).toBe("30");
+    expect(editor().textContent).not.toContain("Whole tournament: 30 seconds");
   });
 });
 

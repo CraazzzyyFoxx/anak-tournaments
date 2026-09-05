@@ -1,6 +1,7 @@
 import type { PickBanConfig, PickBanKind } from "@/types/tournament.types";
 import {
   findInheritedConfig,
+  isRulesTemplate,
   pickBanDraftFromConfig,
   sameRuleValues
 } from "../../components/pickBanConfig.helpers";
@@ -66,11 +67,13 @@ export function findScopeConfig(
  * What the tree says about a scope.
  *
  * - `own` — a saved config that actually decides something here;
+ * - `template` — a saved config with no pool: rules for narrower scopes to
+ *   inherit, playing nothing itself;
  * - `redundant` — a saved config whose rules only repeat the scope above it;
  * - `inherited` — no config here, but an ancestor's applies;
  * - `none` — no rules reach this scope at all, so its room stays closed.
  */
-export type ScopeConfigState = "own" | "redundant" | "inherited" | "none";
+export type ScopeConfigState = "own" | "template" | "redundant" | "inherited" | "none";
 
 export function scopeConfigState(
   kind: PickBanKind,
@@ -81,6 +84,10 @@ export function scopeConfigState(
   const inherited = findInheritedConfig(kind, scope.stageId, scope.round, configs);
 
   if (own != null) {
+    // Checked before "redundant": a pool-less row repeats its parent's rules by
+    // construction (it was prefilled from them), and calling that redundant
+    // would hide the one thing it is missing.
+    if (isRulesTemplate(pickBanDraftFromConfig(own))) return "template";
     return inherited != null &&
       sameRuleValues(pickBanDraftFromConfig(own), pickBanDraftFromConfig(inherited))
       ? "redundant"

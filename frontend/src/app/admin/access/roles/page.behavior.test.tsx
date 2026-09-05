@@ -366,11 +366,11 @@ describe("Access › Roles · one permission toggle", () => {
     );
 
     // The saved role holds match.read only, so nothing is dirty yet.
-    expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
+    expect(container.querySelector('[aria-label="unsavedChanges"]')).toBeNull();
 
     await click(box);
     await waitFor(
-      () => container.querySelector('[aria-label="Unsaved changes"]'),
+      () => container.querySelector('[aria-label="unsavedChanges"]'),
       "the save bar"
     );
     await click(button("Save role"));
@@ -419,7 +419,7 @@ describe("Access › Roles · unsaved draft", () => {
         "the match.update cell"
       )
     );
-    await waitFor(() => container.querySelector('[aria-label="Unsaved changes"]'), "the save bar");
+    await waitFor(() => container.querySelector('[aria-label="unsavedChanges"]'), "the save bar");
 
     // The list is buttons (the selection has to be PUSHED), so `SaveBar`'s own
     // anchor-click guard cannot see this: the screen intercepts it instead.

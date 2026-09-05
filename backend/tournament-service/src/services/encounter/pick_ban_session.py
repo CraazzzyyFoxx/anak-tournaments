@@ -288,6 +288,19 @@ class PickBanSessionService:
             round=encounter.round,
         )
 
+    @staticmethod
+    def has_pool(config: PickBanConfig) -> bool:
+        """Whether this config carries candidates of its own, i.e. whether a room
+        can be opened on it at all.
+
+        A config with no pool is a rules TEMPLATE (`validate_pick_ban_config`'s
+        ``pool_optional``): organizers author one at a wide scope so narrower ones
+        inherit its rotation, timer and steps. It plays nothing -- a scope that
+        resolves to it is "not configured", exactly as if no row existed, rather
+        than opening a room with an empty pool that no captain can act in.
+        """
+        return bool(config.slots) if config.mode == MapVetoMode.SLOTS else bool(config.items)
+
     async def settled_map_rounds(self, session: AsyncSession, encounter_id: int) -> int:
         """How many maps of the series the map pick-ban has settled -- picked, and
         possibly already played.
@@ -315,8 +328,10 @@ class PickBanSessionService:
     async def map_round_settled(self, session: AsyncSession, encounter: Encounter, round_number: int) -> bool:
         """Whether the map that round ``round_number`` will be played on is decided
         -- the precondition for that round's hero bans opening. An encounter with
-        no map pick-ban configured has no map phase to wait on."""
-        if await self._resolve_config(session, encounter, PickBanKind.MAP) is None:
+        no map pick-ban configured -- or one that resolves to a pool-less rules
+        template, which opens no room either -- has no map phase to wait on."""
+        map_config = await self._resolve_config(session, encounter, PickBanKind.MAP)
+        if map_config is None or not self.has_pool(map_config):
             return True
         return await self.settled_map_rounds(session, encounter.id) >= round_number
 
@@ -361,6 +376,10 @@ class PickBanSessionService:
         config = await self._resolve_config(session, encounter, kind)
         if config is None:
             return REASON_NOT_CONFIGURED
+        # A rules template is not a configured room: report it as such rather than
+        # as a slot-count problem the organizer cannot fix at that scope.
+        if not self.has_pool(config):
+            return REASON_NOT_CONFIGURED
         if config.mode == MapVetoMode.SLOTS:
             if not config.slots or encounter.best_of > len(config.slots):
                 return REASON_SLOT_COUNT_MISMATCH
@@ -402,7 +421,7 @@ class PickBanSessionService:
         if not await is_encounter_live(session, encounter):
             return None
         config = await self._resolve_config(session, encounter, kind)
-        if config is None:
+        if config is None or not self.has_pool(config):
             return None
 
         slots: list[list[int]] | None = None
@@ -919,20 +938,9 @@ pick_ban_session_service = PickBanSessionService()
 # ── admin config validation + serialization ──────────────────────────────────
 
 
-def validate_pick_ban_config(sequence: list[str], item_ids: list[int], *, kind: PickBanKind) -> None:
-    """Validate a flat-mode :class:`PickBanConfig` upsert body: same shape as
-    ``veto_session.validate_veto_config``, generalized over the wider
-    ``PICK_BAN_SEQUENCE_TOKENS`` vocabulary (adds ``protect_first``/
-    ``protect_second``) and over ``kind``.
-
-    A ``kind=hero`` sequence is ONE round's worth of steps, replayed for every
-    map of the series (``rounds_are_progressive``), and it bans out of a pool
-    that stays playable: there is no survivor for a ``decider`` to resolve to,
-    so the map rule "must end in a pick or a decider" does not apply and a
-    ``decider`` is refused outright rather than stalling the room later.
-    """
-    if not sequence:
-        raise HTTPException(status_code=422, detail="sequence must not be empty")
+def _validate_sequence_tokens(sequence: list[str], *, kind: PickBanKind) -> None:
+    """Vocabulary and decider placement -- the checks that hold whether or not
+    this config carries a pool of its own."""
     invalid = sorted({token for token in sequence if token not in engine.PICK_BAN_SEQUENCE_TOKENS})
     if invalid:
         raise HTTPException(status_code=422, detail=f"Invalid sequence token(s): {', '.join(invalid)}")
@@ -943,6 +951,35 @@ def validate_pick_ban_config(sequence: list[str], item_ids: list[int], *, kind: 
         raise HTTPException(status_code=422, detail="sequence may contain at most one decider step")
     if decider_positions and decider_positions[0] != len(sequence) - 1:
         raise HTTPException(status_code=422, detail="decider must be the last step of the sequence")
+
+
+def validate_pick_ban_config(
+    sequence: list[str], item_ids: list[int], *, kind: PickBanKind, pool_optional: bool = False
+) -> None:
+    """Validate a flat-mode :class:`PickBanConfig` upsert body: same shape as
+    ``veto_session.validate_veto_config``, generalized over the wider
+    ``PICK_BAN_SEQUENCE_TOKENS`` vocabulary (adds ``protect_first``/
+    ``protect_second``) and over ``kind``.
+
+    A ``kind=hero`` sequence is ONE round's worth of steps, replayed for every
+    map of the series (``rounds_are_progressive``), and it bans out of a pool
+    that stays playable: there is no survivor for a ``decider`` to resolve to,
+    so the map rule "must end in a pick or a decider" does not apply and a
+    ``decider`` is refused outright rather than stalling the room later.
+
+    ``pool_optional`` admits a pool-less row: a rules TEMPLATE, authored at a
+    wide scope so narrower ones inherit its rotation, timer and steps instead of
+    retyping them. It plays nothing itself -- ``ensure_pick_ban_session`` refuses
+    to open a room on a config with no pool -- so the pool-shaped rules (a
+    non-empty sequence that fits inside the pool, a pick or a decider to end on)
+    have nothing to hold and are not checked.
+    """
+    if pool_optional and not item_ids:
+        _validate_sequence_tokens(sequence, kind=kind)
+        return
+    if not sequence:
+        raise HTTPException(status_code=422, detail="sequence must not be empty")
+    _validate_sequence_tokens(sequence, kind=kind)
     if not item_ids:
         raise HTTPException(status_code=422, detail="item_ids must not be empty")
     if len(set(item_ids)) != len(item_ids):

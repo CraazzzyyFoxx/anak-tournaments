@@ -50,6 +50,7 @@ import {
   emptyPickBanDraft,
   fanOutRoundDrafts,
   findInheritedConfig,
+  isRulesTemplate,
   parseStepToken,
   pickBanDraftFromConfig,
   protectHasNoStep,
@@ -136,6 +137,16 @@ export function PreGameEditor({
 
   const savedConfig = findScopeConfig(kind, scope, configs);
   const inheritedConfig = findInheritedConfig(kind, scope.stageId, scope.round, configs);
+
+  // What the scope above says today, field by field. A saved override stores a
+  // COPY of its parent's rules (`rescopePickBanDraft`) -- usually authored to
+  // change the pool, not the rules -- so without this the two diverge silently
+  // the moment the tournament level is edited again.
+  const inheritedDraft = inheritedConfig == null ? null : pickBanDraftFromConfig(inheritedConfig);
+  const inheritedLabel =
+    inheritedConfig == null
+      ? null
+      : describeScope({ stage_id: inheritedConfig.stage_id, round: inheritedConfig.round });
 
   const slotCount = resolveSlotCount(scope.stageId, scope.round, stages, encounters);
 
@@ -393,6 +404,8 @@ export function PreGameEditor({
               draft={draft}
               isHero={isHero}
               bestOf={series.bestOf}
+              inherited={inheritedDraft}
+              inheritedLabel={inheritedLabel}
               canManage={canManage}
               patch={patch}
             />
@@ -411,6 +424,16 @@ export function PreGameEditor({
               ))}
             </ul>
           </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {/* Not a validation error: a pool-less scope saves fine, it just plays
+          nothing. Said here rather than in the pool step, because the save that
+          stores it can be pressed from any of the three. */}
+      {isRulesTemplate(draft) ? (
+        <Alert>
+          <Copy aria-hidden className="size-4" />
+          <AlertDescription>{t("rulesTemplate")}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -1086,11 +1109,52 @@ function StepList({
 
 // ── step 3: sides ────────────────────────────────────────────────────────────
 
+/**
+ * One rule field's provenance: what the scope above sets it to, and one click
+ * back to that value.
+ *
+ * Inheritance is per CONFIG, not per field -- a scope either has its own rule
+ * set or plays by an ancestor's. This is what makes that legible on a scope
+ * that DOES have its own: which of its values still agree with the level above,
+ * and which one it is actually overriding.
+ */
+function InheritedNote({
+  scope,
+  same,
+  value,
+  canManage,
+  onReset
+}: Readonly<{
+  scope: string;
+  same: boolean;
+  value: string;
+  canManage: boolean;
+  onReset: () => void;
+}>) {
+  const t = useTranslations("pickBan.admin");
+
+  if (same) return <FieldDescription>{t("sameAsScope", { scope })}</FieldDescription>;
+
+  return (
+    <FieldDescription className="flex flex-wrap items-center gap-1">
+      <span>{t("inheritedValue", { scope, value })}</span>
+      {canManage ? (
+        <Button type="button" variant="ghost" size="sm" className="h-6 px-2" onClick={onReset}>
+          <RotateCcw aria-hidden className="me-1 size-3" />
+          {t("useInheritedValue")}
+        </Button>
+      ) : null}
+    </FieldDescription>
+  );
+}
+
 function SidesStep({
   ids,
   draft,
   isHero,
   bestOf,
+  inherited,
+  inheritedLabel,
   canManage,
   patch
 }: Readonly<{
@@ -1098,6 +1162,9 @@ function SidesStep({
   draft: PickBanDraft;
   isHero: boolean;
   bestOf: number;
+  /** Rules of the scope above, or null at the tournament level. */
+  inherited: PickBanDraft | null;
+  inheritedLabel: string | null;
   canManage: boolean;
   patch: (values: Partial<PickBanDraft>) => void;
 }>) {
@@ -1135,6 +1202,15 @@ function SidesStep({
           <FieldDescription id={`${ids}-rotation-hint`}>
             {t(`firstBanRotationHint.${draft.firstBanRotation}`)}
           </FieldDescription>
+          {inherited != null && inheritedLabel != null ? (
+            <InheritedNote
+              scope={inheritedLabel}
+              same={draft.firstBanRotation === inherited.firstBanRotation}
+              value={t(`firstBanRotationValue.${inherited.firstBanRotation}`)}
+              canManage={canManage}
+              onReset={() => patch({ firstBanRotation: inherited.firstBanRotation })}
+            />
+          ) : null}
         </Field>
 
         <Field>
@@ -1158,6 +1234,15 @@ function SidesStep({
           <FieldDescription id={`${ids}-norepeat-hint`}>
             {t(`noRepeatScopeHint.${draft.noRepeatScope}`)}
           </FieldDescription>
+          {inherited != null && inheritedLabel != null ? (
+            <InheritedNote
+              scope={inheritedLabel}
+              same={draft.noRepeatScope === inherited.noRepeatScope}
+              value={t(`noRepeatScopeValue.${inherited.noRepeatScope}`)}
+              canManage={canManage}
+              onReset={() => patch({ noRepeatScope: inherited.noRepeatScope })}
+            />
+          ) : null}
         </Field>
 
         <Field>
@@ -1189,6 +1274,19 @@ function SidesStep({
             ) : null}
           </div>
           <FieldDescription id={`${ids}-timer-hint`}>{t("turnTimerHint")}</FieldDescription>
+          {inherited != null && inheritedLabel != null ? (
+            <InheritedNote
+              scope={inheritedLabel}
+              same={draft.turnTimerSeconds === inherited.turnTimerSeconds}
+              value={
+                inherited.turnTimerSeconds == null
+                  ? t("turnTimerPlaceholder")
+                  : `${inherited.turnTimerSeconds} ${t("turnTimerUnit")}`
+              }
+              canManage={canManage}
+              onReset={() => patch({ turnTimerSeconds: inherited.turnTimerSeconds })}
+            />
+          ) : null}
         </Field>
 
         <Field>
@@ -1211,6 +1309,15 @@ function SidesStep({
         <FieldContent>
           <FieldLabel htmlFor={`${ids}-protect`}>{t("allowProtect")}</FieldLabel>
           <FieldDescription id={`${ids}-protect-hint`}>{t("allowProtectHint")}</FieldDescription>
+          {inherited != null && inheritedLabel != null ? (
+            <InheritedNote
+              scope={inheritedLabel}
+              same={draft.allowProtect === inherited.allowProtect}
+              value={t(inherited.allowProtect ? "valueOn" : "valueOff")}
+              canManage={canManage}
+              onReset={() => patch({ allowProtect: inherited.allowProtect })}
+            />
+          ) : null}
         </FieldContent>
       </Field>
 
@@ -1233,6 +1340,15 @@ function SidesStep({
           <FieldContent>
             <FieldLabel htmlFor={`${ids}-role`}>{t("uniqueRole")}</FieldLabel>
             <FieldDescription id={`${ids}-role-hint`}>{t("uniqueRoleHint")}</FieldDescription>
+            {inherited != null && inheritedLabel != null ? (
+              <InheritedNote
+                scope={inheritedLabel}
+                same={draft.uniqueRolePerRound === inherited.uniqueRolePerRound}
+                value={t(inherited.uniqueRolePerRound ? "valueOn" : "valueOff")}
+                canManage={canManage}
+                onReset={() => patch({ uniqueRolePerRound: inherited.uniqueRolePerRound })}
+              />
+            ) : null}
           </FieldContent>
         </Field>
       ) : null}

@@ -215,6 +215,10 @@ export function pickBanDraftToInput(
   seriesLength: number
 ): PickBanConfigUpsertInput {
   const slotsMode = draft.mode === "slots";
+  // A template's groups exist only because the bracket sized them; sending the
+  // empty shells would trip the server's "a slot needs two candidates" rule,
+  // where an empty list is accepted as "no pool here".
+  const slots = slotsMode && !isRulesTemplate(draft) ? draft.slots : [];
   return {
     kind: draft.kind,
     stage_id: draft.stageId,
@@ -231,13 +235,27 @@ export function pickBanDraftToInput(
     allow_protect: draft.allowProtect,
     sequence: effectiveSequence(draft, seriesLength),
     item_ids: slotsMode ? [] : draft.itemIds,
-    slots: slotsMode
-      ? draft.slots.map((slot) => ({
-          candidates: slot.candidates,
-          reserve_item_id: slot.reserveItemId,
-        }))
-      : [],
+    slots: slots.map((slot) => ({
+      candidates: slot.candidates,
+      reserve_item_id: slot.reserveItemId,
+    })),
   };
+}
+
+/**
+ * Whether this draft carries no candidates at all -- a rules TEMPLATE.
+ *
+ * The rules and the pool live in one row, so "set the rotation and the timer
+ * once for the whole tournament, pick the maps per stage" used to be
+ * unauthorable: the pool was required, and a tournament-wide pool is exactly
+ * what a per-stage regulation does NOT have. A pool-less row is accepted
+ * instead, and inherited downward by `rescopePickBanDraft` -- it opens no room
+ * of its own (`PickBanSessionService._has_pool`).
+ */
+export function isRulesTemplate(draft: PickBanDraft): boolean {
+  if (draft.mode !== "slots") return draft.itemIds.length === 0;
+  const groups = draft.roundSlots.length > 0 ? draft.roundSlots.flatMap((round) => round.slots) : draft.slots;
+  return groups.every((slot) => slot.candidates.length === 0);
 }
 
 // ── step tokens ──────────────────────────────────────────────────────────────
@@ -573,14 +591,12 @@ export function fanOutRoundDrafts(draft: PickBanDraft): PickBanDraft[] {
  * own slot's candidates.
  */
 export type PickBanValidationIssue =
-  | { key: "emptyPool"; values?: undefined }
   | { key: "emptySequence"; values?: undefined }
   | { key: "multipleDeciders"; values?: undefined }
   | { key: "deciderNotLast"; values?: undefined }
   | { key: "noPickOrDecider"; values?: undefined }
   | { key: "heroDecider"; values?: undefined }
   | { key: "sequenceLongerThanPool"; values: { steps: number; items: number } }
-  | { key: "emptySlots"; values?: undefined }
   | { key: "slotTooFewCandidates"; values: { slot: number } }
   | { key: "roundSlotTooFewCandidates"; values: { round: number; slot: number } };
 
@@ -588,6 +604,11 @@ export function validatePickBanDraft(
   draft: PickBanDraft,
   seriesLength: number
 ): PickBanValidationIssue[] {
+  // A pool-less draft is a rules template (`isRulesTemplate`): the server takes
+  // it, and the pool-shaped rules -- a sequence that fits inside the pool, two
+  // candidates per group -- have nothing to hold. What it cannot do is open a
+  // room, which the editor says outright rather than as a validation error.
+  if (isRulesTemplate(draft)) return [];
   if (draft.mode === "slots") {
     // A stage-wide draft authors every round of the stage at once; each round
     // is saved as its own config, so each one has to stand on its own.
@@ -605,7 +626,8 @@ export function validatePickBanDraft(
         )
       );
     }
-    if (draft.slots.length === 0) return [{ key: "emptySlots" }];
+    // An empty group list cannot reach here: no candidates anywhere IS a
+    // template, handled above.
     return draft.slots.flatMap((slot, index) =>
       slot.candidates.length < SLOT_CANDIDATE_FLOOR
         ? [{ key: "slotTooFewCandidates" as const, values: { slot: index + 1 } }]
@@ -614,7 +636,6 @@ export function validatePickBanDraft(
   }
 
   const issues: PickBanValidationIssue[] = [];
-  if (draft.itemIds.length === 0) issues.push({ key: "emptyPool" });
 
   const sequence = effectiveSequence(draft, seriesLength);
   if (sequence.length === 0) {
