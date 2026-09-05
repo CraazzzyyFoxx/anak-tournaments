@@ -23,6 +23,7 @@ from shared.repository import (
     TournamentRepository,
 )
 from shared.schemas.events import TournamentChangedReason
+from shared.services.bracket import round_robin
 from shared.services.bracket.engine import generate_bracket, placeholder_bracket, placeholder_seeds
 from shared.services.bracket.persist import persist_skeleton
 from shared.services.bracket.swiss import SwissPairingImpossibleError, SwissStanding
@@ -1050,13 +1051,21 @@ class AdminStageService:
             )
             if swiss_standings is None:
                 clear_swiss_byes(stage, stage_item_id)
-            from src.services.standings.swiss_auto_round import stage_allows_next_round
+            from src.services.standings.swiss_auto_round import stage_allows_next_round, stage_max_rounds
 
             if not stage_allows_next_round(stage, swiss_round):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Swiss stage reached max_rounds",
                 )
+
+            # A Swiss allowed as many rounds as a full circle IS a round robin.
+            # Pairing it one round at a time only invites corners where no
+            # rematch-free round is left, and no ordering of the schedule can
+            # matter when every team meets every other anyway.
+            if swiss_standings is None and stage_max_rounds(stage) >= len(team_ids) - 1:
+                clear_swiss_scope_stopped(stage, stage_item_id)
+                return round_robin.generate(team_ids)
 
         de_include_reset = (
             stage.stage_type == enums.StageType.DOUBLE_ELIMINATION
