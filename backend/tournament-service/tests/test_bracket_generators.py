@@ -306,18 +306,21 @@ class SwissInvariants(TestCase):
         self.assertEqual({1: 1, 2: 1, 3: 1, 4: 1}, _appearance_counts(s))
         self.assertNotIn(frozenset({2, 4}), pair_set)
 
-    def test_never_allows_rematches(self) -> None:
+    def test_repeats_a_pairing_rather_than_leaving_the_field_idle(self) -> None:
+        """Two teams that have already met still play: a rematch beats a round
+        nobody is in."""
         standings = [
             swiss.SwissStanding(team_id=1, points=1.0),
             swiss.SwissStanding(team_id=2, points=0.0),
         ]
 
-        with self.assertRaises(swiss.SwissPairingImpossibleError):
-            swiss.generate_round(
-                standings,
-                played_pairs={frozenset({1, 2})},
-                round_number=2,
-            )
+        skeleton = swiss.generate_round(
+            standings,
+            played_pairs={frozenset({1, 2})},
+            round_number=2,
+        )
+
+        self.assertEqual({1: 1, 2: 1}, _appearance_counts(skeleton))
 
     def test_groups_by_points_and_uses_buchholz_for_ordering(self) -> None:
         standings = [
@@ -383,13 +386,17 @@ class SwissInvariants(TestCase):
             frozenset({2, 5}),
         }
 
-        with self.assertRaises(swiss.SwissPairingImpossibleError):
-            swiss.generate_round(
-                standings,
-                played_pairs=played_pairs,
-                round_number=4,
-                bye_history={3, 4, 5},
-            )
+        skeleton = swiss.generate_round(
+            standings,
+            played_pairs=played_pairs,
+            round_number=4,
+            bye_history={3, 4, 5},
+        )
+
+        # 1 and 2 have met everyone, so the round cannot be rematch-free; the
+        # bye still goes to a team that has not had one.
+        self.assertEqual(2, skeleton.bye_team_id)
+        self.assertEqual(2, len(skeleton.pairings))
 
     def test_six_teams_play_every_round_without_stranding_the_field(self) -> None:
         """Round 3 used to strand a six-team group: the pairing it picked left
