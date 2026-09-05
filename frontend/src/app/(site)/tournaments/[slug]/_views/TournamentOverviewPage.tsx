@@ -874,6 +874,16 @@ export default function TournamentOverviewPage({
       return right.id - left.id;
     })
     .slice(0, 4);
+  // Drawn, but nobody has given it a time yet: a generated round sits here
+  // until it is scheduled or played. Without this rung the overview claims
+  // nothing is published while the bracket page shows a full grid.
+  const pending = encounters
+    .filter((encounter) => !isEncounterCompleted(encounter) && !isEncounterLive(encounter))
+    .sort((left, right) => {
+      if (left.round !== right.round) return Math.abs(left.round) - Math.abs(right.round);
+      return left.id - right.id;
+    })
+    .slice(0, 4);
 
   const matchRows = (rows: Encounter[], withTime: boolean) => (
     <div>
@@ -935,6 +945,17 @@ export default function TournamentOverviewPage({
         }
       >
         {matchRows(recent, false)}
+      </OverviewCard>
+    ) : pending.length > 0 ? (
+      <OverviewCard
+        title={t("tournamentDetail.overview.upcoming.title")}
+        action={
+          <CardLink href={`${overviewHref}/matches`}>
+            {t("tournamentDetail.overview.live.all")}
+          </CardLink>
+        }
+      >
+        {matchRows(pending, false)}
       </OverviewCard>
     ) : (
       <TournamentPageState

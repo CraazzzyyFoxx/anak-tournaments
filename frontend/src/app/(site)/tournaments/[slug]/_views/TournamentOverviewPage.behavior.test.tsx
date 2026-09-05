@@ -576,6 +576,31 @@ describe("while it is being played (§3B)", () => {
     expect(headings()).toContain(COPY.upcoming.title);
   });
 
+  // The generator draws a round long before anyone gives it a time: open
+  // matches, no schedule, no results. The overview used to call that "nothing
+  // published yet" while the bracket page showed the full grid.
+  it("lists a drawn round that has no schedule and no results yet", async () => {
+    const drawn = (id: number, round: number, home: Team, away: Team) =>
+      makeEncounter(id, round, home, away, { home: 0, away: 0 }, {
+        status: "open",
+        result_status: "none",
+        scheduled_at: null,
+        started_at: null,
+        ended_at: null
+      });
+    getAllEncounters.mockResolvedValue({
+      results: [drawn(1, 1, ALPHA, GAMMA), drawn(2, 1, BETA, DELTA)],
+      total: 2,
+      page: 1,
+      per_page: -1
+    });
+    await mount();
+
+    const titles = headings();
+    expect(titles).toContain(COPY.upcoming.title);
+    expect(container.textContent).not.toContain(COPY.empty.title);
+  });
+
   it("draws the active stage as a mini bracket that links into the real one", async () => {
     getAllEncounters.mockResolvedValue({
       results: playedBracket(),
