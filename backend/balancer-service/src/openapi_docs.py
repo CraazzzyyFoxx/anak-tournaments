@@ -33,6 +33,13 @@ DOCS: dict[str, dict] = {
         "summary": "Export balance to teams",
         "description": "Materializes a saved balance into tournament teams, returning removed/imported counts and emitting a teams-changed realtime event.",
     },
+    "rpc.balancer.admin.balance_ranks_export": {
+        "summary": "Re-export balance ranks",
+        "description": (
+            "Updates the ranks of players already materialized from the saved balance, "
+            "without removing or creating any team, and emits a teams-changed realtime event."
+        ),
+    },
     "rpc.balancer.admin.workspace_config_get": {
         "summary": "Get workspace balancer config",
         "description": "Returns the workspace-level balancer config (rank-delta threshold and pool-hide flag) for members with workspace read permission.",
@@ -128,6 +135,13 @@ DOCS: dict[str, dict] = {
     "rpc.balancer.draft.export": {
         "summary": "Export draft to teams",
         "description": "Finalizes the drafted rosters into tournament teams (requires team-create) and publishes a draft-completed realtime event.",
+    },
+    "rpc.balancer.draft.export_ranks": {
+        "summary": "Re-export draft ranks",
+        "description": (
+            "Updates the ranks of players already exported from this completed draft "
+            "(requires team-create), leaving the tournament teams themselves untouched."
+        ),
     },
     "rpc.balancer.draft.pick_select": {
         "summary": "Select draft pick",

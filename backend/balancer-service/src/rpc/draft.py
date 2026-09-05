@@ -708,6 +708,23 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "draft.export", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.balancer.draft.export_ranks")
+    async def _export_ranks(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            session_id = c.require_id(data)
+            tournament_id = c.path_int(data, "tournament_id")
+            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
+            draft = await _load_session(session, session_id)
+            # Ranks only: no team is removed or created, so no draft lifecycle
+            # event — nothing about the session itself changed.
+            updated = await export_service.export_ranks(session, draft)
+            await session.commit()
+            return schemas.RanksExportResponse(success=True, updated_players=updated)
+
+        return await c.envelope(logger, "draft.export_ranks", op, session_factory=_SF)
+
     # --- pick actions (keyed by pick_id) ------------------------------------
     @broker.subscriber("rpc.balancer.draft.pick_select")
     async def _pick_select(data: dict, msg: RabbitMessage) -> dict:

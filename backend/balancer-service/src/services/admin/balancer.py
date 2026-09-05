@@ -18,7 +18,7 @@ from shared.repository import (
     TournamentRepository,
     WorkspaceBalancerConfigRepository,
 )
-from shared.services.team_export import ExportPlan, team_materialization
+from shared.services.team_export import ExportPlan, sync_player_ranks, team_materialization
 from src import models, schemas
 from src.schemas.team import InternalBalancerTeamsPayload
 from src.services.admin.balancer_dual_write import BalancerVariantService, balancer_variant_service
@@ -271,6 +271,26 @@ class BalancerAdminService:
             ),
         )
         return balance, outcome.removed_teams, outcome.imported_teams
+
+    async def export_balance_ranks(self, session: AsyncSession, balance_id: int) -> tuple[models.BalancerBalance, int]:
+        """Push the saved balance's ranks onto the already-exported players.
+
+        Non-destructive counterpart to :meth:`export_balance`: no team is removed
+        or created, so a bracket built on those teams survives. Returns the balance
+        and how many player ranks actually changed.
+        """
+        balance = await self.balances.get_for_export(session, balance_id)
+        if balance is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance not found")
+
+        payload = InternalBalancerTeamsPayload.model_validate(normalize_balance_response_payload(balance.result_json))
+        updated = await sync_player_ranks(
+            session,
+            balance.tournament_id,
+            to_materialization_teams([team.to_balancer_team() for team in payload.teams]),
+        )
+        await session.commit()
+        return balance, updated
 
 
 balancer_admin_service = BalancerAdminService()

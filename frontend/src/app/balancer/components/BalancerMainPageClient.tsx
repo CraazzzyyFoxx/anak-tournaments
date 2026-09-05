@@ -509,6 +509,7 @@ export function BalancerMainPageClient() {
     runBalanceMutation,
     saveBalanceMutation,
     exportToTournamentMutation,
+    exportRanksMutation,
     importBalanceMutation
   } = useBalancerMutations({
     tournamentId,
@@ -664,6 +665,12 @@ export function BalancerMainPageClient() {
       }
     );
   }, [exportToTournamentMutation, handleTournamentExportStageChange]);
+
+  const savedBalanceId = savedBalanceQuery.data?.id ?? null;
+  const startRanksExport = useCallback(() => {
+    if (savedBalanceId === null) return;
+    exportRanksMutation.mutate(savedBalanceId);
+  }, [exportRanksMutation, savedBalanceId]);
 
   const startJsonImport = useCallback(
     (file: File) => {
@@ -840,10 +847,13 @@ export function BalancerMainPageClient() {
         isExportPending={exportToTournamentMutation.isPending}
         isBalanceSaved={isBalanceSaved}
         isBalanceExported={isBalanceExported}
+        canExportRanks={savedBalanceId !== null}
+        isExportRanksPending={exportRanksMutation.isPending}
         tournamentId={tournamentId}
         onRunBalance={() => runBalanceMutation.mutate()}
         onSaveBalance={() => saveBalanceMutation.mutate()}
         onExportBalance={startTournamentExport}
+        onExportRanks={startRanksExport}
         onCopyNames={handleCopyNames}
         onScreenshot={handleScreenshot}
       />

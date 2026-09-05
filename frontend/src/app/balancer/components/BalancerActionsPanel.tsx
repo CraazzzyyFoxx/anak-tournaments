@@ -11,10 +11,14 @@ type BalancerActionsPanelProps = {
   isExportPending: boolean;
   isBalanceSaved: boolean;
   isBalanceExported: boolean;
+  /** A saved balance exists to re-read ranks from. */
+  canExportRanks: boolean;
+  isExportRanksPending: boolean;
   tournamentId: number;
   onRunBalance: () => void;
   onSaveBalance: () => void;
   onExportBalance: () => void;
+  onExportRanks: () => void;
   onCopyNames: () => void;
   onScreenshot: () => void;
 };
@@ -26,10 +30,13 @@ export function BalancerActionsPanel({
   isExportPending,
   isBalanceSaved,
   isBalanceExported,
+  canExportRanks,
+  isExportRanksPending,
   tournamentId,
   onRunBalance,
   onSaveBalance,
   onExportBalance,
+  onExportRanks,
   onCopyNames,
   onScreenshot
 }: Readonly<BalancerActionsPanelProps>) {
@@ -57,9 +64,12 @@ export function BalancerActionsPanel({
         isExportPending={isExportPending}
         isBalanceSaved={isBalanceSaved}
         isBalanceExported={isBalanceExported}
+        canExportRanks={canExportRanks}
+        isExportRanksPending={isExportRanksPending}
         onRunBalance={onRunBalance}
         onSaveBalance={onSaveBalance}
         onExportBalance={onExportBalance}
+        onExportRanks={onExportRanks}
         onDownloadJson={() => downloadPayload(activeVariant.payload, tournamentId)}
         onCopyNames={onCopyNames}
         onScreenshot={onScreenshot}

@@ -1,4 +1,14 @@
-import { Camera, Check, Copy, Download, Loader2, MoreHorizontal, Sparkles, Upload } from "lucide-react";
+import {
+  Camera,
+  Check,
+  Copy,
+  Download,
+  Gauge,
+  Loader2,
+  MoreHorizontal,
+  Sparkles,
+  Upload
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,9 +31,13 @@ type BalanceActionsBarProps = {
   isBalanceSaved: boolean;
   /** That persisted balance is already exported to tournament teams. */
   isBalanceExported: boolean;
+  /** A saved balance exists whose ranks can be pushed onto the exported players. */
+  canExportRanks: boolean;
+  isExportRanksPending: boolean;
   onRunBalance: () => void;
   onSaveBalance: () => void;
   onExportBalance: () => void;
+  onExportRanks: () => void;
   onDownloadJson: () => void;
   onCopyNames: () => void;
   onScreenshot: () => void;
@@ -37,9 +51,12 @@ export function BalanceActionsBar({
   isExportPending,
   isBalanceSaved,
   isBalanceExported,
+  canExportRanks,
+  isExportRanksPending,
   onRunBalance,
   onSaveBalance,
   onExportBalance,
+  onExportRanks,
   onDownloadJson,
   onCopyNames,
   onScreenshot
@@ -95,6 +112,21 @@ export function BalanceActionsBar({
             <Upload className="mr-2 h-4 w-4" />
           )}
           {isBalanceExported ? "Exported" : "Export to Tournament"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className={cn("rounded-xl", MUTED_BUTTON_CLASS)}
+          onClick={onExportRanks}
+          title="Push the saved balance's ranks onto the already-exported players. Teams and the bracket stay untouched."
+          disabled={!canExportRanks || isExportRanksPending || isExportPending || isSavePending}
+        >
+          {isExportRanksPending ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Gauge className="mr-2 h-4 w-4" />
+          )}
+          Re-export ranks
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

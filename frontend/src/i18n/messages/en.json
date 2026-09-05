@@ -4371,7 +4371,10 @@
       "pause": "Pause",
       "resume": "Resume",
       "cancel": "Cancel draft",
-      "export": "Export to teams"
+      "export": "Export to teams",
+      "exportRanks": "Re-export ranks",
+      "exportRanksHint": "Refresh the ranks of the players this draft already exported. Teams stay untouched.",
+      "exportRanksDone": "{count, plural, =0 {No player ranks needed updating} one {# player rank updated} other {# player ranks updated}}"
     }
   },
   "draftRedesign": {

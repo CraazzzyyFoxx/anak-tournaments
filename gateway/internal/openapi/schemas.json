@@ -3390,6 +3390,14 @@
       "description": "Returns the saved team balance for a tournament for admins with workspace team-read permission, or null when none exists.",
       "summary": "Get saved balance"
     },
+    "rpc.balancer.admin.balance_ranks_export": {
+      "description": "Updates the ranks of players already materialized from the saved balance, without removing or creating any team, and emits a teams-changed realtime event.",
+      "response": {
+        "array": false,
+        "ref": "balancer.RanksExportResponse"
+      },
+      "summary": "Re-export balance ranks"
+    },
     "rpc.balancer.admin.balance_save": {
       "description": "Persists a computed team balance for the tournament (requires workspace team-create) and emits a balance-saved realtime event.",
       "request": {
@@ -3469,6 +3477,14 @@
         "ref": "balancer.DraftSessionRead"
       },
       "summary": "Export draft to teams"
+    },
+    "rpc.balancer.draft.export_ranks": {
+      "description": "Updates the ranks of players already exported from this completed draft (requires team-create), leaving the tournament teams themselves untouched.",
+      "response": {
+        "array": false,
+        "ref": "balancer.RanksExportResponse"
+      },
+      "summary": "Re-export draft ranks"
     },
     "rpc.balancer.draft.feasibility": {
       "description": "Reports whether every remaining team-role slot can be filled. Requires workspace team-create permission.",
@@ -20023,6 +20039,25 @@
         "all_ratings"
       ],
       "title": "PlayerData",
+      "type": "object"
+    },
+    "balancer.RanksExportResponse": {
+      "description": "Result of a rank-only re-export (balance or draft): nothing was created or removed.",
+      "properties": {
+        "success": {
+          "title": "Success",
+          "type": "boolean"
+        },
+        "updated_players": {
+          "title": "Updated Players",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "success",
+        "updated_players"
+      ],
+      "title": "RanksExportResponse",
       "type": "object"
     },
     "balancer.RoleFeasibility": {

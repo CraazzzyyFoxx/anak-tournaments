@@ -20,7 +20,7 @@ from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.domain.roster import PlayerRoster
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
-from shared.services.team_export import ExportPlan, team_materialization
+from shared.services.team_export import ExportPlan, sync_player_ranks, team_materialization
 from src import models
 from src.domain.draft import ranks
 from src.schemas.team import BalancerTeam, BalancerTeamMember
@@ -109,12 +109,11 @@ class DraftExportService:
         self.feasibility = feasibility
         self.rosters = rosters
 
-    async def export(self, session: AsyncSession, draft_session: DraftSession) -> tuple[DraftSession, int, int]:
-        """Export a COMPLETED draft. Returns (session, removed_teams, imported_teams)."""
-        if draft_session.status != DraftStatus.COMPLETED.value:
-            raise _err("draft_not_completed", "Only a completed draft can be exported")
-
-        teams = await self.teams_repo.list_by_session(session, draft_session.id)
+    async def _load_payload(
+        self, session: AsyncSession, draft_session: DraftSession
+    ) -> tuple[list[DraftTeam], list[BalancerTeam]]:
+        """Draft rosters -> export payload. Ranks resolve live except where a pick froze one."""
+        teams = list(await self.teams_repo.list_by_session(session, draft_session.id))
         roster_rows = [
             p
             for p in await self.players_repo.list_by_session(
@@ -134,12 +133,20 @@ class DraftExportService:
         pick_by_player_id = {pk.picked_player_id: pk for pk in pick_rows if pk.picked_player_id is not None}
 
         payload = _draft_to_balancer_payload(
-            list(teams),
+            teams,
             roster_by_team,
             await self.feasibility.resolve_shape(session, draft_session),
             await self.rosters.load(session, draft_session, roster_rows),
             pick_by_player_id,
         )
+        return teams, payload
+
+    async def export(self, session: AsyncSession, draft_session: DraftSession) -> tuple[DraftSession, int, int]:
+        """Export a COMPLETED draft. Returns (session, removed_teams, imported_teams)."""
+        if draft_session.status != DraftStatus.COMPLETED.value:
+            raise _err("draft_not_completed", "Only a completed draft can be exported")
+
+        teams, payload = await self._load_payload(session, draft_session)
         # Idempotent cleanup + insert + backfill + stamp, all in the shared
         # orchestrator's single transaction (it used to be two: the writer committed
         # the deletes and inserts internally, and the caller committed the backfill).
@@ -175,6 +182,20 @@ class DraftExportService:
             ),
         )
         return draft_session, outcome.removed_teams, outcome.imported_teams
+
+    async def export_ranks(self, session: AsyncSession, draft_session: DraftSession) -> int:
+        """Re-push ranks onto the players this draft already exported. Never commits.
+
+        Non-destructive counterpart to :meth:`export`: teams stay as they are, so a
+        bracket built on them survives. Useful when a rank was fixed in the balancer
+        after the export — the payload resolves ranks live except where a pick froze
+        one. Returns how many player ranks actually changed.
+        """
+        if draft_session.status != DraftStatus.COMPLETED.value:
+            raise _err("draft_not_completed", "Only a completed draft can be exported")
+
+        _teams, payload = await self._load_payload(session, draft_session)
+        return await sync_player_ranks(session, draft_session.tournament_id, to_materialization_teams(payload))
 
 
 export_service = DraftExportService()

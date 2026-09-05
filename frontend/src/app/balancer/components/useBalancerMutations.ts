@@ -512,6 +512,23 @@ export function useBalancerMutations({
     }
   });
 
+  // Rank-only correction: the teams already in the tournament keep their rosters
+  // (and whatever bracket references them) — only the numbers are refreshed from
+  // the saved balance. Save first if the editor holds newer ranks.
+  const exportRanksMutation = useMutation({
+    mutationFn: async (balanceId: number) => {
+      const result = await balancerAdminService.exportBalanceRanks(balanceId);
+      await invalidateTournamentExportQueries();
+      return result;
+    },
+    onSuccess: (result) => {
+      notify.success("Ranks re-exported", {
+        description: `${result.updated_players} player ranks updated.`
+      });
+    },
+    onError: (error) => notify.apiError(error, { title: "Rank re-export failed" })
+  });
+
   // Import loads the file as another variant — creating tournament teams stays an
   // explicit Save / Export to Tournament step, same as for a generated balance.
   const importBalanceMutation = useMutation({
@@ -552,6 +569,7 @@ export function useBalancerMutations({
     runBalanceMutation,
     saveBalanceMutation,
     exportToTournamentMutation,
+    exportRanksMutation,
     importBalanceMutation
   };
 }

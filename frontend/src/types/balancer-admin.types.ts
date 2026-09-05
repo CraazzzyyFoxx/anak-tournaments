@@ -143,6 +143,12 @@ export interface BalanceExportResponse {
   balance_id: number;
 }
 
+/** Rank-only re-export (balance or draft): nothing was created or removed. */
+export interface RanksExportResponse {
+  success: boolean;
+  updated_players: number;
+}
+
 export interface BalancerTournamentConfig {
   id: number;
   tournament_id: number;

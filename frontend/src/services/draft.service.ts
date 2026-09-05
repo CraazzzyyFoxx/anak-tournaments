@@ -12,6 +12,7 @@ import type {
   DraftSessionCreateRequest,
   DraftSuggestionsResponse
 } from "@/types/draft.types";
+import type { RanksExportResponse } from "@/types/balancer-admin.types";
 
 export const draftEndpoints = {
   feasibility: (sessionId: number) => `/api/balancer/draft/sessions/${sessionId}/feasibility`,
@@ -120,6 +121,17 @@ export default class draftService {
     action: "start" | "pause" | "resume" | "cancel" | "export" | "rollback"
   ): Promise<DraftSession> {
     const res = await apiFetch(`/api/balancer/draft/tournaments/${tournamentId}/sessions/${sessionId}/${action}`,
+      { method: "POST" }
+    );
+    return res.json();
+  }
+
+  /** Refresh the ranks of players this draft already exported; teams stay as they are. */
+  static async exportRanks(
+    tournamentId: number,
+    sessionId: number
+  ): Promise<RanksExportResponse> {
+    const res = await apiFetch(`/api/balancer/draft/tournaments/${tournamentId}/sessions/${sessionId}/export-ranks`,
       { method: "POST" }
     );
     return res.json();

@@ -20,6 +20,7 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.balancer.admin.balance_save": Op(request=schemas.BalanceSaveRequest, response=schemas.BalanceRead),
     "rpc.balancer.admin.balance_export": Op(response=schemas.BalanceExportResponse),
+    "rpc.balancer.admin.balance_ranks_export": Op(response=schemas.RanksExportResponse),
     "rpc.balancer.admin.workspace_config_get": Op(response=schemas.WorkspaceBalancerConfigRead),
     "rpc.balancer.admin.workspace_config_upsert": Op(
         request=schemas.WorkspaceBalancerConfigUpsert, response=schemas.WorkspaceBalancerConfigRead
@@ -59,6 +60,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.draft.cancel": Op(response=schemas.DraftSessionRead),
     "rpc.balancer.draft.rollback": Op(response=schemas.DraftSessionRead),
     "rpc.balancer.draft.export": Op(response=schemas.DraftSessionRead),
+    "rpc.balancer.draft.export_ranks": Op(response=schemas.RanksExportResponse),
     # ── draft: pick actions (all -> DraftSessionRead) ──────────────────────
     "rpc.balancer.draft.pick_select": Op(
         request=schemas.DraftPickSelectRequest, response=schemas.DraftSessionRead

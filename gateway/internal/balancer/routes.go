@@ -39,6 +39,9 @@ var AdminRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/tournaments/{tournament_id}/balance", Queue: "rpc.balancer.admin.balance_get", IDParam: "tournament_id", Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/tournaments/{tournament_id}/balance", Queue: "rpc.balancer.admin.balance_save", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/balances/{balance_id}/export", Queue: "rpc.balancer.admin.balance_export", IDParam: "balance_id", Auth: edge.AuthRequired},
+	// Rank-only re-export: updates the ranks of players the balance already
+	// materialized, without touching the teams (so a live bracket survives).
+	{Method: "POST", Pattern: "/api/balancer/balances/{balance_id}/export-ranks", Queue: "rpc.balancer.admin.balance_ranks_export", IDParam: "balance_id", Auth: edge.AuthRequired},
 	// Materialize pre-formed registered teams (docs/plans/2026-08-20-team-registration.md §5).
 	// `Body: true` carries the optional `team_ids` narrowing; an empty body exports
 	// every complete team. Unlike balance_export this refuses when standings exist
@@ -128,6 +131,8 @@ var DraftRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/cancel", Queue: "rpc.balancer.draft.cancel", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/rollback", Queue: "rpc.balancer.draft.rollback", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/export", Queue: "rpc.balancer.draft.export", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
+	// Rank-only re-export: leaves the exported teams in place, refreshes their ranks.
+	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/export-ranks", Queue: "rpc.balancer.draft.export_ranks", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	// pick actions
 	{Method: "POST", Pattern: "/api/balancer/draft/picks/{pick_id}/select", Queue: "rpc.balancer.draft.pick_select", IDParam: "pick_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/draft/picks/{pick_id}/autopick", Queue: "rpc.balancer.draft.pick_autopick", IDParam: "pick_id", Body: true, Auth: edge.AuthRequired},
