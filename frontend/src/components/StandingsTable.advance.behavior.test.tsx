@@ -226,3 +226,86 @@ describe("standings tie visibility", () => {
     expect(container.querySelector(".st-tie-warning")?.textContent).toBe(en.standings.tieAtCut);
   });
 });
+
+describe("upper vs lower bracket boundary", () => {
+  function splitPlayoff(items: StageItem[] = []): Stage {
+    return {
+      ...stage(items),
+      id: 8,
+      name: "Playoffs",
+      stage_type: "double_elimination",
+      advance_count: null,
+      split_lower_bracket: true,
+      order: 1
+    };
+  }
+
+  it("draws the split inside the advancing block and warns when a tie spans it", async () => {
+    // The real shape this was reported on: 4 advance, the playoff splits them
+    // 2 up / 2 down, and the tie sits at positions 2-3 -- entirely above the
+    // "top 4 advance" line, so nothing used to say the tie decided a bracket.
+    const group = groupItem(101, 4);
+    const groups = stage([group]);
+
+    await mount(
+      [
+        standing(1, group, groups),
+        standing(2, group, groups, { tie_group: 2 }),
+        standing(3, group, groups, { tie_group: 2 }),
+        standing(4, group, groups),
+        standing(5, group, groups)
+      ],
+      [groups, splitPlayoff()]
+    );
+
+    const upper = container.querySelector(".st-upper-cut");
+    expect(upper?.getAttribute("data-label")).toBe("Top 2 → upper bracket");
+    expect(container.querySelector(".st-tie-warning")?.textContent).toBe(
+      en.standings.tieAtUpperCut
+    );
+  });
+
+  it("stays silent when the playoff does not split the advancing teams", async () => {
+    const group = groupItem(101, 4);
+    const groups = stage([group]);
+    const playoff = { ...splitPlayoff(), split_lower_bracket: false };
+
+    await mount(
+      [1, 2, 3, 4, 5].map((position) => standing(position, group, groups)),
+      [groups, playoff]
+    );
+
+    expect(container.querySelector(".st-upper-cut")).toBeNull();
+  });
+
+  it("draws no line for an odd share the seed list splits across groups", async () => {
+    // Without a Lower-bracket item the engine halves the CONCATENATED seed list,
+    // which for an odd per-group share lands mid-group: this table cannot say
+    // where, so it says nothing rather than guessing.
+    const group = groupItem(101, 3);
+    const groups = stage([group]);
+
+    await mount(
+      [1, 2, 3, 4].map((position) => standing(position, group, groups)),
+      [groups, splitPlayoff()]
+    );
+
+    expect(container.querySelector(".st-upper-cut")).toBeNull();
+  });
+
+  it("splits each group's own share once the playoff has a lower-bracket lane", async () => {
+    const group = groupItem(101, 3);
+    const groups = stage([group]);
+    const lowerLane: StageItem = { ...groupItem(200, null), type: "bracket_lower", stage_id: 8 };
+
+    await mount(
+      [1, 2, 3, 4].map((position) => standing(position, group, groups)),
+      [groups, splitPlayoff([lowerLane])]
+    );
+
+    // advance_split sends the odd team up: 2 upper, 1 lower.
+    expect(container.querySelector(".st-upper-cut")?.getAttribute("data-label")).toBe(
+      "Top 2 → upper bracket"
+    );
+  });
+});

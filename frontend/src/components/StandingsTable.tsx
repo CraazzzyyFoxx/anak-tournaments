@@ -34,6 +34,62 @@ export function getStandingsStagesQueryOptions(
   };
 }
 
+/**
+ * Where the advancing block splits into Upper and Lower bracket, or `null` when
+ * it does not split at all.
+ *
+ * Mirrors `advance_split` (backend `domain/stage/seeds.py`): a later split
+ * double elimination sends the top of each group's advancing teams up and the
+ * rest down, so a tie ACROSS this line decides who starts a bracket down —
+ * every bit as load-bearing as the advance line itself, and invisible until now.
+ *
+ * Without a dedicated Lower-bracket item the engine halves the concatenated
+ * seed list instead of each group's share; that lands on a per-group boundary
+ * only when the advancing count is even, so an odd count returns `null` rather
+ * than drawing a line this table cannot honestly place.
+ */
+export function upperBracketCut(
+  stages: Stage[],
+  groupStage: Stage | null | undefined,
+  advanceCount: number
+): number | null {
+  if (!groupStage || advanceCount < 2) return null;
+  const playoff = stages
+    .filter(
+      (candidate) =>
+        candidate.stage_type === "double_elimination" &&
+        candidate.split_lower_bracket &&
+        (candidate.order > groupStage.order ||
+          (candidate.order === groupStage.order && candidate.id > groupStage.id))
+    )
+    .sort((left, right) => left.order - right.order || left.id - right.id)[0];
+  if (!playoff) return null;
+
+  const hasLowerItem = (playoff.items ?? []).some((item) => item.type === "bracket_lower");
+  const upper = hasLowerItem
+    ? advanceCount - Math.floor(advanceCount / 2)
+    : advanceCount % 2 === 0
+      ? advanceCount / 2
+      : null;
+  return upper != null && upper > 0 && upper < advanceCount ? upper : null;
+}
+
+/**
+ * Does a tie cluster sit on both sides of `boundary`?
+ *
+ * If it does, the assigned order — not anything the teams earned on the pitch —
+ * decides which side each of them lands on, which is the one thing a standings
+ * table has to say out loud. Soft signal: callers warn and block nothing.
+ */
+export function tieStraddlesBoundary(rows: Standings[], boundary: number): boolean {
+  return rows.some(
+    (row) =>
+      row.tie_group != null &&
+      row.position <= boundary &&
+      rows.some((other) => other.tie_group === row.tie_group && other.position > boundary)
+  );
+}
+
 type ResultKind = "w" | "l" | "t";
 
 function resultOf(teamId: number, encounter: Encounter): ResultKind {
@@ -168,19 +224,14 @@ const StandingsTable = ({
 
   const showCut = is_groups && sortedStandings.length > resolvedAdvanceCount;
 
-  // A tie cluster that spans the cut-line means the assigned order — not
-  // anything the teams earned on the pitch — decides who advances. Soft signal:
-  // the table warns and keeps every action available.
-  const tieStraddlesCut =
-    showCut &&
-    sortedStandings.some(
-      (row) =>
-        row.tie_group != null &&
-        row.position <= resolvedAdvanceCount &&
-        sortedStandings.some(
-          (other) => other.tie_group === row.tie_group && other.position > resolvedAdvanceCount
-        )
-    );
+  const tieStraddlesCut = showCut && tieStraddlesBoundary(sortedStandings, resolvedAdvanceCount);
+
+  // The second boundary inside the advancing block: Upper vs Lower bracket.
+  const upperCut = is_groups
+    ? upperBracketCut(stages, standings[0]?.stage ?? null, resolvedAdvanceCount)
+    : null;
+  const showUpperCut = upperCut != null && sortedStandings.length > upperCut;
+  const tieStraddlesUpperCut = showUpperCut && tieStraddlesBoundary(sortedStandings, upperCut);
   const tieClusterTitle = t("standings.tieCluster");
   const columnCount = is_groups ? 9 : 6;
 
@@ -386,6 +437,28 @@ const StandingsTable = ({
                       </>
                     )}
                   </tr>
+
+                  {showUpperCut && index === upperCut - 1 && (
+                    <>
+                      <tr>
+                        <td
+                          colSpan={columnCount}
+                          className="st-cut st-upper-cut"
+                          data-label={t("standings.upperBracketCut", { count: upperCut })}
+                        />
+                      </tr>
+                      {tieStraddlesUpperCut && (
+                        <tr>
+                          <td
+                            colSpan={columnCount}
+                            className="st-tie-warning c text-[11px] text-[color:var(--amber)]"
+                          >
+                            {t("standings.tieAtUpperCut")}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )}
 
                   {showCut && index === resolvedAdvanceCount - 1 && (
                     <>

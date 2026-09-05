@@ -2314,7 +2314,9 @@
     "priority": "Priority {n}",
     "buchholzMedianFull": "median / full",
     "tieCluster": "Equal on every tiebreaker — order assigned, not earned",
-    "tieAtCut": "A tie spans this line — the assigned order decides who advances"
+    "tieAtCut": "A tie spans this line — the assigned order decides who advances",
+    "upperBracketCut": "Top {count} → upper bracket",
+    "tieAtUpperCut": "A tie spans this line — the assigned order decides who starts in the upper bracket"
   },
   "bracket": {
     "round": "Round {n}",
