@@ -430,8 +430,8 @@
    the card instead of straddling a rule.
 
    Deliberately no `overflow: hidden` (unlike `.aqt-card-surface`): the
-   mini-bracket scrolls horizontally inside its own block, and the anchors
-   (`#phases`, `#map-pool`) must stay scrollable-to. */
+   mini-bracket scrolls horizontally inside its own block, and `#phases`
+   must stay scrollable-to. */
 .block {
   min-width: 0;
   padding: 0.875rem 1rem 1rem;

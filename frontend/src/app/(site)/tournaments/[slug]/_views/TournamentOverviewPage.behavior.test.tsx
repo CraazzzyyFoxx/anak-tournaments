@@ -7,7 +7,6 @@
 //  1. before the tournament starts, the phase timeline IS the page — it renders
 //     first and carries `#phases`, because the retired `/schedule` route 301s
 //     to that anchor and a missing id turns the redirect into a no-op scroll;
-//     the map pool answers the retired `/maps` route the same way (`#map-pool`);
 //  2. once play starts, live matches come first, and with nothing live the
 //     block falls back rather than disappearing — an empty "Now playing" card
 //     on a tournament with eighty played matches is the failure mode;
@@ -491,18 +490,15 @@ describe("before the tournament starts (§3A)", () => {
     expect(container.textContent).not.toContain(`× ${en.rosterShape.slotCodes.tank}`);
   });
 
-  it("teases the map pool as pictures that open the Maps section", async () => {
+  it("does not tease the map pool — that lives on the Maps section", async () => {
     await mount();
 
-    const pool = container.querySelector("#map-pool");
-    expect(pool).not.toBeNull();
-    // The whole card is the anchor: a disclosure that only looked like text
-    // gave no sign the section existed.
-    expect(pool?.tagName).toBe("A");
-    expect(pool?.getAttribute("href")).toBe(`/tournaments/${SLUG}/maps`);
-    expect(pool?.querySelectorAll("img").length).toBeGreaterThan(0);
-    // The pool itself — by mode, and per round — belongs to that section.
-    expect(container.querySelector("[data-map-pool-round]")).toBeNull();
+    expect(container.querySelector("#map-pool")).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll("a")).some(
+        (node) => node.getAttribute("href") === `/tournaments/${SLUG}/maps`
+      )
+    ).toBe(false);
   });
 
   it("counts teams instead of roles when the tournament registers teams", async () => {
@@ -745,11 +741,6 @@ describe("once it is over (§3C)", () => {
     expect(numbers?.textContent).toContain("4");
     expect(numbers?.textContent).toContain("20");
     expect(numbers?.textContent).toContain("2");
-    expect(
-      Array.from(container.querySelectorAll("a")).some(
-        (node) => node.getAttribute("href") === `/tournaments/${SLUG}/maps`
-      )
-    ).toBe(true);
   });
 
   it("drops to third-by-standings when the tournament never had a bracket", async () => {

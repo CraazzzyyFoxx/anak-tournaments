@@ -10,6 +10,7 @@ import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import {
   embeddableTwitchChannel,
+  getStreamStatus,
   sortStreamsByAudience,
   streamEntryKey
 } from "@/lib/stream-platform";
@@ -25,36 +26,32 @@ import { getPublicPageQueryPresentation } from "./publicPageQueryPresentation";
 /**
  * Who is streaming this tournament right now — and a player to watch them in.
  *
- * The official broadcast is deliberately NOT repeated here: it lives in
- * `TournamentBroadcastDock`, floating in the bottom-trailing corner of every
- * section of the page. So this list is exactly the participants, and it is
- * exactly the ones the poller reports live — the backend never sends an
- * offline participant.
+ * Official broadcasts lead the list (and the theater when nothing is picked).
+ * Participants follow, busiest first. The floating dock is a picture-in-picture
+ * of the same official channel, collapsed until the viewer asks for it.
  *
  * ## Theater, not a grid
  *
  * This page used to be a grid of thumbnail cards that all linked out to
  * twitch.tv: a page called "Streams" on which nothing could be watched. Every
- * participant entry is a live Twitch channel, so one of them now fills a player
- * and the rest are a rail that switches it. See `StreamTheater` for why exactly
- * one frame is mounted and `StreamRow` for why the rail is rows.
+ * embeddable entry now fills a player and the rest are a rail that switches it.
+ * See `StreamTheater` for why exactly one frame is mounted and `StreamRow` for
+ * why the rail is rows.
  *
  * ## Which one is in the frame, and when it starts
  *
  * Selection is DERIVED (`selectedKey` is only a preference), so a refetch that
- * drops the selected channel silently falls back to the busiest one instead of
- * leaving a dead frame — and `sortStreamsByAudience` is a total order, so the
- * fallback resolves to the same entry tick after tick rather than restarting
- * the iframe.
+ * drops the selected channel silently falls back to the official cast, then the
+ * busiest embeddable, instead of leaving a dead frame — and `sortStreamsByAudience`
+ * is a total order on the participant tail, so the fallback resolves to the same
+ * entry tick after tick rather than restarting the iframe.
  *
  * The frame mounts on load only when the tournament has NO official broadcast.
  * With one, the shell's dock may already be playing in the corner of every tab,
  * and a second autoplaying player would be two streams on one screen; the
  * viewer opts in with the poster button instead. Once they have, switching
  * channels keeps playing — hence `hasStartedWatching` lives here and not in the
- * theater. Deliberately keyed on the broadcast EXISTING rather than on whether
- * the dock is currently open: reaching across for that would couple this view
- * to another component's local state to save one click.
+ * theater.
  *
  * ## Freshness
  *
@@ -70,8 +67,9 @@ const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
   const t = useTranslations();
   const connectionState = useRealtimeStore((s) => s.connectionState);
   const streamsQuery = useTournamentStreamsQuery(tournamentId);
+  const official = streamsQuery.data?.official ?? [];
   const participants = streamsQuery.data?.participants ?? [];
-  const hasOfficialBroadcast = (streamsQuery.data?.official.length ?? 0) > 0;
+  const hasOfficialBroadcast = official.length > 0;
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [hasStartedWatching, setHasStartedWatching] = useState(false);
@@ -85,18 +83,23 @@ const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
   // button stay, so nothing is taken away; the viewer just asks first.
   const prefersReducedMotion = usePrefersReducedMotion();
 
-  const sorted = useMemo(() => sortStreamsByAudience(participants), [participants]);
+  const sorted = useMemo(() => {
+    const officialKeys = new Set(official.map(streamEntryKey));
+    return [
+      ...official,
+      ...sortStreamsByAudience(
+        participants.filter((entry) => !officialKeys.has(streamEntryKey(entry)))
+      )
+    ];
+  }, [official, participants]);
   const featured =
-    sorted.find((entry) => streamEntryKey(entry) === selectedKey) ??
-    sorted.find((entry) => embeddableTwitchChannel(entry) !== null) ??
-    sorted[0] ??
-    null;
+    sorted.find((entry) => streamEntryKey(entry) === selectedKey) ?? sorted[0] ?? null;
 
   // The same loading / empty / updating / refresh-error vocabulary every other
   // public tournament section speaks.
   const presentation = getPublicPageQueryPresentation({
     data: streamsQuery.data,
-    itemCount: participants.length,
+    itemCount: sorted.length,
     isPending: streamsQuery.isPending,
     isError: streamsQuery.isError,
     isFetching: streamsQuery.isFetching
@@ -113,6 +116,7 @@ const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
   }
 
   const totalViewers = sorted.reduce((sum, entry) => sum + (entry.viewer_count ?? 0), 0);
+  const liveCount = sorted.filter((entry) => getStreamStatus(entry.live) === "live").length;
 
   const content = (
     <section className={styles.publicDataPage} aria-label={t("common.stream")}>
@@ -134,10 +138,12 @@ const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
               {t("common.stream")}
             </h2>
             <span className="flex shrink-0 items-center gap-2.5">
-              <span className="status-pill live">
-                <span aria-hidden className="dot" />
-                {t("stream.page.liveCount", { count: sorted.length })}
-              </span>
+              {liveCount > 0 ? (
+                <span className="status-pill live">
+                  <span aria-hidden className="dot" />
+                  {t("stream.page.liveCount", { count: liveCount })}
+                </span>
+              ) : null}
               {totalViewers > 0 ? (
                 <span className="aqt-mono text-[12px] tabular-nums text-[color:var(--aqt-fg-muted)]">
                   {t("stream.card.watching", { count: totalViewers })}

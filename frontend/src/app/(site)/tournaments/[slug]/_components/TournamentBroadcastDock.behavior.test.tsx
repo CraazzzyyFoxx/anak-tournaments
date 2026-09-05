@@ -78,8 +78,25 @@ function render(streams: TournamentStreams) {
 /** The Twitch login currently in the frame, or `null` when nothing plays. */
 function playingChannel(streams: TournamentStreams): string | null {
   render(streams);
+  reveal();
   const src = container.querySelector("iframe")?.getAttribute("src");
   return src ? new URL(src).searchParams.get("channel") : null;
+}
+
+function control(label: string): HTMLButtonElement | null {
+  return (
+    [...container.querySelectorAll("button")].find(
+      (button) =>
+        button.getAttribute("aria-label") === label || button.textContent?.includes(label)
+    ) ?? null
+  );
+}
+
+function reveal() {
+  const restore = control(en.stream.broadcast.show);
+  if (restore) {
+    act(() => restore.click());
+  }
 }
 
 beforeEach(() => {
@@ -124,6 +141,7 @@ describe("TournamentBroadcastDock featured pick", () => {
       ],
       participants: [participant("bigstreamer", 900)]
     });
+    reveal();
 
     expect(container.querySelector("iframe")).toBeNull();
     expect(container.textContent).toContain(
@@ -153,6 +171,7 @@ describe("TournamentBroadcastDock naming", () => {
 
   it("is the official broadcast even when the cast is off air", () => {
     render(streams);
+    reveal();
     const text = container.textContent ?? "";
 
     expect(text).toContain(en.stream.broadcast.heading);
@@ -165,6 +184,7 @@ describe("TournamentBroadcastDock naming", () => {
   // when the broadcast comes back.
   it("keeps every official link reachable", () => {
     render(streams);
+    reveal();
 
     expect(container.querySelector('a[href="https://twitch.tv/owtcast"]')).not.toBeNull();
   });
@@ -187,6 +207,7 @@ describe("TournamentBroadcastDock panel body", () => {
       ],
       participants: []
     });
+    reveal();
 
     expect(container.textContent).not.toContain("[DROPS] day two, watch the finals");
   });
@@ -198,6 +219,7 @@ describe("TournamentBroadcastDock panel body", () => {
       ],
       participants: []
     });
+    reveal();
 
     // Header, then the frame's ratio box — and nothing after it.
     expect(container.querySelector("aside")?.children).toHaveLength(2);
@@ -212,6 +234,7 @@ describe("TournamentBroadcastDock panel body", () => {
       ],
       participants: []
     });
+    reveal();
 
     expect(container.querySelector('a[href="https://twitch.tv/owtcast2"]')).not.toBeNull();
   });
@@ -229,21 +252,11 @@ describe("TournamentBroadcastDock hide and restore", () => {
     participants: []
   };
 
-  /** The control carrying `label`, or `null`. */
-  function control(label: string): HTMLButtonElement | null {
-    return (
-      [...container.querySelectorAll("button")].find(
-        (button) =>
-          button.getAttribute("aria-label") === label || button.textContent?.includes(label)
-      ) ?? null
-    );
-  }
-
-  it("shows the frame, and no restore control, on arrival", () => {
+  it("starts collapsed, with the restore control and no frame", () => {
     render(streams);
 
-    expect(container.querySelector("iframe")).not.toBeNull();
-    expect(control(en.stream.broadcast.show)).toBeNull();
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(control(en.stream.broadcast.show)).not.toBeNull();
   });
 
   // The dock arrives on every section of the tournament; taking focus would
@@ -256,6 +269,7 @@ describe("TournamentBroadcastDock hide and restore", () => {
 
   it("unmounts the player when hidden, rather than parking it out of sight", () => {
     render(streams);
+    reveal();
 
     act(() => control(en.stream.broadcast.hide)?.click());
 
@@ -264,7 +278,6 @@ describe("TournamentBroadcastDock hide and restore", () => {
 
   it("keeps the broadcast one click away after hiding", () => {
     render(streams);
-    act(() => control(en.stream.broadcast.hide)?.click());
 
     const restore = control(en.stream.broadcast.show);
     expect(restore).not.toBeNull();
@@ -275,6 +288,7 @@ describe("TournamentBroadcastDock hide and restore", () => {
 
   it("moves focus to the restore control when the panel goes away", () => {
     render(streams);
+    reveal();
 
     act(() => control(en.stream.broadcast.hide)?.click());
 
@@ -283,6 +297,7 @@ describe("TournamentBroadcastDock hide and restore", () => {
 
   it("moves focus to the close control when the panel comes back", () => {
     render(streams);
+    reveal();
     act(() => control(en.stream.broadcast.hide)?.click());
 
     act(() => control(en.stream.broadcast.show)?.click());
@@ -294,6 +309,7 @@ describe("TournamentBroadcastDock hide and restore", () => {
   // NOT a modal: nothing is trapped, so this must not be the only way out.
   it("closes on Escape from inside the panel", () => {
     render(streams);
+    reveal();
 
     act(() => {
       container
@@ -306,6 +322,7 @@ describe("TournamentBroadcastDock hide and restore", () => {
 
   it("announces itself as a landmark rather than a modal dialog", () => {
     render(streams);
+    reveal();
     const panel = container.querySelector("aside");
 
     expect(panel?.getAttribute("aria-label")).toBe(en.stream.broadcast.heading);

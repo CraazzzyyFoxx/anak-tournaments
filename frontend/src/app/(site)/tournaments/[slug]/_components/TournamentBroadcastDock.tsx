@@ -89,7 +89,7 @@ const ANCHOR =
  */
 export function TournamentBroadcastDock({ streams, className }: Readonly<TournamentBroadcastDockProps>) {
   const t = useTranslations();
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLButtonElement>(null);
   // Both controls unmount the moment they are used, so focus would fall to

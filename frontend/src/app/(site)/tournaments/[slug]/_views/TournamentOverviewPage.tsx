@@ -32,7 +32,6 @@ import type { StreamEntry } from "@/types/stream.types";
 import type { Team } from "@/types/team.types";
 import type { StageSummary, Standings, TournamentStatus } from "@/types/tournament.types";
 
-import { MapPoolCard } from "../_components/MapPoolCard";
 import { MatchCard, isEncounterCompleted, isEncounterLive } from "../_components/MatchCard";
 import { MatchRow } from "../_components/MatchRow";
 import { PhaseTimeline } from "../_components/PhaseTimeline";
@@ -46,7 +45,6 @@ import { TournamentPageState } from "../_components/TournamentPageState";
 import { TournamentOverviewSkeleton } from "../_components/TournamentSkeletons";
 import { UpdatingBadge } from "../_components/UpdatingBadge";
 import { useTournamentQuery } from "../_hooks/useTournamentClientData";
-import { useTournamentMapPool } from "../_hooks/useTournamentMapPool";
 import { useTournamentStreamsQuery } from "../_hooks/useTournamentStreams";
 import { getBracketRefetchInterval } from "../bracket/bracketData";
 import { buildLiveTeamStreams } from "../bracket/bracketLiveStreams";
@@ -315,26 +313,8 @@ function OverviewStreamCard({
           <span aria-hidden className="block aspect-video w-full bg-[color:var(--aqt-overlay-3)]" />
         )}
         {meta.labelKey ? (
-          <span
-            className="absolute inset-x-0 top-0 z-[1] flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em]"
-            style={
-              status === "live"
-                ? {
-                    background: "color-mix(in srgb, var(--aqt-rose) 28%, transparent)",
-                    color: "var(--aqt-rose)"
-                  }
-                : {
-                    background: "var(--aqt-overlay-3)",
-                    color: "var(--aqt-fg-muted)"
-                  }
-            }
-          >
-            {meta.hasDot ? (
-              <span
-                aria-hidden
-                className="size-1.5 rounded-full bg-current [animation:aqtPulse_2s_ease-in-out_infinite] motion-reduce:animate-none"
-              />
-            ) : null}
+          <span className={`${meta.pillClassName} absolute left-3 top-3 z-[1]`}>
+            {meta.hasDot ? <span aria-hidden className="dot" /> : null}
             {t(meta.labelKey)}
           </span>
         ) : null}
@@ -405,9 +385,8 @@ type TournamentOverviewPageProps = {
 
 /**
  * The tournament's landing section — one component, three compositions keyed on
- * `status` (wireframes §3 A/B/C). It is also where the retired Schedule and Maps
- * tabs live now: the phase timeline (`#phases`) and the map pool (`#map-pool`)
- * are the anchors their 301s point at.
+ * `status` (wireframes §3 A/B/C). The retired Schedule tab lives here as the
+ * phase timeline (`#phases`); Maps is its own section.
  */
 export default function TournamentOverviewPage({
   tournamentId,
@@ -436,8 +415,6 @@ export default function TournamentOverviewPage({
   // Team registration counts teams, not players, so it never reads the roster.
   const needsRegistrations =
     variant === "registration" && tournament?.team_formation !== "registration";
-
-  const mapPool = useTournamentMapPool(tournamentId);
 
   // Same key and fetcher as `TournamentParticipantsPage`, so the two sections
   // share one cache entry instead of each paying for the roster.
@@ -594,19 +571,6 @@ export default function TournamentOverviewPage({
   const playersCount = tournamentPlayersCount(tournament);
 
   // ---- shared right-column blocks -----------------------------------------
-
-  /**
-   * One teaser in every branch, linking into the Maps section. The pool itself
-   * — by mode, and per round with pictures — is that section's job; the
-   * overview only has to make it findable.
-   */
-  const mapPoolCard =
-    mapPool.pool.total > 0 ? (
-      <OverviewCard>
-        <MapPoolCard id="map-pool" pool={mapPool.pool} href={`${overviewHref}/maps`} />
-      </OverviewCard>
-    ) : null;
-
   const phasesCard = (
     <OverviewCard title={t("tournamentDetail.overview.phases.title")} id="phases">
       <PhaseTimeline tournament={tournament} orientation="vertical" />
@@ -817,7 +781,7 @@ export default function TournamentOverviewPage({
     const isTeamRegistration = tournament.team_formation === "registration";
     // Both aside cards are optional, and an aside column holding nothing reads
     // as a broken layout rather than as restraint.
-    const hasAside = mapPoolCard !== null || linksCard !== null;
+    const hasAside = linksCard !== null;
     // The share of each role in the field — what a draft/balancer organizer
     // reads ("tanks are short"). Role tints, the same dots on the figures above.
     const roleShares = ROSTER_SLOT_CODES.filter((code) => roleCounts[code] > 0);
@@ -897,11 +861,9 @@ export default function TournamentOverviewPage({
             {formatCard}
           </div>
 
-          {/* ④ The Maps section as a strip of pictures that opens it, then the
-              organizer's links — the same tail the other two branches end on. */}
+          {/* Organizer links — the same tail the other two branches end on. */}
           {hasAside ? (
             <div className="grid content-start gap-4">
-              {mapPoolCard}
               {linksCard}
             </div>
           ) : null}
@@ -1080,7 +1042,6 @@ export default function TournamentOverviewPage({
                 }
               />
             ) : null}
-            {mapPoolCard}
             <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>
               <div className="grid gap-2 sm:grid-cols-2">
                 <StatTile
@@ -1275,7 +1236,6 @@ export default function TournamentOverviewPage({
               </ol>
             </OverviewCard>
           ) : null}
-          {mapPoolCard}
           <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>
             <div className="grid gap-2 sm:grid-cols-2">
               <StatTile
