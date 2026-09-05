@@ -175,8 +175,7 @@ function generatedEncounter(): Encounter {
 let container: HTMLDivElement;
 let root: Root | null = null;
 
-async function mount() {
-  const current = stage();
+async function mount(current: Stage = stage()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   root = createRoot(container);
   await act(async () => {
@@ -189,7 +188,7 @@ async function mount() {
               stages: [current],
               stageType: current.stage_type,
               splitLowerBracket: false,
-              maxRounds: 2,
+              maxRounds: current.max_rounds,
               bestOf: {}
             })}
             stage={current}
@@ -253,5 +252,32 @@ describe("Bracket preview", () => {
     expect(container.textContent).toContain("2");
     expect(getStageBracketPreview).not.toHaveBeenCalled();
     expect(container.querySelector("a[href='/encounters/900']")).not.toBeNull();
+  });
+
+  it("draws one tree per group so a group stage is not one flat column", async () => {
+    const groups: Stage = {
+      ...stage(),
+      name: "Groups",
+      stage_type: "round_robin",
+      items: [
+        { id: 10, stage_id: 5, name: "Group A", type: "group", order: 0, inputs: [] },
+        { id: 11, stage_id: 5, name: "Group B", type: "group", order: 1, inputs: [] }
+      ]
+    };
+    getAllEncounters.mockResolvedValue({
+      results: [
+        { ...generatedEncounter(), id: 900, stage_item_id: 10 },
+        { ...generatedEncounter(), id: 901, stage_item_id: 11, name: "Team 2 vs Team 3" }
+      ],
+      total: 2
+    });
+
+    await mount(groups);
+
+    expect(container.textContent).toContain("Group A");
+    expect(container.textContent).toContain("Group B");
+    // Two trees, not one column: each group's match is drawn under its own name.
+    expect(container.querySelector("a[href='/encounters/900']")).not.toBeNull();
+    expect(container.querySelector("a[href='/encounters/901']")).not.toBeNull();
   });
 });

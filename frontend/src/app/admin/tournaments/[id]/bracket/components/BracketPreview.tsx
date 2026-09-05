@@ -108,8 +108,31 @@ export function BracketPreview({
     [previewQuery.data, teamById]
   );
 
-  const matches = generated.length > 0 ? generated : projected;
+  const matches: BracketMatch[] = generated.length > 0 ? generated : projected;
   const isLoading = encountersQuery.isPending || (previewQuery.isPending && previewQuery.isFetching);
+
+  // A group stage's matches otherwise land in one flat "Round 1" column:
+  // `BracketView` draws rounds, not groups, so Group A and Group B interleave
+  // with nothing saying which is which. Split by stage item — one tree per
+  // group — whenever the stage really has more than one.
+  const groupSections = useMemo(() => {
+    if (!projection.isGroups || stage.items.length < 2) return null;
+    const itemIds = new Set(stage.items.map((item) => item.id));
+    const sections = [...stage.items]
+      .sort((left, right) => left.order - right.order)
+      .map((item) => ({
+        key: item.id,
+        label: item.name,
+        matches: matches.filter((match) => match.stage_item_id === item.id)
+      }))
+      .filter((section) => section.matches.length > 0);
+    const loose = matches.filter(
+      (match) => match.stage_item_id == null || !itemIds.has(match.stage_item_id)
+    );
+    if (loose.length > 0) sections.push({ key: 0, label: "Unassigned", matches: loose });
+
+    return sections.length > 1 ? sections : null;
+  }, [matches, projection.isGroups, stage.items]);
 
   return (
     <section
@@ -175,6 +198,19 @@ export function BracketPreview({
       <div className="mt-3 border-t border-border pt-3">
         {isLoading ? (
           <Skeleton className="h-64 w-full rounded-2xl" />
+        ) : groupSections ? (
+          <div className="space-y-4">
+            {groupSections.map((section) => (
+              <div key={section.key}>
+                <p className={cn(EYEBROW_CLASS, "mb-1")}>{section.label}</p>
+                <BracketView
+                  encounters={section.matches}
+                  type={stage.stage_type}
+                  interactive={generated.length > 0}
+                />
+              </div>
+            ))}
+          </div>
         ) : matches.length > 0 ? (
           <BracketView
             encounters={matches}
