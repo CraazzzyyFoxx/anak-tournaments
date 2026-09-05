@@ -49,6 +49,8 @@ class StandingRead(BaseRead):
     lose: int
     points: float
     buchholz: float | None
+    full_buchholz: float | None = None
+    tie_group: int | None = None
     tb: int | None
     score_differential: int | None = None
     ranking_context: dict[str, str | int | float | None] | None = None

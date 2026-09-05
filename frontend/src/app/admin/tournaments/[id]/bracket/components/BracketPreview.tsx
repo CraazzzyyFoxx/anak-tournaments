@@ -180,11 +180,15 @@ export function BracketPreview({
         <p className="mt-3 text-sm text-foreground">
           <span className="font-medium tabular-nums">{projection.itemCount}</span> group
           {projection.itemCount === 1 ? "" : "s"}
-          {projection.advanceCount ? (
+          {projection.advancingTotal > 0 ? (
             <span className="text-muted-foreground">
               {" "}
-              — top <span className="tabular-nums">{projection.advanceCount}</span> of each advance,{" "}
-              <span className="tabular-nums">{projection.advancingTotal}</span> teams onward
+              — top{" "}
+              <span className="tabular-nums">
+                {[...new Set(projection.advanceCounts)].join(" / ")}
+              </span>{" "}
+              of each advance, <span className="tabular-nums">{projection.advancingTotal}</span>{" "}
+              teams onward
             </span>
           ) : (
             <span className="text-muted-foreground">

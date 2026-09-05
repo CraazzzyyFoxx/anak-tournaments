@@ -38,6 +38,8 @@ def _standing() -> models.Standing:
         lose=0,
         points=0.0,
         buchholz=None,
+        full_buchholz=None,
+        tie_group=None,
         tb=None,
         score_differential=None,
     )
@@ -185,8 +187,18 @@ class StandingSerializationTests(IsolatedAsyncioTestCase):
         read = await flows.flows_service.to_pydantic(cast(AsyncSession, object()), standing, [])
 
         self.assertEqual("challonge_round_robin", read.source_rule_profile)
+        # Normalized, not verbatim: the engine forces `manual_override` last and
+        # always present, so the legend must name the step that can actually
+        # decide a rank the preset never mentioned.
         self.assertEqual(
-            ["points", "head_to_head", "median_buchholz", "match_wins", "score_differential"],
+            [
+                "points",
+                "head_to_head",
+                "median_buchholz",
+                "match_wins",
+                "score_differential",
+                "manual_override",
+            ],
             read.tiebreak_order,
         )
 

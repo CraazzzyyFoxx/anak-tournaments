@@ -25,7 +25,11 @@ import {
 function item(
   id: number,
   type: StageItemType,
-  { seeded = 0, empty = 0 }: { seeded?: number; empty?: number } = {}
+  {
+    seeded = 0,
+    empty = 0,
+    advance = null
+  }: { seeded?: number; empty?: number; advance?: number | null } = {}
 ): StageItem {
   const inputs = [
     ...Array.from({ length: seeded }, (_, index) => ({
@@ -47,7 +51,7 @@ function item(
       source_position: null
     }))
   ];
-  return { id, stage_id: 1, name: `Item ${id}`, type, order: 0, inputs };
+  return { id, stage_id: 1, name: `Item ${id}`, type, order: 0, advance_count: advance, inputs };
 }
 
 function stage(overrides: Partial<Stage> & { id: number; stage_type: StageType }): Stage {
@@ -134,6 +138,58 @@ describe("projectedBracketSeedCounts", () => {
       items: [item(20, "single_bracket")]
     });
 
+    expect(projectedBracketSeedCounts(playoff, true, [groups, playoff])).toEqual({
+      upper: 3,
+      lower: 3
+    });
+  });
+
+  test("a group's own advance_count overrides the stage's for that group only", () => {
+    const groups = stage({
+      id: 1,
+      stage_type: "round_robin",
+      advance_count: 2,
+      items: [item(10, "group", { advance: 3 }), item(11, "group")]
+    });
+    const playoff = stage({ id: 2, stage_type: "single_elimination" });
+
+    // 3 from the group that says so, 2 from the one that inherits — not 2 × 2.
+    expect(projectedBracketSeedCounts(playoff, false, [groups, playoff])).toEqual({
+      upper: 5,
+      lower: 0
+    });
+  });
+
+  test("a stage with no advance_count still projects the groups that set one", () => {
+    const groups = stage({
+      id: 1,
+      stage_type: "swiss",
+      advance_count: null,
+      items: [item(10, "group", { advance: 2 })]
+    });
+    const playoff = stage({ id: 2, stage_type: "single_elimination" });
+
+    expect(projectedBracketSeedCounts(playoff, false, [groups, playoff])).toEqual({
+      upper: 2,
+      lower: 0
+    });
+  });
+
+  test("splits an overriding group's share on its own count, not the stage's", () => {
+    const groups = stage({
+      id: 1,
+      stage_type: "swiss",
+      advance_count: 2,
+      items: [item(10, "group", { advance: 4 }), item(11, "group")]
+    });
+    const playoff = stage({
+      id: 2,
+      stage_type: "double_elimination",
+      split_lower_bracket: true,
+      items: [item(20, "bracket_upper"), item(21, "bracket_lower")]
+    });
+
+    // Group A: 4 -> 2 up, 2 down. Group B inherits 2 -> 1 up, 1 down.
     expect(projectedBracketSeedCounts(playoff, true, [groups, playoff])).toEqual({
       upper: 3,
       lower: 3
@@ -362,6 +418,26 @@ describe("projectStage", () => {
       unresolved: 1,
       advancingTotal: 4
     });
+  });
+
+  test("what a group stage sends onward adds up each group's own number", () => {
+    const groups = stage({
+      id: 1,
+      stage_type: "round_robin",
+      advance_count: 2,
+      items: [item(10, "group", { advance: 3 }), item(11, "group")]
+    });
+
+    const projection = projectStage({
+      stage: groups,
+      stages: [groups],
+      stageType: "round_robin",
+      splitLowerBracket: false,
+      maxRounds: 3,
+      bestOf: {}
+    });
+
+    expect(projection.advancingTotal).toBe(5);
   });
 });
 

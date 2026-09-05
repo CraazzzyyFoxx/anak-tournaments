@@ -78,7 +78,14 @@ export function buildStageUpdatePayload(stage: Stage, form: StageForm): StageUpd
   const settings: StageSettings = {
     ...((stage.settings_json ?? {}) as StageSettings),
     ranking_preset: form.rankingPreset === "default" ? undefined : form.rankingPreset || undefined,
-    tiebreak_order: form.tiebreakOrder,
+    // A metric switched off in the editor is simply absent from the list — that
+    // absence IS the "disabled" state the engine reads. `points` is the one
+    // exception: it cannot be turned off, and the engine forces it first if it
+    // is missing, so persist the list that already says so rather than an order
+    // the server would have to correct (an empty list saves as `["points"]`).
+    tiebreak_order: form.tiebreakOrder.includes("points")
+      ? form.tiebreakOrder
+      : ["points", ...form.tiebreakOrder],
     scoring: Object.keys(scoring).length > 0 ? scoring : undefined,
     swiss_bye_points: form.swissByePoints !== "" ? Number(form.swissByePoints) : undefined
   };

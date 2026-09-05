@@ -280,4 +280,23 @@ describe("Bracket preview", () => {
     expect(container.querySelector("a[href='/encounters/900']")).not.toBeNull();
     expect(container.querySelector("a[href='/encounters/901']")).not.toBeNull();
   });
+
+  it("names every group's own advance count, not the stage default it overrides", async () => {
+    const groups: Stage = {
+      ...stage(),
+      name: "Groups",
+      stage_type: "round_robin",
+      advance_count: 2,
+      items: [
+        { id: 10, stage_id: 5, name: "Group A", type: "group", order: 0, advance_count: 3, inputs: [] },
+        { id: 11, stage_id: 5, name: "Group B", type: "group", order: 1, advance_count: null, inputs: [] }
+      ]
+    };
+    getAllEncounters.mockResolvedValue({ results: [], total: 0 });
+
+    await mount(groups);
+
+    // "top 2 of each" would be a lie about group A, and 4 onward a lie about both.
+    expect(container.textContent).toContain("top 3 / 2 of each advance, 5 teams onward");
+  });
 });

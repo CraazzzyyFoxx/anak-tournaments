@@ -2305,7 +2305,10 @@
     "colMapDiff": "Map Δ",
     "advancing": "Adv",
     "eliminated": "Out",
-    "priority": "Priority {n}"
+    "priority": "Priority {n}",
+    "buchholzMedianFull": "median / full",
+    "tieCluster": "Equal on every tiebreaker — order assigned, not earned",
+    "tieAtCut": "A tie spans this line — the assigned order decides who advances"
   },
   "bracket": {
     "round": "Round {n}",

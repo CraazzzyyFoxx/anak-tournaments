@@ -1521,7 +1521,7 @@ class AdminService {
 
   async updateStageItem(
     stageItemId: number,
-    data: { name?: string; type?: StageItemType; order?: number }
+    data: { name?: string; type?: StageItemType; order?: number; advance_count?: number | null }
   ): Promise<StageItem> {
     const response = await apiFetch(`/api/v1/admin/stages/items/${stageItemId}`, {
       method: "PATCH",

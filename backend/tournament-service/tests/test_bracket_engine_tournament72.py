@@ -357,18 +357,26 @@ class SwissGroupStageTournament72Tests(TestCase):
 
     def test_stage_settings_resolve_tiebreak_parameters(self) -> None:
         """_tiebreak_order must prefer the explicit stage parameter list and
-        fall back to the ranking_preset defaults when it is absent."""
+        fall back to the ranking_preset defaults when it is absent — both of
+        them normalized, which appends the always-last ``manual_override`` step
+        no stored order or preset mentions."""
+        normalize = standings_service.normalize_tiebreak_order
+
         explicit = _stage(enums.StageType.SWISS, SWISS_SETTINGS)
-        self.assertEqual(SWISS_SETTINGS["tiebreak_order"], standings_service._tiebreak_order(explicit))
+        self.assertEqual(normalize(SWISS_SETTINGS["tiebreak_order"]), standings_service._tiebreak_order(explicit))
 
         preset_only = _stage(enums.StageType.SWISS, {"ranking_preset": "challonge_swiss"})
         self.assertEqual(
-            standings_service.RULE_PRESET_DEFAULTS["challonge_swiss"],
+            normalize(standings_service.RULE_PRESET_DEFAULTS["challonge_swiss"]),
             standings_service._tiebreak_order(preset_only),
         )
 
         playoff = _stage(enums.StageType.DOUBLE_ELIMINATION, PLAYOFF_SETTINGS)
-        self.assertEqual(PLAYOFF_SETTINGS["tiebreak_order"], standings_service._tiebreak_order(playoff))
+        self.assertEqual(normalize(PLAYOFF_SETTINGS["tiebreak_order"]), standings_service._tiebreak_order(playoff))
+
+        # The normalization is not a no-op on this data: the stored order does
+        # not mention manual_override, the effective one always ends with it.
+        self.assertEqual("manual_override", standings_service._tiebreak_order(explicit)[-1])
 
 
 # ---------------------------------------------------------------------------

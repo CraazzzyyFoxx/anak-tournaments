@@ -7,6 +7,7 @@ import { Pencil, RefreshCw, Trash2, Trophy } from "lucide-react";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { StandingsTiesPanel } from "@/components/admin/StandingsTiesPanel";
 import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
@@ -34,7 +35,6 @@ import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 const PAGE_SIZE = 25;
 
 const EMPTY_FORM: StandingUpdateInput = {
-  position: 0,
   points: 0,
   win: 0,
   draw: 0,
@@ -46,7 +46,6 @@ const EMPTY_FORM: StandingUpdateInput = {
 function standingFormOf(standing: Standings | null): StandingUpdateInput {
   if (!standing) return { ...EMPTY_FORM };
   return {
-    position: standing.position,
     points: standing.points,
     win: standing.win,
     draw: standing.draw,
@@ -296,10 +295,17 @@ export function StandingsBrowser({
       {
         accessorKey: "buchholz",
         header: "BH",
-        size: 80,
+        size: 110,
+        // Median and full are separate tiebreakers, and a lone number reads as
+        // whichever one the organizer assumes. Show the pair, matching the
+        // public table.
         cell: ({ row }) => (
-          <span className="text-sm tabular-nums">
-            {row.original.buchholz != null ? row.original.buchholz.toFixed(2) : "—"}
+          <span className="text-sm tabular-nums" title="Median / full Buchholz">
+            {row.original.buchholz == null
+              ? "—"
+              : row.original.full_buchholz == null
+                ? row.original.buchholz.toFixed(2)
+                : `${row.original.buchholz.toFixed(2)} / ${row.original.full_buchholz.toFixed(2)}`}
           </span>
         )
       },
@@ -349,6 +355,16 @@ export function StandingsBrowser({
 
   return (
     <div className="space-y-3">
+      {scopeTournamentId != null ? (
+        <StandingsTiesPanel
+          rows={rows}
+          stages={stageList}
+          tournamentId={scopeTournamentId}
+          canUpdate={canUpdate}
+          onChanged={invalidate}
+        />
+      ) : null}
+
       <AdminDataTable<Standings>
         rows={rows}
         isLoading={standingsQuery.isLoading}
@@ -446,7 +462,7 @@ export function StandingsBrowser({
           if (!next) setEditing(null);
         }}
         title="Edit standing"
-        description="Adjust a stored standings row manually."
+        description="Adjust a stored standings row manually. Position is not editable here — every row is rebuilt from scratch on each recalculation, so use the Unresolved ties panel to set an order that survives."
         isSubmitting={updateMutation.isPending}
         submittingLabel="Updating standing…"
         errorMessage={
@@ -461,16 +477,6 @@ export function StandingsBrowser({
         }}
       >
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="standing-position">Position</Label>
-            <NumberInput
-              id="standing-position"
-              integer
-              min={1}
-              value={form.position ?? 0}
-              onValueChange={(next) => setForm({ ...form, position: next ?? 0 })}
-            />
-          </div>
           <div>
             <Label htmlFor="standing-points">Points</Label>
             <NumberInput

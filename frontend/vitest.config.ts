@@ -193,6 +193,7 @@ export default defineConfig({
       "src/components/BracketView.behavior.test.tsx",
       "src/components/FavoriteStarButton.behavior.test.tsx",
       "src/components/UserSearch.behavior.test.tsx",
+      "src/components/StandingsTable.advance.behavior.test.tsx",
       // Same file-level rule: `account-settings` is under `src/components`, and
       // these are its only vitest files so far.
       "src/components/account-settings/MyAccountSection.behavior.test.tsx",

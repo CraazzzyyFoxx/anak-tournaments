@@ -403,6 +403,7 @@ export interface StageItemCreateInput {
   name: string;
   type: StageItemType;
   order?: number;
+  advance_count?: number | null;
 }
 
 export interface StageItemInputCreateInput {

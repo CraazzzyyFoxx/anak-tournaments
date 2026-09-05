@@ -45,6 +45,8 @@ export interface StageItem {
   name: string;
   type: StageItemType;
   order: number;
+  /** Per-group override of `Stage.advance_count`; `null` inherits the stage. */
+  advance_count: number | null;
   inputs: StageItemInput[];
 }
 
@@ -237,7 +239,13 @@ export interface Standings {
   draw: number;
   lose: number;
   points: number;
+  /** The TRIMMED (median) Buchholz; `null` also marks a playoff row. */
   buchholz: number | null;
+  /** Every opponent's points, nothing trimmed — a later, separate tiebreaker. */
+  full_buchholz: number | null;
+  /** Position of this row's tie-cluster head. Rows sharing a value were equal
+   *  on every configured tiebreaker; their order was assigned, not earned. */
+  tie_group: number | null;
   tb: number | null;
   score_differential: number | null;
   ranking_context: Record<string, string | number | null> | null;

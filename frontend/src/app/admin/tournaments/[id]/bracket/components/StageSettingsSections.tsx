@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 
 import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
@@ -48,6 +49,12 @@ type SectionProps = Readonly<{
   form: StageForm;
   onChange: (patch: Partial<StageForm>) => void;
 }>;
+
+/**
+ * The engine appends this metric to every `tiebreak_order` it reads, so it is
+ * rendered as a fixed system step rather than a step the editor owns.
+ */
+const MANUAL_OVERRIDE = "manual_override";
 
 export function GeneralSection({
   stage,
@@ -234,13 +241,40 @@ export function TiebreakersSection({
 }) {
   const ids = useId();
 
+  // `points` and `manual_override` are not tiebreakers an organizer chooses:
+  // `points` is the ranking metric every other step only separates ties on, and
+  // `manual_override` is the hand-placed position. The engine normalizes every
+  // saved order the same way — `points` forced first, `manual_override` forced
+  // last and always present, unknown or duplicated metrics dropped — so neither
+  // is offered here as a movable or removable step. Everything between them is
+  // free to reorder, and free to switch off: a metric that is absent from
+  // `tiebreak_order` is simply not evaluated.
+  const active = form.tiebreakOrder.filter((metricId) => metricId !== MANUAL_OVERRIDE);
+  const inactive = ALL_TIEBREAKERS.filter(
+    (metric) => metric.id !== MANUAL_OVERRIDE && !form.tiebreakOrder.includes(metric.id)
+  );
+
+  /** Write the movable steps back, keeping `manual_override` pinned to the end. */
+  const setActive = (metrics: string[]) =>
+    onChange({
+      tiebreakOrder: form.tiebreakOrder.includes(MANUAL_OVERRIDE)
+        ? [...metrics, MANUAL_OVERRIDE]
+        : metrics
+    });
+
+  const isPinned = (index: number) => active[index] === "points";
+
   const moveMetric = (index: number, delta: -1 | 1) => {
-    const next = [...form.tiebreakOrder];
+    const next = [...active];
     const target = index + delta;
     if (target < 0 || target >= next.length) return;
+    if (isPinned(index) || isPinned(target)) return;
     [next[index], next[target]] = [next[target], next[index]];
-    onChange({ tiebreakOrder: next });
+    setActive(next);
   };
+
+  const toggleMetric = (metricId: string, enabled: boolean) =>
+    setActive(enabled ? [...active, metricId] : active.filter((id) => id !== metricId));
 
   return (
     <div className="flex flex-col gap-5">
@@ -331,16 +365,27 @@ export function TiebreakersSection({
           </Button>
         </div>
         <ol className="flex flex-col gap-1 rounded-lg border border-border bg-card p-2">
-          {form.tiebreakOrder.map((metricId, index) => {
+          {active.map((metricId, index) => {
             const metricLabel =
               ALL_TIEBREAKERS.find((metric) => metric.id === metricId)?.label ?? metricId;
+            const isRankingMetric = metricId === "points";
             return (
               <li
                 key={metricId}
-                className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-1 text-xs"
+                className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-1 text-xs"
               >
-                <span className="font-medium text-muted-foreground">
-                  {index + 1}. <span className="text-foreground">{metricLabel}</span>
+                <span className="flex items-center gap-2 font-medium text-muted-foreground">
+                  <Checkbox
+                    checked
+                    disabled={isRankingMetric}
+                    aria-label={`Use ${metricLabel}`}
+                    onCheckedChange={() => toggleMetric(metricId, false)}
+                  />
+                  <span className="tabular-nums">{index + 1}.</span>
+                  <span className="text-foreground">{metricLabel}</span>
+                  {isRankingMetric ? (
+                    <span className="text-[10px] uppercase tracking-wide">ranking metric</span>
+                  ) : null}
                 </span>
                 <span className="flex items-center gap-0.5">
                   <Button
@@ -349,7 +394,7 @@ export function TiebreakersSection({
                     size="icon"
                     className="size-6 text-muted-foreground hover:text-foreground"
                     aria-label={`Move ${metricLabel} up`}
-                    disabled={index === 0}
+                    disabled={index === 0 || isPinned(index) || isPinned(index - 1)}
                     onClick={() => moveMetric(index, -1)}
                   >
                     <ChevronUp className="size-3.5" aria-hidden />
@@ -360,7 +405,9 @@ export function TiebreakersSection({
                     size="icon"
                     className="size-6 text-muted-foreground hover:text-foreground"
                     aria-label={`Move ${metricLabel} down`}
-                    disabled={index === form.tiebreakOrder.length - 1}
+                    disabled={
+                      index === active.length - 1 || isPinned(index) || isPinned(index + 1)
+                    }
                     onClick={() => moveMetric(index, 1)}
                   >
                     <ChevronDown className="size-3.5" aria-hidden />
@@ -369,7 +416,36 @@ export function TiebreakersSection({
               </li>
             );
           })}
+          {/*
+            The system step. It carries no arrows and no switch because the
+            engine appends it to every order it reads: a hand-placed position
+            is the last word, after every metric above has come out level.
+          */}
+          <li className="flex items-center justify-between gap-2 rounded-md border border-dashed border-border px-3 py-1 text-xs">
+            <span className="flex items-center gap-2 font-medium text-muted-foreground">
+              <Checkbox checked disabled aria-label="Use Manual Override" />
+              <span className="text-foreground">Manual Override</span>
+            </span>
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              system step, always last
+            </span>
+          </li>
         </ol>
+        {inactive.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-dashed border-border px-3 py-2">
+            <span className={EYEBROW_CLASS}>Not evaluated</span>
+            {inactive.map((metric) => (
+              <span key={metric.id} className="flex items-center gap-2 text-xs opacity-70">
+                <Checkbox
+                  checked={false}
+                  aria-label={`Use ${metric.label}`}
+                  onCheckedChange={() => toggleMetric(metric.id, true)}
+                />
+                <span className="text-muted-foreground">{metric.label}</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

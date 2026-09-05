@@ -239,10 +239,11 @@ export type BracketTeamCountSource = "seeded" | "slots" | "projected" | "unknown
 /**
  * The upper/lower seed counts the preceding group stage feeds into `stage`,
  * mirroring `_preceding_group_stage` + `_projected_bracket_seed_counts`: the
- * nearest earlier Swiss/round-robin stage seeds `advance_count` teams from EACH
- * of its groups, and a split double elimination splits EACH group's share (the
- * odd team out goes up) rather than halving the total — which for an odd
- * `advance_count` is a differently shaped bracket.
+ * nearest earlier Swiss/round-robin stage sends on each group's OWN
+ * `advance_count`, falling back to the stage's number where a group sets none,
+ * and a split double elimination splits EACH group's share (the odd team out
+ * goes up) rather than halving the total — which for an odd `advance_count` is
+ * a differently shaped bracket.
  */
 export function projectedBracketSeedCounts(
   stage: Stage,
@@ -257,23 +258,33 @@ export function projectedBracketSeedCounts(
         (candidate.stage_type === "swiss" || candidate.stage_type === "round_robin")
     )
     .sort((left, right) => right.order - left.order || right.id - left.id)[0];
-  if (!source || !source.advance_count || source.advance_count <= 0) return { upper: 0, lower: 0 };
+  if (!source) return { upper: 0, lower: 0 };
 
-  const groups = source.items.length || 1;
-  const advance = source.advance_count;
   const isSplitDe = stage.stage_type === "double_elimination" && splitLowerBracket;
+  const hasLowerItem = isSplitDe && stage.items.some((item) => item.type === "bracket_lower");
+  const split = (advance: number) =>
+    hasLowerItem
+      ? { upper: advance - Math.floor(advance / 2), lower: Math.floor(advance / 2) }
+      : { upper: advance, lower: 0 };
 
-  if (isSplitDe && stage.items.some((item) => item.type === "bracket_lower")) {
-    const lowerPerGroup = Math.floor(advance / 2);
-    return { upper: groups * (advance - lowerPerGroup), lower: groups * lowerPerGroup };
+  const stageDefault = split(source.advance_count ?? 0);
+  // A source stage with no items still behaves as one implicit group.
+  const groups: (StageItem | null)[] = source.items.length > 0 ? source.items : [null];
+  let upper = 0;
+  let lower = 0;
+  for (const group of groups) {
+    const share = group?.advance_count ? split(group.advance_count) : stageDefault;
+    upper += share.upper;
+    lower += share.lower;
   }
 
-  const total = groups * advance;
+  if (upper + lower === 0) return { upper: 0, lower: 0 };
+  if (lower > 0) return { upper, lower };
   if (isSplitDe) {
     // One bracket item holds both halves; the seed list is split down the middle.
-    return { upper: Math.floor(total / 2), lower: total - Math.floor(total / 2) };
+    return { upper: Math.floor(upper / 2), lower: upper - Math.floor(upper / 2) };
   }
-  return { upper: total, lower: 0 };
+  return { upper, lower: 0 };
 }
 
 /**
@@ -285,9 +296,9 @@ export function projectedBracketSeedCounts(
  *
  * Seeded inputs — then empty slots — are ground truth when present. Before
  * either exists (the common case: a playoff wired only after its groups finish)
- * the count is projected from the preceding group stage's `advance_count ×
- * groups`, so the best-of editor offers the bracket that WILL be generated
- * rather than a `max_rounds` guess that has no relation to the team count.
+ * the count is projected from what the preceding group stage's groups advance,
+ * so the best-of editor offers the bracket that WILL be generated rather than a
+ * `max_rounds` guess that has no relation to the team count.
  */
 export function resolveBracketTeamCount(
   stage: Stage,
@@ -364,7 +375,9 @@ export interface StageProjection {
   bracketTeams: { count: number; source: BracketTeamCountSource };
   seeds: { upper: number; lower: number };
   advanceCount: number | null;
-  /** `advance_count × groups` this stage sends onward. */
+  /** Every group's own resolved count, in item order — `[3, 5]` reads "top 3 / 5". */
+  advanceCounts: number[];
+  /** Sum of `advanceCounts`: what this stage sends onward. */
   advancingTotal: number;
   rounds: ProjectedRound[];
 }
@@ -396,7 +409,13 @@ export function projectStage({
   const slots = getStageTeamSlots(stage);
   const assigned = getStageAssignedTeams(stage);
   const bracketTeams = resolveBracketTeamCount(stage, splitLowerBracket, stages);
-  const groups = stage.items.length || 1;
+  // A stage with no items still counts as one implicit group on the default.
+  const advanceCounts = isGroups
+    ? (stage.items.length > 0 ? stage.items : [null]).map(
+        (item) => item?.advance_count ?? stage.advance_count ?? 0
+      )
+    : [];
+  const advancingTotal = advanceCounts.reduce((acc, count) => acc + count, 0);
 
   const sections = stageBestOfRoundSections({
     stageType,
@@ -452,7 +471,8 @@ export function projectStage({
     bracketTeams,
     seeds: projectedBracketSeedCounts(stage, splitLowerBracket, stages),
     advanceCount: stage.advance_count ?? null,
-    advancingTotal: isGroups && stage.advance_count ? groups * stage.advance_count : 0,
+    advanceCounts,
+    advancingTotal,
     rounds
   };
 }
