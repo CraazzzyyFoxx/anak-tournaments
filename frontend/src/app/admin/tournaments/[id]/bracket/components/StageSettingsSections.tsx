@@ -1,6 +1,7 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 
 import { EYEBROW_CLASS } from "@/components/admin/tone";
@@ -18,9 +19,11 @@ import {
 } from "@/components/ui/select";
 import { ALL_TIEBREAKERS } from "@/lib/tiebreakers";
 import { BEST_OF_OPTIONS, stageBestOfRoundSections } from "@/lib/best-of";
+import { notify } from "@/lib/notify";
+import adminService from "@/services/admin.service";
 import type { StageBestOfConfig } from "@/types/admin.types";
 import type { Team } from "@/types/team.types";
-import type { Stage, StageType } from "@/types/tournament.types";
+import type { Stage, StageItem, StageType } from "@/types/tournament.types";
 
 import {
   BRACKET_STAGE_TYPES,
@@ -148,10 +151,49 @@ export function GeneralSection({
   );
 }
 
-export function SeedingSection({ form, onChange }: SectionProps) {
+export function SeedingSection({
+  stage,
+  form,
+  onChange,
+  onChanged
+}: SectionProps & { onChanged: () => void }) {
   const ids = useId();
   const isBracket = BRACKET_STAGE_TYPES.includes(form.stageType);
   const isGroups = !isBracket;
+  const groups = stage.items.filter((item) => item.type === "group");
+
+  // Per-group overrides are stage_item rows, not stage form fields: they PATCH
+  // on blur instead of waiting for "Save changes", which is why they carry
+  // their own draft state rather than living in `form`.
+  const [advanceDrafts, setAdvanceDrafts] = useState<Record<number, number | null>>({});
+  const advanceMutation = useMutation({
+    mutationFn: ({ stageItemId, advanceCount }: { stageItemId: number; advanceCount: number | null }) =>
+      adminService.updateStageItem(stageItemId, { advance_count: advanceCount }),
+    onSuccess: (_item, variables) => {
+      setAdvanceDrafts((current) => {
+        const next = { ...current };
+        delete next[variables.stageItemId];
+        return next;
+      });
+      onChanged();
+    },
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not change how many teams advance" })
+  });
+
+  const commitAdvance = (item: StageItem) => {
+    if (!(item.id in advanceDrafts)) return;
+    const next = advanceDrafts[item.id];
+    if (next === (item.advance_count ?? null)) {
+      setAdvanceDrafts((current) => {
+        const rest = { ...current };
+        delete rest[item.id];
+        return rest;
+      });
+      return;
+    }
+    advanceMutation.mutate({ stageItemId: item.id, advanceCount: next });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -215,6 +257,38 @@ export function SeedingSection({ form, onChange }: SectionProps) {
           />
           <p className="text-xs text-muted-foreground">
             Top N from each group advance. Leave empty to auto-derive from the bracket wiring.
+          </p>
+        </div>
+      ) : null}
+
+      {isGroups && groups.length > 0 ? (
+        <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+          <p className={EYEBROW_CLASS}>Advance count per group</p>
+          {groups.map((item) => (
+            <div key={item.id} className="flex items-center gap-2">
+              <Label
+                htmlFor={`${ids}-advance-${item.id}`}
+                className="w-40 shrink-0 truncate text-xs text-muted-foreground"
+              >
+                {item.name}
+              </Label>
+              <NumberInput
+                id={`${ids}-advance-${item.id}`}
+                integer
+                min={1}
+                className="h-8 w-40 text-xs tabular-nums"
+                placeholder={`Inherit (${stage.advance_count ?? "—"})`}
+                value={item.id in advanceDrafts ? advanceDrafts[item.id] : item.advance_count ?? null}
+                onValueChange={(next) =>
+                  setAdvanceDrafts((current) => ({ ...current, [item.id]: next }))
+                }
+                onBlur={() => commitAdvance(item)}
+              />
+            </div>
+          ))}
+          <p className="text-xs text-muted-foreground">
+            Overrides the number above for one group — set it when groups are uneven. Empty
+            inherits. Saved on blur, not by &quot;Save changes&quot;.
           </p>
         </div>
       ) : null}

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 //
-// One claim: how many teams advance can be set per GROUP, not only per stage.
+// One claim: how many teams advance can be set per GROUP, not only per stage,
+// and both controls live in Seeding.
 //
 // `Stage.advance_count` is one number for every group in the stage. A tournament
 // that takes 3 from a strong group and 2 from the rest had no way to say so, and
@@ -15,7 +16,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Stage, StageItem } from "@/types/tournament.types";
 
-import { StageItemsSection } from "./StageItemsSection";
+import { stageFormFromStage } from "../stageForm";
+import { SeedingSection } from "./StageSettingsSections";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -37,12 +39,6 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 
-vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: unknown }) => (
-    <a href={href}>{children as never}</a>
-  )
-}));
-
 function item(id: number, overrides: Partial<StageItem> = {}): StageItem {
   return {
     id,
@@ -56,7 +52,7 @@ function item(id: number, overrides: Partial<StageItem> = {}): StageItem {
   };
 }
 
-function groupStage(items: StageItem[]): Stage {
+function groupStage(items: StageItem[], overrides: Partial<Stage> = {}): Stage {
   return {
     id: 10,
     tournament_id: 84,
@@ -73,7 +69,8 @@ function groupStage(items: StageItem[]): Stage {
     settings_json: null,
     challonge_id: null,
     challonge_slug: null,
-    items
+    items,
+    ...overrides
   };
 }
 
@@ -95,15 +92,11 @@ async function mount(stage: Stage) {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <StageItemsSection
+        <SeedingSection
           stage={stage}
-          stages={[stage]}
-          teams={[]}
-          isTeamsLoading={false}
-          progress={undefined}
-          encountersHref="/admin/tournaments/84/matches/encounters?stage=10"
+          form={stageFormFromStage(stage)}
+          onChange={() => {}}
           onChanged={() => {}}
-          onRequestDeleteItem={() => {}}
         />
       </QueryClientProvider>
     );
@@ -111,8 +104,9 @@ async function mount(stage: Stage) {
   await settle();
 }
 
+/** The ids are `useId()`-prefixed, so the suffix is the only stable handle. */
 function advanceInput(stageItemId: number) {
-  const input = container.querySelector<HTMLInputElement>(`#stage-item-advance-${stageItemId}`);
+  const input = container.querySelector<HTMLInputElement>(`input[id$="-advance-${stageItemId}"]`);
   if (!input) throw new Error(`No advance field for item ${stageItemId}`);
   return input;
 }
@@ -142,6 +136,15 @@ beforeEach(() => {
 });
 
 describe("per-group advance count", () => {
+  it("sits in Seeding, next to the stage-wide number it overrides", async () => {
+    await mount(groupStage([item(100)]));
+
+    // Both controls in one section is the point: an organizer setting the bar
+    // for a stage and for one group should not have to change screens.
+    expect(container.textContent).toContain("Teams advancing to playoff (per group)");
+    expect(container.textContent).toContain("Advance count per group");
+  });
+
   it("offers the stage's number as the placeholder every group inherits", async () => {
     await mount(groupStage([item(100), item(101, { advance_count: 3, order: 1 })]));
 
@@ -169,8 +172,10 @@ describe("per-group advance count", () => {
   });
 
   it("leaves a bracket lane alone: it has nothing to advance", async () => {
-    await mount(groupStage([item(100, { type: "bracket_upper" })]));
+    await mount(
+      groupStage([item(100, { type: "bracket_upper" })], { stage_type: "single_elimination" })
+    );
 
-    expect(container.querySelector("#stage-item-advance-100")).toBeNull();
+    expect(container.querySelector('input[id$="-advance-100"]')).toBeNull();
   });
 });

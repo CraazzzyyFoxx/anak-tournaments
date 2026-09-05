@@ -73,7 +73,6 @@ export function StageItemsSection({
   const [draftName, setDraftName] = useState("");
   const [draftType, setDraftType] = useState<StageItemType>(getDefaultStageItemType(stage.stage_type));
   const [teamDrafts, setTeamDrafts] = useState<Record<number, string>>({});
-  const [advanceDrafts, setAdvanceDrafts] = useState<Record<number, string>>({});
   const [editingItemTypeId, setEditingItemTypeId] = useState<number | null>(null);
   const [editingInputId, setEditingInputId] = useState<number | null>(null);
   const [editingInputTeamDraft, setEditingInputTeamDraft] = useState("");
@@ -110,48 +109,6 @@ export function StageItemsSection({
     onSuccess: () => onChanged(),
     onError: (error) => notify.apiError(error, { title: "Could not rename this structure item" })
   });
-
-  const updateItemAdvanceMutation = useMutation({
-    mutationFn: ({
-      stageItemId,
-      advanceCount
-    }: {
-      stageItemId: number;
-      advanceCount: number | null;
-    }) => adminService.updateStageItem(stageItemId, { advance_count: advanceCount }),
-    onSuccess: (_item, variables) => {
-      setAdvanceDrafts((current) => {
-        const next = { ...current };
-        delete next[variables.stageItemId];
-        return next;
-      });
-      onChanged();
-    },
-    onError: (error) =>
-      notify.apiError(error, { title: "Could not change how many teams advance" })
-  });
-
-  /**
-   * Commits the typed override: an empty field clears it back to the stage's
-   * number, and anything that is not a whole count above zero is left alone
-   * rather than sent for the API to reject.
-   */
-  const commitAdvance = (item: StageItem) => {
-    const draft = advanceDrafts[item.id];
-    if (draft === undefined) return;
-    const trimmed = draft.trim();
-    const next = trimmed === "" ? null : Number(trimmed);
-    if (next !== null && (!Number.isInteger(next) || next < 1)) return;
-    if (next === (item.advance_count ?? null)) {
-      setAdvanceDrafts((current) => {
-        const rest = { ...current };
-        delete rest[item.id];
-        return rest;
-      });
-      return;
-    }
-    updateItemAdvanceMutation.mutate({ stageItemId: item.id, advanceCount: next });
-  };
 
   const updateInputMutation = useMutation({
     mutationFn: ({ inputId, teamId }: { inputId: number; teamId: number }) =>
@@ -240,34 +197,6 @@ export function StageItemsSection({
                   <p className="text-xs tabular-nums text-muted-foreground">
                     {item.inputs.length} slot(s)
                   </p>
-                  {item.type === "group" ? (
-                    <div className="mt-1.5 flex items-center gap-1.5">
-                      <Label
-                        htmlFor={`stage-item-advance-${item.id}`}
-                        className="text-xs text-muted-foreground"
-                      >
-                        Advance
-                      </Label>
-                      <Input
-                        id={`stage-item-advance-${item.id}`}
-                        type="number"
-                        min={1}
-                        className="h-7 w-24 text-xs tabular-nums"
-                        placeholder={`Inherit (${stage.advance_count ?? "—"})`}
-                        value={advanceDrafts[item.id] ?? item.advance_count?.toString() ?? ""}
-                        onChange={(event) =>
-                          setAdvanceDrafts((current) => ({
-                            ...current,
-                            [item.id]: event.target.value
-                          }))
-                        }
-                        onBlur={() => commitAdvance(item)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") event.currentTarget.blur();
-                        }}
-                      />
-                    </div>
-                  ) : null}
                 </div>
 
                 {editingItemTypeId === item.id ? (

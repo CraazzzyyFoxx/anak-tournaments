@@ -496,6 +496,7 @@ export function StageEditor({
             stage={stage}
             form={form}
             onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+            onChanged={onChanged}
           />
         ) : null}
 
