@@ -32,6 +32,12 @@ vi.mock("@/services/tournament.service", () => ({
   default: { getAll: vi.fn().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 }) }
 }));
 
+const getReportForm = vi.fn();
+
+vi.mock("@/services/report-form.service", () => ({
+  default: { getReportForm: (...args: unknown[]) => getReportForm(...args) }
+}));
+
 /**
  * `router.replace` in the app writes the URL and re-renders from the new
  * `useSearchParams`; here it writes `window.history` and pokes the harness, so
@@ -205,6 +211,18 @@ describe("EncounterReportsBrowser", () => {
   beforeEach(() => {
     listEncounterReports.mockReset();
     getEncounterReportStats.mockReset();
+    getReportForm.mockReset();
+    getReportForm.mockResolvedValue({
+      tournament_id: 7,
+      built_in_fields: {
+        closeness: { enabled: true, required: true },
+        map_codes: { enabled: true, required: false },
+        comment: { enabled: true, required: false }
+      },
+      custom_fields: [
+        { key: "vod", label: "VOD link", type: "text", required: false, placeholder: null }
+      ]
+    });
     listEncounterReports.mockResolvedValue(pageOf([row()]));
     getEncounterReportStats.mockResolvedValue({
       by_result_status: { confirmed: 7, disputed: 2 },
@@ -324,6 +342,70 @@ describe("EncounterReportsBrowser", () => {
 
     await click(button(container, "Resolve result"));
     expect(container.querySelector('[data-testid="resolve"]')?.textContent).toBe("Alpha vs Beta");
+  });
+
+  it("gives match closeness its own column, sighted without opening a row", async () => {
+    listEncounterReports.mockResolvedValue(
+      pageOf([
+        row({
+          home_report: report({ closeness: 9 }),
+          away_report: report({ id: 2, side: "away", closeness: 2 })
+        })
+      ])
+    );
+    const container = await mount(() => (
+      <EncounterReportsBrowser tournamentId={7} workspaceId={4} canUpdateEncounter />
+    ));
+    await waitFor(() => bodyText(container).includes("Alpha vs Beta"), "the encounter row");
+
+    const headers = Array.from(container.querySelectorAll("thead th")).map(
+      (cell) => cell.textContent ?? ""
+    );
+    expect(headers.some((text) => text.includes("Closeness"))).toBe(true);
+
+    // Both sides: one captain calling a stomp and the other a nailbiter is the
+    // signal, and a single averaged number would erase it.
+    const cell = Array.from(container.querySelectorAll("tbody td")).find((td) =>
+      (td.textContent ?? "").includes("9/10")
+    );
+    expect(cell?.textContent).toContain("2/10");
+
+    // The picker is what makes the rest of the fields reachable at all.
+    expect(button(container, "Columns")).toBeTruthy();
+  });
+
+  it("opens the whole filing, including the organizer's own questions", async () => {
+    listEncounterReports.mockResolvedValue(
+      pageOf([
+        row({
+          home_report: report({
+            comment: "they left early",
+            map_codes: [{ id: 1, map_index: 1, map_id: null, code: "B2C3" }],
+            custom_fields: { vod: "https://twitch.tv/clip" }
+          }),
+          away_report: null,
+          reported_count: 1,
+          scores_match: null
+        })
+      ])
+    );
+    window.history.replaceState(null, "", "/admin/matches?id=11");
+    const container = await mount(() => (
+      <EncounterReportsBrowser tournamentId={7} workspaceId={4} canUpdateEncounter />
+    ));
+    const inspector = await waitFor(
+      () => container.querySelector('aside[aria-label="Row inspector"], [role="dialog"]'),
+      "the inspector"
+    );
+    await waitFor(() => inspector.textContent?.includes("VOD link"), "the custom field label");
+
+    const text = inspector.textContent ?? "";
+    // Everything the captain filed, so nothing has to be looked up elsewhere.
+    expect(text).toContain("they left early");
+    expect(text).toContain("M2 B2C3");
+    expect(text).toContain("https://twitch.tv/clip");
+    // A side that filed nothing is said so, not left as a silent gap.
+    expect(text).toContain("No report filed.");
   });
 
   it("labels an already confirmed result Review rather than Resolve", async () => {
