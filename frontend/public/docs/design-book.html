@@ -63,7 +63,7 @@
   .tier{ display:inline-flex; align-items:center; font-family:var(--aqt-mono); font-size:9.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; padding:2px 7px; border-radius:var(--aqt-radius-xs); border:1px solid var(--aqt-border-2); margin-left:8px; vertical-align:middle; }
   .tier.verified{ color:var(--aqt-emerald); border-color:hsl(var(--aqt-h-emerald)/.35); background:hsl(var(--aqt-h-emerald)/.1); }
   .tier.specified{ color:var(--aqt-amber); border-color:hsl(var(--aqt-h-amber)/.35); background:hsl(var(--aqt-h-amber)/.1); }
-  .tier.invented{ color:var(--aqt-violet); border-color:hsl(var(--aqt-h-violet)/.35); background:hsl(var(--aqt-h-violet)/.1); }
+  .tier.fixed{ color:var(--aqt-violet); border-color:hsl(var(--aqt-h-violet)/.35); background:hsl(var(--aqt-h-violet)/.1); }
 
   /* ---------------- shell: sidebar + content ---------------- */
   .top{ position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:14px; height:var(--aqt-header-h); padding:0 28px; background:hsl(var(--aqt-h-bg)/.82); backdrop-filter:blur(18px); border-bottom:1px solid var(--aqt-border); }
@@ -240,8 +240,8 @@
       <p class="lead" style="margin-top:0">This edition replaces the earlier prototype-token draft (v1, <code>--bg</code>/<code>--brand</code> names) with the real <code>--aqt-*</code> tokens from <code>frontend/src/app/globals.css</code>, and marks every claim by how it was established:</p>
       <div class="grid3">
         <div class="demo"><div class="cap">Verified<span class="tier verified">Verified</span></div><p class="subtle" style="font-size:12.5px;margin:0">Measured against <code>globals.css</code> / <code>tailwind.config.ts</code> — every colour value, the four-step ground, the three-hairline border ramp, the 1720px container. Safe to build on.</p></div>
-        <div class="demo"><div class="cap">Specified<span class="tier specified">Specified</span></div><p class="subtle" style="font-size:12.5px;margin:0">From the prototype design book (<code>docs/design-book.md</code>) — may be partly or wholly unimplemented upstream. Verify before claiming the app obeys it.</p></div>
-        <div class="demo"><div class="cap">Invented<span class="tier invented">Invented</span></div><p class="subtle" style="font-size:12.5px;margin:0">This book's own token/component API where upstream only has CSS-class shape or inline literals — not a port of shipped code.</p></div>
+        <div class="demo"><div class="cap">Specified<span class="tier specified">Specified</span></div><p class="subtle" style="font-size:12.5px;margin:0">Stated by this book and not implemented upstream — a target rule, or a token/component API this book names where the code has only CSS-class shape and inline literals. Verify before claiming the app obeys it.</p></div>
+        <div class="demo"><div class="cap">Fixed<span class="tier fixed">Fixed</span></div><p class="subtle" style="font-size:12.5px;margin:0">A divergence from these rules that was found and has already been repaired upstream. Recorded so the fix is not undone by someone reading older code.</p></div>
       </div>
 
       <h3>Products &amp; surfaces</h3>
@@ -280,7 +280,7 @@
       </div>
 
       <h3>Numbers, dates, emoji &amp; bilingual</h3>
-      <p class="note">Locale-formatted via <code>next-intl</code> (default <code>ru</code>: <span class="tnum">1 557</span>, not 1,557). Relative dates read <code>2d ago</code> with the absolute date in <code>title</code> — bare <code>2D</code> is banned, it collides with the Draw letter. Emoji and bare glyph arrows as icons are anti-patterns (screen readers read them literally); the two typographic exceptions are the <span class="mono">→</span> in "View all →" and the <span class="mono">‹ ›</span> pagination chevrons, both <code>aria-hidden</code>. Every string ships EN + RU, with RU <i>written</i>, not translated — Onest was chosen over Space Grotesk specifically because "Grand Final" / "Гранд-финал" must share plasticity.</p>
+      <p class="note">Locale-formatted via <code>next-intl</code> (default <code>ru</code>: <span class="tnum">1 557</span>, not 1,557). Relative dates read <code>2d ago</code> with the absolute date in <code>title</code> — bare <code>2D</code> is banned, it collides with the Draw letter. Emoji and bare glyph arrows as icons are anti-patterns (screen readers read them literally); the two typographic exceptions are the <span class="mono">→</span> in "View all →" and the <span class="mono">‹ ›</span> pagination chevrons, both <code>aria-hidden</code>. Every string ships EN + RU, with RU <i>written</i>, not translated — Onest was chosen over Space Grotesk specifically because "Grand Final" and its Cyrillic equivalent must share plasticity.</p>
     </section>
 
     <!-- COLOR -->
@@ -328,7 +328,7 @@
 
     <!-- TYPE -->
     <section class="doc" id="type">
-      <div class="sh"><span class="eyebrow">Foundations</span><h2>Typography &amp; fonts<span class="tier verified">Verified</span></h2><p class="lead">Inter (UI + headings, 400–700, mixed-case, never condensed caps). Onest (display &amp; big numbers, 500–800) — cyrillic-native geometric grotesk, so "Grand Final" / "Гранд-финал" share plasticity; Space Grotesk was rejected for having no Cyrillic. JetBrains Mono (data, labels, the tactical voice).</p></div>
+      <div class="sh"><span class="eyebrow">Foundations</span><h2>Typography &amp; fonts<span class="tier verified">Verified</span></h2><p class="lead">Inter (UI + headings, 400–700, mixed-case, never condensed caps). Onest (display &amp; big numbers, 500–800) — cyrillic-native geometric grotesk, so "Grand Final" and its Cyrillic equivalent share plasticity; Space Grotesk was rejected for having no Cyrillic. JetBrains Mono (data, labels, the tactical voice).</p></div>
 
       <div class="grid3">
         <div class="specimen"><div class="hd"><b>Inter</b><span>UI · headline</span></div><div class="bd"><div class="glyphset" style="font-family:var(--aqt-sans)">Aa Gg Rr 24</div><div class="weights" style="font-family:var(--aqt-sans)"><span style="font-weight:400">400</span><span style="font-weight:500">500</span><span style="font-weight:600">600</span><span style="font-weight:700">700</span></div></div></div>
@@ -497,7 +497,7 @@
 
     <!-- TABLES -->
     <section class="doc" id="tables">
-      <div class="sh"><span class="eyebrow">Components</span><h2>Tables &amp; data<span class="tier invented">DataTable</span></h2><p class="lead">Wide tables scroll inside their own labelled <code>tabIndex={0}</code> region — the page body never scrolls sideways.</p></div>
+      <div class="sh"><span class="eyebrow">Components</span><h2>Tables &amp; data<span class="tier specified">DataTable</span></h2><p class="lead">Wide tables scroll inside their own labelled <code>tabIndex={0}</code> region — the page body never scrolls sideways.</p></div>
       <div class="card"><div class="tblw"><table class="tbl">
         <thead><tr><th style="width:34px">#</th><th>Team</th><th class="num">W-D-L</th><th class="num">Pts</th></tr></thead>
         <tbody>
@@ -509,7 +509,7 @@
 
     <!-- CHARTS -->
     <section class="doc" id="charts">
-      <div class="sh"><span class="eyebrow">Components</span><h2>Charts &amp; meters<span class="tier invented">WinRateBar · PercentileBar</span></h2></div>
+      <div class="sh"><span class="eyebrow">Components</span><h2>Charts &amp; meters<span class="tier specified">WinRateBar · PercentileBar</span></h2></div>
       <div class="grid3">
         <div class="demo"><div class="cap">Bar</div><div class="bars" id="chBars"></div></div>
         <div class="demo"><div class="cap">Win-rate meter</div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span>Reinhardt</span><span class="tnum subtle">64%</span></div><div class="meter"><i style="width:64%"></i></div></div>
@@ -547,8 +547,8 @@
         <p class="note warn"><b>Blur.</b> Book says chrome-only; <code>backdrop-filter</code> appears 43× across 25 files upstream (sheets, dialogs, tooltips, one page with ten on its own).</p>
         <p class="note warn"><b>Container.</b> Book's §7 measure is 1400px; the shipped container is 1720px (<code>screen-3xl</code>).</p>
         <p class="note warn"><b>Animation.</b> This book's CSS declares one <code>@keyframes</code>; Tailwind <code>animate-*</code> utilities appear 219× across 116 files upstream.</p>
-        <p class="note"><b>Fixed upstream — font trap.</b> See Typography above: <code>next/font</code> classes now mount on <code>&lt;html&gt;</code>, not <code>&lt;body&gt;</code>.</p>
-        <p class="note"><b>Fixed upstream — uppercase display bug.</b> <code>globals.css</code> forced <code>text-transform:uppercase</code> on the 52px display blocks, directly against the Casing rule and the book's "never condensed-caps". Both are mixed-case now.</p>
+        <p class="note"><b>Font trap.</b><span class="tier fixed">Fixed</span> See Typography above: <code>next/font</code> classes now mount on <code>&lt;html&gt;</code>, not <code>&lt;body&gt;</code>.</p>
+        <p class="note"><b>Uppercase display bug.</b><span class="tier fixed">Fixed</span> <code>globals.css</code> forced <code>text-transform:uppercase</code> on the 52px display blocks, directly against the Casing rule and the book's "never condensed-caps". Both are mixed-case now.</p>
         <p class="note"><b>Never colour-only.</b> W/L map squares carry letters; result chips always carry W/L/D letterforms — colour reinforces, never carries the difference alone.</p>
         <p class="note"><b>One token source, not two families.</b> Upstream keeps <code>--aqt-*</code> complete colours and bare shadcn HSL triplets as parallel sets — aliasing a shadcn name inside a scope can turn <code>hsl(var(--card))</code> into <code>hsl(hsl(…))</code> and silently render a subtree transparent. This book declares each value once as a triplet, exposed twice, so that failure mode cannot be expressed.</p>
       </div>

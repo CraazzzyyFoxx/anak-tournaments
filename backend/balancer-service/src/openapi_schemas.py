@@ -8,8 +8,9 @@ balance_get) and bare-dict / 204 handlers are omitted.
 
 from __future__ import annotations
 
-from shared.rpc.openapi import Op
+from shared.rpc.openapi import Op, QueryParam
 from src import schemas
+from src.schemas import custom_game
 
 OPERATIONS: dict[str, Op] = {
     # ── config (public) ────────────────────────────────────────────────────
@@ -70,5 +71,49 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.balancer.draft.pick_override": Op(
         request=schemas.DraftPickOverrideRequest, response=schemas.DraftSessionRead
+    ),
+    # ── pickup mixes: writes (responses are hand-built dicts, see DOCS) ─────
+    "rpc.balancer.custom.create": Op(request=custom_game.CustomGameCreate),
+    "rpc.balancer.custom.update_roster": Op(request=custom_game.CustomGameRosterUpdate),
+    "rpc.balancer.custom.update_player": Op(request=custom_game.CustomGamePlayerPatch),
+    "rpc.balancer.custom.set_participation": Op(
+        request=custom_game.CustomGamePlayersParticipationPatch
+    ),
+    "rpc.balancer.custom.set_team_names": Op(request=custom_game.CustomGameTeamNamesPatch),
+    "rpc.balancer.custom.set_role_mask": Op(request=custom_game.CustomGameRoleMaskPatch),
+    "rpc.balancer.custom.set_points_per_win": Op(request=custom_game.CustomGamePointsPerWinPatch),
+    "rpc.balancer.custom.set_balancer_config": Op(request=custom_game.CustomGameBalancerConfigPatch),
+    "rpc.balancer.custom.transfer_host": Op(request=custom_game.CustomGameHostTransfer),
+    "rpc.balancer.custom.add_co_host": Op(request=custom_game.CustomGameCoHostPatch),
+    "rpc.balancer.custom.swap_seats": Op(request=custom_game.CustomGameSeatSwap),
+    "rpc.balancer.custom.record_outcome": Op(request=custom_game.CustomGameRecordOutcome),
+    # ── workspace roster + rank layers ─────────────────────────────────────
+    # Ad-hoc query keys read by ``src/rpc/players.py`` (``_list_params``,
+    # ``_author_to_read``, ``_author_only``) rather than a query model.
+    "rpc.balancer.players.list": Op(
+        query_params=(
+            QueryParam("page", "integer", description="1-based page, default 1."),
+            QueryParam("per_page", "integer", description="Page size, clamped to 1..100, default 30."),
+            QueryParam("query", description="Needle matched against battle_tag, display_name and name."),
+            QueryParam(
+                "author_user_id",
+                "integer",
+                description="Whose rank book to read into author_ranks; defaults to the caller.",
+            ),
+            QueryParam(
+                "author_only",
+                "boolean",
+                description="Keep only members that read author has personally ranked.",
+            ),
+        )
+    ),
+    "rpc.balancer.players.summary": Op(
+        query_params=(
+            QueryParam(
+                "author_user_id",
+                "integer",
+                description="Whose rank book author_total counts; defaults to the caller.",
+            ),
+        )
     ),
 }

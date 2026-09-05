@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Route × role table for every destination in the new IA route map
-// (`01-ia.md` §3.2, `03-implementation-plan.md` §1.1).
+// Route × role table for every destination in the admin IA route map.
 //
 // The risk this closes: the guard is a prefix table maintained by hand next to
 // the menu, so a rewritten prefix can silently widen a gate — a superuser-only

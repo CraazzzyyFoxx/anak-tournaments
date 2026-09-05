@@ -44,3 +44,19 @@ jobs:
       - name: OW ladder artifact is up to date
         run: uv run python scripts/export_ow_ladder.py --check
         working-directory: backend
+      # docs/database_erd.md is the documented data model, linked from the README
+      # and from architecture.md. Hand-maintained, it drifted to missing 32 of 124
+      # tables — every custom-game table, the whole pick/ban engine, team
+      # registration — while still pinning an Alembic head that no longer exists.
+      # Its diagrams are generated now; this stops them going stale again.
+      - name: Database ERD is up to date
+        run: uv run python scripts/export_erd.py --check
+        working-directory: backend
+      # The manifest gate above proves the committed schemas.json matches the
+      # OPERATIONS/DOCS tables. It cannot prove those tables cover what is
+      # actually reachable: 67 subjects were routed by the gateway and absent
+      # from both — team registration, the captain surfaces, the entire
+      # custom-game API — i.e. undocumented public endpoints. This closes that.
+      - name: Every routed RPC subject is documented
+        run: uv run python scripts/check_rpc_docs.py
+        working-directory: backend

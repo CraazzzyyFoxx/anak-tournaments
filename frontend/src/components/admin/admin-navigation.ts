@@ -88,7 +88,7 @@ export const accessSectionViews: AdminNavView[] = [
 ];
 
 /**
- * The sidebar: 13 entries in four groups (`01-ia.md` §3.1).
+ * The sidebar: 13 entries in four groups.
  *
  * Three contexts of work instead of six catalogues: what happens in the
  * community (DATA), how the community is configured (WORKSPACE), and the

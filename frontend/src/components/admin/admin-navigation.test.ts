@@ -10,7 +10,7 @@ import {
 
 const allItems = adminNavigationGroups.flatMap((group) => group.items);
 
-describe("admin navigation structure (01-ia.md §3.1)", () => {
+describe("admin navigation structure", () => {
   it("is four groups: unlabelled, DATA, WORKSPACE, PLATFORM", () => {
     expect(adminNavigationGroups.map((group) => group.title)).toEqual([
       "",

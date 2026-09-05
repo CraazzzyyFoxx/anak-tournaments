@@ -14,6 +14,7 @@ from __future__ import annotations
 from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
 from src import schemas
+from src.schemas import captain as captain_schemas
 from src.schemas import encounter_report_form as report_form_schemas
 from src.schemas import registration as reg_schemas
 from src.schemas import registration_team as reg_team_schemas
@@ -29,6 +30,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.get_team": Op(response=schemas.TeamRead, query_params=(_ENTITIES,)),
     "rpc.tournament.get_encounter": Op(response=schemas.EncounterRead, query_params=(_ENTITIES,)),
     "rpc.tournament.get_match": Op(response=schemas.MatchReadWithStats, query_params=(_ENTITIES, _WS)),
+    "rpc.tournament.get_match_kill_feed": Op(response=schemas.MatchKillFeedRead, query_params=(_WS,)),
     "rpc.tournament.encounters_overview": Op(
         response=schemas.EncounterOverviewRead, query=schemas.EncounterSearchQueryParams
     ),
@@ -299,6 +301,32 @@ OPERATIONS: dict[str, Op] = {
         request=reg_schemas.SubscriptionRedeemRequest,
         response=reg_schemas.SubscriptionStatusRead,
     ),
+    # ── team registration: public + captain surfaces ───────────────────────
+    # ``regteam_invite`` declares a request only: its response is the invite read
+    # model PLUS the one-time raw token, a superset of any model in this package.
+    "rpc.tournament.regteam_list_public": Op(response=reg_team_schemas.RegistrationTeamListResponse),
+    "rpc.tournament.regteam_invite_preview": Op(response=reg_team_schemas.RegistrationTeamInvitePreview),
+    "rpc.tournament.regteam_create": Op(
+        request=reg_team_schemas.RegistrationTeamCreateRequest,
+        response=reg_team_schemas.RegistrationTeamRead,
+    ),
+    "rpc.tournament.regteam_invite": Op(request=reg_team_schemas.RegistrationTeamInviteCreateRequest),
+    "rpc.tournament.regteam_accept": Op(
+        request=reg_team_schemas.RegistrationTeamAcceptRequest,
+        response=reg_team_schemas.RegistrationTeamRead,
+    ),
+    "rpc.tournament.regteam_free_agents": Op(response=reg_team_schemas.RegistrationFreeAgentListResponse),
+    "rpc.tournament.regteam_my_invites": Op(response=reg_team_schemas.RegistrationTeamInviteOfferListResponse),
+    "rpc.tournament.regteam_invite_history_public": Op(
+        response=reg_team_schemas.RegistrationTeamInviteHistoryResponse
+    ),
+    # ── team registration: organizer surfaces ──────────────────────────────
+    "rpc.tournament.regteam_list": Op(
+        response=reg_team_schemas.RegistrationTeamListResponse,
+        query_params=(QueryParam("include_terminal", "boolean"),),
+    ),
+    "rpc.tournament.regteam_reject": Op(response=reg_team_schemas.RegistrationTeamRead),
+    "rpc.tournament.regteam_invite_history": Op(response=reg_team_schemas.RegistrationTeamInviteHistoryResponse),
     # ── encounter saved-view write ─────────────────────────────────────────
     "rpc.tournament.saved_view_create": Op(
         request=schemas.EncounterSavedViewCreate, response=schemas.EncounterSavedViewRead
@@ -326,6 +354,18 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.tournament.encounter_reopen_result": Op(response=schemas.EncounterResultRead),
     "rpc.tournament.encounter_result_audit": Op(response=schemas.EncounterResultAuditRead, response_array=True),
+    # ── per-map match edit (admin) ─────────────────────────────────────────
+    # Answers an ad-hoc dict of the match's own columns rather than MatchRead, so
+    # only the request body is mapped here.
+    "rpc.tournament.encounter_update_match": Op(request=schemas.MatchUpdate),
+    # ── captain pick/ban + map reporting (request bodies only) ─────────────
+    # Each of these answers the room's ad-hoc state dict -- the pick-ban state,
+    # one serialized entry, the undo block, the reconciliation verdict -- not a
+    # model, so they map their inputs and leave the response generic.
+    "rpc.tournament.captain_pick_ban_act": Op(request=captain_schemas.PickBanActionInput),
+    "rpc.tournament.captain_pick_ban_elect_opener": Op(request=captain_schemas.ElectOpenerInput),
+    "rpc.tournament.captain_pick_ban_undo": Op(request=captain_schemas.PickBanUndoInput),
+    "rpc.tournament.captain_report_map": Op(request=captain_schemas.MapReportInput),
     # ── captain reports admin list (cross-tournament, workspace-scoped) ────
     "rpc.tournament.admin_encounter_reports_list": Op(
         response=Paginated[schemas.EncounterReportsRow],

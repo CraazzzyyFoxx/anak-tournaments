@@ -24,6 +24,10 @@ DOCS: dict[str, dict] = {
         "summary": "Get match with stats",
         "description": "Returns one match by id with player statistics and optionally hydrated related entities, scoped to the given workspace.",
     },
+    "rpc.tournament.get_match_kill_feed": {
+        "summary": "Get match kill feed",
+        "description": "Returns one match's chronological kill feed and timeline events, scoped to the given workspace; 404s when the match is outside that scope, and is visibility-gated like the other public match reads.",
+    },
     "rpc.tournament.encounters_overview": {
         "summary": "Get encounters overview",
         "description": "Returns an aggregated encounters overview for the search filters, with viewer-scoped fields resolved from the optional identity.",
@@ -249,6 +253,11 @@ DOCS: dict[str, dict] = {
             "409 when there is no recorded result. Requires match-update permission on the encounter's workspace."
         ),
     },
+    # ── per-map match edit (admin) ─────────────────────────────────────────
+    "rpc.tournament.encounter_update_match": {
+        "summary": "Update match",
+        "description": "Edits one played map of an encounter (teams, score, map, lobby code, time, log name) and answers the match's own columns; requires match-update permission on the workspace resolved from the match.",
+    },
     # ── match report form (per-tournament captain-report config) ───────────
     "rpc.tournament.report_form_get": {
         "summary": "Get match report form",
@@ -378,6 +387,21 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.standing_recalculate": {
         "summary": "Recalculate standings",
         "description": "Schedules a durable standings-recalculation job (202 Accepted) for the tournament; requires standing-update permission.",
+    },
+    # ── preview access (who may see a hidden tournament before it is public) ─
+    # Workspace-admin gated rather than tournament-permission gated: this grants
+    # sight of an unpublished tournament, which no per-resource permission covers.
+    "rpc.tournament.preview_access_list": {
+        "summary": "List preview-access grants",
+        "description": "Returns every account allowlisted to view a tournament while it is still hidden, as id/tournament_id/auth_user_id/created_at rows; requires workspace-admin privileges on the tournament's workspace (403 otherwise).",
+    },
+    "rpc.tournament.preview_access_add": {
+        "summary": "Grant preview access",
+        "description": "Allowlists one account (body `auth_user_id`, 422 when absent) to view a tournament before it is public and invalidates the cached tournament read so the change lands immediately; requires workspace-admin privileges on the tournament's workspace.",
+    },
+    "rpc.tournament.preview_access_remove": {
+        "summary": "Revoke preview access",
+        "description": "Removes an account's preview allowlist entry (204 no body) and invalidates the cached tournament read; requires workspace-admin privileges on the tournament's workspace.",
     },
     # ── bespoke: pick-ban live-session admin overrides (map + hero) ────────
     "rpc.tournament.admin_pick_ban_session_reset": {
@@ -724,6 +748,57 @@ DOCS: dict[str, dict] = {
         "summary": "Toggle registration check-in",
         "description": "Checks a registration in or out (per the body flag) and broadcasts a realtime change; requires team-update permission on its workspace.",
     },
+    # ── team registration admin (organizer side of the captain surfaces) ───
+    "rpc.tournament.regteam_list": {
+        "summary": "List registration teams (admin)",
+        "description": (
+            "The organizer's view of a tournament's registered teams: every team with its members, its "
+            "outstanding invites and its per-slot shortfall, plus the number of free agents on no team -- "
+            "the players the export cannot place. Occupancy is recomputed rather than read off the "
+            "denormalized status, because the shortfall is what is actionable. `include_terminal` also "
+            "returns rejected and disbanded teams. Requires team-read permission on the tournament."
+        ),
+    },
+    "rpc.tournament.regteam_reject": {
+        "summary": "Reject a registration team",
+        "description": (
+            "An ORGANIZER refuses an entire team -- the counterpart of rejecting a solo registration, and "
+            "distinct from regteam_decline, which is one invitee refusing one offer. Revokes the team's "
+            "pending invites and, by default, withdraws its members; `withdraw_members: false` instead "
+            "returns them to the solo pool, which is the right call when the team is rejected for being "
+            "incomplete rather than unwelcome. Returns the rejected team. 404 when the team belongs to "
+            "another tournament, 409 once it is already exported, rejected or disbanded. Requires "
+            "team-update permission on the tournament."
+        ),
+    },
+    "rpc.tournament.regteam_invite_revoke_admin": {
+        "summary": "Revoke an invite (organizer)",
+        "description": (
+            "An organizer withdraws an outstanding offer from a team they do not captain (204 no body); the "
+            "write records that staff did it, which is what distinguishes the row from the captain's own "
+            "regteam_invite_revoke. Unlike the captain path it does not require the team to still be "
+            "mutable -- the reason to reach in is usually that something is stuck. The invite must belong to "
+            "this tournament (404 otherwise, deliberately not 403). Requires team-update permission."
+        ),
+    },
+    "rpc.tournament.regteam_invite_cap_reset": {
+        "summary": "Reset a team's invite cap",
+        "description": (
+            "Forgives a team's cumulative invite count so its captain can invite again -- the recourse the "
+            "cap's own 409 names (204 no body). A watermark, not a counter reset: the earlier invites stay "
+            "readable in the history and only the count's floor moves. 404 when the team belongs to another "
+            "tournament. Requires team-update permission on the tournament."
+        ),
+    },
+    "rpc.tournament.regteam_invite_history": {
+        "summary": "Get invite history (admin)",
+        "description": (
+            "Every invite a team ever issued, newest first, with its cumulative cap standing (used, limit, "
+            "reset watermark) and, per row, whether staff or the captain withdrew it. The same data the "
+            "team's captain reads through regteam_invite_history_public, which authorizes by captaincy "
+            "instead. Requires team-read permission on the tournament."
+        ),
+    },
     # ── registration status catalog ────────────────────────────────────────
     "rpc.tournament.regstatus_catalog": {
         "summary": "Get status catalog",
@@ -798,6 +873,72 @@ DOCS: dict[str, dict] = {
             "view the encounter."
         ),
     },
+    # ── captain pre-game room (pick/ban, readiness, per-map results) ───────
+    # These are the CAPTAIN's own encounter surfaces, not an organizer's: the
+    # caller must captain one of the two teams, and their side is resolved from
+    # their linked player profile rather than taken from the request. The
+    # organizer's equivalents are the admin_pick_ban_* subjects above.
+    "rpc.tournament.captain_pick_ban_state": {
+        "summary": "Get pick-ban room state",
+        "description": (
+            "Returns the live pick/ban room for an encounter and the `kind` path segment ('map' or 'hero', "
+            "422 otherwise): the resolved sequence, the candidate pool, whose turn it is, both sides' "
+            "readiness, any open undo request, and for maps the captains' per-map result claims. Readable by "
+            "anyone who can view the tournament -- a captain additionally gets their own side annotated. When "
+            "no session can exist yet the payload names why (teams unknown, bracket still a preview, no "
+            "pick-ban configured, slot count mismatch, sides not ready, waiting on the map round) instead of "
+            "erroring."
+        ),
+    },
+    "rpc.tournament.captain_pick_ban_act": {
+        "summary": "Ban, pick or protect",
+        "description": (
+            "Applies one ban, pick or protect to the encounter's live pick/ban session of the given `kind`, "
+            "under the session's row lock, and returns the resulting pool entry. Only a captain of one of the "
+            "two teams may call it (403), and only on their own turn: acting out of turn, sending the wrong "
+            "action for the current step, naming an item that is not a candidate this round, or re-banning "
+            "something this side already banned earlier in the series is a 400, as is a session that is not "
+            "initialized or no longer active."
+        ),
+    },
+    "rpc.tournament.captain_pick_ban_elect_opener": {
+        "summary": "Elect the next round's opener",
+        "description": (
+            "Resolves a round the `result_loser_choice` rotation is holding by naming which side opens it, "
+            "then appends that round and returns the session. Only the captain who LOST the previous round "
+            "may choose (403 for the other side, 403 for a non-captain); 400 when no round is awaiting a "
+            "choice. An organizer overrides an unreachable captain through admin_pick_ban_elect_opener."
+        ),
+    },
+    "rpc.tournament.captain_pick_ban_undo": {
+        "summary": "Request or withdraw an undo",
+        "description": (
+            "Records the calling captain's consent to undo the session's last action and applies it the "
+            "moment the opposing captain consents too; `consent=false` withdraws an open request (either "
+            "side may). Returns the resulting undo block. Captain-only (403). 400 when the session is not "
+            "initialized or cancelled, when there is nothing left to undo, or when the target is a map pick "
+            "whose hero round has already started -- undo those hero actions first."
+        ),
+    },
+    "rpc.tournament.captain_report_map": {
+        "summary": "Report a map result",
+        "description": (
+            "Files the calling captain's own claim of one played map's score, immediately after that map "
+            "rather than at series end. Both sides report independently: matching claims settle the map and "
+            "create its match row, differing ones mark the slot disputed for an organizer. Returns "
+            "`{disputed, resolved, match_id}`. Captain-only (403); 409 while the stage bracket is still a "
+            "preview the organizer has not activated."
+        ),
+    },
+    "rpc.tournament.captain_ready": {
+        "summary": "Confirm readiness",
+        "description": (
+            "Marks the calling captain's side ready to begin the encounter's pre-game phase and returns the "
+            "resulting `{home, away}` readiness map; idempotent. The pick/ban session only opens once both "
+            "sides are ready, and any change of team assignment clears both. Captain-only (403 when the "
+            "account captains neither team or has no linked player profile)."
+        ),
+    },
     "rpc.tournament.get_pick_ban_configs": {
         "summary": "List public map pick-ban configs",
         "description": "Returns the tournament's map pick-ban configs in cascade order. Visibility-gated like other public tournament reads.",
@@ -837,6 +978,151 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.reg_pub_list": {
         "summary": "List public registrations",
         "description": "Returns the live public registration list for a tournament with tournament-history and division grids; no authentication required.",
+    },
+    # ── team registration: public + captain surfaces ──────────────────────
+    # A registration team belongs to the players who formed it, so these are
+    # gated by captaincy or by holding an invite -- never by workspace
+    # permission. The organizer's counterparts are the regteam_* admin subjects
+    # further down. Invites persist only a token_sha256: the raw token is
+    # returned exactly once, by regteam_invite, and never served again.
+    "rpc.tournament.regteam_list_public": {
+        "summary": "List registration teams",
+        "description": (
+            "The public roster of a tournament's registered teams: name, crest, status, members and each "
+            "team's remaining per-slot shortfall, plus the count of free agents on no team. Rejected and "
+            "disbanded teams are omitted, and so are outstanding invites -- except on a team the caller "
+            "themselves captains, who sees their own pending offers here. No authentication required beyond "
+            "the tournament's own visibility rule."
+        ),
+    },
+    "rpc.tournament.regteam_invite_preview": {
+        "summary": "Preview an invite link",
+        "description": (
+            "Resolves a link invite's token to what it offers -- tournament, team, slot, substitute flag, "
+            "expiry and whether it is still redeemable -- without consuming it. The only anonymous invite "
+            "surface and the only one that skips the tournament visibility check: the token IS the "
+            "credential, so a link into a private tournament still works for its holder. Reveals nothing "
+            "about the roster. A dead or expired invite answers with its state rather than an error; only a "
+            "token matching nothing is a 404."
+        ),
+    },
+    "rpc.tournament.regteam_create": {
+        "summary": "Create a registration team",
+        "description": (
+            "Founds a team for a tournament and registers the caller as its captain in one transaction, "
+            "occupying the requested roster slot. The captain passes the same registration form and the same "
+            "admission gate as a solo entrant. Returns the new team including its own invites. 400 on an "
+            "empty name or one containing '#', 409 when the name is taken or the caller is already "
+            "registered; requires authentication."
+        ),
+    },
+    "rpc.tournament.regteam_invite": {
+        "summary": "Invite a player",
+        "description": (
+            "Offers one roster slot, in either of two modes: with `target_registration_id` it is an in-app "
+            "offer to a named free agent, which carries no token at all and is read by its recipient through "
+            "regteam_my_invites; without it a shareable link invite is minted. The link's raw token is "
+            "returned in this response and nowhere else -- only its sha256 is stored. Expires after "
+            "`ttl_days` (default 7). Captain-only (403), team must still be forming, and a pending invite "
+            "reserves its slot. 409 once the team has issued 60 invites in total, counting revoked and "
+            "declined ones: revoke an outstanding offer or ask an organizer for a cap reset."
+        ),
+    },
+    "rpc.tournament.regteam_invite_revoke": {
+        "summary": "Revoke an invite (captain)",
+        "description": (
+            "The team's own captain withdraws an outstanding offer they issued, releasing its reserved slot "
+            "(204 no body). 403 for anyone else -- an organizer reaching into a team they do not captain "
+            "uses regteam_invite_revoke_admin instead, which records that staff did it. 404 on an unknown "
+            "invite."
+        ),
+    },
+    "rpc.tournament.regteam_invite_history_public": {
+        "summary": "Get invite history (captain)",
+        "description": (
+            "The team's own captain reads every invite the team ever issued, newest first -- live, accepted, "
+            "declined, revoked or lapsed -- alongside the cumulative cap standing (used, limit, and the "
+            "reset watermark if an organizer forgave the count). Authorized by captaincy rather than "
+            "workspace permission, and deliberately still readable after the team is rejected or exported, "
+            "which is usually when someone opens it. The organizer reads the same data through "
+            "regteam_invite_history."
+        ),
+    },
+    "rpc.tournament.regteam_my_invites": {
+        "summary": "List invites addressed to me",
+        "description": (
+            "Returns the targeted invites offered to the calling user in this tournament -- the only way "
+            "their recipient can learn one exists, since a targeted invite carries no token to paste. Scoped "
+            "to the caller from their own token; there is no id to pass. Link invites are excluded (a bearer "
+            "credential has no addressee), as are expired offers and offers from teams no longer forming. "
+            "Requires authentication."
+        ),
+    },
+    "rpc.tournament.regteam_free_agents": {
+        "summary": "List free agents",
+        "description": (
+            "Returns this tournament's live registrants who are on no team, with the roles they signed up "
+            "for (primary first) -- the picker a captain fills a slot from. Authenticated but not "
+            "captain-gated: everything here is already on the public participants list. Carries registration "
+            "ids, never account ids."
+        ),
+    },
+    "rpc.tournament.regteam_accept": {
+        "summary": "Accept an invite",
+        "description": (
+            "Redeems an invite by `token` or by `invite_id` and takes the offered slot, returning the team. "
+            "A player already registered solo is attached to the team rather than duplicated, and the "
+            "submitted registration body is then ignored -- their recorded answers stand; a player with no "
+            "registration yet is registered from that body. The consume is a single guarded update, so two "
+            "simultaneous redemptions of one link cannot both win. 403 when a targeted invite was addressed "
+            "to a different account, 409 on a full slot, a terminal registration or a lost race; requires "
+            "authentication."
+        ),
+    },
+    "rpc.tournament.regteam_decline": {
+        "summary": "Decline an invite",
+        "description": (
+            "The INVITEE refuses an offer made to them, by `token` or `invite_id`, releasing its reserved "
+            "slot back to the captain (204 no body). Distinct from regteam_reject, which is an organizer "
+            "refusing an entire team. 403 when a targeted invite belongs to another account; 409 when the "
+            "invite is no longer pending. Requires authentication."
+        ),
+    },
+    "rpc.tournament.regteam_kick": {
+        "summary": "Remove a team member",
+        "description": (
+            "The captain removes an accepted member, freeing their slot (204 no body). The member's "
+            "registration survives as withdrawn rather than being deleted. Captain-only (403), team must "
+            "still be forming and registration still open; 409 when aimed at the captain themselves -- "
+            "transfer captaincy or disband instead -- and 404 when the player is not on the team."
+        ),
+    },
+    "rpc.tournament.regteam_leave": {
+        "summary": "Leave a team",
+        "description": (
+            "A member withdraws themselves from a team, freeing their slot (204 no body); their registration "
+            "becomes withdrawn. The mirror of regteam_kick. 409 when the caller is the captain -- a captain "
+            "must transfer or disband rather than vanish from a team others have joined -- and 404 when the "
+            "caller is not on the team. Requires authentication."
+        ),
+    },
+    "rpc.tournament.regteam_transfer_captain": {
+        "summary": "Transfer captaincy",
+        "description": (
+            "Hands captaincy to another accepted member (204 no body); the roster itself is unchanged. "
+            "Captain-only (403), team must still be forming and registration still open. 404 when the "
+            "successor is not on the team, 409 when they are a substitute -- a bench player holds no starter "
+            "slot and cannot captain the roster."
+        ),
+    },
+    "rpc.tournament.regteam_disband": {
+        "summary": "Disband a team",
+        "description": (
+            "The captain dissolves their own team (204 no body): members' registrations become withdrawn but "
+            "keep their team link, so each player's card can say the team was disbanded rather than leaving "
+            "an unexplained withdrawal, and every pending invite is revoked. Captain-only (403), team must "
+            "still be forming and registration still open. An organizer's equivalent is regteam_reject."
+        ),
     },
     # ── encounter saved-view writes ────────────────────────────────────────
     "rpc.tournament.saved_view_create": {

@@ -62,7 +62,7 @@ const nextConfig = {
         permanent: true,
       },
 
-      // ── Admin IA move (docs/admin-redesign/01-ia.md §3.2) ──────────────
+      // ── Admin IA move ─────────────────────────────────────────────────
       //
       // Authored here in one pass (PR-1) so the map lives in one place. A line
       // stays COMMENTED until its destination exists — a redirect to a route

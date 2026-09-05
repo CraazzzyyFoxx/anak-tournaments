@@ -1605,6 +1605,14 @@
       },
       "summary": "Dashboard stats"
     },
+    "rpc.app.statistics.tournament_readiness": {
+      "description": "Returns the living readiness checklist for one tournament, telling its organisers what is still missing before it can run: schedule/grid/stage-slot configuration, bracket and encounter log coverage, and the registration, pool, balance and draft state. Requires an active user with tournament.read or team.read on the tournament's own workspace, and each group of fields is masked to null when the caller lacks the permission that gates it, so a partial reader sees no-access rather than zeros. 403 without either permission, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are visible.",
+      "response": {
+        "array": false,
+        "ref": "app.TournamentReadiness"
+      },
+      "summary": "Tournament readiness checklist"
+    },
     "rpc.app.statistics.winrate": {
       "description": "Returns paginated, sortable players ranked by win rate, optionally workspace-scoped (public).",
       "query_params": [
@@ -2628,6 +2636,30 @@
       },
       "summary": "Set my stream visibility"
     },
+    "rpc.app.users.me_social_list": {
+      "description": "Returns the caller's own player with its linked social accounts -- which handles are connected, which one is primary, and each account's public-profile visibility. Accounts are added through the identity-service OAuth link flow, never here. Requires the account.social capability; a caller with no linked player gets an empty list rather than a 404.",
+      "response": {
+        "array": false,
+        "ref": "app.UserRead"
+      },
+      "summary": "List my social accounts"
+    },
+    "rpc.app.users.me_social_set_primary": {
+      "description": "Promotes one of the caller's own social accounts to primary -- the handle shown first on their public profile -- and returns the updated player. OAuth-verified accounts only (400 otherwise), because an unverified handle as primary would put an unproven identity on a public profile. Requires the account.social capability and a linked player; 404 for an account id the caller does not own.",
+      "response": {
+        "array": false,
+        "ref": "app.UserRead"
+      },
+      "summary": "Set my primary social account"
+    },
+    "rpc.app.users.me_social_set_visibility": {
+      "description": "Sets whether one of the caller's own social accounts is shown to anyone on their public profile, and returns the updated player. Global scope only: this is the self-service hide switch, not the per-workspace admin override, and hiding never deletes the account or its OAuth link. Requires the account.social capability and a linked player; 404 for an account id the caller does not own.",
+      "response": {
+        "array": false,
+        "ref": "app.UserRead"
+      },
+      "summary": "Set my social account visibility"
+    },
     "rpc.app.users.merge_execute": {
       "description": "Merges one player profile into another, stamping the operator's auth-user id (superuser only).",
       "request": {
@@ -3194,6 +3226,19 @@
       "description": "Updates a player's Twitch identity by identity id; requires the global user.update permission.",
       "summary": "Update Twitch identity"
     },
+    "rpc.app.workspaces.by_host": {
+      "description": "Resolves a request host to its workspace ({workspace_id, slug}) -- the entry point to multitenancy, called by the edge before anything else knows which tenant it is serving. A host in the platform zone matches on subdomain; any other host matches only a VERIFIED custom domain. Public, and fail-closed: a missing, malformed, unknown or not-yet-verified host returns null data rather than an error.",
+      "query_params": [
+        {
+          "name": "host",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "summary": "Resolve workspace by host"
+    },
     "rpc.app.workspaces.clear_custom_domain": {
       "description": "Removes the custom domain, its verification token, and verified_at; requires workspace.update, 404 if workspace missing.",
       "response": {
@@ -3462,6 +3507,134 @@
       },
       "summary": "Get balancer config"
     },
+    "rpc.balancer.custom.add_co_host": {
+      "description": "Grants another signed-in workspace member the same write access as the host. Host or co-host only; 404 when the target has no linked login account here, and 422 once the mix is at its co-host limit.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameCoHostPatch"
+      },
+      "summary": "Add custom game co-host"
+    },
+    "rpc.balancer.custom.balance": {
+      "description": "Balances the non-benched lineup, reading the host's own rank book above the workspace canon, stores the resulting options on the mix and returns it. Host or co-host only; 422 when the lineup is empty or a seated player has no ranked role.",
+      "summary": "Balance custom game"
+    },
+    "rpc.balancer.custom.close": {
+      "description": "Marks the mix completed so no further writes land. Nothing is destroyed -- the mix and every match it recorded stay readable -- so this is the reversible end of a mix, and any host or co-host may call it.",
+      "summary": "Close custom game"
+    },
+    "rpc.balancer.custom.create": {
+      "description": "Opens a pickup mix in the workspace and returns it with its roster; the caller becomes its host. Requires the workspace custom_game create permission, and member_ids may be empty to start from an empty lineup.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameCreate"
+      },
+      "summary": "Create custom game"
+    },
+    "rpc.balancer.custom.get": {
+      "description": "Returns one pickup mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Open to any workspace member; 404 when the mix belongs to another workspace.",
+      "summary": "Get custom game"
+    },
+    "rpc.balancer.custom.hard_delete": {
+      "description": "Permanently erases the mix together with its roster and every match it recorded, and returns the deleted id. Irreversible, and unlike close it is restricted to workspace admins rather than the mix's host and co-hosts.",
+      "summary": "Delete custom game"
+    },
+    "rpc.balancer.custom.list": {
+      "description": "Returns every pickup mix in the workspace with its settings and host display name, but without rosters; open to any workspace member.",
+      "summary": "List custom games"
+    },
+    "rpc.balancer.custom.match_history": {
+      "description": "Returns every match recorded for the mix, newest first, with team names, scores, winner and map. Open to any workspace member.",
+      "summary": "List custom game matches"
+    },
+    "rpc.balancer.custom.record_outcome": {
+      "description": "Freezes one played match of a balance option into the mix's history, moving both teams' ranks in the host's book by points_per_win when a winner is given and redeeming every seat's must_play pin back to the pool. Host or co-host only, and repeatable until the mix is closed.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameRecordOutcome"
+      },
+      "summary": "Record custom game match"
+    },
+    "rpc.balancer.custom.remove_co_host": {
+      "description": "Revokes a co-host grant, including a co-host removing themselves, and returns the refreshed mix. An account that has since left the workspace stays revocable.",
+      "summary": "Remove custom game co-host"
+    },
+    "rpc.balancer.custom.rotation": {
+      "description": "Recommends who is owed the next seat and who should sit out, computed from this mix's own match history. Read-only and open to any workspace member.",
+      "summary": "Get custom game rotation hints"
+    },
+    "rpc.balancer.custom.set_balancer_config": {
+      "description": "Replaces the mix's solver overrides with a validated config, or clears them with null, and returns the refreshed mix. Host or co-host only.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameBalancerConfigPatch"
+      },
+      "summary": "Set custom game balancer config"
+    },
+    "rpc.balancer.custom.set_participation": {
+      "description": "Moves several seats between must_play, pool and benched in one transaction -- the whole rotation verdict at once -- and returns the refreshed mix. Host or co-host only; 404 if any member is not on the roster.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGamePlayersParticipationPatch"
+      },
+      "summary": "Set custom game participation"
+    },
+    "rpc.balancer.custom.set_points_per_win": {
+      "description": "Sets how far a decided match moves both teams' ranks in the host's own book, or null to record matches without touching ranks. Host or co-host only.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGamePointsPerWinPatch"
+      },
+      "summary": "Set custom game points per win"
+    },
+    "rpc.balancer.custom.set_role_mask": {
+      "description": "Overrides how many seats of each role a team gets in this mix; null restores the workspace default shape. Host or co-host only.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameRoleMaskPatch"
+      },
+      "summary": "Set custom game role mask"
+    },
+    "rpc.balancer.custom.set_team_names": {
+      "description": "Renames the balanced teams by index and returns the refreshed mix. Host or co-host only.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameTeamNamesPatch"
+      },
+      "summary": "Set custom game team names"
+    },
+    "rpc.balancer.custom.swap_seats": {
+      "description": "Swaps two seated players between teams inside one balance option, same role only, and returns the refreshed mix. Host or co-host only; 404 when the option or either seat is missing, 422 when the seats hold different roles or sit on the same team.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameSeatSwap"
+      },
+      "summary": "Swap custom game seats"
+    },
+    "rpc.balancer.custom.transfer_host": {
+      "description": "Hands primary ownership to another signed-in member of the workspace, dropping their co-host grant if they held one. Host or co-host only; 404 when the target has no linked login account here, since a host is an auth.user id and not a roster member.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameHostTransfer"
+      },
+      "summary": "Transfer custom game host"
+    },
+    "rpc.balancer.custom.update_player": {
+      "description": "Patches one seat's participation state, role order or flex flag and returns the refreshed mix. Host or co-host only; 404 when the member is not on this mix's roster.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGamePlayerPatch"
+      },
+      "summary": "Update custom game player"
+    },
+    "rpc.balancer.custom.update_roster": {
+      "description": "Replaces the mix lineup with the given workspace_member ids (at most 100) and returns the refreshed mix. Host or co-host only; a member with no linked login account can be rostered here, unlike the host and co-host grants.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameRosterUpdate"
+      },
+      "summary": "Replace custom game roster"
+    },
     "rpc.balancer.draft.cancel": {
       "description": "Cancels the draft (requires team-create) and publishes a draft-cancelled realtime event.",
       "response": {
@@ -3695,6 +3868,82 @@
         "ref": "balancer.JobStatusResponse"
       },
       "summary": "Get balance job status"
+    },
+    "rpc.balancer.players.authors": {
+      "description": "Returns everyone who has personally rank-corrected a member in this workspace, busiest first, with their display name and correction count. Open to any workspace member.",
+      "summary": "List rank authors"
+    },
+    "rpc.balancer.players.list": {
+      "description": "Returns a page of the workspace roster carrying two rank dictionaries that are never merged: `ranks` is the workspace canon and `author_ranks` is one author's own book, which is what lets a row say whether a number is its own or inherited. Any workspace member may read another organiser's book through `author_user_id`.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "description": "1-based page, default 1.",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "description": "Page size, clamped to 1..100, default 30.",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "query",
+          "required": false,
+          "schema": {
+            "description": "Needle matched against battle_tag, display_name and name.",
+            "type": "string"
+          }
+        },
+        {
+          "name": "author_user_id",
+          "required": false,
+          "schema": {
+            "description": "Whose rank book to read into author_ranks; defaults to the caller.",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "author_only",
+          "required": false,
+          "schema": {
+            "description": "Keep only members that read author has personally ranked.",
+            "type": "boolean"
+          }
+        }
+      ],
+      "summary": "List workspace players"
+    },
+    "rpc.balancer.players.set_ranks": {
+      "description": "Writes one rank layer for a member and returns that layer. `scope: \"workspace\"` edits the shared canon every author inherits; `scope: \"author\"` edits the caller's own book and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes roles from the layer instead of zeroing them, so a cleared author rank falls back to canon, while an omitted role is left alone. 404 when the member belongs to another workspace.",
+      "summary": "Set workspace player ranks"
+    },
+    "rpc.balancer.players.summary": {
+      "description": "Returns the workspace roster size alongside how many of those members the read author has personally ranked, which is what the \"My ranks\" filter counts. Open to any workspace member.",
+      "query_params": [
+        {
+          "name": "author_user_id",
+          "required": false,
+          "schema": {
+            "description": "Whose rank book author_total counts; defaults to the caller.",
+            "type": "integer"
+          }
+        }
+      ],
+      "summary": "Get workspace roster summary"
+    },
+    "rpc.balancer.players.upsert": {
+      "description": "Creates or reuses a workspace member for a BattleTag and returns it shaped exactly like a roster row. Open to any workspace member; 422 when battle_tag is missing or blank.",
+      "summary": "Upsert workspace player"
+    },
+    "rpc.balancer.teams.export_registered": {
+      "description": "Materializes the tournament's complete registered teams into balancer teams, optionally narrowed to given team ids, and returns removed/imported/created counts plus every team skipped and why. Requires admin panel access and workspace team-create permission, and emits a teams-changed realtime event when anything was imported.",
+      "summary": "Export registered teams"
     },
     "rpc.identity.api_key.self": {
       "description": "Returns the descriptor -- name, scopes, limits, config policy, expiry -- of the API key presented on this request, so a scripted client can discover its own authority and budget. Requires an API-key credential: a session bearer gets 403.",
@@ -3954,6 +4203,10 @@
       "description": "Unlinks a game player from the active user by player_id; returns 204 No Content.",
       "summary": "Unlink player"
     },
+    "rpc.identity.rbac.add_user_deny": {
+      "description": "Adds a deny for one permission on the given user and returns the user's full deny list. workspace_id scopes the deny to a single workspace; omitted or null denies the permission everywhere, and a user may hold both at once. The deny takes precedence over every role grant that would otherwise confer the permission, and the RBAC cache is busted so it applies to the next request. Idempotent. Requires auth_user.update; 400 for a governance permission (denying the RBAC surface itself could lock administration out), 404 for an unknown user, permission or workspace.",
+      "summary": "Deny a permission to a user"
+    },
     "rpc.identity.rbac.assign_linked_player": {
       "description": "Links a game player to the given auth user (admin); returns 204 No Content.",
       "request": {
@@ -3993,6 +4246,10 @@
         "ref": "identity.RoleRead"
       },
       "summary": "Create role"
+    },
+    "rpc.identity.rbac.delete_auth_user": {
+      "description": "Permanently deletes another user's login account (superuser only): the auth user row and, by cascade, its roles, permission denies, sessions/refresh tokens, OAuth connections, API keys and preview-access grants; returns 204. The linked players.user survives with its auth_user_id nulled, so tournament history, statistics and workspace membership outlive the login account. 400 when deleting yourself, 404 if the user id is unknown.",
+      "summary": "Delete auth user"
     },
     "rpc.identity.rbac.delete_oauth_connection": {
       "description": "Deletes an OAuth connection by connection_id (admin); returns 204 No Content.",
@@ -4645,6 +4902,10 @@
       },
       "summary": "List all sessions (admin)"
     },
+    "rpc.identity.rbac.list_user_denies": {
+      "description": "Returns the permissions explicitly denied to the given user, each with the workspace_id it is scoped to (null = denied everywhere). Denies are a subtractive overlay on the grant-only role catalog: a deny always beats a grant, which is the whole reason the overlay exists. Requires auth_user.read.",
+      "summary": "List user permission denies"
+    },
     "rpc.identity.rbac.remove_linked_player": {
       "description": "Removes a linked game player from the given auth user (admin) by user_id/player_id; returns 204 No Content.",
       "summary": "Remove linked player"
@@ -4656,6 +4917,19 @@
         "ref": "identity.UserRoleRemove"
       },
       "summary": "Remove role"
+    },
+    "rpc.identity.rbac.remove_user_deny": {
+      "description": "Lifts one deny and returns the user's remaining deny list, restoring whatever the user's roles grant. The scope must match exactly: with no workspace_id query param this removes only the global deny, never a workspace-scoped one for the same permission (and vice versa). Idempotent, busts the RBAC cache, requires auth_user.update.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "summary": "Remove a user permission deny"
     },
     "rpc.identity.rbac.update_role": {
       "description": "Updates the role by role_id and returns it, invalidating the RBAC cache.",
@@ -4721,6 +4995,14 @@
       },
       "summary": "Set password"
     },
+    "rpc.identity.sso_exchange": {
+      "description": "Public (no bearer) redemption of the single-use, short-lived Redis ticket minted by an OAuth callback on a workspace custom domain, returning the session access+refresh token pair. It exists so the callback can hand a session back to the tenant origin without ever putting tokens in a redirect URL. Called by the custom domain's own frontend route, never by the apex, and the ticket plus the owt_xdomain_guard cookie value together are the credential. The ticket is burned before the guard is checked, so replay -- like an expired, unknown or guard-mismatched ticket -- fails closed with an indistinguishable 400.",
+      "response": {
+        "array": false,
+        "ref": "identity.Token"
+      },
+      "summary": "Redeem SSO ticket"
+    },
     "rpc.identity.update_api_key": {
       "description": "Updates the named API key (by id) for the active user and returns the updated record.",
       "request": {
@@ -4762,7 +5044,7 @@
       "summary": "Validate token"
     },
     "rpc.parser.ach.calculate": {
-      "description": "Runs the achievement condition-tree engine across a workspace (optionally seeding rules and scoping to specific slugs); requires achievement.update in the requested workspace.",
+      "description": "Runs the achievement condition-tree engine across a workspace (optionally seeding the built-in rules first and scoping the run to given slugs) and returns the slugs actually evaluated, rejecting unknown slugs and a missing workspace_id with 400; requires achievement.update in the requested workspace.",
       "request": {
         "array": false,
         "ref": "parser.AchievementCalculateRequest"
@@ -4774,7 +5056,7 @@
       "summary": "Run achievement calculation"
     },
     "rpc.parser.ach.calculate_tournament": {
-      "description": "Runs the achievement engine for a single tournament's workspace; requires achievement.update in that workspace.",
+      "description": "Runs the achievement engine for a single tournament \u2014 the workspace is taken from the tournament unless an explicitly matching workspace_id is supplied \u2014 and returns the tournament id plus the slugs evaluated, 404ing on an unknown tournament; requires achievement.update in that workspace.",
       "request": {
         "array": false,
         "ref": "parser.AchievementCalculateRequest"
@@ -4806,7 +5088,7 @@
       "summary": "Create achievement rule"
     },
     "rpc.parser.ach.delete": {
-      "description": "Deletes a workspace achievement rule; requires workspace achievement.delete.",
+      "description": "Deletes a workspace achievement rule and returns no content, 404ing when the rule does not exist in that workspace; requires workspace achievement.delete.",
       "summary": "Delete achievement rule"
     },
     "rpc.parser.ach.evaluate": {
@@ -4953,8 +5235,12 @@
       },
       "summary": "Validate condition tree"
     },
+    "rpc.parser.discord_channel.backfill": {
+      "description": "Queues a rescan of the tournament's Discord channel history \u2014 the same `process_all` command the bot runs at startup \u2014 resubmitting every attachment found in the last 500 messages of each channel bound to the tournament; returns an ack immediately, the scan itself is asynchronous. Requires discord_channel.update on the workspace and 404s when no channel is configured. Ingestion deduplicates on the SHA-256 of a log file's bytes, so logs already processed for the tournament are skipped rather than duplicated, but each call re-downloads and re-uploads every attachment \u2014 repeat it only when logs are genuinely missing.",
+      "summary": "Backfill Discord channel history"
+    },
     "rpc.parser.discord_channel.delete": {
-      "description": "Removes a tournament's Discord channel configuration; requires discord_channel.delete on the workspace.",
+      "description": "Removes a tournament's Discord channel configuration and returns no content, 404ing when no channel is configured; requires discord_channel.delete on the workspace.",
       "summary": "Delete tournament Discord channel"
     },
     "rpc.parser.discord_channel.get": {
@@ -4976,6 +5262,10 @@
         "ref": "parser.DiscordChannelRead"
       },
       "summary": "Upsert tournament Discord channel"
+    },
+    "rpc.parser.impact.recompute_baselines": {
+      "description": "Rebuilds the statistical baselines MVP-impact scoring is measured against (`matches.stat_baselines`) for the active formula version, aggregating a mean/standard deviation per (role, rank bucket, stat) over every historical match-statistics row \u2014 global, with no tournament or workspace scope \u2014 and returns the row count plus that formula version. Superuser-only. Each run atomically replaces the version's rows and aborts rather than wiping them when the aggregation yields nothing, so repeating it is safe; it does scan the whole statistics table and drops the 10-minute baseline cache every time, so avoid running it back to back.",
+      "summary": "Recompute impact baselines"
     },
     "rpc.parser.logs.history": {
       "description": "Lists match-log processing records filtered by tournament, encounter or workspace, plus optional status and free-text search, with pagination; permission is gated per filter argument.",
@@ -5037,7 +5327,7 @@
       "summary": "List log processing records"
     },
     "rpc.parser.logs.process_tournament": {
-      "description": "Enqueues processing of all stored match logs for a tournament; requires log.update in the tournament's workspace.",
+      "description": "Enqueues reprocessing of all stored match logs for a tournament and returns an ack message \u2014 the work itself runs asynchronously on the log queue \u2014 404ing on an unknown tournament; requires log.update in the tournament's workspace.",
       "summary": "Process tournament logs"
     },
     "rpc.parser.logs.queue_status": {
@@ -5049,7 +5339,7 @@
       "summary": "Match-log queue depths"
     },
     "rpc.parser.logs.retry": {
-      "description": "Resets a failed/processed log record to pending and re-enqueues it for processing; requires log.update on the record's workspace.",
+      "description": "Resets a failed/processed log record to pending, re-enqueues it for processing and returns the updated record, 404ing when the record does not exist; requires log.update on the record's workspace.",
       "response": {
         "array": false,
         "ref": "parser.LogRecordRead"
@@ -6225,6 +6515,46 @@
       "description": "Returns the calling user's captain side (home/away) for an encounter, or null if they are not a captain; requires authentication.",
       "summary": "Get my captain side"
     },
+    "rpc.tournament.captain_pick_ban_act": {
+      "description": "Applies one ban, pick or protect to the encounter's live pick/ban session of the given `kind`, under the session's row lock, and returns the resulting pool entry. Only a captain of one of the two teams may call it (403), and only on their own turn: acting out of turn, sending the wrong action for the current step, naming an item that is not a candidate this round, or re-banning something this side already banned earlier in the series is a 400, as is a session that is not initialized or no longer active.",
+      "request": {
+        "array": false,
+        "ref": "tournament.PickBanActionInput"
+      },
+      "summary": "Ban, pick or protect"
+    },
+    "rpc.tournament.captain_pick_ban_elect_opener": {
+      "description": "Resolves a round the `result_loser_choice` rotation is holding by naming which side opens it, then appends that round and returns the session. Only the captain who LOST the previous round may choose (403 for the other side, 403 for a non-captain); 400 when no round is awaiting a choice. An organizer overrides an unreachable captain through admin_pick_ban_elect_opener.",
+      "request": {
+        "array": false,
+        "ref": "tournament.ElectOpenerInput"
+      },
+      "summary": "Elect the next round's opener"
+    },
+    "rpc.tournament.captain_pick_ban_state": {
+      "description": "Returns the live pick/ban room for an encounter and the `kind` path segment ('map' or 'hero', 422 otherwise): the resolved sequence, the candidate pool, whose turn it is, both sides' readiness, any open undo request, and for maps the captains' per-map result claims. Readable by anyone who can view the tournament -- a captain additionally gets their own side annotated. When no session can exist yet the payload names why (teams unknown, bracket still a preview, no pick-ban configured, slot count mismatch, sides not ready, waiting on the map round) instead of erroring.",
+      "summary": "Get pick-ban room state"
+    },
+    "rpc.tournament.captain_pick_ban_undo": {
+      "description": "Records the calling captain's consent to undo the session's last action and applies it the moment the opposing captain consents too; `consent=false` withdraws an open request (either side may). Returns the resulting undo block. Captain-only (403). 400 when the session is not initialized or cancelled, when there is nothing left to undo, or when the target is a map pick whose hero round has already started -- undo those hero actions first.",
+      "request": {
+        "array": false,
+        "ref": "tournament.PickBanUndoInput"
+      },
+      "summary": "Request or withdraw an undo"
+    },
+    "rpc.tournament.captain_ready": {
+      "description": "Marks the calling captain's side ready to begin the encounter's pre-game phase and returns the resulting `{home, away}` readiness map; idempotent. The pick/ban session only opens once both sides are ready, and any change of team assignment clears both. Captain-only (403 when the account captains neither team or has no linked player profile).",
+      "summary": "Confirm readiness"
+    },
+    "rpc.tournament.captain_report_map": {
+      "description": "Files the calling captain's own claim of one played map's score, immediately after that map rather than at series end. Both sides report independently: matching claims settle the map and create its match row, differing ones mark the slot disputed for an organizer. Returns `{disputed, resolved, match_id}`. Captain-only (403); 409 while the stage bracket is still a preview the organizer has not activated.",
+      "request": {
+        "array": false,
+        "ref": "tournament.MapReportInput"
+      },
+      "summary": "Report a map result"
+    },
     "rpc.tournament.captain_reports": {
       "description": "Returns both captains' reports for an encounter (score, closeness, per-map codes, comment and custom field values) alongside the tournament's match-report form config under `form`, so the report dialog renders exactly the rules the submit endpoint enforces. Visible to anyone who can view the encounter.",
       "summary": "Get captain reports"
@@ -6390,6 +6720,14 @@
         "ref": "tournament.EncounterResultRead"
       },
       "summary": "Set encounter result"
+    },
+    "rpc.tournament.encounter_update_match": {
+      "description": "Edits one played map of an encounter (teams, score, map, lobby code, time, log name) and answers the match's own columns; requires match-update permission on the workspace resolved from the match.",
+      "request": {
+        "array": false,
+        "ref": "tournament.MatchUpdate"
+      },
+      "summary": "Update match"
     },
     "rpc.tournament.encounters_overview": {
       "description": "Returns an aggregated encounters overview for the search filters, with viewer-scoped fields resolved from the optional identity.",
@@ -6670,6 +7008,23 @@
         "ref": "tournament.MatchReadWithStats"
       },
       "summary": "Get match with stats"
+    },
+    "rpc.tournament.get_match_kill_feed": {
+      "description": "Returns one match's chronological kill feed and timeline events, scoped to the given workspace; 404s when the match is outside that scope, and is visibility-gated like the other public match reads.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.MatchKillFeedRead"
+      },
+      "summary": "Get match kill feed"
     },
     "rpc.tournament.get_pick_ban_configs": {
       "description": "Returns the tournament's map pick-ban configs in cascade order. Visibility-gated like other public tournament reads.",
@@ -7663,6 +8018,18 @@
       },
       "summary": "Get league player stacks"
     },
+    "rpc.tournament.preview_access_add": {
+      "description": "Allowlists one account (body `auth_user_id`, 422 when absent) to view a tournament before it is public and invalidates the cached tournament read so the change lands immediately; requires workspace-admin privileges on the tournament's workspace.",
+      "summary": "Grant preview access"
+    },
+    "rpc.tournament.preview_access_list": {
+      "description": "Returns every account allowlisted to view a tournament while it is still hidden, as id/tournament_id/auth_user_id/created_at rows; requires workspace-admin privileges on the tournament's workspace (403 otherwise).",
+      "summary": "List preview-access grants"
+    },
+    "rpc.tournament.preview_access_remove": {
+      "description": "Removes an account's preview allowlist entry (204 no body) and invalidates the cached tournament read; requires workspace-admin privileges on the tournament's workspace.",
+      "summary": "Revoke preview access"
+    },
     "rpc.tournament.reg_approve": {
       "description": "Approves a registration (recording the reviewer) and broadcasts a realtime change; requires team-create permission on its workspace.",
       "response": {
@@ -7963,6 +8330,46 @@
       },
       "summary": "Update custom status"
     },
+    "rpc.tournament.regteam_accept": {
+      "description": "Redeems an invite by `token` or by `invite_id` and takes the offered slot, returning the team. A player already registered solo is attached to the team rather than duplicated, and the submitted registration body is then ignored -- their recorded answers stand; a player with no registration yet is registered from that body. The consume is a single guarded update, so two simultaneous redemptions of one link cannot both win. 403 when a targeted invite was addressed to a different account, 409 on a full slot, a terminal registration or a lost race; requires authentication.",
+      "request": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamAcceptRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamRead"
+      },
+      "summary": "Accept an invite"
+    },
+    "rpc.tournament.regteam_create": {
+      "description": "Founds a team for a tournament and registers the caller as its captain in one transaction, occupying the requested roster slot. The captain passes the same registration form and the same admission gate as a solo entrant. Returns the new team including its own invites. 400 on an empty name or one containing '#', 409 when the name is taken or the caller is already registered; requires authentication.",
+      "request": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamCreateRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamRead"
+      },
+      "summary": "Create a registration team"
+    },
+    "rpc.tournament.regteam_decline": {
+      "description": "The INVITEE refuses an offer made to them, by `token` or `invite_id`, releasing its reserved slot back to the captain (204 no body). Distinct from regteam_reject, which is an organizer refusing an entire team. 403 when a targeted invite belongs to another account; 409 when the invite is no longer pending. Requires authentication.",
+      "summary": "Decline an invite"
+    },
+    "rpc.tournament.regteam_disband": {
+      "description": "The captain dissolves their own team (204 no body): members' registrations become withdrawn but keep their team link, so each player's card can say the team was disbanded rather than leaving an unexplained withdrawal, and every pending invite is revoked. Captain-only (403), team must still be forming and registration still open. An organizer's equivalent is regteam_reject.",
+      "summary": "Disband a team"
+    },
+    "rpc.tournament.regteam_free_agents": {
+      "description": "Returns this tournament's live registrants who are on no team, with the roles they signed up for (primary first) -- the picker a captain fills a slot from. Authenticated but not captain-gated: everything here is already on the public participants list. Carries registration ids, never account ids.",
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationFreeAgentListResponse"
+      },
+      "summary": "List free agents"
+    },
     "rpc.tournament.regteam_image_delete": {
       "description": "Removes a registered team's image from S3 and clears its URL; only that team's captain may call it, and only while the team is still forming.",
       "response": {
@@ -7978,6 +8385,103 @@
         "ref": "tournament.RegistrationTeamRead"
       },
       "summary": "Upload registered team image"
+    },
+    "rpc.tournament.regteam_invite": {
+      "description": "Offers one roster slot, in either of two modes: with `target_registration_id` it is an in-app offer to a named free agent, which carries no token at all and is read by its recipient through regteam_my_invites; without it a shareable link invite is minted. The link's raw token is returned in this response and nowhere else -- only its sha256 is stored. Expires after `ttl_days` (default 7). Captain-only (403), team must still be forming, and a pending invite reserves its slot. 409 once the team has issued 60 invites in total, counting revoked and declined ones: revoke an outstanding offer or ask an organizer for a cap reset.",
+      "request": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamInviteCreateRequest"
+      },
+      "summary": "Invite a player"
+    },
+    "rpc.tournament.regteam_invite_cap_reset": {
+      "description": "Forgives a team's cumulative invite count so its captain can invite again -- the recourse the cap's own 409 names (204 no body). A watermark, not a counter reset: the earlier invites stay readable in the history and only the count's floor moves. 404 when the team belongs to another tournament. Requires team-update permission on the tournament.",
+      "summary": "Reset a team's invite cap"
+    },
+    "rpc.tournament.regteam_invite_history": {
+      "description": "Every invite a team ever issued, newest first, with its cumulative cap standing (used, limit, reset watermark) and, per row, whether staff or the captain withdrew it. The same data the team's captain reads through regteam_invite_history_public, which authorizes by captaincy instead. Requires team-read permission on the tournament.",
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamInviteHistoryResponse"
+      },
+      "summary": "Get invite history (admin)"
+    },
+    "rpc.tournament.regteam_invite_history_public": {
+      "description": "The team's own captain reads every invite the team ever issued, newest first -- live, accepted, declined, revoked or lapsed -- alongside the cumulative cap standing (used, limit, and the reset watermark if an organizer forgave the count). Authorized by captaincy rather than workspace permission, and deliberately still readable after the team is rejected or exported, which is usually when someone opens it. The organizer reads the same data through regteam_invite_history.",
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamInviteHistoryResponse"
+      },
+      "summary": "Get invite history (captain)"
+    },
+    "rpc.tournament.regteam_invite_preview": {
+      "description": "Resolves a link invite's token to what it offers -- tournament, team, slot, substitute flag, expiry and whether it is still redeemable -- without consuming it. The only anonymous invite surface and the only one that skips the tournament visibility check: the token IS the credential, so a link into a private tournament still works for its holder. Reveals nothing about the roster. A dead or expired invite answers with its state rather than an error; only a token matching nothing is a 404.",
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamInvitePreview"
+      },
+      "summary": "Preview an invite link"
+    },
+    "rpc.tournament.regteam_invite_revoke": {
+      "description": "The team's own captain withdraws an outstanding offer they issued, releasing its reserved slot (204 no body). 403 for anyone else -- an organizer reaching into a team they do not captain uses regteam_invite_revoke_admin instead, which records that staff did it. 404 on an unknown invite.",
+      "summary": "Revoke an invite (captain)"
+    },
+    "rpc.tournament.regteam_invite_revoke_admin": {
+      "description": "An organizer withdraws an outstanding offer from a team they do not captain (204 no body); the write records that staff did it, which is what distinguishes the row from the captain's own regteam_invite_revoke. Unlike the captain path it does not require the team to still be mutable -- the reason to reach in is usually that something is stuck. The invite must belong to this tournament (404 otherwise, deliberately not 403). Requires team-update permission.",
+      "summary": "Revoke an invite (organizer)"
+    },
+    "rpc.tournament.regteam_kick": {
+      "description": "The captain removes an accepted member, freeing their slot (204 no body). The member's registration survives as withdrawn rather than being deleted. Captain-only (403), team must still be forming and registration still open; 409 when aimed at the captain themselves -- transfer captaincy or disband instead -- and 404 when the player is not on the team.",
+      "summary": "Remove a team member"
+    },
+    "rpc.tournament.regteam_leave": {
+      "description": "A member withdraws themselves from a team, freeing their slot (204 no body); their registration becomes withdrawn. The mirror of regteam_kick. 409 when the caller is the captain -- a captain must transfer or disband rather than vanish from a team others have joined -- and 404 when the caller is not on the team. Requires authentication.",
+      "summary": "Leave a team"
+    },
+    "rpc.tournament.regteam_list": {
+      "description": "The organizer's view of a tournament's registered teams: every team with its members, its outstanding invites and its per-slot shortfall, plus the number of free agents on no team -- the players the export cannot place. Occupancy is recomputed rather than read off the denormalized status, because the shortfall is what is actionable. `include_terminal` also returns rejected and disbanded teams. Requires team-read permission on the tournament.",
+      "query_params": [
+        {
+          "name": "include_terminal",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamListResponse"
+      },
+      "summary": "List registration teams (admin)"
+    },
+    "rpc.tournament.regteam_list_public": {
+      "description": "The public roster of a tournament's registered teams: name, crest, status, members and each team's remaining per-slot shortfall, plus the count of free agents on no team. Rejected and disbanded teams are omitted, and so are outstanding invites -- except on a team the caller themselves captains, who sees their own pending offers here. No authentication required beyond the tournament's own visibility rule.",
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamListResponse"
+      },
+      "summary": "List registration teams"
+    },
+    "rpc.tournament.regteam_my_invites": {
+      "description": "Returns the targeted invites offered to the calling user in this tournament -- the only way their recipient can learn one exists, since a targeted invite carries no token to paste. Scoped to the caller from their own token; there is no id to pass. Link invites are excluded (a bearer credential has no addressee), as are expired offers and offers from teams no longer forming. Requires authentication.",
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamInviteOfferListResponse"
+      },
+      "summary": "List invites addressed to me"
+    },
+    "rpc.tournament.regteam_reject": {
+      "description": "An ORGANIZER refuses an entire team -- the counterpart of rejecting a solo registration, and distinct from regteam_decline, which is one invitee refusing one offer. Revokes the team's pending invites and, by default, withdraws its members; `withdraw_members: false` instead returns them to the solo pool, which is the right call when the team is rejected for being incomplete rather than unwelcome. Returns the rejected team. 404 when the team belongs to another tournament, 409 once it is already exported, rejected or disbanded. Requires team-update permission on the tournament.",
+      "response": {
+        "array": false,
+        "ref": "tournament.RegistrationTeamRead"
+      },
+      "summary": "Reject a registration team"
+    },
+    "rpc.tournament.regteam_transfer_captain": {
+      "description": "Hands captaincy to another accepted member (204 no body); the roster itself is unchanged. Captain-only (403), team must still be forming and registration still open. 404 when the successor is not on the team, 409 when they are a substitute -- a bench player holds no starter slot and cannot captain the roster.",
+      "summary": "Transfer captaincy"
     },
     "rpc.tournament.report_form_get": {
       "description": "Returns the tournament's captain match-report form config: which built-in fields (closeness, map codes, comment) are enabled and required, plus any organizer-defined text fields. Always a complete config \u2014 a tournament that has never been configured answers the defaults rather than null. Requires match-read permission on the tournament's workspace.",
@@ -13647,6 +14151,258 @@
       "title": "StreamVisibilityUpdate",
       "type": "object"
     },
+    "app.TournamentReadiness": {
+      "description": "Living-checklist aggregate for one tournament (D13, \u00a77.1).\n\nField groups are masked by the caller's workspace permissions:\n``tournament.read`` gates the setup/bracket/logs fields, ``team.read`` gates\nthe registration/pool/balance/draft fields \u2014 a missing group yields ``None``\nso the checklist renders \"no-access\" instead of zeros.",
+      "properties": {
+        "balance_exported_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Balance Exported At"
+        },
+        "balance_saved": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Balance Saved"
+        },
+        "bracket_generated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Bracket Generated"
+        },
+        "draft_session_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Draft Session Status"
+        },
+        "encounters_total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encounters Total"
+        },
+        "encounters_with_logs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encounters With Logs"
+        },
+        "grid_selected": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Grid Selected"
+        },
+        "logs_used": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Logs Used"
+        },
+        "pool_need_fix": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pool Need Fix"
+        },
+        "pool_ready": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pool Ready"
+        },
+        "registration_form_configured": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Registration Form Configured"
+        },
+        "registration_open": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Registration Open"
+        },
+        "registrations_approved": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Registrations Approved"
+        },
+        "registrations_checked_in": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Registrations Checked In"
+        },
+        "registrations_pending": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Registrations Pending"
+        },
+        "registrations_ranked": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Registrations Ranked"
+        },
+        "schedule_configured": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Schedule Configured"
+        },
+        "stage_slots_filled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stage Slots Filled"
+        },
+        "stages_total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stages Total"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "team_formation": {
+          "title": "Team Formation",
+          "type": "string"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tournament_id",
+        "status",
+        "team_formation",
+        "schedule_configured",
+        "grid_selected",
+        "stages_total",
+        "stage_slots_filled",
+        "bracket_generated",
+        "encounters_total",
+        "encounters_with_logs",
+        "logs_used",
+        "registration_form_configured",
+        "registration_open",
+        "registrations_pending",
+        "registrations_approved",
+        "registrations_checked_in",
+        "registrations_ranked",
+        "pool_ready",
+        "pool_need_fix",
+        "balance_saved",
+        "balance_exported_at",
+        "draft_session_status"
+      ],
+      "title": "TournamentReadiness",
+      "type": "object"
+    },
     "app.TournamentStatus": {
       "enum": [
         "registration",
@@ -18387,6 +19143,338 @@
       "title": "CreateJobResponse",
       "type": "object"
     },
+    "balancer.CustomGameBalancerConfigPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "balancer_config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Balancer Config"
+        }
+      },
+      "required": [
+        "balancer_config"
+      ],
+      "title": "CustomGameBalancerConfigPatch",
+      "type": "object"
+    },
+    "balancer.CustomGameCoHostPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "co_host_user_id": {
+          "title": "Co Host User Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "co_host_user_id"
+      ],
+      "title": "CustomGameCoHostPatch",
+      "type": "object"
+    },
+    "balancer.CustomGameCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "balancer_config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Balancer Config"
+        },
+        "member_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 100,
+          "title": "Member Ids",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "CustomGameCreate",
+      "type": "object"
+    },
+    "balancer.CustomGameHostTransfer": {
+      "additionalProperties": false,
+      "properties": {
+        "new_host_user_id": {
+          "title": "New Host User Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "new_host_user_id"
+      ],
+      "title": "CustomGameHostTransfer",
+      "type": "object"
+    },
+    "balancer.CustomGameOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "winner": {
+          "anyOf": [
+            {
+              "enum": [
+                1,
+                2
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Winner"
+        }
+      },
+      "required": [
+        "winner"
+      ],
+      "title": "CustomGameOutcome",
+      "type": "object"
+    },
+    "balancer.CustomGamePlayerParticipationPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "participation": {
+          "$ref": "#/components/schemas/balancer.MixParticipation"
+        },
+        "workspace_member_id": {
+          "title": "Workspace Member Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspace_member_id",
+        "participation"
+      ],
+      "title": "CustomGamePlayerParticipationPatch",
+      "type": "object"
+    },
+    "balancer.CustomGamePlayerPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "is_flex": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Flex"
+        },
+        "participation": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/balancer.MixParticipation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "roles": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roles"
+        }
+      },
+      "title": "CustomGamePlayerPatch",
+      "type": "object"
+    },
+    "balancer.CustomGamePlayersParticipationPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "players": {
+          "items": {
+            "$ref": "#/components/schemas/balancer.CustomGamePlayerParticipationPatch"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Players",
+          "type": "array"
+        }
+      },
+      "required": [
+        "players"
+      ],
+      "title": "CustomGamePlayersParticipationPatch",
+      "type": "object"
+    },
+    "balancer.CustomGamePointsPerWinPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "points_per_win": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Points Per Win"
+        }
+      },
+      "required": [
+        "points_per_win"
+      ],
+      "title": "CustomGamePointsPerWinPatch",
+      "type": "object"
+    },
+    "balancer.CustomGameRecordOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "map_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Id"
+        },
+        "outcome": {
+          "$ref": "#/components/schemas/balancer.CustomGameOutcome"
+        },
+        "variant_index": {
+          "minimum": 0,
+          "title": "Variant Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "outcome",
+        "variant_index"
+      ],
+      "title": "CustomGameRecordOutcome",
+      "type": "object"
+    },
+    "balancer.CustomGameRoleMaskPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "role_mask": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Role Mask"
+        }
+      },
+      "required": [
+        "role_mask"
+      ],
+      "title": "CustomGameRoleMaskPatch",
+      "type": "object"
+    },
+    "balancer.CustomGameRosterUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "member_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 100,
+          "title": "Member Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "member_ids"
+      ],
+      "title": "CustomGameRosterUpdate",
+      "type": "object"
+    },
+    "balancer.CustomGameSeatSwap": {
+      "additionalProperties": false,
+      "properties": {
+        "first_uuid": {
+          "minLength": 1,
+          "title": "First Uuid",
+          "type": "string"
+        },
+        "second_uuid": {
+          "minLength": 1,
+          "title": "Second Uuid",
+          "type": "string"
+        },
+        "variant_index": {
+          "minimum": 0,
+          "title": "Variant Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "variant_index",
+        "first_uuid",
+        "second_uuid"
+      ],
+      "title": "CustomGameSeatSwap",
+      "type": "object"
+    },
+    "balancer.CustomGameTeamNamesPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "team_names": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Team Names",
+          "type": "object"
+        }
+      },
+      "required": [
+        "team_names"
+      ],
+      "title": "CustomGameTeamNamesPatch",
+      "type": "object"
+    },
     "balancer.DraftAutopickStrategy": {
       "enum": [
         "best_fit",
@@ -19967,6 +21055,15 @@
       ],
       "title": "JobStatusResponse",
       "type": "object"
+    },
+    "balancer.MixParticipation": {
+      "enum": [
+        "must_play",
+        "pool",
+        "benched"
+      ],
+      "title": "MixParticipation",
+      "type": "string"
     },
     "balancer.PlayerData": {
       "properties": {
@@ -31243,6 +32340,20 @@
       "title": "DivisionStatistics",
       "type": "object"
     },
+    "tournament.ElectOpenerInput": {
+      "description": "``result_loser_choice`` rotation only: the losing captain names who\nopens the next round's bans.",
+      "properties": {
+        "first_side": {
+          "title": "First Side",
+          "type": "string"
+        }
+      },
+      "required": [
+        "first_side"
+      ],
+      "title": "ElectOpenerInput",
+      "type": "object"
+    },
     "tournament.EncounterCreate": {
       "description": "Schema for creating an encounter",
       "properties": {
@@ -33357,6 +34468,84 @@
       "title": "HeroRead",
       "type": "object"
     },
+    "tournament.KillFeedEntry": {
+      "properties": {
+        "ability": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ability"
+        },
+        "damage": {
+          "title": "Damage",
+          "type": "number"
+        },
+        "fight": {
+          "title": "Fight",
+          "type": "integer"
+        },
+        "is_critical_hit": {
+          "title": "Is Critical Hit",
+          "type": "boolean"
+        },
+        "is_environmental": {
+          "title": "Is Environmental",
+          "type": "boolean"
+        },
+        "killer_hero": {
+          "$ref": "#/components/schemas/tournament.HeroRead"
+        },
+        "killer_team_id": {
+          "title": "Killer Team Id",
+          "type": "integer"
+        },
+        "killer_user_id": {
+          "title": "Killer User Id",
+          "type": "integer"
+        },
+        "round": {
+          "title": "Round",
+          "type": "integer"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "victim_hero": {
+          "$ref": "#/components/schemas/tournament.HeroRead"
+        },
+        "victim_team_id": {
+          "title": "Victim Team Id",
+          "type": "integer"
+        },
+        "victim_user_id": {
+          "title": "Victim User Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "time",
+        "round",
+        "fight",
+        "ability",
+        "damage",
+        "is_critical_hit",
+        "is_environmental",
+        "killer_user_id",
+        "killer_team_id",
+        "killer_hero",
+        "victim_user_id",
+        "victim_team_id",
+        "victim_hero"
+      ],
+      "title": "KillFeedEntry",
+      "type": "object"
+    },
     "tournament.LastResolutionRead": {
       "description": "The newest audit row for the encounter, flattened for the list row.",
       "properties": {
@@ -33670,6 +34859,27 @@
       "title": "MapRead",
       "type": "object"
     },
+    "tournament.MapReportInput": {
+      "description": "One captain's independent claim of a single played map's result \u2014\nsubmitted immediately after that map, not at series end (contrast\n``CaptainReportSubmission``). See ``services.encounter.map_report``.",
+      "properties": {
+        "away_score": {
+          "minimum": 0,
+          "title": "Away Score",
+          "type": "integer"
+        },
+        "home_score": {
+          "minimum": 0,
+          "title": "Home Score",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "home_score",
+        "away_score"
+      ],
+      "title": "MapReportInput",
+      "type": "object"
+    },
     "tournament.MapVetoMode": {
       "enum": [
         "pool",
@@ -33879,6 +35089,35 @@
         "category"
       ],
       "title": "MappingValueCategoryRead",
+      "type": "object"
+    },
+    "tournament.MatchKillFeedRead": {
+      "properties": {
+        "events": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.MatchTimelineEvent"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "kills": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.KillFeedEntry"
+          },
+          "title": "Kills",
+          "type": "array"
+        },
+        "match_id": {
+          "title": "Match Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "match_id",
+        "kills",
+        "events"
+      ],
+      "title": "MatchKillFeedRead",
       "type": "object"
     },
     "tournament.MatchRead": {
@@ -34303,6 +35542,166 @@
       "title": "MatchSearchQueryParams",
       "type": "object"
     },
+    "tournament.MatchTimelineEvent": {
+      "description": "A non-kill timeline event (ultimate cast, resurrect) worth surfacing.",
+      "properties": {
+        "hero": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.HeroRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "related_team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Related Team Id"
+        },
+        "related_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Related User Id"
+        },
+        "round": {
+          "title": "Round",
+          "type": "integer"
+        },
+        "team_id": {
+          "title": "Team Id",
+          "type": "integer"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "time",
+        "round",
+        "name",
+        "user_id",
+        "team_id",
+        "hero",
+        "related_user_id",
+        "related_team_id"
+      ],
+      "title": "MatchTimelineEvent",
+      "type": "object"
+    },
+    "tournament.MatchUpdate": {
+      "description": "Partial update for a single match (map) within an encounter.",
+      "properties": {
+        "away_score": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Away Score"
+        },
+        "away_team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Away Team Id"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code"
+        },
+        "home_score": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Home Score"
+        },
+        "home_team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Home Team Id"
+        },
+        "map_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Id"
+        },
+        "time": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time"
+        }
+      },
+      "title": "MatchUpdate",
+      "type": "object"
+    },
     "tournament.MergeGroupStagesRequest": {
       "description": "Merge legacy one-group stages into one grouped stage.\n\n``source_stage_ids`` are removed after their stage_items and stage-scoped\nreferences are moved under the target stage from the route path.",
       "properties": {
@@ -34687,6 +36086,25 @@
       "title": "Paginated[TournamentRead]",
       "type": "object"
     },
+    "tournament.PickBanActionInput": {
+      "description": "One ban/pick/protect against a hero- or map-kind pick-ban session.",
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "item_id": {
+          "title": "Item Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "item_id",
+        "action"
+      ],
+      "title": "PickBanActionInput",
+      "type": "object"
+    },
     "tournament.PickBanKind": {
       "description": "Which catalog a :class:`PickBanConfig`/session pool draws from.",
       "enum": [
@@ -34705,6 +36123,18 @@
       ],
       "title": "PickBanNoRepeatScope",
       "type": "string"
+    },
+    "tournament.PickBanUndoInput": {
+      "description": "One captain's consent to undo the session's last action. ``consent=False``\nwithdraws an open request \u2014 the asker changing their mind and the opponent\nrefusing are the same outcome, so they share one field.",
+      "properties": {
+        "consent": {
+          "default": true,
+          "title": "Consent",
+          "type": "boolean"
+        }
+      },
+      "title": "PickBanUndoInput",
+      "type": "object"
     },
     "tournament.PlayerCreate": {
       "description": "Schema for creating a player",
@@ -35612,6 +37042,50 @@
       "title": "RegistrationFormUpsert",
       "type": "object"
     },
+    "tournament.RegistrationFreeAgentListResponse": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.RegistrationFreeAgentRead"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "title": "RegistrationFreeAgentListResponse",
+      "type": "object"
+    },
+    "tournament.RegistrationFreeAgentRead": {
+      "description": "A registrant on no team, as a captain sees them in the invite picker.\n\nCarries the registration id rather than an account id: the client never learns\nan ``auth_user_id``, and the server resolves the identity itself. Everything\nhere is already on the public participants list, so the picker opens no new\nprivacy surface \u2014 which is what makes targeted invites possible without a\nglobal account search.",
+      "properties": {
+        "battle_tag": {
+          "title": "Battle Tag",
+          "type": "string"
+        },
+        "registration_id": {
+          "title": "Registration Id",
+          "type": "integer"
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Roles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "registration_id",
+        "battle_tag"
+      ],
+      "title": "RegistrationFreeAgentRead",
+      "type": "object"
+    },
     "tournament.RegistrationRead": {
       "properties": {
         "admission": {
@@ -35937,6 +37411,40 @@
       "title": "RegistrationStatusResponse",
       "type": "object"
     },
+    "tournament.RegistrationTeamAcceptRequest": {
+      "description": "Redeem an invite by token or by id.\n\nExactly one reference must be given. Accepting both would leave which one\nauthorizes the acceptance ambiguous \u2014 and since a link invite is bearer while a\ntargeted one is not, the ambiguity is a privilege question, not a cosmetic one.\n\n``registration`` is OPTIONAL because an invitee who already has a live\nregistration is a free agent *attaching*: the service reuses their existing row\nand ignores anything sent here, so demanding a payload would make them re-answer\na form they already filled. Required-but-ignored is what it used to be, and the\nclient expressed that by casting an empty object \u2014 a lie the type system had no\nway to catch.\n\nA genuinely new invitee who sends nothing is still rejected, by the registration\nform's own validation downstream. This default cannot create a blank row.",
+      "properties": {
+        "invite_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invite Id"
+        },
+        "registration": {
+          "$ref": "#/components/schemas/tournament.RegistrationCreate"
+        },
+        "token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token"
+        }
+      },
+      "title": "RegistrationTeamAcceptRequest",
+      "type": "object"
+    },
     "tournament.RegistrationTeamBrief": {
       "description": "The registered team a roster read carries inline.\n\nDeliberately not the full ``RegistrationTeamRead``: this rides in every row of\nthe public participants list, so it holds only what a team column and the\n\u00a712.5 status line need. In particular it carries **no invites** \u2014 a public\nroster must not leak who has been asked and declined.",
       "properties": {
@@ -35981,6 +37489,342 @@
         "status"
       ],
       "title": "RegistrationTeamBrief",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamCreateRequest": {
+      "description": "Create a team and register the caller as its captain, in one call.\n\nThe captain is a member like any other (decision 5), so their own registration\npayload rides along and goes through the identical validation a solo entrant\ngets. Splitting this into \"create team\" then \"register captain\" would allow a\ncaptainless team to exist between the two calls.",
+      "properties": {
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "registration": {
+          "$ref": "#/components/schemas/tournament.RegistrationCreate"
+        },
+        "slot_code": {
+          "enum": [
+            "tank",
+            "dps",
+            "support",
+            "flex"
+          ],
+          "title": "Slot Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "slot_code",
+        "registration"
+      ],
+      "title": "RegistrationTeamCreateRequest",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamInviteCreateRequest": {
+      "description": "Offer one roster slot.\n\n``target_registration_id`` addresses a free agent already registered for this\ntournament; omitting it produces a shareable link for someone with no account\nyet (decision 3). Both modes are one entity, so the slot accounting cannot\ndiverge between them.\n\nA REGISTRATION id, not an account id: the captain picks from this tournament's\nown free agents, so no global account search \u2014 and no new identity surface \u2014\nis needed. The server resolves the account behind it and stores that, because\nidentity is what an invite is bound to; a registration can be withdrawn and\nresubmitted underneath it.",
+      "properties": {
+        "is_substitute": {
+          "default": false,
+          "title": "Is Substitute",
+          "type": "boolean"
+        },
+        "slot_code": {
+          "enum": [
+            "tank",
+            "dps",
+            "support",
+            "flex"
+          ],
+          "title": "Slot Code",
+          "type": "string"
+        },
+        "target_registration_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Registration Id"
+        },
+        "ttl_days": {
+          "anyOf": [
+            {
+              "maximum": 90,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ttl Days"
+        }
+      },
+      "required": [
+        "slot_code"
+      ],
+      "title": "RegistrationTeamInviteCreateRequest",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamInviteHistoryEntry": {
+      "description": "One invite the team ever issued, live or finished.\n\nDistinct from :class:`RegistrationTeamInviteRead`, which is the LIVE list that\nreserves roster slots. Terminal rows must never appear there \u2014 a declined offer\nholding a place is the bug that separation prevents.",
+      "properties": {
+        "answered_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answered At"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "invited_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invited At"
+        },
+        "is_link": {
+          "default": false,
+          "title": "Is Link",
+          "type": "boolean"
+        },
+        "is_substitute": {
+          "title": "Is Substitute",
+          "type": "boolean"
+        },
+        "revoked_by_organizer": {
+          "default": false,
+          "title": "Revoked By Organizer",
+          "type": "boolean"
+        },
+        "slot_code": {
+          "title": "Slot Code",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "target_battle_tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Battle Tag"
+        }
+      },
+      "required": [
+        "id",
+        "slot_code",
+        "is_substitute",
+        "state"
+      ],
+      "title": "RegistrationTeamInviteHistoryEntry",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamInviteHistoryResponse": {
+      "description": "The history plus the cap standing it explains.\n\nThey ship together because apart they are a riddle: the cap counts every invite\never issued while only pending ones were ever visible, so a captain refused at\nthe ceiling had no way to see where it went.",
+      "properties": {
+        "cap_limit": {
+          "default": 0,
+          "title": "Cap Limit",
+          "type": "integer"
+        },
+        "cap_reset_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cap Reset At"
+        },
+        "cap_used": {
+          "default": 0,
+          "title": "Cap Used",
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.RegistrationTeamInviteHistoryEntry"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "title": "RegistrationTeamInviteHistoryResponse",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamInviteOffer": {
+      "description": "An invite addressed to the caller, as their own registration card shows it.\n\nDistinct from :class:`RegistrationTeamInvitePreview`, which answers the same\nquestion for a LINK held by a stranger. This one is for a targeted invite,\nwhich has no token at all \u2014 so this read is the only way its recipient can\never learn it exists.",
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "invite_id": {
+          "title": "Invite Id",
+          "type": "integer"
+        },
+        "is_substitute": {
+          "title": "Is Substitute",
+          "type": "boolean"
+        },
+        "slot_code": {
+          "title": "Slot Code",
+          "type": "string"
+        },
+        "team_id": {
+          "title": "Team Id",
+          "type": "integer"
+        },
+        "team_name": {
+          "title": "Team Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "invite_id",
+        "team_id",
+        "team_name",
+        "slot_code",
+        "is_substitute"
+      ],
+      "title": "RegistrationTeamInviteOffer",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamInviteOfferListResponse": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.RegistrationTeamInviteOffer"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "title": "RegistrationTeamInviteOfferListResponse",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamInvitePreview": {
+      "description": "What a link invite reveals BEFORE it is redeemed.\n\nDeliberately minimal: the holder of a token is not yet a member, so this shows\nwhat they are being asked to join and nothing about who else is on the roster.\nIt carries ``state`` rather than 404-ing a dead invite, so the landing page can\nsay *why* a link no longer works instead of looking broken.",
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "is_redeemable": {
+          "default": false,
+          "title": "Is Redeemable",
+          "type": "boolean"
+        },
+        "is_substitute": {
+          "title": "Is Substitute",
+          "type": "boolean"
+        },
+        "slot_code": {
+          "title": "Slot Code",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "team_id": {
+          "title": "Team Id",
+          "type": "integer"
+        },
+        "team_name": {
+          "title": "Team Name",
+          "type": "string"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "tournament_name": {
+          "title": "Tournament Name",
+          "type": "string"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tournament_id",
+        "tournament_name",
+        "workspace_id",
+        "team_id",
+        "team_name",
+        "slot_code",
+        "is_substitute",
+        "state"
+      ],
+      "title": "RegistrationTeamInvitePreview",
       "type": "object"
     },
     "tournament.RegistrationTeamInviteRead": {
@@ -36052,6 +37896,29 @@
         "state"
       ],
       "title": "RegistrationTeamInviteRead",
+      "type": "object"
+    },
+    "tournament.RegistrationTeamListResponse": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.RegistrationTeamRead"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "unassigned_players": {
+          "default": 0,
+          "title": "Unassigned Players",
+          "type": "integer"
+        }
+      },
+      "title": "RegistrationTeamListResponse",
       "type": "object"
     },
     "tournament.RegistrationTeamMemberRead": {

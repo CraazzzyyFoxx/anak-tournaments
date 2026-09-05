@@ -1,41 +1,41 @@
-# OWT Design Book — «Editorial Tactical»
+# OWT Design Book — "Editorial Tactical"
 
-> Единый источник правды по дизайн-системе фронтенда OWT.
-> Интерактивная версия: [`/docs/design-book.html`](../frontend/public/docs/design-book.html).
-> Статус: **v2 — токены сверены** с `frontend/src/app/globals.css` (реальные `--aqt-*`, не прототипные `--bg`/`--brand`); правила ниже размечены как **Verified** (подтверждено кодом), **Specified** (только в этой книге, в коде не реализовано) или **Fixed** (баг, найденный и уже исправленный апстрим).
+> The single source of truth for the OWT frontend design system.
+> Interactive version: [`/docs/design-book.html`](../frontend/public/docs/design-book.html).
+> Status: **v2 — tokens reconciled** against `frontend/src/app/globals.css` (the real `--aqt-*`, not the prototype `--bg`/`--brand`). Every rule below carries one of three tiers, the same three the interactive version uses: **Verified** — measured against `globals.css` / `tailwind.config.ts`, safe to build on; **Specified** — stated by this book and not implemented upstream, whether a target rule or a token/component API the code expresses only as CSS-class shape and inline literals; **Fixed** — a divergence that was found and has already been repaired upstream, recorded so the fix is not undone by someone reading older code.
 
-Направление — **Editorial Tactical**: воздушный редакционный лейаут (hairline-разделители, открытые блоки вместо рамок, крупные mixed-case заголовки) + тактический/broadcast голос (едва заметная координатная сетка, mono-лейблы, крупный гротеск на числах). Dark-only.
+The direction is **Editorial Tactical**: an airy editorial layout (hairline rules, open blocks instead of boxes, large mixed-case headings) plus a tactical/broadcast voice (a barely visible coordinate grid, mono labels, a large grotesque on numbers). Dark-only.
 
-Три тезиса:
+Three theses:
 
-1. **Air over boxes** — группировка воздухом и hairline-линиями; рамочная карточка только для плотных данных.
-2. **Numbers are telemetry** — статистика в гротеске + mono, табличные цифры, как broadcast-оверлей.
-3. **Meaning over decoration** — цвет и role-spectrum кодируют данные, никогда не украшают. Ведёт одна бирюза.
+1. **Air over boxes** — group with whitespace and hairline rules; a bordered card is only for dense data.
+2. **Numbers are telemetry** — statistics in grotesque + mono, tabular figures, like a broadcast overlay.
+3. **Meaning over decoration** — colour and the role spectrum encode data, they never decorate. One teal leads.
 
 ---
 
-## 1. Токены
+## 1. Tokens
 
-Источник правды — `:root` в `frontend/src/app/globals.css`. Ниже — реальные `--aqt-*` (Verified), не отдельная схема, которую предстоит алиасить.
+The source of truth is `:root` in `frontend/src/app/globals.css`. Below are the real `--aqt-*` (Verified), not a separate scheme still waiting to be aliased.
 
 ```css
 :root {
-  /* ground & elevation — 4 ступени, вложенность — оверлеи, не новый серый */
+  /* ground & elevation — 4 steps, nesting is overlays, not a new grey */
   --aqt-bg:hsl(220 21% 5%); --aqt-bg-2:hsl(220 22% 7%); --aqt-card:hsl(220 22% 8%); --aqt-card-2:hsl(222 24% 11%);
-  --aqt-border:hsl(219 19% 15%); --aqt-border-2:hsl(217 17% 21%); --aqt-border-3:hsl(216 16% 26%); /* ровно ТРИ бордера, -3 = active/focus/scrollbar */
+  --aqt-border:hsl(219 19% 15%); --aqt-border-2:hsl(217 17% 21%); --aqt-border-3:hsl(216 16% 26%); /* exactly THREE borders, -3 = active/focus/scrollbar */
 
-  /* text — 4 ступени */
+  /* text — 4 steps */
   --aqt-fg:hsl(214 33% 96%); --aqt-fg-muted:hsl(212 13% 65%); --aqt-fg-dim:hsl(213 9% 58%); --aqt-fg-faint:hsl(214 10% 52%);
 
   /* accent */
-  --aqt-teal:hsl(172 70% 49%);                        /* одна бирюза, без дрейфа hue */
-  --aqt-warm:hsl(36 88% 65%);                         /* = --aqt-amber, ТОЛЬКО featured-моменты */
+  --aqt-teal:hsl(172 70% 49%);                        /* one teal, no hue drift */
+  --aqt-warm:hsl(36 88% 65%);                         /* = --aqt-amber, featured moments ONLY */
 
   /* roles */
   --aqt-tank:hsl(209 82% 65%); --aqt-damage:hsl(337 81% 66%); --aqt-support:hsl(150 57% 52%);
   --aqt-spectrum:linear-gradient(90deg,var(--aqt-tank),var(--aqt-damage),var(--aqt-support));
 
-  /* results & quality — ОТДЕЛЬНЫЕ токены, не роли и не статусы */
+  /* results & quality — SEPARATE tokens, neither roles nor statuses */
   --aqt-win:hsl(150 57% 52%); --aqt-loss:hsl(349 84% 63%); --aqt-draw:hsl(36 88% 65%);
   --aqt-good:var(--aqt-win); --aqt-mid:var(--aqt-draw); --aqt-bad:var(--aqt-loss);
 
@@ -50,37 +50,37 @@
 }
 ```
 
-Каждое `--aqt-*` объявлено **один раз** как HSL-триплет (`--aqt-h-*`) и раскрыто дважды — как готовый цвет и как голый триплет для shadcn-слоя (`--primary: var(--aqt-h-teal)`). Так переопределение shadcn-имени внутри скоупа не может превратиться в `hsl(hsl(...))` — см. §0 в `frontend/DESIGN.md`.
+Every `--aqt-*` is declared **once** as an HSL triplet (`--aqt-h-*`) and expanded twice — as a ready-made colour and as a bare triplet for the shadcn layer (`--primary: var(--aqt-h-teal)`). That way, overriding a shadcn name inside a scope cannot turn into `hsl(hsl(...))` — see §0 in `frontend/DESIGN.md`.
 
-### Правила семантики цвета
+### Colour semantics rules
 
-| Контекст | Токены | Примеры |
+| Context | Tokens | Examples |
 |---|---|---|
-| Результат | `--aqt-win / --aqt-loss / --aqt-draw` | счёт `3–1`, W-D-L, form-чипы, map-пипсы |
-| Качество | `--aqt-good / --aqt-mid / --aqt-bad` | winrate %, дельты ▲/▼, impact-бары, DIFF |
-| Роль | `--aqt-tank / --aqt-damage / --aqt-support` | иконки ролей, role-бары, тинты аватарок |
-| Статус | `--aqt-status-live / --aqt-status-upcoming / --aqt-status-finished / --aqt-status-draft` | бейджи турниров |
+| Result | `--aqt-win / --aqt-loss / --aqt-draw` | the `3–1` score, W-D-L, form chips, map pips |
+| Quality | `--aqt-good / --aqt-mid / --aqt-bad` | winrate %, ▲/▼ deltas, impact bars, DIFF |
+| Role | `--aqt-tank / --aqt-damage / --aqt-support` | role icons, role bars, avatar tints |
+| Status | `--aqt-status-live / --aqt-status-upcoming / --aqt-status-finished / --aqt-status-draft` | tournament badges |
 
-- Порог цвета winrate: **≥60% → good, 50–59% → mid, <50% → bad**.
-- Сегодня `--aqt-win`≡`--aqt-support`, `--aqt-loss`≡`--aqt-status-live`, `--aqt-draw`≡`--aqt-warm` по hue (150/349/36) — это осознанно, но токены развязаны: любую группу можно перекрасить, не трогая остальные.
-- **Role-spectrum (градиент tank→damage→support) — семантика, не декор**: только как role-distribution bar (состав команды) и фирменный hairline шапки профиля.
-- `--aqt-warm` (= `--aqt-amber`) как акцент — только для featured (главный турнир, титулы).
+- Winrate colour thresholds: **≥60% → good, 50–59% → mid, <50% → bad**.
+- Today `--aqt-win`≡`--aqt-support`, `--aqt-loss`≡`--aqt-status-live`, `--aqt-draw`≡`--aqt-warm` by hue (150/349/36) — that is deliberate, but the tokens are decoupled: any group can be recoloured without touching the others.
+- **The role spectrum (the tank→damage→support gradient) is semantics, not decoration**: only as a role-distribution bar (team composition) and as the signature hairline of the profile header.
+- `--aqt-warm` (= `--aqt-amber`) as an accent — featured content only (the main tournament, titles).
 
-## 2. Типографика
+## 2. Typography
 
-| Роль | Шрифт | Причина |
+| Role | Typeface | Reason |
 |---|---|---|
-| UI + заголовки | **Inter** (400/500/600/700) | mixed-case, **никогда** condensed-caps |
-| Display + крупные числа | **Onest** (500/600/700/800) | кириллица-нативный геометрический гротеск: «Grand Final» и «Гранд-финал» — одна пластика. Space Grotesk отклонён — у него нет кириллицы |
-| Данные, лейблы, «тактический голос» | **JetBrains Mono** (400/600/700) | mono-координаты, uppercase-лейблы с разрядкой `.08–.16em`, `tabular-nums` |
+| UI + headings | **Inter** (400/500/600/700) | mixed-case, **never** condensed caps |
+| Display + large numbers | **Onest** (500/600/700/800) | a Cyrillic-native geometric grotesque: "Grand Final" and its Cyrillic equivalent have identical plastics. Space Grotesk was rejected — it has no Cyrillic |
+| Data, labels, the "tactical voice" | **JetBrains Mono** (400/600/700) | mono coordinates, uppercase labels with `.08–.16em` tracking, `tabular-nums` |
 
 ```tsx
-// app/layout.tsx — шрифты самохостятся (next/font/local), NOT next/font/google:
-// next/font/google фетчит с fonts.gstatic.com на этапе сборки, и продакшен-сборка
-// однажды упала на ротации хешей. Классы .variable висят на <html>, не на <body> —
-// globals.css алиасит их из :root (--aqt-mono/--aqt-display), а custom property
-// резолвится там, где объявлена: алиас на :root не видит переменную,
-// заданную на уровень ниже (<body>).
+// app/layout.tsx — the fonts are self-hosted (next/font/local), NOT next/font/google:
+// next/font/google fetches from fonts.gstatic.com at build time, and a production build
+// once broke on a hash rotation. The .variable classes sit on <html>, not on <body> —
+// globals.css aliases them from :root (--aqt-mono/--aqt-display), and a custom property
+// resolves where it is declared: an alias on :root cannot see a variable
+// set one level below (<body>).
 import localFont from "next/font/local";
 
 const inter = localFont({ src: "./fonts/inter-variable.woff2", variable: "--font-inter" });
@@ -90,96 +90,96 @@ const jetbrainsMono = localFont({ src: "./fonts/jetbrains-mono-variable.woff2", 
 // <html className={cn(inter.variable, onest.variable, jetbrainsMono.variable)}>
 ```
 
-Шкала: display 52/700 (Onest) · h1 30/600 · h2 22/600 · title 17/600 · body 15/400 · data mono 15 · label mono 11 uppercase. **Пол читаемости — 11px**: 9–10px допустимы только для декоративных mono-координат, которые не обязаны читаться.
+Scale: display 52/700 (Onest) · h1 30/600 · h2 22/600 · title 17/600 · body 15/400 · data mono 15 · label mono 11 uppercase. **The readability floor is 11px**: 9–10px is acceptable only for decorative mono coordinates that are not required to be read.
 
-## 3. Роли, дивизионы, аватарки
+## 3. Roles, divisions, avatars
 
-### Role-маркеры — где какой вид
+### Role markers — which form goes where
 
-| Поверхность | Вид |
+| Surface | Form |
 |---|---|
-| **Role split** (единственное место) | иконка + mono-лейбл |
-| Таблицы и строки (ростеры, hero-таблицы, лидерборды) | **только иконка**, имя роли в `title`/`aria-label` |
-| Мета-строки (шапка «Tank main», подзаголовок турнира) | только текст |
+| **Role split** (the only place) | icon + mono label |
+| Tables and rows (rosters, hero tables, leaderboards) | **icon only**, role name in `title`/`aria-label` |
+| Meta lines (the "Tank main" header, tournament subtitle) | text only |
 
-Иконки — стандартные проектные `TankIcon/DamageIcon/SupportIcon` (`PlayerRoleIcon`), viewBox `0 0 40 40`. Не переизобретать.
+The icons are the project's standard `TankIcon/DamageIcon/SupportIcon` (`PlayerRoleIcon`), viewBox `0 0 40 40`. Do not reinvent them.
 
-### Дивизионы
+### Divisions
 
-Только иконкой (`DivisionIcon`/`PlayerDivisionIcon` + `lib/division-grid.ts`), имя дивизиона — в `alt`/`title`. Текстом дивизион не пишем нигде на display-поверхностях; список имён допустим только в форме выбора ранга (это ввод, не display).
+Icon only (`DivisionIcon`/`PlayerDivisionIcon` + `lib/division-grid.ts`), the division name goes in `alt`/`title`. We never spell the division out in text on display surfaces; a list of names is acceptable only in the rank-selection form (that is input, not display).
 
-### Hero-аватарки (`HeroImage` / `HeroStrip`)
+### Hero avatars (`HeroImage` / `HeroStrip`)
 
-| Контекст | Размер |
+| Context | Size |
 |---|---|
-| Стандартный стек (строки матчей, ростеры, teammates) | **30px** |
-| Компактные detail-строки (раскрытия матчей, dossier-раны) | 24px |
-| Inline в таблицах (top heroes) | 26px |
-| Одиночная аватарка (sidebar-строки) | 32px |
+| Standard stack (match rows, rosters, teammates) | **30px** |
+| Compact detail rows (match expansions, dossier runs) | 24px |
+| Inline in tables (top heroes) | 26px |
+| Single avatar (sidebar rows) | 32px |
 
-Стек схлопывается в `+N`; наложение −9px; у аватарок игроков (не героев) — маркер `data-players`, чтобы hero-popover их не трогал.
+The stack collapses into `+N`; the overlap is −9px; player avatars (as opposed to hero avatars) carry a `data-players` marker so that the hero popover leaves them alone.
 
-## 4. Доступность — обязательный пол
+## 4. Accessibility — the mandatory floor
 
-- **Никогда color-only**: W/L-квадраты несут буквы, trend-точки — кольцо у подиума и полую форму у нижнего бакета, result-чипы — буквы W/L/D.
-- **Каждый hover-поповер** (hero stats, MVP-разбор) открывается также по **focus** и **tap**: триггер `tabindex="0"` + `aria-label`, тап вне закрывает, скролл прячет.
-- `:focus-visible` — бирюзовый outline 2px на всём интерактиве; `prefers-reduced-motion` глушит все анимации; табы — `role=tab/tabpanel`; модалки — focus-trap + возврат фокуса + Esc.
-- Контраст: `--aqt-fg-faint` (52% L) — минимум для текста на `--aqt-bg` (текстовый ramp — 4 ступени 96/65/58/52%, все различимы и упорядочены).
+- **Never colour-only**: W/L squares carry letters, trend dots carry a ring at the podium and a hollow shape in the bottom bucket, result chips carry the letters W/L/D.
+- **Every hover popover** (hero stats, MVP breakdown) also opens on **focus** and on **tap**: the trigger gets `tabindex="0"` + `aria-label`, a tap outside closes it, scrolling hides it.
+- `:focus-visible` — a 2px teal outline on everything interactive; `prefers-reduced-motion` mutes all animation; tabs use `role=tab/tabpanel`; modals get a focus trap + focus restoration + Esc.
+- Contrast: `--aqt-fg-faint` (52% L) is the minimum for text on `--aqt-bg` (the text ramp has 4 steps at 96/65/58/52%, all distinguishable and ordered).
 
-## 5. Честность данных
+## 5. Data honesty
 
-- **Нет SR/MMR** — в системе их не существует, не выдумывать ни в статистике, ни в ачивках.
-- **Encounter ⊃ Matches**: встреча = серия против оппонента (счёт `3–1`), внутри — матчи-карты; статистика (герои/KDA/MVP) живёт per-match; encounter показывает агрегаты (median MVP, avg KDA, стек героев). Не подписывать encounter именем одной карты.
-- **Mix-турниры**: у игрока нет постоянной команды — команда осмысленна только в контексте турнира. Никаких «pre-filled» команд в профиле.
-- **Per-workspace**: цифры профиля живут в контексте одного сообщества; агрегированные списки сообществ как подпись к цифрам не показываем.
-- **Low-sample gate**: перцентили и vs-avg скрываются при **n < 10 игр** — em dash + `title` с правилом + бейдж `LOW SAMPLE`. «Top 2%» на 3 играх — шум.
-- **Нет «сезонов»** — только турниры; фрейминг по турнирам/периодам.
-- Один термин на метрику: **Closeness** (не Proximity), глоссарий-`title` при первом употреблении.
+- **No SR/MMR** — they do not exist in the system; do not invent them, neither in statistics nor in achievements.
+- **Encounter ⊃ Matches**: an encounter is a series against an opponent (the `3–1` score), and inside it are the map matches; statistics (heroes/KDA/MVP) live per match, while the encounter shows aggregates (median MVP, avg KDA, hero stack). Do not label an encounter with the name of a single map.
+- **Mix tournaments**: a player has no permanent team — a team is meaningful only in the context of a tournament. No "pre-filled" teams in the profile.
+- **Per workspace**: profile numbers live in the context of a single community; we do not show aggregated community lists as a caption to the numbers.
+- **Low-sample gate**: percentiles and vs-avg are hidden below **n < 10 games** — an em dash + a `title` with the rule + a `LOW SAMPLE` badge. "Top 2%" off 3 games is noise.
+- **No "seasons"** — tournaments only; frame everything by tournaments/periods.
+- One term per metric: **Closeness** (not Proximity), with a glossary `title` on first use.
 
-## 6. Ключевые паттерны
+## 6. Key patterns
 
-- **Scouting report** — вердикт-предложение в шапке профиля вместо голых цифр; данные генерируются по правилам с порогами, при малой выборке — не показывается.
-- **Перцентильный язык** «Top X%» + **горизонтальный перцентиль-бар** под значением (fuller = better). Вертикальный тик отклонён: кодирование, требующее подписи, — провалившееся кодирование.
-- **Lobby leaderboard**: каждый per-stat KPI-тайл — кнопка, открывающая модалку со всеми игроками лобби по этой статистике: чипы-статы, медали топ-3, твоя строка подсвечена (`ранг + top X%`), бар vs лидера; инверсные статы (Deaths) ранжируются по возрастанию с пометкой «lower is better».
-- **Master-detail** для списков турниров (Event dossier + компактный список) — вместо таблиц с аккордеонами.
-- **Digest-блоки**: каждый блок Overview, превьюящий другую вкладку, несёт «View all →», переключающий на неё.
-- **Empty states** двух видов: страничный (приглашение к действию) и filter-zero внутри списков (причина + inline «Reset filters»). Отфильтрованный список никогда не пустеет молча.
-- **Даты**: относительные `2d ago` + абсолютная дата в `title`. Голое `2D` запрещено — коллизия с буквой Draw.
-- **Deep links**: экран, вкладка, фильтры, поиск и выбранный турнир живут в URL (`searchParams` в Next). Состояние, кинутое ссылкой в Discord, открывается ровно таким же.
-- **Share card**: Player card рендерится в PNG 1200×630 (OG) на canvas — сетка, spectrum-полоса, Onest-цифры, form-чипы, URL профиля; clipboard + download-фолбэк.
-- **MVP-ordinal**: везде единый вид — `1st` золотом, остальные `--aqt-fg-faint`, hover/tap-разбор по картам.
-- Модалки в реальном коде — shadcn `Dialog`; компоненты — `components/ui/` (не самодельные оверлеи; portals вне `.cRoot` не видят токены).
+- **Scouting report** — a verdict sentence in the profile header instead of bare numbers; the data is generated by rules with thresholds, and on a small sample it is not shown at all.
+- The **percentile language** "Top X%" plus a **horizontal percentile bar** under the value (fuller = better). A vertical tick was rejected: an encoding that needs a caption is a failed encoding.
+- **Lobby leaderboard**: every per-stat KPI tile is a button that opens a modal with every player in the lobby ranked by that statistic — stat chips, medals for the top 3, your own row highlighted (`rank + top X%`), a bar vs the leader; inverse stats (Deaths) are ranked ascending and marked "lower is better".
+- **Master-detail** for tournament lists (Event dossier + a compact list) — instead of tables with accordions.
+- **Digest blocks**: every Overview block that previews another tab carries a "View all →" that switches to it.
+- **Empty states** of two kinds: page-level (an invitation to act) and filter-zero inside lists (the reason + an inline "Reset filters"). A filtered list never goes empty silently.
+- **Dates**: relative `2d ago` plus the absolute date in `title`. A bare `2D` is forbidden — it collides with the letter for Draw.
+- **Deep links**: the screen, tab, filters, search and the selected tournament all live in the URL (`searchParams` in Next). A state dropped into Discord as a link opens up exactly the same.
+- **Share card**: the player card renders to a 1200×630 PNG (OG) on canvas — the grid, the spectrum bar, Onest figures, form chips, the profile URL; clipboard plus a download fallback.
+- **MVP ordinal**: one form everywhere — `1st` in gold, the rest in `--aqt-fg-faint`, with a per-map breakdown on hover/tap.
+- Modals in the real code are the shadcn `Dialog`; components live in `components/ui/` (no hand-rolled overlays; portals outside `.cRoot` cannot see the tokens).
 
-## 7. Лейаут
+## 7. Layout
 
-- Ширина контента: `max-width:1400px` (1180 — узко) — **Specified**, в коде не реализовано. Реальный контейнер сайта — `1720px` (`screen-3xl`, `frontend/tailwind.config.ts`, применяется в `(site)/layout.tsx`) с `px-4/md:px-6/xl:px-10` гаттерами — **Verified**. 1400px остаётся целью для будущего сужения читаемой колонки, не описанием текущей вёрстки.
-- Overview профиля — две флекс-колонки (`main flex:1` + `sidebar 380px`), карточки пакуются плотно без grid-щелей; на мобиле колонкам нужен `align-items:stretch`.
-- Числовые колонки таблиц: `th.num { text-align:right }` обязан бить `table.tbl th` по специфичности.
-- Wide-контент (таблицы, brackets) — горизонтальный скролл внутри своего контейнера (`.tblw`), тело страницы не скроллится вбок.
+- Content width: `max-width:1400px` (1180 is too narrow) — **Specified**, not implemented in code. The site's real container is `1720px` (`screen-3xl`, `frontend/tailwind.config.ts`, applied in `(site)/layout.tsx`) with `px-4/md:px-6/xl:px-10` gutters — **Verified**. 1400px remains the target for narrowing the readable column later, not a description of the current layout.
+- The profile Overview is two flex columns (`main flex:1` + `sidebar 380px`), and the cards pack tightly without grid gaps; on mobile the columns need `align-items:stretch`.
+- Numeric table columns: `th.num { text-align:right }` must beat `table.tbl th` on specificity.
+- Wide content (tables, brackets) scrolls horizontally inside its own container (`.tblw`); the page body never scrolls sideways.
 
-## 8. Changelog решений (прототип v22 → v48)
+## 8. Decision changelog (prototype v22 → v48)
 
-| Версия | Решение |
+| Version | Decision |
 |---|---|
-| v22–25 | Табы профиля, scouting report, перцентильный язык, mobile-фиксы (`min-width:0` на grid-детях), a11y-проход |
-| v27–35 | Подстраница Tournaments: реальные поля API, без выдуманных MVP/дат; отказ от аккордеонов после 5 итераций |
-| v40–42 | **Master-detail** «Event dossier»; ростер-таблица: роль иконкой, дивизион иконкой, Avg MVP |
-| v43 | Типо-шкала +1px для всего ≤14.5px (жалоба «мелко») |
-| v44 | Герои матча = стек 1–3+N (в OW играют несколькими героями); индикатор LOG; модалка всех оппонентов |
-| v45 | `th.num` фикс выравнивания; нормализация вложенных отступов |
-| **v46** | **Onest** вместо Space Grotesk (кириллица); токены `--win/--loss/--draw` + `--good/--mid/--bad`; буквы в map-results; кольца/полости на trend-точках; Achievements-грид с рабочими фильтрами; фасетные фильтры Matches + кликабельный «By stage»; шрифты в артефакте — data-URI |
-| **v47** | Правило role-маркеров (икон+текст только в Role split); аватарки 24→30px; горизонтальные перцентиль-бары; Closeness; `2d ago`; «View all →»; приглушённые провайдер-чипы |
-| **v48** | Lobby leaderboard из KPI-тайлов; touch/keyboard-поповеры; low-sample gate + filter-zero empty state; deep links в hash; Share → PNG |
+| v22–25 | Profile tabs, scouting report, percentile language, mobile fixes (`min-width:0` on grid children), a11y pass |
+| v27–35 | Tournaments subpage: real API fields, no invented MVPs or dates; accordions dropped after 5 iterations |
+| v40–42 | **Master-detail** "Event dossier"; roster table: role as an icon, division as an icon, Avg MVP |
+| v43 | Type scale +1px for everything ≤14.5px (the "too small" complaint) |
+| v44 | Match heroes = a 1–3+N stack (OW players use several heroes); the LOG indicator; a modal with all opponents |
+| v45 | `th.num` alignment fix; nested padding normalised |
+| **v46** | **Onest** instead of Space Grotesk (Cyrillic); the `--win/--loss/--draw` + `--good/--mid/--bad` tokens; letters in map results; rings/hollows on trend dots; an Achievements grid with working filters; faceted Matches filters + a clickable "By stage"; fonts inlined into the artifact as data URIs |
+| **v47** | The role-marker rule (icon + text only in Role split); avatars 24→30px; horizontal percentile bars; Closeness; `2d ago`; "View all →"; muted provider chips |
+| **v48** | Lobby leaderboard built from KPI tiles; touch/keyboard popovers; low-sample gate + filter-zero empty state; deep links in the hash; Share → PNG |
 
-## 9. Verified upstream — найдено и уже исправлено
+## 9. Fixed — found and already repaired upstream
 
-- **`:root`-vs-`<body>` font trap.** До недавнего прохода стек не рендерился: `globals.css` алиасил переменные `next/font` из `:root`, а `layout.tsx` вешал `.variable`-классы на `<body>`. Custom property резолвится там, где объявлена, поэтому на `:root` переменной не было — а провалившийся `var()` отравляет всё значение целиком, так что литеральный фолбэк рядом тоже не срабатывал. Все 73 обращения к `--aqt-mono`/`--aqt-display` в `globals.css` тихо рендерились в Inter. Исправлено переносом классов на `<html>` (`app/layout.tsx:109-116`).
-- **Uppercase на display-блоках.** `globals.css` когда-то форсил `text-transform:uppercase` на 52px display-блоках — прямое нарушение §2 «никогда condensed-caps». Сейчас оба блока в mixed-case; `uppercase` в коде остаётся только на mono-лейблах (правильное использование).
+- **The `:root`-vs-`<body>` font trap.** Until a recent pass the stack did not render: `globals.css` aliased the `next/font` variables from `:root`, while `layout.tsx` hung the `.variable` classes on `<body>`. A custom property resolves where it is declared, so the variable simply did not exist on `:root` — and a failed `var()` poisons the whole value, so even a literal fallback next to it did not kick in. All 73 references to `--aqt-mono`/`--aqt-display` in `globals.css` silently rendered in Inter. Fixed by moving the classes onto `<html>` (`app/layout.tsx:109-116`).
+- **Uppercase on display blocks.** `globals.css` once forced `text-transform:uppercase` on the 52px display blocks — a direct violation of §2's "never condensed caps". Both blocks are mixed-case now; `uppercase` survives in the code only on mono labels (the correct use).
 
-## 10. Что осталось до кода (Phase 0+)
+## 10. Specified — still ahead of the code (Phase 0+)
 
-- Spacing-scale токены; консолидация ~10 metric-tile примитивов в один компонент.
-- `title` → `aria-label`/`alt` на дивизионах (в реальной сборке `DivisionIcon` уже с alt).
-- Формализовать «verdict» и «Top X%» как компоненты дизайн-системы с правилами генерации и локализацией (RU-шаблоны пишутся, не переводятся).
-- Skeleton-состояния в эстетике системы (mono-координаты + hairline-каркас).
-- Сузить читаемую колонку до 1400px (сейчас 1720px по всей ширине) — если редактура решит, что это всё ещё нужно.
+- Spacing-scale tokens; consolidating the ~10 metric-tile primitives into a single component.
+- `title` → `aria-label`/`alt` on divisions (in the real build `DivisionIcon` already has an alt).
+- Formalise "verdict" and "Top X%" as design-system components with generation rules and localisation (the Russian templates are authored, not translated).
+- Skeleton states in the system's own aesthetic (mono coordinates + a hairline frame).
+- Narrow the readable column to 1400px (it is 1720px full-width today) — if editorial review decides it is still needed.

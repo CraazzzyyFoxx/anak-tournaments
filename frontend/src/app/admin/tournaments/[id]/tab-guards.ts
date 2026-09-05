@@ -1,5 +1,5 @@
 /**
- * Route guards for the tournament hub (01-ia.md §5).
+ * Route guards for the tournament hub.
  *
  * Pure predicates: a tab the caller may not open is hidden from the tab bar
  * AND bounced to `overview` by the shell — a hidden tab that is still

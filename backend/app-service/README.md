@@ -1,38 +1,230 @@
-# App Service
+# App Service (`app-svc`)
 
-The core public read/data API for OWT — serves tournament, player, team, hero, map, gamemode,
-match, achievement, and statistics data, plus workspace, user/metadata admin, and binary assets.
+App-service owns the read side of the platform plus the administration of everything that is not a
+tournament: the game catalog, player identities, workspaces (the tenant), platform audit, and binary
+assets. It exists as its own process because this is the hottest path in the system — nearly every
+anonymous page view resolves to one of its reads — and because its cache lifecycle is its own:
+a single event consumer drives invalidation for the whole read surface.
 
-- **Type:** headless FastStream (RabbitMQ) RPC worker — no HTTP server of its own
+It is a headless FastStream worker. It opens no HTTP port and serves no routes. The Go gateway is the
+only process speaking HTTP; it maps REST routes under `/api/v1/*` onto request/reply RPC on
+`rpc.app.*` with an `x-deadline-ms` budget, and this worker answers with an `{ok, data, error}`
+envelope (`src/rpc/_common.py` → `shared.rpc.common`).
+
+- **Compose service:** `app-svc`
 - **Entry point:** `serve.py`
-- **Run:** `faststream run serve:app`
-- **Reached via:** the Go gateway under `/api/v1` (the gateway is the sole HTTP entry point and
-  serves the API docs via Scalar)
+- **Run command:** `faststream run serve:app`
+- **Transport:** RabbitMQ request/reply (`rpc.app.<method>`); no HTTP
+- **Metrics:** Prometheus on `WORKER_METRICS_PORT` (dev 9109, prod 9109)
 
-See [`../../docs/architecture.md`](../../docs/architecture.md) for the system overview.
+See [`../../docs/architecture.md`](../../docs/architecture.md) for the system overview and
+[`../ARCHITECTURE.md`](../ARCHITECTURE.md) for the `rpc → services → domain → repository → models`
+layering every backend service follows.
 
 ## Responsibilities
 
-The RPC surface is grouped as representative `rpc.app.*` methods served behind the gateway:
+- **Game catalog** — heroes, maps, game modes and achievement rules: public reads, admin writes, and
+  the alias-miss queue that closes the loop when the parser meets a name it cannot resolve.
+- **Player identity** — the domain player, social accounts and their visibility, favourites, and the
+  destructive profile merge that collapses two players into one.
+- **Read aggregations** — per-user tournament/encounter/map/hero/teammate histories, cross-user
+  comparison, leaderboards, the platform dashboard and tournament readiness.
+- **Tenancy** — workspaces, membership and roles, custom domains, and Discord guild claim.
+- **Achievement reads** — a user's earned/locked achievements and the per-achievement earner list,
+  including the workspace-scoped rarity aggregate.
+- **Binary assets** — workspace icons, platform assets and match-log download, exchanged as base64
+  inside the RPC envelope and stored in S3.
+- **Read-cache lifecycle** — the Redis read cache (cashews) that fronts all of the above, and the
+  invalidation consumer that drops it when tournament data changes.
 
-- **Core reads** — read-optimized data for tournaments, players, teams, heroes, maps, gamemodes,
-  matches, achievements, and statistics (bespoke aggregations/lookups plus a shared CRUD read engine
-  for hero/map/gamemode/achievement get+list).
-- **Workspaces** — workspace reads/writes and workspace-member management.
-- **Admin CRUD** — user + game-metadata (hero/map/gamemode) admin CRUD, profile merge, avatar, and
-  CSV import (relocated here from parser-service).
-- **Binary assets** — icons, assets, and match-log served as binary/base64 payloads.
-- **Caching** — Redis-backed response caching (cashews) to keep reads fast and reduce DB load; a
-  `tournament_changed` RabbitMQ consumer performs cache invalidation.
+## Interface
+
+The worker subscribes to the `rpc.app.*` namespace: 93 subscribers across 14 handler modules under
+`src/rpc/` (81 literal subjects plus the templated metadata-admin family). The full method list with
+request/response schemas is published at `/api/docs`, generated from `src/openapi_schemas.py`
+(`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
+
+### Method groups
+
+| Group | Subject shape | What it covers | Module |
+| --- | --- | --- | --- |
+| Catalog reads | `rpc.app.read.{get,list}`, `rpc.app.{heroes,maps,gamemodes}.lookup`, `rpc.app.heroes.*` | Hero/map/gamemode/achievement get+list through the shared engine, id–name lookups for pickers, hero playtime and leaderboards | `reads_generic`, `heroes`, `maps`, `gamemodes` |
+| Statistics | `rpc.app.statistics.*` | Platform dashboard, tournament readiness, and the champion/winrate/won-maps player boards | `statistics` |
+| Users | `rpc.app.users.*` (reads) | Profile and search; per-user tournament, encounter, map, hero, teammate and match histories; cross-user and cross-hero comparison; the users-overview grid | `users` |
+| Achievements | `rpc.app.achievements.*` | A user's earned/locked achievements and the earner list for one achievement | `achievements` |
+| Workspaces | `rpc.app.workspaces.*`, `rpc.app.admin.{update,delete}` | Workspace read/create, member roster and roles, custom domain lifecycle, Discord guild claim; update/delete via the shared engine | `workspaces`, `admin_crud` |
+| Binary assets | `rpc.app.{workspaces.icon_*,assets.*,matches.log}` | Workspace icon and platform-asset upload/delete to S3, match-log download; base64 in the envelope | `binary` |
+| User & identity admin | `rpc.app.users.{admin_*,merge_*,social_*,avatar_*,me_*}` | Player CRUD, destructive profile merge, social-account management and visibility, avatar, and the `account.social` self-service subset | `users_admin` |
+| Metadata admin | `rpc.app.{heroes,maps,gamemodes}.admin_*` | Superuser CRUD over global game content, generated by one closure factory per entity | `metadata_admin` |
+| Catalog aliases | `rpc.app.catalog_aliases.*` | The unresolved-name queue the parser fills: list, attach to an entity, dismiss | `catalog_aliases` |
+| Audit | `rpc.app.audit_list` | Read-only platform audit feed and per-entity trail, gated on `audit.read` | `audit` |
+
+### The shared CRUD read engine, and why some subjects carry `#<entity>`
+
+Hero, map, gamemode and achievement `get`/`list` are not four handler pairs. They are one pair —
+`rpc.app.read.get` / `rpc.app.read.list` — dispatched by an `entity` field the gateway puts in the
+request body, against the `EntityConfig` table in `src/services/read_registry.py`
+(`CrudDispatcher`). Workspace `update`/`delete` work the same way through
+`src/services/workspace/registry.py` on `rpc.app.admin.{update,delete}`. Everything else is a
+bespoke subject with its own handler.
+
+Because one subject serves many entities, a subject alone cannot key the OpenAPI tables: they use
+`"<subject>#<entity>"` instead — `rpc.app.read.get#hero`, `rpc.app.admin.update#workspace`. The
+convention is defined in `shared/rpc/openapi.py` and must match the gateway's lookup. A `#` in an
+`OPERATIONS`/`DOCS` key therefore means "generic engine, this entity"; a bare subject means a
+bespoke handler.
+
+### Consumed queue
+
+`tournament_changed_app_service`, bound to the `tournament.changed` topic exchange on
+`tournament.changed.*` (`shared/messaging/config.py`). Tournament-service publishes onto that
+exchange through the transactional outbox whenever public tournament data changes, and
+parser-service does the same when a match log lands; app-service and tournament-service each hold
+their own durable queue on it, so both see every event.
+
+On each event (`src/services/tournament_events.py`) this worker:
+
+1. skips `reason == "bracket_changed"` — nothing it caches depends on bracket shape, which makes
+   parser-service's match-log event a no-op here;
+2. `delete_match`es the affected Redis read-cache patterns: `*tournaments/{id}*`, every user-scoped
+   flow key (the event does not name the users a tournament touched), the users-overview id order,
+   and the per-workspace achievement-rarity aggregate;
+3. requests a debounced refresh of the `matches.mv_hero_global_stats` materialized view.
+
+This invalidates **this service's** Redis cache only. The gateway's own anonymous response cache is
+invalidated separately, off the `realtime:tournament:{id}:{bracket,draft}` Redis channels that
+tournament-service publishes from its consumer of the same exchange; the gateway subscribes to those
+for WebSocket fan-out and reuses the signal (`gateway/internal/respcache`). Nothing app-service does
+reaches the gateway cache directly.
+
+### Published events
+
+None. App-service does not write to the outbox, publish domain events, or publish Redis realtime
+topics.
+
+### Scheduled work
+
+One debounced background job: the `matches.mv_hero_global_stats` refresh
+(`src/services/hero_stats_refresh.py`). Fired best-effort at startup and on every
+`tournament_changed` event, throttled to one run per hour by a Redis-held cooldown key, guarded by a
+Postgres advisory lock, and executed with `statement_timeout` disabled and `work_mem` raised. It runs
+as a background task and never blocks the event consumer.
+
+### Outbound RPC
+
+`rpc.identity.oauth_discord_guilds` (identity-service), to confirm the caller administers the Discord
+guild they are claiming for a workspace.
+
+## Data owned
+
+There are no per-service migrations. All models live in one SQLAlchemy metadata under
+[`../shared/`](../shared/README.md) and all migrations in one Alembic project at
+[`../migrations/`](../migrations). Per-domain entity diagrams are in
+[`../../docs/database_erd.md`](../../docs/database_erd.md).
+
+**Writes:**
+
+- `players` — `user`, `social_account`, `social_account_visibility`, `favorite_player`,
+  `user_merge_audit` ([identity](../../docs/database_erd.md#identity--auth-players)).
+- `public` — `workspace`, `workspace_member`, `audit_log`
+  ([tenancy](../../docs/database_erd.md#tenancy--public),
+  [platform](../../docs/database_erd.md#platform--public-realtime)).
+- `overwatch` — `hero`, `map`, `gamemode`, `catalog_alias_miss`
+  ([catalog](../../docs/database_erd.md#catalog--overwatch)).
+- `achievements` — `override` and `evaluation_result`, only to repoint `workspace_member_id` during a
+  merge ([achievements](../../docs/database_erd.md#achievements--achievements)).
+
+Profile merge is the one operation that writes outside those schemas: it repoints references in
+`tournament.{player,team}`, `matches.{statistics,kill_feed,event}`, `log_processing.record` and
+`balancer.registration` from the source player to the target (`REFERENCE_CONFIG` and the
+`workspace_member`-aware mergers in `src/services/admin/user_merge.py`), one set-based `UPDATE` per
+resolved target member rather than one per row.
+
+**Reads only:** `tournament`, `matches`, `balancer`, `log_processing`, and `auth` (for the acting
+identity and its roles).
 
 ## Dependencies
 
-- **Postgres** — shared ORM (players / public / overwatch and related schemas).
-- **Redis** — response cache (cashews) + cache-invalidation pub/sub.
-- **RabbitMQ** — RPC transport and the `tournament_changed` invalidation consumer.
-- **S3** — binary asset storage.
+- **PostgreSQL** — the shared database; every read aggregation and every write above.
+- **Redis** — two logical databases via cashews: `/3` behind the `fastapi:` key prefix and `/4`
+  behind `backend:`. Holds the read cache, the stampede lock namespace, and the MV refresh cooldown.
+  Both prefixes must be registered before any subscriber runs; cashews has no default backend and
+  raises `NotConfiguredError` for an unroutable key (`src/core/caching.py`).
+- **RabbitMQ** — RPC transport and the `tournament_changed` consumer.
+- **S3 / MinIO** — workspace icons, platform assets, match-log objects.
+- **identity-service** — over RPC, for Discord guild verification.
 
-## Configuration & environment
+No outbound calls to third-party APIs, so no `proxy` egress. (The compose block still declares
+`depends_on: proxy` — startup ordering only.)
 
-See `backend/env/app.env`, which inherits `backend/env/common.env`. Shared ORM models come from
-[`shared/`](../shared/README.md).
+## Configuration
+
+`backend/env/common.env` then `backend/env/app.env`, in that order. Settings are typed in
+`src/core/config.py` on top of `shared.core.config.BaseServiceSettings`.
+
+Behaviour-changing settings:
+
+- `RABBITMQ_URL` — required, no default. `RPC_PREFETCH_COUNT` caps unacked RPC messages per channel.
+- `REDIS_URL` — the base URL; the service derives `/3` and `/4` from it.
+- `POSTGRES_*` and the `DB_POOL_*` knobs. Set `DB_PGBOUNCER=true` **before** scaling replicas — each
+  process opens up to `DB_POOL_SIZE + DB_MAX_OVERFLOW` server connections.
+- `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_ENDPOINT_URL` / `S3_BUCKET_NAME` / `S3_PUBLIC_URL`.
+- `AUTH_SERVICE_URL` — token validation; production overrides it to the gateway
+  (`http://gateway:8080/api/auth`).
+- `PROJECT_URL` — required, used to build absolute URLs.
+- Cache TTLs, all defaulting to 300s except one: `users_cache_ttl`, `tournaments_cache_ttl`,
+  `heroes_cache_ttl`, `maps_cache_ttl`, `gamemodes_cache_ttl`, `statistics_cache_ttl`,
+  `teams_cache_ttl`, `encounters_cache_ttl`, `achievements_cache_ttl`, and `user_profile_cache_ttl`
+  (60s). The profile TTL is short on purpose — identity-service avatar/name edits have no
+  cross-service invalidation hook, so that TTL is the only bound on their staleness.
+- `WORKER_METRICS_PORT`, `TRACING_ENABLED`, `OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER*`, `SENTRY_*`,
+  `LOG_LEVEL`, `JSON_LOGGING`.
+
+`PORT=8000` in `app.env`/`app.env.example` is vestigial — nothing in the worker reads it, and the
+process listens on no HTTP port.
+
+## Running
+
+Locally, from `backend/app-service/` with the shared env loaded:
+
+```bash
+faststream run serve:app
+```
+
+In compose (`app-svc` in both files, default profile — always started):
+
+- Dev mounts `backend/app-service` and `backend/shared` and runs with `--reload --reload-dir` for
+  both, with `WATCHFILES_FORCE_POLLING=true`. No healthcheck.
+- Production runs the bare command, sets a CPU ceiling of 2.00 and `restart: always`, and declares a
+  healthcheck of `python -c "import sys; sys.exit(0)"`.
+- Both wait on `redis`, `rabbitmq` and `proxy` being healthy.
+
+Layering check — the `services/` sub-domain hierarchy (`achievements` → `dashboard | user` →
+`hero | map | statistics | workspace`) is enforced by `.importlinter`. From `backend/`:
+
+```bash
+uv run lint-imports --config app-service/.importlinter
+```
+
+The contracts and the grandfathered violations are explained in
+[`../docs/architecture/layering.md`](../docs/architecture/layering.md).
+
+## Operational notes
+
+- **DLQ.** The invalidation queue is durable, carries `x-message-ttl` 300000, and dead-letters to
+  `tournament_changed_app_service.dlq` through the `dlx` exchange. A rejected message and a message
+  left unconsumed for five minutes both end up there, and nothing re-drives that queue: an
+  invalidation lost this way is only repaired by the next event or by the read cache's own TTL.
+- **Channel isolation.** The consumer runs on its own AMQP channel with `prefetch_count=4`, so a
+  burst of invalidations cannot starve RPC replies of QoS credit.
+- **Startup cache purge.** `serve.py` drops `fastapi:*` and `backend:*` on boot, so a redeploy never
+  serves entries produced by the previous image's serializers.
+- **Replicas.** Multiple replicas round-robin the single invalidation queue, which is correct — the
+  cache they invalidate is shared. The MV-refresh cooldown lives in Redis rather than in process
+  memory for the same reason, and the refresh itself is serialised by a Postgres advisory lock.
+- **The production healthcheck proves only that Python starts.** It does not test the broker
+  connection, the database, or subscriber registration; a worker with a dead broker still reports
+  healthy.
+- **Cache invalidation is broad on purpose.** A `tournament_changed` event carries no workspace and
+  no user list, so user-scoped and rarity keys are dropped wholesale. Expect a cold-cache burst of
+  heavy aggregation queries immediately after tournament ingestion.

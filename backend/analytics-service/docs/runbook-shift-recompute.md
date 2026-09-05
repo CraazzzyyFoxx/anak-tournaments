@@ -1,63 +1,63 @@
-# Runbook: пересчёт сигнала сдвига дивизиона (team-result + гибрид)
+# Runbook: recomputing the division shift signal (team-result + hybrid)
 
-Финальная методика (после разворота merit-рерайта):
-- **Points** — накопленный team W/L (не менялся; по данным — самый сильный предиктор реального перехода).
-- **Linear** — чисто team-result (`map_diff` + `placement_score`).
-- **OpenSkill + ML** — team-доминантный костяк (`shift_w_team`·Linear-team + `shift_w_os`·OpenSkill-mu) **плюс аддитивный, зажатый индивидуальный скилл** (Performance v2 `local_zscore` vs та же роль + соседний дивизион). Сила/потолок инд-члена **рангозависимы**: линейно затухают по канонич. номеру дивизиона (1=верх … 40=низ) — мало у потолка (тот же +N там — редкий, шумный, упёртый в кэп claim), полно внизу. NNLS-фита нет.
-- **smurf-флаг** дополнительно ловит сильного аутлайера по когорте (`local_zscore ≥ SMURF_STRONG_LOCAL_Z`) при любом ранге.
-- **Сетка дивизионов = сигнал, округлённый к ближайшему дивизиону** (без мёртвой зоны (−1,1)) → отображение согласовано с сигналом.
+The final methodology (after reverting the merit rewrite):
+- **Points** — cumulative team W/L (unchanged; empirically the strongest predictor of an actual division change).
+- **Linear** — pure team-result (`map_diff` + `placement_score`).
+- **OpenSkill + ML** — a team-dominant backbone (`shift_w_team`·Linear-team + `shift_w_os`·OpenSkill-mu) **plus an additive, clamped individual skill term** (Performance v2 `local_zscore` vs the same role + the adjacent division). The strength/ceiling of the individual term are **rank-dependent**: they decay linearly with the canonical division number (1 = top … 40 = bottom) — small at the ceiling (the same +N up there is rare, noisy and pinned against the claim cap), large at the bottom. There is no NNLS fit.
+- **The smurf flag** additionally catches a strong outlier within the cohort (`local_zscore ≥ SMURF_STRONG_LOCAL_Z`) at any rank.
+- **The division grid = the signal rounded to the nearest division** (no dead zone (−1,1)) → the display is consistent with the signal.
 
-## env-кнобы (`backend/env/analytics.env`)
-| env | что | когда применяется |
+## env knobs (`backend/env/analytics.env`)
+| env | what | when it applies |
 |---|---|---|
-| `LINEAR_SHIFT_SCALE` (6.25) | масштаб team-result Linear | read-time → пересчитать v1 |
-| `SHIFT_W_TEAM` (0.7), `SHIFT_W_OS` (0.3) | веса костяка v2 | снапшот при train → retrain shift |
-| `SHIFT_INDIV_SCALE_TOP` (0.2), `SHIFT_INDIV_SCALE_BOTTOM` (0.8) | сила инд-скилла у потолка / у низа (ramp по дивизиону) | снапшот при train → retrain shift |
-| `SHIFT_INDIV_CLAMP_TOP` (0.75), `SHIFT_INDIV_CLAMP_BOTTOM` (2.0) | потолок инд-члена у верха / у низа | снапшот при train → retrain shift |
-| `SHIFT_CLAMP_TOP_GRID_REF` (20.0) | выходной кламп: верх = `grid_n_div/REF` дивизионов (20-тир→±1, 40-тир→±2), низ = ±3; режет +3 у высоких рангов из ЛЮБОГО источника (вкл. os_shift) | снапшот при train → retrain shift |
-| `SHIFT_DOMINANCE_GAIN` (6.0), `SHIFT_DOMINANCE_CAP` (3.0) | raw MVP-dominance лифт: `(mvp_dominance−0.5)·gain` clamp `cap`, max-бленд с local-членом, ограничен ТОЛЬКО выходным клампом (минуя мягкий индив-кламп) → явный раздатчик доезжает до рангового потолка | снапшот при train → retrain shift |
-| `SHIFT_PLACEMENT_FLOOR` (0.0) | гейт ПОЛОЖИТЕЛЬНОГО инд-лифта итоговым местом команды: фактор ∈[floor,1] (1.0 чемпион → floor последнее место); 0.0 = последнему месту никакого +, даже при отличной личной игре | снапшот при train → retrain shift |
-| `SMURF_STRONG_LOCAL_Z` (1.5) | порог сильного аутлайера для флага | read при infer → backfill anomalies |
-| `SMURF_MVP_DOMINANCE` (0.75) | порог raw MVP-dominance (среднее MVP-место по матч-логу) для смурф-флага `raw_mvp_dominance` | read при infer → backfill anomalies |
-| `STANDINGS_PROB_SHARPENING` (1.5) | разброс предсказанных мест | снапшот при train standings |
+| `LINEAR_SHIFT_SCALE` (6.25) | team-result Linear scale | read-time → recompute v1 |
+| `SHIFT_W_TEAM` (0.7), `SHIFT_W_OS` (0.3) | v2 backbone weights | snapshotted at train → retrain shift |
+| `SHIFT_INDIV_SCALE_TOP` (0.2), `SHIFT_INDIV_SCALE_BOTTOM` (0.8) | individual-skill strength at the ceiling / at the bottom (ramp by division) | snapshotted at train → retrain shift |
+| `SHIFT_INDIV_CLAMP_TOP` (0.75), `SHIFT_INDIV_CLAMP_BOTTOM` (2.0) | individual-term ceiling at the top / at the bottom | snapshotted at train → retrain shift |
+| `SHIFT_CLAMP_TOP_GRID_REF` (20.0) | output clamp: top = `grid_n_div/REF` divisions (20-tier→±1, 40-tier→±2), bottom = ±3; cuts +3 for high ranks from ANY source (incl. os_shift) | snapshotted at train → retrain shift |
+| `SHIFT_DOMINANCE_GAIN` (6.0), `SHIFT_DOMINANCE_CAP` (3.0) | raw MVP-dominance lift: `(mvp_dominance−0.5)·gain` clamped to `cap`, max-blended with the local term, limited ONLY by the output clamp (bypassing the soft individual clamp) → an obvious hard carry reaches the rank ceiling | snapshotted at train → retrain shift |
+| `SHIFT_PLACEMENT_FLOOR` (0.0) | gates the POSITIVE individual lift by the team's final placement: factor ∈[floor,1] (1.0 champion → floor last place); 0.0 = no + at all for last place, even with excellent personal play | snapshotted at train → retrain shift |
+| `SMURF_STRONG_LOCAL_Z` (1.5) | strong-outlier threshold for the flag | read at infer → backfill anomalies |
+| `SMURF_MVP_DOMINANCE` (0.75) | raw MVP-dominance threshold (average MVP place across the match log) for the `raw_mvp_dominance` smurf flag | read at infer → backfill anomalies |
+| `STANDINGS_PROB_SHARPENING` (1.5) | spread of predicted placements | snapshotted at train standings |
 
-## Пересчёт на prod-хосте (в tmux)
+## Recompute on the prod host (in tmux)
 ```bash
 COMPOSE="docker compose -f docker-compose.production.yml"
 LATEST=73   # max tournament id
 
-# 0) доставить код и пересобрать образ (exec гоняет то, что в образе!)
+# 0) ship the code and rebuild the image (exec runs what is in the image!)
 $COMPOSE build analytics analytics-worker && $COMPOSE up -d analytics analytics-worker
 $COMPOSE exec analytics-worker python -c \
  "import src.services.ml.models.shift_v2 as m; print('OK' if hasattr(m,'INDIV_MOD_SCALE_TOP') else 'OLD IMAGE')"
 
-# 1a) (нужно для инд-скилла и smurf-флага) материализовать Performance v2 по истории
+# 1a) (required for individual skill and the smurf flag) materialize Performance v2 over history
 $COMPOSE exec analytics-worker python -m src.services.ml.cli backfill --from 1 --to $LATEST --models performance
 
-# 1b) переобучить shift v2 (снапшот весов из env) и пересчитать
+# 1b) retrain shift v2 (weights snapshotted from env) and recompute
 $COMPOSE exec analytics-worker python -m src.services.ml.cli train --cutoff $LATEST --models shift
 $COMPOSE exec analytics-worker python -m src.services.ml.cli backfill --from 1 --to $LATEST
-#   ^ backfill (без --models) обновит shift + player_anomalies (smurf) + match_quality + standings + performance
+#   ^ backfill (without --models) updates shift + player_anomalies (smurf) + match_quality + standings + performance
 
-# 2) v1 Linear/Points + сетка дивизионов — compute-джоб по турнирам (v1 recalc + v2 infer вместе)
-#    через API (право analytics.update), на каждый нужный tournament_id:
+# 2) v1 Linear/Points + division grid — a compute job per tournament (v1 recalc + v2 infer together)
+#    via the API (analytics.update permission), for each tournament_id needed:
 curl -X POST https://<api-host>/v2/jobs -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" -d "{\"kind\":\"compute\",\"tournament_id\":$LATEST}"
-#    (или штатной кнопкой пересчёта в админке; джобы сериализуются — по одному на воркспейс)
+#    (or with the built-in recompute button in the admin panel; jobs are serialized — one per workspace)
 ```
 
-## Тюнинг
-Сила/потолок инд-скилла (рангозависимо) / порог флага / выходной кламп — через env (`SHIFT_INDIV_SCALE_TOP|BOTTOM`/`SHIFT_INDIV_CLAMP_TOP|BOTTOM`/`SHIFT_CLAMP_TOP_GRID_REF`/`SMURF_STRONG_LOCAL_Z`), затем `train --models shift` (для весов) + backfill. `LINEAR_SHIFT_SCALE` — только пересчёт v1 (compute-джоб), без retrain.
+## Tuning
+Individual-skill strength/ceiling (rank-dependent) / flag threshold / output clamp — via env (`SHIFT_INDIV_SCALE_TOP|BOTTOM`/`SHIFT_INDIV_CLAMP_TOP|BOTTOM`/`SHIFT_CLAMP_TOP_GRID_REF`/`SMURF_STRONG_LOCAL_Z`), then `train --models shift` (for the weights) + backfill. `LINEAR_SHIFT_SCALE` — v1 recompute only (compute job), no retrain.
 
-## Верификация (read-only, с лаптопа)
+## Verification (read-only, from a laptop)
 ```bash
 cd backend/analytics-service && uv run python scripts/diagnose_performance_coverage.py
 ```
-- ad-hoc SQL Spearman(shift@T, realised@T+1): **Linear ≈ 0.37** (как Points), OpenSkill+ML — team-доминантный с инд-вариацией, без схлопывания;
-- спот-чек UI: 1 место → вверх; сильный аутлайер по скиллу **двигается и помечается** (smurf) при любом ранге; **сетка дивизионов совпадает со знаком/величиной сигнала**; ручные сдвиги админов на месте.
+- ad-hoc SQL Spearman(shift@T, realised@T+1): **Linear ≈ 0.37** (same as Points), OpenSkill+ML — team-dominant with individual variation, no collapse;
+- UI spot check: 1st place → up; a strong skill outlier **moves and is flagged** (smurf) at any rank; **the division grid matches the sign/magnitude of the signal**; manual admin shifts are intact.
 
-## Безопасность / откат
-- Ручной сдвиг (`AnalyticsPlayer.shift`, поле админки) пересчёт **не трогает** — только `change_shift`.
-- Откат модели: прежний активный артефакт пометить `is_active=true` (новый деактивировать) + повторить backfill.
-- Откат кода — git-revert ветки + пересборка образа.
+## Safety / rollback
+- The recompute **does not touch** the manual shift (`AnalyticsPlayer.shift`, an admin-panel field) — only `change_shift`.
+- Model rollback: mark the previously active artifact `is_active=true` (deactivate the new one) + rerun backfill.
+- Code rollback — git-revert the branch + rebuild the image.
 ```

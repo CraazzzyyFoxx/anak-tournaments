@@ -1,0 +1,39 @@
+name: CI Docs
+
+# Documentation had no gate of any kind. Links rotted silently — a file was
+# renamed, six documents kept pointing at it, and nothing noticed until a reader
+# did. The repository was cleaned to zero broken links in maintained docs; this
+# is what keeps it there. It is deliberately tiny: standard-library Python, no
+# install step, no network.
+#
+# The generated data model (docs/database_erd.md) is NOT checked here — that gate
+# lives in lint-backend.yml, because verifying it requires importing the ORM.
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "**/*.md"
+      - "scripts/check_doc_links.py"
+      - ".github/workflows/ci-docs.yml"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+    paths:
+      - "**/*.md"
+      - "scripts/check_doc_links.py"
+  workflow_call:
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Documentation links resolve
+        run: python3 scripts/check_doc_links.py

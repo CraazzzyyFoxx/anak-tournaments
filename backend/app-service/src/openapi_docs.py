@@ -78,6 +78,18 @@ DOCS: dict[str, dict] = {
         "summary": "Top won-maps players",
         "description": "Returns paginated, sortable players ranked by maps won, optionally workspace-scoped (public).",
     },
+    "rpc.app.statistics.tournament_readiness": {
+        "summary": "Tournament readiness checklist",
+        "description": (
+            "Returns the living readiness checklist for one tournament, telling its organisers what is"
+            " still missing before it can run: schedule/grid/stage-slot configuration, bracket and"
+            " encounter log coverage, and the registration, pool, balance and draft state. Requires an"
+            " active user with tournament.read or team.read on the tournament's own workspace, and each"
+            " group of fields is masked to null when the caller lacks the permission that gates it, so"
+            " a partial reader sees no-access rather than zeros. 403 without either permission, 404 if"
+            " the tournament is unknown; hidden tournaments of the caller's own workspace are visible."
+        ),
+    },
     # ── users (bespoke reads) ──────────────────────────────────────────────────────
     "rpc.app.users.list": {
         "summary": "List users",
@@ -168,6 +180,16 @@ DOCS: dict[str, dict] = {
     "rpc.app.workspaces.list": {
         "summary": "List workspaces",
         "description": "Returns every workspace, minus hidden ones the caller has no business seeing: a hidden workspace is dropped unless the caller is one of its members (any role) or a superuser (public, optional auth, unpaginated).",
+    },
+    "rpc.app.workspaces.by_host": {
+        "summary": "Resolve workspace by host",
+        "description": (
+            "Resolves a request host to its workspace ({workspace_id, slug}) -- the entry point to"
+            " multitenancy, called by the edge before anything else knows which tenant it is serving."
+            " A host in the platform zone matches on subdomain; any other host matches only a VERIFIED"
+            " custom domain. Public, and fail-closed: a missing, malformed, unknown or"
+            " not-yet-verified host returns null data rather than an error."
+        ),
     },
     "rpc.app.workspaces.get": {
         "summary": "Get workspace",
@@ -399,6 +421,36 @@ DOCS: dict[str, dict] = {
         "description": "Removes a player's Twitch identity by identity id; requires the global user.delete permission, returns 204.",
     },
     # ── user self-service (own player, capability account.social) ───────────────────────────────────
+    "rpc.app.users.me_social_list": {
+        "summary": "List my social accounts",
+        "description": (
+            "Returns the caller's own player with its linked social accounts -- which handles are"
+            " connected, which one is primary, and each account's public-profile visibility. Accounts"
+            " are added through the identity-service OAuth link flow, never here. Requires the"
+            " account.social capability; a caller with no linked player gets an empty list rather than"
+            " a 404."
+        ),
+    },
+    "rpc.app.users.me_social_set_primary": {
+        "summary": "Set my primary social account",
+        "description": (
+            "Promotes one of the caller's own social accounts to primary -- the handle shown first on"
+            " their public profile -- and returns the updated player. OAuth-verified accounts only"
+            " (400 otherwise), because an unverified handle as primary would put an unproven identity"
+            " on a public profile. Requires the account.social capability and a linked player; 404 for"
+            " an account id the caller does not own."
+        ),
+    },
+    "rpc.app.users.me_social_set_visibility": {
+        "summary": "Set my social account visibility",
+        "description": (
+            "Sets whether one of the caller's own social accounts is shown to anyone on their public"
+            " profile, and returns the updated player. Global scope only: this is the self-service"
+            " hide switch, not the per-workspace admin override, and hiding never deletes the account"
+            " or its OAuth link. Requires the account.social capability and a linked player; 404 for an"
+            " account id the caller does not own."
+        ),
+    },
     "rpc.app.users.me_set_stream_visibility": {
         "summary": "Set my stream visibility",
         "description": (

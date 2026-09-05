@@ -11,8 +11,10 @@ OWT is a multi-tenant platform for running Overwatch tournaments from registrati
 
 - **Live platform:** <https://owt.craazzzyyfoxx.me>
 - **API documentation:** <https://owt.craazzzyyfoxx.me/api/docs>
+- **Documentation map:** [docs/README.md](./docs/README.md)
 - **System architecture:** [docs/architecture.md](./docs/architecture.md)
 - **Database model:** [docs/database_erd.md](./docs/database_erd.md)
+- **Contributing:** [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ## What OWT does
 
@@ -238,18 +240,17 @@ Run `make help` for the complete command list. Component-specific log and restar
 ## Quality checks
 
 ```bash
-# Backend
-make test
-cd backend && uv run ruff check . && uv run ruff format --check .
-
-# Frontend
-cd frontend && bun run typecheck && bun run test:vitest && bun run lint && bun run lint:design
-
-# Gateway
-cd gateway && go test ./...
+make test                                          # backend pytest suite
+cd backend && uv run bash scripts/lint.sh          # ruff check + format check
+cd frontend && bun run typecheck && bun run lint
+cd gateway && go test -race ./...
 ```
 
-GitHub Actions runs independent backend lint/test, frontend, gateway, and production deployment workflows from [`.github/workflows`](./.github/workflows).
+That is the fast local signal, not the full gate. The complete list — including the generated
+artifacts CI verifies and the frontend's two test runners — is in
+[`CONTRIBUTING.md`](./CONTRIBUTING.md#checks-before-you-push). GitHub Actions runs independent
+backend lint/test, frontend, gateway, and production deployment workflows from
+[`.github/workflows`](./.github/workflows).
 
 ## Operations
 
@@ -258,12 +259,11 @@ GitHub Actions runs independent backend lint/test, frontend, gateway, and produc
 - **Backups:** [`docs/backup-rustfs.md`](./docs/backup-rustfs.md) covers PostgreSQL dumps, two-site S3 replication, verification, and restore.
 - **Load testing:** [`loadtests/README.md`](./loadtests/README.md) documents Locust configuration, seeding, and reports.
 
-Do not reuse development credentials in production. Keep secrets in untracked environment files, restrict the admin API documentation endpoint, configure allowed WebSocket origins, and place TLS termination in front of nginx.
+Do not reuse development credentials in production. Keep secrets in untracked environment files, restrict the admin API documentation endpoint, configure allowed WebSocket origins, and place TLS termination in front of nginx. Security policy and vulnerability reporting: [`SECURITY.md`](./SECURITY.md).
 
 ## Credits
 
 - [OverFast API](https://github.com/TeKrop/overfast-api) for Overwatch data.
-  historical data.
 - Special thanks to [Demogram](https://github.com/dmelackov), creator of the mix balancer and the inspiration behind OWT's tournament balancer.
 
 ## License

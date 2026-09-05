@@ -1,7 +1,10 @@
-# Overwatch tournaments statistics Monerepo project
+# OWT — Overwatch tournaments monorepo
 
-# Frontend:
-- Don't run next build for testing, next lint is enough
+Documentation map: [`docs/README.md`](docs/README.md). Contribution rules: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Frontend
+
+- Don't run `next build` for testing; `next lint` is enough.
 
 <!-- CODEGRAPH_START -->
 ## CodeGraph
