@@ -35,6 +35,7 @@ import {
   parseStageBestOf,
   resolveBestOf,
 } from "@/lib/best-of";
+import { projectStage } from "../bracket/projection";
 import type {
   MapVetoMode,
   PickBanConfig,
@@ -443,6 +444,14 @@ export interface SeriesLength {
  * Only `"round"` is exact. A stage-wide or tournament-wide config covers
  * matches of different lengths, so the value is a preview of the generated step
  * order, not a promise — the caller must label it as such.
+ *
+ * A round with no generated encounter yet goes through `projectStage`, the same
+ * projection the bracket preview and the best-of editor read. Resolving it here
+ * instead cost a Bo5 grand final three map groups rather than five: `final`
+ * only outranks `default` when the caller says the round IS the final, and a
+ * local `round === max_rounds` guess cannot say that — double elimination's
+ * grand final is `upperRounds + 1` (derived from the team count), while
+ * `max_rounds` is an independent planning field a new stage defaults to 5.
  */
 export function resolveSeriesLength(
   stageId: number | null,
@@ -463,6 +472,19 @@ export function resolveSeriesLength(
 
   const stage = stages.find((candidate) => candidate.id === stageId);
   const bestOfConfig = parseStageBestOf(stage?.settings_json ?? null);
+
+  if (round != null && stage != null) {
+    const projected = projectStage({
+      stage,
+      stages,
+      stageType: stage.stage_type,
+      splitLowerBracket: stage.split_lower_bracket,
+      maxRounds: stage.max_rounds,
+      bestOf: bestOfConfig,
+    }).rounds.find((candidate) => candidate.round === round);
+    if (projected != null) return { bestOf: projected.bestOf, source: "round" };
+  }
+
   const bestOf = resolveBestOf(bestOfConfig, round ?? 1, {
     isFinal: round != null && stage != null && round === stage.max_rounds,
   });

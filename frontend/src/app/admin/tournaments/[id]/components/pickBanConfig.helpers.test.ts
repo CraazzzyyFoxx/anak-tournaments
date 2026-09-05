@@ -280,6 +280,48 @@ describe("scope resolution", () => {
       ).source
     ).toBe("variesByRound");
   });
+
+  // 2026-09-05: a Bo5 grand final was previewed as Bo3, so its slot pool got
+  // three map groups instead of five. `best_of.final` only outranks `default`
+  // for the round that IS the final, and `round === max_rounds` cannot name it:
+  // double elimination's grand final is `upperRounds + 1` off the team count,
+  // while `max_rounds` is an independent planning field a new stage defaults
+  // to 5. The bracket projection knows which round it is.
+  it("gives a double elimination's grand final the length `final` sets", () => {
+    const playoffs = stage({
+      id: 10,
+      stage_type: "double_elimination",
+      // Four teams in the upper bracket: semifinal, final, then grand final as
+      // round 3 -- two short of `max_rounds`.
+      max_rounds: 5,
+      items: [
+        {
+          id: 100,
+          stage_id: 10,
+          name: "Upper bracket",
+          type: "bracket",
+          order: 0,
+          inputs: Array.from({ length: 4 }, (_, index) => ({
+            id: 200 + index,
+            stage_item_id: 100,
+            slot: index + 1,
+            input_type: "final",
+            team_id: index + 1,
+            source_stage_item_id: null,
+            source_position: null,
+          })),
+        },
+      ],
+      settings_json: { best_of: { default: 3, final: 5 } },
+    } as unknown as Partial<Stage>);
+
+    expect(resolveSeriesLength(10, 3, [playoffs], [])).toEqual({ bestOf: 5, source: "round" });
+    // The rounds before it keep the stage default, and so does the lower bracket.
+    expect(resolveSeriesLength(10, 2, [playoffs], []).bestOf).toBe(3);
+    expect(resolveSeriesLength(10, -1, [playoffs], []).bestOf).toBe(3);
+    // The groups a round scope's slot pool needs follow it.
+    expect(resolveSlotCount(10, 3, [playoffs], [])).toBe(5);
+  });
 });
 
 // A slot pool is sized by the bracket, never by hand: the server plays the
