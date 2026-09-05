@@ -391,6 +391,33 @@ class SwissInvariants(TestCase):
                 bye_history={3, 4, 5},
             )
 
+    def test_six_teams_play_every_round_without_stranding_the_field(self) -> None:
+        """Round 3 used to strand a six-team group: the pairing it picked left
+        two teams whose only remaining opponents were each other's, so round 4
+        had no rematch-free pairing and the Swiss scope ended three rounds early."""
+        team_ids = [1, 2, 3, 4, 5, 6]
+        points = dict.fromkeys(team_ids, 0.0)
+        played_pairs: set[frozenset[int]] = set()
+
+        for round_number in range(1, 6):
+            standings = [
+                swiss.SwissStanding(
+                    team_id=team_id,
+                    points=points[team_id],
+                    buchholz=sum(
+                        points[other] for other in team_ids if frozenset({team_id, other}) in played_pairs
+                    ),
+                )
+                for team_id in team_ids
+            ]
+            skeleton = swiss.generate_round(standings, played_pairs, round_number)
+            self.assertEqual(3, len(skeleton.pairings))
+            for pairing in skeleton.pairings:
+                played_pairs.add(frozenset({pairing.home_team_id, pairing.away_team_id}))
+                points[min(pairing.home_team_id, pairing.away_team_id)] += 1.0
+
+        self.assertEqual(15, len(played_pairs))
+
 
 class EngineDispatchInvariants(TestCase):
     def test_rejects_empty_teams(self) -> None:
