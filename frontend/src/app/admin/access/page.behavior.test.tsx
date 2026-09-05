@@ -110,6 +110,32 @@ describe("Access › hub landing", () => {
     expect(target).toBe("/admin/access/accounts");
   });
 
+  it("ignores read-only memberships beside the one workspace it owns", async () => {
+    // The reported shape: `owner` of one workspace, plain `host`/`member` of two
+    // others, and a handful of global reads that cover none of the Access
+    // sections. `host` looks non-read only because of `custom_game`, which is
+    // deliberately not an admin-panel resource.
+    const target = await landing(
+      profile({
+        username: "shadow_pulse_dl",
+        roles: ["user"],
+        permissions: ["user.read", "tournament.read", "team.read", "match.read"] as AppPermission[],
+        workspaces: [
+          {
+            workspace_id: 6,
+            slug: "txao",
+            roles: ["host"],
+            permissions: ["tournament.read", "custom_game.create", "custom_game.delete"]
+          },
+          { workspace_id: 8, slug: "moonrise", roles: ["owner"], permissions: ["admin.*"] },
+          { workspace_id: 2, slug: "anakq-dvor", roles: ["member"], permissions: ["tournament.read"] }
+        ]
+      })
+    );
+
+    expect(target).toBe("/admin/access/roles");
+  });
+
   it("forwards nobody when no section is open", async () => {
     const target = await landing(profile({ username: "outsider" }));
 
