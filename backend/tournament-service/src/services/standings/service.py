@@ -134,26 +134,14 @@ def _rule_profile(stage: models.Stage) -> str:
     return "bracket_default"
 
 
-def _with_points_first(order: list[str]) -> list[str]:
-    """``points`` is the ranking metric, not a tiebreaker.
-
-    Everything else in the list only separates teams that are level on points.
-    An order that demotes ``points`` inverts a Swiss table: losers play the
-    winners, so they carry the *higher* Buchholz, and a Buchholz-before-points
-    order ranks them first. Hoisting it back fixes the sort and the legend the
-    API ships next to it in one place.
-    """
-    return ["points", *(metric for metric in order if metric != "points")]
-
-
 def _tiebreak_order(stage: models.Stage) -> list[str]:
     settings = _stage_settings(stage)
     explicit = settings.get("tiebreak_order")
     if isinstance(explicit, list):
         filtered = [str(metric) for metric in explicit if isinstance(metric, str)]
         if filtered:
-            return _with_points_first(filtered)
-    return _with_points_first(RULE_PRESET_DEFAULTS.get(_rule_profile(stage), RULE_PRESET_DEFAULTS["bracket_default"]))
+            return filtered
+    return RULE_PRESET_DEFAULTS.get(_rule_profile(stage), RULE_PRESET_DEFAULTS["bracket_default"])
 
 
 def _manual_positions(stage: models.Stage) -> dict[int, int]:
