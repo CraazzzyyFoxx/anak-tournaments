@@ -1153,6 +1153,26 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
     expect(text).not.toContain("Round 6");
   });
 
+  // 2026-09-05: a Swiss is generated one round at a time (round N+1 is paired
+  // off round N's standings), so mid-stage the bracket holds only the rounds
+  // already played. Taking the generated rounds alone left the tree offering
+  // Round 1 and nothing else, with the rest of the regulation unconfigurable
+  // until the moment it was about to be played.
+  it("lists every round a Swiss will play, not only the ones already generated", async () => {
+    getStagePlannedRounds.mockResolvedValue([]);
+    const swiss = { ...STAGES[0], stage_type: "swiss", max_rounds: 4 } as unknown as Stage;
+
+    await mount({
+      encounters: [{ stage_id: 10, round: 1, best_of: 3 }],
+      stages: [swiss, STAGES[1]],
+      url: "?scope=stage:10&kind=map&step=pool"
+    });
+
+    const text = tree().textContent ?? "";
+    for (const round of [1, 2, 3, 4]) expect(text).toContain(`Round ${round}`);
+    expect(text).not.toContain("Round 5");
+  });
+
   it("falls back to the planned round count when the stage has no teams yet", async () => {
     getStagePlannedRounds.mockResolvedValue([]);
     await mount({

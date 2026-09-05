@@ -15,8 +15,9 @@ export interface StageRounds {
 }
 
 /**
- * The rounds of one stage: generated, predicted, or — for a group stage — the
- * count it is configured to play.
+ * The rounds of one stage: the generated ones union — for a group stage — the
+ * count it is configured to play, or the server's prediction when neither is
+ * known yet.
  *
  * Elimination round numbering is not guessable client-side (see
  * `stageRoundOptions`): double elimination numbers its lower bracket
@@ -59,20 +60,36 @@ export function useStageRounds(
     return Array.from({ length: Math.max(0, count) }, (_, index) => index + 1);
   }, [stage]);
 
+  // A Swiss is generated ONE round at a time (`_get_swiss_generation_context`
+  // pairs round N+1 off round N's standings), so mid-stage its bracket holds
+  // only the rounds already played -- and taking the generated list alone left
+  // the tree offering Round 1 and nothing else, with rounds 2..max_rounds
+  // unconfigurable until the moment they were about to be played. There the
+  // generated rounds and the planned length are unioned.
+  //
+  // Only there: a round robin generates its whole schedule in one pass, so its
+  // generated rounds ARE the stage, and `max_rounds` is an unrelated planning
+  // field a union would let leak in as a round the bracket never has.
+  const known = useMemo(() => {
+    if (generated.length === 0) return planned;
+    if (planned.length === 0 || stage?.stage_type !== "swiss") return generated;
+    return [...new Set([...generated, ...planned])].sort((left, right) => left - right);
+  }, [generated, planned, stage?.stage_type]);
+
   const predicted = useQuery({
     queryKey: ["admin", "stage", stageId, "planned-rounds"],
     queryFn: () => adminService.getStagePlannedRounds(stageId as number),
-    enabled: stageId != null && generated.length === 0
+    enabled: stageId != null && known.length === 0
   });
 
-  if (generated.length > 0) return { rounds: generated, loading: false };
+  if (known.length > 0) return { rounds: known, loading: false };
   if (predicted.data != null && predicted.data.length > 0) {
     return { rounds: predicted.data, loading: false };
   }
-  if (predicted.isPending && planned.length === 0) {
+  if (predicted.isPending) {
     return { rounds: EMPTY_ROUNDS, loading: stageId != null };
   }
-  return { rounds: planned, loading: false };
+  return { rounds: EMPTY_ROUNDS, loading: false };
 }
 
 const EMPTY_ROUNDS: number[] = [];
