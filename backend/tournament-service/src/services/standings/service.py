@@ -134,14 +134,26 @@ def _rule_profile(stage: models.Stage) -> str:
     return "bracket_default"
 
 
+def _with_points_first(order: list[str]) -> list[str]:
+    """``points`` is the ranking metric, not a tiebreaker.
+
+    Everything else in the list only separates teams that are level on points.
+    An order that demotes ``points`` inverts a Swiss table: losers play the
+    winners, so they carry the *higher* Buchholz, and a Buchholz-before-points
+    order ranks them first. Hoisting it back fixes the sort and the legend the
+    API ships next to it in one place.
+    """
+    return ["points", *(metric for metric in order if metric != "points")]
+
+
 def _tiebreak_order(stage: models.Stage) -> list[str]:
     settings = _stage_settings(stage)
     explicit = settings.get("tiebreak_order")
     if isinstance(explicit, list):
         filtered = [str(metric) for metric in explicit if isinstance(metric, str)]
         if filtered:
-            return filtered
-    return RULE_PRESET_DEFAULTS.get(_rule_profile(stage), RULE_PRESET_DEFAULTS["bracket_default"])
+            return _with_points_first(filtered)
+    return _with_points_first(RULE_PRESET_DEFAULTS.get(_rule_profile(stage), RULE_PRESET_DEFAULTS["bracket_default"]))
 
 
 def _manual_positions(stage: models.Stage) -> dict[int, int]:
@@ -757,14 +769,27 @@ class StandingsService:
         session: AsyncSession,
         tournament_id: int,
     ) -> typing.Sequence[models.Encounter]:
+        """Completed encounters of *closed* rounds, for the standings history.
+
+        Deliberately the same set the ranking engine counts
+        (:func:`_completed_encounters_in_finished_rounds`): the embedded
+        ``matches_history`` feeds the FORM column, which sits in the same row as
+        W·D·L / points / Buchholz. Serving every completed encounter here made
+        FORM run a round ahead of its own row — a team could show a ``W`` chip
+        with zero wins because the rest of its round had not reported yet.
+
+        Open encounters are selected too (not filtered in SQL): a round is only
+        closed if *none* of its playable encounters is still open, which cannot
+        be seen from the completed ones alone. Rounds are scoped per
+        (stage, stage_item) — the same scope ``_history_for_standing`` slices by
+        — so an unfinished round in group A cannot hide group B's results.
+        """
         query = (
             self.encounter_repo.select()
             .where(
                 models.Encounter.tournament_id == tournament_id,
                 models.Encounter.home_team_id.isnot(None),
                 models.Encounter.away_team_id.isnot(None),
-                # Single form (encres0001 pins it to result_status == CONFIRMED).
-                models.Encounter.status == enums.EncounterStatus.COMPLETED,
             )
             .order_by(
                 models.Encounter.stage_id.asc().nullslast(),
@@ -775,7 +800,16 @@ class StandingsService:
             )
         )
         result = await session.execute(query)
-        return result.scalars().all()
+        by_scope: defaultdict[tuple[int | None, int | None], list[models.Encounter]] = defaultdict(list)
+        for encounter in result.scalars().all():
+            by_scope[(encounter.stage_id, encounter.stage_item_id)].append(encounter)
+        # Groups are keyed by the leading ORDER BY columns and each keeps its
+        # rows' relative order, so concatenating them restores the query order.
+        return [
+            encounter
+            for scope_encounters in by_scope.values()
+            for encounter in _completed_encounters_in_finished_rounds(scope_encounters)
+        ]
 
     async def delete_by_tournament(self, session: AsyncSession, tournament_id: int, *, commit: bool = True) -> None:
         """Delete all Standing rows for a tournament.
