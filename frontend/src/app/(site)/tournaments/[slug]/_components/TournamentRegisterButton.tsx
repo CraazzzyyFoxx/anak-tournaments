@@ -18,7 +18,6 @@ import { useAuthModalStore } from "@/stores/auth-modal.store";
 import registrationService from "@/services/registration.service";
 import { tournamentHref } from "@/lib/tournament-url";
 import {
-  TOURNAMENT_ACTION_CLASS,
   TOURNAMENT_PRIMARY_ACTION_CLASS,
   TOURNAMENT_TEXT_ACTION_CLASS,
 } from "./tournamentActionClass";

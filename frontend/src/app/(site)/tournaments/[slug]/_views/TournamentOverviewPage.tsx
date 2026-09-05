@@ -29,6 +29,7 @@ import tournamentService from "@/services/tournament.service";
 import type { Encounter } from "@/types/encounter.types";
 import type { Registration } from "@/types/registration.types";
 import type { StreamEntry } from "@/types/stream.types";
+import type { Team } from "@/types/team.types";
 import type { StageSummary, Standings, TournamentStatus } from "@/types/tournament.types";
 
 import { MapPoolCard } from "../_components/MapPoolCard";
