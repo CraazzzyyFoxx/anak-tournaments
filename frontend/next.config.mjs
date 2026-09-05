@@ -128,10 +128,11 @@ const nextConfig = {
       { source: "/admin/subscriptions", destination: "/admin/collectors/subscriptions", permanent: true },
       { source: "/admin/streams", destination: "/admin/collectors/streams", permanent: true },
 
-      // PR-5c  access. `access/users` first: the matcher is ordered, and
-      // `/admin/access` alone must not swallow its own child.
+      // PR-5c  access. `users` renamed to `accounts`. `/admin/access` itself
+      // is a real hub: AccessAdminIndex forwards to the first section the
+      // caller may open. A fixed redirect here would 308 everyone onto
+      // Accounts, which is global-only `auth_user.read`.
       { source: "/admin/access/users", destination: "/admin/access/accounts", permanent: true },
-      { source: "/admin/access", destination: "/admin/access/accounts", permanent: true },
 
       // PR-6   cleanup. The mix builder never belonged under /admin: it is a
       // balancer tool, and this path was a runtime redirect pretending to be
