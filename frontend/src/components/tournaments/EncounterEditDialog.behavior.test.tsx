@@ -162,13 +162,30 @@ describe("EncounterEditDialog status field", () => {
 describe("EncounterEditDialog start time", () => {
   const VIEWER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  /** The only `datetime-local` field in the dialog. */
+  /** Today on the viewer's clock — the day the picker adopts when it is empty
+   *  and only a time is typed. */
+  function todayAt(time: string): string {
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${time}`;
+  }
+
+  /** The picker's clock field. */
   function timeField(): HTMLInputElement {
     const input = document.body.querySelector<HTMLInputElement>(
-      'input[type="datetime-local"]'
+      'input[id^="encounter-scheduled-at-time-"]'
     );
     if (!input) throw new Error("start time field not rendered");
     return input;
+  }
+
+  /** The picker's date trigger — it prints the chosen day. */
+  function dateTrigger(): HTMLButtonElement {
+    const button = document.body.querySelector<HTMLButtonElement>(
+      'button[id^="encounter-scheduled-at-"]:not([id*="-time-"])'
+    );
+    if (!button) throw new Error("start date trigger not rendered");
+    return button;
   }
 
   async function type(value: string) {
@@ -187,7 +204,10 @@ describe("EncounterEditDialog start time", () => {
       <EncounterEditDialog open onOpenChange={() => {}} encounter={encounter({ scheduled_at: scheduled })} />
     );
 
-    expect(timeField().value).toBe(utcToZonedInput(scheduled, VIEWER_ZONE));
+    const local = utcToZonedInput(scheduled, VIEWER_ZONE);
+    // "YYYY-MM-DDTHH:mm" split across the picker's two fields.
+    expect(timeField().value).toBe(local.slice(11));
+    expect(dateTrigger().textContent).toContain(String(Number(local.slice(8, 10))));
 
     await clickSave();
     expect(updateEncounter.mock.calls[0]?.[1]).toMatchObject({ scheduled_at: scheduled });
@@ -197,15 +217,16 @@ describe("EncounterEditDialog start time", () => {
     await mount(<EncounterEditDialog open onOpenChange={() => {}} encounter={encounter()} />);
 
     expect(timeField().value).toBe("");
-    await type("2026-05-02T20:30");
+    // An empty picker takes today's date, so typing only the clock is enough.
+    await type("20:30");
     await clickSave();
 
     expect(updateEncounter.mock.calls[0]?.[1]).toMatchObject({
-      scheduled_at: zonedInputToUtc("2026-05-02T20:30", VIEWER_ZONE)
+      scheduled_at: zonedInputToUtc(todayAt("20:30"), VIEWER_ZONE)
     });
   });
 
-  it("clears the time when the field is emptied", async () => {
+  it("clears the time through the picker's clear button", async () => {
     await mount(
       <EncounterEditDialog
         open
@@ -214,7 +235,16 @@ describe("EncounterEditDialog start time", () => {
       />
     );
 
-    await type("");
+    const clear = document.body.querySelector<HTMLButtonElement>(
+      `button[title="${messages.matchEdit.scheduledAtClear}"]`
+    );
+    if (!clear) throw new Error("clear button not rendered");
+    await act(async () => {
+      clear.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+
+    expect(timeField().value).toBe("");
     await clickSave();
 
     expect(updateEncounter.mock.calls[0]?.[1]).toMatchObject({ scheduled_at: null });

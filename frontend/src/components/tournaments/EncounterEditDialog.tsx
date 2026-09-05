@@ -7,6 +7,7 @@ import { Star } from "lucide-react";
 import { EncounterScoreControls } from "@/components/tournaments/EncounterScoreControls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -99,9 +99,9 @@ function EncounterEditDialogBody({
   const [status, setStatus] = useState<EncounterStatusOption>(() => normalizeStatus(encounter.status));
   const [stars, setStars] = useState<number>(() => closenessFloatToStars(encounter.closeness));
   const [bestOf, setBestOf] = useState<number>(() => encounter.best_of ?? 3);
-  // The per-match override of the round schedule set in the stage editor. A
-  // `datetime-local` input carries no zone, so it is read and written in the
-  // viewer's own — which is the clock the admin is looking at.
+  // The per-match override of the round schedule set in the stage editor. The
+  // picker's value carries no zone, so it is read and written in the viewer's
+  // own — which is the clock the admin is looking at.
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
   const [scheduledAt, setScheduledAt] = useState(() =>
     utcToZonedInput(encounter.scheduled_at, timeZone)
@@ -235,18 +235,15 @@ function EncounterEditDialogBody({
         </div>
 
         <div className="space-y-1.5">
-          <Label
-            htmlFor={`encounter-scheduled-at-${encounter.id}`}
-            className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]"
-          >
-            {t("matchEdit.scheduledAt")}
-          </Label>
-          <Input
+          <DateTimePicker
             id={`encounter-scheduled-at-${encounter.id}`}
-            type="datetime-local"
+            timeId={`encounter-scheduled-at-time-${encounter.id}`}
+            dateLabel={t("matchEdit.scheduledAt")}
+            timeLabel={t("matchEdit.scheduledAtTime")}
+            clearLabel={t("matchEdit.scheduledAtClear")}
+            placeholder={t("matchEdit.scheduledAtPlaceholder")}
             value={scheduledAt}
-            onChange={(event) => setScheduledAt(event.target.value)}
-            className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-semibold text-[color:var(--aqt-fg)]"
+            onChange={setScheduledAt}
           />
           <p className="mt-1 text-[11px] font-medium leading-normal text-[color:var(--aqt-fg-dim)]">
             {t("matchEdit.scheduledAtHint")}

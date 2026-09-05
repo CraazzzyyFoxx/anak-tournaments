@@ -23,7 +23,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import { zonedInputToUtc } from "@/lib/timezone";
+import { utcToZonedInput, zonedInputToUtc } from "@/lib/timezone";
 import type { EncounterUpdateInput } from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
 import type { Stage } from "@/types/tournament.types";
@@ -235,20 +235,51 @@ async function click(element: Element | null | undefined) {
   await settle(4);
 }
 
-/** The round's row, addressed by the accessible name of its time field. */
+/** The round's row, addressed by the accessible name of its date field. */
 function row(label: string): HTMLTableRowElement {
-  const input = document.querySelector<HTMLInputElement>(
-    `input[aria-label="Start time for ${label}"]`
-  );
-  const found = input?.closest("tr");
+  const found = dateLabels()
+    .find((element) => element.textContent === `Start time for ${label}`)
+    ?.closest("tr");
   if (!(found instanceof HTMLTableRowElement)) throw new Error(`no row for round "${label}"`);
   return found;
 }
 
+/** The `sr-only` labels naming each row's date trigger. */
+function dateLabels(): HTMLLabelElement[] {
+  return [...container.querySelectorAll<HTMLLabelElement>("label")].filter((element) =>
+    (element.textContent ?? "").startsWith("Start time for ")
+  );
+}
+
+/** The clock half of the row's picker — its only text input. */
 function timeField(label: string): HTMLInputElement {
   const input = row(label).querySelector("input");
   if (!(input instanceof HTMLInputElement)) throw new Error(`no time field for "${label}"`);
   return input;
+}
+
+/** The date half — the popover trigger, which prints the chosen day. */
+function dateTrigger(label: string): HTMLButtonElement {
+  const button = row(label).querySelector("button");
+  if (!(button instanceof HTMLButtonElement)) throw new Error(`no date trigger for "${label}"`);
+  return button;
+}
+
+/** Today on the viewer's clock — the day an empty picker adopts when only a
+ *  time is typed into it. */
+function todayAt(time: string): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${time}`;
+}
+
+/** The row's Apply button — the picker owns the other buttons in the row. */
+function applyButton(label: string): HTMLButtonElement {
+  const button = [...row(label).querySelectorAll("button")].find(
+    (element) => (element.textContent ?? "").trim() === "Apply"
+  );
+  if (!button) throw new Error(`no apply button for "${label}"`);
+  return button;
 }
 
 /** Types into a controlled input the way React hears it. */
@@ -262,8 +293,8 @@ async function type(input: HTMLInputElement, value: string) {
 }
 
 function roundLabels(): string[] {
-  return [...container.querySelectorAll<HTMLInputElement>("input[type='datetime-local']")].map(
-    (input) => (input.getAttribute("aria-label") ?? "").replace("Start time for ", "")
+  return dateLabels().map((element) =>
+    (element.textContent ?? "").replace("Start time for ", "")
   );
 }
 
@@ -315,20 +346,23 @@ describe("Stage editor round schedule", () => {
     await mount();
 
     expect(timeField("UB Round 1").value).toBe("");
-    // The field shows the instant most of round 2 carries, on the viewer's
-    // clock — asserted by parsing it back, so the claim holds in any zone.
-    expect(zonedInputToUtc(timeField("UB Semifinal").value, VIEWER_ZONE)).toBe(
-      "2026-05-02T15:00:00.000Z"
+    // The picker shows the instant most of round 2 carries, on the viewer's
+    // clock — derived from the same conversion, so the claim holds in any zone.
+    const local = utcToZonedInput("2026-05-02T15:00:00.000Z", VIEWER_ZONE);
+    expect(timeField("UB Semifinal").value).toBe(local.slice(11));
+    expect(dateTrigger("UB Semifinal").textContent).toContain(
+      String(Number(local.slice(8, 10)))
     );
   });
 
   it("writes the chosen time to every match of the round, one request each", async () => {
     await mount();
 
-    await type(timeField("UB Round 1"), "2026-05-02T18:00");
-    await click(row("UB Round 1").querySelector("button"));
+    // An empty picker takes today's date, so the clock alone names an instant.
+    await type(timeField("UB Round 1"), "18:00");
+    await click(applyButton("UB Round 1"));
 
-    const expected = zonedInputToUtc("2026-05-02T18:00", VIEWER_ZONE);
+    const expected = zonedInputToUtc(todayAt("18:00"), VIEWER_ZONE);
     expect(patches()).toEqual([
       [1, expected],
       [2, expected],
@@ -342,7 +376,7 @@ describe("Stage editor round schedule", () => {
   it("asks before overwriting a match that was moved on its own", async () => {
     await mount();
 
-    await click(row("UB Semifinal").querySelector("button"));
+    await click(applyButton("UB Semifinal"));
 
     // Nothing written yet — the question comes first.
     expect(updateEncounter).not.toHaveBeenCalled();
@@ -363,7 +397,7 @@ describe("Stage editor round schedule", () => {
   it("keeps the moved match and still schedules the rest when the question is declined", async () => {
     await mount();
 
-    await click(row("UB Semifinal").querySelector("button"));
+    await click(applyButton("UB Semifinal"));
     await click(dialogButton("Cancel"));
 
     expect(patches().map(([id]) => id)).toEqual([5]);

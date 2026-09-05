@@ -12,7 +12,7 @@ import {
 import { ConfirmDialog, type ConfirmIntent } from "@/components/admin/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DateTimePicker } from "@/components/ui/date-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -100,8 +100,8 @@ export function RoundScheduleSection({
   const styles = getAdminDetailTableStyles("compact");
   const encountersQuery = useHubEncountersQuery(stage.tournament_id);
 
-  // The viewer's own wall clock: a `datetime-local` input carries no zone, and
-  // the organizer types the time they read on their own clock.
+  // The viewer's own wall clock: the picker's value carries no zone, and the
+  // organizer schedules by the time they read on their own clock.
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
   /** Edited values, keyed by round. Absent = show what the matches carry. */
@@ -227,7 +227,7 @@ export function RoundScheduleSection({
               {rows.map((row) => {
                 const value = drafts[row.round] ?? utcToZonedInput(row.baseIso, timeZone);
                 const iso = value ? zonedInputToUtc(value, timeZone) : null;
-                // A half-typed `datetime-local` value would otherwise clear the
+                // A picker value with no date part would otherwise clear the
                 // round's times instead of setting them.
                 const unparseable = value !== "" && iso === null;
                 return (
@@ -236,15 +236,21 @@ export function RoundScheduleSection({
                       <span className="font-medium text-foreground">{row.label}</span>
                     </TableCell>
                     <TableCell className={styles.cell}>
-                      <Input
-                        type="datetime-local"
-                        className="w-[15rem]"
-                        aria-label={t("timeInputLabel", { round: row.label })}
-                        value={value}
-                        onChange={(event) =>
-                          setDrafts((current) => ({ ...current, [row.round]: event.target.value }))
-                        }
-                      />
+                      <div className="w-[22rem]">
+                        <DateTimePicker
+                          id={`round-schedule-${row.round}`}
+                          timeId={`round-schedule-${row.round}-time`}
+                          dateLabel={t("timeInputLabel", { round: row.label })}
+                          timeLabel={t("timeFieldLabel", { round: row.label })}
+                          clearLabel={t("clearTime")}
+                          placeholder={t("timePlaceholder")}
+                          labelClassName="sr-only"
+                          value={value}
+                          onChange={(next) =>
+                            setDrafts((current) => ({ ...current, [row.round]: next }))
+                          }
+                        />
+                      </div>
                     </TableCell>
                     <TableCell className={styles.numericCell}>
                       {row.encounters.length}
