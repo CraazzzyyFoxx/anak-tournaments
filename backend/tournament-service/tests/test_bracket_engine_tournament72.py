@@ -1003,8 +1003,18 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
             ],
             teams={2069: "Averet", 2071: "litnik", 2060: "vac3x"},
             stages={
-                175: SimpleNamespace(id=175, stage_type=enums.StageType.DOUBLE_ELIMINATION, is_published=True),
-                165: SimpleNamespace(id=165, stage_type=enums.StageType.SWISS, is_published=True),
+                175: SimpleNamespace(
+                    id=175,
+                    stage_type=enums.StageType.DOUBLE_ELIMINATION,
+                    is_published=True,
+                    settings_json={"de_grand_final_type": "no_reset"},
+                ),
+                165: SimpleNamespace(
+                    id=165,
+                    stage_type=enums.StageType.SWISS,
+                    is_published=True,
+                    settings_json=None,
+                ),
             },
             players_by_auth={AVERET_CAPTAIN: AVERET_CAPTAIN, LITNIK_CAPTAIN: LITNIK_CAPTAIN},
         )
