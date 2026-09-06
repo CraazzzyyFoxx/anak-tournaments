@@ -1,15 +1,7 @@
-import { redirect } from "next/navigation";
-
-import { withSearch } from "../containerIndex";
-
-/** `/teams` is a container, not a view: its content is the roster sub-tab. */
-export default async function TeamsIndexPage({
-  params,
-  searchParams
-}: Readonly<{
-  params: Promise<{ id: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}>) {
-  const { id } = await params;
-  redirect(withSearch(`/admin/tournaments/${id}/teams/roster`, await searchParams));
-}
+/**
+ * The container URL is not a hop: it renders the first sub-tab in place, so
+ * `/teams` and `/teams/roster` are the same screen and no link needs to know
+ * which one it wrote. The tab bar in `layout.tsx` already treats a bare
+ * container path as the default sub-tab.
+ */
+export { default } from "./roster/page";

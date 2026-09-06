@@ -4,7 +4,7 @@ import UserHeader from "@/app/(site)/users/components/header/UserHeader";
 import { TabsContent } from "@/components/ui/tabs";
 import UserOverviewPage, { UserOverviewPageSkeleton } from "@/app/(site)/users/_views/UserOverviewPage";
 import UserMapsPage from "@/app/(site)/users/_views/UserMapsPage";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import UserHeroesPage from "@/app/(site)/users/_views/UserHeroesPage";
 import {
   UserEncountersPageSkeleton,
@@ -301,17 +301,6 @@ export default async function UserPage({
 
   const requestedTab = resolvedSearchParams.tab ?? "overview";
   const activeTab: UserTab = isUserTab(requestedTab) ? requestedTab : "overview";
-
-  if (!isUserTab(requestedTab)) {
-    const searchParamsObj = new URLSearchParams();
-    for (const [key, value] of Object.entries(resolvedSearchParams)) {
-      if (typeof value === "string") {
-        searchParamsObj.set(key, value);
-      }
-    }
-    searchParamsObj.set("tab", "overview");
-    redirect(`/users/${resolvedParams.slug}?${searchParamsObj.toString()}`);
-  }
 
   const tournamentId = toPositiveInt(resolvedSearchParams.tournamentId, 0) || undefined;
   const pageNumber = toPositiveInt(resolvedSearchParams.page, 1);

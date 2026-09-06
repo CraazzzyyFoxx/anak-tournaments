@@ -1,6 +1,2 @@
-import { redirect } from "next/navigation";
-
-/** The section root is not a screen: the first tab is. */
-export default function GameContentIndex() {
-  redirect("/admin/content/heroes");
-}
+/** The section root renders its first tab in place, instead of hopping to it. */
+export { default } from "./heroes/page";
