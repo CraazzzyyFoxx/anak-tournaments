@@ -118,7 +118,7 @@ export function ChallongeIntegrationSection({
   // The slug is the settings form's live value, so this tracks an unsaved edit
   // too — which is the honest thing to link: it is the bracket about to be used.
   const bracketUrl = slug.trim() ? `https://challonge.com/${slug.trim()}` : null;
-  const teamMappingHref = `/admin/tournaments/${tournamentId}/teams?challongeSync=1`;
+  const teamMappingHref = `/admin/tournaments/${tournamentId}/teams/roster?challongeSync=1`;
 
   return (
     <section className="flex flex-col gap-4">

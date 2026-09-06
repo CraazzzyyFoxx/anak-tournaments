@@ -222,7 +222,7 @@ describe("Settings › Challonge", () => {
     const link = [...container.querySelectorAll("a")].find((anchor) =>
       anchor.textContent?.includes("Map teams")
     );
-    expect(link?.getAttribute("href")).toBe("/admin/tournaments/64/teams?challongeSync=1");
+    expect(link?.getAttribute("href")).toBe("/admin/tournaments/64/teams/roster?challongeSync=1");
   });
 
   it("stays hidden when nothing failed for want of a mapping", async () => {

@@ -14,12 +14,12 @@ export function balancerRedirectTarget(path: string, params: URLSearchParams): s
   if (path.startsWith("/balancer/statuses")) return "/admin/settings/statuses";
   if (!t) return "/admin/tournaments";
   const base = `/admin/tournaments/${t}/registration`;
-  if (path === "/balancer/registrations") return `${base}${q}`;
+  if (path === "/balancer/registrations") return `${base}/entries${q}`;
   if (path === "/balancer/registrations/form") return `${base}/form`;
   if (path === "/balancer/registrations/rank-autofill") return `${base}/rank-autofill`;
   if (path === "/balancer/registrations/feed") return `${base}/feed`;
-  if (path === "/balancer/pool") return base;
-  if (path === "/balancer/applications") return `${base}?source=google_sheets`;
+  if (path === "/balancer/pool") return `${base}/entries`;
+  if (path === "/balancer/applications") return `${base}/entries?source=google_sheets`;
   return "/admin/tournaments";
 }
 

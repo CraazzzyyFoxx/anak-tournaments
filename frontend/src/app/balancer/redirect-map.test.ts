@@ -20,7 +20,7 @@ describe("balancerRedirectTarget", () => {
 
   test("registrations with ?tournament= goes to the hub registration tab", () => {
     expect(balancerRedirectTarget("/balancer/registrations", params({ tournament: "12" }))).toBe(
-      "/admin/tournaments/12/registration"
+      "/admin/tournaments/12/registration/entries"
     );
   });
 
@@ -30,13 +30,13 @@ describe("balancerRedirectTarget", () => {
         "/balancer/registrations",
         params({ tournament: "12", status: "approved", source: "google_sheets", group: "A" })
       )
-    ).toBe("/admin/tournaments/12/registration?status=approved&source=google_sheets&group=A");
+    ).toBe("/admin/tournaments/12/registration/entries?status=approved&source=google_sheets&group=A");
   });
 
   test("registrations drops unknown params", () => {
     expect(
       balancerRedirectTarget("/balancer/registrations", params({ tournament: "12", page: "3" }))
-    ).toBe("/admin/tournaments/12/registration");
+    ).toBe("/admin/tournaments/12/registration/entries");
   });
 
   test.each([
@@ -52,14 +52,14 @@ describe("balancerRedirectTarget", () => {
 
   test("pool goes to the hub registration tab", () => {
     expect(balancerRedirectTarget("/balancer/pool", params({ tournament: "12" }))).toBe(
-      "/admin/tournaments/12/registration"
+      "/admin/tournaments/12/registration/entries"
     );
     expect(balancerRedirectTarget("/balancer/pool", params())).toBe("/admin/tournaments");
   });
 
   test("applications goes to the registration tab pre-filtered by sheets source", () => {
     expect(balancerRedirectTarget("/balancer/applications", params({ tournament: "12" }))).toBe(
-      "/admin/tournaments/12/registration?source=google_sheets"
+      "/admin/tournaments/12/registration/entries?source=google_sheets"
     );
     expect(balancerRedirectTarget("/balancer/applications", params())).toBe("/admin/tournaments");
   });

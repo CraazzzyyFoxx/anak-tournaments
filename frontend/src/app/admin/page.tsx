@@ -128,7 +128,7 @@ export default function AdminDashboard() {
         ? {
             label: "Results awaiting confirmation",
             count: issues!.encounters_pending_confirmation,
-            href: "/admin/encounters",
+            href: "/admin/matches?view=encounters",
             tone: "critical" as const
           }
         : null,
@@ -136,7 +136,7 @@ export default function AdminDashboard() {
         ? {
             label: "Overdue match results",
             count: issues!.encounters_awaiting_result,
-            href: "/admin/encounters",
+            href: "/admin/matches?view=encounters",
             tone: "critical" as const
           }
         : null,
@@ -146,7 +146,7 @@ export default function AdminDashboard() {
         ? {
             label: "Missing encounter logs",
             count: issues!.encounters_missing_logs,
-            href: "/admin/encounters",
+            href: "/admin/matches?view=encounters",
             tone: "warning" as const
           }
         : null,
@@ -178,7 +178,7 @@ export default function AdminDashboard() {
         ? {
             label: "Unlinked player identities",
             count: issues!.users_without_identities,
-            href: "/admin/users",
+            href: "/admin/people",
             tone: "info" as const
           }
         : null

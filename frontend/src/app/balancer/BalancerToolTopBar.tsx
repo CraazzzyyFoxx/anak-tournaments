@@ -27,7 +27,7 @@ export function BalancerToolTopBar({ summary }: Readonly<BalancerToolTopBarProps
   const backHref =
     returnTo?.startsWith("/") && !returnTo.startsWith("//")
       ? returnTo
-      : `/admin/tournaments/${summary.id}/teams`;
+      : `/admin/tournaments/${summary.id}/teams/roster`;
 
   return (
     <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:px-5">
