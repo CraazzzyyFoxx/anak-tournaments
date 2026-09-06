@@ -79,10 +79,10 @@ export function buildChecklist(
   const setupAccess = readiness.schedule_configured != null;
   const teamAccess = readiness.registrations_approved != null;
 
-  const settingsHref = `${ctx.basePath}/settings`;
-  const registrationHref = `${ctx.basePath}/registration`;
-  const teamsHref = `${ctx.basePath}/teams`;
-  const stagesHref = `${ctx.basePath}/stages`;
+  const settingsHref = `${ctx.basePath}/settings/general`;
+  const registrationHref = `${ctx.basePath}/registration/entries`;
+  const teamsHref = `${ctx.basePath}/teams/roster`;
+  const stagesHref = `${ctx.basePath}/bracket`;
 
   const items: ChecklistItem[] = [];
 
@@ -263,7 +263,7 @@ export function buildChecklist(
       : !readiness.logs_used
         ? "Logs: not used"
         : `${withLogs}/${encountersTotal} matches with logs`,
-    href: `${ctx.basePath}/matches?tab=logs`
+    href: `${ctx.basePath}/matches/logs`
   });
 
   // ── Finish ─────────────────────────────────────────────────────────────
