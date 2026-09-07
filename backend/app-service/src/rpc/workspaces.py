@@ -116,6 +116,27 @@ def _member_read(
     )
 
 
+async def _owner_payload(session: AsyncSession, workspace: models.Workspace) -> schemas.WorkspaceOwnerRead | None:
+    """``Workspace.owner_id`` resolved to a person, or ``None`` when unstamped.
+
+    Same transport-level enrichment as ``_member_payload``: one auth-user read
+    keyed by an id the workspace row already carries. ``owner_id`` is nullable
+    by design (workspaces predating self-service, and the FK is ``SET NULL``),
+    and so is the answer -- "nobody is on the hook for this one" is a fact the
+    admin screens have to be able to render.
+    """
+    owner_id = workspace.owner_id
+    if owner_id is None:
+        return None
+    auth_user = await _auth_user_repo.get(session, owner_id)
+    return schemas.WorkspaceOwnerRead(
+        auth_user_id=owner_id,
+        username=auth_user.username if auth_user else None,
+        email=auth_user.email if auth_user else None,
+        first_name=auth_user.first_name if auth_user else None,
+        last_name=auth_user.last_name if auth_user else None,
+        avatar_url=auth_user.avatar_url if auth_user else None,
+    )
 
 
 async def _discord_lookup(
@@ -523,6 +544,28 @@ def register(broker: Any, logger: Any) -> None:
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.verification_set", op, session_factory=_SF)
+
+    # --- owner (accountability) ---------------------------------------------
+    @broker.subscriber("rpc.app.workspaces.owner_get")
+    async def _owner_get(data: dict, msg: RabbitMessage) -> dict:
+        """Who is accountable for this workspace.
+
+        ``workspace.update``-gated for the same reason the ``discord_*`` reads
+        are: this resolves an internal ``auth_user_id`` to a name and an email,
+        which the public ``WorkspaceRead`` deliberately refuses to publish.
+        """
+
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_active(user)
+            ensure_workspace_permission(user, workspace_id, "workspace", "update")
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            return await _owner_payload(session, workspace)
+
+        return await c.envelope(logger, "workspaces.owner_get", op, session_factory=_SF)
 
     # --- Discord entities (roles, channels, server status) ------------------
     # Reads of an organizer's own server config, so they carry the same

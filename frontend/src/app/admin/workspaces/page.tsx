@@ -14,7 +14,8 @@ import { AdminInspector } from "@/components/admin/kit/AdminInspector";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
 import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
-import { WorkspaceVerificationBadge } from "@/components/admin/workspace-verification";
+import { WorkspaceOwnerValue } from "@/components/admin/workspace-owner";
+import { WorkspaceVerificationIcon } from "@/components/admin/workspace-verification";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -127,7 +128,7 @@ export default function WorkspacesPage() {
             <span className="truncate font-medium" title={row.original.name}>
               {row.original.name}
             </span>
-            <WorkspaceVerificationBadge status={row.original.verification_status} />
+            <WorkspaceVerificationIcon status={row.original.verification_status} />
           </div>
         )
       },
@@ -348,6 +349,9 @@ export default function WorkspacesPage() {
                 </InspectorField>
                 <InspectorField label="Newcomers">
                   {openRow.newcomer_scope === "global" ? "Any workspace" : "This workspace"}
+                </InspectorField>
+                <InspectorField label="Owner">
+                  <WorkspaceOwnerValue workspaceId={openRow.id} />
                 </InspectorField>
               </div>
 

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ("VERIFICATION_STATUSES", "is_trusted", "is_verified_or_trusted")
+__all__ = ("VERIFICATION_STATUSES", "is_verified_or_trusted")
 
 # Convention, not a DB constraint (the column is a plain ``String(16)``).
 VERIFICATION_STATUSES = ("unverified", "verified", "trusted")
@@ -23,12 +23,8 @@ VERIFICATION_STATUSES = ("unverified", "verified", "trusted")
 
 def is_verified_or_trusted(workspace: Any) -> bool:
     """May this workspace use metered resources (GPU compute, inline
-    full-history achievement recompute)?"""
+    full-history achievement recompute) and appear in the public directory?
+
+    One bar for both since 2026-09-07: ``trusted`` is now a badge on the public
+    card, not a separate admission gate (design §4.5)."""
     return workspace.verification_status in ("verified", "trusted")
-
-
-def is_trusted(workspace: Any) -> bool:
-    """May this workspace appear in the public directory? A stricter bar than
-    ``is_verified_or_trusted`` on purpose: discoverability is a reputation
-    decision, running compute is a resource decision."""
-    return workspace.verification_status == "trusted"

@@ -1,7 +1,7 @@
 import React, { Suspense, cache } from "react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
-import { BarChart3, Calendar, Plus, Trophy, Users } from "lucide-react";
+import { BadgeCheck, BarChart3, Calendar, Plus, Trophy, Users } from "lucide-react";
 
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -394,7 +394,10 @@ async function CommunitiesSection() {
   );
 }
 
-function WorkspaceCard({ workspace }: Readonly<{ workspace: Workspace }>) {
+// `verified` and `trusted` both reach this directory (see `WorkspaceService.get_all`),
+// so the badge marks the stricter tier — the one the platform team vouches for.
+async function WorkspaceCard({ workspace }: Readonly<{ workspace: Workspace }>) {
+  const t = await getTranslations();
   const accent = workspaceAccent(workspace.id);
   const abbr = workspace.name.slice(0, 2).toUpperCase();
 
@@ -427,8 +430,17 @@ function WorkspaceCard({ workspace }: Readonly<{ workspace: Workspace }>) {
           </div>
         )}
         <div className="min-w-0">
-          <div className="font-semibold text-sm text-foreground truncate">
-            {workspace.name}
+          <div className="flex items-center gap-1">
+            <div className="font-semibold text-sm text-foreground truncate">
+              {workspace.name}
+            </div>
+            {workspace.verification_status === "trusted" && (
+              <BadgeCheck
+                role="img"
+                aria-label={t("home.trustedWorkspace")}
+                className="w-3.5 h-3.5 flex-shrink-0 text-[color:var(--aqt-teal)]"
+              />
+            )}
           </div>
           {workspace.description && (
             <div className="text-[11px] text-muted-foreground/60 mt-0.5 line-clamp-1">

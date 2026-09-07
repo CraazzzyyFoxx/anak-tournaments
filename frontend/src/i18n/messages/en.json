@@ -2197,6 +2197,7 @@
     "byTheNumbers": "By the numbers",
     "workspaces": "Workspaces",
     "communitiesOnPlatform": "Communities on this platform",
+    "trustedWorkspace": "Trusted community — vouched for by the platform team",
     "getWorkspaceCard": {
       "title": "Get your own",
       "description": "Learn how to add your community as a workspace"

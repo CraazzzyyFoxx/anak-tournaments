@@ -17,9 +17,10 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { AuditTrailButton } from "@/components/admin/AuditTrailSheet";
 import { SaveBar } from "@/components/admin/kit/SaveBar";
+import { WorkspaceOwnerValue } from "@/components/admin/workspace-owner";
 import {
   WorkspaceNotListedNotice,
-  WorkspaceVerificationBadge,
+  WorkspaceVerificationIcon,
   WorkspaceVerificationControl
 } from "@/components/admin/workspace-verification";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -86,7 +87,7 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{workspace.name}</span>
-              <WorkspaceVerificationBadge status={workspace.verification_status} />
+              <WorkspaceVerificationIcon status={workspace.verification_status} />
             </div>
             <AuditTrailButton
               scope={{
@@ -163,6 +164,17 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   PNG, JPEG, WebP or GIF, max 2 MB. Saved as soon as you pick it.
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium leading-none">Owner</p>
+                <p className="mt-1.5 text-sm">
+                  <WorkspaceOwnerValue workspaceId={workspace.id} />
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  The account accountable for this workspace. Set once at creation and counted
+                  against that account&apos;s workspace limit; not editable here.
                 </p>
               </div>
 

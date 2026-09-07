@@ -47,6 +47,14 @@ vi.mock("@/stores/workspace.store", () => ({
 vi.mock("@/services/workspace.service", () => ({
   default: {
     getAll: (...args: unknown[]) => getAll(...args),
+    getOwner: vi.fn(async () => ({
+      auth_user_id: 3,
+      username: "ada",
+      email: "ada@example.com",
+      first_name: null,
+      last_name: null,
+      avatar_url: null
+    })),
     create: vi.fn(),
     uploadIcon: vi.fn()
   }
@@ -251,6 +259,9 @@ describe("/admin/workspaces", () => {
     // The list shows none of this; the inspector is why the row is clickable.
     expect(inspector.textContent).toContain("Europe/Moscow");
     expect(inspector.textContent).toContain("Hidden from the public list");
+    // The owner is not on the workspace payload at all — the inspector is the
+    // only place on this screen that resolves it.
+    await waitFor(() => inspector.textContent?.includes("@ada"), "the resolved owner");
     expect(generalLinks(inspector)).toContain("/admin/workspaces/8/general");
   });
 

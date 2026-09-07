@@ -248,9 +248,10 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
 
 class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
     """``get_all`` is the public directory, gated on ``is_hidden`` AND the trust
-    tier: an anonymous or non-member caller sees only non-hidden ``trusted``
-    workspaces. Membership bypasses both gates (a member always sees their own
-    workspace at any tier), and a superuser sees everything."""
+    tier: an anonymous or non-member caller sees non-hidden ``verified`` and
+    ``trusted`` workspaces, never ``unverified``. Membership bypasses both gates
+    (a member always sees their own workspace at any tier), and a superuser sees
+    everything."""
 
     def _workspaces(self) -> list[SimpleNamespace]:
         return [
@@ -266,32 +267,33 @@ class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
             result = await workspaces.get_all(session, user=user)
         return [w.id for w in result]
 
-    async def test_anonymous_sees_only_non_hidden_trusted_workspaces(self) -> None:
-        self.assertEqual([1], await self._get_all(None))
+    async def test_anonymous_sees_non_hidden_verified_and_trusted_workspaces(self) -> None:
+        self.assertEqual([1, 3], await self._get_all(None))
 
     async def test_non_member_is_filtered_exactly_like_an_anonymous_viewer(self) -> None:
         user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[99]))
 
-        self.assertEqual([1], await self._get_all(user))
+        self.assertEqual([1, 3], await self._get_all(user))
 
-    async def test_verified_but_not_trusted_stays_out_of_the_public_directory(self) -> None:
-        """The distinction the design draws: ``verified`` means "safe to run
-        compute on", not "publicly discoverable"."""
+    async def test_unverified_stays_out_of_the_public_directory(self) -> None:
+        """``unverified`` is the only tier the directory refuses: it is the
+        default a self-service workspace is born at, before any superuser has
+        looked at it."""
         user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[]))
 
-        self.assertNotIn(3, await self._get_all(user))
+        self.assertNotIn(4, await self._get_all(user))
 
     async def test_member_sees_their_own_hidden_workspace(self) -> None:
         user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[2]))
 
-        self.assertEqual([1, 2], await self._get_all(user))
+        self.assertEqual([1, 2, 3], await self._get_all(user))
 
     async def test_member_sees_their_own_unverified_workspace(self) -> None:
         """A self-service organizer's brand-new workspace is invisible to the
         public directory but never to them."""
         user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[4]))
 
-        self.assertEqual([1, 4], await self._get_all(user))
+        self.assertEqual([1, 3, 4], await self._get_all(user))
 
     async def test_superuser_sees_every_workspace_unfiltered(self) -> None:
         user = SimpleNamespace(is_superuser=True, get_workspace_ids=Mock(return_value=[]))

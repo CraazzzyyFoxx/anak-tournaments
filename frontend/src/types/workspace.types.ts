@@ -260,6 +260,24 @@ export interface Workspace {
 }
 
 /**
+ * `Workspace.owner_id` resolved to a person — the account accountable for the
+ * workspace (and counted against the per-account create cap).
+ *
+ * Not a field on `Workspace`: that model comes from the anonymous, edge-cached
+ * `/api/v1/workspaces` reads, so the owner lives behind its own
+ * `workspace.update`-gated endpoint. `null` from the API means no owner is
+ * stamped at all (every workspace predating self-service creation).
+ */
+export interface WorkspaceOwner {
+  auth_user_id: number;
+  username: string | null;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
+}
+
+/**
  * Organiser-controlled branding: 4 seed colours (primary/secondary/background/
  * surface) that derive the full palette, plus 6 optional core-palette overrides
  * (accent/foreground/muted/border/ring/destructive) that win when set.

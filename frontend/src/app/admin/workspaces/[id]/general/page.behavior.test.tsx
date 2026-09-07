@@ -10,6 +10,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Workspace } from "@/types/workspace.types";
 import GeneralSettingsPage from "./page";
 
@@ -19,10 +20,12 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const getById = vi.fn();
+const getOwner = vi.fn();
 
 vi.mock("@/services/workspace.service", () => ({
   default: {
     getById: (...args: unknown[]) => getById(...args),
+    getOwner: (...args: unknown[]) => getOwner(...args),
     update: vi.fn(),
     uploadIcon: vi.fn(),
     deleteIcon: vi.fn()
@@ -116,7 +119,10 @@ async function render() {
       <QueryClientProvider
         client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
       >
-        <GeneralSettingsPage />
+        {/* The admin layout mounts one; the tier glyph's tooltip needs it. */}
+        <TooltipProvider>
+          <GeneralSettingsPage />
+        </TooltipProvider>
       </QueryClientProvider>
     );
   });
@@ -126,6 +132,14 @@ async function render() {
 beforeEach(() => {
   superuser = true;
   getById.mockReset().mockResolvedValue(OTHER_WORKSPACE);
+  getOwner.mockReset().mockResolvedValue({
+    auth_user_id: 3,
+    username: "ada",
+    email: "ada@example.com",
+    first_name: null,
+    last_name: null,
+    avatar_url: null
+  });
 });
 
 afterEach(async () => {
@@ -144,6 +158,24 @@ describe("Workspaces › [id] › General", () => {
     );
   });
 
+  // The owner is the one field on this screen the public workspace payload
+  // cannot carry, so it is fetched separately — and it has to be fetched for
+  // the workspace in the route, like everything else here.
+  it("names the account accountable for the workspace in the route", async () => {
+    await render();
+
+    expect(getOwner).toHaveBeenCalledWith(8);
+    expect(container.textContent).toContain("@ada");
+    expect(container.textContent).toContain("ada@example.com");
+  });
+
+  it("says so when no owner is stamped", async () => {
+    getOwner.mockResolvedValue(null);
+    await render();
+
+    expect(container.textContent).toContain("No owner recorded");
+  });
+
   it("refuses a caller who neither owns the platform nor administers workspace 8", async () => {
     superuser = false;
     await render();
@@ -152,24 +184,24 @@ describe("Workspaces › [id] › General", () => {
     expect(container.querySelector("#workspace-name")).toBeNull();
   });
 
-  // A self-service organiser has no other way to learn why their workspace is
+  // A brand-new organiser has no other way to learn why their workspace is
   // nowhere on the home page, so this notice is the whole explanation — and it
   // has to disappear the moment it stops being true.
-  it.each(["unverified", "verified"] as const)(
-    "explains that a %s workspace is not listed on the home page yet",
-    async (status) => {
-      getById.mockResolvedValue({ ...OTHER_WORKSPACE, verification_status: status });
-      await render();
-
-      expect(container.textContent).toContain("Not listed on the home page yet");
-    }
-  );
-
-  it("drops the notice once the workspace is trusted", async () => {
-    getById.mockResolvedValue({ ...OTHER_WORKSPACE, verification_status: "trusted" });
+  it("explains that an unverified workspace is not listed on the home page yet", async () => {
+    getById.mockResolvedValue({ ...OTHER_WORKSPACE, verification_status: "unverified" });
     await render();
 
-    expect(container.textContent).toContain("Trusted");
+    expect(container.textContent).toContain("Not listed on the home page yet");
+  });
+
+  it.each([
+    ["verified", "Verified"],
+    ["trusted", "Trusted"]
+  ] as const)("drops the notice once the workspace is %s", async (status, label) => {
+    getById.mockResolvedValue({ ...OTHER_WORKSPACE, verification_status: status });
+    await render();
+
+    expect(container.querySelector(`[role="img"][aria-label="${label}"]`)).not.toBeNull();
     expect(container.textContent).not.toContain("Not listed on the home page yet");
   });
 

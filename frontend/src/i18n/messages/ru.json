@@ -2197,6 +2197,7 @@
     "byTheNumbers": "В цифрах",
     "workspaces": "Рабочие пространства",
     "communitiesOnPlatform": "Сообщества на платформе",
+    "trustedWorkspace": "Доверенное сообщество — проверено командой платформы",
     "getWorkspaceCard": {
       "title": "Свой воркспейс",
       "description": "Узнайте, как подключить своё сообщество"

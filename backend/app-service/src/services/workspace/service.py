@@ -29,7 +29,7 @@ from shared.repository import (
 from shared.services.audit import record_audit
 from shared.services.division_grid.access import get_default_division_grid_version_id
 from shared.services.settings_provider import get_workspace_creation_config
-from shared.services.workspace_tier import is_trusted
+from shared.services.workspace_tier import is_verified_or_trusted
 from shared.tenancy.hostnames import RESERVED_SUBDOMAINS, normalize_custom_domain
 from src import models
 
@@ -121,9 +121,10 @@ class WorkspaceService:
 
         This is the **public directory** (the home page), so two gates apply to
         an anonymous or non-member caller: ``is_hidden``, and the trust tier --
-        only ``trusted`` workspaces are listed (design §4.5). ``verified`` is
-        deliberately not enough: it says "safe to run compute on", which is a
-        weaker statement than "worth advertising".
+        ``verified`` and ``trusted`` are both listed, ``unverified`` is not
+        (design §4.5, revised 2026-09-07: admission to the directory is now the
+        same bar as metered resources, and ``trusted`` is surfaced as a badge on
+        the card instead of as the price of admission).
 
         Membership bypasses both, exactly as it always did for ``is_hidden``: a
         member (any role, via ``AuthUser.get_workspace_ids``) sees their own
@@ -132,13 +133,13 @@ class WorkspaceService:
         ``get_by_custom_domain``) are untouched -- a fresh ``unverified``
         workspace is fully reachable and usable by slug, subdomain or verified
         custom domain the moment it is created, it just does not appear here
-        until a superuser marks it ``trusted``.
+        until a superuser marks it ``verified``.
         """
         workspaces = await self.workspace_repo.list_ordered(session)
         if user is not None and user.is_superuser:
             return workspaces
         member_ids = set(user.get_workspace_ids()) if user is not None else set()
-        return [w for w in workspaces if w.id in member_ids or (not w.is_hidden and is_trusted(w))]
+        return [w for w in workspaces if w.id in member_ids or (not w.is_hidden and is_verified_or_trusted(w))]
 
     # --- custom domain (white-label Phase 2) --------------------------------
 

@@ -3411,6 +3411,14 @@
       },
       "summary": "List my administered Discord guilds"
     },
+    "rpc.app.workspaces.owner_get": {
+      "description": "Resolves `Workspace.owner_id` \u2014 the account accountable for the workspace and counted against the per-account create cap \u2014 to its username, email and avatar; requires workspace.update (the public workspace model deliberately publishes no owner), returns null data when no owner is stamped, 404 if workspace missing.",
+      "response": {
+        "array": false,
+        "ref": "app.WorkspaceOwnerRead"
+      },
+      "summary": "Get the workspace owner"
+    },
     "rpc.app.workspaces.set_custom_domain": {
       "description": "Normalizes and stores a custom domain plus a fresh DNS TXT verification token, resetting verification; requires workspace.update, 404 if workspace missing, 400 on an invalid domain.",
       "request": {
@@ -17678,6 +17686,80 @@
         }
       },
       "title": "WorkspaceMemberUpdate",
+      "type": "object"
+    },
+    "app.WorkspaceOwnerRead": {
+      "description": "The accountable owner of a workspace (``Workspace.owner_id``), resolved to\na person.\n\nDeliberately NOT a field on ``WorkspaceRead``: that model is served\nanonymously (``GET /api/v1/workspaces/{id}``, and the list is publicly\ncached at the edge), so an owner's username and email sit behind the same\n``workspace.update`` gate as the Discord role/channel reads -- for the same\nreason ``discord_guild_verified_by_auth_user_id`` was kept off the public\nmodel.\n\n``username``/``email`` are optional so a workspace whose owner row vanished\nbetween the two reads still answers with the id it has, rather than 500.",
+      "properties": {
+        "auth_user_id": {
+          "title": "Auth User Id",
+          "type": "integer"
+        },
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Url"
+        },
+        "email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Email"
+        },
+        "first_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Name"
+        },
+        "last_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Name"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        }
+      },
+      "required": [
+        "auth_user_id"
+      ],
+      "title": "WorkspaceOwnerRead",
       "type": "object"
     },
     "app.WorkspaceRead": {

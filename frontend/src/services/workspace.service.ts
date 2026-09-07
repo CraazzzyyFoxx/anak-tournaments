@@ -15,6 +15,7 @@ import {
   ManageableDiscordGuild,
   Workspace,
   WorkspaceMember,
+  WorkspaceOwner,
   WorkspaceVerificationStatus
 } from "@/types/workspace.types";
 import type {
@@ -42,6 +43,14 @@ export default class workspaceService {
 
   static async getById(id: number): Promise<Workspace> {
     return apiFetch(`/api/v1/workspaces/${id}`).then((r) => r.json());
+  }
+
+  /**
+   * The account accountable for a workspace, or `null` when none is stamped.
+   * Requires `workspace.update` — `getById` is public and carries no owner.
+   */
+  static async getOwner(id: number): Promise<WorkspaceOwner | null> {
+    return apiFetch(`/api/v1/workspaces/${id}/owner`).then((r) => r.json());
   }
 
   static async create(data: {

@@ -31,6 +31,7 @@ __all__ = (
     "WorkspaceDiscordGuildOption",
     "WorkspaceDiscordGuildsRead",
     "WorkspaceVerificationSet",
+    "WorkspaceOwnerRead",
     "WorkspaceMemberRoleRead",
     "WorkspaceMemberRead",
     "WorkspaceMemberCreate",
@@ -213,6 +214,29 @@ class WorkspaceVerificationSet(BaseModel):
     Literal is where the convention is actually enforced."""
 
     verification_status: Literal["unverified", "verified", "trusted"]
+
+
+class WorkspaceOwnerRead(BaseModel):
+    """The accountable owner of a workspace (``Workspace.owner_id``), resolved to
+    a person.
+
+    Deliberately NOT a field on ``WorkspaceRead``: that model is served
+    anonymously (``GET /api/v1/workspaces/{id}``, and the list is publicly
+    cached at the edge), so an owner's username and email sit behind the same
+    ``workspace.update`` gate as the Discord role/channel reads -- for the same
+    reason ``discord_guild_verified_by_auth_user_id`` was kept off the public
+    model.
+
+    ``username``/``email`` are optional so a workspace whose owner row vanished
+    between the two reads still answers with the id it has, rather than 500.
+    """
+
+    auth_user_id: int
+    username: str | None = None
+    email: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
 
 
 class WorkspaceMemberRoleRead(BaseModel):

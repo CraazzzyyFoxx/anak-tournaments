@@ -1,8 +1,9 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
+import { BadgeCheck, ShieldAlert, ShieldCheck } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -10,51 +11,59 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { TONE_CLASS, type Tone } from "@/components/admin/tone";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import workspaceService from "@/services/workspace.service";
 import type { Workspace, WorkspaceVerificationStatus } from "@/types/workspace.types";
 
-const TIERS: Record<WorkspaceVerificationStatus, { label: string; tone: Tone }> = {
-  unverified: { label: "Unverified", tone: "warning" },
-  verified: { label: "Verified", tone: "info" },
-  trusted: { label: "Trusted", tone: "success" }
+// `tone` is narrowed to the three that are also `StatusIcon` variants, so the
+// glyph and the notice's tinted surface stay driven by one field.
+const TIERS: Record<
+  WorkspaceVerificationStatus,
+  { label: string; tone: Extract<Tone, "warning" | "info" | "success">; icon: LucideIcon }
+> = {
+  unverified: { label: "Unverified", tone: "warning", icon: ShieldAlert },
+  verified: { label: "Verified", tone: "info", icon: ShieldCheck },
+  trusted: { label: "Trusted", tone: "success", icon: BadgeCheck }
 };
 
 const ORDER: WorkspaceVerificationStatus[] = ["unverified", "verified", "trusted"];
 
-/** The trust tier of a workspace, next to its name. */
-export function WorkspaceVerificationBadge({
+/**
+ * The trust tier of a workspace, next to its name.
+ *
+ * A glyph, not a text pill: these sit in a table cell and beside a heading
+ * where a filled `Trusted`/`Verified` badge on every row was louder than the
+ * workspace name it annotates. Same `StatusIcon` treatment (tooltip +
+ * `role="img"` label) as the `is_active` column right next to it.
+ */
+export function WorkspaceVerificationIcon({
   status
 }: Readonly<{ status: WorkspaceVerificationStatus }>) {
   const tier = TIERS[status] ?? TIERS.unverified;
-  return (
-    <Badge variant="outline" className={cn(TONE_CLASS[tier.tone])}>
-      {tier.label}
-    </Badge>
-  );
+  return <StatusIcon icon={tier.icon} label={tier.label} variant={tier.tone} />;
 }
 
 /**
- * Why a self-service workspace is invisible, said on the screen its owner
+ * Why a brand-new workspace is invisible, said on the screen its owner
  * already opened.
  *
- * The public directory lists `trusted` workspaces only, so an organiser who
- * just created one finds it nowhere on the home page and has no other way to
- * learn that this is by design rather than a bug. Shown for `unverified` and
- * `verified` alike — `verified` is a step, not the finish line.
+ * The public directory lists `verified` and `trusted`, so only an
+ * `unverified` organiser finds their workspace nowhere on the home page and
+ * has no other way to learn that this is by design rather than a bug.
  */
 export function WorkspaceNotListedNotice({
   status
 }: Readonly<{ status: WorkspaceVerificationStatus }>) {
-  if (status === "trusted") return null;
+  if (status !== "unverified") return null;
 
   return (
     <div
       className={cn(
         "rounded-lg border px-4 py-3 text-sm",
-        TONE_CLASS[TIERS[status]?.tone ?? "warning"]
+        TONE_CLASS[TIERS.unverified.tone]
       )}
     >
       <p className="font-medium">Not listed on the home page yet</p>
@@ -107,7 +116,8 @@ export function WorkspaceVerificationControl({
         </SelectContent>
       </Select>
       <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-        Only “Trusted” workspaces appear in the public directory on the home page.
+        “Verified” and “Trusted” workspaces are listed in the public directory on the home page;
+        “Trusted” also carries a badge there.
       </p>
     </div>
   );

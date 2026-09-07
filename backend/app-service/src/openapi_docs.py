@@ -252,6 +252,10 @@ DOCS: dict[str, dict] = {
         "summary": "Set workspace verification status",
         "description": "Moves a workspace between the `unverified`/`verified`/`trusted` trust tiers — the only way a self-service workspace is unblocked for GPU compute, inline achievement recompute and the public directory; superuser-only (a workspace owner may not self-certify), audited on every call including a no-op set, 404 if workspace missing, 422 on an unknown status.",
     },
+    "rpc.app.workspaces.owner_get": {
+        "summary": "Get the workspace owner",
+        "description": "Resolves `Workspace.owner_id` — the account accountable for the workspace and counted against the per-account create cap — to its username, email and avatar; requires workspace.update (the public workspace model deliberately publishes no owner), returns null data when no owner is stamped, 404 if workspace missing.",
+    },
     # ── workspace discord entities ──────────────────────────────────────────────────
     "rpc.app.workspaces.discord_roles": {
         "summary": "List workspace Discord roles",
