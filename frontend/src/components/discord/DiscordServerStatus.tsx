@@ -4,8 +4,7 @@ import { CheckCircle2, XCircle, Users, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { useDiscordGuildInfo } from "@/hooks/useDiscordEntities";
-import { TONE_CLASS } from "@/components/admin/tone";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -50,20 +49,14 @@ export function DiscordServerStatus({
           <div className="flex flex-wrap items-center gap-2 font-medium">
             <span className="truncate">{name}</span>
             {/* Icon plus word, never colour alone. */}
-            <Badge
-              variant="outline"
-              className={cn(
-                "px-1.5 py-0 text-xs",
-                isConnected ? TONE_CLASS.success : TONE_CLASS.danger
-              )}
-            >
+            <StatusPill tone={isConnected ? "success" : "danger"} className="px-1.5 py-0">
               {isConnected ? (
                 <CheckCircle2 aria-hidden className="me-1 size-3" />
               ) : (
                 <XCircle aria-hidden className="me-1 size-3" />
               )}
               {isConnected ? t("connected") : t("disconnected")}
-            </Badge>
+            </StatusPill>
           </div>
           {data?.member_count ? (
             <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">

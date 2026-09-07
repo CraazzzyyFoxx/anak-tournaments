@@ -38,11 +38,11 @@ import { AdminInspector } from "@/components/admin/kit/AdminInspector";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
 import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { hasChallongeSource } from "@/components/admin/tournament-checklist";
 import { TOURNAMENT_QUERY_PARAM, parseTournamentQueryParam } from "@/components/admin/tournament-filter";
 import TeamName from "@/components/TeamName";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TournamentLogUploadDialog } from "@/app/admin/tournaments/[id]/components/TournamentLogUploadDialog";
 import { invalidateTournamentWorkspace } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
@@ -422,13 +422,9 @@ export function EncountersBrowser({
         size: 132,
         enableSorting: false,
         cell: ({ row }) => (
-          <Badge
-            className={cn(
-              TONE_CLASS[row.original.result_status === "disputed" ? "danger" : "neutral"]
-            )}
-          >
+          <StatusPill tone={row.original.result_status === "disputed" ? "danger" : "neutral"}>
             {row.original.result_status}
-          </Badge>
+          </StatusPill>
         )
       },
       {

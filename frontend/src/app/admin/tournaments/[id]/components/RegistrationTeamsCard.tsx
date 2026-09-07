@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ban, ChevronDown, FolderInput, Loader2, RotateCcw, Users } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 
-import { TONE_CLASS, type Tone } from "@/components/admin/tone";
+import { type Tone } from "@/components/admin/tone";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,6 +79,19 @@ const EXPIRY_STAMP = {
  *  derives `expired` from a pending row past its clock and may add more, and an
  *  untranslated word beats a missing message path on screen. */
 const HISTORY_STATES = ["pending", "accepted", "declined", "revoked", "expired"] as const;
+
+const INVITE_TONE: Record<(typeof HISTORY_STATES)[number], Tone> = {
+  pending: "warning",
+  accepted: "success",
+  declined: "danger",
+  revoked: "neutral",
+  expired: "neutral"
+};
+
+function inviteTone(state: string): Tone {
+  const known = HISTORY_STATES.find((candidate) => candidate === state);
+  return known ? INVITE_TONE[known] : "neutral";
+}
 
 function memberName(member: RegistrationTeamMember): string {
   return member.display_name ?? member.battle_tag ?? `#${member.registration_id}`;
@@ -164,9 +178,9 @@ function TeamInviteHistory({
                   const known = HISTORY_STATES.find((candidate) => candidate === entry.state);
                   return (
                     <li key={entry.id} className="flex flex-wrap items-center gap-2 text-xs">
-                      <Badge variant={entry.state === "accepted" ? "secondary" : "outline"}>
+                      <StatusPill tone={inviteTone(entry.state)}>
                         {known ? t(`history.state.${known}`) : entry.state}
-                      </Badge>
+                      </StatusPill>
                       <span className="text-muted-foreground">{slotLabel(entry.slot_code)}</span>
                       <span className="text-muted-foreground">
                         {entry.target_battle_tag
@@ -418,9 +432,9 @@ export function RegistrationTeamsCard({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{team.name}</span>
-                    <Badge variant="outline" className={cn(TONE_CLASS[STATUS_TONE[team.status]])}>
+                    <StatusPill tone={STATUS_TONE[team.status]}>
                       {t(`status.${team.status}`)}
-                    </Badge>
+                    </StatusPill>
                     {team.exported_team_id != null && (
                       <Badge variant="outline">{tCommon("rostered")}</Badge>
                     )}
@@ -504,9 +518,9 @@ export function RegistrationTeamsCard({
                         key={invite.id}
                         className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1 text-xs"
                       >
-                        <Badge variant={invite.state === "pending" ? "secondary" : "outline"}>
+                        <StatusPill tone={inviteTone(invite.state)}>
                           {t(`inviteState.${invite.state}`)}
-                        </Badge>
+                        </StatusPill>
                         <span className="text-muted-foreground">{slotLabel(invite.slot_code)}</span>
                         <span className="text-muted-foreground">
                           {invite.target_battle_tag

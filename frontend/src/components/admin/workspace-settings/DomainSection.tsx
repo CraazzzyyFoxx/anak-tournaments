@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle, Copy, LoaderCircle } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -198,14 +198,14 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className={EYEBROW_CLASS}>Custom domain</h2>
                 {domain.verifiedAt ? (
-                  <Badge variant="secondary" className="gap-1">
-                    <CheckCircle aria-hidden className="size-3 text-success" /> Verified · live
-                  </Badge>
+                  <StatusPill tone="success">
+                    <CheckCircle aria-hidden className="size-3" /> Verified · live
+                  </StatusPill>
                 ) : domain.domain ? (
-                  <Badge variant="outline" className="gap-1">
-                    <LoaderCircle aria-hidden className="size-3 animate-spin text-warning" />{" "}
+                  <StatusPill tone="warning">
+                    <LoaderCircle aria-hidden className="size-3 animate-spin" />{" "}
                     Pending — checking DNS…
-                  </Badge>
+                  </StatusPill>
                 ) : null}
               </div>
 

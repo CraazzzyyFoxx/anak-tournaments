@@ -4,7 +4,9 @@ import { useId, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
+  Archive,
   ArrowUpToLine,
+  CircleDot,
   ExternalLink,
   Pencil,
   Plus,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
 import {
@@ -325,11 +328,9 @@ export function TournamentLinksTab({
       enableSorting: false,
       cell: ({ row }) =>
         row.original.is_active ? (
-          <Badge variant="outline">Active</Badge>
+          <StatusIcon icon={CircleDot} label="Active" variant="success" />
         ) : (
-          <Badge variant="outline" className="text-muted-foreground">
-            Archived
-          </Badge>
+          <StatusIcon icon={Archive} label="Archived" variant="muted" />
         )
     },
     createKebabColumn<TournamentLink>(

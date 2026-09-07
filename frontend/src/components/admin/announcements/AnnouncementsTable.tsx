@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Archive, CircleDot, Clock } from "lucide-react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { announcementText } from "@/lib/announcement-text";
 import type { NotificationItem } from "@/types/notification.types";
 
-import { announcementState, type AnnouncementState } from "./announcement-draft";
+import { announcementState } from "./announcement-draft";
 
 interface AnnouncementsTableProps {
   rows: NotificationItem[];
@@ -30,11 +32,11 @@ interface AnnouncementsTableProps {
   isRetiring: boolean;
 }
 
-const STATE_VARIANT: Record<AnnouncementState, "default" | "secondary" | "outline"> = {
-  active: "default",
-  scheduled: "secondary",
-  retired: "outline",
-};
+const STATE_ICON = {
+  active: { icon: CircleDot, variant: "success" },
+  scheduled: { icon: Clock, variant: "info" },
+  retired: { icon: Archive, variant: "muted" },
+} as const;
 
 export function AnnouncementsTable({
   rows,
@@ -78,7 +80,10 @@ export function AnnouncementsTable({
         // of this feed (the RPC scopes it to `workspace`/`global`), and an
         // interpolated key would claim a message that does not exist.
         cell: ({ row }) => (
-          <Badge variant="outline" className="font-normal">
+          <Badge
+            tone={row.original.audience === "global" ? "info" : "neutral"}
+            className="font-normal"
+          >
             {row.original.audience === "global"
               ? t("notifications.admin.audience.global")
               : t("notifications.admin.audience.workspace")}
@@ -107,7 +112,14 @@ export function AnnouncementsTable({
         // with who actually sees the row.
         cell: ({ row }) => {
           const state = announcementState(row.original);
-          return <Badge variant={STATE_VARIANT[state]}>{t(`notifications.admin.state.${state}`)}</Badge>;
+          const meta = STATE_ICON[state];
+          return (
+            <StatusIcon
+              icon={meta.icon}
+              label={t(`notifications.admin.state.${state}`)}
+              variant={meta.variant}
+            />
+          );
         },
       },
     ];

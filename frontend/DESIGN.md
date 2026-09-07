@@ -169,10 +169,13 @@ inventing a surface.
 
 Supporting these, outside `kit/`: `components/admin/AdminDataTable.tsx` is the
 table engine (server or client mode, paging, sorting, column picker, mobile
-cards, `toolbar` slot for the filter bar); `components/admin/tone.ts` holds
-`TONE_CLASS` and `EYEBROW_CLASS`, which is where a status colour or a small
-uppercase label comes from; `components/admin/AdminDetailTable.tsx` is styling
-only, for a dense table nested inside an editor — not a browser.
+cards, `toolbar` slot for the filter bar); `components/ui/tone.ts` is the
+shared tone map (`TONE_CLASS` / `TONE_TEXT`), re-exported from
+`components/admin/tone.ts` with `EYEBROW_CLASS`. Boolean flags in tables
+use `StatusIcon`; lifecycle state uses `kit/StatusPill` (a pill-shaped
+`Badge` with `tone=`); categories stay on shadcn `Badge`.
+`components/admin/AdminDetailTable.tsx` is styling only, for a dense table
+nested inside an editor — not a browser.
 
 ## Layout and responsive behavior
 

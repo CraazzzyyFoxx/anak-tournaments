@@ -3,10 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ColumnDef } from "@tanstack/react-table";
-import { Check, EyeOff, LoaderCircle } from "lucide-react";
+import { Check, CheckCircle, EyeOff, LoaderCircle } from "lucide-react";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
 import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
 import { Badge } from "@/components/ui/badge";
@@ -180,7 +181,7 @@ export default function UnresolvedNamesAdminPage() {
       return null;
     }
     if (miss.resolved_at) {
-      return <Badge variant="secondary">Resolved</Badge>;
+      return <StatusIcon icon={CheckCircle} label="Resolved" variant="success" />;
     }
 
     return (

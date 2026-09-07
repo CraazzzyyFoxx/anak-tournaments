@@ -191,10 +191,7 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
               // A phrase we had to derive from the string must not pass for a
               // curated one: the reader needs to know the wording is a guess,
               // not a fact.
-              <Badge
-                variant="outline"
-                className="border-border/60 font-normal text-muted-foreground"
-              >
+              <Badge tone="neutral" className="font-normal">
                 unrecognised action
               </Badge>
             )}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle, LoaderCircle } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
@@ -89,12 +89,12 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
                     <span className="text-sm font-medium">{boundName ?? "Discord server"}</span>
                     <span className="font-mono text-xs text-muted-foreground">{boundId}</span>
                     {workspace.discord_guild_verified_at ? (
-                      <Badge variant="outline" className="gap-1">
+                      <StatusPill tone="success">
                         <CheckCircle aria-hidden className="size-3" />
                         Ownership verified
-                      </Badge>
+                      </StatusPill>
                     ) : (
-                      <Badge variant="outline">Not verified</Badge>
+                      <StatusPill tone="warning">Not verified</StatusPill>
                     )}
                   </div>
                 ) : (
@@ -160,10 +160,10 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
                             </p>
                           </div>
                           {isBound ? (
-                            <Badge variant="outline" className="gap-1">
+                            <StatusPill tone="success">
                               <CheckCircle aria-hidden className="size-3" />
                               Linked
-                            </Badge>
+                            </StatusPill>
                           ) : (
                             <Button
                               size="sm"

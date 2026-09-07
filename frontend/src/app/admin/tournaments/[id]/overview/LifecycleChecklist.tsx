@@ -3,11 +3,10 @@
 import type { ElementType } from "react";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Circle, Lock, Minus } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EYEBROW_CLASS, TONE_CLASS, type Tone } from "@/components/admin/tone";
-import { cn } from "@/lib/utils";
+import { EYEBROW_CLASS, type Tone } from "@/components/admin/tone";
 import type { ChecklistItem, ChecklistPhase, ChecklistState } from "@/components/admin/tournament-checklist";
 
 const PHASE_TITLES: Record<ChecklistPhase, string> = {
@@ -44,10 +43,10 @@ function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
           <p className="truncate text-xs tabular-nums text-muted-foreground">{item.detail}</p>
         ) : null}
       </div>
-      <Badge variant="outline" className={cn("shrink-0 gap-1", TONE_CLASS[meta.tone])}>
+      <StatusPill tone={meta.tone} className="shrink-0">
         <Icon className="size-3" aria-hidden />
         {meta.label}
-      </Badge>
+      </StatusPill>
     </div>
   );
 }

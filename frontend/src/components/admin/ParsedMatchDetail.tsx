@@ -3,8 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, HelpCircle } from "lucide-react";
 
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { EYEBROW_CLASS, TONE_CLASS, type Tone } from "@/components/admin/tone";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
@@ -78,7 +78,7 @@ export function ParsedMatchDetail({
         {record ? (
           <div className="mt-2 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className={cn(TONE_CLASS[STATUS_TONE[record.status]])}>{record.status}</Badge>
+              <StatusPill tone={STATUS_TONE[record.status]}>{record.status}</StatusPill>
               <span className="font-mono text-xs">{record.filename}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">

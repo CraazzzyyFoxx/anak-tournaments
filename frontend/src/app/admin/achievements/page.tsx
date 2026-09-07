@@ -5,6 +5,8 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import {
+  CheckCircle,
+  CircleOff,
   MoreHorizontal,
   Plus,
   Pencil,
@@ -35,6 +37,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { AchievementCombobox } from "@/components/admin/achievements/AchievementCombobox";
@@ -490,11 +493,12 @@ export default function AchievementsPage() {
       accessorKey: "enabled",
       header: "Status",
       size: 80,
-      cell: ({ row }) => (
-        <Badge variant={row.original.enabled ? "default" : "secondary"}>
-          {row.original.enabled ? "On" : "Off"}
-        </Badge>
-      ),
+      cell: ({ row }) =>
+        row.original.enabled ? (
+          <StatusIcon icon={CheckCircle} label="On" variant="success" />
+        ) : (
+          <StatusIcon icon={CircleOff} label="Off" variant="muted" />
+        ),
     },
     { accessorKey: "slug", header: "Slug", size: 180 },
     { accessorKey: "name", header: "Name" },
@@ -726,7 +730,7 @@ export default function AchievementsPage() {
           <div className="flex items-center justify-between">
             <p className="font-medium">
               Evaluation run:{" "}
-              <Badge variant={evaluationResult.status === "done" ? "default" : "destructive"}>
+              <Badge variant={evaluationResult.status === "done" ? "success" : "destructive"}>
                 {evaluationResult.status}
               </Badge>
               {evaluationResult.tournament_id && (
@@ -875,7 +879,7 @@ export default function AchievementsPage() {
                     </TableCell>
                     <TableCell className="tabular-nums">#{ov.user_id}</TableCell>
                     <TableCell>
-                      <Badge variant={ov.action === "grant" ? "default" : "destructive"}>
+                      <Badge variant={ov.action === "grant" ? "success" : "destructive"}>
                         {ov.action}
                       </Badge>
                     </TableCell>
@@ -1001,9 +1005,11 @@ export default function AchievementsPage() {
                           </p>
                         </div>
                       </div>
-                      <Badge variant={rule.enabled ? "default" : "secondary"}>
-                        {rule.enabled ? "On" : "Off"}
-                      </Badge>
+                      {rule.enabled ? (
+                        <StatusIcon icon={CheckCircle} label="On" variant="success" />
+                      ) : (
+                        <StatusIcon icon={CircleOff} label="Off" variant="muted" />
+                      )}
                     </label>
                   ))}
                 </div>

@@ -229,10 +229,7 @@ export default function AdminAuditPage() {
                 // Never let a phrase we derived from the raw string pass for a
                 // curated one: `action` is written from every service on the
                 // platform, so this dictionary will always trail new call sites.
-                <Badge
-                  variant="outline"
-                  className="border-border/60 font-normal text-muted-foreground"
-                >
+                <Badge tone="neutral" className="font-normal">
                   unrecognised
                 </Badge>
               )}

@@ -13,12 +13,12 @@ import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
 import { AdminInspector } from "@/components/admin/kit/AdminInspector";
 import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
-import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS, TONE_TEXT } from "@/components/admin/tone";
 import {
   TOURNAMENT_QUERY_PARAM,
   parseTournamentQueryParam
 } from "@/components/admin/tournament-filter";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
@@ -414,13 +414,9 @@ export function EncounterReportsBrowser({
         enableSorting: false,
         cell: ({ row }) => (
           <div className="space-y-1">
-            <Badge
-              className={cn(
-                TONE_CLASS[row.original.result_status === "disputed" ? "danger" : "neutral"]
-              )}
-            >
+            <StatusPill tone={row.original.result_status === "disputed" ? "danger" : "neutral"}>
               {row.original.result_status}
-            </Badge>
+            </StatusPill>
             {row.original.last_resolution ? (
               <p className="text-xs text-muted-foreground">
                 {row.original.last_resolution.action} by{" "}

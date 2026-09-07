@@ -17,8 +17,8 @@ import type { LucideIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 
-import { TONE_CLASS, type Tone } from "@/components/admin/tone";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { type Tone } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
@@ -125,13 +125,10 @@ function LogStatusBadge({ status }: Readonly<{ status: LogProcessingStatus }>) {
   const Icon = meta.icon;
 
   return (
-    <Badge
-      variant="outline"
-      className={cn("gap-1.5 whitespace-nowrap px-1.5 text-xs", TONE_CLASS[meta.tone])}
-    >
+    <StatusPill tone={meta.tone} className="px-1.5">
       <Icon className={cn("size-3", status === "processing" && "animate-spin")} aria-hidden />
       {meta.label}
-    </Badge>
+    </StatusPill>
   );
 }
 

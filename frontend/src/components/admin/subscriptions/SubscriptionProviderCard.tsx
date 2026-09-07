@@ -229,7 +229,7 @@ function ProviderEditor({
           <Label htmlFor={`enabled-${config.provider}`} className="font-semibold text-sm cursor-pointer">
             {label}
           </Label>
-          <Badge variant={enabled ? "default" : "outline"} className="text-xs uppercase font-mono">
+          <Badge tone={enabled ? "success" : "neutral"} className="text-xs uppercase font-mono">
             {enabled ? t("status.active") : t("status.disabled")}
           </Badge>
         </div>

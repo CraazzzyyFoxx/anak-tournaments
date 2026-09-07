@@ -3,7 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowDownToLine, ArrowUpFromLine, ExternalLink, Loader2, Users } from "lucide-react";
-import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS, TONE_TEXT, type Tone } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,10 +33,10 @@ function formatSyncTime(value: string) {
   });
 }
 
-function getLogTone(status: ChallongeSyncLogEntry["status"]) {
-  if (status === "success") return TONE_CLASS.success;
-  if (status === "conflict") return TONE_CLASS.warning;
-  return TONE_CLASS.danger;
+function getLogTone(status: ChallongeSyncLogEntry["status"]): Tone {
+  if (status === "success") return "success";
+  if (status === "conflict") return "warning";
+  return "danger";
 }
 
 /**
@@ -139,12 +140,9 @@ export function ChallongeIntegrationSection({
               Open bracket
             </a>
           ) : null}
-          <Badge
-            variant="outline"
-            className={cn(TONE_CLASS[hasChallongeSource ? "accent" : "neutral"])}
-          >
+          <StatusPill tone={hasChallongeSource ? "accent" : "neutral"}>
             {hasChallongeSource ? "Connected" : "Not linked"}
-          </Badge>
+          </StatusPill>
         </div>
       </div>
 
@@ -211,9 +209,9 @@ export function ChallongeIntegrationSection({
             <span>Loading sync state…</span>
           ) : lastLog ? (
             <>
-              <Badge variant="outline" className={cn("h-5", getLogTone(lastLog.status))}>
+              <StatusPill tone={getLogTone(lastLog.status)} className="h-5">
                 {lastLog.status}
-              </Badge>
+              </StatusPill>
               <span className="text-foreground">
                 {lastLog.direction} {lastLog.entity_type}
                 {lastLog.entity_id ? ` #${lastLog.entity_id}` : ""}
@@ -263,7 +261,7 @@ export function ChallongeIntegrationSection({
         <div>
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className={EYEBROW_CLASS}>Sync log</p>
-            <Badge variant="outline" className="tabular-nums">
+            <Badge variant="secondary" className="tabular-nums">
               {logs.length} recent
             </Badge>
           </div>
@@ -281,15 +279,12 @@ export function ChallongeIntegrationSection({
                   key={log.id}
                   className="flex items-center gap-2 border-b border-border/50 px-3 py-2 text-xs last:border-b-0"
                 >
-                  <Badge variant="outline" className="w-14 justify-center text-xs capitalize">
+                  <Badge tone="neutral" className="w-14 justify-center text-xs capitalize">
                     {log.direction}
                   </Badge>
-                  <Badge
-                    variant="outline"
-                    className={cn("w-16 justify-center text-xs", getLogTone(log.status))}
-                  >
+                  <StatusPill tone={getLogTone(log.status)} className="w-16 justify-center text-xs capitalize">
                     {log.status}
-                  </Badge>
+                  </StatusPill>
                   <span className="min-w-0 flex-1 truncate text-muted-foreground">
                     {log.entity_type}
                     {log.entity_id ? ` #${log.entity_id}` : ""}

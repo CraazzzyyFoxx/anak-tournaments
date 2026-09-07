@@ -161,10 +161,7 @@ function RoleForm({
             <h2 className="min-w-0 truncate font-display text-lg font-semibold text-foreground">
               {detail.name}
             </h2>
-            <Badge
-              variant="outline"
-              className={cn("shrink-0", TONE_CLASS[detail.is_system ? "neutral" : "info"])}
-            >
+            <Badge tone={detail.is_system ? "neutral" : "info"} className="shrink-0">
               {detail.is_system ? "System role" : "Custom role"}
             </Badge>
           </div>

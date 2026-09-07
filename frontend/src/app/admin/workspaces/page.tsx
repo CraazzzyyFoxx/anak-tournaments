@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { CheckCircle, Pencil, Plus, Trash2, XCircle } from "lucide-react";
+import { CheckCircle, Eye, EyeOff, Pencil, Plus, Trash2, XCircle } from "lucide-react";
 
 import { CreateWorkspaceDialog } from "@/components/CreateWorkspaceDialog";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
@@ -13,10 +13,9 @@ import { StatusIcon } from "@/components/admin/StatusIcon";
 import { AdminInspector } from "@/components/admin/kit/AdminInspector";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { WorkspaceOwnerValue } from "@/components/admin/workspace-owner";
 import { WorkspaceVerificationIcon } from "@/components/admin/workspace-verification";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -157,11 +156,9 @@ export default function WorkspacesPage() {
         size: 120,
         cell: ({ row }) =>
           row.original.is_hidden ? (
-            <Badge variant="outline" className={cn(TONE_CLASS.warning)}>
-              Hidden
-            </Badge>
+            <StatusIcon icon={EyeOff} label="Hidden" variant="warning" />
           ) : (
-            <span className="text-sm text-muted-foreground">Listed</span>
+            <StatusIcon icon={Eye} label="Listed" variant="muted" />
           )
       },
       createKebabColumn<Workspace>(
