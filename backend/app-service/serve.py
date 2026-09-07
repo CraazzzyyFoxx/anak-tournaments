@@ -23,6 +23,7 @@ from src.core.caching import configure_cache
 from src.rpc import (
     achievements,
     admin_crud,
+    announcements,
     audit,
     binary,
     catalog_aliases,
@@ -83,6 +84,10 @@ audit.register(broker, logger)
 
 # Notification inbox reads/mark-read + the public announcement banner.
 notifications.register(broker, logger)
+
+# Operator-facing announcement CRUD (workspace-scoped, plus the superuser-only
+# platform banner).
+announcements.register(broker, logger)
 
 # Phase 3 — binary/multipart endpoints (icons, assets, match-log) over base64.
 binary.register(broker, logger)

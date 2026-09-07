@@ -139,10 +139,19 @@ class AnnouncementPayload(_Payload):
     @classmethod
     def _href_is_safe(cls, value: str | None) -> str | None:
         """Operator text becomes an anchor target in the banner; a ``javascript:``
-        or ``data:`` URL there is stored XSS against every visitor."""
-        if value is not None and not (value.startswith("/") or value.startswith("https://")):
-            raise ValueError("href must be a site-relative path or an https:// URL")
-        return value
+        or ``data:`` URL there is stored XSS against every visitor, and a
+        protocol-relative ``//evil.com`` (or its ``/\\evil.com`` twin, which
+        browsers normalise to the same thing) reads as a site path while landing
+        on somebody else's domain -- an open redirect wearing the platform's own
+        banner. A site path is a single slash followed by something that is not
+        another separator."""
+        if value is None:
+            return value
+        if value.startswith("https://"):
+            return value
+        if value.startswith("/") and value[1:2] not in ("/", "\\"):
+            return value
+        raise ValueError("href must be a site-relative path or an https:// URL")
 
     @model_validator(mode="after")
     def _locales_cover_the_audience(self, info: ValidationInfo) -> AnnouncementPayload:

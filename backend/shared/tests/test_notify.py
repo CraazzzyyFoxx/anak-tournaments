@@ -188,6 +188,46 @@ class NotifyTests(IsolatedAsyncioTestCase):
 
         self.assertEqual([], session.added)
 
+    async def test_a_protocol_relative_href_is_not_a_site_path(self) -> None:
+        """``//evil.com`` starts with a slash and still leaves the site.
+
+        The banner renders the href as an anchor target on a page every visitor
+        of the platform sees, so a link that reads as internal and lands on a
+        third-party domain is an open redirect with the platform's own branding
+        around it.
+        """
+        session = _Session()
+
+        for href in ("//evil.com", "/\\evil.com"):
+            with self.assertRaises(ValidationError, msg=href):
+                await notify(
+                    session,
+                    kind="announcement.published",
+                    payload={
+                        "locales": {"ru": {"title": "Сбор"}},
+                        "default_locale": "ru",
+                        "href": href,
+                    },
+                    audience="workspace",
+                    workspace_id=4,
+                )
+
+        self.assertEqual([], session.added)
+
+        row = await notify(
+            session,
+            kind="announcement.published",
+            payload={
+                "locales": {"ru": {"title": "Сбор"}},
+                "default_locale": "ru",
+                "href": "/changelog/2026-09",
+            },
+            audience="workspace",
+            workspace_id=4,
+        )
+
+        self.assertEqual("/changelog/2026-09", row.payload_json["href"])
+
 
 class PublishNotificationCreatedTests(IsolatedAsyncioTestCase):
     async def test_signal_reaches_only_the_recipients_own_topic(self) -> None:
