@@ -17,7 +17,7 @@ OWT is a **monorepo** with three tiers:
 
 1. **Edge** — Traefik (TLS) → nginx → a **Go gateway**. The gateway is the only process that
    speaks HTTP and WebSocket to the outside world.
-2. **Backend** — a set of **Python 3.13 headless workers** built on
+2. **Backend** — a set of **Python 3.14 headless workers** built on
    [FastStream](https://faststream.airt.ai/). They expose no HTTP; the gateway reaches them
    with **request/reply RPC over RabbitMQ**. All workers share one PostgreSQL database
    through a single ORM layer in [`backend/shared/`](../backend/shared/README.md).

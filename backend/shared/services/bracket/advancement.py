@@ -296,7 +296,8 @@ async def _maybe_create_grand_final_reset(
     """Lazily create a Grand Final Reset match when the LB champion wins GF.
 
     Rules:
-    - Encounter belongs to a double-elimination stage.
+    - Stage is double-elimination AND configured ``de_grand_final_type ==
+      "with_reset"``; a ``no_reset`` stage ends at the Grand Final.
     - Encounter is the highest currently materialised positive round in its
       bracket item (the original Grand Final, not UB Final / Reset).
     - The GF winner must be the team that reached GF via the
@@ -308,6 +309,8 @@ async def _maybe_create_grand_final_reset(
 
     stage = await session.get(Stage, gf_encounter.stage_id)
     if stage is None or stage.stage_type != enums.StageType.DOUBLE_ELIMINATION:
+        return None
+    if (stage.settings_json or {}).get("de_grand_final_type") != "with_reset":
         return None
 
     max_round_result = await session.execute(

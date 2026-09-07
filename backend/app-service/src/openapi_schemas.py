@@ -76,6 +76,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.statistics.won_maps": Op(
         response=Paginated[schemas.PlayerStatistics], query=PaginationSortQueryParams[_STAT_SORT]
     ),
+    "rpc.app.statistics.tournament_readiness": Op(response=schemas.TournamentReadiness),
     # ── users (bespoke reads) ──────────────────────────────────────────────
     "rpc.app.users.get_profile": Op(response=schemas.UserProfile),
     "rpc.app.users.search": Op(
@@ -133,6 +134,9 @@ OPERATIONS: dict[str, Op] = {
     # ── workspaces ─────────────────────────────────────────────────────────
     "rpc.app.workspaces.get": Op(response=schemas.WorkspaceRead),
     "rpc.app.workspaces.list": Op(response=schemas.WorkspaceRead, response_array=True),
+    # by_host answers with an ad-hoc {workspace_id, slug} (or null); only the
+    # host query param is declared -- see the module docstring's convention.
+    "rpc.app.workspaces.by_host": Op(query_params=(QueryParam("host"),)),
     "rpc.app.workspaces.icon_upload": Op(response=schemas.WorkspaceRead),
     "rpc.app.workspaces.icon_delete": Op(response=schemas.WorkspaceRead),
     "rpc.app.workspaces.create": Op(request=schemas.WorkspaceCreate, response=schemas.WorkspaceRead),
@@ -186,6 +190,12 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.users.social_set_primary": Op(response=schemas.UserRead),
     "rpc.app.users.social_set_visibility": Op(request=schemas.SocialVisibilityUpdate, response=schemas.UserRead),
     # ── users self-service (capability ``account.social``) ──────────────────
+    "rpc.app.users.me_social_list": Op(response=schemas.UserRead),
+    "rpc.app.users.me_social_set_primary": Op(response=schemas.UserRead),
+    # Request body is the ad-hoc {"visible": bool} the handler reads via
+    # c.payload -- deliberately NOT SocialVisibilityUpdate, whose workspace_id
+    # this self-service handler ignores (visibility here is always global).
+    "rpc.app.users.me_social_set_visibility": Op(response=schemas.UserRead),
     "rpc.app.users.me_set_stream_visibility": Op(request=schemas.StreamVisibilityUpdate, response=schemas.UserRead),
     # Ad-hoc dict / 204 responses (me_favorite_add returns {"ok": True},
     # me_favorite_remove returns 204/None) are intentionally omitted -- see the

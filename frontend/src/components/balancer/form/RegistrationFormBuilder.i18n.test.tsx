@@ -52,7 +52,10 @@ vi.mock("@/services/admin.service", () => ({
       .mockResolvedValue([{ id: 1, role: "tank", slug: "main_tank", label: "Main Tank" }])
   }
 }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams("") }));
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(""),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() })
+}));
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
     selector({ currentWorkspaceId: 1 })
@@ -73,13 +76,13 @@ async function renderPage(locale: "en" | "ru") {
     root.render(
       <NextIntlClientProvider locale={locale} messages={MESSAGES[locale]}>
         <QueryClientProvider client={client}>
-          <RegistrationFormBuilder tournamentId={1} basePath="/admin/tournaments/1/registration" />
+          <RegistrationFormBuilder tournamentId={1} />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
   });
   for (let i = 0; i < 30; i += 1) {
-    if (container.querySelector('button[role="checkbox"]')) break;
+    if (container.querySelector('button[role="switch"]')) break;
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
@@ -87,26 +90,17 @@ async function renderPage(locale: "en" | "ru") {
   return { container, root };
 }
 
-async function openEveryTab(container: HTMLElement) {
-  const tabs = [...container.querySelectorAll('[role="tab"]')] as HTMLButtonElement[];
-  for (const tab of tabs) {
-    await act(async () => {
-      tab.click();
-    });
-  }
-  return tabs.length;
-}
-
 describe("admin registration form i18n", () => {
   for (const locale of ["en", "ru"] as const) {
-    it(`renders every tab in ${locale} with no unresolved message keys`, async () => {
+    it(`renders every section in ${locale} with no unresolved message keys`, async () => {
       const errors: unknown[][] = [];
       const spy = vi.spyOn(console, "error").mockImplementation((...args) => {
         errors.push(args);
       });
 
       const { container, root } = await renderPage(locale);
-      expect(await openEveryTab(container)).toBe(4);
+      // Every section is on the page at once — no in-page tabs to open.
+      expect(container.querySelectorAll('[role="tab"]')).toHaveLength(0);
 
       const text = container.textContent ?? "";
       expect(text).not.toMatch(/registrationFormAdmin\./);
@@ -116,10 +110,11 @@ describe("admin registration form i18n", () => {
       ).toEqual([]);
 
       // Sanity: the localized copy actually differs per locale.
-      expect(text).toContain(locale === "ru" ? "Настройка формы" : "Form Configuration");
       expect(text).toContain(locale === "ru" ? "Саброли" : "Subroles");
       // The subscription rule summary — the string that used to be Russian in both locales.
-      expect(text).toContain(locale === "ru" ? "Boosty уровень 2 или Twitch" : "Boosty level 2 or Twitch");
+      expect(text).toContain(
+        locale === "ru" ? "Boosty уровень 2 или Twitch" : "Boosty level 2 or Twitch"
+      );
 
       await act(async () => {
         root.unmount();

@@ -89,6 +89,11 @@ class StageItem(db.TimeStampIntegerMixin):
     name: Mapped[str] = mapped_column(String())
     type: Mapped[enums.StageItemType] = mapped_column(STAGE_ITEM_TYPE_ENUM)
     order: Mapped[int] = mapped_column(Integer(), default=0)
+    # Per-group override of ``Stage.advance_count``: how many teams advance from
+    # THIS group. NULL = inherit the stage's number, which is what every group
+    # did before the column existed. Set it when groups are uneven and a flat
+    # "top N from each" is the wrong bar.
+    advance_count: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
     stage: Mapped[Stage] = relationship(back_populates="items")
     inputs: Mapped[list["StageItemInput"]] = relationship(

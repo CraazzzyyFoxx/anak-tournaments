@@ -22,8 +22,9 @@ from shared.core.enums import (  # noqa: E402
     HeroClass,
 )
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftPlayerRole, DraftTeam  # noqa: E402
+from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
+from tests.factories import roster  # noqa: E402
 
 
 def _load_feature_modules():
@@ -244,36 +245,29 @@ def test_full_coverage_with_extra_players_is_feasible() -> None:
     assert report.unmatched_slots == ()
 
 
-def test_build_state_uses_captain_primary_role_pick_target_role_and_flex_semantics() -> None:
+def test_build_state_reads_roles_off_the_engine_rosters_and_the_pick_target_role() -> None:
     _, feasibility = _load_feature_modules()
     team = DraftTeam(id=10, session_id=1, name="Alpha", draft_position=1)
     captain = DraftPlayer(
         id=101,
         session_id=1,
-        primary_role=HeroClass.tank.slot_code,
+        registration_id=201,
         status=DraftPlayerStatus.PICKED.value,
         is_captain=True,
         drafted_by_team_id=10,
-        roles=[DraftPlayerRole(role=HeroClass.tank.slot_code, priority=0)],
     )
     picked = DraftPlayer(
         id=102,
         session_id=1,
-        primary_role=HeroClass.damage.slot_code,
+        registration_id=202,
         status=DraftPlayerStatus.PICKED.value,
         drafted_by_team_id=10,
-        roles=[
-            DraftPlayerRole(role=HeroClass.damage.slot_code, priority=0),
-            DraftPlayerRole(role=HeroClass.support.slot_code, is_secondary=True, priority=1),
-        ],
     )
     flex = DraftPlayer(
         id=103,
         session_id=1,
-        primary_role=HeroClass.damage.slot_code,
+        registration_id=203,
         status=DraftPlayerStatus.AVAILABLE.value,
-        is_flex=True,
-        roles=[DraftPlayerRole(role=HeroClass.damage.slot_code, priority=0)],
     )
     pick = DraftPick(
         id=1001,
@@ -292,6 +286,13 @@ def test_build_state_uses_captain_primary_role_pick_target_role_and_flex_semanti
         teams=(team,),
         players=(captain, picked, flex),
         picks=(pick,),
+        rosters={
+            101: roster(201, ranks={"tank": 3100}),
+            # Drafted onto SUPPORT even though DPS leads: the frozen target_role
+            # names the slot they occupy.
+            102: roster(202, ranks={"dps": 4000, "support": 2800}),
+            103: roster(203, ranks={"dps": 3000, "tank": 3000, "support": 3000}, flex=True),
+        },
     )
 
     assert state.team_ids == (10,)
@@ -303,6 +304,42 @@ def test_build_state_uses_captain_primary_role_pick_target_role_and_flex_semanti
         feasibility.DraftAssignment(player_id=102, team_id=10, slot_code="support"),
     )
     assert state.players == (feasibility.EligiblePlayer(player_id=103, playable_roles=frozenset(HERO_TYPE_CLASSES)),)
+
+
+def test_build_state_leaves_an_unranked_available_player_out_of_the_eligible_set() -> None:
+    # A registration the balancer ranks on no role contributes NO eligibility:
+    # that is what makes the draft report the shortage instead of quietly
+    # picking them at rank 0. A seat the engine could not resolve at all (a
+    # soft-deleted registration) counts the same way.
+    _, feasibility = _load_feature_modules()
+    team = DraftTeam(id=10, session_id=1, name="Alpha", draft_position=1)
+    unranked = DraftPlayer(id=101, session_id=1, registration_id=201, status=DraftPlayerStatus.AVAILABLE.value)
+    rosterless = DraftPlayer(id=102, session_id=1, registration_id=202, status=DraftPlayerStatus.AVAILABLE.value)
+    ranked = DraftPlayer(id=103, session_id=1, registration_id=203, status=DraftPlayerStatus.AVAILABLE.value)
+
+    state = feasibility.build_feasibility_state(
+        shape=_shape({"tank": 1, "support": 1}),
+        teams=(team,),
+        players=(unranked, rosterless, ranked),
+        picks=(),
+        rosters={
+            101: roster(201, ranks={"tank": None, "support": None}),
+            103: roster(203, ranks={"tank": 3000}),
+        },
+    )
+    report = feasibility.analyze_draft_feasibility(
+        team_ids=state.team_ids,
+        slot_targets=state.slot_targets,
+        players=state.players,
+        assignments=state.assignments,
+    )
+
+    assert [player.player_id for player in state.players] == [103]
+    # Two role slots, one usable player: the shortage is REPORTED, not papered
+    # over by two rank-less bodies.
+    assert report.is_feasible is False
+    assert [slot.slot_code for slot in report.unmatched_slots] == ["support"]
+    assert [(d.slot_code, d.unmatched_slots, d.eligible_players) for d in report.slot_deficits] == [("support", 1, 0)]
 
 
 def test_options_for_supported_scale_complete_under_latency_budget() -> None:
@@ -396,15 +433,13 @@ def test_flex_slot_never_absorbs_the_deficit_of_an_unfillable_role_slot() -> Non
 
 def test_player_level_flex_still_covers_a_role_slot() -> None:
     _, feasibility = _load_feature_modules()
-    # DraftPlayer.is_flex ("plays anything") and a flex *slot* ("takes anyone")
-    # are independent axes; a flex player must still fill role slots.
+    # A full-flex REGISTRATION ("plays anything") and a flex *slot* ("takes
+    # anyone") are independent axes; a flex player must still fill role slots.
     flex_player = DraftPlayer(
         id=103,
         session_id=1,
-        primary_role=HeroClass.damage.slot_code,
+        registration_id=203,
         status=DraftPlayerStatus.AVAILABLE.value,
-        is_flex=True,
-        roles=[DraftPlayerRole(role=HeroClass.damage.slot_code, priority=0)],
     )
 
     state = feasibility.build_feasibility_state(
@@ -412,6 +447,7 @@ def test_player_level_flex_still_covers_a_role_slot() -> None:
         teams=(DraftTeam(id=10, session_id=1, name="Alpha", draft_position=1),),
         players=(flex_player,),
         picks=(),
+        rosters={103: roster(203, ranks={"dps": 3000, "tank": 3000, "support": 3000}, flex=True)},
     )
     report = feasibility.analyze_draft_feasibility(
         team_ids=state.team_ids,

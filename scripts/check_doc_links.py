@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""Fail when a maintained Markdown document links to a file that does not exist.
+
+Documentation links rot silently: a file gets renamed or deleted and the six
+documents pointing at it keep rendering, just wrong. The only way this stays at
+zero is a gate, so this runs in CI (.github/workflows/ci-docs.yml).
+
+Archived documents are checked but never fail the build. `docs/plans/`,
+`docs/superpowers/` and `docs/reviews/` are a frozen record of past decisions;
+their internal links broke as the code moved and repairing them would mean
+editing history to point at files that no longer mean the same thing. They are
+reported so the count is visible, not enforced.
+
+Only relative links are resolved. External URLs are not fetched -- a network
+call in a lint job buys flakiness, not correctness.
+
+Usage:
+  python3 scripts/check_doc_links.py
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+from urllib.parse import unquote
+
+ROOT = Path(__file__).resolve().parents[1]
+
+#: Frozen archives: reported, never enforced.
+ARCHIVE = ("docs/plans/", "docs/superpowers/", "docs/reviews/")
+
+LINK_RE = re.compile(r"\]\(\s*([^)\s]+?)(?:\s+\"[^\"]*\")?\s*\)")
+
+#: A "link" carrying regex or format-string metacharacters is a code sample that
+#: happens to look like Markdown, not a link. Checking it produces only noise.
+NOT_A_PATH = re.compile(r"[\[\]\\^*+?{}|<>$]")
+
+SKIP_SCHEME = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//|#)", re.IGNORECASE)
+
+
+def tracked_markdown() -> list[str]:
+    out = subprocess.run(
+        ["git", "ls-files", "*.md"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return [line for line in out.splitlines() if line]
+
+
+def broken_links(document: str) -> list[str]:
+    text = (ROOT / document).read_text(encoding="utf-8", errors="replace")
+    parent = Path(document).parent
+    found: list[str] = []
+    for match in LINK_RE.finditer(text):
+        target = match.group(1)
+        if SKIP_SCHEME.search(target) or NOT_A_PATH.search(target):
+            continue
+        path = target.split("#", 1)[0]
+        if not path:
+            continue
+        resolved = ROOT / unquote(path.lstrip("/")) if path.startswith("/") else ROOT / parent / unquote(path)
+        if not resolved.exists():
+            found.append(target)
+    return found
+
+
+def main() -> int:
+    live_failures: dict[str, list[str]] = {}
+    archived = 0
+
+    for document in tracked_markdown():
+        found = broken_links(document)
+        if not found:
+            continue
+        if document.startswith(ARCHIVE):
+            archived += len(found)
+        else:
+            live_failures[document] = found
+
+    total = sum(len(v) for v in live_failures.values())
+    if archived:
+        print(f"note: {archived} broken link(s) inside the frozen archive, not enforced")
+
+    if not live_failures:
+        print("all maintained documents link to files that exist")
+        return 0
+
+    print(f"\nERROR: {total} broken link(s) in maintained documentation:\n", file=sys.stderr)
+    for document, targets in sorted(live_failures.items()):
+        for target in targets:
+            print(f"  {document} -> {target}", file=sys.stderr)
+    print(
+        "\nFix the link, or move the target back. If the target is genuinely gone, "
+        "remove the link and keep the sentence true.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

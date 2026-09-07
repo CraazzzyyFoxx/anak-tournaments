@@ -23,12 +23,27 @@ from shared.messaging.config import (
 )
 from shared.observability import make_rabbit_broker, observe_message_processing
 from shared.schemas.events import DiscordCommandEvent, MatchLogProcessedEvent
+from shared.schemas.rpc import rpc_error, rpc_ok
 from src.core.broker import set_worker_broker
 from src.core.config import Settings
 from src.result_waiter import ResultWaiter
 from src.services.attachment_processor import AttachmentProcessor
 from src.services.channel_registry import ChannelRegistry
-from src.services.directory import DiscordDirectoryService
+from src.services.directory import DirectoryOutcome, DiscordDirectoryService
+
+_DIRECTORY_CODES = {
+    "guild_not_found": "not_found",
+    "invalid": "bad_request",
+    "error": "internal",
+}
+
+
+def _directory_reply(outcome: DirectoryOutcome) -> dict[str, Any]:
+    if outcome.status == "success":
+        return rpc_ok(outcome.payload)
+    code = _DIRECTORY_CODES.get(outcome.status, "internal")
+    message = str(outcome.payload.get("error") or outcome.status)
+    return rpc_error(code, message)
 
 
 class DiscordRabbitGateway:
@@ -168,7 +183,7 @@ class DiscordRabbitGateway:
                 user_ids = [str(u) for u in (body.get("user_ids") or []) if u]
                 outcome = await self._directory.get_member_roles(guild_id, user_ids)
                 observation.set_status(outcome.status)
-                return outcome.payload
+                return _directory_reply(outcome)
 
         @broker.subscriber(DISCORD_GUILD_ROLES_QUEUE)
         async def handle_get_guild_roles(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
@@ -182,7 +197,7 @@ class DiscordRabbitGateway:
                 guild_id = str(body.get("guild_id") or "").strip()
                 outcome = await self._directory.get_guild_roles(guild_id)
                 observation.set_status(outcome.status)
-                return outcome.payload
+                return _directory_reply(outcome)
 
         @broker.subscriber(DISCORD_GUILD_CHANNELS_QUEUE)
         async def handle_get_guild_channels(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
@@ -196,7 +211,7 @@ class DiscordRabbitGateway:
                 guild_id = str(body.get("guild_id") or "").strip()
                 outcome = await self._directory.get_guild_channels(guild_id)
                 observation.set_status(outcome.status)
-                return outcome.payload
+                return _directory_reply(outcome)
 
         @broker.subscriber(DISCORD_GUILD_INFO_QUEUE)
         async def handle_get_guild_info(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
@@ -210,7 +225,7 @@ class DiscordRabbitGateway:
                 guild_id = str(body.get("guild_id") or "").strip()
                 outcome = await self._directory.get_guild_info(guild_id)
                 observation.set_status(outcome.status)
-                return outcome.payload
+                return _directory_reply(outcome)
 
         # Per-instance, server-named exclusive queue bound to the fanout exchange so
         # every replica receives every result; the one holding the matching pending

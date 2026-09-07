@@ -177,6 +177,12 @@ class PickBanConfigService:
                 unique_attribute_per_side_per_round=unique_attribute_per_side_per_round,
                 allow_protect=allow_protect,
                 sequence_json=sequence,
+                # Set while pending: initializes both collections locally, so the
+                # replacement below assigns onto loaded collections. Without them
+                # `create`'s flush makes the row persistent with `items`/`slots`
+                # unloaded and the assignment lazy-loads -> `MissingGreenlet`.
+                items=[],
+                slots=[],
             )
             await self.config_repo.create(session, config)
         else:
@@ -189,16 +195,16 @@ class PickBanConfigService:
             config.unique_attribute_per_side_per_round = unique_attribute_per_side_per_round
             config.allow_protect = allow_protect
             config.sequence_json = sequence
-        # Wholesale replace, cleared+flushed first — same ordering rationale
-        # as veto_admin's upsert (SQLAlchemy would otherwise emit the new
-        # children's INSERTs before the old ones' DELETEs and trip the
-        # plain UNIQUE constraints on position/item_id). The clear rides the
-        # `delete-orphan` cascade on both relationships, so it stays ORM-level
-        # rather than becoming a statement delete the loaded collection would
-        # then disagree with.
-        config.items = []
-        config.slots = []
-        await session.flush()
+            # Wholesale replace, cleared+flushed first — same ordering rationale
+            # as veto_admin's upsert (SQLAlchemy would otherwise emit the new
+            # children's INSERTs before the old ones' DELETEs and trip the
+            # plain UNIQUE constraints on position/item_id). The clear rides the
+            # `delete-orphan` cascade on both relationships, so it stays ORM-level
+            # rather than becoming a statement delete the loaded collection would
+            # then disagree with.
+            config.items = []
+            config.slots = []
+            await session.flush()
 
         config.items = [PickBanConfigItem(item_id=item_id, sort_order=idx) for idx, item_id in enumerate(item_ids)]
         config.slots = [

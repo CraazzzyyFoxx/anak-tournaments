@@ -16,18 +16,20 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { STREAM_STATUS_META } from "@/lib/stream-platform";
-import type { Encounter } from "@/types/encounter.types";
 import type { StreamEntry } from "@/types/stream.types";
 import type { StageType } from "@/types/tournament.types";
 import { EncounterRostersModal } from "@/components/EncounterRostersModal";
 import TeamName from "@/components/TeamName";
 import { withReturnTo } from "@/lib/return-to";
 import {
+  activeRoundNumber,
   buildRoundGroups as buildBracketRoundGroups,
   computeMatchNumbers as computeBracketMatchNumbers,
   computeSlotHints as computeBracketSlotHints,
   getDoubleEliminationFinalRounds as getBracketFinalRounds,
   getRoundSectionMatchCapacity,
+  orderEliminationRounds,
+  type BracketMatch,
   type SlotHint
 } from "@/components/bracket-view.helpers";
 import {
@@ -39,13 +41,21 @@ type Translate = ReturnType<typeof useTranslations<never>>;
 /** Only `dateTime` is needed here; `useFormatter()` and `await getFormatter()` both satisfy it. */
 type DateFormatter = Pick<ReturnType<typeof useFormatter>, "dateTime">;
 
-interface BracketViewProps {
-  encounters: Encounter[];
+/**
+ * Generic over the row type so an action handler can keep taking the caller's
+ * OWN match type: the public bracket's `onEdit` needs a full `Encounter`, and a
+ * callback typed on the wider `BracketMatch` would not accept it (parameters
+ * are contravariant). The layout below stays non-generic — it reads only
+ * `BracketMatch` fields — so the handoff back to `M` happens at the four call
+ * sites that invoke these callbacks.
+ */
+interface BracketViewProps<M extends BracketMatch> {
+  encounters: M[];
   type: StageType;
-  onEdit?: (encounter: Encounter) => void;
-  onReport?: (encounter: Encounter) => void;
-  canEdit?: (encounter: Encounter) => boolean;
-  canReport?: (encounter: Encounter) => boolean;
+  onEdit?: (encounter: M) => void;
+  onReport?: (encounter: M) => void;
+  canEdit?: (encounter: M) => boolean;
+  canReport?: (encounter: M) => boolean;
   /**
    * Team id → the stream of whoever from that team is on air, keyed by the same
    * id `Encounter.home_team_id`/`away_team_id` carry.
@@ -55,6 +65,19 @@ interface BracketViewProps {
    * would force that call site to invent an empty map for nothing.
    */
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
+  /**
+   * Whether a card links out (match page, rosters, pre-game room).
+   *
+   * Off for the admin bracket preview, whose matches are the generator's
+   * skeleton and have no encounter row to link to yet — the tree is the same,
+   * only the destinations do not exist.
+   */
+  interactive?: boolean;
+  /**
+   * Encounter id to bring into view and outline on mount — the `?match=` deep
+   * link the overview and matches sections use to point at one node.
+   */
+  highlightMatchId?: number | null;
 }
 
 interface MatchNodeData {
@@ -76,7 +99,7 @@ interface LayoutNode {
   x: number;
   y: number;
   data: MatchNodeData;
-  encounter: Encounter;
+  encounter: BracketMatch;
 }
 
 interface LayoutEdge {
@@ -95,7 +118,7 @@ interface LayoutHeader {
 
 interface RoundGroup {
   round: number;
-  matches: Encounter[];
+  matches: BracketMatch[];
 }
 
 interface BracketLayout {
@@ -112,6 +135,8 @@ const CARD_ROW_HEIGHT = 30;
 const ROUND_GAP_X = 48;
 const MATCH_GAP_Y = 10;
 const HEADER_HEIGHT = 24;
+// Breathing room between a round header and the first card under it.
+const HEADER_GAP_Y = 14;
 const SECTION_GAP_Y = 52;
 const PADDING_X = 16;
 const PADDING_Y = 14;
@@ -142,7 +167,7 @@ function splitEncounterName(name: string | null | undefined) {
   return { homeName: null, awayName: null };
 }
 
-function getMatchNames(match: Encounter) {
+function getMatchNames(match: BracketMatch) {
   const parsed = splitEncounterName(match.name);
 
   return {
@@ -151,7 +176,7 @@ function getMatchNames(match: Encounter) {
   };
 }
 
-function getWinner(match: Encounter): "home" | "away" | null {
+function getWinner(match: BracketMatch): "home" | "away" | null {
   if (!COMPLETED_STATUSES.has(match.status)) {
     return null;
   }
@@ -174,7 +199,7 @@ function buildPath(source: LayoutNode, target: LayoutNode) {
 }
 
 function createNode(
-  match: Encounter,
+  match: BracketMatch,
   x: number,
   y: number,
   matchNumber: number,
@@ -269,7 +294,7 @@ function layoutBracketColumn(params: {
 }
 
 function buildLayout(
-  encounters: Encounter[],
+  encounters: BracketMatch[],
   type: StageType,
   _t: Translate,
   roundLabel: BracketRoundLabelFormatter
@@ -328,7 +353,7 @@ function buildLayout(
   );
   const upperStartX = PADDING_X;
   const upperHeaderY = PADDING_Y;
-  const upperTop = upperHeaderY + HEADER_HEIGHT;
+  const upperTop = upperHeaderY + HEADER_HEIGHT + HEADER_GAP_Y;
 
   upperRounds.forEach((group, columnIndex) => {
     const x = upperStartX + columnIndex * (CARD_WIDTH + ROUND_GAP_X);
@@ -359,7 +384,7 @@ function buildLayout(
 
   const hasLowerBracket = lowerRounds.length > 0;
   const lowerHeaderY = upperTop + upperSectionHeight + (hasLowerBracket ? SECTION_GAP_Y : 0);
-  const lowerTop = lowerHeaderY + HEADER_HEIGHT;
+  const lowerTop = lowerHeaderY + HEADER_HEIGHT + HEADER_GAP_Y;
   const maxLowerMatches = Math.max(1, ...lowerRounds.map((group) => group.matches.length));
   const lowerSectionHeight = hasLowerBracket
     ? Math.max(
@@ -401,7 +426,10 @@ function buildLayout(
     const x = PADDING_X + columnIndex * (CARD_WIDTH + ROUND_GAP_X);
     const totalHeight =
       group.matches.length * CARD_HEIGHT + Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
-    const startY = Math.max(0, (fullContentHeight - totalHeight) / 2);
+    // Centered in the bracket body, i.e. below the header row — otherwise the
+    // card lands on top of its own header.
+    const finalTop = PADDING_Y + HEADER_HEIGHT + HEADER_GAP_Y;
+    const startY = finalTop + Math.max(0, (fullContentHeight - finalTop - totalHeight) / 2);
 
     layoutBracketColumn({
       group,
@@ -491,7 +519,7 @@ function buildLayout(
   };
 }
 
-function getMatchMeta(encounter: Encounter, t: Translate, format: DateFormatter) {
+function getMatchMeta(encounter: BracketMatch, t: Translate, format: DateFormatter) {
   const isCompleted = COMPLETED_STATUSES.has(encounter.status);
   const isLive = !isCompleted && Boolean(encounter.started_at) && !encounter.ended_at;
   const played = (encounter.score?.home ?? 0) + (encounter.score?.away ?? 0);
@@ -518,15 +546,18 @@ function MatchCard({
   hoveredTeamId,
   onHoveredTeamChange,
   returnTo,
-  liveTeamStreams
+  liveTeamStreams,
+  interactive
 }: Readonly<{
   data: MatchNodeData;
-  encounter: Encounter;
+  encounter: BracketMatch;
   hoveredTeamId: number | null;
   onHoveredTeamChange: (teamId: number | null) => void;
   /** This bracket's own location, so the pre-game room can send viewers back to it. */
   returnTo: string;
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
+  /** `false` on a projected match: there is no encounter row to link to. */
+  interactive: boolean;
 }>) {
   const t = useTranslations();
   const format = useFormatter();
@@ -685,42 +716,46 @@ function MatchCard({
         className="flex items-center justify-between gap-2 border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-2.5"
         style={{ height: footerHeight }}
       >
-        <div className="flex items-center gap-2">
-          <HoverPrefetchLink
-            href={`/encounters/${encounter.id}`}
-            className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-            aria-label={t("bracket.viewMatch")}
-            onClick={(e) => {
-              // Keep any future card-level click handler from also firing.
-              e.stopPropagation();
-            }}
-          >
-            <Search className="size-3.5" aria-hidden />
-          </HoverPrefetchLink>
-          {/* The roster peek stays on the bracket: a scroll position built up
-              over a 32-team tree survives looking at who is playing. The
-              pre-game link leaves, because the room is where a captain acts —
-              a read-only copy of its veto in a dialog was a second door onto
-              one phase and earned neither the icon nor the fetch. */}
-          <EncounterRostersModal
-            encounterId={encounter.id}
-            homeTeamName={encounter.home_team?.name ?? t("common.tbd")}
-            awayTeamName={encounter.away_team?.name ?? t("common.tbd")}
-          />
-          <HoverPrefetchLink
-            href={withReturnTo(
-              `/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`,
-              returnTo
-            )}
-            className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-            aria-label={t("bracket.pregameRoom")}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-          >
-            <ListChecks className="size-3.5" aria-hidden />
-          </HoverPrefetchLink>
-        </div>
+        {interactive ? (
+          <div className="flex items-center gap-2">
+            <HoverPrefetchLink
+              href={`/encounters/${encounter.id}`}
+              className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+              aria-label={t("bracket.viewMatch")}
+              onClick={(e) => {
+                // Keep any future card-level click handler from also firing.
+                e.stopPropagation();
+              }}
+            >
+              <Search className="size-3.5" aria-hidden />
+            </HoverPrefetchLink>
+            {/* The roster peek stays on the bracket: a scroll position built up
+                over a 32-team tree survives looking at who is playing. The
+                pre-game link leaves, because the room is where a captain acts —
+                a read-only copy of its veto in a dialog was a second door onto
+                one phase and earned neither the icon nor the fetch. */}
+            <EncounterRostersModal
+              encounterId={encounter.id}
+              homeTeamName={encounter.home_team?.name ?? t("common.tbd")}
+              awayTeamName={encounter.away_team?.name ?? t("common.tbd")}
+            />
+            <HoverPrefetchLink
+              href={withReturnTo(
+                `/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`,
+                returnTo
+              )}
+              className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+              aria-label={t("bracket.pregameRoom")}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              <ListChecks className="size-3.5" aria-hidden />
+            </HoverPrefetchLink>
+          </div>
+        ) : (
+          <span />
+        )}
         {meta.timeLabel && (
           <span
             className={cn(
@@ -742,7 +777,7 @@ function MatchCard({
   );
 }
 
-function resultStatusBadge(encounter: Encounter, t: Translate) {
+function resultStatusBadge(encounter: BracketMatch, t: Translate) {
   const status = encounter.result_status;
   if (!status || status === "none") return null;
   if (status === "confirmed") return null;
@@ -768,15 +803,17 @@ function resultStatusBadge(encounter: Encounter, t: Translate) {
   );
 }
 
-export function BracketView({
+export function BracketView<M extends BracketMatch>({
   encounters,
   type,
   onEdit,
   onReport,
   canEdit,
   canReport,
-  liveTeamStreams
-}: Readonly<BracketViewProps>) {
+  liveTeamStreams,
+  interactive = true,
+  highlightMatchId = null
+}: Readonly<BracketViewProps<M>>) {
   const t = useTranslations();
   // The bracket's own location, stage/view query included: the pre-game room
   // carries it so its back button and its final report land the viewer back on
@@ -801,6 +838,41 @@ export function BracketView({
     () => buildLayout(encounters, type, t, roundLabel),
     [encounters, type, t, roundLabel]
   );
+
+  // Scroll the deep-linked node into view once, after layout. A ref callback
+  // rather than an effect keyed on the DOM: the node mounts inside the canvas
+  // which itself mounts twice (inline + fullscreen), so the callback fires per
+  // instance and the inline one is the one on screen.
+  const highlightedRef = (node: HTMLDivElement | null) => {
+    if (!node || highlightMatchId === null) return;
+    node.scrollIntoView({ block: "center", inline: "center" });
+  };
+
+  // Where the tree opens when nothing is deep-linked: the top-left corner of
+  // the round in play. A finished round 1 is not what a viewer came for, and
+  // the canvas is routinely wider than the viewport.
+  const focus = useMemo(() => {
+    if (highlightMatchId !== null) return null;
+    const round = activeRoundNumber(orderEliminationRounds(encounters, type).groups);
+    if (round === null) return null;
+    const column = layout.nodes.filter((node) => node.encounter.round === round);
+    if (column.length === 0) return null;
+    return {
+      x: Math.min(...column.map((node) => node.x)),
+      y: Math.min(...column.map((node) => node.y))
+    };
+  }, [encounters, type, layout.nodes, highlightMatchId]);
+
+  // Applied per scroller element, once. `dataset` rather than a ref flag
+  // because the inline canvas and the fullscreen one are two elements, and
+  // because a re-render (hover, a poll landing) must not yank a viewer who has
+  // already panned somewhere else.
+  const focusScroller = (el: HTMLDivElement | null) => {
+    if (!el || !focus || el.dataset.bracketFocused) return;
+    el.dataset.bracketFocused = "1";
+    el.scrollLeft = Math.max(0, focus.x - (el.clientWidth - CARD_WIDTH) / 2);
+    el.scrollTop = Math.max(0, focus.y - (el.clientHeight - CARD_HEIGHT) / 2);
+  };
 
   // Drag-to-pan with the mouse; touch keeps native scrolling. The scroller is
   // the event target, so the same handlers serve the inline and the fullscreen
@@ -849,6 +921,7 @@ export function BracketView({
 
   const canvas = (fullscreen: boolean) => (
     <div
+      ref={focusScroller}
       className={cn(
         "select-none overflow-auto",
         fullscreen ? "h-full w-full flex-1" : "max-h-[78vh]",
@@ -896,6 +969,7 @@ export function BracketView({
         {layout.headers.map((header) => (
           <div
             key={header.id}
+            data-round-header={header.id}
             className="absolute"
             style={{ left: header.x, top: header.y, width: CARD_WIDTH }}
           >
@@ -913,12 +987,19 @@ export function BracketView({
         ))}
 
         {layout.nodes.map((node) => {
-          const editable = onEdit && (canEdit?.(node.encounter) ?? true);
-          const reportable = onReport && (canReport?.(node.encounter) ?? false);
+          // Every node was built from `encounters: M[]`, so its row IS an `M`;
+          // the layout types drop that down to `BracketMatch` because nothing
+          // in them reads more than that.
+          const match = node.encounter as M;
+          const editable = onEdit && (canEdit?.(match) ?? true);
+          const reportable = onReport && (canReport?.(match) ?? false);
+          const highlighted = highlightMatchId !== null && match.id === highlightMatchId;
           return (
             <div
               key={node.id}
-              className="group absolute"
+              ref={highlighted ? highlightedRef : undefined}
+              data-match-id={match.id}
+              className={cn("group absolute", highlighted && "rounded-[10px] ring-2 ring-[color:var(--aqt-teal)] ring-offset-2 ring-offset-[color:var(--aqt-card)]")}
               style={{ left: node.x, top: node.y, width: CARD_WIDTH, height: CARD_HEIGHT }}
             >
               <MatchCard
@@ -928,6 +1009,7 @@ export function BracketView({
                 onHoveredTeamChange={setHoveredTeamId}
                 returnTo={returnTo}
                 liveTeamStreams={liveTeamStreams}
+                interactive={interactive}
               />
               <div
                 className="pointer-events-none absolute top-1/2 -translate-y-1/2"
@@ -949,7 +1031,7 @@ export function BracketView({
                       aria-label={t("bracket.editMatch")}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onEdit?.(node.encounter);
+                        onEdit?.(match);
                       }}
                     >
                       <Pencil className="h-3 w-3" aria-hidden />
@@ -962,7 +1044,7 @@ export function BracketView({
                       aria-label={t("bracket.reportMatch")}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onReport?.(node.encounter);
+                        onReport?.(match);
                       }}
                     >
                       <FileEdit className="h-3 w-3" aria-hidden />

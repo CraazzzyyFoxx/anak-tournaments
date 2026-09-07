@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 //
 // The pickup mix tool used to replace the site shell entirely: its own top
-// bar, the `.admin-theme` palette, a fixed full-viewport frame. Hosting a mix
-// is a member-level grant, read by the same audience as the rest of the
-// site, so its shell must be the site's own — `Header` above the tool
-// content, `Footer` below it, no `.admin-theme` class anywhere in the tree.
+// bar, its own palette, a fixed full-viewport frame. Hosting a mix is a
+// member-level grant, read by the same audience as the rest of the site, so
+// its shell must be the site's own — `Header` above the tool content and
+// `Footer` below it. (The separate admin palette it borrowed no longer
+// exists; the whole app is on one token set, so there is nothing left to
+// assert about it here.)
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, expect, vi } from "vitest";
@@ -74,8 +76,7 @@ describe("BalancerLayoutClient on /balancer/pickup", () => {
     expect(order[0]).toBeLessThan(order[1]);
     expect(order[1]).toBeLessThan(order[2]);
 
-    // The admin-theme palette and the old standalone tool top bar are gone.
-    expect(container.querySelector(".admin-theme")).toBeNull();
+    // The old standalone tool top bar is gone.
     expect(container.textContent).not.toContain("Back to site");
 
     act(() => root.unmount());

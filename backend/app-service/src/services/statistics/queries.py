@@ -205,7 +205,10 @@ class StatisticsQueries:
         query = self._encounter_scored_players_query(
             (
                 sa.func.sum(encounter_query.c.home_score)
-                / (sa.func.sum(encounter_query.c.home_score) + sa.func.sum(encounter_query.c.away_score))
+                / sa.func.nullif(
+                    sa.func.sum(encounter_query.c.home_score) + sa.func.sum(encounter_query.c.away_score),
+                    0,
+                )
             ),
             workspace_id=workspace_id,
             extra_filters=(models.Tournament.is_league.is_(False),),
@@ -424,9 +427,11 @@ class StatisticsQueries:
         """A user's tournament win rate as ``(user id, win rate, rank, ranked user count)``,
         or ``None`` when the user has no encounters in the tournament.
         """
-        winrate = (sa.func.sum(home_score_case) / (sa.func.sum(home_score_case) + sa.func.sum(away_score_case))).label(
-            "winrate"
-        )
+        winrate = sa.func.coalesce(
+            sa.func.sum(home_score_case)
+            / sa.func.nullif(sa.func.sum(home_score_case) + sa.func.sum(away_score_case), 0),
+            0,
+        ).label("winrate")
 
         stats_query = (
             sa.select(

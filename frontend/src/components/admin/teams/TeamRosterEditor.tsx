@@ -8,7 +8,7 @@ import {
   AdminDetailTableShell,
   getAdminDetailTableStyles
 } from "@/components/admin/AdminDetailTable";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -662,7 +662,7 @@ export function TeamRosterEditor({
         </Table>
       </AdminDetailTableShell>
 
-      <DeleteConfirmDialog
+      <ConfirmDialog
         open={pendingRemoval != null}
         onOpenChange={(open) => {
           if (!open) setPendingRemoval(null);
@@ -670,12 +670,15 @@ export function TeamRosterEditor({
         onConfirm={() => {
           if (pendingRemoval) removePlayer.mutate(pendingRemoval.id);
         }}
-        title={`Remove ${pendingRemoval?.name ?? "player"}`}
-        description="The roster record and its match statistics are removed permanently. This cannot be undone."
-        cascadeInfo={["Match statistics for this player", "Substitutes linked to this slot"]}
-        confirmLabel="Remove"
-        confirmingLabel="Removing…"
-        isDeleting={removePlayer.isPending}
+        pending={removePlayer.isPending}
+        intent={{
+          title: `Remove ${pendingRemoval?.name ?? "player"}`,
+          description:
+            "The roster record and its match statistics are removed permanently. This cannot be undone.",
+          confirmLabel: removePlayer.isPending ? "Removing…" : "Remove",
+          tone: "danger",
+          cascade: ["Match statistics for this player", "Substitutes linked to this slot"]
+        }}
       />
     </div>
   );

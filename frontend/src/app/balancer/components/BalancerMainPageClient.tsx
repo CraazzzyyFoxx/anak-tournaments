@@ -71,7 +71,6 @@ import {
   createSyntheticPlayerFromRegistration,
   downloadPlayersExport,
   getPlayerValidationIssues,
-  ratesByMaxRank,
   type BalanceVariant
 } from "./workspace-helpers";
 
@@ -268,15 +267,6 @@ export function BalancerMainPageClient() {
     enabled: workspaceId !== null
   });
 
-  // Same query key as the registrations tab, so the cache is shared. Only the
-  // flex mode is read: in a forced-flex tournament role is not a constraint and
-  // every pool player is rated by their highest rank across all roles.
-  const registrationFormQuery = useQuery({
-    queryKey: ["balancer-admin", "registration-form", tournamentId],
-    queryFn: () => balancerAdminService.getRegistrationForm(tournamentId as number),
-    enabled: tournamentId !== null
-  });
-
   /* eslint-disable react-hooks/set-state-in-effect -- Local balancer state intentionally resets when the selected tournament or saved balance changes. */
   useEffect(() => {
     setVariants([]);
@@ -342,7 +332,6 @@ export function BalancerMainPageClient() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const registrations = registrationsQuery.data ?? [];
-  const allRoles = ratesByMaxRank(registrationFormQuery.data?.built_in_fields?.flex_role);
   const {
     registrationsById,
     applications,
@@ -354,8 +343,8 @@ export function BalancerMainPageClient() {
     invalidPlayerStates,
     flexPoolCount
   } = useMemo(
-    () => buildBalancerPageCollections(registrations, divisionGrid, allRoles),
-    [divisionGrid, registrations, allRoles]
+    () => buildBalancerPageCollections(registrations, divisionGrid),
+    [divisionGrid, registrations]
   );
 
   const workspaceBalancerConfig = workspaceBalancerConfigQuery.data ?? null;
@@ -520,6 +509,7 @@ export function BalancerMainPageClient() {
     runBalanceMutation,
     saveBalanceMutation,
     exportToTournamentMutation,
+    exportRanksMutation,
     importBalanceMutation
   } = useBalancerMutations({
     tournamentId,
@@ -675,6 +665,12 @@ export function BalancerMainPageClient() {
       }
     );
   }, [exportToTournamentMutation, handleTournamentExportStageChange]);
+
+  const savedBalanceId = savedBalanceQuery.data?.id ?? null;
+  const startRanksExport = useCallback(() => {
+    if (savedBalanceId === null) return;
+    exportRanksMutation.mutate(savedBalanceId);
+  }, [exportRanksMutation, savedBalanceId]);
 
   const startJsonImport = useCallback(
     (file: File) => {
@@ -851,10 +847,13 @@ export function BalancerMainPageClient() {
         isExportPending={exportToTournamentMutation.isPending}
         isBalanceSaved={isBalanceSaved}
         isBalanceExported={isBalanceExported}
+        canExportRanks={savedBalanceId !== null}
+        isExportRanksPending={exportRanksMutation.isPending}
         tournamentId={tournamentId}
         onRunBalance={() => runBalanceMutation.mutate()}
         onSaveBalance={() => saveBalanceMutation.mutate()}
         onExportBalance={startTournamentExport}
+        onExportRanks={startRanksExport}
         onCopyNames={handleCopyNames}
         onScreenshot={handleScreenshot}
       />

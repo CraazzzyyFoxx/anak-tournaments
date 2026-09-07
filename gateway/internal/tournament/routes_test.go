@@ -1,7 +1,11 @@
 package tournament
 
 import (
+	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
@@ -44,6 +48,141 @@ func TestTeamImageRouteContracts(t *testing.T) {
 	}
 }
 
+// TestTournamentImageRouteContracts pins the cover/logo surface: the DELETE is a
+// typed method carrying BOTH keys the worker reads ("id" from IDParam, "slot"
+// verbatim from Path), and the POST is documented for the multipart handler.
+func TestTournamentImageRouteContracts(t *testing.T) {
+	const pattern = "/api/v1/admin/tournaments/{tournament_id}/images/{slot}"
+
+	var del *edge.RouteSpec
+	for i, r := range AdminCrudRoutes {
+		if r.Pattern == pattern {
+			del = &AdminCrudRoutes[i]
+		}
+	}
+	if del == nil {
+		t.Fatalf("%s DELETE is not registered", pattern)
+	}
+	if del.Method != "DELETE" || del.Queue != "rpc.tournament.tournaments.image_delete" || del.Auth != edge.AuthRequired {
+		t.Fatalf("unexpected image_delete contract: %#v", *del)
+	}
+	if del.Entity != "" || del.Action != "" {
+		t.Fatalf("image_delete is a typed method, not generic CRUD: %#v", *del)
+	}
+	// The worker reads the tournament as data["id"], so {tournament_id} must ride
+	// IDParam; {slot} has no dedicated field and rides Path verbatim.
+	if del.IDParam != "tournament_id" {
+		t.Fatalf("image_delete must send the tournament as data[\"id\"]: %#v", *del)
+	}
+	if len(del.Path) != 1 || del.Path[0] != "slot" {
+		t.Fatalf("image_delete must forward slot verbatim: %#v", *del)
+	}
+
+	var up *edge.RouteSpec
+	for i, r := range BinaryDocRoutes {
+		if r.Pattern == pattern {
+			up = &BinaryDocRoutes[i]
+		}
+	}
+	if up == nil {
+		t.Fatalf("%s POST is not documented in BinaryDocRoutes", pattern)
+	}
+	if up.Method != "POST" || up.Queue != "rpc.tournament.tournaments.image_upload" || up.Auth != edge.AuthRequired {
+		t.Fatalf("unexpected image_upload contract: %#v", *up)
+	}
+}
+
+// TestTournamentFacetsRouteContract pins the facet counters read: AuthOptional,
+// because the counts must match the visibility-filtered listing the same viewer
+// gets (hidden tournaments are counted only for eligible viewers).
+func TestTournamentFacetsRouteContract(t *testing.T) {
+	const pattern = "/api/v1/tournaments/facets"
+
+	var facets *edge.RouteSpec
+	for i, r := range PublicReadRoutes {
+		if r.Pattern == pattern {
+			facets = &PublicReadRoutes[i]
+		}
+	}
+	if facets == nil {
+		t.Fatalf("%s is not registered", pattern)
+	}
+	if facets.Method != "GET" || facets.Queue != "rpc.tournament.tournaments_facets" || facets.Auth != edge.AuthOptional {
+		t.Fatalf("unexpected facets contract: %#v", *facets)
+	}
+}
+
+// TestTournamentFacetsRouting pins that the literal "facets" segment is not
+// swallowed by the /{id} read next to it — a facets request reaching
+// get_tournament would 404 on a non-numeric id instead of returning counters.
+func TestTournamentFacetsRouting(t *testing.T) {
+	mux := http.NewServeMux()
+	hit := ""
+	mark := func(name string) http.HandlerFunc {
+		return func(http.ResponseWriter, *http.Request) { hit = name }
+	}
+	for _, s := range PublicReadRoutes {
+		mux.HandleFunc(s.Method+" "+s.Pattern, mark(s.Queue))
+	}
+
+	for _, tc := range []struct{ path, want string }{
+		{"/api/v1/tournaments/facets", "rpc.tournament.tournaments_facets"},
+		{"/api/v1/tournaments/72", "rpc.tournament.get_tournament"},
+	} {
+		hit = ""
+		req, err := http.NewRequest("GET", tc.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mux.ServeHTTP(nil, req)
+		if hit != tc.want {
+			t.Errorf("GET %s routed to %q, want %q", tc.path, hit, tc.want)
+		}
+	}
+}
+
+// capturingCaller records the RPC body the dispatcher built.
+type capturingCaller struct{ body []byte }
+
+func (c *capturingCaller) Call(_ context.Context, _ string, body []byte) ([]byte, error) {
+	c.body = body
+	return []byte(`{"ok":true,"data":{}}`), nil
+}
+
+// TestTournamentImageDeletePayload proves the route table's IDParam+Path pair
+// actually produces BOTH keys the worker reads — the field names alone don't say
+// whether the two are additive in edge.Dispatcher.serve.
+func TestTournamentImageDeletePayload(t *testing.T) {
+	const pattern = "/api/v1/admin/tournaments/{tournament_id}/images/{slot}"
+
+	var spec edge.RouteSpec
+	for _, r := range AdminCrudRoutes {
+		if r.Pattern == pattern && r.Method == "DELETE" {
+			spec = r
+		}
+	}
+	caller := &capturingCaller{}
+	identity := func(*http.Request) (map[string]any, bool, error) {
+		return map[string]any{"user_id": 1}, true, nil
+	}
+	mux := http.NewServeMux()
+	edge.New(caller, slog.New(slog.DiscardHandler), identity).Register(mux, []edge.RouteSpec{spec})
+
+	req := httptest.NewRequest("DELETE", "/api/v1/admin/tournaments/72/images/cover", nil)
+	mux.ServeHTTP(httptest.NewRecorder(), req)
+
+	var sent map[string]any
+	if err := json.Unmarshal(caller.body, &sent); err != nil {
+		t.Fatalf("no RPC body captured: %v (%q)", err, caller.body)
+	}
+	if sent["id"] != "72" {
+		t.Errorf(`payload["id"] = %#v, want "72"`, sent["id"])
+	}
+	if sent["slot"] != "cover" {
+		t.Errorf(`payload["slot"] = %#v, want "cover"`, sent["slot"])
+	}
+}
+
 // TestRoutesRegisterWithoutConflict guards against ServeMux pattern conflicts,
 // which panic at registration time (runtime), not at build time. It registers the
 // tournament route tables that are mounted as patterns — the subtree tables
@@ -68,6 +207,7 @@ func TestRoutesRegisterWithoutConflict(t *testing.T) {
 	// Multipart handlers registered directly in main.go.
 	mux.HandleFunc("POST /api/v1/admin/teams/{team_id}/image", dummy)
 	mux.HandleFunc("POST /api/v1/registration-teams/{team_id}/image", dummy)
+	mux.HandleFunc("POST /api/v1/admin/tournaments/{tournament_id}/images/{slot}", dummy)
 }
 
 // TestRegistrationTeamCrestRouting pins the precedence the crest DELETE depends

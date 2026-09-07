@@ -42,6 +42,9 @@ _TRANSPORT_CHURN_EXCEPTIONS: frozenset[str] = frozenset(
         "ConnectionClosed",
         "ConnectionRefusedError",
         "ConnectionResetError",
+        # asyncpg: server closed the socket mid-query (Postgres restart / failover).
+        # SQLAlchemy wraps it in DBAPIError; _is_transport_churn walks ``orig``.
+        "ConnectionDoesNotExistError",
     }
 )
 
@@ -84,17 +87,28 @@ _CHURN_EXCEPTION_QUALNAMES: frozenset[str] = frozenset(
         "redis.exceptions.BusyLoadingError",
         "redis.exceptions.ConnectionError",
         "redis.exceptions.TimeoutError",
+        # asyncpg TLS upgrade calling set_result on a cancelled Future during
+        # reconnect. Bare ``InvalidStateError`` is too generic to list above.
+        "asyncio.exceptions.InvalidStateError",
     }
 )
 
 
 def _is_transport_churn(exc: BaseException) -> bool:
     """True for connection/channel lifecycle errors from the AMQP, Redis or DB drivers."""
-    return any(
-        klass.__name__ in _TRANSPORT_CHURN_EXCEPTIONS
-        or f"{getattr(klass, '__module__', '')}.{klass.__name__}" in _CHURN_EXCEPTION_QUALNAMES
-        for klass in type(exc).__mro__
-    )
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if any(
+            klass.__name__ in _TRANSPORT_CHURN_EXCEPTIONS
+            or f"{getattr(klass, '__module__', '')}.{klass.__name__}" in _CHURN_EXCEPTION_QUALNAMES
+            for klass in type(current).__mro__
+        ):
+            return True
+        orig = getattr(current, "orig", None)
+        current = orig if isinstance(orig, BaseException) else (current.__cause__ or current.__context__)
+    return False
 
 
 def _is_expected_client_error(exc: BaseException) -> bool:
@@ -122,6 +136,10 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
         exc = exc_info[1]
         if _is_transport_churn(exc) or _is_expected_client_error(exc):
             return None
+    elif str(event.get("level") or "").lower() == "warning":
+        # capture_message(..., level="warning") and Loguru warning records. Drift
+        # checks and unfinished match logs are operator signal, not defects.
+        return None
     return event
 
 

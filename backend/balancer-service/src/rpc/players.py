@@ -12,7 +12,8 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
-from shared.core import http_status as status, pagination
+from shared.core import http_status as status
+from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.services import workspace_roster
 from shared.services.member_rank import member_rank_service
@@ -23,11 +24,6 @@ from src.services.pickup_mix_realtime import emit_pickup_mix_updated
 _SF = db.async_session_maker
 
 _SCOPES = ("workspace", "author")
-
-
-def _require_member(user: Any, workspace_id: int) -> None:
-    if not user.is_workspace_member(workspace_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a workspace member")
 
 
 def _ranks_payload(data: dict[str, Any]) -> dict[str, int]:
@@ -81,9 +77,9 @@ def _dump(member: Any, ranks: dict[str, int], author_ranks: dict[str, int]) -> d
         "battle_tag": member.battle_tag,
         "display_name": member.display_name,
         # Whether this member has a linked login identity -- a mix's host/
-        # co-host picker excludes anyone without one, since `host_user_id`/
-        # `co_host_user_ids` are `auth.user.id`s and a member who has never
-        # signed in has none.
+        # co-host picker excludes anyone without one, since both grants are
+        # addressed by `auth.user.id` and a member who has never signed in
+        # has none.
         "auth_user_id": member.auth_user_id,
         # Two layers side by side: the workspace canon everyone sees, and the book
         # being read (the caller's own unless ``author_user_id`` asked otherwise).
@@ -184,7 +180,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             params = _list_params(data)
             author_user_id = _author_to_read(data, user.id)
             rows, total = await workspace_roster.roster_page(
@@ -215,7 +211,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             total, author_total = await workspace_roster.roster_summary(
                 session, workspace_id=workspace_id, author_user_id=_author_to_read(data, user.id)
             )
@@ -228,7 +224,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             body = c.payload(data)
             battle_tag = body.get("battle_tag", data.get("battle_tag"))
             if not isinstance(battle_tag, str) or not battle_tag.strip():
@@ -264,7 +260,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             # ``author`` is the caller's own layer, full stop: accepting an
             # author id here would let one member rewrite another's private book.
             author_user_id = user.id if _scope(data) == "author" else None
@@ -294,7 +290,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             counts = await member_rank_service.list_authors(session, workspace_id=workspace_id)
             names = await workspace_roster.hosts_by_user_id(
                 session, workspace_id=workspace_id, user_ids=[author_user_id for author_user_id, _ in counts]

@@ -17,21 +17,21 @@ function player(overrides: Partial<DraftPlayer> = {}): DraftPlayer {
   return {
     id: 7,
     session_id: 1,
+    registration_id: 70,
     user_id: null,
     battle_tag: "Ana#1234",
     primary_role: "support",
     sub_role: null,
     is_flex: false,
-    division_number: null,
-    rank_value: 3000,
     effective_rank: 3000,
     status: "available",
     is_captain: false,
     drafted_by_team_id: null,
-    secondary_roles_json: null,
+    secondary_roles: [],
     role_ranks: {},
+    role_sources: {},
     role_top_heroes: {},
-    additional_info: {},
+    notes: null,
     custom_fields: [],
     version: 1,
     ...overrides
@@ -61,6 +61,41 @@ function render(subject: DraftPlayer, divisionGrid: { tiers: typeof GRID.tiers }
   );
 }
 
+describe("player inspector flex roles", () => {
+  test("offers the undeclared role a flex player can still be picked on", () => {
+    // The server counts a flex player as supply for every role, so with a tight
+    // pool the only safe option can be a role they never declared. Rendering
+    // just the declared ones left every offered role blocked and the player
+    // unpickable — with nothing drafted yet.
+    const html = renderToStaticMarkup(
+      <PlayerInspector
+        player={player({ primary_role: "dps", secondary_roles: ["tank"], is_flex: true })}
+        role="dps"
+        options={{
+          pick_id: 1,
+          pick_version: 0,
+          draft_team_id: 2,
+          options: [
+            { player_id: 7, role: "dps", is_safe: false, reason_code: "role_shortage", unmatched_slots: [], blocking_player_ids: [], suggestion_score: null },
+            { player_id: 7, role: "tank", is_safe: false, reason_code: "role_shortage", unmatched_slots: [], blocking_player_ids: [], suggestion_score: null },
+            { player_id: 7, role: "support", is_safe: true, reason_code: null, unmatched_slots: [], blocking_player_ids: [], suggestion_score: 1 }
+          ]
+        }}
+        safetyRequired
+        onRoleChange={() => {}}
+        onClose={() => {}}
+        divisionGrid={{ tiers: [] }}
+      />
+    );
+
+    // All three roles are buttons, and exactly the two blocked ones are
+    // aria-disabled — the safe support option is reachable.
+    expect((html.match(/sr-only">roles\./g) ?? []).length).toBe(3);
+    expect((html.match(/aria-disabled="true"/g) ?? []).length).toBe(2);
+  });
+});
+
+
 describe("player inspector registration answers", () => {
   test("renders each draft-visible custom field with its label", () => {
     const html = render(
@@ -85,7 +120,7 @@ describe("player inspector registration answers", () => {
   });
 
   test("shows the notes block and the answers block independently", () => {
-    const notesOnly = render(player({ additional_info: { notes: "prefers Ana" } }));
+    const notesOnly = render(player({ notes: "prefers Ana" }));
     expect(notesOnly).toContain("prefers Ana");
 
     const answersOnly = render(
@@ -105,44 +140,70 @@ describe("player inspector role ranks", () => {
   // Ranked on support only, but flex — so tank is offered without a rating.
   const flexPlayer = player({
     primary_role: "support",
-    secondary_roles_json: ["tank"],
+    secondary_roles: ["tank"],
     is_flex: true,
-    rank_value: 2814,
     effective_rank: 2814,
-    role_ranks: { support: 2814 }
+    role_ranks: { support: 2814 },
+    role_sources: { support: "registration" }
   });
 
   test("a role the player has no rank on shows no rank, not the primary's", () => {
     const html = render(flexPlayer, GRID);
 
     // Support carries its own rank; tank carries the em-dash, because lending it
-    // `rank_value` would invent a rating the captain then picks on.
+    // another role's number would invent a rating the captain then picks on.
     expect(html).toContain("2814 SR");
     expect(html).toContain("roles.tank");
     expect(html).not.toContain("roles.tank · 2814 SR");
     expect(html).toContain("—");
   });
 
-  test("the header answers the player's strength with the effective rank", () => {
-    // Best role is dps at 3900 while the primary sits at 2814: the header shows
-    // the division of what the pick will freeze, the rows stay per-role.
+  test("the header shows the rank the server resolved for this draft, not the maximum", () => {
+    // A support main: 2814 on support, 3900 on dps. The header renders
+    // `effective_rank` — the ONE rank the roster engine resolved for this draft
+    // — or it advertises a 3900 support.
     const html = render(
       player({
         primary_role: "support",
-        secondary_roles_json: ["dps"],
-        rank_value: 2814,
-        effective_rank: 3900,
+        secondary_roles: ["dps"],
+        effective_rank: 2814,
         role_ranks: { support: 2814, dps: 3900 }
       }),
       GRID
     );
 
-    // The header icon precedes the role list, so its division is the effective
-    // rank's (High, 3000+) and not the primary role's (Low, 2814).
-    const headerIcon = html.indexOf('title="High"');
+    // The header icon precedes the role list, so its division is the resolved
+    // rank's (Low, 2814) and not the maximum's (High, 3900).
+    const headerIcon = html.indexOf('title="Low"');
     expect(headerIcon).toBeGreaterThan(-1);
     expect(headerIcon).toBeLessThan(html.indexOf("chooseRole"));
+    expect(html).not.toContain('title="High"');
+    // The rows stay per-role: both ranks are still readable.
     expect(html).toContain("2814 SR");
     expect(html).toContain("3900 SR");
+  });
+
+  test("a rank the registration did not declare is labelled with its source", () => {
+    // An organizer has to be able to tell an inherited or Overwatch-derived
+    // rank from one the player typed in.
+    const html = render(
+      player({
+        role_ranks: { support: 2814 },
+        role_sources: { support: "ow" }
+      }),
+      GRID
+    );
+
+    expect(html).toContain("rankSourceShort.ow");
+    expect(html).toContain("rankSource.ow");
+  });
+
+  test("a player left without any playable role shows no role at all", () => {
+    const html = render(player({ primary_role: null, secondary_roles: [] }), GRID);
+
+    expect(html).toContain("noRole");
+    expect(html).toContain("noRoleHint");
+    // No role button was invented for them.
+    expect(html).not.toContain('sr-only">roles.');
   });
 });

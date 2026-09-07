@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import paginated_dump
 from src.core import db
 from src.schemas.rpc import rpc_error, rpc_ok, status_to_code
 from src.services.token_validation import token_validation
@@ -150,19 +151,6 @@ def require_int(data: dict, key: str) -> int:
     return value
 
 
-def paginated_dump(res: dict) -> dict:
-    """Serialize a service-layer ``{results, total, page, per_page}`` envelope.
-
-    ``results`` holds Pydantic models; everything else is passed through (so an
-    optional ``counts`` model is serialized too).
-    """
-    out: dict[str, Any] = {
-        "results": [item.model_dump(mode="json") for item in res["results"]],
-        "total": res["total"],
-        "page": res["page"],
-        "per_page": res["per_page"],
-    }
-    counts = res.get("counts")
-    if counts is not None:
-        out["counts"] = counts.model_dump(mode="json")
-    return out
+# ``paginated_dump`` lives in the shared kernel now (app-service and
+# parser-service list handlers repeated the same key-enumeration bug); re-exported
+# here so the identity handlers keep importing it off ``_common``.

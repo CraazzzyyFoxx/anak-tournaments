@@ -6,8 +6,8 @@ A roster shape may contain ``flex`` slots, up to and including the role-less
 what rating does a player bring to a slot that has no role?
 
 Answer: the best rating he actually has. It is the same "ready to play
-anything" policy the draft already applies (``rules.map_registration``,
-pinned by ``test_forced_flex_parity.py`` against
+anything" policy the roster engine applies for every-role tournaments
+(``PlayerRoster.best_rank``, pinned by ``test_forced_flex_parity.py`` against
 ``docs/superpowers/fixtures/forced-flex-eff-rank.json``), so both halves of the
 product agree on what a flex player is worth.
 

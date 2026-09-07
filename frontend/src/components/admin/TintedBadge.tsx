@@ -1,27 +1,39 @@
-import { Badge } from "@/components/ui/badge";
-import { TONE_CLASS } from "./tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import type { Tone } from "./tone";
 
 interface TintedBadgeProps {
   /** Machine value the badge represents; `null`/`undefined` renders `fallback`. */
   value: string | null | undefined;
-  /** Tinted classes per value (e.g. `{ ok: TONE_CLASS.success }`); an
-   *  unrecognised or missing value falls back to the neutral tone. */
-  styles: Record<string, string>;
+  /** Tone per value (e.g. `{ ok: "success" }`); an unrecognised or missing
+   *  value falls back to the neutral tone. */
+  tones: Record<string, Tone>;
   /** Optional display wording per value; falls back to the raw value. */
   labels?: Record<string, string>;
   /** Text shown when `value` is null/undefined. */
   fallback: string;
+  /**
+   * Leading dot in the badge's own tone, for a collector's running/paused
+   * state. Purely decorative — the label beside it already carries the state,
+   * which is why the dot is `aria-hidden`.
+   */
+  dot?: boolean;
 }
 
 /**
- * Generic tinted status/state badge shared by every admin collector (rank,
- * subscriptions, streams): each domain supplies its own status vocabulary as
- * data (`styles`/`labels`) instead of re-implementing the badge.
+ * A `StatusPill` whose tone is looked up from a machine value: every collector
+ * (rank, subscriptions, streams) renders its status through this, supplying
+ * its own vocabulary as data.
+ *
+ * Callers name a `Tone`, not a class string: indexing `TONE_CLASS` at every
+ * call site is how three collectors ended up with three near-identical style
+ * maps, and it let a page reach past the tone vocabulary into arbitrary
+ * classes.
  */
-export function TintedBadge({ value, styles, labels, fallback }: Readonly<TintedBadgeProps>) {
+export function TintedBadge({ value, tones, labels, fallback, dot }: Readonly<TintedBadgeProps>) {
+  const tone = tones[value ?? ""] ?? "neutral";
   return (
-    <Badge variant="outline" className={styles[value ?? ""] ?? TONE_CLASS.neutral}>
+    <StatusPill tone={tone} dot={dot}>
       {value ? (labels?.[value] ?? value) : fallback}
-    </Badge>
+    </StatusPill>
   );
 }

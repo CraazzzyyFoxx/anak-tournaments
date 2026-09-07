@@ -29,6 +29,8 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
+from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
+
 os.environ["DEBUG"] = "true"
 
 admin_misc = importlib.import_module("src.rpc.admin_misc")
@@ -41,20 +43,15 @@ CREATED_AT = datetime(2026, 5, 1, 12, 30, tzinfo=UTC)
 
 #: A gateway-shaped identity granting exactly the gate the four subjects check.
 #: Deliberately not a superuser, so the real permission path runs.
-IDENTITY = {
-    "user_id": 7,
-    "is_superuser": False,
-    "is_active": True,
-    "roles": [],
-    "permissions": [],
-    "workspaces": [
+IDENTITY = make_identity(
+    workspaces=[
         {
             "workspace_id": 1,
             "rbac_roles": [],
             "rbac_permissions": [{"resource": "match", "action": "read"}],
         }
     ],
-}
+)
 
 
 def _match_row(**kw) -> schemas.AdminMatchRow:
@@ -100,33 +97,6 @@ def _match_detail() -> schemas.AdminMatchDetail:
     )
 
 
-class _CapturingBroker:
-    """Records the handler behind each subject instead of binding a queue."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject, *args, **kwargs):
-        def register(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return register
-
-
-class _FakeSessionMaker:
-    """Stands in for ``db.async_session_maker`` — the services are stubbed, so the
-    session only has to exist."""
-
-    def __call__(self):
-        return self
-
-    async def __aenter__(self):
-        return SimpleNamespace()
-
-    async def __aexit__(self, *exc):
-        return False
-
 
 def _pydantic_models(value, path="data") -> list[str]:
     """Paths of every Pydantic model still embedded in an envelope."""
@@ -144,11 +114,11 @@ class AdminRpcEnvelopesAreJson(IsolatedAsyncioTestCase):
     encodes."""
 
     async def _invoke(self, subject: str, data: dict, **service_stubs) -> dict:
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         admin_misc.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         self.assertIn(subject, broker.handlers, "subject is not registered")
 
-        patches = [patch.object(helpers.db, "async_session_maker", _FakeSessionMaker())]
+        patches = [patch.object(helpers.db, "async_session_maker", FakeSessionMaker())]
         for target, result in service_stubs.items():
             path, name = target.rsplit(".", 1)
 
@@ -231,9 +201,9 @@ class AdminRpcGatesStillApply(IsolatedAsyncioTestCase):
     """The dump fix must not have been bought by skipping the checks around it."""
 
     async def _envelope(self, subject: str, data: dict) -> dict:
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         admin_misc.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
-        with patch.object(helpers.db, "async_session_maker", _FakeSessionMaker()):
+        with patch.object(helpers.db, "async_session_maker", FakeSessionMaker()):
             return await broker.handlers[subject](data, None)
 
     async def test_anonymous_caller_is_unauthorized_not_internal(self):

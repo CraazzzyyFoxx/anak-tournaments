@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -316,8 +317,14 @@ func TestLimiter_WrapAPIKey_MetersEachKeyOnItsOwnBudget(t *testing.T) {
 	if got := rec.Header().Get("Retry-After"); got != "60" {
 		t.Errorf("Retry-After: want 60 (the minute window), got %q", got)
 	}
-	if body := rec.Body.String(); body != `{"detail":"Too many requests"}` {
-		t.Errorf("429 body must match the shared shape, got %s", body)
+	// The shared contract, not a byte-exact body: `detail` for humans, `code`
+	// for clients branching on the reason (see internal/apierr).
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("429 body must be JSON, got %s", rec.Body.String())
+	}
+	if body["detail"] != "Too many requests" || body["code"] != "rate_limited" {
+		t.Errorf("429 body must match the shared shape, got %s", rec.Body.String())
 	}
 
 	// Key "b" is unaffected by key a's exhaustion, and spends its own budget.

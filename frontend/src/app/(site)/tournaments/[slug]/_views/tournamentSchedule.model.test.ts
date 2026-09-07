@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 
-import { buildTournamentSchedule } from "./tournamentSchedule.model";
+import { buildTournamentSchedule, nextPhaseBoundary } from "./tournamentSchedule.model";
 
 type Row = Tournament["phase_schedule"][number];
 
@@ -58,6 +58,21 @@ describe("buildTournamentSchedule", () => {
         now: at(9)
       }).segments.map((segment) => segment.status)
     ).toEqual(["registration", "draft", "live"]);
+  });
+
+  it("flags a current phase whose window has closed, and hands the countdown to the next", () => {
+    // Registration ran 10:00–18:00; at 18:30 the status is still registration.
+    const { segments } = buildTournamentSchedule({ tournament: tournament(), now: at(18, 30) });
+    const [registration, checkIn] = segments;
+
+    expect(registration.state).toBe("current");
+    expect(registration.windowClosed).toBe(true);
+    expect(registration.countdownMs).toBeNull();
+    expect(checkIn.countdownTo).toBe("start");
+
+    const open = buildTournamentSchedule({ tournament: tournament(), now: at(12) }).segments[0];
+    expect(open.windowClosed).toBe(false);
+    expect(open.countdownTo).toBe("close");
   });
 
   it("derives segment state from the tournament status, not from the clock", () => {
@@ -170,5 +185,30 @@ describe("buildTournamentSchedule", () => {
     });
 
     expect(segments[0]).toMatchObject({ state: "current", countdownMs: null, progress: null });
+  });
+});
+
+describe("nextPhaseBoundary", () => {
+  it("names the current phase's close while its window is open", () => {
+    expect(nextPhaseBoundary({ tournament: tournament(), now: at(12) })).toEqual({
+      status: "registration",
+      at: T(18),
+      kind: "close",
+      msLeft: at(18) - at(12)
+    });
+  });
+
+  it("falls through to the next phase's start once the window has closed", () => {
+    expect(nextPhaseBoundary({ tournament: tournament(), now: at(18, 30) })).toEqual({
+      status: "check_in",
+      at: T(19),
+      kind: "start",
+      msLeft: at(19) - at(18, 30)
+    });
+  });
+
+  it("is null when nothing lies ahead — a finished tournament or an empty schedule", () => {
+    expect(nextPhaseBoundary({ tournament: tournament({ status: "completed" }), now: at(23) })).toBeNull();
+    expect(nextPhaseBoundary({ tournament: tournament({ phase_schedule: [] }), now: at(9) })).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
+from shared.core.pagination import paginated_dump
 from shared.rpc.query import build_query_model
 from src import schemas
 from src.core import db
@@ -33,13 +34,7 @@ def register(broker: Any, logger: Any) -> None:
             _gate(data)
             qp = build_query_model(schemas.CatalogAliasMissListQueryParams, data.get("query"))
             params = schemas.CatalogAliasMissListParams.from_query_params(qp)
-            res = await alias_service.list_misses(session, params)
-            return {
-                "results": [r.model_dump(mode="json") for r in res["results"]],
-                "total": res["total"],
-                "page": res["page"],
-                "per_page": res["per_page"],
-            }
+            return paginated_dump(await alias_service.list_misses(session, params))
 
         return await c.envelope(logger, "catalog_aliases.misses_list", op, session_factory=_SF)
 

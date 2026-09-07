@@ -28,44 +28,17 @@ os.environ["DEBUG"] = "true"
 public_rpc = importlib.import_module("src.rpc.public_rpc")
 helpers = importlib.import_module("src.rpc._helpers")
 
-
-class _CapturingBroker:
-    """Records the handler behind each subject instead of binding a queue."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject, *args, **kwargs):
-        def register(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return register
-
-
-class _FakeSessionMaker:
-    """Stands in for ``db.async_session_maker`` -- the service call itself is
-    stubbed, so the session only has to exist."""
-
-    def __call__(self):
-        return self
-
-    async def __aenter__(self):
-        return SimpleNamespace()
-
-    async def __aexit__(self, *exc):
-        return False
-
+from tests._rpc_fakes import CapturingBroker, FakeSessionMaker
 
 class InvitePreviewRequestShapeTests(IsolatedAsyncioTestCase):
     async def _invoke(self, data: dict) -> AsyncMock:
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         public_rpc.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         self.assertIn("rpc.tournament.regteam_invite_preview", broker.handlers)
 
         preview = AsyncMock(return_value=SimpleNamespace())
         with (
-            patch.object(helpers.db, "async_session_maker", _FakeSessionMaker()),
+            patch.object(helpers.db, "async_session_maker", FakeSessionMaker()),
             patch.object(public_rpc, "_dump", lambda obj: obj),
             patch.object(public_rpc.team_service.teams_service, "preview_invite", preview),
         ):

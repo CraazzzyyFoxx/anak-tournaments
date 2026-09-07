@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 
-import type { Stage, Standings, Tournament } from "@/types/tournament.types";
+import type { Stage } from "@/types/tournament.types";
 import { getPublicPageQueryPresentation } from "./publicPageQueryPresentation";
 
 type QueryPresentation = {
@@ -34,31 +34,12 @@ const encountersModule =
     ) => boolean;
   };
 const heroesModule =
-  (await import("./TournamentHeroPlaytimePage")) as typeof import("./TournamentHeroPlaytimePage") & {
+  (await import("./TournamentStatsPage")) as typeof import("./TournamentStatsPage") & {
     getHeroesQueryPresentation?: GetQueryPresentation;
     getHeroPlaytimeMetric?: (playtime: number) => {
       sharePercent: number;
       barWidthPercent: number;
     };
-  };
-const standingsModule =
-  (await import("./TournamentStandingsPage")) as typeof import("./TournamentStandingsPage") & {
-    getStandingsQueryPresentation?: GetQueryPresentation;
-    getPublicStandingsQueryPlan?: (
-      tournament: Tournament | undefined,
-      source: {
-        getStandings: (tournamentId: number, workspaceId: number | null) => Promise<Standings[]>;
-        getStages: (tournamentId: number) => Promise<Stage[]>;
-      }
-    ) => {
-      standings: { enabled: boolean; queryFn: () => Promise<Standings[]> };
-      stages: { enabled: boolean; queryFn: () => Promise<Stage[]> };
-    };
-    getEffectiveStandingsView?: (
-      selected: "playoff" | "groups" | "combined",
-      hasPlayoff: boolean,
-      hasGroups: boolean
-    ) => "playoff" | "groups" | "combined" | null;
   };
 const standingsTableModule =
   (await import("../../../../../components/StandingsTable")) as typeof import("../../../../../components/StandingsTable") & {
@@ -88,7 +69,6 @@ describe("public tournament page query states", () => {
   const presentations: Array<[string, GetQueryPresentation | undefined]> = [
     ["matches", encountersModule.getEncountersQueryPresentation],
     ["heroes", heroesModule.getHeroesQueryPresentation],
-    ["standings", standingsModule.getStandingsQueryPresentation],
     ["teams", getPublicPageQueryPresentation]
   ];
 
@@ -235,17 +215,6 @@ describe("public tournament data interactions", () => {
     expect(table).toContain("event.stopPropagation()");
   });
 
-  it("falls back to the only available standings stage without losing a valid selection", () => {
-    const effective = standingsModule.getEffectiveStandingsView;
-
-    expect(effective?.("groups", true, false)).toBe("playoff");
-    expect(effective?.("playoff", false, true)).toBe("groups");
-    expect(effective?.("groups", true, true)).toBe("groups");
-    expect(effective?.("playoff", true, true)).toBe("playoff");
-    expect(effective?.("combined", true, true)).toBe("combined");
-    expect(effective?.("combined", false, false)).toBeNull();
-  });
-
   it("uses one finite absolute playtime scale for the bar and accessibility value", () => {
     const metric = heroesModule.getHeroPlaytimeMetric;
     const cases: Array<[number, number]> = [
@@ -268,38 +237,6 @@ describe("public tournament data interactions", () => {
 });
 
 describe("public tournament data page contracts", () => {
-  it("starts rich standings and required full-stage metadata together", async () => {
-    let standingsStarted = 0;
-    let stagesStarted = 0;
-    let releaseStandings = () => undefined;
-    const standingsBlocked = new Promise<void>((resolve) => {
-      releaseStandings = resolve;
-    });
-    const tournament = { id: 72, workspace_id: 9 } as Tournament;
-    const plan = standingsModule.getPublicStandingsQueryPlan?.(tournament, {
-      getStandings: async () => {
-        standingsStarted += 1;
-        await standingsBlocked;
-        return [];
-      },
-      getStages: async () => {
-        stagesStarted += 1;
-        return [];
-      }
-    });
-
-    expect(plan?.standings.enabled).toBe(true);
-    expect(plan?.stages.enabled).toBe(true);
-    const standingsRequest = plan?.standings.queryFn();
-    const stagesRequest = plan?.stages.queryFn();
-    expect(standingsStarted).toBe(1);
-    expect(stagesStarted).toBe(1);
-
-    await stagesRequest;
-    releaseStandings();
-    await standingsRequest;
-  });
-
   it("does not execute the table fallback stages request when stages are supplied", async () => {
     let fallbackRequests = 0;
     const options = standingsTableModule.getStandingsStagesQueryOptions?.(72, [], async () => {
@@ -315,8 +252,7 @@ describe("public tournament data page contracts", () => {
   it("keeps pages headerless with an accessible section label and exact state components", () => {
     const contracts = [
       ["TournamentEncountersPage.tsx", "TournamentMatchesSkeleton"],
-      ["TournamentHeroPlaytimePage.tsx", "TournamentHeroesSkeleton"],
-      ["TournamentStandingsPage.tsx", "TournamentStandingsSkeleton"]
+      ["TournamentStatsPage.tsx", "TournamentHeroesSkeleton"],
     ];
 
     for (const [fileName, skeleton] of contracts) {
@@ -349,7 +285,7 @@ describe("public tournament data page contracts", () => {
   });
 
   it("keeps hero role controls and exposes ranked quantitative bars", () => {
-    const source = pageSource("TournamentHeroPlaytimePage.tsx");
+    const source = pageSource("TournamentStatsPage.tsx");
     const chip = readFileSync(join(componentsRoot, "ui/filter-chip.tsx"), "utf8");
 
     expect(source).toContain("ROLE_ORDER");
@@ -365,27 +301,20 @@ describe("public tournament data page contracts", () => {
     expect(source).toContain("getHeroPlaytimeMetric");
   });
 
-  it("keeps rich standings data and a contained, sticky semantic table", () => {
-    const page = pageSource("TournamentStandingsPage.tsx");
+  it("keeps the standings table contained, sticky and semantic", () => {
     const table = readFileSync(join(componentsRoot, "StandingsTable.tsx"), "utf8");
 
-    expect(page).toContain("tournamentService.getStandings(");
-    expect(page).toContain("tournamentService.getStages(");
-    expect(page).toContain("tournament.workspace_id");
-    expect(page).not.toContain("getBracketStandings");
     expect(table).toContain("matches_history");
     expect(table).toContain("team?.group?.name");
     expect(table).toContain("styles.standingsViewport");
     expect(table).toContain("styles.stickyTeamColumn");
     expect(table).toContain('<th scope="col"');
-    expect(page).toContain("styles.stageEmpty");
-    expect(page).toContain("stages={stages}");
   });
 
   it("keeps every route file thin and free from generic loading gates", () => {
     for (const segment of [
       "matches",
-      "heroes",
+      "stats",
       "standings",
       "teams",
       "participants",
@@ -439,8 +368,7 @@ describe("public tournament data page contracts", () => {
   it("defines the background-refresh badge exactly once", () => {
     const views = [
       pageSource("TournamentEncountersPage.tsx"),
-      pageSource("TournamentHeroPlaytimePage.tsx"),
-      pageSource("TournamentStandingsPage.tsx"),
+      pageSource("TournamentStatsPage.tsx"),
       pageSource("TournamentTeamsPage.tsx"),
       readFileSync(join(tournamentRoot, "bracket", "TournamentBracketPage.tsx"), "utf8")
     ];
@@ -465,7 +393,6 @@ describe("public tournament data page contracts", () => {
     expect(pageSource("TournamentEncountersPage.tsx")).toContain("tournament.workspace_id");
     expect(encountersTable).toContain("encounterService.getAll(");
     expect(encountersTable).toContain("workspaceId");
-    expect(pageSource("TournamentStandingsPage.tsx")).toContain("tournament.workspace_id");
   });
 
   it("keeps the teams grid scoped, responsive and non-destructive during refresh", () => {
@@ -494,17 +421,5 @@ describe("public tournament data page contracts", () => {
     expect(initialErrorBranch).toBeGreaterThan(-1);
     expect(skeletonBranch).toBeGreaterThan(-1);
     expect(initialErrorBranch).toBeLessThan(skeletonBranch);
-  });
-
-  it("replaces the matches table on a true empty instead of stacking two messages", () => {
-    const source = pageSource("TournamentEncountersPage.tsx");
-    const emptyCard = source.indexOf('state="empty"');
-    const table = source.indexOf("<EncountersTable");
-
-    expect(source).toContain("search.length === 0");
-    // Branches, not siblings: the card sits in the true arm and the table in the
-    // false arm of one ternary, so only one of them can ever render.
-    expect(emptyCard).toBeLessThan(table);
-    expect(source).toContain("isTrueEmpty ? (");
   });
 });

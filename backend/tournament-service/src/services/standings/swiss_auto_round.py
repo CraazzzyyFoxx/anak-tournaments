@@ -19,8 +19,6 @@ from sqlalchemy.orm import selectinload
 
 from shared.core import enums
 from shared.repository import EncounterRepository, StageRepository
-from shared.services.bracket.swiss_settings import swiss_scope_stopped
-
 from shared.services.tournament.utils import (
     completed_encounters_in_finished_rounds,
     has_incomplete_playable_rounds,
@@ -107,8 +105,10 @@ class SwissRoundsService:
                 else [(None, encounters_by_key.get((stage.id, None), []))]
             )
             for stage_item_id, item_encounters in scopes:
-                if swiss_scope_stopped(stage, stage_item_id):
-                    continue
+                # No stopped-scope shortcut: a scope that once had no
+                # rematch-free pairing may have one again after a round is
+                # re-generated, and generation re-marks it when it truly does
+                # not. Skipping on the flag made the stop permanent.
                 if not stage_item_ready_for_next_round(item_encounters):
                     continue
                 next_round = next_round_number(item_encounters)
@@ -158,13 +158,6 @@ class SwissRoundsService:
             logger.warning(
                 "Swiss auto-round: stage is not active, skipping",
                 stage_id=stage_id,
-            )
-            return []
-        if swiss_scope_stopped(stage, stage_item_id):
-            logger.info(
-                "Swiss auto-round: stopped scope skipped",
-                stage_id=stage_id,
-                stage_item_id=stage_item_id,
             )
             return []
 

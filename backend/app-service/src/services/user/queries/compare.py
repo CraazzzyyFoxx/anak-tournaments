@@ -14,8 +14,6 @@ from src.core import enums
 from ._scope import (
     _compare_user_scope_exists,
     _hero_compare_stat_visibility_condition,
-    away_score_case,
-    home_score_case,
 )
 from .overview import OVERVIEW_HERO_METRICS
 
@@ -167,28 +165,42 @@ class UserCompareQueries:
         )
 
         encounter_tournament = aliased(models.Tournament)
+
+        def _maps_for_side(team_fk: typing.Any, won: typing.Any, lost: typing.Any) -> sa.Select:
+            # One equality join per side. `home_team_id = team.id OR away_team_id =
+            # team.id` cannot use either FK index and is what timed the compare
+            # page out (OWT-TOURNAMENTS-21T) even after the cohort pushdown.
+            return (
+                sa.select(
+                    scoped_players.c.user_id,
+                    won.label("maps_won"),
+                    lost.label("maps_lost"),
+                )
+                .select_from(scoped_players)
+                .join(models.Team, models.Team.id == scoped_players.c.team_id)
+                .join(models.Encounter, team_fk == models.Team.id)
+                .join(encounter_tournament, encounter_tournament.id == models.Encounter.tournament_id)
+                .where(
+                    encounter_tournament.is_finished.is_(True),
+                    encounter_tournament.is_league.is_(False),
+                    *([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []),
+                )
+            )
+
+        map_sides = _maps_for_side(
+            models.Encounter.home_team_id, models.Encounter.home_score, models.Encounter.away_score
+        ).union_all(
+            _maps_for_side(
+                models.Encounter.away_team_id, models.Encounter.away_score, models.Encounter.home_score
+            )
+        ).subquery("compare_map_sides")
         map_totals = (
             sa.select(
-                scoped_players.c.user_id,
-                sa.func.coalesce(sa.func.sum(home_score_case), 0).label("maps_won"),
-                sa.func.coalesce(sa.func.sum(away_score_case), 0).label("maps_lost"),
+                map_sides.c.user_id,
+                sa.func.coalesce(sa.func.sum(map_sides.c.maps_won), 0).label("maps_won"),
+                sa.func.coalesce(sa.func.sum(map_sides.c.maps_lost), 0).label("maps_lost"),
             )
-            .select_from(scoped_players)
-            .join(models.Team, models.Team.id == scoped_players.c.team_id)
-            .join(
-                models.Encounter,
-                sa.or_(
-                    models.Encounter.home_team_id == models.Team.id,
-                    models.Encounter.away_team_id == models.Team.id,
-                ),
-            )
-            .join(encounter_tournament, encounter_tournament.id == models.Encounter.tournament_id)
-            .where(
-                encounter_tournament.is_finished.is_(True),
-                encounter_tournament.is_league.is_(False),
-                *([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []),
-            )
-            .group_by(scoped_players.c.user_id)
+            .group_by(map_sides.c.user_id)
             .cte("compare_map_totals")
         )
 
@@ -238,25 +250,31 @@ class UserCompareQueries:
             .group_by(scoped_players.c.user_id)
             .cte("compare_phase_placements")
         )
+
+        def _closeness_for_side(team_fk: typing.Any) -> sa.Select:
+            return (
+                sa.select(
+                    scoped_players.c.user_id,
+                    models.Encounter.closeness.label("closeness"),
+                )
+                .select_from(scoped_players)
+                .join(models.Team, models.Team.id == scoped_players.c.team_id)
+                .join(models.Encounter, team_fk == models.Team.id)
+                .where(
+                    models.Encounter.closeness.isnot(None),
+                    *([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []),
+                )
+            )
+
+        closeness_sides = _closeness_for_side(models.Encounter.home_team_id).union_all(
+            _closeness_for_side(models.Encounter.away_team_id)
+        ).subquery("compare_closeness_sides")
         average_closeness = (
             sa.select(
-                scoped_players.c.user_id,
-                sa.func.avg(models.Encounter.closeness).label("avg_closeness"),
+                closeness_sides.c.user_id,
+                sa.func.avg(closeness_sides.c.closeness).label("avg_closeness"),
             )
-            .select_from(scoped_players)
-            .join(models.Team, models.Team.id == scoped_players.c.team_id)
-            .join(
-                models.Encounter,
-                sa.or_(
-                    models.Encounter.home_team_id == models.Team.id,
-                    models.Encounter.away_team_id == models.Team.id,
-                ),
-            )
-            .where(
-                models.Encounter.closeness.isnot(None),
-                *([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []),
-            )
-            .group_by(scoped_players.c.user_id)
+            .group_by(closeness_sides.c.user_id)
             .cte("compare_average_closeness")
         )
 
@@ -314,6 +332,7 @@ class UserCompareQueries:
                 models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
                 models.MatchStatistics.hero_id.isnot(None),
                 models.MatchStatistics.value > 60,
+                models.MatchStatistics.user_id.in_(sa.select(candidates.c.id)),
             )
             .distinct()
             .cte("compare_eligible_hero_time")

@@ -60,7 +60,7 @@ async def _nightly_drift_check() -> None:
                 f"threshold={report['threshold']}) at {datetime.now(UTC).isoformat()}"
             )
             logger.warning(msg)
-            sentry_sdk.capture_message(msg, level="warning", extras=report)
+            sentry_sdk.add_breadcrumb(category="ml", message=msg, level="warning", data=report)
         else:
             logger.info("Drift check passed: %d features measured", len(report["distances"]))
 

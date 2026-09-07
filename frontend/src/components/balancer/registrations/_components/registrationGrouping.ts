@@ -1,4 +1,6 @@
+import { ADMISSION_ORDER } from "@/lib/admission";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
+import type { AdmissionDecision } from "@/types/registration.types";
 
 export type RegistrationGroupingMode = "none" | "check_in" | "balancer_status" | "admission";
 
@@ -21,31 +23,16 @@ const BALANCER_STATUS_ORDER = new Map<string, number>([
   ["not_in_balancer", 2]
 ]);
 
-/**
- * Admission status for grouping.
+/** Group headers for the admission modes, keyed by the server's decision.
  *
- * Mirrors `isAdmitted` in RegistrationBadges: a requirement blocks only on a
- * CONFIRMED refusal, so an undetermined subscription verdict (provider down,
- * account unlinked) groups as pending/admitted rather than "not admitted".
- *
- * A second, subscription-unaware copy of this rule used to sit here as dead
- * code; it was deleted rather than extended.
- */
-const getAdmissionStatus = (
-  registration: AdminRegistration,
-  requireOpenProfile = false,
-  requireSubscription = false,
-): "admitted" | "pending_check_in" | "not_admitted" => {
-  if (requireOpenProfile && registration.profiles_open === false) {
-    return "not_admitted";
-  }
-  if (requireSubscription && registration.subscription_outcome === "refused") {
-    return "not_admitted";
-  }
-  if (registration.status === "approved" && registration.balancer_status === "ready") {
-    return registration.checked_in === true ? "admitted" : "pending_check_in";
-  }
-  return "not_admitted";
+ *  This replaced a local re-derivation of admission from four raw fields, which
+ *  mirrored a second copy in `RegistrationBadges` by hand and had already
+ *  drifted from the two in the column builder. `sortOrder` reuses
+ *  `ADMISSION_ORDER` so the group order and the column's sort cannot disagree. */
+const ADMISSION_GROUP_LABELS: Record<AdmissionDecision, string> = {
+  admitted: "Admitted",
+  pending_check_in: "Check-in pending",
+  not_admitted: "Not admitted"
 };
 
 const humanizeStatusValue = (value: string): string =>
@@ -57,9 +44,7 @@ const humanizeStatusValue = (value: string): string =>
 
 const getGroupMeta = (
   registration: AdminRegistration,
-  mode: RegistrationGroupingMode,
-  requireOpenProfile = false,
-  requireSubscription = false,
+  mode: RegistrationGroupingMode
 ): { key: string; label: string; sortOrder: number } => {
   if (mode === "check_in") {
     return registration.checked_in
@@ -77,14 +62,14 @@ const getGroupMeta = (
   }
 
   if (mode === "admission") {
-    const status = getAdmissionStatus(registration, requireOpenProfile, requireSubscription);
-    if (status === "admitted") {
-      return { key: "admitted", label: "Admitted", sortOrder: 0 };
-    }
-    if (status === "pending_check_in") {
-      return { key: "pending_check_in", label: "Check-in pending", sortOrder: 1 };
-    }
-    return { key: "not_admitted", label: "Not admitted", sortOrder: 2 };
+    const decision = registration.admission.decision;
+    return {
+      key: decision,
+      label: ADMISSION_GROUP_LABELS[decision],
+      // Descending: admitted first, the rows needing attention last — the order
+      // organizers already read these groups in.
+      sortOrder: -ADMISSION_ORDER[decision]
+    };
   }
 
   return { key: "all", label: "All registrations", sortOrder: 0 };
@@ -99,9 +84,7 @@ export const normalizeRegistrationGroupingMode = (
 
 export const groupRegistrations = (
   registrations: AdminRegistration[],
-  mode: RegistrationGroupingMode,
-  requireOpenProfile = false,
-  requireSubscription = false,
+  mode: RegistrationGroupingMode
 ): RegistrationGroup[] => {
   if (mode === "none") {
     return [{ key: "all", label: "All registrations", registrations }];
@@ -113,7 +96,7 @@ export const groupRegistrations = (
   >();
 
   registrations.forEach((registration, index) => {
-    const meta = getGroupMeta(registration, mode, requireOpenProfile, requireSubscription);
+    const meta = getGroupMeta(registration, mode);
     const existingGroup = groups.get(meta.key);
 
     if (existingGroup) {

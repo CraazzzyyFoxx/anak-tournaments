@@ -4,6 +4,23 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
 
+/**
+ * Shared class sets for the small hand-built `<Table>`s that live INSIDE
+ * another surface: the roster grid in `teams/TeamRosterEditor` and the team
+ * list in the tournament hub's Teams tab.
+ *
+ * Deliberately kept after the redesign, unlike the primitives P6 removed.
+ * These are not browsers: they have no search, no paging, no sort, no URL
+ * state and no row actions, and each row is an inline editor rather than a
+ * link to one. `AdminDataTable` (T2) would add a toolbar, a pager and a URL
+ * contract to a nine-row grid nested in a form — and two of those, on the
+ * same screen as the real table, would compete for `?page=` and `?sort=`.
+ * What those grids actually shared was styling, which is all this file is.
+ *
+ * Reach for `AdminDataTable` for anything that is the subject of its screen;
+ * reach for these styles only for a dense table nested in an editor.
+ */
+
 export type AdminDetailTableVariant = "compact" | "comfortable";
 
 type AdminDetailTableStyles = {

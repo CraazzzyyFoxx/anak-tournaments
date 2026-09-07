@@ -220,14 +220,12 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
   );
 }
 
-// ─── Main dialog ────────────────────────────────────────────────────────────
+// ─── Profile body (shared by the dialog and People › Identity) ──────────────
 
-interface PlayerProfileDialogProps {
+interface PlayerProfileBodyProps {
   user: User;
-  onClose: () => void;
   /** Avatar + name editing (user.update). */
   canEdit: boolean;
-  canDelete: boolean;
   /** Full identity management — add/edit/delete/set-primary (superuser only). */
   canManageIdentity: boolean;
   /** Toggle per-workspace / global display visibility (user.read). */
@@ -236,18 +234,26 @@ interface PlayerProfileDialogProps {
   workspaceId: number | null;
   canMerge?: boolean;
   onMergeRequested?: (user: User) => void;
+  /** Notifies the owner (the person hub) that the identity changed. */
+  onUserUpdated?: (user: User) => void;
 }
 
-export function PlayerProfileDialog({
+/**
+ * Avatar, name, id, and the social-identity editor.
+ *
+ * Exported so the person hub (People › Identity) can render the same surface
+ * inline instead of behind a dialog; the dialog below is now just a frame.
+ */
+export function PlayerProfileBody({
   user: initialUser,
-  onClose,
   canEdit,
   canManageIdentity,
   canSetVisibility,
   workspaceId,
   canMerge = false,
   onMergeRequested,
-}: Readonly<PlayerProfileDialogProps>) {
+  onUserUpdated,
+}: Readonly<PlayerProfileBodyProps>) {
   const [user, setUser] = useState(initialUser);
 
   // Every section updates local state through this; also bust the Next Data
@@ -255,8 +261,55 @@ export function PlayerProfileDialog({
   const handleUserUpdated = (updated: User) => {
     void revalidateUser(updated.id);
     setUser(updated);
+    onUserUpdated?.(updated);
   };
 
+  return (
+    <>
+      {/* ── Avatar + Name header ──────────────────────── */}
+      <div className="flex flex-col items-center gap-3 pb-4 border-b border-border/40">
+        <AvatarSection user={user} canEdit={canEdit} onUserUpdated={handleUserUpdated} />
+        <NameSection user={user} canEdit={canEdit} onUserUpdated={handleUserUpdated} />
+        <span className="text-xs text-muted-foreground tabular-nums">ID: {user.id}</span>
+        {canMerge && onMergeRequested ? (
+          <Button type="button" variant="outline" size="sm" onClick={() => onMergeRequested(user)}>
+            <ArrowRightLeft aria-hidden className="mr-2 h-4 w-4" />
+            Merge into another profile
+          </Button>
+        ) : null}
+      </div>
+
+      {/* ── Social identities ─────────────────────────── */}
+      <div className="pt-2">
+        <div className="flex items-center gap-2 mb-3">
+          <h4 className="text-sm font-medium text-muted-foreground">Social identities</h4>
+          <Badge variant="outline" className="tabular-nums font-normal text-xs">
+            {user.social_accounts?.length ?? 0}
+          </Badge>
+        </div>
+        <SocialAccountsEditor
+          userId={user.id}
+          accounts={user.social_accounts ?? []}
+          canManage={canManageIdentity}
+          canSetVisibility={canSetVisibility}
+          workspaceId={workspaceId}
+          onUserUpdated={handleUserUpdated}
+        />
+      </div>
+    </>
+  );
+}
+
+// ─── Main dialog ────────────────────────────────────────────────────────────
+
+interface PlayerProfileDialogProps extends PlayerProfileBodyProps {
+  onClose: () => void;
+}
+
+export function PlayerProfileDialog({
+  onClose,
+  ...body
+}: Readonly<PlayerProfileDialogProps>) {
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-md">
@@ -265,36 +318,7 @@ export function PlayerProfileDialog({
           <DialogDescription>Manage the player profile, avatar, and social identities.</DialogDescription>
         </DialogHeader>
 
-        {/* ── Avatar + Name header ──────────────────────── */}
-        <div className="flex flex-col items-center gap-3 pb-4 border-b border-border/40">
-          <AvatarSection user={user} canEdit={canEdit} onUserUpdated={handleUserUpdated} />
-          <NameSection user={user} canEdit={canEdit} onUserUpdated={handleUserUpdated} />
-          <span className="text-xs text-muted-foreground tabular-nums">ID: {user.id}</span>
-          {canMerge && onMergeRequested ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => onMergeRequested(user)}>
-              <ArrowRightLeft aria-hidden className="mr-2 h-4 w-4" />
-              Merge into another profile
-            </Button>
-          ) : null}
-        </div>
-
-        {/* ── Social identities ─────────────────────────── */}
-        <div className="pt-2">
-          <div className="flex items-center gap-2 mb-3">
-            <h4 className="text-sm font-medium text-muted-foreground">Social identities</h4>
-            <Badge variant="outline" className="tabular-nums font-normal text-xs">
-              {user.social_accounts?.length ?? 0}
-            </Badge>
-          </div>
-          <SocialAccountsEditor
-            userId={user.id}
-            accounts={user.social_accounts ?? []}
-            canManage={canManageIdentity}
-            canSetVisibility={canSetVisibility}
-            workspaceId={workspaceId}
-            onUserUpdated={handleUserUpdated}
-          />
-        </div>
+        <PlayerProfileBody {...body} />
       </DialogContent>
     </Dialog>
   );

@@ -46,17 +46,13 @@ export function filterDraftPlayers(
   const query = filters.query.toLocaleLowerCase();
   return players
     .filter((player) => {
-      const roles = new Set<DraftRole>([
-        player.primary_role,
-        ...((player.secondary_roles_json ?? []) as DraftRole[])
-      ]);
+      const roles = playerRoles(player);
       const haystack = [
         player.battle_tag ?? `#${player.id}`,
         player.sub_role ?? "",
-        ...[player.primary_role, ...((player.secondary_roles_json ?? []) as DraftRole[])]
-          .flatMap((r) => ROLE_LABELS[r] ?? [r]),
+        ...roles.flatMap((r) => ROLE_LABELS[r] ?? [r]),
       ].join(" ").toLocaleLowerCase();
-      return (filters.role === "all" || roles.has(filters.role)) && (!query || haystack.includes(query));
+      return (filters.role === "all" || roles.includes(filters.role)) && (!query || haystack.includes(query));
     })
     .sort((left, right) => {
       if (filters.sort === "name") {
@@ -76,13 +72,47 @@ export function optionForSelection(
   );
 }
 
+/**
+ * The roles this player may be picked on, primary first.
+ *
+ * `is_flex` means "no fixed role": the server lets a flex player fill any role
+ * slot (`rules.role_is_legal`) and its feasibility model counts them as supply
+ * for every role (`build_feasibility_state`), so the safe pick the solver is
+ * holding open can be a role the player never declared. Offering only the
+ * declared roles hid exactly that option and left a flex player unpickable —
+ * every offered role blocked with `role_shortage` — from the very first pick.
+ */
 export function playerRoles(player: DraftPlayer): DraftRole[] {
+  const declared = player.is_flex
+    ? (["tank", "dps", "support"] as DraftRole[])
+    : (player.secondary_roles as DraftRole[]);
+  // `primary_role` is null once the player has no playable role left; nothing
+  // may be substituted for it.
   return Array.from(
-    new Set<DraftRole>([
-      player.primary_role,
-      ...((player.secondary_roles_json ?? []) as DraftRole[])
-    ])
+    new Set<DraftRole>(player.primary_role ? [player.primary_role, ...declared] : declared)
   );
+}
+
+/**
+ * The role to preselect for a player: the first SAFE one in the player's own
+ * order (primary, then the declared secondaries).
+ *
+ * The server emits an option per role in its own canonical order — tank, dps,
+ * support (`evaluate_pick_options` iterates `HERO_TYPE_CLASSES`) — so reading
+ * its first safe option handed a support main their tank option. `null` means
+ * the player has no safe role at all, which is what blocks the row.
+ */
+export function safeRoleForPlayer(
+  options: DraftPickOptionsResponse | null,
+  player: DraftPlayer
+): DraftRole | null {
+  const safe = (options?.options ?? []).filter(
+    (option) => option.player_id === player.id && option.is_safe
+  );
+  if (safe.length === 0) return null;
+  // A safe role the player never declared can only come from the server (a
+  // flex player), so it still beats returning nothing.
+  return playerRoles(player).find((role) => safe.some((option) => option.role === role)) ?? safe[0].role;
 }
 
 export function buildRosterByTeam(players: DraftPlayer[]): Map<number, DraftPlayer[]> {
@@ -140,25 +170,28 @@ export function groupPicksByRound(picks: DraftPick[]): DraftRoundGroup[] {
     }));
 }
 
-export function rosterRoleForPlayer(player: DraftPlayer, picks: DraftPick[]): DraftRole {
+export function rosterRoleForPlayer(player: DraftPlayer, picks: DraftPick[]): DraftRole | null {
   const pick = picks.find((p) => p.picked_player_id === player.id && p.target_role != null);
   return (pick?.target_role as DraftRole | undefined) ?? player.primary_role;
 }
 
 /**
  * The rank that represents a player on their slot, mirroring the server's
- * `services.draft.ranks.slot_rank`. Role slots keep it role-specific; a
- * role-less (all-flex) roster assigns nobody a role, so the server's
- * shape-aware `effective_rank` — the player's best role rank — stands in. The
- * flex rule itself is never recomputed here.
+ * `domain.draft.ranks.slot_rank`. Role slots keep it role-specific; `role=null`
+ * (pool card / unseated) uses the server's best playable rank (`effective_rank`)
+ * when any role rank remains. A role-less (all-flex) shape values everyone
+ * that way. The flex rule itself is never recomputed here.
  */
 export function slotRankForPlayer(
   player: DraftPlayer,
-  role: DraftRole,
+  role: DraftRole | null,
   shape: Pick<RosterShape, "has_role_slots">
 ): number | null {
-  if (!shape.has_role_slots) return player.effective_rank;
-  return player.role_ranks?.[role] ?? player.rank_value ?? null;
+  if (!shape.has_role_slots) return player.effective_rank ?? null;
+  if (role == null) {
+    return Object.keys(player.role_ranks ?? {}).length > 0 ? (player.effective_rank ?? null) : null;
+  }
+  return player.role_ranks?.[role] ?? null;
 }
 
 /**

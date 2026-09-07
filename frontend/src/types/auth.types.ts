@@ -18,29 +18,16 @@ export interface AccountSession {
   ip_address?: string | null;
 }
 
-export interface ApiKeyLimits {
-  requests_per_minute: number;
-  jobs_per_day: number;
-  concurrent_jobs: number;
-  max_upload_bytes: number;
-  max_players: number;
-}
-
-export interface ApiKeyConfigPolicy {
-  allowed_keys: string[];
-  /** @deprecated Algorithm choice is no longer configurable; field kept for backward compat. */
-  allowed_algorithms?: string[];
-  max_values: Record<string, number>;
-}
-
 export interface AccountApiKey {
   id: number;
   name: string;
   workspace_id: number;
   public_id: string;
+  owner_id: number;
+  owner_username: string;
   scopes: string[];
-  limits: ApiKeyLimits;
-  config_policy: ApiKeyConfigPolicy;
+  limits: Record<string, unknown>;
+  config_policy: Record<string, unknown>;
   expires_at?: string | null;
   revoked_at?: string | null;
   last_used_at?: string | null;

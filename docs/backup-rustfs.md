@@ -1,36 +1,36 @@
-# Бэкапы: rustfs на dd-new + реплика на home
+# Backups: rustfs on dd-new + replica on home
 
-Контур для дампов Postgres и секретов, устроенный так, чтобы **смерть dd-new не
-уносила бэкапы вместе с собой**. Два одиночных инстанса
-[rustfs](https://github.com/rustfs/rustfs) (S3-совместимое хранилище на Rust),
-между ними — нативная **bucket replication**.
+A setup for Postgres dumps and secrets, built so that **the death of dd-new does
+not take the backups down with it**. Two standalone
+[rustfs](https://github.com/rustfs/rustfs) instances (S3-compatible storage
+written in Rust) with native **bucket replication** between them.
 
-Всё, что здесь описано, проверено локально на двух реальных инстансах
-`rustfs/rustfs:1.0.0-rc.1` (см. §9): репликация, ограниченный ключ,
-восстановление дампа из реплики, расшифровка tar с секретами.
+Everything described here has been verified locally on two real
+`rustfs/rustfs:1.0.0-rc.1` instances (see §9): replication, the restricted key,
+restoring a dump from the replica, decrypting the tar with secrets.
 
 ---
 
-## 1. Что от чего защищает
+## 1. What protects against what
 
-| Сценарий | Что спасает |
+| Scenario | What saves you |
 |---|---|
-| dd-new физически потерян (провайдер, диск, шифровальщик) | Полная копия на home: дамп, роли кластера, env-файлы, acme.json, топология RabbitMQ |
-| Испорчен один объект (битрот) | Вторая копия. На одном диске у rustfs **нулевой паритет** — битрот детектируется, но не лечится (`docs/operations/no-parity-bitrot-recovery.md` в апстриме) |
-| `rm` на источнике — руками, багом или шифровальщиком | Удаления **не реплицируются**, и ключ, которым dd-new пишет в home, **не имеет права на delete** |
-| Сломанный дамп («файл есть, а восстановиться нельзя») | Каждый дамп перед выгрузкой прогоняется через `pg_restore` целиком |
-| Бэкап молча перестал делаться | Алерты по возрасту метрики, а не по её значению (`monitoring/prometheus/rules/backup.yml`) |
+| dd-new is physically lost (provider, disk, ransomware) | A full copy on home: dump, cluster roles, env files, acme.json, RabbitMQ topology |
+| A single object is corrupted (bitrot) | The second copy. On a single disk rustfs has **zero parity** — bitrot is detected but not repaired (`docs/operations/no-parity-bitrot-recovery.md` upstream) |
+| `rm` on the source — by hand, by a bug or by ransomware | Deletions are **not replicated**, and the key dd-new writes to home with **has no delete permission** |
+| A broken dump ("the file is there, but you cannot restore from it") | Every dump is run through `pg_restore` in full before upload |
+| Backups silently stopped happening | Alerts on the age of the metric, not on its value (`monitoring/prometheus/rules/backup.yml`) |
 
-Чего этот контур **не** делает: это не PITR. Гранулярность — сутки (дамп по
-таймеру). Нужен PITR — это отдельная история с WAL-архивом.
+What this setup does **not** do: it is not PITR. Granularity is one day (a dump
+on a timer). If you need PITR, that is a separate story with a WAL archive.
 
 ---
 
-## 2. Как устроено
+## 2. How it works
 
 ```mermaid
 flowchart LR
-  subgraph ddnew["dd-new (прод)"]
+  subgraph ddnew["dd-new (prod)"]
     PG[("db_postgres<br/>PG 18")]
     JOB["backup.sh<br/>systemd timer 03:17 UTC"]
     SRC["rustfs :9000<br/>127.0.0.1 only"]
@@ -39,104 +39,105 @@ flowchart LR
     JOB -->|"PutObject"| SRC
     JOB -->|"owt_backup.prom"| NE
   end
-  subgraph home["home (реплика)"]
+  subgraph home["home (replica)"]
     CADDY["caddy :443<br/>ACME"]
     DST["rustfs :9000"]
     CADDY --> DST
   end
-  SRC -->|"bucket replication<br/>ключ без delete"| CADDY
-  JOB -.->|"проверка: объект есть в реплике?"| CADDY
+  SRC -->|"bucket replication<br/>key without delete"| CADDY
+  JOB -.->|"check: is the object in the replica?"| CADDY
 ```
 
-Ключевые решения и причины:
+Key decisions and the reasons for them:
 
-- **Bucket replication, а не site replication.** У site replication открытый баг
-  rustfs [#5963](https://github.com/rustfs/rustfs/issues/5963): при расхождении
-  состояния пиров она молча перестаёт репллицировать, продолжая отвечать
-  «Enabled / 2 sites». Для бэкапов это худший режим отказа из возможных.
-- **Удаления не реплицируются.** `mc replicate add` по умолчанию ставит
-  `DeleteMarkerReplication=Disabled` и `DeleteReplication=Disabled` — проверено,
-  см. вывод `mc replicate export` в §9. Поэтому `rm` на dd-new не доходит до home.
-- **Ключ реплики — append-only.** `setup.sh` создаёт на home пользователя с
-  политикой без `s3:DeleteObject`/`s3:DeleteObjectVersion`. Проверено: `rm`,
-  `rm --version-id` и `mb` этим ключом получают `Access Denied`.
-- **Retention на каждой площадке свой** (ILM, `KEEP_DAYS`). Раз удаления не
-  реплицируются, истечение срока на источнике не удаляет копию на home; каждая
-  сторона чистит себя сама. Побочный эффект — приятный: скомпрометированный
-  dd-new не может проредить архив на home.
-- **`RUSTFS_DURABILITY_MODE=strict` и `RUSTFS_NEW_BUCKET_DURABILITY_MODE=strict`**
-  в обоих compose. Вторая переменная обязательна: **новые бакеты создаются в
-  `relaxed`**, где `xl.meta` и inline-объекты не fsync'ятся, и при потере питания
-  подтверждённая запись может остаться без метаданных.
-- **Успех прогона = объект есть в РЕПЛИКЕ.** Репликация асинхронная; 200 на
-  PutObject ничего не доказывает. `backup.sh` ждёт подтверждения (до
-  `REPL_WAIT_SECONDS`) и только тогда пишет метрику успеха.
-- **Тег образа пинуется.** Docker-тег `latest` у rustfs протух (обновлён
-  2026-07-30, до релиза `1.0.0-rc.1` от 2026-08-08).
+- **Bucket replication, not site replication.** Site replication has an open
+  rustfs bug [#5963](https://github.com/rustfs/rustfs/issues/5963): when peer
+  state diverges it silently stops replicating while continuing to report
+  "Enabled / 2 sites". For backups that is the worst possible failure mode.
+- **Deletions are not replicated.** By default `mc replicate add` sets
+  `DeleteMarkerReplication=Disabled` and `DeleteReplication=Disabled` — verified,
+  see the `mc replicate export` output in §9. So an `rm` on dd-new never reaches home.
+- **The replication key is append-only.** `setup.sh` creates a user on home with
+  a policy that has no `s3:DeleteObject`/`s3:DeleteObjectVersion`. Verified: `rm`,
+  `rm --version-id` and `mb` with this key all get `Access Denied`.
+- **Retention is per site** (ILM, `KEEP_DAYS`). Since deletions are not
+  replicated, expiry on the source does not delete the copy on home; each side
+  cleans up after itself. The side effect is a pleasant one: a compromised
+  dd-new cannot thin out the archive on home.
+- **`RUSTFS_DURABILITY_MODE=strict` and `RUSTFS_NEW_BUCKET_DURABILITY_MODE=strict`**
+  in both compose files. The second variable is mandatory: **new buckets are created
+  in `relaxed`**, where `xl.meta` and inline objects are not fsync'ed, and on power
+  loss an acknowledged write can end up without metadata.
+- **A successful run = the object is in the REPLICA.** Replication is
+  asynchronous; a 200 on PutObject proves nothing. `backup.sh` waits for
+  confirmation (up to `REPL_WAIT_SECONDS`) and only then writes the success metric.
+- **The image tag is pinned.** The rustfs `latest` Docker tag is stale (updated
+  2026-07-30, before the `1.0.0-rc.1` release of 2026-08-08).
 
-Файлы:
+Files:
 
-| Путь | Что |
+| Path | What |
 |---|---|
-| `docker-compose.backup.yml` | rustfs-источник на dd-new (проект `owt-backup`) |
-| `ops/backup/compose.home.yml` + `Caddyfile` | rustfs-реплика + TLS на home |
-| `ops/backup/backup.env.example` | конфиг обеих сторон (копируется в `backup.env`, не коммитится) |
-| `ops/backup/setup.sh` | идемпотентная настройка: бакеты, версионирование, ILM, ключ, правило репликации, проверка round-trip |
-| `ops/backup/backup.sh` | сам прогон: дамп → проверка → выгрузка → подтверждение реплики → метрики |
-| `ops/backup/lib.sh` | общее: конфиг, обёртка над `mc` в контейнере |
-| `ops/backup/systemd/` | таймер и юнит |
-| `monitoring/prometheus/rules/backup.yml` | алерты |
+| `docker-compose.backup.yml` | the rustfs source on dd-new (project `owt-backup`) |
+| `ops/backup/compose.home.yml` + `Caddyfile` | the rustfs replica + TLS on home |
+| `ops/backup/backup.env.example` | config for both sides (copied to `backup.env`, not committed) |
+| `ops/backup/setup.sh` | idempotent setup: buckets, versioning, ILM, key, replication rule, round-trip check |
+| `ops/backup/backup.sh` | the run itself: dump → verify → upload → replica confirmation → metrics |
+| `ops/backup/lib.sh` | shared: config, wrapper around `mc` in a container |
+| `ops/backup/systemd/` | timer and unit |
+| `monitoring/prometheus/rules/backup.yml` | alerts |
 
-`mc` и `pg_dump` нигде не устанавливаются на хост: первый запускается образом
-`minio/mc`, второй берётся **из контейнера Postgres** — так версия клиента
-гарантированно совпадает с сервером, а пароль не покидает контейнер.
+Neither `mc` nor `pg_dump` is installed on the host anywhere: the first runs from
+the `minio/mc` image, the second is taken **from the Postgres container** — that
+way the client version is guaranteed to match the server, and the password never
+leaves the container.
 
 ---
 
-## 3. Установка
+## 3. Installation
 
-### 3.0. Конфиг (на обоих хостах один и тот же файл)
+### 3.0. Config (the same file on both hosts)
 
 ```bash
 cp ops/backup/backup.env.example ops/backup/backup.env
 chmod 600 ops/backup/backup.env
-# пароли — только из генератора, [A-Za-z0-9+/=]:
+# passwords — from the generator only, [A-Za-z0-9+/=]:
 openssl rand -base64 30
 ```
 
-Заполнить: `RUSTFS_ROOT_*`, `HOME_RUSTFS_ROOT_*`, `REPL_*`, `HOME_S3_DOMAIN`,
+Fill in: `RUSTFS_ROOT_*`, `HOME_RUSTFS_ROOT_*`, `REPL_*`, `HOME_S3_DOMAIN`,
 `HOME_S3_URL`, `ACME_EMAIL`, `PG_CONTAINER`, `PG_DATABASES`.
 
-> Символы вне `[A-Za-z0-9+/=._~-]` в ключах запрещены и отсекаются на старте:
-> `mc` принимает креды только внутри URL и **не** percent-декодирует их, поэтому
-> `@`, `:` и `%` в пароле дают загадочное `signature does not match`.
+> Characters outside `[A-Za-z0-9+/=._~-]` are forbidden in keys and are rejected at
+> startup: `mc` accepts credentials only inside a URL and does **not** percent-decode
+> them, so `@`, `:` and `%` in a password produce a cryptic `signature does not match`.
 
-### 3.1. home (сначала реплика — источнику нужно, куда писать)
+### 3.1. home (the replica first — the source needs somewhere to write)
 
-DNS: `A`-запись `$HOME_S3_DOMAIN` на домашний IP, порты 80 и 443 проброшены на
-сервер (80 нужен ACME).
+DNS: an `A` record for `$HOME_S3_DOMAIN` pointing at the home IP, ports 80 and 443
+forwarded to the server (80 is needed for ACME).
 
 ```bash
-# каталоги: контейнер работает под uid:gid 10001:10001
+# directories: the container runs as uid:gid 10001:10001
 install -d -o 10001 -g 10001 /srv/owt-backup/rustfs/data /srv/owt-backup/rustfs/logs
 install -d /srv/owt-backup/caddy/data /srv/owt-backup/caddy/config
 
 cd ops/backup
 docker compose -f compose.home.yml --env-file backup.env up -d
 docker compose -f compose.home.yml --env-file backup.env ps   # rustfs healthy
-curl -fsS https://$HOME_S3_DOMAIN/health && echo OK           # сертификат выпущен
+curl -fsS https://$HOME_S3_DOMAIN/health && echo OK           # certificate issued
 ```
 
-Файрвол: реплика — не публичный сервис. Оставить 443 только для dd-new и своего
-адреса:
+Firewall: the replica is not a public service. Leave 443 open only to dd-new and
+to your own address:
 
 ```bash
 ufw allow from <IP dd-new> to any port 443 proto tcp
-ufw allow from <свой IP>   to any port 443 proto tcp
-# 80 нужен только на время выпуска/продления сертификата
+ufw allow from <your IP>   to any port 443 proto tcp
+# 80 is only needed while a certificate is being issued/renewed
 ```
 
-### 3.2. dd-new (источник)
+### 3.2. dd-new (the source)
 
 ```bash
 install -d -o 10001 -g 10001 /srv/owt-backup/rustfs/data /srv/owt-backup/rustfs/logs
@@ -144,38 +145,38 @@ install -d /etc/owt-backup && openssl rand -base64 32 > /etc/owt-backup/secrets.
 chmod 600 /etc/owt-backup/secrets.pass
 ```
 
-> `/etc/owt-backup/secrets.pass` — ключ от tar'а с секретами. **Скопировать его в
-> менеджер паролей и убедиться, что копия есть вне обоих хостов.** Потерян ключ —
-> потеряно содержимое `configs/*.tar.gz.enc` (env-файлы, acme.json, rabbitmq).
+> `/etc/owt-backup/secrets.pass` is the key to the tar with secrets. **Copy it into a
+> password manager and make sure a copy exists outside both hosts.** Lose the key and
+> you lose the contents of `configs/*.tar.gz.enc` (env files, acme.json, rabbitmq).
 
 ```bash
-make backup-up      # поднять rustfs-источник (слушает только 127.0.0.1:9000)
-make backup-setup   # бакеты, версионирование, ILM, ключ реплики, репликация + проверка
-make backup-run     # первый прогон целиком
+make backup-up      # bring up the rustfs source (listens on 127.0.0.1:9000 only)
+make backup-setup   # buckets, versioning, ILM, replication key, replication + check
+make backup-run     # the first full run
 ```
 
-`backup-setup` в конце сам пишет пробный объект и ждёт его появления на home —
-если он сказал `OK`, канал живой.
+At the end `backup-setup` writes a probe object itself and waits for it to appear on
+home — if it said `OK`, the channel is alive.
 
-### 3.3. Таймер
+### 3.3. Timer
 
 ```bash
 cp ops/backup/systemd/owt-backup.{service,timer} /etc/systemd/system/
-# ExecStart в .service указывает на фактический путь чекаута — проверить
+# ExecStart in the .service points at the actual checkout path — verify it
 systemctl daemon-reload
 systemctl enable --now owt-backup.timer
 systemctl list-timers owt-backup.timer
 ```
 
-### 3.4. Метрики и алерты
+### 3.4. Metrics and alerts
 
 ```bash
-install -d /var/lib/node_exporter/textfile          # сюда пишет backup.sh
-make monitoring-down && make monitoring-up          # подхватить textfile collector
-curl -X POST http://localhost:9090/-/reload         # перечитать rules/backup.yml
+install -d /var/lib/node_exporter/textfile          # backup.sh writes here
+make monitoring-down && make monitoring-up          # pick up the textfile collector
+curl -X POST http://localhost:9090/-/reload         # re-read rules/backup.yml
 ```
 
-Проверка, что метрики видны:
+Check that the metrics are visible:
 
 ```promql
 owt_backup_last_replica_success_timestamp_seconds
@@ -183,31 +184,31 @@ owt_backup_last_replica_success_timestamp_seconds
 
 ---
 
-## 4. Что должно быть видно в норме
+## 4. What a healthy state looks like
 
 ```bash
-make backup-ls                      # объекты на home
-mc replicate export local/owt-backups   # правило: Delete*Replication = Disabled
-journalctl -u owt-backup -n 50      # последний прогон
+make backup-ls                      # objects on home
+mc replicate export local/owt-backups   # rule: Delete*Replication = Disabled
+journalctl -u owt-backup -n 50      # the last run
 cat /var/lib/node_exporter/textfile/owt_backup.prom
 ```
 
-Раскладка ключей в бакете:
+Key layout in the bucket:
 
 ```
-postgres/<db>/<год>/<db>-<TS>.dump          + .sha256
-postgres/globals/<год>/globals-<TS>.sql     + .sha256   # роли и права кластера
-configs/<год>/configs-<TS>.tar.gz.enc       + .sha256   # env, acme.json, rabbitmq-defs (AES-256)
+postgres/<db>/<year>/<db>-<TS>.dump         + .sha256
+postgres/globals/<year>/globals-<TS>.sql    + .sha256   # cluster roles and grants
+configs/<year>/configs-<TS>.tar.gz.enc      + .sha256   # env, acme.json, rabbitmq-defs (AES-256)
 ```
 
 ---
 
-## 5. Восстановление
+## 5. Restore
 
-### 5.1. Обычное (dd-new жив) — берём с локального rustfs
+### 5.1. Normal case (dd-new is alive) — take it from the local rustfs
 
-Ниже `LOCAL` — алиас `local`, если запускаете через `ops/backup/lib.sh`;
-в примерах — прямой `docker run`, чтобы процедура работала и на пустом хосте.
+Below, `LOCAL` is the `local` alias if you go through `ops/backup/lib.sh`;
+the examples use a direct `docker run` so that the procedure also works on a bare host.
 
 ```bash
 set -a; . ops/backup/backup.env; set +a
@@ -220,20 +221,20 @@ $MC ls --recursive s/$BACKUP_BUCKET/postgres/anak_dev/
 $MC cp s/$BACKUP_BUCKET/postgres/anak_dev/2026/anak_dev-<TS>.dump        /work/dump
 $MC cp s/$BACKUP_BUCKET/postgres/anak_dev/2026/anak_dev-<TS>.dump.sha256 /work/dump.sha256
 
-# проверить целостность ДО восстановления
+# verify integrity BEFORE restoring
 echo "$(cat /srv/restore/dump.sha256)  /srv/restore/dump" | sha256sum -c -
 
-# восстановить в отдельную базу и только потом переключать приложение
+# restore into a separate database and only then switch the application over
 docker exec -e PGPASSWORD="$PGPASSWORD" db_postgres psql -U <user> -d postgres \
   -c 'CREATE DATABASE anak_restore'
 docker exec -i db_postgres pg_restore -U <user> -d anak_restore --no-owner < /srv/restore/dump
 ```
 
-### 5.2. dd-new мёртв — работаем только с репликой
+### 5.2. dd-new is dead — working from the replica only
 
-Ровно тот сценарий, ради которого всё это сделано. Всё то же, но алиас смотрит
-на home и хватает root-кред реплики (у `REPL_*` нет прав на чтение вне записи —
-он для репликации, не для восстановления):
+Exactly the scenario all of this was built for. Everything is the same, but the
+alias points at home and uses the replica's root credentials (`REPL_*` has no read
+permission beyond writing — it is for replication, not for restore):
 
 ```bash
 MC="docker run --rm -i -v /srv/restore:/work \
@@ -244,99 +245,100 @@ $MC ls --recursive r/$BACKUP_BUCKET/
 $MC cp r/$BACKUP_BUCKET/postgres/anak_dev/2026/anak_dev-<TS>.dump /work/dump
 ```
 
-Полный порядок подъёма прода на новом хосте:
+The full order for bringing prod up on a new host:
 
-1. Поднять Postgres, применить `globals-<TS>.sql` (роли и права кластера — их в
-   дампе базы нет, без них `GRANT` в дампе упадёт):
+1. Bring up Postgres, apply `globals-<TS>.sql` (cluster roles and grants — they are
+   not in the database dump, and without them the `GRANT` statements in the dump
+   will fail):
    `psql -U postgres -f globals.sql`
 2. `createdb anak_dev` + `pg_restore -d anak_dev dump`
-3. Расшифровать секреты и разложить env-файлы/acme.json:
+3. Decrypt the secrets and lay out the env files / acme.json:
    ```bash
    openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
-     -pass file:/путь/к/secrets.pass -in configs-<TS>.tar.gz.enc | tar xzvf - -C /
+     -pass file:/path/to/secrets.pass -in configs-<TS>.tar.gz.enc | tar xzvf - -C /
    ```
-   (в архиве пути сохранены от корня: `./etc/traefik/...`, `./root/.../backend/env/...`)
-4. Импортировать топологию RabbitMQ:
+   (paths in the archive are preserved from the root: `./etc/traefik/...`, `./root/.../backend/env/...`)
+4. Import the RabbitMQ topology:
    `rabbitmqctl import_definitions /path/rabbitmq-definitions.json`
-5. Поднять стек, затем **пересобрать контур бэкапов в обратную сторону**: на новом
-   хосте `make backup-up && make backup-setup`. Архив с home при этом можно
-   залить назад: `mc mirror --preserve r/owt-backups local/owt-backups`.
+5. Bring up the stack, then **rebuild the backup setup in the opposite direction**: on
+   the new host run `make backup-up && make backup-setup`. The archive from home can
+   be pushed back at that point: `mc mirror --preserve r/owt-backups local/owt-backups`.
 
 ---
 
-## 6. Регулярное обслуживание
+## 6. Routine maintenance
 
-| Когда | Что |
+| When | What |
 |---|---|
-| Первая неделя после установки | Убедиться глазами, что ILM реально удаляет: у rustfs Lifecycle помечен в README как «Under Testing». `mc ls --versions local/owt-backups/postgres/<db>/<год>/` — старые версии должны исчезать через `KEEP_NONCURRENT_DAYS` |
-| Раз в месяц | Учебное восстановление по §5.2 (именно из реплики, а не из локального rustfs) в отдельную базу + `select count(*)` по нескольким таблицам |
-| При смене пароля Postgres/RabbitMQ | Прогнать `make backup-run` вручную — в tar с секретами попадут новые значения |
-| При росте базы | Проверить свободное место на обоих хостах: у одиночного диска нет ни паритета, ни настраиваемого резерва под заполнение |
+| The first week after installation | Confirm with your own eyes that ILM actually deletes: in rustfs, Lifecycle is marked "Under Testing" in the README. `mc ls --versions local/owt-backups/postgres/<db>/<year>/` — old versions must disappear after `KEEP_NONCURRENT_DAYS` |
+| Monthly | A restore drill per §5.2 (from the replica specifically, not from the local rustfs) into a separate database + `select count(*)` on a few tables |
+| When the Postgres/RabbitMQ password changes | Run `make backup-run` by hand — the new values then land in the tar with secrets |
+| As the database grows | Check free space on both hosts: a single disk has neither parity nor a configurable reserve against filling up |
 
-Изменить срок хранения: `KEEP_DAYS`/`KEEP_NONCURRENT_DAYS` в `backup.env`, затем
-`make backup-setup` (ILM импортируется целиком, дубликатов правил не будет).
+To change the retention period: `KEEP_DAYS`/`KEEP_NONCURRENT_DAYS` in `backup.env`,
+then `make backup-setup` (ILM is imported as a whole, so no duplicate rules).
 
-Нужен «месячный» слой глубже 30 дней — самый простой путь: в `backup.sh` после
-выгрузки первого числа месяца делать серверную копию в отдельный префикс
-(`mc cp local/... local/.../monthly/...`) и добавить в ILM правило с фильтром по
-этому префиксу и своим сроком.
+If you need a "monthly" tier deeper than 30 days, the simplest path: in `backup.sh`,
+after the upload on the first day of the month, make a server-side copy into a
+separate prefix (`mc cp local/... local/.../monthly/...`) and add an ILM rule
+filtered on that prefix with its own period.
 
 ---
 
-## 7. Отказы и что делать
+## 7. Failures and what to do
 
-| Симптом | Причина / что смотреть |
+| Symptom | Cause / where to look |
 |---|---|
-| `BackupMissing` | Таймер не сработал: `systemctl status owt-backup.timer`, `journalctl -u owt-backup` |
-| `BackupReplicaStale` | Дамп есть, копии нет. home недоступен (`curl https://$HOME_S3_DOMAIN/health`), TLS истёк, файрвол, или у ключа отобрали права. `mc replicate export local/owt-backups` |
-| `битый дамп <db>` в логе | `pg_restore` не смог распаковать архив: чаще всего кончилось место в `BACKUP_TMP_DIR` или оборвался `docker exec` |
-| `объект не доехал до реплики за Ns` | Смотреть `docker logs owt-backup-rustfs-1`; неудачные репликации живут в MRF-очереди и повторяются сами — после восстановления home догонит без ручных действий |
-| `BackupDumpSuspiciouslySmall` | Дамп вдвое меньше обычного: проверить, что дампится нужная база |
-| Нужно перегнать всё заново | `mc replicate resync start local/owt-backups --remote-bucket <arn>` |
+| `BackupMissing` | The timer did not fire: `systemctl status owt-backup.timer`, `journalctl -u owt-backup` |
+| `BackupReplicaStale` | The dump exists, the copy does not. home is unreachable (`curl https://$HOME_S3_DOMAIN/health`), TLS expired, firewall, or the key lost its permissions. `mc replicate export local/owt-backups` |
+| `FATAL:` in the log naming a broken dump for `<db>` (emitted by `backup.sh` right after the `pg_restore -f /dev/null` check) | `pg_restore` could not unpack the archive in full: most often `BACKUP_TMP_DIR` ran out of space or the `docker exec` was interrupted |
+| `FATAL:` in the log naming an object that did not reach the replica within `REPL_WAIT_SECONDS` | Look at `docker logs owt-backup-rustfs-1`; failed replications live in the MRF queue and are retried automatically — once home is back it catches up without manual action |
+| `BackupDumpSuspiciouslySmall` | The dump is half its usual size: check that the right database is being dumped |
+| Everything needs to be re-pushed | `mc replicate resync start local/owt-backups --remote-bucket <arn>` |
 
 ---
 
-## 8. Ограничения, о которых стоит помнить
+## 8. Limitations worth keeping in mind
 
-- **rustfs 1.0.0-rc.1 — это RC**, GA-релиза не существует. Контур сознательно
-  устроен так, что даже полная потеря одной площадки не теряет данные.
-- **Один диск = нулевой паритет.** Битрот детектируется (GET вернёт
-  `FileCorrupt`), но не восстанавливается. Восстановление — только со второй
-  копии; именно поэтому копия обязательна, а не «желательна».
-- **Lifecycle помечен апстримом как «Under Testing»** — см. §6, первая неделя.
-- **`mc admin info` против rustfs не работает** (сервер отдаёт `{"info": …}`
-  вложенным, madmin-go ждёт поля верхним уровнем). Ни один из скриптов на него не
-  опирается; для проверки живости используется `mc ls` и `/health`.
-- **Object Lock здесь не включён.** Immutability обеспечивается append-only
-  ключом. Если захочется настоящий lock — только `GOVERNANCE`; репликация в
-  бакет под `COMPLIANCE` в апстриме не покрыта ни одним тестом, а
-  `?replication-check` против такого бакета гарантированно падает на Cleanup.
-- Оба инстанса на одном хосте не заведутся без
-  `RUSTFS_REPLICATION_ALLOW_LOOPBACK_TARGET=true`: loopback как replication
-  target запрещён по умолчанию (защита от SSRF). Приватные адреса (WireGuard
-  `10.x`, Tailscale `100.64.x`) разрешены без каких-либо allow-list'ов.
+- **rustfs 1.0.0-rc.1 is an RC**, there is no GA release. The setup is deliberately
+  built so that even the total loss of one site does not lose data.
+- **One disk = zero parity.** Bitrot is detected (a GET returns `FileCorrupt`) but
+  not repaired. Recovery comes only from the second copy; that is exactly why the
+  copy is mandatory, not "nice to have".
+- **Lifecycle is marked "Under Testing" upstream** — see §6, the first week.
+- **`mc admin info` does not work against rustfs** (the server returns `{"info": …}`
+  nested, while madmin-go expects the fields at the top level). None of the scripts
+  rely on it; `mc ls` and `/health` are used for liveness checks.
+- **Object Lock is not enabled here.** Immutability is provided by the append-only
+  key. If you ever want a real lock, use `GOVERNANCE` only; replication into a bucket
+  under `COMPLIANCE` is not covered by a single test upstream, and
+  `?replication-check` against such a bucket is guaranteed to fail during Cleanup.
+- Both instances on one host will not start without
+  `RUSTFS_REPLICATION_ALLOW_LOOPBACK_TARGET=true`: loopback as a replication target
+  is forbidden by default (SSRF protection). Private addresses (WireGuard `10.x`,
+  Tailscale `100.64.x`) are allowed without any allow-lists.
 
 ---
 
-## 9. Что и как было проверено
+## 9. What was verified and how
 
-Локально, на двух реальных инстансах `rustfs/rustfs:1.0.0-rc.1` в одной
-docker-сети, плюс контейнер `postgres:18-alpine` с 20 000 строк:
+Locally, on two real `rustfs/rustfs:1.0.0-rc.1` instances in one docker network,
+plus a `postgres:18-alpine` container with 20,000 rows:
 
-| Проверка | Результат |
+| Check | Result |
 |---|---|
-| `setup.sh` с нуля и повторно | Идемпотентен: второй прогон не плодит правила, ILM импортируется поверх |
-| Правило репликации | `DeleteMarkerReplication=Disabled`, `DeleteReplication=Disabled`, `ExistingObjectReplication=Enabled` |
-| Репликация объекта | Появляется в реплике за ~1–2 с, `sha256` совпадает побайтово; version-id сохраняется |
-| Multipart (96 МиБ) | Реплицируется, `sha256` совпадает |
-| `rm` на источнике | Delete-marker создаётся **только** на источнике; в реплике объект остаётся |
-| Append-only ключ | `cp` — ok; `rm`, `rm --version-id`, `mb` — `Access Denied` |
-| Репликация под append-only ключом | Работает |
-| `backup.sh` целиком | Дамп → `pg_restore` проверка → 6 объектов выгружены → все 6 подтверждены в реплике → метрики записаны |
-| Проверка целостности дампа | `pg_restore --list` **не** ловит усечение (возвращает 0) — поэтому используется полный `pg_restore -f /dev/null`, он ловит |
-| Восстановление из реплики | Скачано, `sha256sum -c` ok, `pg_restore` в чистую базу, 20 000 строк на месте |
-| tar с секретами | Расшифрован тем же `openssl enc -d`, пути внутри архива на месте |
-| Конфиги | `docker compose config` для обоих compose, `caddy validate`, `promtool check config/rules`, `shellcheck -x` — чисто |
+| `setup.sh` from scratch and again | Idempotent: the second run does not multiply rules, ILM is imported over the top |
+| Replication rule | `DeleteMarkerReplication=Disabled`, `DeleteReplication=Disabled`, `ExistingObjectReplication=Enabled` |
+| Object replication | Appears in the replica in ~1–2 s, `sha256` matches byte for byte; the version-id is preserved |
+| Multipart (96 MiB) | Replicated, `sha256` matches |
+| `rm` on the source | The delete marker is created **only** on the source; the object stays in the replica |
+| Append-only key | `cp` — ok; `rm`, `rm --version-id`, `mb` — `Access Denied` |
+| Replication under the append-only key | Works |
+| `backup.sh` end to end | Dump → `pg_restore` check → 6 objects uploaded → all 6 confirmed in the replica → metrics written |
+| Dump integrity check | `pg_restore --list` does **not** catch truncation (returns 0) — which is why the full `pg_restore -f /dev/null` is used, and it does catch it |
+| Restore from the replica | Downloaded, `sha256sum -c` ok, `pg_restore` into a clean database, all 20,000 rows present |
+| tar with secrets | Decrypted with the same `openssl enc -d`, paths inside the archive intact |
+| Configs | `docker compose config` for both compose files, `caddy validate`, `promtool check config/rules`, `shellcheck -x` — clean |
 
-Что **не** проверялось и проверяется только временем: фактическое удаление по
-ILM (нужны сутки+) и поведение при заполнении диска.
+What was **not** verified and can only be verified by time: actual deletion by ILM
+(needs a day or more) and behaviour when the disk fills up.

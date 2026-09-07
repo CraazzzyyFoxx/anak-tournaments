@@ -18,7 +18,6 @@ export default function RegistrationFeedSubRoutePage() {
   return (
     <SheetsFeedPage
       tournamentId={Number.isFinite(tournamentId) && tournamentId > 0 ? tournamentId : null}
-      basePath={`/admin/tournaments/${params.id}/registration`}
     />
   );
 }

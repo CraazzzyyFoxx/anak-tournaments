@@ -21,9 +21,11 @@ from shared.core.enums import StageType  # noqa: E402
 from shared.models.achievements.achievement import AchievementGrain, AchievementRule  # noqa: E402
 from shared.services.achievement_effective import override_applies_to_scope  # noqa: E402
 from src.domain.achievement_catalog import (  # noqa: E402
+    _DEFAULT_EXCLUDED_SLUGS,
     _all_default_rules,
     _hero_kd_rules,
     get_canonical_rule_catalog,
+    get_default_rule_slugs,
 )
 from src.domain.achievement_validation import (  # noqa: E402
     LEAF_GRAINS,
@@ -304,27 +306,37 @@ class ValidationTests(TestCase):
 
     def test_default_rule_catalog_matches_legacy_consts(self) -> None:
         rules = {rule.slug: rule for rule in _all_default_rules(1)}
-        self.assertEqual(sorted(EXPECTED_LEGACY_RULES), sorted(rules))
+        expected = {
+            slug: meta for slug, meta in EXPECTED_LEGACY_RULES.items() if slug not in _DEFAULT_EXCLUDED_SLUGS
+        }
+        self.assertEqual(sorted(expected), sorted(rules))
 
         metadata_mismatches = [
             (
                 slug,
-                EXPECTED_LEGACY_RULES[slug],
+                expected[slug],
                 (
                     rules[slug].name,
                     rules[slug].description_ru,
                     rules[slug].description_en,
                 ),
             )
-            for slug in sorted(EXPECTED_LEGACY_RULES)
+            for slug in sorted(expected)
             if (
                 rules[slug].name,
                 rules[slug].description_ru,
                 rules[slug].description_en,
             )
-            != EXPECTED_LEGACY_RULES[slug]
+            != expected[slug]
         ]
         self.assertEqual([], metadata_mismatches)
+
+    def test_excluded_slugs_are_not_default_seeded(self) -> None:
+        slugs = set(get_default_rule_slugs())
+        self.assertTrue(_DEFAULT_EXCLUDED_SLUGS.isdisjoint(slugs))
+        self.assertNotIn("welcome", slugs)
+        self.assertNotIn("regular-boar", slugs)
+        self.assertEqual(len(EXPECTED_LEGACY_RULES) - len(_DEFAULT_EXCLUDED_SLUGS), len(slugs))
 
 
 class TournamentFormatTests(TestCase):

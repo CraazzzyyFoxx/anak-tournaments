@@ -7,16 +7,19 @@ exports already produce, and handed to the same orchestrator. Battle-tag
 resolution, name dedup, newcomer computation and the slot -> ``HeroClass`` mapping
 all come for free and cannot drift.
 
-Two rules here are borrowed rather than invented, deliberately:
+Roles and ranks are NOT derived here. They come from ``shared.services.roster``,
+the one engine that answers "which roles does this registration play, and at what
+rank" for every surface. Two consequences worth stating:
 
-* **Rank.** ``BalancerRegistrationRole.rank_value`` is nullable but
-  ``Player.rank`` is ``NOT NULL``. A missing rank becomes ``0`` — the same answer
-  ``registration/export.py`` gives when building the balancer pool. Raising
-  instead would make the feature unusable for tournaments that never collect
-  ranks.
-* **Which rank.** Mirrors ``draft/ranks.py``: on a role shape the rank is
-  role-specific with the primary role as fallback; on a role-less (all-``flex``)
-  roster it is the member's best across every role they carry one for.
+* **Rank.** ``PlayerRoster.rank_on`` returns ``None`` for a role the player has
+  no resolved rank on, and ``Player.rank`` is ``NOT NULL``, so that becomes ``0``.
+  Raising instead would make the feature unusable for tournaments that never
+  collect ranks.
+* **Which rank.** On a role shape the rank is the rank *of that slot's role*,
+  with no fallback to another role's number: a player placed on ``tank`` with no
+  tank rank exports at ``0``, not at their damage rank. A role-less slot (an
+  all-``flex`` shape, a ``flex`` slot, or no slot at all) names no role, so it
+  takes the player's best playable rank.
 
 Members are passed with ``workspace_member_id`` already set, so the seam's
 "silently skipped because the battle tag did not resolve" branch — the one that
@@ -25,31 +28,28 @@ can produce an under-sized roster with no error — is unreachable on this path.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.registration.registration import (
     BalancerRegistration,
-    BalancerRegistrationRole,
     BalancerRegistrationTeam,
 )
 from shared.models.tenancy.workspace import WorkspaceMember
+from shared.models.tournament import Tournament
+from shared.services.roster import registration_load_options, roster_engine
 from shared.services.team_export.materialization import MaterializationMember, MaterializationTeam
 
 __all__ = (
     "RegisteredExportPayload",
     "SkippedTeam",
     "build_registered_export",
-    "registration_slot_rank",
 )
-
-logger = logging.getLogger(__name__)
 
 #: Statuses that mean a member is not on the roster (their slot was released).
 _RELEASED_STATUSES = frozenset({"withdrawn", "rejected"})
@@ -79,66 +79,30 @@ class RegisteredExportPayload:
     source_teams: list[BalancerRegistrationTeam] = field(default_factory=list)
 
 
-def registration_slot_rank(
-    role_ranks: dict[str, int],
-    slot_code: str | None,
-    shape: RosterShape,
-    *,
-    primary_rank: int | None = None,
-) -> int:
-    """The rank representing a member on their roster slot.
+def _slot_role(slot_code: str | None, shape: RosterShape) -> str | None:
+    """The role a roster slot rates the player on; ``None`` when it rates none.
 
-    Mirrors :func:`balancer-service ... draft.ranks.slot_rank`. Returns ``0`` for
-    "no rank recorded", matching ``registration/export.py``'s ``build_class``,
-    because ``Player.rank`` cannot be NULL.
+    A ``flex`` slot, a slot-less member and every slot of an all-``flex`` shape
+    all name no role, which is exactly :meth:`PlayerRoster.rank_on`'s ``None``.
     """
-    if not shape.has_role_slots:
-        # Role-less roster: no role for rank to be a function of, so take the best
-        # the member demonstrably has.
-        candidates = [*role_ranks.values()]
-        if primary_rank is not None:
-            candidates.append(primary_rank)
-        return max(candidates, default=0)
-    if slot_code is not None and slot_code != FLEX_SLOT_CODE:
-        exact = role_ranks.get(slot_code)
-        if exact is not None:
-            return exact
-    # A flex slot on a role shape, or a role with no rank of its own: fall back to
-    # the primary role's rank, exactly as ``role_rank`` does.
-    if primary_rank is not None:
-        return primary_rank
-    return max([*role_ranks.values()], default=0)
-
-
-def _role_view(roles: Sequence[BalancerRegistrationRole]) -> tuple[dict[str, int], int | None]:
-    """``({role_code: rank}, primary_rank)`` from a registration's role rows."""
-    role_ranks: dict[str, int] = {}
-    primary_rank: int | None = None
-    for role in sorted(roles, key=lambda entry: entry.priority):
-        if role.rank_value is None:
-            continue
-        role_ranks.setdefault(role.role, int(role.rank_value))
-        if role.is_primary and primary_rank is None:
-            primary_rank = int(role.rank_value)
-    if primary_rank is None:
-        # No role flagged primary: the lowest-priority entry is the de-facto
-        # default, which is the order ``export.py`` already sorts by.
-        ordered = [role for role in sorted(roles, key=lambda e: e.priority) if role.rank_value is not None]
-        primary_rank = int(ordered[0].rank_value) if ordered else None
-    return role_ranks, primary_rank
-
-
-def _sub_role_for(roles: Sequence[BalancerRegistrationRole], slot_code: str | None) -> str | None:
-    if slot_code is None:
+    if not shape.has_role_slots or slot_code is None or slot_code == FLEX_SLOT_CODE:
         return None
-    for role in sorted(roles, key=lambda entry: entry.priority):
-        if role.role == slot_code and role.subrole:
-            return role.subrole
-    return None
+    return slot_code
 
 
-def _member_name(registration: BalancerRegistration) -> str:
-    return registration.battle_tag or registration.display_name or f"registration-{registration.id}"
+def _sub_role_for(roster: PlayerRoster, role: str | None) -> str | None:
+    """The sub-role the player declared *for this slot's role*.
+
+    A role-less slot has no role to look up, so it takes the player's lead
+    sub-role -- the one their primary role carries.
+    """
+    if role is None:
+        return roster.sub_role
+    return next((entry.subrole for entry in roster.roles if entry.role.slot_code == role), None)
+
+
+def _member_name(roster: PlayerRoster) -> str:
+    return roster.battle_tag or roster.display_name or f"registration-{roster.registration_id}"
 
 
 async def build_registered_export(
@@ -171,9 +135,10 @@ async def build_registered_export(
     if not teams:
         return payload
 
-    # One query for every roster row across every team, with roles eager-loaded:
-    # the per-member role fan would otherwise be O(members) round-trips.
-    rosters = list(
+    # One query for every roster row across every team, carrying everything the
+    # roster engine reads: the per-member fan would otherwise be O(members)
+    # round-trips, and a lazy load under async raises ``MissingGreenlet``.
+    registrations = list(
         await session.scalars(
             sa.select(BalancerRegistration)
             .where(
@@ -181,11 +146,15 @@ async def build_registered_export(
                 BalancerRegistration.deleted_at.is_(None),
                 BalancerRegistration.status.notin_(_RELEASED_STATUSES),
             )
-            .options(selectinload(BalancerRegistration.roles))
+            .options(*registration_load_options())
         )
     )
+    workspace_id = await session.scalar(sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id))
+    rosters = await roster_engine.resolve(
+        session, registrations, workspace_id=workspace_id, tournament_id=tournament_id
+    )
     members_by_team: dict[int, list[BalancerRegistration]] = {}
-    for registration in rosters:
+    for registration in registrations:
         members_by_team.setdefault(registration.registration_team_id or 0, []).append(registration)
 
     # The captain is identified by a player id, not a battle tag, so the seam does
@@ -206,25 +175,23 @@ async def build_registered_export(
         if team.status != _EXPORTABLE_STATUS:
             payload.skipped.append(SkippedTeam(team_id=team.id, name=team.name, code="team_incomplete"))
             continue
-        roster = members_by_team.get(team.id, [])
-        if not roster:
+        team_members = members_by_team.get(team.id, [])
+        if not team_members:
             payload.skipped.append(SkippedTeam(team_id=team.id, name=team.name, code="team_empty"))
             continue
 
         members: list[MaterializationMember] = []
-        for registration in roster:
-            role_ranks, primary_rank = _role_view(registration.roles)
+        for registration in team_members:
+            roster = rosters[registration.id]
+            role = _slot_role(registration.team_slot_code, shape)
             members.append(
                 MaterializationMember(
-                    name=_member_name(registration),
-                    rank=registration_slot_rank(
-                        role_ranks,
-                        registration.team_slot_code,
-                        shape,
-                        primary_rank=primary_rank,
-                    ),
+                    name=_member_name(roster),
+                    # ``rank_on`` is ``None`` for a role this player has no
+                    # resolved rank on; ``Player.rank`` is NOT NULL, so 0.
+                    rank=roster.rank_on(role) or 0,
                     slot_code=registration.team_slot_code,
-                    sub_role=_sub_role_for(registration.roles, registration.team_slot_code),
+                    sub_role=_sub_role_for(roster, role),
                     battle_tag=registration.battle_tag,
                     workspace_member_id=registration.workspace_member_id,
                     is_substitute=bool(registration.is_substitute),

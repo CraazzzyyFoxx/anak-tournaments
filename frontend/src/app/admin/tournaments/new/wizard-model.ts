@@ -72,15 +72,6 @@ export function canCreateNow(basics: WizardBasicsState): boolean {
   return validateWizardStep("basics", basics).length === 0;
 }
 
-/** Stepper clicks may only go backwards; forward movement goes through Continue. */
-export function canNavigateToWizardStep(
-  steps: WizardStep[],
-  current: WizardStep,
-  target: WizardStep
-): boolean {
-  return steps.indexOf(target) <= steps.indexOf(current);
-}
-
 export function previousWizardStep(steps: WizardStep[], current: WizardStep): WizardStep {
   return steps[Math.max(0, steps.indexOf(current) - 1)];
 }

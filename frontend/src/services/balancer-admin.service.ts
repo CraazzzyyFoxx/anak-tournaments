@@ -22,6 +22,7 @@ import {
   MappingPreviewResponseV2,
   RegistrationUserExportResponse,
   BalanceExportResponse,
+  RanksExportResponse,
   BalanceSaveInput,
   BalancerPlayerExportResponse,
   BalancerRegistrationRankHistoryEntry,
@@ -275,6 +276,15 @@ export default class balancerAdminService {
 
   static async exportBalance(balanceId: number): Promise<BalanceExportResponse> {
     const response = await apiFetch(`/api/balancer/balances/${balanceId}/export`, {
+      method: "POST",
+      body: {}
+    });
+    return response.json();
+  }
+
+  /** Refresh exported players' ranks from the saved balance; teams stay as they are. */
+  static async exportBalanceRanks(balanceId: number): Promise<RanksExportResponse> {
+    const response = await apiFetch(`/api/balancer/balances/${balanceId}/export-ranks`, {
       method: "POST",
       body: {}
     });

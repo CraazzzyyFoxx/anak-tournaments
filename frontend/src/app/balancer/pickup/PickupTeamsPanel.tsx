@@ -63,9 +63,8 @@ import type { LookupItem } from "@/types/pagination.types";
 
 import {
   LOBBY_SIZE,
-  parsePointsPerWin,
-  parseTeamNames,
   parseVariants,
+  teamNamesByIndex,
   type PickupRecordOutcomeInput,
   type PickupSeat,
   type PickupTeam,
@@ -107,8 +106,8 @@ type PickupTeamsPanelProps = {
  * The result side: the teams the solver produced, and the writes that act on
  * them — re-balance, record who won (repeatable), and close the mix.
  *
- * Teams are read from the stored `result_json` rather than the roster's
- * `team_index`, because only the payload knows which *seat* each player got and
+ * Teams are read from the stored `balance_result` document, because only it
+ * knows which *seat* each player got and
  * at what rating — the difference between "these five are together" and a
  * lineup a host can actually call out. The solver returns many equally-scored
  * options, so the variant pager walks them without re-running the balance.
@@ -138,12 +137,12 @@ export function PickupTeamsPanel({
   onSwapSeats,
   onCopyBattleTags,
 }: Readonly<PickupTeamsPanelProps>) {
-  const variants = parseVariants(game?.result_json, parseTeamNames(game?.config_json));
+  const variants = parseVariants(game?.balance_result, teamNamesByIndex(game?.settings));
   // Clamped rather than reset in an effect: a shorter result must not leave the
   // pager pointing past the end.
   const index = Math.min(variantIndex, Math.max(0, variants.length - 1));
   const variant = variants[index];
-  const pointsPerWin = parsePointsPerWin(game?.config_json);
+  const pointsPerWin = game?.settings.points_per_win ?? null;
   // The matchup card is a self-contained graphic, so "share the teams" here needs
   // no detour through the fullscreen board.
   const { ref: captureRef, capturing, capture } = useNodeCapture();

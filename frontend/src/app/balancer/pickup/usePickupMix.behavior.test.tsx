@@ -15,6 +15,7 @@ import { usePickupMix } from "./usePickupMix";
 
 const updateRoster = vi.fn();
 const updatePlayer = vi.fn();
+const setParticipation = vi.fn();
 const listGames = vi.fn();
 const getGame = vi.fn();
 const listMatches = vi.fn();
@@ -34,6 +35,7 @@ vi.mock("@/services/custom-game.service", () => ({
     updateRoster: (...args: unknown[]) => updateRoster(...args),
     updatePlayer: (...args: unknown[]) => updatePlayer(...args),
     listMatches: (...args: unknown[]) => listMatches(...args),
+    setParticipation: (...args: unknown[]) => setParticipation(...args),
     rotation: (...args: unknown[]) => rotation(...args),
   },
 }));
@@ -55,6 +57,32 @@ vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() }
 
 const WORKSPACE_ID = 7;
 const GAME_ID = 11;
+
+
+/** The mix's own settings, all at their defaults. */
+const SETTINGS = {
+  points_per_win: null,
+  team_names: {},
+  role_mask: null,
+  balancer_config: null,
+};
+
+function game(overrides: Record<string, unknown> = {}) {
+  return {
+    id: GAME_ID,
+    workspace_id: WORKSPACE_ID,
+    host_user_id: 1,
+    co_hosts: [],
+    host_display_name: null,
+    name: "Tonight",
+    status: "draft",
+    settings: SETTINGS,
+    balance_result: null,
+    created_at: null,
+    roster_shape: null,
+    ...overrides,
+  };
+}
 
 function tick() {
   const { promise, resolve } = Promise.withResolvers<void>();
@@ -106,9 +134,9 @@ beforeEach(() => {
   document.body.innerHTML = "";
   vi.clearAllMocks();
   realtimeCalls.length = 0;
-  listGames.mockResolvedValue([{ id: GAME_ID, workspace_id: WORKSPACE_ID, host_user_id: 1, name: "Tonight", status: "draft", config_json: null, result_json: null, outcome_json: null }]);
-  getGame.mockResolvedValue({ id: GAME_ID, workspace_id: WORKSPACE_ID, host_user_id: 1, name: "Tonight", status: "draft", config_json: null, result_json: null, outcome_json: null, players: [] });
-  updateRoster.mockResolvedValue({ id: GAME_ID, workspace_id: WORKSPACE_ID, host_user_id: 1, name: "Tonight", status: "draft", config_json: null, result_json: null, outcome_json: null, players: [] });
+  listGames.mockResolvedValue([game()]);
+  getGame.mockResolvedValue(game({ players: [] }));
+  updateRoster.mockResolvedValue(game({ players: [] }));
   listMatches.mockResolvedValue([]);
   rotation.mockResolvedValue([]);
 });
@@ -151,33 +179,27 @@ describe("usePickupMix", () => {
     expect(client.getQueryState(gameKey)?.isInvalidated).toBe(true);
   });
 
-  it("applies rotation hints and refetches the game and rotation caches", async () => {
-    getGame.mockResolvedValueOnce({
-      id: GAME_ID,
-      workspace_id: WORKSPACE_ID,
-      host_user_id: 1,
-      name: "Tonight",
-      status: "draft",
-      config_json: null,
-      result_json: null,
-      outcome_json: null,
-      players: [
-        {
-          id: 1,
-          workspace_member_id: 9,
-          display_name: null,
-          battle_tag: "Aria#1111",
-          team_index: null,
-          sort_order: 0,
-          is_active: false,
-          must_play: false,
-          roles: null,
-          ranks: {},
-          rank_sources: {},
-          author_ranks: {},
-        },
-      ],
-    });
+  it("applies every rotation hint in one atomic write, then reseeds the caches", async () => {
+    getGame.mockResolvedValueOnce(
+      game({
+        players: [
+          {
+            id: 1,
+            workspace_member_id: 9,
+            display_name: null,
+            battle_tag: "Aria#1111",
+            sort_order: 0,
+            participation: "benched",
+            role_selection_mode: "all_ranked",
+            is_flex: false,
+            roles: null,
+            ranks: {},
+            rank_sources: {},
+            author_ranks: {},
+          },
+        ],
+      }),
+    );
     rotation.mockResolvedValueOnce([
       {
         workspace_member_id: 9,
@@ -188,21 +210,9 @@ describe("usePickupMix", () => {
         games_played: 2,
       },
     ]);
-    updatePlayer.mockResolvedValue({
-      id: GAME_ID,
-      workspace_id: WORKSPACE_ID,
-      host_user_id: 1,
-      name: "Tonight",
-      status: "draft",
-      config_json: null,
-      result_json: null,
-      outcome_json: null,
-      players: [],
-    });
+    setParticipation.mockResolvedValue(game({ players: [] }));
 
     const { applyRotationHints } = await mount();
-    const gameCallsBefore = getGame.mock.calls.length;
-    const rotationCallsBefore = rotation.mock.calls.length;
 
     await act(async () => {
       applyRotationHints();
@@ -211,12 +221,55 @@ describe("usePickupMix", () => {
       await tick();
     });
 
-    // Owed a seat, currently benched: seated without pinning them.
-    expect(updatePlayer).toHaveBeenCalledWith(WORKSPACE_ID, GAME_ID, 9, { is_active: true });
-    // Both actively-observed queries refetch once the write invalidates them --
-    // a mocked-session unit test can't watch `isInvalidated` here, since a
-    // successful refetch clears that flag before this assertion runs.
-    expect(getGame.mock.calls.length).toBeGreaterThan(gameCallsBefore);
-    expect(rotation.mock.calls.length).toBeGreaterThan(rotationCallsBefore);
+    // Owed a seat: one request moves the whole verdict, so there is no
+    // per-row race for the cache to reconcile afterwards.
+    expect(setParticipation).toHaveBeenCalledTimes(1);
+    expect(setParticipation).toHaveBeenCalledWith(WORKSPACE_ID, GAME_ID, [
+      { workspace_member_id: 9, participation: "must_play" },
+    ]);
+    expect(updatePlayer).not.toHaveBeenCalled();
+  });
+
+  it("never calls the server when the lineup already matches every hint", async () => {
+    getGame.mockResolvedValueOnce(
+      game({
+        players: [
+          {
+            id: 1,
+            workspace_member_id: 9,
+            display_name: null,
+            battle_tag: "Aria#1111",
+            sort_order: 0,
+            participation: "must_play",
+            role_selection_mode: "all_ranked",
+            is_flex: false,
+            roles: null,
+            ranks: {},
+            rank_sources: {},
+            author_ranks: {},
+          },
+        ],
+      }),
+    );
+    rotation.mockResolvedValueOnce([
+      {
+        workspace_member_id: 9,
+        status: "must_play",
+        reason: "Owed a seat",
+        consecutive_sat: 1,
+        consecutive_played: 0,
+        games_played: 2,
+      },
+    ]);
+
+    const { applyRotationHints } = await mount();
+
+    await act(async () => {
+      applyRotationHints();
+      await tick();
+      await tick();
+    });
+
+    expect(setParticipation).not.toHaveBeenCalled();
   });
 });

@@ -13,6 +13,11 @@ var AdminCrudRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/admin/tournaments/{tournament_id}", Queue: "rpc.tournament.admin.get", Entity: "tournament", Action: "get", IDParam: "tournament_id", Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/tournaments/{tournament_id}", Queue: "rpc.tournament.admin.update", Entity: "tournament", Action: "update", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/tournaments/{tournament_id}", Queue: "rpc.tournament.admin.delete", Entity: "tournament", Action: "delete", IDParam: "tournament_id", Auth: edge.AuthRequired, Success: 204},
+	// Tournament cover/logo: the delete is a typed method (the paired upload is
+	// multipart, served by binary.go + BinaryDocRoutes). IDParam and Path are
+	// additive in edge.Dispatcher.serve, so the payload carries BOTH the worker's
+	// "id" (from {tournament_id}) and "slot" verbatim.
+	{Method: "DELETE", Pattern: "/api/v1/admin/tournaments/{tournament_id}/images/{slot}", Queue: "rpc.tournament.tournaments.image_delete", IDParam: "tournament_id", Path: []string{"slot"}, Auth: edge.AuthRequired},
 	// team
 	{Method: "POST", Pattern: "/api/v1/admin/teams", Queue: "rpc.tournament.admin.create", Entity: "team", Action: "create", Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "GET", Pattern: "/api/v1/admin/teams/{team_id}", Queue: "rpc.tournament.admin.get", Entity: "team", Action: "get", IDParam: "team_id", Auth: edge.AuthRequired},

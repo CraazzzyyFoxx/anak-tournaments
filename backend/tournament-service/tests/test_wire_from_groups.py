@@ -52,6 +52,7 @@ def _playoff_stage(*, stage_id: int, tournament_id: int, stage_item_id: int = 20
             SimpleNamespace(
                 id=stage_item_id,
                 name="Playoffs",
+                type=enums.StageItemType.BRACKET_UPPER,
                 order=0,
                 inputs=[],
             )
@@ -503,6 +504,114 @@ class SplitSeedingTests(IsolatedAsyncioTestCase):
         self.assertEqual(4, len(added_inputs))
         for inp in added_inputs:
             self.assertEqual(target.items[0].id, inp.stage_item_id)
+
+
+class PerGroupAdvanceCountTests(IsolatedAsyncioTestCase):
+    """``StageItem.advance_count`` overrides the stage-wide number for ONE group,
+    which makes the wiring ragged: a group that ran out of advancing places is
+    simply absent from the later columns."""
+
+    async def test_group_override_widens_only_that_group(self) -> None:
+        source = _group_stage(stage_id=1, tournament_id=99, num_groups=2)
+        source.items[0].advance_count = 3  # group A sends 3, group B keeps top=2
+        target = _playoff_stage(stage_id=2, tournament_id=99)
+
+        added_inputs: list = []
+        session = SimpleNamespace(
+            add=Mock(side_effect=lambda obj: added_inputs.append(obj)),
+            commit=AsyncMock(),
+        )
+
+        with patch.object(
+            stage_service.stage_service,
+            "get_stage",
+            AsyncMock(side_effect=[target, source, target]),
+        ):
+            await stage_service.stage_service.wire_from_groups(
+                session,
+                target_stage_id=target.id,
+                source_stage_id=source.id,
+                top=2,
+                mode="snake",
+            )
+
+        # A1, B1, A2, B2, A3 — B is gone from the third column, and slots stay dense.
+        self.assertEqual(
+            [(1, 100, 1), (2, 101, 1), (3, 100, 2), (4, 101, 2), (5, 100, 3)],
+            [(inp.slot, inp.source_stage_item_id, inp.source_position) for inp in added_inputs],
+        )
+
+    async def test_override_splits_upper_lower_per_group(self) -> None:
+        """A split DE gives each group its OWN lower-bracket band: group A advances
+        4 (2 up, 2 down) so its LB starts at position 3, group B advances the
+        stage's 2 (1 up, 1 down) so its LB starts at position 2."""
+        source = _group_stage(stage_id=1, tournament_id=99, num_groups=2)
+        source.items[0].advance_count = 4
+        source.items[1].advance_count = 2
+        target = _de_stage_with_lb(stage_id=2, tournament_id=99)
+        target.split_lower_bracket = True
+
+        ub_inputs: list = []
+        lb_inputs: list = []
+        session = SimpleNamespace(
+            add=Mock(side_effect=lambda obj: (ub_inputs if obj.stage_item_id == 200 else lb_inputs).append(obj)),
+            commit=AsyncMock(),
+        )
+
+        with patch.object(
+            stage_service.stage_service,
+            "get_stage",
+            AsyncMock(side_effect=[target, source, target]),
+        ):
+            await stage_service.stage_service.wire_from_groups(
+                session,
+                target_stage_id=target.id,
+                source_stage_id=source.id,
+                top=1,
+                top_lb=1,
+                mode="snake",
+            )
+
+        self.assertEqual(
+            [(100, 1), (101, 1), (100, 2)],
+            [(inp.source_stage_item_id, inp.source_position) for inp in ub_inputs],
+        )
+        self.assertEqual(
+            [(100, 3), (101, 2), (100, 4)],
+            [(inp.source_stage_item_id, inp.source_position) for inp in lb_inputs],
+        )
+
+    async def test_override_alone_is_enough_to_auto_wire(self) -> None:
+        """The source stage has no ``advance_count`` of its own — only one group
+        does. Auto-wire must still run, and wire exactly that group."""
+        source = _group_stage(stage_id=1, tournament_id=99, num_groups=2)
+        source.advance_count = None
+        source.items[0].advance_count = 2
+        target = _playoff_stage(stage_id=2, tournament_id=99)
+
+        added_inputs: list = []
+        session = SimpleNamespace(
+            add=Mock(side_effect=lambda obj: added_inputs.append(obj)),
+            commit=AsyncMock(),
+            flush=AsyncMock(),
+        )
+
+        with (
+            patch.object(
+                stage_service.stage_service,
+                "get_stage",
+                AsyncMock(side_effect=[target, target, source, target]),
+            ),
+            patch.object(
+                stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=source)
+            ),
+        ):
+            await stage_service.stage_service.auto_wire_stage(session, target.id)
+
+        self.assertEqual(
+            [(100, 1), (100, 2)],
+            [(inp.source_stage_item_id, inp.source_position) for inp in added_inputs],
+        )
 
 
 class AutoWireStageTests(IsolatedAsyncioTestCase):

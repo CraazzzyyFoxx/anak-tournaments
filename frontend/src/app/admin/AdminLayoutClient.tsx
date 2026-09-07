@@ -1,22 +1,24 @@
 "use client";
 
-import { Fragment, type CSSProperties, type ReactNode, useEffect } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { skipToken, useQuery } from "@tanstack/react-query";
 
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AuditTrailProvider } from "@/components/admin/AuditTrailSheet";
-import { getMatchingAdminRoute } from "@/components/admin/admin-navigation";
-import { adminEntryPermissions } from "@/lib/admin-permissions";
-import { getTournamentWorkspaceQueryKeys } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
+import { adminRouteAccessOptions } from "@/components/admin/admin-navigation";
+import {
+  getBreadcrumbEntityRef,
+  breadcrumbSegmentLabel
+} from "@/components/admin/breadcrumb-registry";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator,
+  BreadcrumbSeparator
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -41,7 +43,9 @@ function UnauthorizedState() {
     <div className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
         <h1 className="text-4xl font-bold">Unauthorized</h1>
-        <p className="mt-4 text-muted-foreground">You do not have permission to access the admin panel.</p>
+        <p className="mt-4 text-muted-foreground">
+          You do not have permission to access the admin panel.
+        </p>
         <p className="mt-2 text-sm text-muted-foreground">
           Please contact an administrator if you believe this is an error.
         </p>
@@ -56,39 +60,9 @@ function UnauthorizedState() {
   );
 }
 
-function formatBreadcrumbLabel(segment: string) {
-  const normalized = segment.replace(/-/g, " ");
-  if (/^\d+$/.test(normalized)) {
-    return "Details";
-  }
-
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-/** Detail crumbs whose numeric id segment can be resolved to an entity name
- * from the query cache. The tournament hub shell / team workspace page own
- * these queries; the breadcrumb only READS the cache (skipToken never
- * fetches) and falls back to the generic "Details" label. */
-function getBreadcrumbEntityRef(
-  segments: string[]
-): { queryKey: readonly unknown[]; segmentIndex: number } | null {
-  const [, section, id] = segments;
-  if (!id || !/^\d+$/.test(id)) {
-    return null;
-  }
-  if (section === "tournaments") {
-    return { queryKey: getTournamentWorkspaceQueryKeys(Number(id)).tournament, segmentIndex: 2 };
-  }
-  if (section === "teams") {
-    // Same key as the team workspace query (admin/teams/[id]/page.tsx).
-    return { queryKey: ["admin", "team", Number(id)] as const, segmentIndex: 2 };
-  }
-  return null;
-}
-
 function EntityBreadcrumbName({
   queryKey,
-  fallback,
+  fallback
 }: Readonly<{
   queryKey: readonly unknown[];
   fallback: string;
@@ -100,8 +74,9 @@ function EntityBreadcrumbName({
 
 function AdminBreadcrumb() {
   const pathname = usePathname();
+  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const segments = pathname.split("/").filter(Boolean);
-  const entityRef = getBreadcrumbEntityRef(segments);
+  const entityRef = getBreadcrumbEntityRef(segments, currentWorkspaceId);
 
   return (
     <Breadcrumb>
@@ -116,10 +91,10 @@ function AdminBreadcrumb() {
             entityRef && index + 1 === entityRef.segmentIndex ? (
               <EntityBreadcrumbName
                 queryKey={entityRef.queryKey}
-                fallback={formatBreadcrumbLabel(segment)}
+                fallback={breadcrumbSegmentLabel(segment)}
               />
             ) : (
-              formatBreadcrumbLabel(segment)
+              breadcrumbSegmentLabel(segment)
             );
 
           return (
@@ -145,7 +120,7 @@ function AdminBreadcrumb() {
 
 const sidebarShellStyle = {
   "--sidebar-width": "15.5rem",
-  "--sidebar-width-icon": "3.75rem",
+  "--sidebar-width-icon": "3.75rem"
 } as CSSProperties;
 
 type AdminLayoutClientProps = {
@@ -153,33 +128,19 @@ type AdminLayoutClientProps = {
   defaultSidebarOpen: boolean;
 };
 
-export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<AdminLayoutClientProps>) {
+export function AdminLayoutClient({
+  children,
+  defaultSidebarOpen
+}: Readonly<AdminLayoutClientProps>) {
   const pathname = usePathname();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const { isLoaded, canAccessAdminRoute } = usePermissions();
-
-  useEffect(() => {
-    document.body.classList.add("admin-theme");
-    return () => document.body.classList.remove("admin-theme");
-  }, []);
 
   if (!isLoaded) {
     return <LoadingState />;
   }
 
-  const matchingRoute = getMatchingAdminRoute(pathname);
-  const hasAccess = matchingRoute
-    ? canAccessAdminRoute({
-        permissions: matchingRoute.permissions,
-        workspaceId: matchingRoute.workspaceAdminVisible ? null : currentWorkspaceId,
-        globalOnly: matchingRoute.globalOnly,
-        workspaceAdminVisible: matchingRoute.workspaceAdminVisible,
-        superuserOnly: matchingRoute.superuserOnly,
-      })
-    : canAccessAdminRoute({
-        permissions: adminEntryPermissions,
-        workspaceId: currentWorkspaceId,
-      });
+  const hasAccess = canAccessAdminRoute(adminRouteAccessOptions(pathname, currentWorkspaceId));
 
   if (!hasAccess) {
     return <UnauthorizedState />;
@@ -188,7 +149,6 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<Adm
   return (
     <TooltipProvider delayDuration={300}>
       <SidebarProvider
-        className="admin-theme"
         cookieName={SIDEBAR_COOKIE_NAMES.admin}
         defaultOpen={defaultSidebarOpen}
         style={sidebarShellStyle}
@@ -202,17 +162,27 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<Adm
           Skip to content
         </a>
         <AdminSidebar />
-        <SidebarInset className="min-h-svh min-w-0 bg-background/95 md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl md:peer-data-[variant=inset]:shadow-black/10">
+        <SidebarInset className="min-w-0">
           <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-5">
             <SidebarTrigger className="size-8 rounded-lg border border-border/60" />
             <Separator orientation="vertical" className="h-5" />
             <AdminBreadcrumb />
           </header>
 
+          {/* Full-bleed on purpose: a centered 1720px cap left ~300px of dead
+              gutter each side on a 2560 display. Wide tables scroll inside
+              their own container, so the page itself never needs the cap.
+
+              `overflow-x-clip`, never `overflow-x-hidden`: `hidden` on one axis
+              forces the other to `auto`, which makes this div a scroll
+              container that never scrolls — and every `position: sticky` inside
+              (the row inspector) then sticks to it and never moves. `clip`
+              trims the same overflow while leaving the y axis `visible`, so the
+              window stays the scroll ancestor. */}
           <div
             id="admin-content"
             tabIndex={-1}
-            className="flex flex-1 flex-col gap-4 overflow-x-hidden p-4"
+            className="flex w-full flex-1 flex-col gap-4 overflow-x-clip p-4 md:px-5"
           >
             {/* One drawer for the whole panel: every per-entity trail opens
                 here, so no screen mounts its own copy and none can nest. */}

@@ -22,8 +22,6 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -35,11 +33,9 @@ from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: 
 from shared.models.tournament.team import Player, Team  # noqa: E402
 from shared.models.tournament.tournament import Tournament  # noqa: E402
 from shared.services.newcomer_status import load_prior_participation  # noqa: E402
+from shared.testing import install_postgres_type_shims  # noqa: E402
 
-
-@compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
-    return "JSON"
+install_postgres_type_shims()
 
 
 TABLES = (

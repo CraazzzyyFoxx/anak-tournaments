@@ -25,6 +25,7 @@ from faststream.rabbit.annotations import RabbitMessage
 from shared.clients.s3 import upload_avatar
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.audit import record_admin_audit
 from src.core import auth
 from src.rpc._helpers import _dump, _identity, _require_id, _run
 from src.rpc._s3 import get_s3
@@ -36,20 +37,24 @@ from src.services.team import flows as team_flows
 _TEAM_ENTITIES = ["tournament", "players", "players.user", "captain"]
 
 
-async def _gate(session: Any, data: dict[str, Any]) -> int:
-    """Rehydrate the identity, resolve the team's workspace, require team.update."""
+async def _gate(session: Any, data: dict[str, Any]) -> tuple[Any, int, int]:
+    """Rehydrate the identity, resolve the team's workspace, require team.update.
+
+    Returns the actor and the workspace the check ran against so the audit row
+    records the same pair the permission gate used, rather than re-resolving it.
+    """
     user = _identity(data)
     team_id = _require_id(data)
     ws_id = await auth.get_team_workspace_id(session, team_id)
     ensure_workspace_permission(user, ws_id, "team", "update")
-    return team_id
+    return user, team_id, ws_id
 
 
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.tournament.teams.image_upload")
     async def _image_upload(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            team_id = await _gate(session, data)
+            user, team_id, ws_id = await _gate(session, data)
             file_data = base64.b64decode(data.get("content_b64", ""))
             result = await upload_avatar(
                 await get_s3(),
@@ -60,6 +65,17 @@ def register(broker: Any, logger: Any) -> None:
             )
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error)
+            # ``set_team_image`` commits, so the row goes on the session first.
+            await record_admin_audit(
+                session,
+                action="team.image_set",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="team",
+                entity_id=team_id,
+                after={"image_url": result.public_url, "content_type": data.get("content_type")},
+            )
             team = await team_service.set_team_image(session, team_id, result.public_url)
             return _dump(await team_flows.flows_service.to_pydantic(session, team, _TEAM_ENTITIES))
 
@@ -68,13 +84,23 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.tournament.teams.image_delete")
     async def _image_delete(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            team_id = await _gate(session, data)
+            user, team_id, ws_id = await _gate(session, data)
             # S3 first, DB second (same order as users_admin._avatar_delete): a
             # failed delete leaves the row pointing at bytes that still exist,
             # whereas the reverse order could leave image_url pointing at bytes
             # that no longer do.
             s3 = await get_s3()
             await s3.delete_prefix(f"avatars/teams/{team_id}/")
+            await record_admin_audit(
+                session,
+                action="team.image_clear",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="team",
+                entity_id=team_id,
+                after={"image_url": None},
+            )
             team = await team_service.set_team_image(session, team_id, None)
             return _dump(await team_flows.flows_service.to_pydantic(session, team, _TEAM_ENTITIES))
 

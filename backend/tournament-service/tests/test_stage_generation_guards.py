@@ -148,7 +148,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_collect_item_team_ids", lambda item: [1, 2, 3, 4]),
+            patch.object(stage_service, "_bracket_seeds", lambda *_: ([1, 2, 3, 4], [])),
             patch.object(stage_service.stage_service, "_generate_stage_skeleton", AsyncMock(return_value="skeleton")),
             patch.object(stage_service.stage_service, "_load_team_names", AsyncMock(return_value={})),
             patch.object(
@@ -182,7 +182,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_collect_item_team_ids", lambda item: [1, 2, 3, 4]),
+            patch.object(stage_service, "_bracket_seeds", lambda *_: ([1, 2, 3, 4], [])),
             patch.object(stage_service.stage_service, "_load_rankable_teams", AsyncMock(return_value=teams)),
             patch.object(stage_service.stage_service, "_generate_stage_skeleton", AsyncMock(return_value="skeleton")) as gen,
             patch.object(stage_service.stage_service, "_load_team_names", AsyncMock(return_value={})),
@@ -225,6 +225,33 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         self.assertEqual([1, 2, 3], sorted({p.round_number for p in skeleton.pairings}))
         self.assertTrue(all(p.home_team_id is None and p.away_team_id is None for p in skeleton.pairings))
 
+    async def test_a_group_override_changes_the_projected_bracket_size(self) -> None:
+        """One group advancing 3 while the other three advance the stage's 2 makes
+        9 seeds, not 8 -- a 16-slot bracket with byes, one round deeper."""
+        stage = SimpleNamespace(
+            id=99,
+            tournament_id=1,
+            stage_type=enums.StageType.SINGLE_ELIMINATION,
+            items=[_item(1, "Bracket")],
+            split_lower_bracket=False,
+            settings_json={},
+        )
+        source = SimpleNamespace(id=4, advance_count=2, items=[_item(i, order=i) for i in range(4)])
+        source.items[0].advance_count = 3
+        session = _queued_session([_rows_result([])])
+
+        with (
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
+            patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=[])) as create,
+            patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
+            patch.object(stage_service.stage_service, "_publish_tournament_changed", AsyncMock()),
+        ):
+            await stage_service.stage_service.generate_encounters(session, 99, commit=False)
+
+        skeleton = create.await_args.args[2]
+        self.assertEqual([1, 2, 3, 4], sorted({p.round_number for p in skeleton.pairings}))
+
     async def test_seeds_resolved_teams_into_the_bracket_it_already_generated(self) -> None:
         stage = SimpleNamespace(
             id=99,
@@ -240,7 +267,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_collect_item_team_ids", lambda item: [1, 2, 3, 4]),
+            patch.object(stage_service, "_bracket_seeds", lambda *_: ([1, 2, 3, 4], [])),
             patch.object(stage_service.stage_service, "_load_team_names", AsyncMock(return_value={1: "A", 2: "B", 3: "C", 4: "D"})),
             patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
             patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
@@ -270,7 +297,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_collect_item_team_ids", lambda item: [1, 2, 3, 4]),
+            patch.object(stage_service, "_bracket_seeds", lambda *_: ([1, 2, 3, 4], [])),
             patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
         ):
             with self.assertRaises(HTTPException) as ctx:
@@ -295,7 +322,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(stage_service, "_collect_item_team_ids", lambda item: list(range(1, 9))),
+            patch.object(stage_service, "_bracket_seeds", lambda *_: (list(range(1, 9)), [])),
             patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
         ):
             with self.assertRaises(HTTPException) as ctx:

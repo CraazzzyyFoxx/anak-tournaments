@@ -1,5 +1,6 @@
 "use client";
 
+import { LayoutGrid, List } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
@@ -13,10 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 export type StatusFilter = "all" | TournamentStatus;
 export type TypeFilter = "all" | "standard" | "league";
 export type SortBy = "latest" | "oldest" | "participants";
+export type ViewMode = "cards" | "list";
 
 /**
  * Dot colour per status bucket. Which bucket a status belongs to is a domain
@@ -31,6 +34,7 @@ const VARIANT_DOT: Record<"live" | "upcoming" | "finished" | "draft", string> = 
 };
 
 interface TournamentsFiltersProps {
+  /** Every visible tournament in the workspace, filters aside. From the facets. */
   total: number;
   statusCounts: Record<TournamentStatus, number>;
   statusFilter: StatusFilter;
@@ -43,6 +47,8 @@ interface TournamentsFiltersProps {
   onSearchChange: (value: string) => void;
   sortBy: SortBy;
   onSortChange: (value: SortBy) => void;
+  view: ViewMode;
+  onViewChange: (value: ViewMode) => void;
 }
 
 const TournamentsFilters = ({
@@ -57,7 +63,9 @@ const TournamentsFilters = ({
   search,
   onSearchChange,
   sortBy,
-  onSortChange
+  onSortChange,
+  view,
+  onViewChange
 }: TournamentsFiltersProps) => {
   const t = useTranslations();
   const toggleType = (value: Exclude<TypeFilter, "all">) =>
@@ -130,6 +138,27 @@ const TournamentsFilters = ({
           </SelectItem>
         </SelectContent>
       </Select>
+
+      {/* The item labels are `sr-only` text, not `aria-label`: the icons alone
+          give the radios no accessible name, and `ToggleGroupItem` forwards no
+          ARIA props of its own. */}
+      <ToggleGroup
+        type="single"
+        value={view}
+        onValueChange={(value) => onViewChange(value as ViewMode)}
+        aria-label={t("tournamentsList.view.label")}
+        variant="pill"
+        size="sm"
+      >
+        <ToggleGroupItem value="cards">
+          <LayoutGrid aria-hidden width={14} height={14} />
+          <span className="sr-only">{t("tournamentsList.view.cards")}</span>
+        </ToggleGroupItem>
+        <ToggleGroupItem value="list">
+          <List aria-hidden width={14} height={14} />
+          <span className="sr-only">{t("tournamentsList.view.list")}</span>
+        </ToggleGroupItem>
+      </ToggleGroup>
     </FilterChipGroup>
   );
 };

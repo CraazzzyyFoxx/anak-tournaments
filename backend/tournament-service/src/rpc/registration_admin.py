@@ -57,6 +57,7 @@ from shared.services.rank_snapshots import (
     fetch_latest_ow_ranks_by_account,
     normalize_ow_ranks_to_grid,
 )
+from shared.services.roster import roster_engine
 from src import models, schemas
 from src.core import auth
 from src.domain.registration.ow_rank_selection import select_main_account_ow_ranks
@@ -66,11 +67,18 @@ from src.schemas.registration import (
     SubscriptionProviderConfigUpsert,
     WorkspaceSubscriptionRequirementUpsert,
 )
+from src.schemas.registration_build import AdmissionChips
 from src.schemas.registration_team import RegistrationTeamListResponse
 from src.services.registration import _common as reg_common
 from src.services.registration import audit as reg_audit
 from src.services.registration import export as reg_export
-from src.services.registration import lifecycle, rank_autofill, rank_sources, status_catalog, subscription_config
+from src.services.registration import (
+    lifecycle,
+    rank_autofill,
+    rank_sources,
+    status_catalog,
+    subscription_config,
+)
 from src.services.registration import service as reg_svc
 from src.services.registration import teams as team_service
 from src.services.registration.realtime import emit_balancer_registrations_changed
@@ -79,7 +87,6 @@ from src.services.registration.serializers import (
     serialize_registration_form,
     serialize_status,
 )
-from src.services.registration import rank_resolution
 from src.services.registration.windows import windows_service
 
 # --- helpers -----------------------------------------------------------------
@@ -173,15 +180,13 @@ async def _registration_response(session: Any, ctx: _Ctx, registration: Any) -> 
         workspace_id=ctx.ws_id,
         actor_user_id=ctx.user.id,
     )
-    resolved = await rank_resolution.resolve_registration_ranks(
-        session, [registration], workspace_id=ctx.ws_id
-    )
+    rosters = await roster_engine.resolve(session, [registration], workspace_id=ctx.ws_id)
     return _dump(
         serialize_registration(
             registration,
             workspace_id=ctx.ws_id,
             status_meta_map=status_meta_map,
-            resolved_ranks=resolved.get(registration.id),
+            roster=rosters.get(registration.id),
         )
     )
 
@@ -318,10 +323,27 @@ def register(broker: Any, logger: Any) -> None:
             # False is for "rejected because incomplete", which should return the
             # players to the solo pool rather than strand them.
             withdraw_members = bool(payload.get("withdraw_members", True))
+            team_id = _path_int(data, "team_id")
+            # Staged before the service, as everywhere else here: reject_team owns
+            # its commit, so a row added after it would ride a second transaction.
+            await reg_audit.audit_service.stage(
+                session,
+                action="registration_team.reject",
+                actor=ctx.user,
+                workspace_id=ctx.ws_id,
+                data=data,
+                entity_id=team_id,
+                entity_type="registration_team",
+                after={
+                    "status": "rejected",
+                    "tournament_id": ctx.id,
+                    "withdraw_members": withdraw_members,
+                },
+            )
             team = await team_service.teams_service.reject_team(
                 session,
                 tournament_id=ctx.id,
-                team_id=_path_int(data, "team_id"),
+                team_id=team_id,
                 auth_user=ctx.user,
                 withdraw_members=withdraw_members,
             )
@@ -344,9 +366,23 @@ def register(broker: Any, logger: Any) -> None:
 
         async def op(session: Any) -> Any:
             ctx = await _tournament_ctx(session, data, "update")
+            invite_id = _path_int(data, "invite_id")
+            # Filed on the TOURNAMENT: an invite id is all this request carries, and
+            # resolving its team would cost a read the service is about to do anyway
+            # (and would 404 on the same row). The invite is named in `after`.
+            await reg_audit.audit_service.stage(
+                session,
+                action="registration_team.invite_revoke",
+                actor=ctx.user,
+                workspace_id=ctx.ws_id,
+                data=data,
+                entity_id=ctx.id,
+                entity_type="tournament",
+                after={"invite_id": invite_id, "state": "revoked", "by_organizer": True},
+            )
             await team_service.teams_service.revoke_invite_as_organizer(
                 session,
-                invite_id=_path_int(data, "invite_id"),
+                invite_id=invite_id,
                 tournament_id=ctx.id,
                 auth_user=ctx.user,
             )
@@ -365,9 +401,20 @@ def register(broker: Any, logger: Any) -> None:
 
         async def op(session: Any) -> Any:
             ctx = await _tournament_ctx(session, data, "update")
+            team_id = _path_int(data, "team_id")
+            await reg_audit.audit_service.stage(
+                session,
+                action="registration_team.invite_cap_reset",
+                actor=ctx.user,
+                workspace_id=ctx.ws_id,
+                data=data,
+                entity_id=team_id,
+                entity_type="registration_team",
+                after={"tournament_id": ctx.id},
+            )
             await team_service.teams_service.reset_invite_cap(
                 session,
-                team_id=_path_int(data, "team_id"),
+                team_id=team_id,
                 tournament_id=ctx.id,
                 auth_user=ctx.user,
             )
@@ -426,33 +473,35 @@ def register(broker: Any, logger: Any) -> None:
                 if registration.workspace_member is not None
             }
             ow_ranks = normalize_ow_ranks_to_grid(raw_ow_ranks_by_registration, grid)
-            resolved_by_reg = await rank_resolution.resolve_registration_ranks(
-                session, registrations, workspace_id=ctx.ws_id, grid=grid
+            # The form and the grid are already in hand, so the engine reuses them
+            # instead of re-reading either; this is the same roster the balancer
+            # payload and the draft pool are built from.
+            form = await reg_common._common_service.get_registration_form(session, ctx.id)
+            rosters = await roster_engine.resolve(
+                session, registrations, workspace_id=ctx.ws_id, tournament_id=ctx.id, form=form, grid=grid
             )
             # Same resolution the public participants list uses, so the admin
-            # Subscription / Profile columns agree with what the player sees.
-            form = await reg_svc.registration_service.get_registration_form(session, ctx.id)
-            profiles_open_map, subscription_reads = await reg_svc.registration_service.resolve_admission_signals(
-                session, registrations, form=form
-            )
-            return [
-                _dump(
-                    serialize_registration(
-                        registration,
-                        workspace_id=ctx.ws_id,
-                        status_meta_map=status_meta_map,
-                        ow_ranks_for_user=ow_ranks.get(registration.id),
-                        profiles_open=profiles_open_map.get(registration.id),
-                        subscription_outcome=(
-                            subscription_reads[registration.id].outcome.value
-                            if registration.id in subscription_reads
-                            else None
-                        ),
-                        resolved_ranks=resolved_by_reg.get(registration.id),
+            # Admission / Subscription / Profile columns are byte-identical to what
+            # the player sees on their own card.
+            admissions = await reg_svc.registration_service.resolve_admission_list(session, registrations, form=form)
+            out = []
+            for registration in registrations:
+                chips = AdmissionChips.of(admissions.get(registration.id))
+                out.append(
+                    _dump(
+                        serialize_registration(
+                            registration,
+                            workspace_id=ctx.ws_id,
+                            status_meta_map=status_meta_map,
+                            ow_ranks_for_user=ow_ranks.get(registration.id),
+                            admission=chips.admission,
+                            profiles_open=chips.profiles_open,
+                            subscription_outcome=chips.subscription_outcome,
+                            roster=rosters.get(registration.id),
+                        )
                     )
                 )
-                for registration in registrations
-            ]
+            return out
 
         return await _run(logger, op)
 
@@ -599,11 +648,10 @@ def register(broker: Any, logger: Any) -> None:
     async def _reg_include_balancer(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = await _registration_ctx(session, data, "update")
-            # The balancer status this lands on is derived from the row's role
-            # ranks, so the after-image reuses the very function the service
-            # applies -- a pure read of the roles loaded right here. Hence the
-            # explicit stage instead of _stage_transition: the after-value is
-            # computed, not a literal.
+            # The balancer status this lands on is derived from the resolved
+            # roster, so the after-image reuses the very function the service
+            # applies. Hence the explicit stage instead of _stage_transition: the
+            # after-value is computed, not a literal.
             current = await lifecycle.lifecycle_service.get_registration_by_id(session, ctx.id)
             await reg_audit.audit_service.stage(
                 session,
@@ -618,7 +666,9 @@ def register(broker: Any, logger: Any) -> None:
                     "exclude_reason": current.exclude_reason,
                 },
                 after={
-                    "balancer_status": reg_common.included_balancer_status(current),
+                    "balancer_status": reg_common.included_balancer_status(
+                        await reg_common.resolve_roster(session, current)
+                    ),
                     "exclude_reason": None,
                 },
             )
@@ -944,6 +994,26 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             ctx = _workspace_ctx(data, "update")
             body = schemas.BalancerRegistrationStatusCreate.model_validate(_payload(data))
+            # Staged before the service, like every other write here: the service
+            # owns its commit, so the row rides that transaction. The trade-off is
+            # `entity_id`: the id does not exist yet, so the row carries the name
+            # instead rather than landing in a second transaction to learn it.
+            await reg_audit.audit_service.stage(
+                session,
+                action="registration_status.create",
+                actor=ctx.user,
+                workspace_id=ctx.ws_id,
+                data=data,
+                entity_id=None,
+                entity_type="registration_status",
+                entity_label=body.name,
+                after={
+                    "scope": body.scope,
+                    "name": body.name,
+                    "excludes_from_balancer": body.excludes_from_balancer,
+                    "excludes_from_ready": body.excludes_from_ready,
+                },
+            )
             status_row = await status_catalog.status_catalog_service.create_custom_status(
                 session,
                 workspace_id=ctx.ws_id,
@@ -967,6 +1037,19 @@ def register(broker: Any, logger: Any) -> None:
             ctx = _workspace_ctx(data, "update")
             status_id = _path_int(data, "status_id")
             body = schemas.BalancerRegistrationStatusUpdate.model_validate(_payload(data))
+            # `exclude_none` is the change set, not a shortcut: the service treats a
+            # None as "leave this field alone", so dumping them would file fields the
+            # request never touched as if it had set them to null.
+            await reg_audit.audit_service.stage(
+                session,
+                action="registration_status.update",
+                actor=ctx.user,
+                workspace_id=ctx.ws_id,
+                data=data,
+                entity_id=status_id,
+                entity_type="registration_status",
+                after=body.model_dump(exclude_none=True),
+            )
             status_row = await status_catalog.status_catalog_service.update_custom_status(
                 session,
                 workspace_id=ctx.ws_id,
@@ -989,6 +1072,15 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             ctx = _workspace_ctx(data, "update")
             status_id = _path_int(data, "status_id")
+            await reg_audit.audit_service.stage(
+                session,
+                action="registration_status.delete",
+                actor=ctx.user,
+                workspace_id=ctx.ws_id,
+                data=data,
+                entity_id=status_id,
+                entity_type="registration_status",
+            )
             await status_catalog.status_catalog_service.delete_custom_status(
                 session,
                 workspace_id=ctx.ws_id,
@@ -1007,6 +1099,19 @@ def register(broker: Any, logger: Any) -> None:
             scope = _require_scope(data)
             slug = _require_slug(data)
             body = schemas.BalancerRegistrationStatusUpdate.model_validate(_payload(data))
+            # A builtin override has no id of its own that survives a reset, so the
+            # row is keyed by the (scope, slug) pair the request addresses.
+            await reg_audit.audit_service.stage(
+                session,
+                action="registration_status.builtin_upsert",
+                actor=ctx.user,
+                workspace_id=ctx.ws_id,
+                data=data,
+                entity_id=None,
+                entity_type="registration_status",
+                entity_label=slug,
+                after={"scope": scope, "slug": slug, **body.model_dump(exclude_none=True)},
+            )
             status_row = await status_catalog.status_catalog_service.upsert_builtin_override(
                 session,
                 workspace_id=ctx.ws_id,
@@ -1029,6 +1134,17 @@ def register(broker: Any, logger: Any) -> None:
             ctx = _workspace_ctx(data, "update")
             scope = _require_scope(data)
             slug = _require_slug(data)
+            await reg_audit.audit_service.stage(
+                session,
+                action="registration_status.builtin_reset",
+                actor=ctx.user,
+                workspace_id=ctx.ws_id,
+                data=data,
+                entity_id=None,
+                entity_type="registration_status",
+                entity_label=slug,
+                after={"scope": scope, "slug": slug},
+            )
             await status_catalog.status_catalog_service.reset_builtin_override(
                 session,
                 workspace_id=ctx.ws_id,
@@ -1062,6 +1178,24 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             ctx = _workspace_ctx(data, "update")
             body = SubscriptionProviderConfigUpsert.model_validate(_payload(data))
+            # Named fields only, and deliberately NOT the codes: they are hashed in
+            # the service and a digest is still brute-forcible offline, so the trail
+            # records only THAT the code set was replaced.
+            await reg_audit.audit_service.stage(
+                session,
+                action="subscription.config_upsert",
+                actor=ctx.user,
+                workspace_id=ctx.ws_id,
+                data=data,
+                entity_id=ctx.ws_id,
+                entity_type="workspace",
+                after={
+                    "provider": body.provider,
+                    "enabled": body.enabled,
+                    "verification_method": body.verification_method,
+                    "codes_replaced": body.codes is not None,
+                },
+            )
             return _dump(await subscription_config.subscription_config_service.upsert_provider_config(session, workspace_id=ctx.ws_id, body=body))
 
         return await _run(logger, op)
@@ -1090,6 +1224,18 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             ctx = _workspace_ctx(data, "update")
             body = WorkspaceSubscriptionRequirementUpsert.model_validate(_payload(data))
+            # The rule itself is the domain field worth journaling: it is what changed,
+            # it is already validated, and an empty blob is the "gate disarmed" event.
+            await reg_audit.audit_service.stage(
+                session,
+                action="subscription.requirement_upsert",
+                actor=ctx.user,
+                workspace_id=ctx.ws_id,
+                data=data,
+                entity_id=ctx.ws_id,
+                entity_type="workspace",
+                after={"requirement": body.requirement},
+            )
             return _dump(
                 await subscription_config.subscription_config_service.upsert_workspace_requirement(session, workspace_id=ctx.ws_id, body=body)
             )

@@ -962,23 +962,23 @@ class ApiKeyRepository(BaseRepository[models.ApiKey]):
         session: AsyncSession,
         params: PaginationSortParams,
         *,
-        auth_user_id: int,
         workspace_id: int,
         search: str | None = None,
     ) -> tuple[Sequence[models.ApiKey], int]:
-        filters: list[sa.ColumnElement[bool]] = [
-            models.ApiKey.auth_user_id == auth_user_id,
-            models.ApiKey.workspace_id == workspace_id,
-        ]
+        filters: list[sa.ColumnElement[bool]] = [models.ApiKey.workspace_id == workspace_id]
         if search:
             filters.append(models.ApiKey.name.ilike(f"%{search}%"))
-        return await self.list(session, params, filters=filters)
+        return await self.list(
+            session,
+            params,
+            filters=filters,
+            options=[selectinload(models.ApiKey.user)],
+        )
 
     async def status_counts(
         self,
         session: AsyncSession,
         *,
-        auth_user_id: int,
         workspace_id: int,
         now: datetime,
     ) -> dict[str, int]:
@@ -994,14 +994,14 @@ class ApiKeyRepository(BaseRepository[models.ApiKey]):
         rows = (
             await session.execute(
                 sa.select(status_expr, sa.func.count(models.ApiKey.id))
-                .where(
-                    models.ApiKey.auth_user_id == auth_user_id,
-                    models.ApiKey.workspace_id == workspace_id,
-                )
+                .where(models.ApiKey.workspace_id == workspace_id)
                 .group_by(status_expr)
             )
         ).all()
         return {str(label): int(count) for label, count in rows}
+
+    async def get_with_owner(self, session: AsyncSession, api_key_id: int) -> models.ApiKey | None:
+        return await self.get(session, api_key_id, options=[selectinload(models.ApiKey.user)])
 
     async def get_by_public_id(
         self,

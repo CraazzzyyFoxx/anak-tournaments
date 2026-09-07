@@ -4,11 +4,13 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
-import { BracketView } from "@/components/BracketView";
+import { ResponsiveBracket } from "./ResponsiveBracket";
 import { ConnectionIndicator } from "@/components/realtime/ConnectionIndicator";
 import StandingsTable from "@/components/StandingsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { SegmentedLinks, type SegmentedLinkItem } from "@/components/ui/segmented";
+import { toggleVariants, segmentedFrame } from "@/components/ui/toggle";
 import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
 import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
 import { notify } from "@/lib/notify";
@@ -21,7 +23,7 @@ import type { Encounter } from "@/types/encounter.types";
 import type { StreamEntry } from "@/types/stream.types";
 import type { Standings, Tournament, Stage, StageItem } from "@/types/tournament.types";
 
-import Link from "next/link";
+import { ListOrdered, Network } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { tournamentHref } from "@/lib/tournament-url";
 import { useTranslations } from "next-intl";
@@ -46,6 +48,34 @@ export { getBracketRefetchInterval } from "./bracketData";
 
 const ADMIN_ROLES = new Set(["admin", "superadmin", "tournament_admin"]);
 
+/**
+ * Standings ⇄ bracket switch, icon-only like the tournaments list's view
+ * switch. Both bracket panels draw it, so the frame and the pill live in one
+ * place instead of four copies of a 200-character class string.
+ */
+function ViewTabs({
+  hasStandings,
+  bracketValue
+}: Readonly<{ hasStandings: boolean; bracketValue: string }>) {
+  const t = useTranslations();
+  const item = toggleVariants({ variant: "pill", size: "sm" });
+
+  return (
+    <TabsList className={cn(segmentedFrame, "h-8 text-[color:var(--aqt-fg-muted)]")}>
+      {hasStandings && (
+        <TabsTrigger value="standings" className={item}>
+          <ListOrdered aria-hidden width={14} height={14} />
+          <span className="sr-only">{t("common.standings")}</span>
+        </TabsTrigger>
+      )}
+      <TabsTrigger value={bracketValue} className={item}>
+        <Network aria-hidden width={14} height={14} />
+        <span className="sr-only">{t("common.bracket")}</span>
+      </TabsTrigger>
+    </TabsList>
+  );
+}
+
 interface TournamentBracketViewProps {
   tournament: Tournament;
 }
@@ -61,7 +91,9 @@ function GroupStagePanel({
   canEdit,
   canReport,
   bracketTabs,
-  liveTeamStreams
+  liveTeamStreams,
+  defaultView = "matches",
+  highlightMatchId = null
 }: Readonly<{
   stage: Stage;
   stageItem?: StageItem;
@@ -72,13 +104,11 @@ function GroupStagePanel({
   onReport?: (encounter: Encounter) => void;
   canEdit?: (encounter: Encounter) => boolean;
   canReport?: (encounter: Encounter) => boolean;
-  bracketTabs?: Array<{
-    key: string;
-    href: string;
-    label: string;
-    isActive: boolean;
-  }>;
+  bracketTabs?: readonly SegmentedLinkItem[];
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
+  /** `?view=standings` opens the table first; anything else opens the matches. */
+  defaultView?: "matches" | "standings";
+  highlightMatchId?: number | null;
 }>) {
   const t = useTranslations();
   const hasStandings = standings.length > 0;
@@ -90,24 +120,18 @@ function GroupStagePanel({
 
   return (
     <Tabs
-      defaultValue="matches"
+      defaultValue={defaultView === "standings" && hasStandings ? "standings" : "matches"}
       className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
     >
       <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
         {bracketTabs && bracketTabs.length > 1 ? (
-          <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <div className="stage-tabs">
-                {bracketTabs.map((tab) => (
-                  <Link
-                    key={tab.key}
-                    href={tab.href}
-                    className={cn("stage-tab", tab.isActive && "active")}
-                  >
-                    {tab.label}
-                  </Link>
-                ))}
-              </div>
+          <div className="flex min-w-0 flex-col items-start gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <SegmentedLinks
+                items={bracketTabs}
+                label={t("tournamentDetail.stageTabsLabel")}
+                size="default"
+              />
               {stageItem && (
                 <span className="text-sm font-semibold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
                   / {stageItem.name}
@@ -115,7 +139,7 @@ function GroupStagePanel({
               )}
               {isPreview && <Badge variant="outline">{t("common.bracketPreview")}</Badge>}
             </div>
-            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               {subtitle}
             </p>
           </div>
@@ -135,22 +159,7 @@ function GroupStagePanel({
           </div>
         )}
 
-        <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
-          {hasStandings && (
-            <TabsTrigger
-              value="standings"
-              className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
-            >
-              {t("common.standings")}
-            </TabsTrigger>
-          )}
-          <TabsTrigger
-            value="matches"
-            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
-          >
-            {t("common.bracket")}
-          </TabsTrigger>
-        </TabsList>
+        <ViewTabs hasStandings={hasStandings} bracketValue="matches" />
       </div>
 
       {hasStandings && (
@@ -167,7 +176,7 @@ function GroupStagePanel({
           tabIndex={0}
           className={styles.bracketScroller}
         >
-          <BracketView
+          <ResponsiveBracket
             encounters={encounters}
             type={stage.stage_type}
             onEdit={onEdit}
@@ -175,6 +184,7 @@ function GroupStagePanel({
             canEdit={canEdit}
             canReport={canReport}
             liveTeamStreams={liveTeamStreams}
+            highlightMatchId={highlightMatchId}
           />
         </section>
       </TabsContent>
@@ -186,6 +196,10 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
   const searchParams = useSearchParams();
   const selectedStageParam = searchParams.get("stage");
   const viewParam = searchParams.get("view");
+  // `?match=` deep link from the overview and matches sections: the bracket
+  // scrolls that node into view and outlines it. Non-numeric → ignored.
+  const matchParam = Number(searchParams.get("match"));
+  const highlightMatchId = Number.isInteger(matchParam) && matchParam > 0 ? matchParam : null;
 
   const { isSuperuser, isWorkspaceAdmin } = usePermissions();
   const { status: authStatus, user: authUser } = useAuthProfile();
@@ -309,13 +323,18 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
       ? [primaryStage]
       : [];
 
+  // The encounters query pulls the whole tournament, not just the selected
+  // stage, so it also answers "does that other tab lead anywhere?". Until it
+  // resolves nothing is disabled — a tab that flickers inert is worse than a
+  // tab that lands on an empty state.
+  const stageIdsWithMatches = useMemo(
+    () => new Set((encountersQuery.data?.results ?? []).map((encounter) => encounter.stage_id)),
+    [encountersQuery.data?.results]
+  );
+  const matchCountsKnown = encountersQuery.data !== undefined;
+
   const bracketTabs = useMemo(() => {
-    const tabs: Array<{
-      key: string;
-      href: string;
-      label: string;
-      isActive: boolean;
-    }> = [];
+    const tabs: SegmentedLinkItem[] = [];
 
     const groupScopeCount = groupStages.reduce(
       (count, stage) => count + Math.max(stage.items.length, 1),
@@ -328,6 +347,11 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
       viewParam === "groups" ||
       (!!activeStageId && groupStages.some((stage) => stage.id === activeStageId));
 
+    // The tab you are standing on stays live even when empty; you are already
+    // looking at its empty state.
+    const isDead = (isActive: boolean, stageIds: readonly number[]) =>
+      !isActive && matchCountsKnown && !stageIds.some((id) => stageIdsWithMatches.has(id));
+
     if (groupScopeCount > 1) {
       tabs.push({
         key: "group-stage",
@@ -336,19 +360,26 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
             ? tournamentHref(tournament, `/bracket?stage=${groupStages[0].id}`)
             : tournamentHref(tournament, "/bracket?view=groups"),
         label: t("common.groupStage"),
-        isActive: isGroupViewActive
+        isActive: isGroupViewActive,
+        disabled: isDead(
+          isGroupViewActive,
+          groupStages.map((stage) => stage.id)
+        )
       });
     } else if (groupStages.length === 1) {
       const stage = groupStages[0];
+      const isActive = !viewParam && stage.id === activeStageId;
       tabs.push({
         key: `stage-${stage.id}`,
         href: tournamentHref(tournament, `/bracket?stage=${stage.id}`),
         label: stage.name,
-        isActive: !viewParam && stage.id === activeStageId
+        isActive,
+        disabled: isDead(isActive, [stage.id])
       });
     }
 
     eliminationStages.forEach((stage) => {
+      const isActive = !viewParam && stage.id === activeStageId;
       tabs.push({
         key: `stage-${stage.id}`,
         href: tournamentHref(tournament, `/bracket?stage=${stage.id}`),
@@ -356,7 +387,8 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
           eliminationStages.length === 1 && groupStages.length > 0
             ? t("common.playoff")
             : stage.name,
-        isActive: !viewParam && stage.id === activeStageId
+        isActive,
+        disabled: isDead(isActive, [stage.id])
       });
     });
 
@@ -366,8 +398,10 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
     eliminationStages,
     fallbackStage?.id,
     queryPlan.initialStageId,
+    matchCountsKnown,
+    stageIdsWithMatches,
     viewParam,
-    tournament.id,
+    tournament,
     t
   ]);
 
@@ -469,166 +503,150 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
         className="pointer-events-none fixed bottom-4 start-4 z-30"
       />
       <div className={styles.publicDataPage} data-page-section="bracket">
-      {loadState.isUpdating && loadState.kind !== "refresh-error" ? <UpdatingBadge /> : null}
-      {activeStages.length > 0 ? (
-        <div className="space-y-6">
-          {shouldShowGroupStage
-            ? groupStagePanels.map((panel, index) => (
-                <GroupStagePanel
-                  key={panel.key}
-                  stage={panel.stage}
-                  stageItem={panel.stageItem}
-                  encounters={panel.encounters}
-                  standings={panel.standings}
-                  stages={stages}
-                  onEdit={handleEdit}
-                  onReport={handleReport}
-                  canEdit={canEdit}
-                  canReport={canReport}
-                  bracketTabs={index === 0 ? bracketTabs : undefined}
-                  liveTeamStreams={liveTeamStreams}
-                />
-              ))
-            : activeStages.map((stage) => {
-                const encounters = encountersByStage.get(stage.id) ?? [];
-                if (encounters.length === 0 && bracketTabs.length <= 1) {
-                  return (
-                    <div
-                      key={stage.id}
-                      className="rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-8 text-center text-[color:var(--aqt-fg-muted)]"
-                    >
-                      {t("common.noMatches", { stage: stage.name })}
-                    </div>
+        {loadState.isUpdating && loadState.kind !== "refresh-error" ? <UpdatingBadge /> : null}
+        {activeStages.length > 0 ? (
+          <div className="space-y-6">
+            {shouldShowGroupStage
+              ? groupStagePanels.map((panel, index) => (
+                  <GroupStagePanel
+                    key={panel.key}
+                    stage={panel.stage}
+                    stageItem={panel.stageItem}
+                    encounters={panel.encounters}
+                    standings={panel.standings}
+                    stages={stages}
+                    onEdit={handleEdit}
+                    onReport={handleReport}
+                    canEdit={canEdit}
+                    canReport={canReport}
+                    bracketTabs={index === 0 ? bracketTabs : undefined}
+                    liveTeamStreams={liveTeamStreams}
+                    defaultView={viewParam === "standings" ? "standings" : "matches"}
+                    highlightMatchId={highlightMatchId}
+                  />
+                ))
+              : activeStages.map((stage) => {
+                  const encounters = encountersByStage.get(stage.id) ?? [];
+                  if (encounters.length === 0 && bracketTabs.length <= 1) {
+                    return (
+                      <div
+                        key={stage.id}
+                        className="rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-8 text-center text-[color:var(--aqt-fg-muted)]"
+                      >
+                        {t("common.noMatches", { stage: stage.name })}
+                      </div>
+                    );
+                  }
+
+                  const stagePlayoffStandings = playoffStandings.filter(
+                    (standing) => standing.stage_id === stage.id
                   );
-                }
+                  const hasPlayoffStandings = stagePlayoffStandings.length > 0;
 
-                const stagePlayoffStandings = playoffStandings.filter(
-                  (standing) => standing.stage_id === stage.id
-                );
-                const hasPlayoffStandings = stagePlayoffStandings.length > 0;
-
-                return (
-                  <Tabs
-                    key={stage.id}
-                    defaultValue="bracket"
-                    className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
-                  >
-                    <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                      {bracketTabs.length > 1 ? (
-                        <div className="min-w-0">
-                          <div className="stage-tabs">
-                            {bracketTabs.map((tab) => (
-                              <Link
-                                key={tab.key}
-                                href={tab.href}
-                                className={cn("stage-tab", tab.isActive && "active")}
-                              >
-                                {tab.label}
-                              </Link>
-                            ))}
+                  return (
+                    <Tabs
+                      key={stage.id}
+                      defaultValue={
+                        viewParam === "standings" && hasPlayoffStandings ? "standings" : "bracket"
+                      }
+                      className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
+                    >
+                      <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        {bracketTabs.length > 1 ? (
+                          <div className="flex min-w-0 flex-col items-start gap-2">
+                            <SegmentedLinks
+                              items={bracketTabs}
+                              label={t("tournamentDetail.stageTabsLabel")}
+                              size="default"
+                            />
+                            <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+                              {stage.stage_type.replace(/_/g, " ")}
+                            </p>
                           </div>
-                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
-                            {stage.stage_type.replace(/_/g, " ")}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="min-w-0">
-                          <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">
-                            {stage.name}
-                            {!stage.is_published && !stage.is_completed && (
-                              <Badge variant="outline" className="ml-2 align-middle">
-                                {t("common.bracketPreview")}
-                              </Badge>
-                            )}
-                          </h3>
-                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
-                            {stage.stage_type.replace(/_/g, " ")}
-                          </p>
-                        </div>
-                      )}
-
-                      <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
-                        {hasPlayoffStandings && (
-                          <TabsTrigger
-                            value="standings"
-                            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
-                          >
-                            {t("common.standings")}
-                          </TabsTrigger>
+                        ) : (
+                          <div className="min-w-0">
+                            <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">
+                              {stage.name}
+                              {!stage.is_published && !stage.is_completed && (
+                                <Badge variant="outline" className="ml-2 align-middle">
+                                  {t("common.bracketPreview")}
+                                </Badge>
+                              )}
+                            </h3>
+                            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+                              {stage.stage_type.replace(/_/g, " ")}
+                            </p>
+                          </div>
                         )}
-                        <TabsTrigger
-                          value="bracket"
-                          className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
-                        >
-                          {t("common.bracket")}
-                        </TabsTrigger>
-                      </TabsList>
-                    </div>
 
-                    {hasPlayoffStandings && (
-                      <TabsContent value="standings" className="mt-0">
-                        <div className="min-w-0 overflow-x-auto">
-                          <StandingsTable
-                            standings={stagePlayoffStandings}
-                            stages={stages}
-                            is_groups={false}
-                            crownTop={isTournamentStatusEnded(tournament.status)}
-                          />
-                        </div>
-                      </TabsContent>
-                    )}
+                        <ViewTabs hasStandings={hasPlayoffStandings} bracketValue="bracket" />
+                      </div>
 
-                    <TabsContent value="bracket" className="mt-0 p-4">
-                      {encounters.length === 0 ? (
-                        <div className="py-8 text-center text-[color:var(--aqt-fg-muted)]">
-                          {t("common.noMatches", { stage: stage.name })}
-                        </div>
-                      ) : (
-                        <section
-                          aria-label={t("tournamentDetail.bracketRegion")}
-                          tabIndex={0}
-                          className={styles.bracketScroller}
-                        >
-                          <BracketView
-                            encounters={encounters}
-                            type={stage.stage_type}
-                            onEdit={handleEdit}
-                            onReport={handleReport}
-                            canEdit={canEdit}
-                            canReport={canReport}
-                            liveTeamStreams={liveTeamStreams}
-                          />
-                        </section>
+                      {hasPlayoffStandings && (
+                        <TabsContent value="standings" className="mt-0">
+                          <div className="min-w-0 overflow-x-auto">
+                            <StandingsTable
+                              standings={stagePlayoffStandings}
+                              stages={stages}
+                              is_groups={false}
+                              crownTop={isTournamentStatusEnded(tournament.status)}
+                            />
+                          </div>
+                        </TabsContent>
                       )}
-                    </TabsContent>
-                  </Tabs>
-                );
-              })}
-        </div>
-      ) : (
-        <TournamentPageState state="empty" />
-      )}
 
-      {editEncounter && (
-        <EncounterEditDialog
-          open={!!editEncounter}
-          onOpenChange={(open) => {
-            if (!open) setEditEncounter(null);
-          }}
-          encounter={editEncounter}
-        />
-      )}
+                      <TabsContent value="bracket" className="mt-0 p-4">
+                        {encounters.length === 0 ? (
+                          <div className="py-8 text-center text-[color:var(--aqt-fg-muted)]">
+                            {t("common.noMatches", { stage: stage.name })}
+                          </div>
+                        ) : (
+                          <section
+                            aria-label={t("tournamentDetail.bracketRegion")}
+                            tabIndex={0}
+                            className={styles.bracketScroller}
+                          >
+                            <ResponsiveBracket
+                              encounters={encounters}
+                              type={stage.stage_type}
+                              onEdit={handleEdit}
+                              onReport={handleReport}
+                              canEdit={canEdit}
+                              canReport={canReport}
+                              liveTeamStreams={liveTeamStreams}
+                              highlightMatchId={highlightMatchId}
+                            />
+                          </section>
+                        )}
+                      </TabsContent>
+                    </Tabs>
+                  );
+                })}
+          </div>
+        ) : (
+          <TournamentPageState state="empty" />
+        )}
 
-      {reportEncounter && (
-        <MatchReportDialog
-          open={!!reportEncounter}
-          onOpenChange={(open) => {
-            if (!open) setReportEncounter(null);
-          }}
-          encounter={reportEncounter}
-        />
-      )}
-    </div>
+        {editEncounter && (
+          <EncounterEditDialog
+            open={!!editEncounter}
+            onOpenChange={(open) => {
+              if (!open) setEditEncounter(null);
+            }}
+            encounter={editEncounter}
+          />
+        )}
+
+        {reportEncounter && (
+          <MatchReportDialog
+            open={!!reportEncounter}
+            onOpenChange={(open) => {
+              if (!open) setReportEncounter(null);
+            }}
+            encounter={reportEncounter}
+          />
+        )}
+      </div>
     </>
   );
 

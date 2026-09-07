@@ -30,11 +30,13 @@ from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
+from shared.domain.roster import FlexRoleMode, flex_role_mode
 from shared.repository import (
     BalancerRegistrationRepository,
     GoogleSheetBindingRepository,
     GoogleSheetFeedRepository,
 )
+from shared.services.roster import roster_engine
 from src import models
 from src.domain.registration.mapping_catalog import (
     PARSER_CATALOG,
@@ -64,10 +66,8 @@ from src.domain.registration.utils import (
 )
 from src.schemas.registration import CustomFieldDefinition
 from src.services.registration._common import (
-    FlexRoleMode,
     RegistrationCommonService,
     _common_service,
-    flex_role_mode,
     replace_registration_roles,
     sync_included_balancer_status,
 )
@@ -169,7 +169,15 @@ def apply_sheet_fields_to_registration(
     *,
     allow_balancer_overwrite: bool,
     mode: FlexRoleMode = "optional",
-) -> None:
+) -> bool:
+    """Write one parsed sheet row onto a registration.
+
+    Returns whether the row's roles were rewritten, i.e. whether its
+    ``ready``/``incomplete`` verdict needs recomputing. The recompute itself is
+    deferred to one batch at the end of the sync: the verdict comes from the
+    roster engine, which needs a session, and asking it per row would put a
+    resolve inside a loop that runs every five minutes per tournament.
+    """
     registration.display_name = (
         parsed_fields.get("display_name") or parsed_fields.get("battle_tag") or registration.display_name
     )
@@ -189,14 +197,15 @@ def apply_sheet_fields_to_registration(
         merged.update(parsed_custom)
         registration.custom_fields_json = merged or None
 
-    if allow_balancer_overwrite:
-        registration.admin_notes = parsed_fields.get("admin_notes")
-        replace_registration_roles(
-            registration,
-            build_registration_role_payloads(parsed_fields),
-            mode=mode,
-        )
-        sync_included_balancer_status(registration)
+    if not allow_balancer_overwrite:
+        return False
+    registration.admin_notes = parsed_fields.get("admin_notes")
+    replace_registration_roles(
+        registration,
+        build_registration_role_payloads(parsed_fields),
+        mode=mode,
+    )
+    return True
 
 
 @dataclass
@@ -598,6 +607,9 @@ class SheetSyncService:
             updated = 0
             withdrawn = 0
             seen_keys: set[str] = set()
+            # Rows whose roles the sync rewrote: their ready/incomplete verdict is
+            # recomputed once, below, from the engine's rosters.
+            resync_status_by_id: dict[int, models.BalancerRegistration] = {}
 
             for source_record_key, (raw_row_json, parsed_fields) in parsed_rows.items():
                 seen_keys.add(source_record_key)
@@ -640,12 +652,13 @@ class SheetSyncService:
                     created += 1
                 else:
                     allow_balancer_overwrite = registration.balancer_profile_overridden_at is None
-                    apply_sheet_fields_to_registration(
+                    if apply_sheet_fields_to_registration(
                         registration,
                         parsed_fields,
                         allow_balancer_overwrite=allow_balancer_overwrite,
                         mode=mode,
-                    )
+                    ):
+                        resync_status_by_id[registration.id] = registration
                     if registration.status == "withdrawn":
                         registration.status = "approved"
                     updated += 1
@@ -695,6 +708,20 @@ class SheetSyncService:
                 if binding.registration.status != "withdrawn":
                     binding.registration.status = "withdrawn"
                     withdrawn += 1
+
+            if resync_status_by_id:
+                # One resolve for every row the sync rewrote. Re-read through the
+                # engine because the rows above were loaded for the sync's own
+                # purposes; autoflush publishes the role writes first, so the
+                # verdict is the one this sync just produced.
+                rosters = await roster_engine.for_tournament(
+                    session,
+                    tournament_id,
+                    registration_ids=list(resync_status_by_id),
+                    include_deleted=True,
+                )
+                for registration_id, registration in resync_status_by_id.items():
+                    sync_included_balancer_status(registration, rosters.get(registration_id))
 
             feed.header_row_json = headers
             if feed.mapping_config_json is None:

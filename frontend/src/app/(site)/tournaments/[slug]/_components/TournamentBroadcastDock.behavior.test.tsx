@@ -1,20 +1,20 @@
 // @vitest-environment happy-dom
 //
-// `embeddable` is true only for `live`, so between series the block had a frame
-// it could not fill and fell back to a bare "Watch on …" link — while several
-// participants were on air the whole time. The participant fallback closes that
-// gap, and every property pinned here is one that would quietly ruin it:
+// `embeddable` is true only for `live`, so between series the dock has a frame
+// it cannot fill and shows a bare "Watch on …" link — while participants may be
+// on air the whole time. The dock USED to borrow the busiest participant's POV
+// for the frame; it no longer does. This corner is the organizer's broadcast on
+// every section of the page, and a one-sided POV standing in for the cast reads
+// as the cast however it is captioned — participant streams belong to the
+// Stream section, where the viewer picks the POV.
 //
-//  1. an official cast is never displaced, however many viewers a participant has;
-//  2. with no official cast live, the busiest live participant fills the frame;
-//  3. an entry the poller has not counted (`viewer_count: null`) does not
-//     outrank one it has — otherwise an unstamped channel jumps the queue;
-//  4. the pick does not move on ties. This list is refetched on every poller
-//     tick, so an order-dependent winner would remount the iframe each time and
-//     restart playback under the viewer;
-//  5. the frame says whose POV it is. A spectator who reads a one-sided POV as
-//     the cast will read the match wrong;
-//  6. the official links survive the fallback — it hides no way to the cast.
+// What is pinned here:
+//
+//  1. no participant ever reaches the frame, however many viewers they have and
+//     however offline the official channel is;
+//  2. with no embeddable official entry the panel degrades to the link, not to
+//     someone else's stream;
+//  3. the panel is only ever named the official broadcast.
 import { NextIntlClientProvider } from "next-intl";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -78,8 +78,25 @@ function render(streams: TournamentStreams) {
 /** The Twitch login currently in the frame, or `null` when nothing plays. */
 function playingChannel(streams: TournamentStreams): string | null {
   render(streams);
+  reveal();
   const src = container.querySelector("iframe")?.getAttribute("src");
   return src ? new URL(src).searchParams.get("channel") : null;
+}
+
+function control(label: string): HTMLButtonElement | null {
+  return (
+    [...container.querySelectorAll("button")].find(
+      (button) =>
+        button.getAttribute("aria-label") === label || button.textContent?.includes(label)
+    ) ?? null
+  );
+}
+
+function reveal() {
+  const restore = control(en.stream.broadcast.show);
+  if (restore) {
+    act(() => restore.click());
+  }
 }
 
 beforeEach(() => {
@@ -103,38 +120,13 @@ describe("TournamentBroadcastDock featured pick", () => {
     ).toBe("owtcast");
   });
 
-  it("falls back to the busiest live participant when no official cast is live", () => {
+  it("never borrows a participant's frame, however dead the official channel is", () => {
     expect(
       playingChannel({
         official: [streamEntry({ channel: "owtcast", live: false })],
         participants: [participant("quietone", 3), participant("bigstreamer", 900)]
       })
-    ).toBe("bigstreamer");
-  });
-
-  // A `null` count means the poller has not stamped one, not "more than zero".
-  it("does not let an uncounted participant outrank a counted one", () => {
-    expect(
-      playingChannel({
-        official: [streamEntry({ channel: "owtcast", live: false })],
-        // `aaauncounted` sorts first alphabetically AND comes first in the
-        // list, so only the viewer-count rule can keep it out of the frame.
-        participants: [participant("aaauncounted", null), participant("zzzcounted", 0)]
-      })
-    ).toBe("zzzcounted");
-  });
-
-  it("picks the same participant on both orderings of a tie", () => {
-    const official = [streamEntry({ channel: "owtcast", live: false })];
-    const alpha = participant("alpha", 100);
-    const bravo = participant("bravo", 100);
-
-    const first = playingChannel({ official, participants: [alpha, bravo] });
-    unmount?.();
-    unmount = null;
-    const second = playingChannel({ official, participants: [bravo, alpha] });
-
-    expect(first).toBe(second);
+    ).toBeNull();
   });
 
   it("still offers the link when nothing at all can be embedded", () => {
@@ -147,8 +139,9 @@ describe("TournamentBroadcastDock featured pick", () => {
           live: null
         })
       ],
-      participants: [{ ...participant("offlineone", 10, "someplayer"), live: false }]
+      participants: [participant("bigstreamer", 900)]
     });
+    reveal();
 
     expect(container.querySelector("iframe")).toBeNull();
     expect(container.textContent).toContain(
@@ -157,7 +150,7 @@ describe("TournamentBroadcastDock featured pick", () => {
   });
 });
 
-describe("TournamentBroadcastDock fallback labelling", () => {
+describe("TournamentBroadcastDock naming", () => {
   const streams: TournamentStreams = {
     official: [
       streamEntry({
@@ -176,44 +169,24 @@ describe("TournamentBroadcastDock fallback labelling", () => {
     ]
   };
 
-  it("says whose POV the frame is, and never calls it the official broadcast", () => {
+  it("is the official broadcast even when the cast is off air", () => {
     render(streams);
+    reveal();
     const text = container.textContent ?? "";
 
-    expect(text).toContain(
-      en.stream.broadcast.participantNoticeWithTeam
-        .replace("{player}", "someplayer")
-        .replace("{team}", "Alpha")
-    );
-    expect(text).toContain(en.stream.broadcast.participantHeading);
-    expect(text).not.toContain(en.stream.broadcast.heading);
+    expect(text).toContain(en.stream.broadcast.heading);
+    // Not a word about the participant who is live right now.
+    expect(text).not.toContain("somestreamer");
+    expect(text).not.toContain("someplayer");
   });
 
-  it("names the frame for assistive tech as a participant stream", () => {
-    render(streams);
-
-    expect(container.querySelector("iframe")?.getAttribute("title")).toBe(
-      en.stream.broadcast.participantPlayerLabel.replace("{channel}", "somestreamer")
-    );
-  });
-
-  // The official channel lost the frame, not its link: it is still the place a
-  // spectator goes when the cast comes back.
+  // The cast lost the frame, not its link: it is still where a spectator goes
+  // when the broadcast comes back.
   it("keeps every official link reachable", () => {
     render(streams);
+    reveal();
 
     expect(container.querySelector('a[href="https://twitch.tv/owtcast"]')).not.toBeNull();
-  });
-
-  it("omits the team from the notice when there is no roster yet", () => {
-    render({
-      official: streams.official,
-      participants: [participant("somestreamer", 42, "someplayer")]
-    });
-
-    expect(container.textContent).toContain(
-      en.stream.broadcast.participantNotice.replace("{player}", "someplayer")
-    );
   });
 });
 
@@ -234,6 +207,7 @@ describe("TournamentBroadcastDock panel body", () => {
       ],
       participants: []
     });
+    reveal();
 
     expect(container.textContent).not.toContain("[DROPS] day two, watch the finals");
   });
@@ -245,6 +219,7 @@ describe("TournamentBroadcastDock panel body", () => {
       ],
       participants: []
     });
+    reveal();
 
     // Header, then the frame's ratio box — and nothing after it.
     expect(container.querySelector("aside")?.children).toHaveLength(2);
@@ -259,6 +234,7 @@ describe("TournamentBroadcastDock panel body", () => {
       ],
       participants: []
     });
+    reveal();
 
     expect(container.querySelector('a[href="https://twitch.tv/owtcast2"]')).not.toBeNull();
   });
@@ -276,21 +252,11 @@ describe("TournamentBroadcastDock hide and restore", () => {
     participants: []
   };
 
-  /** The control carrying `label`, or `null`. */
-  function control(label: string): HTMLButtonElement | null {
-    return (
-      [...container.querySelectorAll("button")].find(
-        (button) =>
-          button.getAttribute("aria-label") === label || button.textContent?.includes(label)
-      ) ?? null
-    );
-  }
-
-  it("shows the frame, and no restore control, on arrival", () => {
+  it("starts collapsed, with the restore control and no frame", () => {
     render(streams);
 
-    expect(container.querySelector("iframe")).not.toBeNull();
-    expect(control(en.stream.broadcast.show)).toBeNull();
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(control(en.stream.broadcast.show)).not.toBeNull();
   });
 
   // The dock arrives on every section of the tournament; taking focus would
@@ -303,6 +269,7 @@ describe("TournamentBroadcastDock hide and restore", () => {
 
   it("unmounts the player when hidden, rather than parking it out of sight", () => {
     render(streams);
+    reveal();
 
     act(() => control(en.stream.broadcast.hide)?.click());
 
@@ -311,7 +278,6 @@ describe("TournamentBroadcastDock hide and restore", () => {
 
   it("keeps the broadcast one click away after hiding", () => {
     render(streams);
-    act(() => control(en.stream.broadcast.hide)?.click());
 
     const restore = control(en.stream.broadcast.show);
     expect(restore).not.toBeNull();
@@ -322,6 +288,7 @@ describe("TournamentBroadcastDock hide and restore", () => {
 
   it("moves focus to the restore control when the panel goes away", () => {
     render(streams);
+    reveal();
 
     act(() => control(en.stream.broadcast.hide)?.click());
 
@@ -330,6 +297,7 @@ describe("TournamentBroadcastDock hide and restore", () => {
 
   it("moves focus to the close control when the panel comes back", () => {
     render(streams);
+    reveal();
     act(() => control(en.stream.broadcast.hide)?.click());
 
     act(() => control(en.stream.broadcast.show)?.click());
@@ -341,6 +309,7 @@ describe("TournamentBroadcastDock hide and restore", () => {
   // NOT a modal: nothing is trapped, so this must not be the only way out.
   it("closes on Escape from inside the panel", () => {
     render(streams);
+    reveal();
 
     act(() => {
       container
@@ -353,6 +322,7 @@ describe("TournamentBroadcastDock hide and restore", () => {
 
   it("announces itself as a landmark rather than a modal dialog", () => {
     render(streams);
+    reveal();
     const panel = container.querySelector("aside");
 
     expect(panel?.getAttribute("aria-label")).toBe(en.stream.broadcast.heading);

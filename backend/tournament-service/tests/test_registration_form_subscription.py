@@ -53,6 +53,7 @@ class _FormRow:
         self.show_ranks = False
         self.built_in_fields_json = {}
         self.custom_fields_json = []
+        self.max_substitutes = 0
         self.require_subscription = False
         self.subscription_stage = "check_in"
         for key, value in overrides.items():
@@ -68,6 +69,18 @@ class TestFormUpsertSchema:
         """The looser stage. A client that never sends the field -- or an older one that
         cannot -- must not arm a sign-up wall by omission."""
         assert RegistrationFormUpsert().subscription_stage == SubscriptionEnforcementStage.check_in
+
+    def test_max_substitutes_defaults_to_zero(self):
+        assert RegistrationFormUpsert().max_substitutes == 0
+
+    def test_max_substitutes_rejects_a_negative(self):
+        try:
+            RegistrationFormUpsert(max_substitutes=-1)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a negative bench must not validate")
+
 
     def test_the_stage_rejects_a_value_outside_the_enum(self):
         """Better a 422 on save than a stored typo that silently reads as check-in."""
@@ -155,6 +168,7 @@ class TestReadSchema:
         form = RegistrationFormRead(id=1, tournament_id=1, workspace_id=1, is_open=False)
         assert form.require_subscription is False
         assert form.subscription_requirement_json == {}
+        assert form.max_substitutes == 0
 
 
 class TestSerializer:
@@ -178,6 +192,10 @@ class TestSerializer:
         read = serialize_registration_form(_FormRow(), is_open=False)
         assert read.require_subscription is False
         assert read.subscription_requirement_json == {}
+
+    def test_carries_max_substitutes(self):
+        read = serialize_registration_form(_FormRow(max_substitutes=2), is_open=True)
+        assert read.max_substitutes == 2
 
 
 class TestRoundTrip:

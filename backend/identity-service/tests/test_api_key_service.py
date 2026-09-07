@@ -4,7 +4,6 @@ import asyncio
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -16,20 +15,13 @@ from shared.rpc.identity import credential_type, rehydrate_user  # noqa: E402
 from src import models, schemas  # noqa: E402
 from src.core import key_derivation  # noqa: E402
 from src.core.config import settings  # noqa: E402
+from src.rpc import _common as c  # noqa: E402
 from src.services import api_keys as api_keys_module  # noqa: E402
 from src.services.api_keys import api_keys  # noqa: E402
-
-
-class _FakeExecuteResult:
-    def __init__(self, scalar=None, scalars=None) -> None:
-        self._scalar = scalar
-        self._scalars = list(scalars or [])
-
-    def scalar_one_or_none(self):
-        return self._scalar
-
-    def scalars(self):
-        return SimpleNamespace(all=lambda: list(self._scalars))
+from tests._fakes import FakeExecuteResult as _FakeExecuteResult  # noqa: E402
+from tests._fakes import make_api_key_row as _api_key_row  # noqa: E402
+from tests._fakes import make_auth_user as _user  # noqa: E402
+from tests._fakes import make_workspace as _workspace  # noqa: E402
 
 
 class _FakeSession:
@@ -59,51 +51,6 @@ class _FakeSession:
         row.id = 99
         row.created_at = datetime.now(UTC)
         row.updated_at = None
-
-
-def _user(*, active: bool = True) -> models.AuthUser:
-    return models.AuthUser(
-        id=7,
-        email="ada@example.com",
-        username="ada",
-        is_active=active,
-        is_superuser=False,
-        is_verified=True,
-    )
-
-
-def _workspace(*, active: bool = True) -> models.Workspace:
-    return models.Workspace(id=11, slug="main", name="Main", is_active=active)
-
-
-def _api_key_row(
-    *,
-    secret: str = "secret-token",
-    secret_hash: str | None = None,
-    revoked_at=None,
-    expires_at=None,
-    scopes: list[str] | None = None,
-    user: models.AuthUser | None = None,
-    workspace: models.Workspace | None = None,
-) -> models.ApiKey:
-    return models.ApiKey(
-        id=123,
-        auth_user_id=7,
-        workspace_id=11,
-        public_id="publicid",
-        secret_hash=secret_hash if secret_hash is not None else api_keys._hash_secret(secret),
-        name="Balancer API",
-        scopes_json=["team.create"] if scopes is None else list(scopes),
-        limits_json=dict(api_keys.DEFAULT_LIMITS),
-        config_policy_json=dict(api_keys.DEFAULT_CONFIG_POLICY),
-        expires_at=expires_at,
-        revoked_at=revoked_at,
-        last_used_at=None,
-        created_at=datetime.now(UTC),
-        updated_at=None,
-        user=user if user is not None else _user(),
-        workspace=workspace if workspace is not None else _workspace(),
-    )
 
 
 _TEAM_CREATE = [{"resource": "team", "action": "create"}]
@@ -172,13 +119,17 @@ def test_create_api_key_returns_secret_once_and_stores_only_hash(monkeypatch: py
     )
 
     stored = session.added[0]
-    assert response.key == "aqt_sk_publicid_secret-token"
+    assert response.key == "owt_sk_publicid_secret-token"
     assert stored.secret_hash == api_keys._hash_secret("secret-token")
     assert stored.secret_hash != "secret-token"
     assert stored.name == "Balancer API"
     assert "secret" not in response.api_key.model_dump()
     # No implicit grant: a key nobody scoped authenticates and authorizes nothing.
-    assert stored.scopes_json == []
+    assert [item.scope for item in stored.scopes] == []
+    # Balancer quotas are not an identity concern; empty JSON lets each
+    # consumer apply its own defaults (gateway rate, balancer job caps).
+    assert stored.limits_json == {}
+    assert stored.config_policy_json == {}
     assert session.flush_calls == 1
     assert session.commit_calls == 1
     assert session.refresh_calls == 1
@@ -245,17 +196,18 @@ def test_create_api_key_stores_normalized_scopes(monkeypatch: pytest.MonkeyPatch
     )
 
     # The legacy alias collapses onto the permission it always meant, deduped.
-    assert session.added[0].scopes_json == ["team.create"]
+    assert [item.scope for item in session.added[0].scopes] == ["team.create"]
 
 
-def test_is_api_key_recognizes_only_the_prefixed_form() -> None:
+def test_is_api_key_recognizes_the_current_and_legacy_prefixed_forms() -> None:
+    assert api_keys.is_api_key("owt_sk_publicid_secret-token") is True
     assert api_keys.is_api_key("aqt_sk_publicid_secret-token") is True
     assert api_keys.is_api_key("eyJhbGciOiJIUzI1NiJ9.payload.sig") is False
 
 
 @pytest.mark.parametrize(
     "raw_key",
-    ["bad-format", "aqt_sk__secret", "aqt_sk_publicid_", "sk_aqt_publicid_secret", "aqt_sk_publicid_secret_extra"],
+    ["bad-format", "owt_sk__secret", "owt_sk_publicid_", "sk_owt_publicid_secret", "owt_sk_publicid_secret_extra"],
 )
 def test_split_key_rejects_malformed_keys(raw_key: str) -> None:
     assert api_keys._split_key(raw_key) is None
@@ -523,12 +475,12 @@ def test_list_api_keys_returns_page_and_workspace_wide_status_counts(monkeypatch
     async def allow_manage(*args, **kwargs) -> None:
         return None
 
-    async def list_page(_session, _params, *, auth_user_id: int, workspace_id: int, search: str | None):
-        assert (auth_user_id, workspace_id, search) == (7, 11, None)
+    async def list_page(_session, _params, *, workspace_id: int, search: str | None):
+        assert (workspace_id, search) == (11, None)
         return [_api_key_row()], 4
 
-    async def status_counts(_session, *, auth_user_id: int, workspace_id: int, now) -> dict[str, int]:
-        assert (auth_user_id, workspace_id) == (7, 11)
+    async def status_counts(_session, *, workspace_id: int, now) -> dict[str, int]:
+        assert workspace_id == 11
         # ``expired`` deliberately absent: the tally query omits empty buckets.
         return {"active": 3, "revoked": 1}
 
@@ -545,10 +497,34 @@ def test_list_api_keys_returns_page_and_workspace_wide_status_counts(monkeypatch
 
     assert result["total"] == 4
     assert [row.id for row in result["results"]] == [123]
+    assert result["results"][0].owner_username == "ada"
     counts = result["counts"]
     assert (counts.total, counts.active, counts.expired, counts.revoked) == (4, 3, 0, 1)
     # Sorted so the create form renders deterministically.
     assert result["available_scopes"] == ["team.create", "team.read"]
+
+
+def test_list_api_key_envelope_keeps_available_scopes_on_the_wire() -> None:
+    """The service computed ``available_scopes``; the RPC serializer dropped it.
+
+    With an empty list the create form offers no scopes at all, so every key
+    minted from the UI is inert -- and the picker, handed ``undefined``, took
+    the admin page down with it.
+    """
+    envelope = c.paginated_dump(
+        {
+            "results": [api_keys.describe(_api_key_row())],
+            "total": 1,
+            "page": 1,
+            "per_page": 20,
+            "counts": schemas.ApiKeyStatusCounts(total=1, active=1, expired=0, revoked=0),
+            "available_scopes": ["team.create", "team.read"],
+        }
+    )
+
+    assert envelope["available_scopes"] == ["team.create", "team.read"]
+    assert envelope["counts"] == {"total": 1, "active": 1, "expired": 0, "revoked": 0}
+    assert [row["id"] for row in envelope["results"]] == [123]
 
 
 def test_validated_key_payload_authorizes_exactly_its_scopes_downstream(

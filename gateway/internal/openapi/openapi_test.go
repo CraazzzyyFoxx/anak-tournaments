@@ -76,6 +76,20 @@ func TestBuild_TopLevel(t *testing.T) {
 	}
 }
 
+func TestBuild_ErrorSchemaIncludesCode(t *testing.T) {
+	doc := buildDoc(t, sampleGroups())
+	comps := asMap(t, doc["components"], "components")
+	schemas := asMap(t, comps["schemas"], "schemas")
+	errSchema := asMap(t, schemas["Error"], "Error")
+	props := asMap(t, errSchema["properties"], "Error.properties")
+	if _, ok := props["detail"]; !ok {
+		t.Fatal("Error.properties missing detail")
+	}
+	if _, ok := props["code"]; !ok {
+		t.Fatal("Error.properties missing code")
+	}
+}
+
 func TestBuild_PathsAndMethods(t *testing.T) {
 	doc := buildDoc(t, sampleGroups())
 	paths := asMap(t, doc["paths"], "paths")
@@ -98,6 +112,32 @@ func TestBuild_PathsAndMethods(t *testing.T) {
 	params, _ := get["parameters"].([]any)
 	if len(params) != 1 || asMap(t, params[0], "param")["name"] != "path" {
 		t.Errorf("files.get parameters = %v, want one path param named 'path'", get["parameters"])
+	}
+}
+
+func TestBuildV2_RewritesAndWraps(t *testing.T) {
+	raw := BuildV2(Info{Title: "Test API", Version: "1"}, sampleGroups())
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	paths := asMap(t, doc["paths"], "paths")
+	if _, ok := paths["/api/v1/things"]; ok {
+		t.Fatal("v1 path leaked into v2 spec")
+	}
+	if _, ok := paths["/api/v2/things"]; !ok {
+		t.Fatalf("missing v2 path; have %v", keys(paths))
+	}
+	get := asMap(t, asMap(t, paths["/api/v2/things"], "things")["get"], "get")
+	schema := asMap(t, asMap(t, asMap(t, asMap(t, get["responses"], "resp")["200"], "200")["content"], "content")["application/json"], "json")["schema"]
+	props := asMap(t, asMap(t, schema, "schema")["properties"], "properties")
+	if _, ok := props["ok"]; !ok {
+		t.Fatalf("success schema not wrapped: %#v", schema)
+	}
+	schemas := asMap(t, asMap(t, doc["components"], "components")["schemas"], "schemas")
+	errProps := asMap(t, asMap(t, schemas["Error"], "Error")["properties"], "Error.properties")
+	if _, ok := errProps["ok"]; !ok {
+		t.Fatalf("v2 Error missing ok: %#v", schemas["Error"])
 	}
 }
 

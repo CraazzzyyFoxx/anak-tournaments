@@ -32,18 +32,16 @@ import {
   RANK_SOURCE_LABELS,
   type CustomGamePlayer,
   type CustomGamePlayerPatch,
+  type MixParticipation,
 } from "@/services/custom-game.service";
 
 import {
   LINEUP_ISSUE_MESSAGES,
   LINEUP_ROLES,
-  bucketPatch,
   getLineupIssue,
-  lineupBucket,
   playerLabel,
   resolveRoleOrder,
   toggleRole,
-  type LineupBucket,
 } from "./pickup-lineup";
 
 /** What Save writes into the host's own rank book: `clear` falls the role back to the workspace. */
@@ -60,7 +58,7 @@ type PickupPlayerSheetProps = {
 
 /** Everything the sheet edits before Save, kept apart from the server row. */
 type RoleDraft = {
-  bucket: LineupBucket;
+  participation: MixParticipation;
   /** Priority order of the roles that are on — position is what the balancer reads. */
   order: RoleCode[];
   /** Staged writes to the host's own book. A `null` value is a staged Clear. */
@@ -72,18 +70,22 @@ type RoleDraft = {
 
 function buildDraft(row: CustomGamePlayer | null): RoleDraft {
   return {
-    bucket: row ? lineupBucket(row) : "pool",
+    participation: row?.participation ?? "pool",
     order: row ? resolveRoleOrder(row) : [],
     rankEdits: {},
     isFlex: row?.is_flex ?? false,
   };
 }
 
-/** The three-way status picker's options, in the same order the lineup columns read left to right. */
-const STATUS_OPTIONS: readonly { bucket: LineupBucket; label: string; description: string }[] = [
-  { bucket: "must_play", label: "Must play", description: "Guaranteed a seat" },
-  { bucket: "pool", label: "In the pool", description: "In the balance" },
-  { bucket: "benched", label: "Benched", description: "Sitting out" },
+/** The three-way status picker, in the same order the lineup columns read left to right. */
+const STATUS_OPTIONS: readonly {
+  participation: MixParticipation;
+  label: string;
+  description: string;
+}[] = [
+  { participation: "must_play", label: "Must play", description: "Guaranteed a seat" },
+  { participation: "pool", label: "In the pool", description: "In the balance" },
+  { participation: "benched", label: "Benched", description: "Sitting out" },
 ];
 
 /**
@@ -166,7 +168,7 @@ export function PickupPlayerSheet({
       }
     }
     onSave(
-      { ...bucketPatch(draft.bucket), roles: draft.order, is_flex: draft.isFlex },
+      { participation: draft.participation, roles: draft.order, is_flex: draft.isFlex },
       Object.keys(draft.rankEdits).length > 0 ? { ranks, clear } : null,
     );
     // The mutations fire-and-forget from here (the page owns their pending
@@ -211,20 +213,22 @@ export function PickupPlayerSheet({
                 className="grid grid-cols-3 gap-1.5"
               >
                 {STATUS_OPTIONS.map((option) => {
-                  const selected = draft.bucket === option.bucket;
+                  const selected = draft.participation === option.participation;
                   return (
                     <button
-                      key={option.bucket}
+                      key={option.participation}
                       type="button"
                       role="radio"
                       aria-checked={selected}
                       aria-label={`${option.label} for ${label}`}
                       disabled={disabled}
-                      onClick={() => setDraft((current) => ({ ...current, bucket: option.bucket }))}
+                      onClick={() =>
+                        setDraft((current) => ({ ...current, participation: option.participation }))
+                      }
                       className={cn(
                         "flex flex-col items-center gap-0.5 rounded-lg border px-2 py-2 text-center transition-colors",
                         selected
-                          ? option.bucket === "must_play"
+                          ? option.participation === "must_play"
                             ? "border-[color:var(--aqt-amber)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_12%,transparent)] text-[color:var(--aqt-amber)]"
                             : "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[color:var(--aqt-teal)]"
                           : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-3)]",
@@ -232,7 +236,7 @@ export function PickupPlayerSheet({
                       )}
                     >
                       <span className="flex items-center gap-1">
-                        {option.bucket === "must_play" ? (
+                        {option.participation === "must_play" ? (
                           <Pin
                             className="size-3"
                             aria-hidden="true"
@@ -428,7 +432,7 @@ function draftRow(row: CustomGamePlayer, draft: RoleDraft): CustomGamePlayer {
       ranks[role] = value;
     }
   }
-  return { ...row, is_active: draft.bucket !== "benched", roles: draft.order, ranks };
+  return { ...row, participation: draft.participation, roles: draft.order, ranks };
 }
 
 /** The rank field's value, source badge and clearability, from the server row plus any staged edit. */

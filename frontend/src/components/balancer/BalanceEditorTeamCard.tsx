@@ -57,7 +57,7 @@ export function BalanceEditorTeamCard({
         <div className="flex min-w-0 gap-2 items-center">
           <Badge
             className={cn(
-              "rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
+              "rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.18em]",
               teamAccent,
             )}
           >
@@ -70,7 +70,7 @@ export function BalanceEditorTeamCard({
 
         <div className="flex shrink-0 items-start gap-2">
           <div className="text-right">
-            <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-[11px] font-medium text-[color:var(--aqt-fg-muted)]">
+            <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-xs font-medium text-[color:var(--aqt-fg-muted)]">
               <span>
                 Total: <span className="tabular-nums text-[color:var(--aqt-fg)]">{total}</span>
               </span>
@@ -88,7 +88,7 @@ export function BalanceEditorTeamCard({
           {remoteDrags.map((drag) => (
             <div
               key={drag.userId}
-              className="flex items-center gap-1.5 text-[11px] text-cyan-100/80"
+              className="flex items-center gap-1.5 text-xs text-cyan-100/80"
             >
               <span className="relative flex h-2 w-2 shrink-0">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400/70" />
@@ -111,16 +111,16 @@ export function BalanceEditorTeamCard({
       <Table wrapperClassName="overflow-x-auto overflow-y-visible" className="min-w-90">
         <TableHeader>
           <TableRow className="border-[color:var(--aqt-border)] hover:bg-transparent">
-            <TableHead className="h-8 w-13 px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <TableHead className="h-8 w-13 px-4 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               Role
             </TableHead>
-            <TableHead className="h-8 min-w-45 px-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <TableHead className="h-8 min-w-45 px-0 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               Player
             </TableHead>
-            <TableHead className="h-8 w-18 px-2 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <TableHead className="h-8 w-18 px-2 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               Rank
             </TableHead>
-            <TableHead className="h-8 w-22 px-3 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <TableHead className="h-8 w-22 px-3 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               Prefs
             </TableHead>
           </TableRow>

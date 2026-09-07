@@ -90,6 +90,13 @@ class Tournament(db.TimeStampIntegerMixin):
     # NULL means "inherit from the workspace default", NOT "an empty roster" — the
     # resolution chain lives in ``shared.domain.roster_shape.resolve_roster_shape``.
     roster_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
+    # Organizer-uploaded branding (S3 public URLs, keys under
+    # ``avatars/tournaments/{id}/{cover,logo}/`` -- see
+    # ``shared.clients.s3.avatar_prefix``). Nullable with no default: a
+    # tournament without an image renders no image at all, so NULL is the
+    # meaningful state rather than a placeholder path.
+    cover_image_url: Mapped[str | None] = mapped_column(String(), nullable=True)
+    logo_url: Mapped[str | None] = mapped_column(String(), nullable=True)
 
     workspace: Mapped[Workspace] = relationship()
     division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(

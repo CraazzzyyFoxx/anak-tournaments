@@ -27,6 +27,8 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
 
+from shared.domain.roster import flex_role_mode  # noqa: E402
+
 _common = importlib.import_module("src.services.registration._common")
 _service = importlib.import_module("src.services.registration.service")
 
@@ -44,32 +46,32 @@ def _role(role: str, **kwargs: Any) -> Any:
 
 class TestForcedFlexEnabled:
     def test_absent_key_is_optional(self) -> None:
-        assert _common.flex_role_mode(_form({})) == "optional"
+        assert flex_role_mode(_form({})) == "optional"
 
     def test_absent_mode_is_optional(self) -> None:
-        assert _common.flex_role_mode(_form({"flex_role": {"enabled": True}})) == "optional"
+        assert flex_role_mode(_form({"flex_role": {"enabled": True}})) == "optional"
 
     def test_explicit_optional(self) -> None:
-        assert _common.flex_role_mode(_form({"flex_role": {"mode": "optional"}})) == "optional"
+        assert flex_role_mode(_form({"flex_role": {"mode": "optional"}})) == "optional"
 
     def test_forced(self) -> None:
-        assert _common.flex_role_mode(_form({"flex_role": {"mode": "forced"}})) == "forced"
+        assert flex_role_mode(_form({"flex_role": {"mode": "forced"}})) == "forced"
 
     def test_forced_ignored_when_the_field_is_disabled(self) -> None:
         """``enabled: false`` bans flex outright, so it wins over the mode."""
         form = _form({"flex_role": {"enabled": False, "mode": "forced"}})
 
-        assert _common.flex_role_mode(form) == "optional"
+        assert flex_role_mode(form) == "optional"
 
     def test_missing_form_is_optional(self) -> None:
         """Fail closed: an unreadable form must not silently inflate ranks."""
-        assert _common.flex_role_mode(None) == "optional"
+        assert flex_role_mode(None) == "optional"
 
     def test_empty_built_in_fields_json_is_optional(self) -> None:
-        assert _common.flex_role_mode(_form(None)) == "optional"
+        assert flex_role_mode(_form(None)) == "optional"
 
     def test_non_dict_config_is_optional(self) -> None:
-        assert _common.flex_role_mode(_form({"flex_role": "forced"})) == "optional"
+        assert flex_role_mode(_form({"flex_role": "forced"})) == "optional"
 
 
 class TestApplyAllRolesForced:
@@ -236,24 +238,26 @@ class TestWritePathsHonourForcedFlex:
 
 class TestFlexRoleModeReader:
     def test_all_roles(self) -> None:
-        assert _common.flex_role_mode(_form({"flex_role": {"mode": "all_roles"}})) == "all_roles"
+        assert flex_role_mode(_form({"flex_role": {"mode": "all_roles"}})) == "all_roles"
 
     def test_unknown_mode_reads_as_optional(self) -> None:
         """A value from a newer client must not accidentally enable a policy."""
-        assert _common.flex_role_mode(_form({"flex_role": {"mode": "whatever"}})) == "optional"
+        assert flex_role_mode(_form({"flex_role": {"mode": "whatever"}})) == "optional"
 
     def test_disabled_field_wins_over_all_roles(self) -> None:
         form = _form({"flex_role": {"enabled": False, "mode": "all_roles"}})
 
-        assert _common.flex_role_mode(form) == "optional"
+        assert flex_role_mode(form) == "optional"
 
     def test_all_roles_and_forced_both_require_every_role(self) -> None:
+        """Both non-optional modes read as "not optional" -- the one comparison
+        that replaced the pair of boolean flex predicates."""
         for mode in ("all_roles", "forced"):
-            assert _common.all_roles_required(_form({"flex_role": {"mode": mode}})) is True
+            assert flex_role_mode(_form({"flex_role": {"mode": mode}})) != "optional"
 
     def test_only_forced_makes_the_flex_choice_for_the_registrant(self) -> None:
-        assert _common.forced_flex_enabled(_form({"flex_role": {"mode": "forced"}})) is True
-        assert _common.forced_flex_enabled(_form({"flex_role": {"mode": "all_roles"}})) is False
+        assert flex_role_mode(_form({"flex_role": {"mode": "forced"}})) == "forced"
+        assert flex_role_mode(_form({"flex_role": {"mode": "all_roles"}})) != "forced"
 
 
 class TestApplyAllRolesWithoutForcing:

@@ -1,11 +1,11 @@
 "use client";
 
-import { FileText, Link2, ListVideo, Network } from "lucide-react";
+import { FileText, Link2, ListVideo, MessagesSquare, Network } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ComponentType } from "react";
 
-import { SocialIcon } from "@/components/social/SocialIcon";
 import type { TournamentLink, TournamentLinkKind } from "@/types/stream.types";
+import { TOURNAMENT_ACTION_CLASS } from "./tournamentActionClass";
 
 type TournamentLinkChipsProps = {
   /** `tournament.links` — absent whenever the read did not ask for the entity. */
@@ -23,9 +23,7 @@ type ChipLabelKey =
 
 type ChipMeta = {
   labelKey: ChipLabelKey;
-  /** `null` means "use the Discord brand mark" — lucide dropped brand glyphs, so
-   *  that one comes from `SocialIcon` instead of this field. */
-  icon: ComponentType<{ className?: string }> | null;
+  icon: ComponentType<{ className?: string }>;
 };
 
 /**
@@ -42,7 +40,7 @@ type ChipMeta = {
  */
 const CHIP_META: Record<TournamentLinkKind, ChipMeta | null> = {
   stream: null,
-  discord: { labelKey: "tournamentDetail.links.kinds.discord", icon: null },
+  discord: { labelKey: "tournamentDetail.links.kinds.discord", icon: MessagesSquare },
   vod: { labelKey: "tournamentDetail.links.kinds.vod", icon: ListVideo },
   bracket: { labelKey: "tournamentDetail.links.kinds.bracket", icon: Network },
   rules: { labelKey: "tournamentDetail.links.kinds.rules", icon: FileText },
@@ -50,25 +48,43 @@ const CHIP_META: Record<TournamentLinkKind, ChipMeta | null> = {
 };
 
 /**
- * Everything around the event that is not the broadcast: the Discord invite, the
- * rules doc, an external bracket, VOD playlists.
+ * The links that actually render as chips: active, and with a chip in the
+ * registry (`stream` has none — official broadcasts belong to the dock).
  *
  * Ordered by `(sort_order, id)` — the same order the backend returns and the
  * organizer sets in the admin Links tab, mirrored here so a client-side sort can
  * never disagree with the table they were just looking at.
+ *
+ * Exported because the caller has to decide whether to draw a heading around
+ * them: the component renders nothing for an empty set, but a card's title and
+ * hairline would still be on screen above it.
  */
-export function TournamentLinkChips({ links, className }: Readonly<TournamentLinkChipsProps>) {
-  const t = useTranslations();
-
+export function visibleTournamentLinks(links: TournamentLink[] | undefined) {
   // `flatMap` rather than filter-then-index: it resolves the registry entry once
   // and carries it forward, so the render needs neither a second lookup nor a
   // cast to convince the compiler the entry is there.
-  const chips = (links ?? [])
+  return (links ?? [])
     .flatMap((link) => {
       const meta = link.is_active ? CHIP_META[link.kind] : null;
       return meta ? [{ link, meta }] : [];
     })
     .sort((a, b) => a.link.sort_order - b.link.sort_order || a.link.id - b.link.id);
+}
+
+/**
+ * Everything around the event that is not the broadcast: the Discord invite, the
+ * rules doc, an external bracket, VOD playlists.
+ *
+ * Rendered in the overview's Links card, not in the page header. They are
+ * reference material a reader consults once, and the header's job is the state
+ * of the tournament plus what a reader can act on — a header that also carried
+ * five translucent chips put them on top of the cover banner, where a
+ * `--aqt-overlay-2` box has no surface to sit on.
+ */
+export function TournamentLinkChips({ links, className }: Readonly<TournamentLinkChipsProps>) {
+  const t = useTranslations();
+
+  const chips = visibleTournamentLinks(links);
 
   // Nothing at all rather than an empty heading: this is a public page, and "the
   // organizer has not added links" is not news a spectator came for. The admin
@@ -79,7 +95,7 @@ export function TournamentLinkChips({ links, className }: Readonly<TournamentLin
 
   return (
     <nav aria-label={t("tournamentDetail.links.heading")} className={className}>
-      <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
+      <ul className="m-0 flex list-none flex-wrap items-center gap-2.5 p-0">
         {chips.map(({ link, meta }) => {
           const Icon = meta.icon;
           return (
@@ -88,15 +104,9 @@ export function TournamentLinkChips({ links, className }: Readonly<TournamentLin
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                // Same chip as the dock's secondary broadcast links, so the two
-                // sets of external links on this page read as one vocabulary.
-                className="inline-flex items-center gap-1.5 rounded-[7px] border border-[color:var(--aqt-border-2)] px-2 py-1 text-[12.5px] font-medium text-inherit no-underline outline-none transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+                className={TOURNAMENT_ACTION_CLASS}
               >
-                {Icon ? (
-                  <Icon className="size-3.5 opacity-80" aria-hidden />
-                ) : (
-                  <SocialIcon provider="discord" size={13} />
-                )}
+                <Icon className="size-4 opacity-80" aria-hidden />
                 {/* `label` is NULL-able with exactly this meaning (see the column
                     docstring): fall back to the kind's own name, never to the raw
                     URL, which would put a tracking query string on screen. */}

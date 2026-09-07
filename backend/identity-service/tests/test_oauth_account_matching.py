@@ -23,7 +23,7 @@ class _FakeScalarsResult:
         return self._values[0] if self._values else None
 
 
-class _FakeExecuteResult:
+class _FakeDedupResult:
     """What a repository sees: ``result.unique().scalars().first()/.all()``."""
 
     def __init__(self, values) -> None:
@@ -38,7 +38,7 @@ class _FakeExecuteResult:
                 continue
             seen.add(key)
             unique_values.append(value)
-        return _FakeExecuteResult(unique_values)
+        return _FakeDedupResult(unique_values)
 
     def scalars(self):
         return _FakeScalarsResult(self._values)
@@ -63,7 +63,7 @@ class _FakeSession:
     async def execute(self, stmt):
         if not self._results:
             raise AssertionError("Unexpected execute() call")
-        return _FakeExecuteResult(self._results.pop(0))
+        return _FakeDedupResult(self._results.pop(0))
 
     def add(self, obj) -> None:
         self.added.append(obj)

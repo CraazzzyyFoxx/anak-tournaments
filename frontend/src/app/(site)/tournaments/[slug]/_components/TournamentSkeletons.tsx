@@ -19,7 +19,7 @@ function SkeletonRegion({
   message,
   children
 }: Readonly<{
-  variant: "shell" | "bracket" | "teams" | "participants" | "schedule" | "matches" | "heroes" | "standings" | "maps" | "stream";
+  variant: "shell" | "overview" | "bracket" | "teams" | "participants" | "schedule" | "matches" | "heroes" | "standings" | "maps" | "stream";
   message: string;
   children: React.ReactNode;
 }>) {
@@ -83,31 +83,16 @@ export function TournamentShellSkeleton() {
     <SkeletonRegion variant="shell" message={t("common.loading")}>
       <div className="aqt-tn min-w-0 space-y-4">
         <PageHero
+          align="start"
           eyebrow={<SkeletonBlock style={{ width: "14rem", height: "0.65rem" }} />}
-          title={<SkeletonBlock style={{ width: "min(32rem, 76vw)", height: "3rem" }} />}
+          title={<SkeletonBlock style={{ width: "min(28rem, 70vw)", height: "2.4rem" }} />}
           meta={
             <>
               <SkeletonBlock style={{ width: "5rem", height: "1.75rem" }} />
+              <SkeletonBlock style={{ width: "9rem", height: "1.75rem" }} />
               <SkeletonBlock style={{ width: "7rem", height: "1.75rem" }} />
               <SkeletonBlock style={{ width: "6rem", height: "1.75rem" }} />
             </>
-          }
-          lede={
-            <span className="grid gap-2">
-              <SkeletonBlock style={{ width: "min(28rem, 74vw)", height: "0.7rem" }} />
-              <SkeletonBlock style={{ width: "min(21rem, 58vw)", height: "0.7rem" }} />
-            </span>
-          }
-          aside={
-            <div className="grid grid-cols-2 gap-x-7 gap-y-5 xl:grid-cols-4">
-              {Array.from({ length: 4 }, (_, index) => (
-                <div className="grid gap-2" key={index}>
-                  <SkeletonBlock style={{ width: "4rem", height: "0.55rem" }} />
-                  <SkeletonBlock style={{ width: "3rem", height: "2rem" }} />
-                  <SkeletonBlock style={{ width: "3.5rem", height: "0.55rem" }} />
-                </div>
-              ))}
-            </div>
           }
         />
 
@@ -131,6 +116,66 @@ export function TournamentShellSkeleton() {
         </div>
 
       </div>
+    </SkeletonRegion>
+  );
+}
+
+/**
+ * The overview's 7/3 shape (wireframes §3): one full-width block on top — the
+ * phase timeline in registration, the live/podium card afterwards — then the
+ * "now" column beside the reference column. Reserving both columns matters more
+ * here than on any other section: the overview is the landing page, so this is
+ * the first paint of the whole tournament.
+ */
+export function TournamentOverviewSkeleton() {
+  const t = useTranslations();
+
+  return (
+    <SkeletonRegion variant="overview" message={t("tournamentDetail.overview.loading")}>
+      <TournamentPageSkeletonLayout>
+        <div className={styles.skeletonSurface}>
+          <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
+            <SkeletonBlock style={{ width: "9rem", height: "1.25rem" }} />
+          </div>
+          <div className="grid gap-2 p-4 sm:grid-cols-4">
+            {Array.from({ length: 4 }, (_, cell) => (
+              <div className="grid gap-1.5" key={cell}>
+                <SkeletonBlock style={{ width: "70%", height: "0.85rem" }} />
+                <SkeletonBlock style={{ width: "90%", height: "0.7rem" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[7fr_3fr]">
+          <div className="grid content-start gap-4">
+            {[0, 1].map((card) => (
+              <div className={styles.skeletonSurface} key={card}>
+                <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
+                  <SkeletonBlock style={{ width: "8rem", height: "1rem" }} />
+                </div>
+                <div className="grid gap-2 p-4 sm:grid-cols-2">
+                  {Array.from({ length: 2 }, (_, tile) => (
+                    <SkeletonBlock key={tile} style={{ width: "100%", height: "5rem" }} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="grid content-start gap-4">
+            {[0, 1, 2].map((card) => (
+              <div className={styles.skeletonSurface} key={card}>
+                <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
+                  <SkeletonBlock style={{ width: "6.5rem", height: "1rem" }} />
+                </div>
+                <div className="grid gap-2 p-4">
+                  <SkeletonBlock style={{ width: "100%", height: "0.7rem" }} />
+                  <SkeletonBlock style={{ width: "80%", height: "0.7rem" }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </TournamentPageSkeletonLayout>
     </SkeletonRegion>
   );
 }
@@ -273,28 +318,6 @@ export function TournamentHeroesSkeleton() {
   );
 }
 
-export function TournamentStandingsSkeleton() {
-  const t = useTranslations();
-
-  return (
-    <SkeletonRegion variant="standings" message={t("tournamentDetail.loading.pages.standings")}>
-      <TournamentPageSkeletonLayout>
-        
-        <ControlRowSkeleton />
-        {[0, 1].map((card) => (
-          <div className={styles.skeletonSurface} key={card}>
-            <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
-              <SkeletonBlock style={{ width: "11rem", height: "1.25rem" }} />
-              <SkeletonBlock style={{ width: "4rem", height: "1.25rem" }} />
-            </div>
-            <TableRowsSkeleton count={5} />
-          </div>
-        ))}
-      </TournamentPageSkeletonLayout>
-    </SkeletonRegion>
-  );
-}
-
 export function TournamentMapsSkeleton() {
   const t = useTranslations();
 
@@ -323,33 +346,6 @@ export function TournamentMapsSkeleton() {
   );
 }
 
-export function TournamentScheduleSkeleton() {
-  const t = useTranslations();
-
-  return (
-    <SkeletonRegion variant="schedule" message={t("tournamentDetail.loading.pages.schedule")}>
-      <TournamentPageSkeletonLayout>
-        <div className={styles.skeletonSurface}>
-          <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
-            <SkeletonBlock style={{ width: "9rem", height: "1.25rem" }} />
-          </div>
-          {/* Three rows: the shortest schedule worth a page is
-              registration -> check-in -> live. Each row is a phase label over
-              its two timestamps, so the arriving content does not reflow. */}
-          <div className={styles.skeletonRows}>
-            {Array.from({ length: 3 }, (_, row) => (
-              <div className={styles.skeletonRow} key={row}>
-                <SkeletonBlock style={{ width: "6.5rem", height: "0.85rem" }} />
-                <SkeletonBlock style={{ width: "13rem", height: "0.7rem" }} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </TournamentPageSkeletonLayout>
-    </SkeletonRegion>
-  );
-}
-
 export function TournamentStreamSkeleton() {
   const t = useTranslations();
 
@@ -361,11 +357,11 @@ export function TournamentStreamSkeleton() {
             down the page. Four rail rows: more than a handful of participants
             live at once is the rare case, not the one to reserve space for. */}
         <div className={styles.skeletonSurface}>
-          <div className="flex items-center justify-between gap-4 border-b border-[color:var(--aqt-border)] px-[18px] py-[14px]">
+          <div className="flex items-center justify-between gap-4 border-b border-[color:var(--aqt-border)] px-5 py-3">
             <SkeletonBlock style={{ width: "7rem", height: "1rem" }} />
             <SkeletonBlock style={{ width: "8rem", height: "1.4rem" }} />
           </div>
-          <div className="grid xl:grid-cols-[minmax(0,1fr)_368px]">
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-w-0 flex-col">
               <SkeletonBlock className="aspect-video min-h-[300px] w-full rounded-none border-0" />
               <div className="flex flex-col gap-2.5 p-4">
@@ -375,7 +371,7 @@ export function TournamentStreamSkeleton() {
                 <SkeletonBlock style={{ width: "9rem", height: "2.2rem" }} />
               </div>
             </div>
-            <div className="grid content-start gap-2 border-t border-[color:var(--aqt-border)] p-3 md:grid-cols-2 xl:grid-cols-1 xl:border-t-0 xl:border-s">
+            <div className="grid content-start gap-2 border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-3 md:grid-cols-2 xl:grid-cols-1 xl:border-t-0 xl:border-s">
               {Array.from({ length: 4 }, (_, row) => (
                 <div className="flex items-center gap-3 p-2" key={row}>
                   <SkeletonBlock className="aspect-video w-[104px] shrink-0" />

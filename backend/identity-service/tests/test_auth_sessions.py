@@ -19,18 +19,8 @@ from src.services.auth_users import auth_users  # noqa: E402
 from src.services.security import token_codec  # noqa: E402
 from src.services.session_cache import session_cache  # noqa: E402
 from src.services.sessions import RefreshTokenService, refresh_tokens, sessions  # noqa: E402
-
-
-class _FakeExecuteResult:
-    def __init__(self, *, scalar=None, scalars=None) -> None:
-        self._scalar = scalar
-        self._scalars = list(scalars or [])
-
-    def scalar_one_or_none(self):
-        return self._scalar
-
-    def scalars(self):
-        return SimpleNamespace(all=lambda: list(self._scalars))
+from tests._fakes import FakeExecuteResult as _FakeExecuteResult  # noqa: E402
+from tests._fakes import FakeSessionCache as _RecordingCache  # noqa: E402
 
 
 class _FakeSession:
@@ -47,18 +37,6 @@ class _FakeSession:
 
     async def commit(self) -> None:
         self.commit_calls += 1
-
-
-class _RecordingCache:
-    def __init__(self) -> None:
-        self.blacklisted: list[tuple[str, int]] = []
-
-    async def blacklist_session(self, session_id: str, ttl_seconds: int) -> None:
-        self.blacklisted.append((session_id, ttl_seconds))
-
-    async def blacklist_sessions(self, session_ids: set[str], ttl_seconds: int) -> None:
-        for session_id in sorted(session_ids):
-            await self.blacklist_session(session_id, ttl_seconds)
 
 
 class _FakeTokenRepo:
@@ -721,3 +699,64 @@ def test_grace_window_of_zero_disables_replay_without_touching_the_database() ->
 
     assert asyncio.run(service.get_grace_record(db, "rotated-token")) is None
     assert db.executed == []
+
+
+def test_revoke_session_rpc_journals_the_revocation_before_the_service_commits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``rpc.identity.revoke_session`` is the one self-service subject that kills
+    someone's credential, so it leaves an audit row -- staged on the same session
+    the service then commits, and carrying the session id but never a token.
+    """
+    from src.core import db as core_db
+    from src.rpc import auth as auth_rpc
+    from src.services.token_validation import token_validation
+    from tests._fakes import FakeSessionMaker as _FakeSessionMaker
+    from tests._fakes import handler as _handler
+    from tests._fakes import make_auth_user as _make_auth_user
+
+    session_id = uuid4()
+    actor = _make_auth_user()
+    staged: list = []
+    revoked: list = []
+
+    fake_session = SimpleNamespace(add=staged.append)
+
+    async def fake_resolve(_session, _token):
+        return actor
+
+    async def fake_revoke(_session, user, sid):
+        # The row is already on the session by the time the committing service runs.
+        assert [type(row).__name__ for row in staged] == ["AuditLog"]
+        revoked.append((user.id, sid))
+
+    monkeypatch.setattr(token_validation, "resolve_active_user", fake_resolve)
+    monkeypatch.setattr(auth, "revoke_session", fake_revoke)
+    monkeypatch.setattr(core_db, "async_session_maker", _FakeSessionMaker(fake_session))
+
+    handler = _handler(auth_rpc, "rpc.identity.revoke_session")
+    reply = asyncio.run(
+        handler(
+            {
+                "access_token": "bearer-token",
+                "session_id": str(session_id),
+                "ip_address": "10.0.0.9",
+                "user_agent": "Chrome",
+            },
+            None,
+        )
+    )
+
+    assert reply["ok"] is True
+    assert revoked == [(actor.id, session_id)]
+
+    (row,) = staged
+    assert row.action == "session.revoke"
+    assert row.source == "admin"
+    assert row.workspace_id is None
+    assert row.entity_type == "session"
+    assert row.actor_auth_user_id == actor.id
+    assert row.after_json == {"session_id": str(session_id)}
+    assert row.ip_address == "10.0.0.9"
+    # Nothing token-shaped ever reaches the journal.
+    assert "bearer-token" not in str(row.after_json) + str(row.before_json)

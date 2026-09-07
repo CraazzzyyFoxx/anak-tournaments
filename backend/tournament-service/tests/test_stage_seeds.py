@@ -87,6 +87,72 @@ class BracketPolicyTests(TestCase):
         self.assertEqual(seeds.advance_split(stage, 4), (4, 0))
 
 
+def _group(item_id: int, advance: int | None = None) -> SimpleNamespace:
+    return SimpleNamespace(id=item_id, advance_count=advance)
+
+
+class BuildSeedingTests(TestCase):
+    def _slices(self, *counts: int, start: int = 1) -> list:
+        return [seeds.GroupSlice(100 + index, start, count) for index, count in enumerate(counts)]
+
+    def test_snake_is_column_major(self) -> None:
+        self.assertEqual(
+            [(100, 1), (101, 1), (100, 2), (101, 2)],
+            seeds.build_seeding(self._slices(2, 2), "snake"),
+        )
+
+    def test_cross_flips_every_odd_column(self) -> None:
+        self.assertEqual(
+            [(100, 1), (101, 1), (101, 2), (100, 2)],
+            seeds.build_seeding(self._slices(2, 2), "cross"),
+        )
+
+    def test_ragged_groups_drop_out_of_later_columns(self) -> None:
+        self.assertEqual(
+            [(100, 1), (101, 1), (100, 2), (100, 3)],
+            seeds.build_seeding(self._slices(3, 1), "snake"),
+        )
+
+    def test_ragged_cross_keeps_alternating_among_the_survivors(self) -> None:
+        self.assertEqual(
+            [(100, 1), (101, 1), (101, 2), (100, 2), (100, 3)],
+            seeds.build_seeding(self._slices(3, 2), "cross"),
+        )
+
+    def test_no_slices_is_no_seeding(self) -> None:
+        self.assertEqual([], seeds.build_seeding([], "cross"))
+
+
+class GroupAdvanceCountsTests(TestCase):
+    def _split_de(self) -> SimpleNamespace:
+        return SimpleNamespace(
+            stage_type=enums.StageType.DOUBLE_ELIMINATION,
+            split_lower_bracket=True,
+            items=[SimpleNamespace(type=enums.StageItemType.BRACKET_LOWER)],
+        )
+
+    def test_groups_without_an_override_keep_the_callers_numbers(self) -> None:
+        stage = self._split_de()
+        self.assertEqual(
+            [(10, 3, 1), (11, 3, 1)],
+            seeds.group_advance_counts(stage, [_group(10), _group(11)], default_upper=3, default_lower=1),
+        )
+
+    def test_override_is_split_upper_lower_by_advance_split(self) -> None:
+        stage = self._split_de()
+        self.assertEqual(
+            [(10, 3, 2), (11, 1, 1)],
+            seeds.group_advance_counts(stage, [_group(10, 5), _group(11)], default_upper=1, default_lower=1),
+        )
+
+    def test_single_elimination_sends_every_override_upper(self) -> None:
+        stage = SimpleNamespace(stage_type=enums.StageType.SINGLE_ELIMINATION, split_lower_bracket=False, items=[])
+        self.assertEqual(
+            [(10, 4, 0)],
+            seeds.group_advance_counts(stage, [_group(10, 4)], default_upper=2),
+        )
+
+
 class StageLifecycleTests(TestCase):
     def test_draft_preview_live_done(self) -> None:
         lifecycle = importlib.import_module("src.domain.stage.lifecycle")

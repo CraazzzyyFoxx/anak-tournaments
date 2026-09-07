@@ -3,47 +3,41 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-import {
-  accessApiKeysPermissions,
-  accessPermissionsPermissions,
-  accessRolesPermissions,
-  accessUsersPermissions,
-} from "@/lib/admin-permissions";
-import { type AppPermission, usePermissions } from "@/hooks/usePermissions";
+import { accessSectionViews, adminRouteAccessOptions } from "@/components/admin/admin-navigation";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
-type AccessRoute = {
-  href: string;
-  permissions: AppPermission[];
-  workspaceAdminVisible?: boolean;
-};
-
-const accessRoutes: AccessRoute[] = [
-  { href: "/admin/access/users", permissions: accessUsersPermissions },
-  { href: "/admin/access/roles", permissions: accessRolesPermissions },
-  { href: "/admin/access/permissions", permissions: accessPermissionsPermissions },
-  { href: "/admin/access/api-keys", permissions: accessApiKeysPermissions, workspaceAdminVisible: true },
-];
-
-export default function AccessAdminIndexPage() {
+/**
+ * The Access hub root is not a screen: it forwards to the first section the
+ * caller may actually open.
+ *
+ * A static redirect (what `/admin/settings` does) cannot work here, because
+ * Access mixes gate classes: Accounts, Permissions and OAuth are global-RBAC
+ * reads, Sessions is superuser-only, and Roles and API keys belong to a
+ * workspace admin. The sidebar entry used to point straight at Accounts, so
+ * every workspace admin who clicked the one Access entry they were shown got
+ * the Unauthorized wall instead of the two sections they own.
+ *
+ * The target is resolved through `adminRouteAccessOptions`, the same route
+ * table the layout guard checks, so this can never forward somewhere the guard
+ * then rejects.
+ */
+export default function AccessAdminIndex() {
   const router = useRouter();
-  const { isLoaded, isSuperuser, hasAnyPermission, hasAnyWorkspacePermission, canManageAnyWorkspace } = usePermissions();
+  const { isLoaded, canAccessAdminRoute } = usePermissions();
+  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+
+  const target = isLoaded
+    ? accessSectionViews.find((view) =>
+        canAccessAdminRoute(adminRouteAccessOptions(view.href, currentWorkspaceId))
+      )?.href
+    : undefined;
 
   useEffect(() => {
-    if (!isLoaded) {
-      return;
-    }
+    if (target) router.replace(target);
+  }, [router, target]);
 
-    const firstAccessibleRoute = accessRoutes.find(
-      (route) =>
-        isSuperuser ||
-        hasAnyPermission(route.permissions) ||
-        (route.workspaceAdminVisible && (hasAnyWorkspacePermission(route.permissions) || canManageAnyWorkspace())),
-    );
-
-    if (firstAccessibleRoute) {
-      router.replace(firstAccessibleRoute.href);
-    }
-  }, [canManageAnyWorkspace, hasAnyPermission, hasAnyWorkspacePermission, isLoaded, isSuperuser, router]);
-
+  // No section is open to this caller: the hub layout already renders that
+  // state under the (empty) tab bar.
   return null;
 }

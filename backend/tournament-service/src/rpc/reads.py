@@ -262,6 +262,24 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _read(logger, op, exclude_none=True)
 
+    @broker.subscriber("rpc.tournament.tournaments_facets")
+    async def _tournaments_facets(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            # Through the query MODEL rather than raw `_q1` casts: `status` is an
+            # enum, and a bad value has to come back as the same 422 the list
+            # subject gives, not a 500 from a bare `ValueError`.
+            qp = build_query_model(schemas.TournamentFacetsQueryParams, data.get("query"))
+            return await tournament_flows.flows_service.get_facets(
+                session,
+                viewer=rehydrate_user_optional(data.get("identity")),
+                workspace_id=qp.workspace_id,
+                status=qp.status,
+                is_league=qp.is_league,
+                query=qp.query,
+            )
+
+        return await _read(logger, op)
+
     @broker.subscriber("rpc.tournament.list_encounters")
     async def _list_encounters(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:

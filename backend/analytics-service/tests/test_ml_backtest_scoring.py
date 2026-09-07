@@ -21,15 +21,11 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
+from tests.factories import identity_assign as _identity_assign  # noqa: E402
+
 os.environ["DEBUG"] = "false"
 
 backtest = importlib.import_module("src.services.ml.training.backtest")
-
-
-def _identity_assign(df, grids, *, rank_col, version_col="version_id", out_col="div"):
-    """Stub: canonical division == the supplied rank (1:1), for mechanics tests."""
-    df[out_col] = df[rank_col].astype(int)
-    return df
 
 
 class ShiftScoreTests(TestCase):

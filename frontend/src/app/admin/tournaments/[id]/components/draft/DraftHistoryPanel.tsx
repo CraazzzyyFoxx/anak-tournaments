@@ -80,8 +80,19 @@ export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<D
     onError: (error) => notify.apiError(error)
   });
 
+  // Corrective, non-destructive counterpart to Export: the exported teams (and
+  // any bracket on them) stay, only the player ranks are refreshed.
+  const exportRanksMutation = useMutation({
+    mutationFn: (sessionId: number) => draftService.exportRanks(tournamentId, sessionId),
+    onSuccess: async (result) => {
+      notify.success(t("actions.exportRanksDone", { count: result.updated_players }));
+      await invalidate();
+    },
+    onError: (error) => notify.apiError(error)
+  });
+
   const sessions = sessionsQuery.data ?? [];
-  const pending = deleteMutation.isPending || exportMutation.isPending;
+  const pending = deleteMutation.isPending || exportMutation.isPending || exportRanksMutation.isPending;
 
   return (
     <section className="rounded-xl border border-border/70">
@@ -137,20 +148,34 @@ export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<D
                 {" · "}
                 {t("roundsShort", { rounds: session.rounds })}
               </span>
-              <div className="flex shrink-0 items-center gap-2">
+              {/* Wraps rather than staying on one line: this panel now lives in
+                  the wizard's 220px rail (F5 ·4), where three buttons abreast
+                  would overflow it. */}
+              <div className="flex flex-wrap items-center gap-2">
                 <Button asChild variant="outline" size="sm">
                   <Link href={`/draft/${tournamentId}`} target="_blank">
                     {t("openBoard")}
                   </Link>
                 </Button>
                 {session.status === "completed" && (
-                  <Button
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => exportMutation.mutate(session.id)}
-                  >
-                    {t("actions.export")}
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => exportMutation.mutate(session.id)}
+                    >
+                      {t("actions.export")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={pending}
+                      title={t("actions.exportRanksHint")}
+                      onClick={() => exportRanksMutation.mutate(session.id)}
+                    >
+                      {t("actions.exportRanks")}
+                    </Button>
+                  </>
                 )}
                 <Button
                   type="button"

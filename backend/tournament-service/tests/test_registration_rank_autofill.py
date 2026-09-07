@@ -22,6 +22,9 @@ rank_sources = importlib.import_module("src.services.registration.rank_sources")
 
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
 from shared.services.division_grid.normalization import DivisionGridNormalizer  # noqa: E402
+from shared.core.enums import HeroClass  # noqa: E402
+from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
+from shared.testing.factories import division_tier  # noqa: E402
 
 
 def test_rank_snapshot_model_is_available_from_service_models() -> None:
@@ -60,8 +63,48 @@ def _snapshot(rank_value: int, *, role: str = "damage") -> SimpleNamespace:
     )
 
 
+def _roster_for(registration: SimpleNamespace) -> PlayerRoster:
+    """The engine's roster for these rows: registration layer only, in priority
+    order, over every role the registration declares."""
+    return PlayerRoster(
+        registration_id=registration.id,
+        battle_tag=registration.battle_tag,
+        display_name=registration.display_name,
+        player_id=None,
+        auth_user_id=None,
+        workspace_member_id=None,
+        roles=tuple(
+            RosterRole(
+                role=HeroClass.from_slot_code(role.role),
+                rank=role.rank_value,
+                source="registration" if role.rank_value is not None else "none",
+                is_primary=priority == 0,
+                priority=priority,
+                subrole=None,
+            )
+            for priority, role in enumerate(
+                sorted(registration.roles, key=lambda role: role.priority)
+            )
+            if role.is_active
+        ),
+        is_full_flex=False,
+    )
+
+
+def _plan(registration: SimpleNamespace, snapshots: dict, **kwargs):
+    return rank_autofill.build_registration_rank_autofill_plan(
+        registration, snapshots, roster=_roster_for(registration), **kwargs
+    )
+
+
+def _balancer_addition(registration: SimpleNamespace, updates: list, **kwargs):
+    return rank_autofill._rank_autofill_balancer_addition(
+        registration, updates, roster=_roster_for(registration), **kwargs
+    )
+
+
 def test_autofill_keeps_existing_rank_without_overwrite() -> None:
-    row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, updates = _plan(
         _registration(_role("dps", 2500)),
         {"damage": _snapshot(2700)},
         battle_tag_linked=True,
@@ -78,7 +121,7 @@ def test_autofill_keeps_existing_rank_without_overwrite() -> None:
 def test_autofill_overwrites_existing_rank_when_allowed() -> None:
     support = _role("support", 2100)
 
-    row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, updates = _plan(
         _registration(support),
         {"support": _snapshot(2500, role="support")},
         battle_tag_linked=True,
@@ -96,7 +139,7 @@ def test_autofill_sets_missing_ranks_from_active_registered_roles() -> None:
     tank = _role("tank", priority=0)
     dps = _role("dps", priority=1)
 
-    row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, updates = _plan(
         _registration(tank, dps),
         {"tank": _snapshot(3100, role="tank"), "damage": _snapshot(3300)},
         battle_tag_linked=True,
@@ -109,7 +152,7 @@ def test_autofill_sets_missing_ranks_from_active_registered_roles() -> None:
 
 
 def test_autofill_skips_player_when_registered_role_has_no_parsed_rank() -> None:
-    row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, updates = _plan(
         _registration(_role("dps", priority=0), _role("support", priority=1)),
         {"damage": _snapshot(3300)},
         battle_tag_linked=True,
@@ -123,7 +166,7 @@ def test_autofill_skips_player_when_registered_role_has_no_parsed_rank() -> None
 
 
 def test_autofill_skips_unlinked_main_battle_tag() -> None:
-    row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, updates = _plan(
         _registration(_role("dps")),
         {"damage": _snapshot(3300)},
         battle_tag_linked=False,
@@ -138,14 +181,14 @@ def test_autofill_skips_unlinked_main_battle_tag() -> None:
 def test_autofill_can_add_player_to_balancer_after_rank_update() -> None:
     dps = _role("dps")
     registration = _registration(dps)
-    row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, updates = _plan(
         registration,
         {"damage": _snapshot(3300)},
         battle_tag_linked=True,
         overwrite_existing=False,
     )
 
-    will_add, reason = rank_autofill._rank_autofill_balancer_addition(
+    will_add, reason = _balancer_addition(
         registration,
         updates,
         add_to_balancer=True,
@@ -158,14 +201,14 @@ def test_autofill_can_add_player_to_balancer_after_rank_update() -> None:
 
 def test_autofill_can_add_unchanged_ranked_player_to_balancer() -> None:
     registration = _registration(_role("support", rank_value=3600))
-    _row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    _row, updates = _plan(
         registration,
         {"support": _snapshot(3600, role="support")},
         battle_tag_linked=True,
         overwrite_existing=False,
     )
 
-    will_add, reason = rank_autofill._rank_autofill_balancer_addition(
+    will_add, reason = _balancer_addition(
         registration,
         updates,
         add_to_balancer=True,
@@ -179,7 +222,7 @@ def test_autofill_does_not_add_unapproved_player_to_balancer() -> None:
     registration = _registration(_role("support", rank_value=3600))
     registration.status = "pending"
 
-    will_add, reason = rank_autofill._rank_autofill_balancer_addition(
+    will_add, reason = _balancer_addition(
         registration,
         [],
         add_to_balancer=True,
@@ -370,7 +413,7 @@ def test_partial_applies_found_role_and_leaves_unparsed_role_untouched() -> None
     tank = _role("tank", priority=0)  # no current rank, no parsed rank → would otherwise block
     dps = _role("dps", priority=1)  # parsed rank found
 
-    row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, updates = _plan(
         _registration(tank, dps),
         {"damage": _snapshot(3300)},
         battle_tag_linked=True,
@@ -392,7 +435,7 @@ def test_partial_preserves_existing_rank_on_unparsed_role() -> None:
     tank = _role("tank", rank_value=3100, priority=0)
     dps = _role("dps", priority=1)  # parsed rank found
 
-    row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, updates = _plan(
         _registration(tank, dps),
         {"damage": _snapshot(3300)},
         battle_tag_linked=True,
@@ -412,7 +455,7 @@ def test_partial_disabled_skips_whole_registration() -> None:
     tank = _role("tank", priority=0)  # no current rank, no parsed rank
     dps = _role("dps", priority=1)
 
-    row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, updates = _plan(
         _registration(tank, dps),
         {"damage": _snapshot(3300)},
         battle_tag_linked=True,
@@ -428,7 +471,7 @@ def test_partial_disabled_skips_whole_registration() -> None:
 
 def test_unverified_action_when_existing_rank_has_no_source_value() -> None:
     # Current rank set, overwrite off, and no source produced a value for the role → unverified.
-    row, updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, updates = _plan(
         _registration(_role("support", rank_value=2100)),
         {},
         battle_tag_linked=True,
@@ -442,7 +485,7 @@ def test_unverified_action_when_existing_rank_has_no_source_value() -> None:
 
 def test_keep_existing_action_when_source_value_present() -> None:
     # Same setup but a source value exists → kept (not unverified) because overwrite is off.
-    row, _updates = rank_autofill.build_registration_rank_autofill_plan(
+    row, _updates = _plan(
         _registration(_role("support", rank_value=2100)),
         {"support": _snapshot(2500, role="support")},
         battle_tag_linked=True,
@@ -534,15 +577,7 @@ def test_group_ow_signals_computes_composite_and_latest() -> None:
 
 
 def _tier(tier_id: int, number: int, rank_min: int, rank_max: int | None) -> DivisionTier:
-    return DivisionTier(
-        id=tier_id,
-        slug=None,
-        number=number,
-        name=str(number),
-        rank_min=rank_min,
-        rank_max=rank_max,
-        icon_url="",
-    )
+    return division_tier(tier_id, number, rank_min, rank_max, slug=None, name=str(number))
 
 
 def _make_normalizer() -> tuple[DivisionGridNormalizer, DivisionGrid]:

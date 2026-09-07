@@ -62,8 +62,8 @@ class AuditLog(db.Base):
     # the trail tells it apart from a human without guessing.
     actor_auth_user_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     actor_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # ``admin`` | ``challonge`` | ``discord`` | ``scheduler`` | ``system``; a
-    # required keyword of ``record_audit``, as on ``record_result_transition``.
+    # ``admin`` | ``api_key`` | ``challonge`` | ``discord`` | ``scheduler`` | ``system``;
+    # a required keyword of ``record_audit``. ``api_key`` is inferred from the actor.
     source: Mapped[str] = mapped_column(String(16), nullable=False)
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     entity_type: Mapped[str | None] = mapped_column(String(64), nullable=True)

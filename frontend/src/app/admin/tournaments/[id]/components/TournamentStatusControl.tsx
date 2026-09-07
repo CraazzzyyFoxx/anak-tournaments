@@ -2,9 +2,8 @@
 
 import { useId, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -14,147 +13,122 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
-import { TONE_CLASS, type Tone } from "@/components/admin/tone";
 import adminService from "@/services/admin.service";
 import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
-/**
- * `tone` replaces the previous raw-palette fills. `bg-yellow-500 text-white`
- * measured APCA |Lc| 40.7 (WCAG 1.92:1) and `bg-green-500 text-white` 49.2
- * (2.28:1) — both far below the 60 floor for non-body text, on the workspace's
- * primary status indicator.
- */
-const STATUS_CONFIG: Record<
-  TournamentStatus,
-  { label: string; tone: Tone; next: TournamentStatus[] }
-> = {
-  registration: {
-    label: "Registration",
-    tone: "info",
-    next: ["check_in"]
-  },
-  check_in: {
-    label: "Check-in",
-    tone: "warning",
-    next: ["draft", "live"]
-  },
-  draft: {
-    label: "Draft",
-    tone: "warning",
-    next: ["live"]
-  },
-  live: {
-    label: "Live",
-    tone: "success",
-    next: ["playoffs", "completed"]
-  },
-  playoffs: {
-    label: "Playoffs",
-    tone: "accent",
-    next: ["completed"]
-  },
-  completed: {
-    label: "Completed",
-    tone: "neutral",
-    next: ["archived"]
-  },
-  archived: {
-    label: "Archived",
-    tone: "neutral",
-    next: ["completed"]
-  }
+export const TOURNAMENT_STATUS_LABELS: Record<TournamentStatus, string> = {
+  registration: "Registration",
+  check_in: "Check-in",
+  draft: "Draft",
+  live: "Live",
+  playoffs: "Playoffs",
+  completed: "Completed",
+  archived: "Archived"
 };
 
-interface TournamentStatusControlProps {
-  tournament: Tournament;
-}
+/**
+ * Mirrors `backend/shared/core/tournament_state.py:_VALID_TRANSITIONS`. Anything
+ * outside this set needs `force`, which the server accepts from a superuser
+ * only — so the picker offers it to a superuser only.
+ */
+const VALID_TRANSITIONS: Record<TournamentStatus, readonly TournamentStatus[]> = {
+  registration: ["check_in", "draft", "live"],
+  check_in: ["draft", "live", "registration"],
+  draft: ["live", "check_in", "registration"],
+  live: ["playoffs", "completed", "draft", "check_in"],
+  playoffs: ["completed"],
+  completed: ["archived"],
+  archived: ["completed"]
+};
 
-export function TournamentStatusControl({ tournament }: Readonly<TournamentStatusControlProps>) {
+const STATUS_ORDER = Object.keys(TOURNAMENT_STATUS_LABELS) as TournamentStatus[];
+
+/**
+ * The one place the tournament's status is changed.
+ *
+ * It used to be three things side by side — a badge, "→ Next" buttons and a
+ * superuser-only Select with its own "Set status" button — beside the status
+ * pill the hub header already carries. Now it is the Select alone: its value
+ * IS the current status, so nothing else needs to restate it. Picking a value
+ * asks for confirmation (a status change moves the public page), then commits.
+ *
+ * Every `tournament.update` holder gets the transitions the state machine
+ * allows; a superuser additionally gets every other status, sent with `force`.
+ */
+export function TournamentStatusControl({ tournament }: Readonly<{ tournament: Tournament }>) {
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
-  const config = STATUS_CONFIG[tournament.status];
-  const [overrideStatus, setOverrideStatus] = useState<TournamentStatus | null>(null);
-  const overrideId = useId();
+  const [pendingStatus, setPendingStatus] = useState<TournamentStatus | null>(null);
+  const selectId = useId();
+
+  const allowed = VALID_TRANSITIONS[tournament.status];
+  const options = isSuperuser
+    ? STATUS_ORDER
+    : STATUS_ORDER.filter((status) => status === tournament.status || allowed.includes(status));
 
   const mutation = useMutation({
-    mutationFn: ({ status, force = false }: { status: TournamentStatus; force?: boolean }) =>
-      adminService.transitionTournamentStatus(tournament.id, { status, force }),
+    mutationFn: (status: TournamentStatus) =>
+      adminService.transitionTournamentStatus(tournament.id, {
+        status,
+        force: !allowed.includes(status)
+      }),
     onSuccess: () => {
-      setOverrideStatus(null);
+      setPendingStatus(null);
       invalidateTournamentWorkspace(queryClient, tournament.id);
     }
   });
 
-  const overrideBlocked = !overrideStatus || overrideStatus === tournament.status;
-
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <Badge variant="outline" className={TONE_CLASS[config.tone]}>
-        {config.label}
-      </Badge>
-
-      {config.next.length > 0 && (
-        <div className="flex gap-2">
-          {config.next.map((nextStatus) => (
-            <Button
-              key={nextStatus}
-              size="sm"
-              variant="outline"
-              disabled={mutation.isPending}
-              onClick={() => mutation.mutate({ status: nextStatus })}
-            >
-              {mutation.isPending ? (
-                <Loader2 className="mr-1.5 size-3 animate-spin" aria-hidden />
-              ) : null}
-              {`\u2192 ${STATUS_CONFIG[nextStatus].label}`}
-            </Button>
+    <>
+      <Label htmlFor={selectId} className="sr-only">
+        Tournament status
+      </Label>
+      <Select
+        value={tournament.status}
+        onValueChange={(value) => {
+          if (value !== tournament.status) setPendingStatus(value as TournamentStatus);
+        }}
+      >
+        <SelectTrigger id={selectId} className="h-8 w-[160px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((status) => (
+            <SelectItem key={status} value={status}>
+              {TOURNAMENT_STATUS_LABELS[status]}
+            </SelectItem>
           ))}
-        </div>
-      )}
-
-      {isSuperuser ? (
-        <div className="flex items-center gap-2">
-          <Label htmlFor={overrideId} className="sr-only">
-            Override tournament status
-          </Label>
-          <Select
-            value={overrideStatus ?? tournament.status}
-            onValueChange={(value) => setOverrideStatus(value as TournamentStatus)}
-          >
-            <SelectTrigger id={overrideId} className="h-8 w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(STATUS_CONFIG).map(([value, statusConfig]) => (
-                <SelectItem key={value} value={value}>
-                  {statusConfig.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={mutation.isPending || overrideBlocked}
-            onClick={() => {
-              if (!overrideStatus || overrideStatus === tournament.status) return;
-              mutation.mutate({ status: overrideStatus, force: true });
-            }}
-          >
-            {mutation.isPending ? (
-              <Loader2 className="mr-1.5 size-3 animate-spin" aria-hidden />
-            ) : null}
-            Set status
-          </Button>
-        </div>
-      ) : null}
+        </SelectContent>
+      </Select>
 
       {mutation.isError && (
         <span role="alert" className="text-sm text-danger">
           Unable to change the status: {(mutation.error as Error).message}
         </span>
       )}
-    </div>
+
+      <ConfirmDialog
+        open={pendingStatus !== null}
+        onOpenChange={(open) => (open ? undefined : setPendingStatus(null))}
+        intent={{
+          title: pendingStatus
+            ? `Set status to ${TOURNAMENT_STATUS_LABELS[pendingStatus]}?`
+            : "Change status?",
+          description:
+            pendingStatus && !allowed.includes(pendingStatus)
+              ? `${TOURNAMENT_STATUS_LABELS[tournament.status]} does not normally lead to ${TOURNAMENT_STATUS_LABELS[pendingStatus]}; this bypasses the state machine. Automatic phase transitions are switched off either way.`
+              : "The public tournament page follows the status. Automatic phase transitions are switched off after a manual change.",
+          confirmLabel: pendingStatus
+            ? `Set ${TOURNAMENT_STATUS_LABELS[pendingStatus]}`
+            : "Set status",
+          tone: pendingStatus && !allowed.includes(pendingStatus) ? "warning" : "neutral"
+        }}
+        pending={mutation.isPending}
+        onConfirm={() => {
+          if (pendingStatus) mutation.mutate(pendingStatus);
+        }}
+      />
+    </>
   );
 }

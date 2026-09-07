@@ -1,8 +1,20 @@
 import { describe, expect, it } from "bun:test";
 
 import type { AdminRegistration } from "@/types/balancer-admin.types";
-import type { StatusMeta } from "@/types/registration.types";
+import type { Admission, AdmissionDecision, StatusMeta } from "@/types/registration.types";
 import { groupRegistrations } from "./registrationGrouping";
+
+/** The server's answer, as the read sends it. Only `decision` is load-bearing
+ *  for grouping — that is the whole point of the layer: the grouping key is a
+ *  projection of one field, not a re-derivation from four. */
+const admission = (decision: AdmissionDecision): Admission => ({
+  decision,
+  requirements: [],
+  blockers: [],
+  overridden: [],
+  checked_in: decision === "admitted",
+  ready: decision !== "not_admitted"
+});
 
 const createStatusMeta = (
   value: string,
@@ -63,6 +75,7 @@ const createRegistration = (
     reviewed_at: null,
     reviewed_by_username: null,
     balancer_profile_overridden_at: null,
+    admission: admission("not_admitted"),
     ...overrides
   }) as AdminRegistration;
 
@@ -108,24 +121,12 @@ describe("registration grouping", () => {
     ]);
   });
 
-  it("groups registrations by computed admission status", () => {
+  it("groups registrations by the server's admission decision", () => {
     const groups = groupRegistrations(
       [
-        createRegistration(1, {
-          status: "approved",
-          balancer_status: "ready",
-          checked_in: true
-        }),
-        createRegistration(2, {
-          status: "approved",
-          balancer_status: "ready",
-          checked_in: false
-        }),
-        createRegistration(3, {
-          status: "pending",
-          balancer_status: "ready",
-          checked_in: true
-        })
+        createRegistration(1, { admission: admission("admitted") }),
+        createRegistration(2, { admission: admission("pending_check_in") }),
+        createRegistration(3, { admission: admission("not_admitted") })
       ],
       "admission"
     );
@@ -139,83 +140,46 @@ describe("registration grouping", () => {
     ]);
   });
 
-  it("groups registrations by computed admission status with requireOpenProfile enabled", () => {
+  it("reads nothing but the decision, so the raw signals cannot disagree with it", () => {
+    // Four separate copies of the admission rule used to answer this from
+    // `status`, `balancer_status`, `profiles_open` and `subscription_outcome`,
+    // and two of them ignored the subscription. A row whose raw fields all say
+    // "out" but whose server decision says "admitted" — a hand check-in with a
+    // since-closed profile — must group as admitted, or the override this layer
+    // exists to represent is broken again on the way out.
     const groups = groupRegistrations(
       [
         createRegistration(1, {
-          status: "approved",
-          balancer_status: "ready",
-          checked_in: true,
-          profiles_open: true
-        }),
-        createRegistration(2, {
-          status: "approved",
-          balancer_status: "ready",
-          checked_in: true,
-          profiles_open: false
-        }),
-        createRegistration(3, {
-          status: "approved",
-          balancer_status: "ready",
-          checked_in: true,
-          profiles_open: null
+          status: "rejected",
+          balancer_status: "not_in_balancer",
+          profiles_open: false,
+          subscription_outcome: "refused",
+          admission: admission("admitted")
         })
       ],
-      "admission",
-      true
-    );
-
-    expect(
-      groups.map((group) => [group.key, group.label, group.registrations.map((item) => item.id)])
-    ).toEqual([
-      ["admitted", "Admitted", [1, 3]],
-      ["not_admitted", "Not admitted", [2]]
-    ]);
-  });
-
-  it("groups a confirmed subscription refusal as not admitted", () => {
-    const admitted = {
-      status: "approved",
-      balancer_status: "ready",
-      checked_in: true
-    } as Partial<AdminRegistration>;
-    const groups = groupRegistrations(
-      [
-        createRegistration(1, { ...admitted, subscription_outcome: "satisfied" }),
-        createRegistration(2, { ...admitted, subscription_outcome: "refused" }),
-        // Undetermined fails open, exactly like the server gate: a provider
-        // outage must not silently move players out of the admitted group.
-        createRegistration(3, { ...admitted, subscription_outcome: "undetermined" }),
-        createRegistration(4, { ...admitted, subscription_outcome: null })
-      ],
-      "admission",
-      false,
-      true
-    );
-
-    expect(
-      groups.map((group) => [group.key, group.registrations.map((item) => item.id)])
-    ).toEqual([
-      ["admitted", [1, 3, 4]],
-      ["not_admitted", [2]]
-    ]);
-  });
-
-  it("ignores the subscription outcome when the tournament does not require one", () => {
-    const groups = groupRegistrations(
-      [
-        createRegistration(1, {
-          status: "approved",
-          balancer_status: "ready",
-          checked_in: true,
-          subscription_outcome: "refused"
-        })
-      ],
-      "admission",
-      false,
-      false
+      "admission"
     );
 
     expect(groups.map((group) => group.key)).toEqual(["admitted"]);
+  });
+
+  it("keeps one section per decision, in reading order", () => {
+    // Encounter order is the reverse of the intended order, so a group list that
+    // merely preserved insertion would fail this.
+    const groups = groupRegistrations(
+      [
+        createRegistration(1, { admission: admission("not_admitted") }),
+        createRegistration(2, { admission: admission("pending_check_in") }),
+        createRegistration(3, { admission: admission("admitted") }),
+        createRegistration(4, { admission: admission("admitted") })
+      ],
+      "admission"
+    );
+
+    expect(groups.map((group) => [group.key, group.registrations.length])).toEqual([
+      ["admitted", 2],
+      ["pending_check_in", 1],
+      ["not_admitted", 1]
+    ]);
   });
 });

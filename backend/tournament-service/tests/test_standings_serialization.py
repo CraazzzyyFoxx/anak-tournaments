@@ -38,6 +38,8 @@ def _standing() -> models.Standing:
         lose=0,
         points=0.0,
         buchholz=None,
+        full_buchholz=None,
+        tie_group=None,
         tb=None,
         score_differential=None,
     )
@@ -68,6 +70,7 @@ def _encounter(
     stage_id: int,
     stage_item_id: int | None,
     round: int,
+    status: enums.EncounterStatus = enums.EncounterStatus.COMPLETED,
 ) -> models.Encounter:
     return models.Encounter(
         id=id,
@@ -85,9 +88,30 @@ def _encounter(
         stage_item_id=stage_item_id,
         closeness=None,
         has_logs=False,
-        status=enums.EncounterStatus.COMPLETED,
+        status=status,
         result_status=enums.EncounterResultStatus.NONE,
     )
+
+
+class _ScalarResult:
+    def __init__(self, rows: list[models.Encounter]) -> None:
+        self._rows = rows
+
+    def scalars(self) -> "_ScalarResult":
+        return self
+
+    def all(self) -> list[models.Encounter]:
+        return self._rows
+
+
+class _StubSession:
+    """Returns a fixed encounter set, ordered as the query's ORDER BY would."""
+
+    def __init__(self, rows: list[models.Encounter]) -> None:
+        self._rows = rows
+
+    async def execute(self, _query: object) -> _ScalarResult:
+        return _ScalarResult(self._rows)
 
 
 class StandingSerializationTests(IsolatedAsyncioTestCase):
@@ -163,10 +187,51 @@ class StandingSerializationTests(IsolatedAsyncioTestCase):
         read = await flows.flows_service.to_pydantic(cast(AsyncSession, object()), standing, [])
 
         self.assertEqual("challonge_round_robin", read.source_rule_profile)
+        # Normalized, not verbatim: the engine forces `manual_override` last and
+        # always present, so the legend must name the step that can actually
+        # decide a rank the preset never mentioned.
         self.assertEqual(
-            ["points", "head_to_head", "median_buchholz", "match_wins", "score_differential"],
+            [
+                "points",
+                "head_to_head",
+                "median_buchholz",
+                "match_wins",
+                "score_differential",
+                "manual_override",
+            ],
             read.tiebreak_order,
         )
+
+
+class MatchHistoryRoundScopeTests(IsolatedAsyncioTestCase):
+    """FORM must not run ahead of the W·D·L it sits next to."""
+
+    async def test_history_drops_results_from_unfinished_rounds(self) -> None:
+        rows = [
+            # Group A, round 1: closed.
+            _encounter(id=1, home_team_id=1, away_team_id=2, stage_id=10, stage_item_id=20, round=1),
+            _encounter(id=2, home_team_id=3, away_team_id=4, stage_id=10, stage_item_id=20, round=1),
+            # Group A, round 2: one team reported, the other pair has not.
+            _encounter(id=3, home_team_id=1, away_team_id=3, stage_id=10, stage_item_id=20, round=2),
+            _encounter(
+                id=4,
+                home_team_id=2,
+                away_team_id=4,
+                stage_id=10,
+                stage_item_id=20,
+                round=2,
+                status=enums.EncounterStatus.PENDING,
+            ),
+            # Group B, round 2: closed — an open round in group A must not hide it.
+            _encounter(id=5, home_team_id=5, away_team_id=6, stage_id=10, stage_item_id=21, round=2),
+        ]
+
+        history = await service.standings_service.get_completed_match_history_by_tournament(
+            cast(AsyncSession, _StubSession(rows)), 64
+        )
+
+        self.assertEqual([1, 2, 5], [encounter.id for encounter in history])
+
 
 
 class StandingLoadOptionTests(TestCase):

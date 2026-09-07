@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import type { ValueMapRow } from "@/types/balancer-admin.types";
 import type { SubroleCatalog, SubroleOption } from "@/types/registration.types";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 
 type ValueEditorKind = "boolean" | "role" | "text" | "number" | "role_subrole" | "subrole";
 
@@ -313,10 +314,10 @@ export function ValueMapEditor({
       ) : (
         <div className="space-y-2">
           <div className={`grid items-center gap-2 ${kind === "role_subrole" ? "grid-cols-[1fr_2fr_auto]" : "grid-cols-[1fr_1fr_auto]"}`}>
-            <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+            <Label className={EYEBROW_CLASS}>
               Sheet text
             </Label>
-            <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+            <Label className={EYEBROW_CLASS}>
               Mapped value
             </Label>
             <span />

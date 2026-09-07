@@ -1,96 +1,104 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
-import { useParams, usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { usePermissions } from "@/hooks/usePermissions";
-import { useHubTournamentQuery } from "../hubQueries";
-import {
-  MATCHES_DEFAULT_SUB_TAB,
-  MATCHES_SUB_TAB_KEYS,
-  allowedMatchesSubTab,
-  isMatchesSubTab,
-  type MatchesSubTab
-} from "../tab-guards";
+import { useParams, usePathname, useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 
-const SUB_TAB_LABELS: Record<MatchesSubTab, string> = {
-  results: "Results",
+import { AdminTabs, type AdminTabItem } from "@/components/admin/kit/AdminTabs";
+import { usePermissions } from "@/hooks/usePermissions";
+import adminService from "@/services/admin.service";
+import { getTournamentWorkspaceQueryKeys } from "../components/tournamentWorkspace.queryKeys";
+import { useHubTournamentQuery } from "../hubQueries";
+import { MATCHES_SUB_TABS, type MatchesSubTabKey } from "../tab-guards";
+
+const SUB_TAB_LABELS: Record<MatchesSubTabKey, string> = {
+  encounters: "Encounters",
+  standings: "Standings",
   reports: "Reports",
-  maps: "Maps",
-  logs: "Logs",
-  "report-form": "Report form"
+  parsed: "Parsed maps",
+  logs: "Logs"
 };
 
 /**
- * Sub-tab bar for the Play & Results hub tab.
+ * Scope params the five views share. Carried across a tab switch so narrowing
+ * to a stage survives moving from Encounters to Standings beside it (F8 ·2);
+ * everything else — `id`, `page`, `search`, and the per-view chips — is left
+ * behind, because a row id or a status means something different in each view.
+ */
+const SHARED_SCOPE_PARAMS = ["stage", "group"] as const;
+
+/**
+ * Sub-tab bar of the Matches hub tab. Navigation and queue badges, nothing
+ * else: the views own their own data, and realtime is mounted once in
+ * `TournamentHubShell`.
  *
- * Deliberately not the shadcn `Tabs` used by the outer hub bar: nesting a
- * second `Tabs` root inside the first makes two roving-tabindex groups fight
- * over arrow keys. This is a plain nav with links, so keyboard users tab
- * through it once and screen readers announce one list.
+ * The badge queries address the same keys their views do, so mounting this bar
+ * costs no extra request — TanStack dedupes the observers.
  */
 export default function MatchesLayout({ children }: Readonly<{ children: ReactNode }>) {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
   const pathname = usePathname();
-  const router = useRouter();
-  const { canAccessPermission, isLoaded: permissionsLoaded } = usePermissions();
+  const searchParams = useSearchParams();
+  const { canAccessPermission } = usePermissions();
 
   const basePath = `/admin/tournaments/${tournamentId}/matches`;
   const segment = pathname.startsWith(basePath)
-    ? (pathname.slice(basePath.length).split("/").find(Boolean) ?? MATCHES_DEFAULT_SUB_TAB)
-    : MATCHES_DEFAULT_SUB_TAB;
-  const active: MatchesSubTab = isMatchesSubTab(segment) ? segment : MATCHES_DEFAULT_SUB_TAB;
+    ? (pathname.slice(basePath.length).split("/").find(Boolean) ?? MATCHES_SUB_TABS[0])
+    : MATCHES_SUB_TABS[0];
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
   const workspaceId = tournamentQuery.data?.workspace_id ?? null;
-  const access = { canReadMatch: canAccessPermission("match.read", workspaceId) };
-  const activeAllowed = allowedMatchesSubTab(active, access);
+  const canReadMatch = canAccessPermission("match.read", workspaceId);
 
-  // Same contract as the outer hub guard: a direct URL hit on a sub-tab the
-  // caller may not open bounces to the landing segment. Decided only once
-  // permissions and the tournament are in, or an unresolved permission set
-  // would bounce a legitimate visitor on first paint.
-  useEffect(() => {
-    if (!permissionsLoaded || !tournamentQuery.data) return;
-    if (!activeAllowed) {
-      router.replace(`${basePath}/${MATCHES_DEFAULT_SUB_TAB}`);
-    }
-  }, [permissionsLoaded, tournamentQuery.data, activeAllowed, basePath, router]);
+  const reportStatsQuery = useQuery({
+    queryKey: [
+      "encounter-reports",
+      "stats",
+      { workspace_id: workspaceId, tournament_id: tournamentId }
+    ],
+    queryFn: () =>
+      adminService.getEncounterReportStats({
+        workspace_id: workspaceId!,
+        tournament_id: tournamentId
+      }),
+    enabled: canReadMatch && workspaceId != null
+  });
 
-  const visible = MATCHES_SUB_TAB_KEYS.filter((key) => allowedMatchesSubTab(key, access));
+  const logStatsQuery = useQuery({
+    queryKey: [...getTournamentWorkspaceQueryKeys(tournamentId).logHistory, "stats"],
+    queryFn: () => adminService.getLogStats(tournamentId),
+    enabled: canReadMatch
+  });
+
+  const scope = new URLSearchParams();
+  for (const key of SHARED_SCOPE_PARAMS) {
+    const value = searchParams.get(key);
+    if (value) scope.set(key, value);
+  }
+  const scopeQuery = scope.toString();
+
+  const disputed = reportStatsQuery.data?.by_result_status.disputed ?? 0;
+  const logQueue = logStatsQuery.data
+    ? logStatsQuery.data.pending + logStatsQuery.data.processing
+    : 0;
+
+  const items: AdminTabItem[] = MATCHES_SUB_TABS.map((key) => ({
+    key,
+    label: SUB_TAB_LABELS[key],
+    href: scopeQuery ? `${basePath}/${key}?${scopeQuery}` : `${basePath}/${key}`,
+    badge:
+      key === "reports"
+        ? disputed || undefined
+        : key === "logs"
+          ? logQueue || undefined
+          : undefined
+  }));
 
   return (
     <div className="space-y-4">
-      {visible.length > 1 ? (
-        <nav
-          aria-label="Play & Results sections"
-          className="flex flex-wrap gap-1 border-b border-[color:var(--aqt-border)]"
-        >
-          {visible.map((key) => {
-            const isActive = key === active;
-            return (
-              <Link
-                key={key}
-                href={`${basePath}/${key}`}
-                aria-current={isActive ? "page" : undefined}
-                className={[
-                  "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-                  // Never colour-only: the active section also carries a border
-                  // and aria-current, so the state survives a greyscale render.
-                  isActive
-                    ? "border-[color:var(--aqt-fg)] text-[color:var(--aqt-fg)]"
-                    : "border-transparent text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
-                ].join(" ")}
-              >
-                {SUB_TAB_LABELS[key]}
-              </Link>
-            );
-          })}
-        </nav>
-      ) : null}
-      {activeAllowed ? children : null}
+      <AdminTabs items={items} activeKey={segment} level={2} ariaLabel="Matches views" />
+      {children}
     </div>
   );
 }

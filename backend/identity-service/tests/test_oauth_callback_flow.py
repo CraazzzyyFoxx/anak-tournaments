@@ -48,28 +48,6 @@ from src.services.tickets import SSO_TICKETS  # noqa: E402
 _GET_REDIS = "src.core.cache.get_redis"
 
 
-class _NxRedisClient(_FakeRedisClient):
-    """``FakeRedisClient`` plus ``SETNX``, which the state-nonce claim needs.
-
-    ``_fakes`` is shared and only models what the ticket stores use; the nonce
-    store additionally does a set-if-absent, so it gets modelled here.
-    """
-
-    async def set(self, key: str, value: str, ex: int | None = None, nx: bool = False) -> bool | None:
-        if nx and key in self._store:
-            return None
-        self._store[key] = value
-        return True
-
-
-class _NxDownRedisClient(_DownRedisClient):
-    """``DownRedisClient`` with the same ``nx`` kwarg, so an outage is reported
-    as an outage rather than a ``TypeError``."""
-
-    async def set(self, key: str, value: str, ex: int | None = None, nx: bool = False) -> bool | None:
-        return await super().set(key, value, ex=ex)
-
-
 def _use_redis(monkeypatch: pytest.MonkeyPatch, client: object) -> object:
     monkeypatch.setattr(_GET_REDIS, lambda: client)
     return client
@@ -131,7 +109,7 @@ def _run_callback(state: str, *, csrf: str | None = "raw-csrf-token"):
 def test_callback_verifies_state_before_contacting_the_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     """The signed state (and its csrf binding) is checked BEFORE the code is
     exchanged, so a forged callback never reaches the provider at all."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     handle_callback_mock = AsyncMock(side_effect=AssertionError("must not exchange a code for an unverified state"))
     monkeypatch.setattr(oauth_accounts, "handle_callback", handle_callback_mock)
 
@@ -150,7 +128,7 @@ def test_callback_rejects_missing_or_mismatched_csrf_generically(
     """The csrf binding fails CLOSED and never distinguishes "no cookie" from
     "wrong cookie": both are the same generic invalid-state error, and the
     provider is never contacted."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     handle_callback_mock = AsyncMock(side_effect=AssertionError("must not exchange a code without a csrf match"))
     monkeypatch.setattr(oauth_accounts, "handle_callback", handle_callback_mock)
 
@@ -167,7 +145,7 @@ def test_callback_rejects_missing_or_mismatched_csrf_generically(
 def test_callback_state_nonce_is_single_use(monkeypatch: pytest.MonkeyPatch) -> None:
     """State verification itself is pure (HMAC + exp), so replay protection is
     the Redis-backed nonce claim: the SAME state can never be redeemed twice."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     _install_fake_callback(monkeypatch, _fake_auth_user())
 
     state = _login_state(origin="https://owt.craazzzyyfoxx.me")
@@ -185,7 +163,7 @@ def test_callback_state_nonce_check_fails_open_when_redis_is_down(monkeypatch: p
     """Deliberate asymmetry: the nonce claim fails OPEN. Locking every OAuth
     login out during a Redis outage is worse than accepting a replay window
     already capped by the state's own short expiry."""
-    _use_redis(monkeypatch, _NxDownRedisClient())
+    _use_redis(monkeypatch, _DownRedisClient())
     _install_fake_callback(monkeypatch, _fake_auth_user())
 
     state = _login_state(origin="https://owt.craazzzyyfoxx.me")
@@ -199,7 +177,7 @@ def test_callback_state_nonce_check_fails_open_when_redis_is_down(monkeypatch: p
 def test_callback_platform_origin_returns_cookie_mode_and_never_issues_ticket(monkeypatch: pytest.MonkeyPatch) -> None:
     """Unchanged existing behavior: a platform-host login returns raw tokens
     directly and never touches the SSO ticket store."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     _install_fake_callback(monkeypatch, _fake_auth_user())
     issue_mock = AsyncMock(side_effect=AssertionError("must not issue a ticket for a platform-host login"))
     monkeypatch.setattr(SSO_TICKETS, "issue", issue_mock)
@@ -217,7 +195,7 @@ def test_callback_custom_origin_issues_ticket_bound_to_guard_hash(monkeypatch: p
     """A custom-domain login must mint a ticket instead of returning raw
     tokens (Task 9); Task 10R fix 1: that ticket must carry the verified
     state's guard_hash as its `lg`."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     _install_fake_callback(monkeypatch, _fake_auth_user())
 
     guard, guard_hash = _guard_pair()
@@ -245,7 +223,7 @@ def test_callback_custom_origin_without_guard_hash_never_issues_ticket(monkeypat
     apex bounce never ran) must be rejected outright -- never issue a ticket
     with no binding at all, which sso_exchange could never verify against
     anything."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     _install_fake_callback(monkeypatch, _fake_auth_user())
     issue_mock = AsyncMock(side_effect=AssertionError("must not issue an unbound ticket"))
     monkeypatch.setattr(SSO_TICKETS, "issue", issue_mock)

@@ -55,22 +55,24 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import { ROLE_LABELS, ROLES } from "@/lib/roles";
 import { cn } from "@/lib/utils";
-import type { CustomGamePlayer, CustomGamePlayerPatch, RotationRecommendation } from "@/services/custom-game.service";
+import type {
+  CustomGamePlayer,
+  CustomGamePlayerPatch,
+  MixParticipation,
+  RotationRecommendation,
+} from "@/services/custom-game.service";
 
 import {
   LINEUP_ROLES,
   averageRank,
-  bucketPatch,
   computeRotationHintPatches,
   getLineupIssue,
-  lineupBucket,
   playerLabel,
   resolveRoleOrder,
   sortLineup,
   summarizeLineup,
   summarizeRoleSupply,
   toggleRole,
-  type LineupBucket,
 } from "./pickup-lineup";
 
 /**
@@ -112,8 +114,13 @@ type PickupLobbyPanelProps = {
   applyingHints: boolean;
 };
 
-/** One drag-and-drop column per `LineupBucket`, in the order a host reads commitment. */
-const COLUMNS: readonly { bucket: LineupBucket; title: string; hint: string; emptyHint: string }[] = [
+/** One drag-and-drop column per participation state, in the order a host reads commitment. */
+const COLUMNS: readonly {
+  bucket: MixParticipation;
+  title: string;
+  hint: string;
+  emptyHint: string;
+}[] = [
   {
     bucket: "must_play",
     title: "Must play",
@@ -142,10 +149,9 @@ const COLUMNS: readonly { bucket: LineupBucket; title: string; hint: string; emp
  * writes here. This column owns *participation and commitment*, split into
  * three columns a host drags a player between: guaranteed a seat
  * (`must_play`), optional in the balance (`pool`), or sitting out
- * (`benched` — `is_active === false`, settings kept). A drop writes both
- * `is_active` and `must_play` in one patch (`bucketPatch`) without touching
- * role order or ranks, so "he's late, start without him" costs one drag and
- * no rework.
+ * (`benched` -- sitting out, settings kept). A drop writes the one
+ * `participation` field without touching role order or ranks, so "he's late,
+ * start without him" costs one drag and no rework.
  *
  * The role-supply strip sits above the columns on purpose. A host reads "short
  * 1 tank" before pressing Balance, instead of reading a seated lineup
@@ -174,7 +180,7 @@ export function PickupLobbyPanel({
   const pendingHintCount = computeRotationHintPatches(rows, rotation).length;
   const columns = COLUMNS.map((def) => ({
     ...def,
-    rows: lineup.filter((row) => lineupBucket(row) === def.bucket),
+    rows: lineup.filter((row) => row.participation === def.bucket),
   }));
 
   const [draggingRow, setDraggingRow] = useState<CustomGamePlayer | null>(null);
@@ -196,10 +202,10 @@ export function PickupLobbyPanel({
     }
     const memberId = Number(event.active.id);
     const row = lineup.find((item) => item.workspace_member_id === memberId);
-    if (!row || lineupBucket(row) === target) {
+    if (!row || row.participation === target) {
       return;
     }
-    onPatchPlayer(memberId, bucketPatch(target));
+    onPatchPlayer(memberId, { participation: target });
   };
 
   return (
@@ -392,8 +398,8 @@ export function PickupLobbyPanel({
 }
 
 /**
- * One `LineupBucket`'s drop zone: a titled card that highlights while a
- * dragged row hovers over it, and holds that bucket's rows or an empty hint.
+ * One participation column's drop zone: a titled card that highlights while a
+ * dragged row hovers over it, and holds that column's rows or an empty hint.
  */
 function LineupColumn({
   bucket,
@@ -408,7 +414,7 @@ function LineupColumn({
   onOpenPlayer,
   onRemovePlayer,
 }: Readonly<{
-  bucket: LineupBucket;
+  bucket: MixParticipation;
   title: string;
   hint: string;
   emptyHint: string;
@@ -587,7 +593,7 @@ type LineupRowProps = {
  * the only two a host acts on, so they are the only two with an icon; the
  * reason string carries the specific streak into the tooltip instead of a
  * wider label competing with the role rail for room. A row the host already
- * pinned (`must_play` bucket) never renders one either -- the backend always
+ * pinned (the `must_play` column) never renders one either -- the backend always
  * verdicts a pin `must_play` too (see `mix_rotation.recommend_rotation`), and
  * repeating "owed a seat" next to a seat already guaranteed by the Pin icon
  * is the same fact said twice.
@@ -689,7 +695,7 @@ function LineupRow({
         ) : null}
       </span>
 
-      <RotationHintBadge hint={rotationHint} pinned={row.must_play} />
+      <RotationHintBadge hint={rotationHint} pinned={row.participation === "must_play"} />
 
       <RowAction>
         <RolePriorityRail

@@ -8,7 +8,8 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+RUN --mount=type=cache,id=owt-bun,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
 
 # 2. Build with Bun
 FROM oven/bun:alpine AS builder
@@ -39,7 +40,8 @@ ENV NEXT_PUBLIC_SITE_FAVICON=${NEXT_PUBLIC_SITE_FAVICON}
 ENV NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
 ENV NEXT_PUBLIC_YM_ID=${NEXT_PUBLIC_YM_ID}
 
-RUN bun run build
+RUN --mount=type=cache,id=owt-next-cache,target=/app/.next/cache \
+    bun run build
 
 # 3. Production runtime with Node.js (Next.js server requires Node)
 FROM node:22-alpine AS runner

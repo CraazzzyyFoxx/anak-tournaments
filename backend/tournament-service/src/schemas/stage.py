@@ -24,6 +24,7 @@ class StageItemRead(BaseRead):
     name: str
     type: enums.StageItemType
     order: int
+    advance_count: int | None = None
     inputs: list[StageItemInputRead] = []
 
 
@@ -32,6 +33,7 @@ class StageItemSummaryRead(BaseRead):
     name: str
     type: enums.StageItemType
     order: int
+    advance_count: int | None = None
 
 
 class StageSummaryRead(BaseRead):

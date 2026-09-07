@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { getSocialProviderConfig, SOCIAL_PROVIDER_ORDER, socialAccountsForProvider } from "@/lib/social-providers";
 import adminService from "@/services/admin.service";
@@ -169,7 +169,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8 text-green-500 hover:bg-green-500/10 hover:text-green-400"
+          className="h-8 w-8 text-success hover:bg-success/10 hover:text-success"
           onClick={handleSave}
           disabled={updateMutation.isPending || !editValue.trim()}
           aria-label="Save"
@@ -224,7 +224,10 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
             )
           )}
           {account.is_primary ? (
-            <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400" aria-label="Primary" />
+            <Star
+              className="h-3.5 w-3.5 shrink-0 fill-[color:var(--aqt-amber)] text-[color:var(--aqt-amber)]"
+              aria-label="Primary"
+            />
           ) : (
             canManage && (
               <Button
@@ -263,13 +266,17 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
           </div>
         )}
       </div>
-      <DeleteConfirmDialog
+      <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         onConfirm={() => deleteMutation.mutate()}
-        isDeleting={deleteMutation.isPending}
-        title={`Remove ${account.username}?`}
-        description={`This will remove the ${config.label} identity "${account.username}" from this player.`}
+        pending={deleteMutation.isPending}
+        intent={{
+          title: `Remove ${account.username}?`,
+          description: `This will remove the ${config.label} identity "${account.username}" from this player.`,
+          confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+          tone: "danger"
+        }}
       />
     </>
   );

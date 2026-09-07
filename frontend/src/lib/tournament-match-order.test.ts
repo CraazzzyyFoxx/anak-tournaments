@@ -15,7 +15,6 @@ function createEncounter(id: number, round: number): Encounter {
     round,
     best_of: 3,
     tournament_id: 1,
-    tournament_group_id: null,
     stage_id: 1,
     stage_item_id: 1,
     challonge_id: null,
@@ -34,7 +33,6 @@ function createEncounter(id: number, round: number): Encounter {
     tournament: null as never,
     stage: null,
     stage_item: null,
-    tournament_group: null,
   };
 }
 

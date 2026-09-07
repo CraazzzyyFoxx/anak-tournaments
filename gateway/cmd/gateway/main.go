@@ -25,6 +25,8 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/acl"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/analytics"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apidocs"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apierr"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apiver"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/app"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/auth"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/balancer"
@@ -300,11 +302,12 @@ func run() error {
 	// pattern under ServeMux, so it rides the subtree matcher. The prefix is less
 	// specific than PublicWriteRoutes' precise patterns, which still win.
 	mux.Handle("/api/v1/registration-teams/", tournamentEdge.Subtree(tournament.RegistrationTeamSubtreeRoutes))
-	// Team logo + registered-team crest uploads: multipart -> base64 RPC body;
-	// the JSON dispatcher can't do it.
+	// Team logo, registered-team crest and tournament cover/logo uploads:
+	// multipart -> base64 RPC body; the JSON dispatcher can't do it.
 	tournamentBinary := tournament.NewBinary(rpcClient, resolver.Resolve, logger)
 	mux.HandleFunc("POST /api/v1/admin/teams/{team_id}/image", tournamentBinary.TeamImageUpload)
 	mux.HandleFunc("POST /api/v1/registration-teams/{team_id}/image", tournamentBinary.RegistrationTeamImageUpload)
+	mux.HandleFunc("POST /api/v1/admin/tournaments/{tournament_id}/images/{slot}", tournamentBinary.TournamentImageUpload)
 	// analytics-service: typed RPC reads + job-control (the rest of /api/analytics
 	// still proxies). Specific patterns win over the proxy.
 	analyticsEdge := edge.New(rpcClient, logger, resolver.Resolve)
@@ -382,9 +385,7 @@ func run() error {
 	// instead. app-service (/api/v1/*) is now fully served by the typed app
 	// routes above; unmatched /api/v1/* falls here too (404, no proxy).
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"detail":"Not Found"}`))
+		apierr.WriteError(w, http.StatusNotFound, "Not Found", "", nil)
 	})
 	// /api/analytics is fully served by the typed analytics routes above (RPC into
 	// analytics-svc); the HTTP analytics-service is decommissioned and no longer
@@ -497,7 +498,7 @@ func run() error {
 	// resolver.APIKeyQuota short-circuits on the aqt_sk_ prefix, so session and
 	// anonymous traffic reach the mux without any added identity lookup.
 	apiKeyLimiter := ratelimit.New(cfg.APIKeyRateLimit, time.Minute)
-	apiSurface := cachecontrol.Middleware(anonLimiter.WrapAnon(apiKeyLimiter.WrapAPIKey(mux, resolver.APIKeyQuota)))
+	apiSurface := apiver.Middleware(cachecontrol.Middleware(anonLimiter.WrapAnon(apiKeyLimiter.WrapAPIKey(mux, resolver.APIKeyQuota))))
 	instrumented := httplog.Middleware(mtr.Middleware(apiSurface, authn, activeUsers), logger, authn)
 	traced := tracing.Middleware(instrumented)
 	tracedMux := sentryhttp.New(sentryhttp.Options{Repanic: true}).Handle(traced)

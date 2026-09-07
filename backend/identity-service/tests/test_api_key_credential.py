@@ -40,6 +40,12 @@ from src.services.api_keys import api_keys  # noqa: E402
 from src.services.auth import auth  # noqa: E402
 from src.services.auth_users import auth_users  # noqa: E402
 from src.services.token_validation import token_validation  # noqa: E402
+from tests._fakes import make_auth_user as _owner  # noqa: E402
+from tests._fakes import CapturingBroker as _CapturingBroker  # noqa: E402
+from tests._fakes import FakeSessionMaker as _SessionMaker  # noqa: E402
+from tests._fakes import SilentLogger as _SilentLogger  # noqa: E402
+from tests._fakes import handler as _handler  # noqa: E402
+from tests._fakes import make_api_key_row  # noqa: E402
 
 _PUBLIC_ID = "publicid"
 _SECRET = "secret-token"
@@ -71,40 +77,8 @@ def _identity(*, keyed: bool) -> dict:
     return payload
 
 
-def _owner(*, active: bool = True) -> models.AuthUser:
-    return models.AuthUser(
-        id=7,
-        email="ada@example.com",
-        username="ada",
-        is_active=active,
-        is_superuser=False,
-        is_verified=True,
-    )
-
-
-def _workspace(*, active: bool = True) -> models.Workspace:
-    return models.Workspace(id=11, slug="main", name="Main", is_active=active)
-
-
 def _api_key_row(*, revoked_at=None, expires_at=None) -> models.ApiKey:
-    return models.ApiKey(
-        id=123,
-        auth_user_id=7,
-        workspace_id=11,
-        public_id=_PUBLIC_ID,
-        secret_hash=api_keys._hash_secret(_SECRET),
-        name="Balancer API",
-        scopes_json=["team.create"],
-        limits_json={"requests_per_minute": 60},
-        config_policy_json={},
-        expires_at=expires_at,
-        revoked_at=revoked_at,
-        last_used_at=None,
-        created_at=datetime.now(UTC),
-        updated_at=None,
-        user=_owner(),
-        workspace=_workspace(),
-    )
+    return make_api_key_row(revoked_at=revoked_at, expires_at=expires_at)
 
 
 class _FakeResult:
@@ -133,47 +107,6 @@ class _FakeSession:
 
     async def commit(self) -> None:
         self.commit_calls += 1
-
-
-class _SessionMaker:
-    """Stands in for ``db.async_session_maker``: one session, no engine."""
-
-    def __init__(self, session: _FakeSession) -> None:
-        self._session = session
-
-    def __call__(self) -> _SessionMaker:
-        return self
-
-    async def __aenter__(self) -> _FakeSession:
-        return self._session
-
-    async def __aexit__(self, *_exc) -> bool:
-        return False
-
-
-class _CapturingBroker:
-    """Collects each subscriber under its queue name so a test can call it."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject: str):
-        def decorator(function):
-            self.handlers[subject] = function
-            return function
-
-        return decorator
-
-
-class _SilentLogger:
-    def exception(self, *_args, **_kwargs) -> None:
-        return None
-
-
-def _handler(module, subject: str):
-    broker = _CapturingBroker()
-    module.register(broker, _SilentLogger())
-    return broker.handlers[subject]
 
 
 def _key_info(api_key_id: int = 123) -> schemas.TokenApiKeyInfo:
@@ -274,6 +207,7 @@ def test_audit_row_names_the_api_key_the_actor_acted_through() -> None:
     # The account is still the actor — the suffix says which of its credentials.
     assert row.actor_auth_user_id == 7
     assert row.actor_label == f"ada (api key: {_PUBLIC_ID})"
+    assert row.source == "api_key"
 
 
 def test_audit_row_is_unchanged_for_a_session_actor() -> None:
@@ -281,6 +215,7 @@ def test_audit_row_is_unchanged_for_a_session_actor() -> None:
 
     assert row.actor_auth_user_id == 7
     assert row.actor_label == "ada"
+    assert row.source == "admin"
 
 
 def test_audit_row_for_a_machine_actor_stays_actorless() -> None:

@@ -27,14 +27,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from shared.services import social_identity  # noqa: E402
 from src import schemas  # noqa: E402
 from src.services.oauth_accounts import OAuthAccountService, oauth_accounts  # noqa: E402
+from tests._fakes import make_oauth_info  # noqa: E402
 
 TOKEN_DATA = {"access_token": "provider-access", "refresh_token": "provider-refresh"}
 
 
-def _oauth_info(provider: str = "discord", subject: str = "subject-1") -> schemas.OAuthUserInfo:
-    return schemas.OAuthUserInfo(
-        provider=schemas.OAuthProvider(provider),
-        provider_user_id=subject,
+def _oauth_info() -> schemas.OAuthUserInfo:
+    return make_oauth_info(
+        provider="discord",
+        provider_user_id="subject-1",
         username="linked-handle",
         email="linked@example.com",
     )

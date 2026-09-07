@@ -13,6 +13,7 @@ __all__ = (
     "BalanceSaveRequest",
     "BalancerTournamentConfigRead",
     "BalancerTournamentConfigUpsert",
+    "RanksExportResponse",
     "WorkspaceBalancerConfigRead",
     "WorkspaceBalancerConfigUpsert",
 )
@@ -68,3 +69,10 @@ class BalanceExportResponse(BaseModel):
     removed_teams: int
     imported_teams: int
     balance_id: int
+
+
+class RanksExportResponse(BaseModel):
+    """Result of a rank-only re-export (balance or draft): nothing was created or removed."""
+
+    success: bool
+    updated_players: int

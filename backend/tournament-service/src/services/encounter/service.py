@@ -407,7 +407,9 @@ class EncounterService:
             joined_tournament="tournament" in params.entities,
         )
 
-        query = params.apply_pagination_sort(query)
+        # Model-bound sort: ``has_logs`` is a ``column_property`` (EXISTS over
+        # matches.match), not a real column, so a textual ORDER BY would break.
+        query = params.apply_pagination_sort(query, models.Encounter)
 
         result = await session.execute(query)
         result_total = await session.execute(total_query)

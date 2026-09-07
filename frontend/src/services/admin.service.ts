@@ -8,7 +8,8 @@ import {
   StageItemInput,
   StageItemType,
   PickBanKind,
-  PickBanState
+  PickBanState,
+  TournamentImageSlot
 } from "@/types/tournament.types";
 import { Team, Player } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
@@ -120,6 +121,7 @@ import {
   AdminMatchesQuery,
   AuditLogQuery,
   AuditLogRead,
+  StageBracketPreviewMatch,
 } from "@/types/admin.types";
 
 /**
@@ -400,6 +402,38 @@ class AdminService {
     const response = await apiFetch(`/api/v1/admin/teams/${teamId}/image`, {
       method: "DELETE"
     });
+    return response.json();
+  }
+
+  // ─── Tournament images ─────────────────────────────────────────────────────
+
+  async uploadTournamentImage(
+    tournamentId: number,
+    slot: TournamentImageSlot,
+    file: File
+  ): Promise<Tournament> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiFetch(
+      `/api/v1/admin/tournaments/${tournamentId}/images/${slot}`,
+      {
+        method: "POST",
+        body: formData
+      }
+    );
+    return response.json();
+  }
+
+  async deleteTournamentImage(
+    tournamentId: number,
+    slot: TournamentImageSlot
+  ): Promise<Tournament> {
+    const response = await apiFetch(
+      `/api/v1/admin/tournaments/${tournamentId}/images/${slot}`,
+      {
+        method: "DELETE"
+      }
+    );
     return response.json();
   }
 
@@ -894,6 +928,7 @@ class AdminService {
       per_page?: number;
       search?: string;
       gamemode_id?: number;
+      in_competitive?: boolean;
       sort?: string;
       order?: string;
     } = {}
@@ -904,6 +939,8 @@ class AdminService {
         ...(params.per_page != null && { per_page: params.per_page }),
         ...(params.search && { search: params.search }),
         ...(params.gamemode_id != null && { gamemode_id: params.gamemode_id }),
+        // `!= null`, not truthiness: `false` is a real filter value (casual pool).
+        ...(params.in_competitive != null && { in_competitive: params.in_competitive }),
         ...(params.sort && { sort: params.sort }),
         ...(params.order && { order: params.order })
       }
@@ -1454,6 +1491,18 @@ class AdminService {
     return data.rounds;
   }
 
+  /**
+   * The bracket `stageId` would generate, straight from the generator: real
+   * pairings, seed order, advancement edges and per-round best-of, with
+   * skeleton-local ids because nothing is written. Empty when the stage is not
+   * a bracket, or fewer than two teams are wired in and none are projected.
+   */
+  async getStageBracketPreview(stageId: number): Promise<StageBracketPreviewMatch[]> {
+    const response = await apiFetch(`/api/v1/admin/stages/${stageId}/bracket-preview`);
+    const data: { matches: StageBracketPreviewMatch[] } = await response.json();
+    return data.matches;
+  }
+
   async mergeGroupStages(stageId: number, data: StageMergeGroupStagesInput): Promise<Stage> {
     const response = await apiFetch(`/api/v1/admin/stages/${stageId}/merge-group-stages`, {
       method: "POST",
@@ -1472,7 +1521,7 @@ class AdminService {
 
   async updateStageItem(
     stageItemId: number,
-    data: { name?: string; type?: StageItemType; order?: number }
+    data: { name?: string; type?: StageItemType; order?: number; advance_count?: number | null }
   ): Promise<StageItem> {
     const response = await apiFetch(`/api/v1/admin/stages/items/${stageItemId}`, {
       method: "PATCH",

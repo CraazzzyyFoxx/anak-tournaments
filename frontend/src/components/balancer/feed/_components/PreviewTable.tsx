@@ -74,7 +74,7 @@ export function PreviewTable({ targets, mappingState, row }: Readonly<PreviewTab
                 <TableRow key={target.key} className={cn(error && "bg-destructive/5")}>
                   <TableCell className="align-top">
                     <span className="text-sm font-medium">{target.label}</span>
-                    <p className="font-mono text-[11px] text-muted-foreground/60">{target.key}</p>
+                    <p className="font-mono text-xs text-muted-foreground/60">{target.key}</p>
                   </TableCell>
                   <TableCell className="align-top text-sm text-muted-foreground">
                     {sourceValue(target, state, row) || <span className="italic text-muted-foreground/50">—</span>}

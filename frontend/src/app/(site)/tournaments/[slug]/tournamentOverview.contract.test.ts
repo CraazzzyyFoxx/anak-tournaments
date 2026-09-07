@@ -223,6 +223,32 @@ describe("tournament overview server contract", () => {
     expect(source).toContain("tournament.stages");
   });
 
+  it("makes the header the tournament's identity and state, not its reference sheet", () => {
+    const sourceFile = parsedSource("_components/TournamentClientLayout.tsx");
+    const source = sourceFor("_components/TournamentClientLayout.tsx");
+    const hero = jsxElements(sourceFile, "PageHero");
+
+    expect(hero).toHaveLength(1);
+    // The organizer's banner and mark, which until now only the list card
+    // rendered while the admin's Branding panel promised the public page.
+    expect(hasJsxAttribute(sourceFile, hero[0]!, "coverUrl", "tournament.cover_image_url")).toBe(
+      true
+    );
+    expect(hasJsxAttribute(sourceFile, hero[0]!, "coverFade")).toBe(true);
+    expect(source).toContain("tournament.logo_url");
+    // Cover fades in from the right. Without a cover the metrics take that column.
+    expect(hasJsxAttribute(sourceFile, hero[0]!, "aside")).toBe(true);
+    expect(hasJsxAttribute(sourceFile, hero[0]!, "stamp")).toBe(true);
+    expect(source).not.toContain("asideFlush");
+    expect(source).toContain("{registerButton}");
+    expect(hasJsxAttribute(sourceFile, hero[0]!, "actions")).toBe(false);
+    expect(hasJsxAttribute(sourceFile, hero[0]!, "lede")).toBe(false);
+    expect(source).not.toContain('t("common.format")');
+    expect(source).not.toContain('t("common.teamFormation")');
+    // ...but the draft room is an action, so it stays in the action row.
+    expect(source).toContain("/draft/${tournament.slug}");
+  });
+
   it("reuses overview summaries for metadata and the index redirect", () => {
     const layout = parsedSource("layout.tsx");
     const page = parsedSource("page.tsx");

@@ -17,6 +17,10 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import registrationService from "@/services/registration.service";
 import { tournamentHref } from "@/lib/tournament-url";
+import {
+  TOURNAMENT_PRIMARY_ACTION_CLASS,
+  TOURNAMENT_TEXT_ACTION_CLASS,
+} from "./tournamentActionClass";
 import type { Tournament } from "@/types/tournament.types";
 
 import { useTranslations } from "next-intl";
@@ -25,9 +29,14 @@ import TeamRegistrationEntry from "@/components/registration/TeamRegistrationEnt
 
 type Props = {
   tournament: Tournament;
+  /** `"text"` — header stamp row. Default is the 36px box for the rail. */
+  tone?: "box" | "text";
 };
 
-export default function TournamentRegisterButton({ tournament }: Readonly<Props>) {
+export default function TournamentRegisterButton({
+  tournament,
+  tone = "box",
+}: Readonly<Props>) {
   const workspaceId = tournament.workspace_id;
   const tournamentId = tournament.id;
   const tournamentName = tournament.name;
@@ -122,7 +131,7 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
       <button
         type="button"
         onClick={handleAuthClick}
-        className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
+        className={tone === "text" ? TOURNAMENT_TEXT_ACTION_CLASS : TOURNAMENT_PRIMARY_ACTION_CLASS}
       >
         <LogIn className="size-4" aria-hidden />
         {t("registration.button.loginToRegister")}
@@ -130,30 +139,26 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
     );
   }
 
+  // A team-registration tournament has ONE way in: found a team, or accept a
+  // captain's invite. The solo button used to stand beside it, which let a player
+  // spend their single registration row (there is one per player) on a free-agent
+  // slot nobody had asked them for — and once spent, founding a team is
+  // foreclosed. `TeamRegistrationEntry` hides itself for a viewer who cannot act,
+  // so this renders nothing rather than a dead control.
+  if (tournament.team_formation === "registration") {
+    return <TeamRegistrationEntry tournament={tournament} />;
+  }
+
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
-        >
-          <UserPlus className="size-4" aria-hidden />
-          {t("registration.button.register")}
-        </button>
-
-        {/* On a team-registration tournament both choices belong HERE, together.
-            Registering solo first permanently forecloses founding a team (there is
-            one registration row per player), so the fork has to be presented
-            before either action is taken.
-
-            A real button, not a link to the Teams tab: the primary action of a
-            team tournament must not be a navigation step, and the tab rendered its
-            own copy, which put two identical buttons on one screen. */}
-        {tournament.team_formation === "registration" && (
-          <TeamRegistrationEntry tournament={tournament} />
-        )}
-      </div>
+      <button
+        type="button"
+        onClick={() => setShowModal(true)}
+        className={tone === "text" ? TOURNAMENT_TEXT_ACTION_CLASS : TOURNAMENT_PRIMARY_ACTION_CLASS}
+      >
+        <UserPlus className="size-4" aria-hidden />
+        {t("registration.button.register")}
+      </button>
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-2xl lg:max-w-3xl">
           <DialogTitle className="sr-only">

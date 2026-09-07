@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The teams column replaced a `<pre>{JSON.stringify(result_json)}</pre>`, so
+// The teams column replaced a `<pre>{JSON.stringify(balance_result)}</pre>`, so
 // what is pinned here is that it actually reads the payload, and that the two
 // writes it owns cannot fire by accident:
 //
@@ -99,17 +99,26 @@ function variant(offset: number) {
   };
 }
 
+const SETTINGS = {
+  points_per_win: null,
+  team_names: {},
+  role_mask: null,
+  balancer_config: null,
+};
+
 function game(overrides: Partial<CustomGame> = {}): CustomGame {
   return {
     id: 3,
     workspace_id: 7,
     host_user_id: 9,
     co_hosts: [],
+    host_display_name: null,
     name: "Thursday scrim",
     status: "balanced",
-    config_json: null,
-    result_json: { variants: [variant(0), variant(100), variant(200)] },
-    outcome_json: null,
+    settings: SETTINGS,
+    balance_result: { variants: [variant(0), variant(100), variant(200)] },
+    created_at: null,
+    roster_shape: null,
     players: [],
     ...overrides,
   };
@@ -226,7 +235,7 @@ describe("PickupTeamsPanel", () => {
     expect(scope.textContent).toContain("2900");
     expect(scope.textContent).toContain("Tolgrn");
     expect(scope.textContent).toContain("3450");
-    expect(scope.textContent).not.toContain("result_json");
+    expect(scope.textContent).not.toContain("balance_result");
     expect(scope.textContent).not.toContain('"uuid"');
   });
 
@@ -270,7 +279,7 @@ describe("PickupTeamsPanel", () => {
   });
 
   it("clamps an index left pointing past a shorter result", async () => {
-    const scope = await mount(game({ result_json: { variants: [variant(0)] } }), { variantIndex: 7 });
+    const scope = await mount(game({ balance_result: { variants: [variant(0)] } }), { variantIndex: 7 });
 
     // One option left: the pager is gone and the first option is on screen.
     expect(pagerLabel(scope)).toBeUndefined();
@@ -278,21 +287,21 @@ describe("PickupTeamsPanel", () => {
   });
 
   it("offers the empty state for a mix that has not been balanced", async () => {
-    const scope = await mount(game({ status: "draft", result_json: null }));
+    const scope = await mount(game({ status: "draft", balance_result: null }));
 
     expect(scope.textContent).toContain("No teams yet");
     expect(byName(scope, "Balance teams")).not.toBeNull();
   });
 
   it("refuses to balance an empty lineup and says why", async () => {
-    const scope = await mount(game({ status: "draft", result_json: null }), { activeCount: 0 });
+    const scope = await mount(game({ status: "draft", balance_result: null }), { activeCount: 0 });
 
     expect(byName(scope, "Balance teams")?.hasAttribute("disabled")).toBe(true);
     expect(scope.textContent).toContain("Check at least one player in the lobby");
   });
 
   it("balances on request when the lineup is not empty", async () => {
-    const scope = await mount(game({ status: "draft", result_json: null }));
+    const scope = await mount(game({ status: "draft", balance_result: null }));
 
     await click(byName(scope, "Balance teams"));
 
@@ -375,7 +384,7 @@ describe("PickupTeamsPanel", () => {
   });
 
   it("shows the configured points-per-win on the win buttons, never on Draw", async () => {
-    const scope = await mount(game({ config_json: { points_per_win: 25 } }));
+    const scope = await mount(game({ settings: { ...SETTINGS, points_per_win: 25 } }));
 
     expect(byName(scope, "Team 1 win +25")).not.toBeNull();
     expect(byName(scope, "Team 2 win +25")).not.toBeNull();
@@ -463,7 +472,7 @@ describe("PickupTeamsPanel", () => {
   });
 
   it("shows a host's saved team name instead of the computed default", async () => {
-    const scope = await mount(game({ config_json: { team_names: { "0": "Wolves" } } }));
+    const scope = await mount(game({ settings: { ...SETTINGS, team_names: { "0": "Wolves" } } }));
 
     expect(scope.textContent).toContain("Wolves");
     // The second team keeps its computed default; the win buttons pick up

@@ -24,6 +24,7 @@ from src.clients.challonge import challonge_client
 from src.services.admin.stage import stage_service
 from src.services.challonge.sync import sync_service
 from src.services.tournament.events import enqueue_tournament_changed, enqueue_tournament_state_changed
+from src.services.tournament.realtime_commit import register_tournament_realtime_update
 
 GROUP_STAGE_TYPES = {StageType.ROUND_ROBIN, StageType.SWISS}
 
@@ -161,6 +162,40 @@ class AdminTournamentService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
         return tournament
+
+    async def set_tournament_image(
+        self, session: AsyncSession, tournament_id: int, *, slot: str, url: str | None
+    ) -> models.Tournament:
+        """Set (or clear, with ``None``) the tournament's cover banner or square logo.
+
+        Deliberately separate from ``update_tournament``, for the same reason
+        ``services/admin/team.py::set_team_image`` is separate from ``update_team``:
+        the column is only ever written by the dedicated upload/delete RPC subjects
+        *after* S3 accepted the bytes, and ``TournamentUpdate`` carries no image
+        fields at all — a PATCH body must not be able to point the banner at an
+        arbitrary URL.
+
+        ``register_tournament_realtime_update`` rather than
+        ``enqueue_tournament_changed``: an image swap changes nothing a bracket or
+        standings recompute would read, so the outbox event would be pure noise —
+        but the after-commit listener it arms is also the only thing that purges
+        the cashews key behind ``flows.get_read`` (``tournaments/{id}:{entities}``).
+        Without it the public page keeps serving the previous banner for the whole
+        TTL, and the organizer sees the upload "not work".
+        """
+        tournament = await self.tournament_repo.get(session, tournament_id)
+
+        if not tournament:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+        if slot == "cover":
+            tournament.cover_image_url = url
+        else:
+            tournament.logo_url = url
+
+        register_tournament_realtime_update(session, tournament_id, "structure_changed")
+        await session.commit()
+        return await self.get_tournament(session, tournament_id)
 
     async def create_tournament(
         self, session: AsyncSession, data: schemas.TournamentCreate

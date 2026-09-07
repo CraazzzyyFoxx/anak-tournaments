@@ -4,7 +4,7 @@ import * as React from "react"
 import { type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
-import { toggleVariants } from "@/components/ui/toggle"
+import { segmentedFrame, toggleVariants } from "@/components/ui/toggle"
 
 interface ToggleGroupProps extends VariantProps<typeof toggleVariants> {
   type: "single"
@@ -86,11 +86,15 @@ function ToggleGroup({
         onKeyDown={handleKeyDown}
         className={cn(
           "flex items-center",
-          "[&>*:not(:first-child)]:-ml-px",
-          "[&>*:first-child]:rounded-r-none",
-          "[&>*:last-child]:rounded-l-none",
-          "[&>*:not(:first-child):not(:last-child)]:rounded-none",
-          "[&>*[data-state=on]]:z-10 [&>*[data-state=on]]:relative",
+          variant === "pill"
+            ? segmentedFrame
+            : cn(
+                "[&>*:not(:first-child)]:-ml-px",
+                "[&>*:first-child]:rounded-r-none",
+                "[&>*:last-child]:rounded-l-none",
+                "[&>*:not(:first-child):not(:last-child)]:rounded-none",
+                "[&>*[data-state=on]]:z-10 [&>*[data-state=on]]:relative"
+              ),
           className
         )}
       >

@@ -13,7 +13,6 @@ import { PickupPlayerSheet } from "@/app/balancer/pickup/PickupPlayerSheet";
 import { PickupTeamsPanel } from "@/app/balancer/pickup/PickupTeamsPanel";
 import {
   PICKUP_TERMINAL_STATUSES,
-  parsePointsPerWin,
   playerLabel,
   summarizeLineup,
 } from "@/app/balancer/pickup/pickup-lineup";
@@ -147,7 +146,7 @@ export default function BalancerPickupMixPage() {
 
   const copyBattleTags = () => {
     const tags = rows
-      .filter((row) => row.is_active)
+      .filter((row) => row.participation !== "benched")
       .map((row) => row.battle_tag ?? playerLabel(row));
     if (tags.length === 0) {
       notify.error("Nobody is in the balance yet");
@@ -260,7 +259,7 @@ export default function BalancerPickupMixPage() {
         saving={setRoleMask.isPending || setPointsPerWin.isPending}
         onSave={(input) => {
           setRoleMask.mutate(input.roleMask, { onSuccess: () => setIsSettingsOpen(false) });
-          if (input.pointsPerWin !== parsePointsPerWin(game?.config_json)) {
+          if (input.pointsPerWin !== (game?.settings.points_per_win ?? null)) {
             setPointsPerWin.mutate(input.pointsPerWin);
           }
         }}

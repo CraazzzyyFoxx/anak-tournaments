@@ -871,7 +871,7 @@ function LineupChip({
     <li
       className={cn(
         "group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-white/[0.035]",
-        !row.is_active && "opacity-55",
+        row.participation === "benched" && "opacity-55",
       )}
     >
       <span className="flex min-w-0 flex-1 items-baseline gap-1">

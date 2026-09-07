@@ -110,6 +110,9 @@ async def _make_tournament(session, *, workspace_id: int) -> Tournament:
     tournament = Tournament(
         workspace_id=workspace_id,
         name=f"Self-Register Gate Tournament {suffix}",
+        # NOT NULL and globally unique; production writes go through
+        # `generate_unique_tournament_slug`, which this factory bypasses.
+        slug=f"selfreg-{suffix}",
         status=enums.TournamentStatus.CHECK_IN,
     )
     session.add(tournament)
@@ -174,6 +177,7 @@ def test_first_registration_creates_member_and_player_role() -> None:
                         smurf_tags=None,
                         discord_nick=None,
                         twitch_nick=None,
+                        boosty_nick=None,
                         stream_pov=False,
                         notes=None,
                         custom_fields=None,
@@ -246,6 +250,7 @@ def test_workspace_scoped_self_register_deny_returns_403() -> None:
                             smurf_tags=None,
                             discord_nick=None,
                             twitch_nick=None,
+                            boosty_nick=None,
                             stream_pov=False,
                             notes=None,
                             custom_fields=None,
@@ -300,6 +305,7 @@ def test_second_registration_does_not_duplicate_member() -> None:
                         smurf_tags=None,
                         discord_nick=None,
                         twitch_nick=None,
+                        boosty_nick=None,
                         stream_pov=False,
                         notes=None,
                         custom_fields=None,
@@ -317,6 +323,7 @@ def test_second_registration_does_not_duplicate_member() -> None:
                         smurf_tags=None,
                         discord_nick=None,
                         twitch_nick=None,
+                        boosty_nick=None,
                         stream_pov=False,
                         notes=None,
                         custom_fields=None,
@@ -364,9 +371,11 @@ def _gate_tournament(
     allow_late_registration: bool = False,
     schedule: list[TournamentPhaseSchedule] | None = None,
 ) -> Tournament:
+    suffix = uuid.uuid4().hex[:12]
     tournament = Tournament(
         workspace_id=1,
         name="Gate Unit Tournament",
+        slug=f"gate-unit-{suffix}",
         status=status,
         allow_late_registration=allow_late_registration,
     )
@@ -405,8 +414,10 @@ def test_registration_needs_a_schedule_row_at_all() -> None:
 def test_registration_open_inside_the_window_regardless_of_phase() -> None:
     """Phase no longer participates: an open window means open, even at LIVE.
 
-    This is what replaces ``allow_late_registration`` — late registration is now
-    expressed as an ``ends_at`` that extends past the LIVE start.
+    Distinct from ``allow_late_registration``, which is back but narrower: an
+    ``ends_at`` past the LIVE start keeps registration open with no flag at all,
+    while the flag exists for the organizer who wants to keep the advertised
+    closing date on the page and still admit latecomers.
     """
     now = datetime.now(UTC)
     for status in (
@@ -444,6 +455,37 @@ def test_registration_closed_outside_registration_row_window() -> None:
                 ends_at=now - timedelta(hours=1),
             )
         ],
+    )
+    assert windows.is_registration_open(tournament, now=now) is False
+
+
+def test_allow_late_registration_reopens_an_ended_window() -> None:
+    """The flag reads off the ``Tournament`` here, not off a projection — this is
+    the wiring ``windows.is_registration_open`` owns, and the reason the shared
+    predicate takes ``allow_late`` as a required argument."""
+    now = datetime.now(UTC)
+    ended = [
+        _schedule_row(
+            enums.TournamentStatus.REGISTRATION,
+            starts_at=now - timedelta(hours=2),
+            ends_at=now - timedelta(hours=1),
+        )
+    ]
+    tournament = _gate_tournament(
+        enums.TournamentStatus.LIVE,
+        schedule=ended,
+        allow_late_registration=True,
+    )
+    assert windows.is_registration_open(tournament, now=now) is True
+
+
+def test_allow_late_registration_does_not_open_a_tournament_with_no_row() -> None:
+    """The override lifts ``ends_at`` only. Opening a row-less tournament would
+    flip the freshly-created default from closed to open."""
+    now = datetime.now(UTC)
+    tournament = _gate_tournament(
+        enums.TournamentStatus.REGISTRATION,
+        allow_late_registration=True,
     )
     assert windows.is_registration_open(tournament, now=now) is False
 
@@ -507,3 +549,42 @@ def test_check_in_window_active_inside_row_window() -> None:
 def test_check_in_window_requires_check_in_status() -> None:
     tournament = _gate_tournament(enums.TournamentStatus.REGISTRATION)
     assert windows.is_check_in_window_active(tournament) is False
+
+
+def test_admin_check_in_ignores_the_check_in_window() -> None:
+    """Organizers must be able to check someone in outside CHECK_IN — before the
+    phase opens, after its window closes, or once the tournament is LIVE. Only
+    the self-service path (``registration_service.check_in_registration``) is
+    window-gated."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from src.services.registration import lifecycle
+
+    registration = SimpleNamespace(
+        id=7,
+        tournament=_gate_tournament(enums.TournamentStatus.LIVE),
+        checked_in=False,
+        checked_in_at=None,
+        checked_in_by=None,
+    )
+
+    async def fake_get(_self, _session, _registration_id):
+        return registration
+
+    session = SimpleNamespace(commit=_noop)
+    service = lifecycle.lifecycle_service
+
+    with (
+        patch.object(type(service), "get_registration_by_id", fake_get),
+        patch.object(service.common, "_register_registration_changed", lambda *a, **k: None),
+    ):
+        result = asyncio.run(service.check_in_registration(session, 7, checked_in_by=99))
+
+    assert result is registration
+    assert registration.checked_in is True
+    assert registration.checked_in_by == 99
+
+
+async def _noop() -> None:
+    return None

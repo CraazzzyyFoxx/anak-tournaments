@@ -188,6 +188,18 @@ class BalanceRequest(BaseModel):
     config_overrides: ConfigOverrides | None = Field(None, description="Optional configuration overrides")
 
 
+class TournamentBalanceRequest(BaseModel):
+    """Balance a tournament's own pool. Carries no players on purpose.
+
+    The xv-1 input is built server-side from ``shared.services.roster`` -- the
+    same engine the draft reads -- so the caller cannot hand the algorithm a
+    different set of ranks than the draft sees. Use ``BalanceRequest`` /the
+    multipart upload only for a payload that is genuinely not a tournament pool.
+    """
+
+    config_overrides: ConfigOverrides | None = Field(None, description="Optional configuration overrides")
+
+
 class PlayerData(BaseModel):
     uuid: str
     name: str

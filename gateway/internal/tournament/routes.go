@@ -22,6 +22,7 @@ var PublicReadRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/tournaments/league/seasons", Queue: "rpc.tournament.owal_seasons", Query: []string{"workspace_id"}, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/tournaments/league/results", Queue: "rpc.tournament.owal_results", Query: []string{"workspace_id", "season"}, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/tournaments/league/stacks", Queue: "rpc.tournament.owal_stacks", Query: []string{"workspace_id", "season"}, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/tournaments/facets", Queue: "rpc.tournament.tournaments_facets", Query: []string{"workspace_id", "status", "is_league", "query"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/tournaments/{id}", Queue: "rpc.tournament.get_tournament", IDParam: "id", Query: []string{"entities"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/tournaments/{id}/stages", Queue: "rpc.tournament.get_stages", IDParam: "id", Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/tournaments/{id}/standings", Queue: "rpc.tournament.get_standings", IDParam: "id", Query: []string{"entities"}, Auth: edge.AuthOptional},

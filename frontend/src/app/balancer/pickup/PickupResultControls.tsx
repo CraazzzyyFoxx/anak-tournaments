@@ -39,13 +39,17 @@ export function PickupResultControls({
   size = "sm",
   onRecord,
 }: Readonly<PickupResultControlsProps>) {
-  const options: { key: string; label: string; winner: number | null }[] = [
-    ...Array.from({ length: teamCount }, (_, index) => ({
+  // A recorded match is always two-sided (`record_outcome` refuses anything
+  // else, and the mix solver only ever produces two teams), so the winner is
+  // exactly 1, 2 or a draw -- the same shape the server stores.
+  const options: { key: string; label: string; winner: 1 | 2 | null }[] = Array.from(
+    { length: Math.min(teamCount, 2) },
+    (_, index) => ({
       key: `team-${index + 1}`,
       label: `${teamNames?.[index] ?? `Team ${index + 1}`} win`,
-      winner: index + 1,
-    })),
-  ];
+      winner: index === 0 ? 1 : 2,
+    }),
+  );
   // Draw sits between the two teams, mirroring the scoreline it describes.
   options.splice(1, 0, { key: "draw", label: "Draw", winner: null });
 

@@ -54,7 +54,6 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     round: 1,
     best_of: 3,
     tournament_id: 1,
-    tournament_group_id: null,
     stage_id: 3,
     stage_item_id: 4,
     challonge_id: null,
@@ -73,7 +72,6 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     tournament: null as never,
     stage: null,
     stage_item: null,
-    tournament_group: null,
     ...overrides
   };
 }
@@ -211,5 +209,85 @@ describe("BracketView live-stream indicator", () => {
     );
 
     expect(container.querySelector("[data-live-team-stream]")).toBeNull();
+  });
+});
+
+// The tree is routinely wider than its scroller, and round 1 of a running
+// playoff was decided days ago. So the canvas opens on the round in play.
+describe("BracketView opening round", () => {
+  const scroller = () => container.querySelector<HTMLDivElement>("[data-bracket-focused]");
+  /** The laid-out x of a match's card, which is its round's column. */
+  const columnX = (matchId: number) =>
+    Number.parseFloat(
+      container.querySelector<HTMLDivElement>(`[data-match-id="${matchId}"]`)!.style.left
+    );
+
+  const threeRounds = [
+    encounter({ id: 1, round: 1, status: "completed" }),
+    encounter({ id: 2, round: 1, status: "completed" }),
+    encounter({ id: 3, round: 2, status: "open" }),
+    encounter({ id: 4, round: 3, status: "open" })
+  ];
+
+  // The scroller has no measured width here, so the offset lands at the column
+  // rather than centred on it — enough to say WHICH column was chosen, which is
+  // the whole decision. Bracketing it by the next column keeps the assertion
+  // independent of the layout's spacing constants.
+  const opensOnColumnOf = (el: HTMLDivElement, matchId: number, nextMatchId: number) =>
+    el.scrollLeft >= columnX(matchId) && el.scrollLeft < columnX(nextMatchId);
+
+  it("scrolls the canvas to the first round that still has an unsettled match", () => {
+    render(<BracketView encounters={threeRounds} type="single_elimination" />);
+
+    // Round 2 (match 3), not round 1 (match 1) sitting at the canvas origin.
+    expect(opensOnColumnOf(scroller()!, 3, 4)).toBe(true);
+  });
+
+  it("leaves a settled bracket on its last round", () => {
+    render(
+      <BracketView
+        encounters={threeRounds.map((match) => ({ ...match, status: "completed" }))}
+        type="single_elimination"
+      />
+    );
+
+    // Round 3 (match 4) is last, so nothing lies to its right to bracket it.
+    expect(scroller()!.scrollLeft).toBeGreaterThanOrEqual(columnX(4));
+  });
+
+  it("yields to a deep link, which scrolls its own node into view instead", () => {
+    render(
+      <BracketView encounters={threeRounds} type="single_elimination" highlightMatchId={1} />
+    );
+
+    expect(scroller()).toBeNull();
+  });
+});
+
+// The grand-final column is centred in the whole bracket height, which used to
+// put its card on top of its own round header.
+describe("BracketView round headers", () => {
+  const top = (el: Element) => Number.parseFloat((el as HTMLElement).style.top);
+
+  // A shallow bracket — one semi, one grand final — is the shape that broke:
+  // the GF column is centred in a bracket barely taller than one card.
+  it("keeps every card clear of the header row", () => {
+    render(
+      <BracketView
+        type="double_elimination"
+        encounters={[
+          encounter({ id: 1, round: 1, status: "open" }),
+          encounter({ id: 2, round: 2, status: "open" })
+        ]}
+      />
+    );
+
+    const headers = [...container.querySelectorAll("[data-round-header]")];
+    expect(headers).toHaveLength(2);
+
+    for (const card of container.querySelectorAll("[data-match-id]")) {
+      const above = headers.filter((header) => top(header) <= top(card));
+      expect(above.every((header) => top(card) - top(header) >= 24)).toBe(true);
+    }
   });
 });

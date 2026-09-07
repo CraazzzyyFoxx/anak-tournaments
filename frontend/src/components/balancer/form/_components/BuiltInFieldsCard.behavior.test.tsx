@@ -30,7 +30,7 @@ function mount(builtInFields: Record<string, BuiltInFieldConfig>, onUpdate = vi.
     root.render(
       <NextIntlClientProvider locale="ru" messages={ru}>
         <BuiltInFieldsCard builtInFields={builtInFields} onUpdate={onUpdate} />
-      </NextIntlClientProvider>,
+      </NextIntlClientProvider>
     );
   });
   return onUpdate;
@@ -39,10 +39,10 @@ function mount(builtInFields: Record<string, BuiltInFieldConfig>, onUpdate = vi.
 /** The row is found by its visible label, the way an organizer finds it. */
 function flexRow(): HTMLElement {
   const label = Array.from(container.querySelectorAll("span")).find(
-    (node) => node.textContent === ru.registrationFormAdmin.builtInFields.defs.flex_role.label,
+    (node) => node.textContent === ru.registrationFormAdmin.builtInFields.defs.flex_role.label
   );
   if (!label) throw new Error("no row labelled 'Флекс-роль'");
-  const row = label.closest("div.px-4");
+  const row = label.closest("[data-field]");
   if (!row) throw new Error("row container not found");
   return row as HTMLElement;
 }
@@ -94,7 +94,7 @@ describe("BuiltInFieldsCard flex_role row", () => {
     expect(onUpdate).toHaveBeenCalledWith("flex_role", {
       enabled: false,
       required: false,
-      mode: null,
+      mode: null
     });
   });
 });

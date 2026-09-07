@@ -33,19 +33,12 @@ export type BalancerPageCollections = {
 export function buildBalancerPageCollections(
   registrations: AdminRegistration[],
   divisionGrid: DivisionGrid,
-  /**
-   * `flex_role.mode` is `all_roles` or `forced`: every pool player is rated by
-   * their highest rank across all roles, applied to all three. Flattening here
-   * rather than inside `buildBalancerInput` is deliberate — the pool table, the
-   * validation chips and the solver payload then all read the same numbers.
-   */
-  allRoles = false,
 ): BalancerPageCollections {
   const registrationsById = new Map(
     registrations.map((registration) => [registration.id, registration]),
   );
   const players = registrations.map((registration) =>
-    createSyntheticPlayerFromRegistration(registration, divisionGrid, { allRoles }),
+    createSyntheticPlayerFromRegistration(registration, divisionGrid),
   );
   const playersById = new Map(players.map((player) => [player.id, player]));
   const applications = registrations

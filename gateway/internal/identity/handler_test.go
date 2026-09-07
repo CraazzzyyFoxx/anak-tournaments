@@ -78,6 +78,9 @@ func TestValidate_ErrorEnvelopeMapsStatus(t *testing.T) {
 	if body["detail"] != "Could not validate credentials" {
 		t.Fatalf("detail = %q", body["detail"])
 	}
+	if body["code"] != "unauthorized" {
+		t.Fatalf("code = %q", body["code"])
+	}
 }
 
 func TestValidate_NoAuthHeader(t *testing.T) {

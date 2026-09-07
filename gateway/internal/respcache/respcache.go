@@ -60,6 +60,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apiver"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 )
 
@@ -275,6 +276,11 @@ func (c *Cache) Wrap(next http.Handler, rule Rule) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// v2 wraps the body; sharing the v1 cache would serve unwrapped JSON.
+		if apiver.Want(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		// Bearer present -> viewer-dependent visibility; without an
 		// applicable AuthedRead grant, never read or write the shared cache.
 		authed := r.Header.Get("Authorization") != ""

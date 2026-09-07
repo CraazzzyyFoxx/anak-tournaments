@@ -32,6 +32,14 @@ export default defineConfig({
     server: { deps: { inline: ["@tanstack/react-table", "cmdk"] } },
     environment: "node",
     include: [
+      // The whole admin tree, both extensions. `src/app/admin` holds no
+      // `bun:test` file — the mixed-runner problem that forces file-level
+      // entries elsewhere in this list does not exist here — so one glob is
+      // safe and every test added under a new admin route runs without another
+      // edit to this allow-list. The narrower admin entries below are kept
+      // where they document a specific trap.
+      "src/app/admin/**/*.test.ts",
+      "src/app/admin/**/*.test.tsx",
       "src/app/**/tournaments/**/draft/**/*.test.ts",
       "src/app/**/tournaments/**/pregame/**/*.test.ts",
       // `.tsx` needs its own entry: the line above ends in `.test.ts`, so the
@@ -49,6 +57,9 @@ export default defineConfig({
       "src/app/admin/tournaments/**/components/*.test.tsx",
       "src/app/admin/tournaments/[id]/tab-guards.test.ts",
       "src/app/admin/players/**/*.test.ts",
+      // Same `.ts`/`.tsx` trap as the pregame/draft entries above: the players
+      // table's render contract is `.tsx` and would silently never run.
+      "src/app/admin/players/**/*.test.tsx",
       "src/app/admin/__tests__/**/*.test.ts",
       // `include` is an allow-list: a test file outside it never runs and the
       // suite still reports green. Both data-browser dirs are listed up front
@@ -60,6 +71,8 @@ export default defineConfig({
       "src/app/admin/sub-roles/**/*.test.tsx",
       "src/app/admin/subscriptions/**/*.test.tsx",
       "src/app/admin/workspaces/members/*.test.ts",
+      "src/app/admin/workspaces/members/*.test.tsx",
+      "src/app/admin/teams/*.test.tsx",
       "src/app/balancer/components/balance-import.test.ts",
       "src/app/balancer/components/balancer-page-selectors.test.ts",
       "src/app/balancer/components/forced-flex-parity.test.ts",
@@ -77,9 +90,18 @@ export default defineConfig({
       "src/app/(site)/tournaments/[slug]/_views/_components/participantsColumns.test.tsx",
       // Same allow-list trap: this folder also holds `bun:test` files, so the
       // entry is file-level rather than a directory glob.
+      "src/app/(site)/tournaments/[slug]/_views/TournamentEncountersPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/TournamentMapsPage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_views/TournamentOverviewPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_views/TournamentParticipantsPage.behavior.test.tsx",
-      "src/app/(site)/tournaments/[slug]/_views/TournamentSchedulePage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_views/TournamentStatsPage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_views/TournamentTeamsPage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_views/_components/ParticipantsPool.behavior.test.tsx",
+      // The public list itself. File-level for the same mixed-runner reason as
+      // its `[slug]` neighbours above: `src/app/(site)/tournaments` also holds
+      // `bun:test` files, so a directory glob would drag them into vitest.
+      "src/app/(site)/tournaments/tournamentsList.behavior.test.tsx",
+      "src/app/(site)/tournaments/components/TournamentCard.behavior.test.tsx",
       "src/components/tournaments/**/*.test.ts",
       "src/components/pick-ban/**/*.test.ts",
       "src/components/pick-ban/**/*.test.tsx",
@@ -89,12 +111,14 @@ export default defineConfig({
       "src/components/tournaments/EncounterEditDialog.behavior.test.tsx",
       "src/components/balancer/registrations/**/*.test.tsx",
       "src/components/balancer/form/**/*.test.tsx",
+      "src/components/balancer/feed/**/*.test.tsx",
       "src/components/admin/**/*.test.tsx",
       "src/components/admin/**/*.test.ts",
       // `include` is an allow-list, so a test under a directory absent from it
       // never runs and the suite still reports green.
       "src/components/discord/**/*.test.tsx",
       "src/components/ui/data-pagination.test.tsx",
+      "src/components/ui/date-range-picker.test.tsx",
       "src/components/ui/infinite-scroll.test.tsx",
       "src/components/site/**/*.test.tsx",
       "src/components/ui/toggle-group.test.tsx",
@@ -139,6 +163,11 @@ export default defineConfig({
       "src/lib/best-of.test.ts",
       "src/lib/roster-shape.test.ts",
       "src/lib/return-to.test.ts",
+      // Same mixed-runner situation, so file-level again: this one pins the
+      // reason-code catalogue against both message files and the organizer-first
+      // ordering of the aggregate. Unrun, a new backend reason code would reach
+      // the UI as raw snake_case with a green suite.
+      "src/lib/admission.test.ts",
       // Added when frontend CI landed: these nine imported `vitest` but matched
       // no pattern above, so the suite reported green without ever running them
       // (the allow-list trap this file warns about three times). `scripts/
@@ -151,6 +180,9 @@ export default defineConfig({
       "src/lib/draft-workspace-model.test.ts",
       "src/lib/stream-platform.test.ts",
       "src/lib/image-capture.test.ts",
+      // Was in the same unrun state when the register-button gate got its first
+      // real test: the stream-visibility cases in it had never executed either.
+      "src/lib/tournament-status.test.ts",
       "src/components/Header.mobile-layout.test.ts",
       "src/components/WorkspaceBootstrap.helpers.test.ts",
       // File-level: `src/components` holds both runners' tests, so a directory
@@ -161,6 +193,7 @@ export default defineConfig({
       "src/components/BracketView.behavior.test.tsx",
       "src/components/FavoriteStarButton.behavior.test.tsx",
       "src/components/UserSearch.behavior.test.tsx",
+      "src/components/StandingsTable.advance.behavior.test.tsx",
       // Same file-level rule: `account-settings` is under `src/components`, and
       // these are its only vitest files so far.
       "src/components/account-settings/MyAccountSection.behavior.test.tsx",
@@ -170,6 +203,7 @@ export default defineConfig({
       "src/components/match/MatchLogIndicator.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/tournament-section-nav.test.ts",
       "src/app/(site)/tournaments/[slug]/_components/tournament-shared-ui.test.tsx",
+      "src/app/(site)/tournaments/[slug]/_components/PhaseTimeline.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/TournamentBroadcastDock.behavior.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/TournamentLinkChips.behavior.test.tsx",
       // Same file-level rule as `src/components`: the bracket folder also holds a

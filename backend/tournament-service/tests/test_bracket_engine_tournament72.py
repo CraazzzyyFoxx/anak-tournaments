@@ -357,18 +357,26 @@ class SwissGroupStageTournament72Tests(TestCase):
 
     def test_stage_settings_resolve_tiebreak_parameters(self) -> None:
         """_tiebreak_order must prefer the explicit stage parameter list and
-        fall back to the ranking_preset defaults when it is absent."""
+        fall back to the ranking_preset defaults when it is absent — both of
+        them normalized, which appends the always-last ``manual_override`` step
+        no stored order or preset mentions."""
+        normalize = standings_service.normalize_tiebreak_order
+
         explicit = _stage(enums.StageType.SWISS, SWISS_SETTINGS)
-        self.assertEqual(SWISS_SETTINGS["tiebreak_order"], standings_service._tiebreak_order(explicit))
+        self.assertEqual(normalize(SWISS_SETTINGS["tiebreak_order"]), standings_service._tiebreak_order(explicit))
 
         preset_only = _stage(enums.StageType.SWISS, {"ranking_preset": "challonge_swiss"})
         self.assertEqual(
-            standings_service.RULE_PRESET_DEFAULTS["challonge_swiss"],
+            normalize(standings_service.RULE_PRESET_DEFAULTS["challonge_swiss"]),
             standings_service._tiebreak_order(preset_only),
         )
 
         playoff = _stage(enums.StageType.DOUBLE_ELIMINATION, PLAYOFF_SETTINGS)
-        self.assertEqual(PLAYOFF_SETTINGS["tiebreak_order"], standings_service._tiebreak_order(playoff))
+        self.assertEqual(normalize(PLAYOFF_SETTINGS["tiebreak_order"]), standings_service._tiebreak_order(playoff))
+
+        # The normalization is not a no-op on this data: the stored order does
+        # not mention manual_override, the effective one always ends with it.
+        self.assertEqual("manual_override", standings_service._tiebreak_order(explicit)[-1])
 
 
 # ---------------------------------------------------------------------------
@@ -995,8 +1003,18 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
             ],
             teams={2069: "Averet", 2071: "litnik", 2060: "vac3x"},
             stages={
-                175: SimpleNamespace(id=175, stage_type=enums.StageType.DOUBLE_ELIMINATION, is_published=True),
-                165: SimpleNamespace(id=165, stage_type=enums.StageType.SWISS, is_published=True),
+                175: SimpleNamespace(
+                    id=175,
+                    stage_type=enums.StageType.DOUBLE_ELIMINATION,
+                    is_published=True,
+                    settings_json={"de_grand_final_type": "no_reset"},
+                ),
+                165: SimpleNamespace(
+                    id=165,
+                    stage_type=enums.StageType.SWISS,
+                    is_published=True,
+                    settings_json=None,
+                ),
             },
             players_by_auth={AVERET_CAPTAIN: AVERET_CAPTAIN, LITNIK_CAPTAIN: LITNIK_CAPTAIN},
         )

@@ -3,196 +3,298 @@ import { describe, expect, it } from "vitest";
 import {
   adminNavItemSearchValue,
   adminNavigationGroups,
+  getActiveAdminNavHref,
   getMatchingAdminRoute,
   getVisibleAdminNavigationGroups,
 } from "@/components/admin/admin-navigation";
 
-describe("admin navigation visibility", () => {
-  it("shows workspace-admin entries when the access callback allows workspace-admin items", () => {
-    const groups = getVisibleAdminNavigationGroups((item) => item.workspaceAdminVisible === true);
-    const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
+const allItems = adminNavigationGroups.flatMap((group) => group.items);
 
-    expect(hrefs).toContain("/admin/divisions");
-    expect(hrefs).toContain("/admin/workspaces");
-    expect(hrefs).toContain("/admin/workspaces/members");
-  });
-
-  it("keeps global-only admin pages hidden when only workspace access is available", () => {
-    const groups = getVisibleAdminNavigationGroups((item) => item.workspaceAdminVisible === true);
-    const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
-
-    expect(hrefs).not.toContain("/admin/access/users");
-    expect(hrefs).not.toContain("/admin/access/oauth");
-    expect(hrefs).not.toContain("/admin/access/permissions");
-  });
-
-  it("keeps game content out of reach for non-superusers", () => {
-    const groups = getVisibleAdminNavigationGroups((item) => item.superuserOnly !== true);
-    const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
-
-    for (const href of ["/admin/heroes", "/admin/gamemodes", "/admin/maps"]) {
-      expect(hrefs).not.toContain(href);
-      expect(getMatchingAdminRoute(href)?.superuserOnly).toBe(true);
-    }
-  });
-});
-
-describe("admin navigation lifecycle grouping (D12, §5)", () => {
-  it("orders sidebar groups by tournament lifecycle", () => {
+describe("admin navigation structure", () => {
+  it("is four groups: unlabelled, DATA, WORKSPACE, PLATFORM", () => {
     expect(adminNavigationGroups.map((group) => group.title)).toEqual([
-      "Overview",
-      "Tournaments",
-      "Data browser",
-      "Workspace",
-      "Game content",
-      "Administration",
+      "",
+      "DATA",
+      "WORKSPACE",
+      "PLATFORM",
     ]);
   });
 
-  it("keeps the data browser to cross-tournament read pages", () => {
-    const group = adminNavigationGroups.find((g) => g.title === "Data browser");
-    expect(group?.items.map((item) => item.href)).toEqual([
+  it("is thirteen entries, not twenty-four", () => {
+    expect(allItems).toHaveLength(13);
+    expect(allItems.map((item) => item.href)).toEqual([
+      "/admin",
+      "/admin/tournaments",
+      "/admin/people",
       "/admin/teams",
-      "/admin/players",
-      "/admin/encounters",
-      "/admin/match-reports",
       "/admin/matches",
-      "/admin/standings",
-    ]);
-  });
-
-  it("collects workspace tools including the balancer statuses entry", () => {
-    const group = adminNavigationGroups.find((g) => g.title === "Workspace");
-    expect(group?.items.map((item) => item.href)).toEqual([
-      "/admin/divisions",
-      "/admin/balancer",
-      "/admin/sub-roles",
       "/admin/achievements",
-      "/admin/workspaces/members",
-    ]);
-  });
-
-  it("gates /admin/balancer by team.read so status readers can open it", () => {
-    expect(getMatchingAdminRoute("/admin/balancer")?.permissions).toEqual(["team.read"]);
-    expect(getMatchingAdminRoute("/admin/balancer/anything")?.permissions).toEqual(["team.read"]);
-  });
-
-
-
-  it("gates /admin/sub-roles by player.read, not the broad workspace-admin entry", () => {
-    expect(getMatchingAdminRoute("/admin/sub-roles")?.permissions).toEqual(["player.read"]);
-    // Must not fall through to the /admin/players prefix or the /admin catch-all.
-    expect(getMatchingAdminRoute("/admin/sub-roles")?.prefix).toBe("/admin/sub-roles");
-  });
-
-  it("shows the balancer statuses entry to team.read holders", () => {
-    const groups = getVisibleAdminNavigationGroups((item) =>
-      (item.permissions ?? []).includes("team.read"),
-    );
-    const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
-
-    expect(hrefs).toContain("/admin/balancer");
-  });
-});
-
-describe("admin administration entry and palette aliases (D10, D11)", () => {
-  it("exposes staff access as the single administration access entry", () => {
-    const admin = adminNavigationGroups.find((g) => g.title === "Administration");
-    const hrefs = admin?.items.map((item) => item.href);
-
-    expect(hrefs).toEqual([
+      "/admin/settings/general",
+      "/admin/members",
+      "/admin/content/heroes",
+      "/admin/collectors/rank",
       "/admin/access",
-      "/admin/users",
-      "/admin/rank",
-      "/admin/subscriptions",
-      "/admin/streams",
       "/admin/workspaces",
       "/admin/audit",
     ]);
   });
 
-  it("gates /admin/streams on a GLOBAL stream.read", () => {
-    // One poller, one Redis key: `GET /api/streams/health` has no workspace
-    // dimension to authorize against, so a workspace-scoped grant must not open
-    // the page (it would 403 on the only request behind it).
-    expect(getMatchingAdminRoute("/admin/streams")?.permissions).toEqual(["stream.read"]);
-    expect(getMatchingAdminRoute("/admin/streams")?.globalOnly).toBe(true);
-  });
-
-  it("keeps per-tab access route gating after the single-entry collapse", () => {
-    expect(getMatchingAdminRoute("/admin/access/users")?.globalOnly).toBe(true);
-    expect(getMatchingAdminRoute("/admin/access/api-keys")?.workspaceAdminVisible).toBe(true);
-    expect(getMatchingAdminRoute("/admin/access")?.workspaceAdminVisible).toBe(true);
-  });
-
-  it("gates /admin/audit by audit.read, not by the broad workspace-admin entry", () => {
-    // The journal is workspace-scoped, so a workspace owner holding only
-    // `audit.read` in their own workspace must reach it — hence
-    // `workspaceAdminVisible`, and hence its own prefix ahead of the /admin
-    // catch-all rather than inheriting `adminEntryPermissions`.
-    expect(getMatchingAdminRoute("/admin/audit")?.permissions).toEqual(["audit.read"]);
-    expect(getMatchingAdminRoute("/admin/audit")?.prefix).toBe("/admin/audit");
-    expect(getMatchingAdminRoute("/admin/audit")?.workspaceAdminVisible).toBe(true);
-  });
-
-  it("registers each destination exactly once across the whole navigation", () => {
-    const hrefs = adminNavigationGroups.flatMap((g) => g.items.map((item) => item.href));
-
+  it("registers each destination exactly once", () => {
+    const hrefs = allItems.map((item) => item.href);
     expect(hrefs).toEqual([...new Set(hrefs)]);
-    expect(hrefs.filter((href) => href === "/admin/workspaces")).toHaveLength(1);
   });
 
-  it("keeps palette aliases unambiguous — one alias never hits two entries", () => {
-    const aliases = adminNavigationGroups.flatMap((g) =>
-      g.items.flatMap((item) => item.aliases ?? []),
+  it("drops a group entirely once none of its entries is reachable", () => {
+    // A reader holding nothing but `match.read`: Dashboard (its entry set
+    // includes match.read) and Matches survive, so WORKSPACE and PLATFORM
+    // must disappear with their contents rather than leaving a labelled
+    // empty group.
+    const groups = getVisibleAdminNavigationGroups((item) =>
+      (item.permissions ?? []).includes("match.read"),
     );
+
+    expect(groups.map((group) => group.title)).toEqual(["", "DATA"]);
+    expect(groups.flatMap((group) => group.items.map((item) => item.title))).toEqual([
+      "Dashboard",
+      "Matches",
+    ]);
+  });
+
+  it("shows the workspace-scoped entries to a workspace admin", () => {
+    const groups = getVisibleAdminNavigationGroups((item) => item.workspaceAdminVisible === true);
+    const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
+
+    expect(hrefs).toContain("/admin/settings/general");
+    expect(hrefs).toContain("/admin/members");
+    expect(hrefs).toContain("/admin/workspaces");
+  });
+
+  it("keeps game content behind superuser", () => {
+    const groups = getVisibleAdminNavigationGroups((item) => item.superuserOnly !== true);
+    const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
+
+    expect(hrefs).not.toContain("/admin/content/heroes");
+    expect(getMatchingAdminRoute("/admin/content/heroes")?.superuserOnly).toBe(true);
+  });
+
+  it("gives Collectors one OR-list instead of three entries", () => {
+    // `canAccessAdminRoute` reads a permission list as OR, so a holder of any
+    // one collector permission gets the entry — and the streams-only global
+    // gate stays on the route, not on the menu.
+    const collectors = allItems.find((item) => item.title === "Collectors");
+
+    expect(collectors?.permissions).toEqual(["rank.read", "subscription.read", "stream.read"]);
+    expect(collectors?.globalOnly).toBeUndefined();
+    expect(getMatchingAdminRoute("/admin/collectors/streams")?.globalOnly).toBe(true);
+    expect(getMatchingAdminRoute("/admin/collectors/rank")?.globalOnly).toBeUndefined();
+  });
+});
+
+describe("active-entry matching", () => {
+  it("lights the entry that owns the deepest matching prefix", () => {
+    const items = allItems;
+
+    expect(getActiveAdminNavHref("/admin", items)).toBe("/admin");
+    expect(getActiveAdminNavHref("/admin/tournaments/14/bracket", items)).toBe("/admin/tournaments");
+    expect(getActiveAdminNavHref("/admin/teams/9", items)).toBe("/admin/teams");
+  });
+
+  it("keeps Settings active across every section, not just its landing one", () => {
+    // The entry points at `/admin/settings/general`; without `activePrefix`
+    // the sidebar would go dark on `/admin/settings/divisions`.
+    expect(getActiveAdminNavHref("/admin/settings/divisions", allItems)).toBe(
+      "/admin/settings/general",
+    );
+    expect(getActiveAdminNavHref("/admin/content/unresolved", allItems)).toBe(
+      "/admin/content/heroes",
+    );
+    expect(getActiveAdminNavHref("/admin/access/roles", allItems)).toBe("/admin/access");
+  });
+
+  it("does not light Dashboard on every admin route", () => {
+    expect(getActiveAdminNavHref("/admin/audit", allItems)).toBe("/admin/audit");
+  });
+});
+
+describe("route gates", () => {
+  it.each([
+    ["/admin/people", ["user.read"]],
+    ["/admin/people/42", ["user.read"]],
+    ["/admin/teams", ["team.read"]],
+    ["/admin/matches", ["match.read"]],
+    ["/admin/matches/42", ["match.read"]],
+    ["/admin/achievements", ["achievement.read"]],
+    ["/admin/audit", ["audit.read"]],
+    ["/admin/tournaments/14/settings/danger", ["tournament.read"]],
+    ["/admin/settings/statuses", ["team.read"]],
+    ["/admin/settings/sub-roles", ["player.read"]],
+    ["/admin/collectors/rank", ["rank.read"]],
+    ["/admin/collectors/subscriptions", ["subscription.read"]],
+    ["/admin/collectors/streams", ["stream.read"]],
+  ])("gates %s on %j", (path, permissions) => {
+    expect(getMatchingAdminRoute(path)?.permissions).toEqual(permissions);
+  });
+
+  it("resolves a section to its own prefix, never a neighbour's", () => {
+    expect(getMatchingAdminRoute("/admin/settings/statuses")?.prefix).toBe(
+      "/admin/settings/statuses",
+    );
+    expect(getMatchingAdminRoute("/admin/settings/branding")?.prefix).toBe("/admin/settings");
+    expect(getMatchingAdminRoute("/admin/members")?.prefix).toBe("/admin/members");
+    // `/admin/matches` must not swallow the collectors' own prefixes, and
+    // `/admin/settings/sub-roles` must not fall back to `/admin/settings`.
+    expect(getMatchingAdminRoute("/admin/settings/sub-roles")?.prefix).toBe(
+      "/admin/settings/sub-roles",
+    );
+    expect(getMatchingAdminRoute("/admin/collectors/streams")?.prefix).toBe(
+      "/admin/collectors/streams",
+    );
+  });
+
+  it("carries no row for a route the redesign retired", () => {
+    // The transitional rows are gone now that P5 landed. A prefix that
+    // outlives its screen is not harmless: it is a gate nobody can reach,
+    // and the next reader trusts it.
+    for (const retired of [
+      "/admin/users",
+      "/admin/players",
+      "/admin/balancer",
+      "/admin/sub-roles",
+      "/admin/divisions",
+      "/admin/encounters",
+      "/admin/match-reports",
+      "/admin/standings",
+      "/admin/rank",
+      "/admin/subscriptions",
+      "/admin/streams",
+      "/admin/heroes",
+      "/admin/maps",
+      "/admin/gamemodes",
+      "/admin/aliases",
+      "/admin/access/users",
+      "/admin/workspaces/members"
+    ]) {
+      // They all fall through to the catch-all, which is correct: every one of
+      // them 308s away before a page is ever rendered.
+      expect(getMatchingAdminRoute(retired)?.prefix, retired).not.toBe(retired);
+    }
+  });
+
+  it("keeps a workspace grant enough for the workspace-scoped surfaces", () => {
+    expect(getMatchingAdminRoute("/admin/settings/branding")?.workspaceAdminVisible).toBe(true);
+    expect(getMatchingAdminRoute("/admin/members")?.workspaceAdminVisible).toBe(true);
+    expect(getMatchingAdminRoute("/admin/audit")?.workspaceAdminVisible).toBe(true);
+    expect(getMatchingAdminRoute("/admin/access/api-keys")?.workspaceAdminVisible).toBe(true);
+    expect(getMatchingAdminRoute("/admin/people")?.globalOnly).toBeUndefined();
+  });
+
+  it("has a gate for every route in the IA route map", () => {
+    // A path with no row falls through to `/admin`, whose gate is the broad
+    // entry set — which is how a superuser-only screen leaks.
+    const routes = [
+      "/admin",
+      "/admin/tournaments",
+      "/admin/tournaments/new",
+      "/admin/tournaments/14/overview",
+      "/admin/tournaments/14/registration/entries",
+      "/admin/tournaments/14/teams/roster",
+      "/admin/tournaments/14/teams/draft",
+      "/admin/tournaments/14/bracket",
+      "/admin/tournaments/14/matches/encounters",
+      "/admin/tournaments/14/settings/general",
+      "/admin/people",
+      "/admin/people/42",
+      "/admin/teams",
+      "/admin/teams/9",
+      "/admin/matches",
+      "/admin/achievements",
+      "/admin/achievements/3",
+      "/admin/settings/general",
+      "/admin/settings/divisions",
+      "/admin/settings/divisions/v/4",
+      "/admin/settings/divisions/import",
+      "/admin/settings/statuses",
+      "/admin/settings/sub-roles",
+      "/admin/settings/subscriptions",
+      "/admin/members",
+      "/admin/content/heroes",
+      "/admin/content/unresolved",
+      "/admin/collectors/rank",
+      "/admin/collectors/subscriptions",
+      "/admin/collectors/streams",
+      "/admin/access",
+      "/admin/access/accounts",
+      "/admin/access/roles",
+      "/admin/access/permissions",
+      "/admin/access/api-keys",
+      "/admin/access/oauth",
+      "/admin/access/sessions",
+      "/admin/workspaces",
+      "/admin/workspaces/8/general",
+      "/admin/audit",
+    ];
+
+    for (const route of routes) {
+      const match = getMatchingAdminRoute(route);
+      expect(match, route).toBeDefined();
+      if (route !== "/admin") {
+        expect(match?.prefix, route).not.toBe("/admin");
+      }
+    }
+  });
+});
+
+describe("command palette", () => {
+  it("keeps aliases unambiguous — one alias never hits two entries", () => {
+    const aliases = allItems.flatMap((item) => item.aliases ?? []);
 
     expect(aliases).toEqual([...new Set(aliases)]);
   });
 
-  it("gates /admin/rank by rank.read instead of the broad admin entry", () => {
-    expect(getMatchingAdminRoute("/admin/rank")?.permissions).toEqual(["rank.read"]);
-    expect(getMatchingAdminRoute("/admin/rank/anything")?.permissions).toEqual(["rank.read"]);
+  it("re-homes the aliases of every page the new IA absorbed", () => {
+    const byAlias = (alias: string) =>
+      allItems.filter((item) => item.aliases?.includes(alias)).map((item) => item.title);
+
+    expect(byAlias("identities")).toEqual(["People"]);
+    expect(byAlias("battletag")).toEqual(["People"]);
+    expect(byAlias("players")).toEqual(["People"]);
+    expect(byAlias("encounters")).toEqual(["Matches"]);
+    expect(byAlias("subroles")).toEqual(["Settings"]);
+    expect(byAlias("divisions")).toEqual(["Settings"]);
+    expect(byAlias("balancer")).toEqual(["Settings"]);
+    expect(byAlias("poller")).toEqual(["Collectors"]);
+    expect(byAlias("boosty")).toEqual(["Collectors"]);
+    expect(byAlias("api keys")).toEqual(["Access"]);
+    expect(byAlias("alias queue")).toEqual(["Game content"]);
+    expect(byAlias("who changed this")).toEqual(["Audit log"]);
   });
 
-  it("keeps /admin/users global-only — players are not workspace-scoped", () => {
-    // The backend gate demands a GLOBAL `user.<action>` grant, which a workspace
-    // owner never holds, so the page must stay out of their navigation.
-    expect(getMatchingAdminRoute("/admin/users")?.globalOnly).toBe(true);
+  it("offers a view for each collapsed page so it stays findable", () => {
+    const matches = allItems.find((item) => item.title === "Matches");
 
-    const groups = getVisibleAdminNavigationGroups((item) => item.globalOnly !== true);
-    const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
-
-    expect(hrefs).not.toContain("/admin/users");
-    expect(hrefs).toContain("/admin/rank");
+    expect(matches?.views?.map((view) => view.key)).toEqual([
+      "encounters",
+      "standings",
+      "reports",
+      "parsed",
+      "logs",
+    ]);
+    expect(matches?.views?.find((view) => view.key === "standings")?.href).toBe(
+      "/admin/matches?view=standings",
+    );
   });
 
-  it("gates /admin/match-reports by match.read, not by a neighbouring prefix", () => {
-    // The matcher is exact-or-slash, so `/admin/match` style prefixes cannot
-    // capture this path. Pinned because the sibling `/admin/matches` browser
-    // lands next and a substring match would silently hand it the wrong gate.
-    expect(getMatchingAdminRoute("/admin/match-reports")?.permissions).toEqual(["match.read"]);
-    expect(getMatchingAdminRoute("/admin/match-reports")?.prefix).toBe("/admin/match-reports");
-    // The sibling browser resolves to its own entry, not to the reports one.
-    expect(getMatchingAdminRoute("/admin/matches")?.prefix).toBe("/admin/matches");
-    expect(getMatchingAdminRoute("/admin/matches/42")?.permissions).toEqual(["match.read"]);
-    // /admin/maps is superuser-only game metadata and must stay separate.
-    expect(getMatchingAdminRoute("/admin/maps")?.superuserOnly).toBe(true);
+  it("gives every view a unique destination", () => {
+    const hrefs = allItems.flatMap((item) => (item.views ?? []).map((view) => view.href));
+
+    expect(hrefs).toEqual([...new Set(hrefs)]);
   });
 
-  it("aliases 'settings' to rank collection only", () => {
-    const items = adminNavigationGroups.flatMap((g) => g.items);
-    const settingsItems = items.filter((item) => item.aliases?.includes("settings"));
+  it("includes aliases in the search value", () => {
+    const people = allItems.find((item) => item.href === "/admin/people");
 
-    expect(settingsItems.map((item) => item.href)).toEqual(["/admin/rank"]);
-  });
-
-  it("includes aliases in the command palette search value", () => {
-    const items = adminNavigationGroups.flatMap((g) => g.items);
-    const rank = items.find((item) => item.href === "/admin/rank");
-
-    expect(rank).toBeDefined();
-    expect(adminNavItemSearchValue(rank!)).toContain("settings");
-    expect(adminNavItemSearchValue(rank!)).toContain(rank!.title);
+    expect(people).toBeDefined();
+    expect(adminNavItemSearchValue(people!)).toContain("battletag");
+    expect(adminNavItemSearchValue(people!)).toContain(people!.title);
   });
 });

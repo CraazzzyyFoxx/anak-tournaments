@@ -2,8 +2,10 @@
 
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
+
 import { usePermissions } from "@/hooks/usePermissions";
-import { tabFallback, useHubEncountersQuery, useHubTournamentQuery } from "../../hubQueries";
+import { tabFallback, useHubEncountersQuery } from "../../hubQueries";
+import { MatchesView } from "../MatchesView";
 
 const TournamentLogsTab = dynamic(
   () =>
@@ -13,29 +15,23 @@ const TournamentLogsTab = dynamic(
   { loading: () => tabFallback }
 );
 
-export default function LogsTabPage() {
+export default function LogsViewPage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
   const { canAccessPermission } = usePermissions();
-
-  const tournamentQuery = useHubTournamentQuery(tournamentId);
   const encountersQuery = useHubEncountersQuery(tournamentId);
-  const workspaceId = tournamentQuery.data?.workspace_id ?? null;
-
-  if (tournamentQuery.isLoading || encountersQuery.isLoading) {
-    return tabFallback;
-  }
-  if (!tournamentQuery.data) {
-    return null;
-  }
 
   return (
-    <TournamentLogsTab
-      tournamentId={tournamentId}
-      workspaceId={workspaceId}
-      encounters={encountersQuery.data?.results ?? []}
-      canUploadLogs={canAccessPermission("match.update", workspaceId)}
-      enabled
-    />
+    <MatchesView tournamentId={tournamentId}>
+      {({ workspaceId }) => (
+        <TournamentLogsTab
+          tournamentId={tournamentId}
+          workspaceId={workspaceId}
+          encounters={encountersQuery.data?.results ?? []}
+          canUploadLogs={canAccessPermission("match.update", workspaceId)}
+          enabled
+        />
+      )}
+    </MatchesView>
   );
 }

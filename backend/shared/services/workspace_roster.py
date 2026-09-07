@@ -33,6 +33,7 @@ __all__ = (
     "ensure_member_for_battle_tag",
     "hosts_by_user_id",
     "list_roster",
+    "workspace_member_user_ids",
     "roster_page",
     "roster_summary",
 )
@@ -48,10 +49,10 @@ class RosterMember:
     display_name: str | None
     #: The player's linked login identity (``players.user.auth_user_id``), or
     #: ``None`` if they have never signed in. ``auth.user.id`` is the space a
-    #: mix's ``host_user_id``/``co_host_user_ids`` actually live in -- a member
+    #: mix's ``host_user_id`` and its co-host grants are addressed in -- a member
     #: with no linked account can be ranked and rostered, but can never be
     #: picked as a host or co-host, because there is nobody who could log in
-    #: and pass ``_require_writer``.
+    #: and pass the write check.
     auth_user_id: int | None = None
 
 
@@ -232,9 +233,9 @@ async def hosts_by_user_id(
 ) -> dict[int, str | None]:
     """Display name for a set of ``auth.user.id``s, resolved within one workspace.
 
-    ``CustomGame.host_user_id``/``co_host_user_ids`` and ``MemberRank.author_user_id``
-    are all ``auth.user.id``s -- the identity ``_require_writer``/``set_ranks``
-    actually compare the caller against -- not ``workspace_member.player_id``.
+    ``CustomGame.host_user_id``, its co-host grants and ``MemberRank.author_user_id``
+    are all ``auth.user.id``s -- the identity the write checks compare the caller
+    against -- not ``workspace_member.player_id``.
     A player can exist with no linked account (``User.auth_user_id`` is a
     nullable 1:0..1 link to ``auth.user``, set only once somebody signs in), so
     joining on ``player_id`` used to resolve nothing for a real host/co-host and
@@ -276,6 +277,45 @@ async def hosts_by_user_id(
         auth_user_id: (display_name or player_name or username)
         for auth_user_id, username, display_name, player_name in result.all()
     }
+
+
+async def workspace_member_user_ids(
+    session: AsyncSession,
+    *,
+    workspace_id: int,
+    user_ids: Sequence[int],
+) -> set[int]:
+    """The subset of ``auth.user.id``s that belongs to this workspace.
+
+    Server-side twin of ``AuthUser.is_workspace_member``, for ids whose
+    ``AuthUser`` the caller does not hold: membership is an RBAC fact -- a role
+    scoped to the workspace -- plus the superuser bypass. It is deliberately
+    *not* a ``workspace_member`` lookup. That table is the player roster, and
+    the two sets differ in both directions: an admin holds a role here without
+    ever playing, while a roster row alone would not pass the RBAC gate every
+    mix endpoint already applies to the caller. Granting off the roster would
+    hand somebody a co-host seat they then get a 403 on.
+    """
+    ids = {user_id for user_id in user_ids if user_id is not None}
+    if not ids:
+        return set()
+    holds_workspace_role = (
+        sa.select(sa.literal(1))
+        .select_from(models.user_roles)
+        .join(models.Role, models.Role.id == models.user_roles.c.role_id)
+        .where(
+            models.user_roles.c.user_id == models.AuthUser.id,
+            models.Role.workspace_id == workspace_id,
+        )
+        .exists()
+    )
+    result = await session.scalars(
+        sa.select(models.AuthUser.id).where(
+            models.AuthUser.id.in_(ids),
+            sa.or_(models.AuthUser.is_superuser.is_(True), holds_workspace_role),
+        )
+    )
+    return set(result.all())
 
 
 async def ensure_member_for_battle_tag(

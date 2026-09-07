@@ -1,8 +1,2 @@
-import { redirect } from "next/navigation";
-
-export default async function AdminTournamentWorkspacePage({
-  params
-}: Readonly<{ params: Promise<{ id: string }> }>) {
-  const { id } = await params;
-  redirect(`/admin/tournaments/${id}/overview`);
-}
+/** The hub root renders Overview in place — see `teams/page.tsx`. */
+export { default } from "./overview/page";

@@ -17,10 +17,13 @@ services:
   prometheus:
     image: prom/prometheus:v2.55.1
     restart: unless-stopped
+    environment:
+      GOMEMLIMIT: 450MiB
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=30d"
+      - "--storage.tsdb.retention.time=14d"
+      - "--storage.tsdb.retention.size=2GB"
       - "--web.enable-lifecycle"
       - "--web.enable-admin-api"
       # Tempo's metrics_generator pushes span-metrics / service-graph series here.
@@ -38,10 +41,10 @@ services:
       resources:
         limits:
           cpus: '0.75'
-          memory: 768M
+          memory: 512M
         reservations:
           cpus: '0.10'
-          memory: 256M
+          memory: 192M
 
   alertmanager:
     # v0.28+ is REQUIRED: v0.27.0 parses `webhook_url_file` in discord_configs but
@@ -163,6 +166,10 @@ services:
     privileged: true
     devices:
       - /dev/kmsg
+    command:
+      - --housekeeping_interval=30s
+      - --docker_only=true
+      - --store_container_labels=false
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -205,6 +212,8 @@ services:
   loki:
     image: grafana/loki:3.3.2
     restart: unless-stopped
+    environment:
+      GOMEMLIMIT: 280MiB
     command: -config.file=/etc/loki/loki.yml
     volumes:
       - ./monitoring/loki/loki.yml:/etc/loki/loki.yml:ro
@@ -215,7 +224,7 @@ services:
       resources:
         limits:
           cpus: '0.50'
-          memory: 512M
+          memory: 384M
         reservations:
           cpus: '0.10'
           memory: 128M
@@ -223,6 +232,8 @@ services:
   tempo:
     image: grafana/tempo:2.7.0
     restart: unless-stopped
+    environment:
+      GOMEMLIMIT: 400MiB
     command: ["-config.file=/etc/tempo.yml"]
     volumes:
       - ./monitoring/tempo/tempo.yml:/etc/tempo.yml:ro
@@ -245,6 +256,7 @@ services:
     restart: unless-stopped
     command: ["--config=/etc/otel-collector/config.yml"]
     environment:
+      GOMEMLIMIT: 120MiB
       # Sentry Exporter target. The token is an Internal Integration token with
       # org:read + project:read. The "unset" fallback is deliberate: the exporter
       # requires a non-empty token at config validation, and an empty one would
@@ -264,7 +276,7 @@ services:
       resources:
         limits:
           cpus: '0.25'
-          memory: 256M
+          memory: 160M
         reservations:
           cpus: '0.05'
           memory: 64M
@@ -315,10 +327,10 @@ services:
       resources:
         limits:
           cpus: '0.50'
-          memory: 512M
+          memory: 192M
         reservations:
           cpus: '0.10'
-          memory: 128M
+          memory: 64M
 
 volumes:
   prometheus_data:

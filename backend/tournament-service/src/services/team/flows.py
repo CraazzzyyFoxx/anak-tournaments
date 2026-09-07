@@ -49,7 +49,7 @@ class TeamFlowsService:
         players_read: list[schemas.PlayerRead] = []
         captain: schemas.UserRead | None = None
         placement: int | None = None
-        group: schemas.TournamentGroupRead | None = None
+        group: schemas.TeamGroupRead | None = None
 
         if "tournament" in entities:
             tournament = await tournament_flows_service.to_pydantic(session, team.tournament, entities=[])
@@ -77,16 +77,7 @@ class TeamFlowsService:
             for standing in team.standings:
                 item = standing.stage_item
                 if item is not None and item.type == enums.StageItemType.GROUP:
-                    group = schemas.TournamentGroupRead(
-                        id=item.id,
-                        created_at=item.created_at,
-                        updated_at=item.updated_at,
-                        name=item.name,
-                        description=None,
-                        is_groups=True,
-                        challonge_id=None,
-                        challonge_slug=None,
-                    )
+                    group = schemas.TeamGroupRead(id=item.id, name=item.name)
                     break
 
         return schemas.TeamRead(

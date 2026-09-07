@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from shared.core.enums import SubscriptionEnforcementStage
 from shared.services.subscriptions import VERIFICATION_METHODS, VerificationMethod, parse_requirement
+from src.schemas.admission import AdmissionRead
 from src.schemas.division_grid import DivisionGridVersionRead
 
 # ---------------------------------------------------------------------------
@@ -95,6 +96,9 @@ class RegistrationFormRead(BaseModel):
     subscription_requirement_json: dict[str, Any] = Field(default_factory=dict)
     built_in_fields: dict[str, BuiltInFieldConfig] = Field(default_factory=dict)
     custom_fields: list[CustomFieldDefinition] = Field(default_factory=list)
+    #: Bench size for team registration. Zero disables substitutes. Not a starter
+    #: slot — see ``BalancerRegistrationForm.max_substitutes``.
+    max_substitutes: int = Field(default=0, ge=0)
     # Workspace sub-role catalog keyed by registration role code (tank/dps/support).
     # The single source of truth for available sub-roles; per-tournament
     # built_in_fields[*].subroles selects which of these are offered.
@@ -118,6 +122,9 @@ class RegistrationFormUpsert(BaseModel):
     # cannot silently turn a check-in requirement into a sign-up wall.
     subscription_stage: SubscriptionEnforcementStage = SubscriptionEnforcementStage.check_in
     built_in_fields: dict[str, BuiltInFieldConfig] = Field(default_factory=dict)
+    #: Omitted by an older client becomes 0, same as every other field on this
+    #: full-replace upsert. The builder always sends it.
+    max_substitutes: int = Field(default=0, ge=0)
     custom_fields: list[CustomFieldDefinition] = Field(default_factory=list)
 
 
@@ -204,6 +211,11 @@ class RegistrationRead(BaseModel):
     balancer_status: str = "not_in_balancer"
     balancer_status_meta: dict[str, Any] | None = None
     checked_in: bool = False
+    # The single admission answer, computed server-side. Never ``None``: a
+    # registration the list did not resolve carries ``AdmissionRead.unknown()``,
+    # so no consumer needs a null branch -- the five client-side re-derivations
+    # this replaced all grew out of per-consumer defaulting.
+    admission: AdmissionRead = Field(default_factory=AdmissionRead.unknown)
     # All-profiles-open verdict when the tournament requires it:
     # True = public, False = closed, None = unknown / not required.
     profiles_open: bool | None = None

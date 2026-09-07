@@ -24,14 +24,13 @@ from faststream.rabbit import RabbitMessage
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import HERO_TYPE_CLASSES, DraftAutopickStrategy, DraftStatus, HeroClass
+from shared.core.enums import DraftStatus, HeroClass
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.balancer.draft import DraftAuditEvent, DraftPick, DraftSession
 from shared.repository.draft import (
     DraftAuditEventRepository,
     DraftPickRepository,
     DraftSessionRepository,
-    DraftTeamRepository,
 )
 from shared.repository.identity import UserRepository
 from shared.services.roster_shape_access import get_effective_roster_shape
@@ -43,12 +42,10 @@ from src.core.auth import (
     _get_tournament_workspace_id,
 )
 from src.core.config import config
-from src.domain.draft import fit as sug
 from src.domain.draft import rules
-from src.domain.draft.entities import CaptainSeed, DraftResult, PlayerSeed
+from src.domain.draft.entities import DraftResult
 from src.rpc import _common as c
 from src.services.draft import clock as clock_svc
-from src.services.draft import loaders
 from src.services.draft import realtime as draft_rt
 from src.services.draft.board import board_service
 from src.services.draft.export import export_service
@@ -60,7 +57,6 @@ from src.services.draft.selection import selection_service
 _SF = db.async_session_maker
 
 _sessions_repo = DraftSessionRepository()
-_teams_repo = DraftTeamRepository()
 _picks_repo = DraftPickRepository()
 _audit_repo = DraftAuditEventRepository()
 _users_repo = UserRepository()
@@ -113,6 +109,17 @@ async def _actor_player_ids(session: AsyncSession, auth_user_id: int) -> list[in
     """
     player_id = await _users_repo.get_id_by_auth_user_id(session, auth_user_id)
     return [player_id] if player_id is not None else []
+
+
+def _to_role(slot_code: str | None) -> HeroClass | None:
+    """Wire slot code -> the domain's ``HeroClass``.
+
+    Requests carry ``tank``/``dps``/``support``; everything below this layer —
+    ``rules.resolve_pick_slot``, ``role_edit_service``, ``fit`` — takes a
+    ``HeroClass``. Handing the raw string down reached ``role.slot_code`` on a
+    ``str`` and 500'd the pick instead of drafting anyone.
+    """
+    return HeroClass.from_slot_code(slot_code) if slot_code is not None else None
 
 
 def _pick_event_payload(draft: DraftSession, pick: DraftPick) -> dict:
@@ -328,25 +335,14 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             draft, pick = await _load_pick(session, c.require_id(data))
-            if draft.current_pick_id != pick.id:
-                raise HTTPException(status_code=409, detail="Options are available only for the current pick")
             public_user_ids = await _actor_player_ids(session, user.id)
-            team = await _teams_repo.get(
-                session,
-                pick.draft_team_id,
-                options=loaders.team_options(),
-                populate_existing=True,
-            )
-            if not user.is_workspace_admin(draft.workspace_id) and not rules.is_on_clock_captain(
-                team,
-                actor_auth_user_id=user.id,
-                actor_player_ids=public_user_ids,
-            ):
-                raise HTTPException(status_code=403, detail="Only the on-clock captain or an admin may read options")
-            options = await feasibility_service.evaluate_session_pick_options(
+            options = await feasibility_service.options_for_current_pick(
                 session,
                 draft,
-                team_id=pick.draft_team_id,
+                pick,
+                actor_auth_user_id=user.id,
+                actor_player_ids=public_user_ids,
+                is_workspace_admin=user.is_workspace_admin(draft.workspace_id),
             )
             return schemas.DraftPickOptionsResponse(
                 pick_id=pick.id,
@@ -371,9 +367,8 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 draft,
                 player_id=player_id,
-                role=payload.role,
+                role=HeroClass.from_slot_code(payload.role),
                 rank_value=payload.rank_value,
-                rank_absence_confirmed=payload.rank_absence_confirmed,
                 reason=payload.reason,
                 expected_version=payload.expected_version,
                 actor_auth_user_id=user.id,
@@ -414,53 +409,14 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await _get_draft_session_workspace_id(session, session_id)
             c.require_workspace_permission(data, user, ws_id, "team", "read")
             draft = await _load_session(session, session_id)
-            if draft.current_pick_id is None:
-                raise HTTPException(status_code=409, detail="Draft has no current pick")
-            current = await _picks_repo.get(session, draft.current_pick_id)
-            snapshot = await feasibility_service.load_snapshot(session, draft)
-            # Fit construction reads secondary_roles_json/user_id/role_ranks;
-            # snapshot players carry loaders.player_options() so those never
-            # lazy-load.
-            available = [p for p in snapshot.players if p.status == "available"]
-            shape = await feasibility_service.resolve_shape(session, draft)
-            counts = rules.team_slot_counts(snapshot.players, snapshot.picks, current.draft_team_id, shape)
-            capacity = rules.role_openings(shape, counts)
-            fit_players = [
-                sug.FitPlayer(
-                    player_id=p.id,
-                    rank_value=p.rank_value or 0,
-                    playable_roles=(
-                        frozenset(HERO_TYPE_CLASSES)
-                        if p.is_flex
-                        else frozenset(HeroClass.from_slot_code(r) for r in {p.primary_role, *(p.secondary_roles_json or [])})
-                    ),
-                    preference_order=(HeroClass.from_slot_code(p.primary_role),),
-                    is_flex=p.is_flex,
-                    user_id=p.user_id,
-                    rank_by_role={HeroClass.from_slot_code(k): v for k, v in (p.role_ranks or {}).items()},
-                )
-                for p in available
-            ]
-            options = await feasibility_service.evaluate_session_pick_options(
-                session,
-                draft,
-                team_id=current.draft_team_id,
-                state=await feasibility_service.state_from_snapshot(session, draft, snapshot),
-            )
-            safe_options = {(option.player_id, option.role) for option in options if option.is_safe}
-            ranked = sug.rank_suggestions(
-                fit_players,
-                capacity,
-                sug.FitConfig(),
-                strategy=DraftAutopickStrategy(draft.autopick_strategy),
-                limit=5,
-                allowed_options=safe_options,
-            )
+            current, ranked = await feasibility_service.rank_current_suggestions(session, draft)
             return schemas.DraftSuggestionsResponse(
                 pick_id=current.id,
                 draft_team_id=current.draft_team_id,
                 suggestions=[
-                    schemas.DraftSuggestion(player_id=r.player_id, role=r.role, fit_score=r.fit_score, breakdown=r.breakdown)
+                    schemas.DraftSuggestion(
+                        player_id=r.player_id, role=r.role, fit_score=r.fit_score, breakdown=r.breakdown
+                    )
                     for r in ranked
                 ],
             )
@@ -522,45 +478,19 @@ def register(broker: Any, logger: Any) -> None:
             version_before = draft.version
             savepoint = await session.begin_nested() if payload.preview_only else None
             try:
-                if payload.pool_captains:
-                    await lifecycle_service.seed_from_pool(
-                        session,
-                        draft,
-                        captain_registration_ids=[c_.registration_id for c_ in payload.pool_captains],
-                        team_names={c_.registration_id: c_.name for c_ in payload.pool_captains if c_.name},
-                        captain_order=payload.captain_order,
-                        rng_seed=payload.seed,
-                    )
-                elif payload.captains:
-                    captains = [
-                        CaptainSeed(
-                            name=cap.name,
-                            draft_position=cap.draft_position,
-                            user_id=cap.user_id,
-                            battle_tag=cap.battle_tag,
-                        )
-                        for cap in payload.captains
-                    ]
-                    players = [
-                        PlayerSeed(
-                            primary_role=p.primary_role,
-                            user_id=p.user_id,
-                            battle_tag=p.battle_tag,
-                            secondary_roles=p.secondary_roles,
-                            sub_role=p.sub_role,
-                            is_flex=p.is_flex,
-                            division_number=p.division_number,
-                            rank_value=p.rank_value,
-                            role_ranks=({p.primary_role.value: p.rank_value} if p.rank_value is not None else {}),
-                        )
-                        for p in payload.players
-                    ]
-                    await lifecycle_service.seed(session, draft, captains=captains, players=players)
-                else:
+                if not payload.pool_captains:
                     raise HTTPException(
                         status_code=422,
-                        detail="Provide pool_captains (from the balancer pool) or manual captains",
+                        detail="Provide pool_captains: a draft seat is a balancer registration",
                     )
+                await lifecycle_service.seed_from_pool(
+                    session,
+                    draft,
+                    captain_registration_ids=[c_.registration_id for c_ in payload.pool_captains],
+                    team_names={c_.registration_id: c_.name for c_ in payload.pool_captains if c_.name},
+                    captain_order=payload.captain_order,
+                    rng_seed=payload.seed,
+                )
 
                 after = await lifecycle_service.seed_row_counts(session, draft.id)
                 report = await feasibility_service.analyze_session(session, draft)
@@ -727,6 +657,23 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "draft.export", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.balancer.draft.export_ranks")
+    async def _export_ranks(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            session_id = c.require_id(data)
+            tournament_id = c.path_int(data, "tournament_id")
+            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
+            draft = await _load_session(session, session_id)
+            # Ranks only: no team is removed or created, so no draft lifecycle
+            # event — nothing about the session itself changed.
+            updated = await export_service.export_ranks(session, draft)
+            await session.commit()
+            return schemas.RanksExportResponse(success=True, updated_players=updated)
+
+        return await c.envelope(logger, "draft.export_ranks", op, session_factory=_SF)
+
     # --- pick actions (keyed by pick_id) ------------------------------------
     @broker.subscriber("rpc.balancer.draft.pick_select")
     async def _pick_select(data: dict, msg: RabbitMessage) -> dict:
@@ -744,7 +691,7 @@ def register(broker: Any, logger: Any) -> None:
                 pick,
                 player_id=payload.player_id,
                 expected_version=payload.expected_version,
-                target_role=payload.target_role,
+                target_role=_to_role(payload.target_role),
                 actor_user_id=public_user_id,
                 actor_auth_user_id=user.id,
                 actor_player_ids=public_user_ids,
@@ -800,7 +747,7 @@ def register(broker: Any, logger: Any) -> None:
                 player_id=payload.player_id,
                 expected_version=payload.expected_version,
                 actor_user_id=public_user_id,
-                target_role=payload.target_role,
+                target_role=_to_role(payload.target_role),
             )
             await _audit_repo.create(
                 session,

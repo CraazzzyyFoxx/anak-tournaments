@@ -40,6 +40,7 @@ from src.rpc import (
     scrim,
     stage_admin,
     team_binary,
+    tournament_binary,
 )
 from src.rpc import reads as rpc_reads
 from src.services.admin import registry as admin_registry
@@ -94,6 +95,8 @@ public_rpc.register(broker, logger)
 team_binary.register(broker, logger)
 # Registered-team crest upload/delete — same wire format, captain-gated.
 registration_team_binary.register(broker, logger)
+# Tournament cover/logo upload/delete — same wire format, two slots.
+tournament_binary.register(broker, logger)
 # Ad-hoc scrim rooms (docs/plans/2026-08-12-scrim-rooms.md). Provisioning only —
 # a room is then played through the pre-game subjects registered just above.
 scrim.register(broker, logger)

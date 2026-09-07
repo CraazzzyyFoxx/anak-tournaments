@@ -303,6 +303,9 @@ class ASlotPoolTooShortForTheSeriesIsRefused(_FitCase):
         self.assertIn("candidates", str(ctx.exception.detail))
 
     async def test_a_slot_mode_config_with_no_slots_is_refused(self) -> None:
+        """A slot config with no groups is a rules template now (it saves, and
+        opens no room), so the refusal names the missing candidates rather than
+        a slot count the organizer cannot raise."""
         encounter = self.db.encounter(best_of=1)
         self.db.slot_config(slots=[])
 
@@ -310,7 +313,7 @@ class ASlotPoolTooShortForTheSeriesIsRefused(_FitCase):
             await self.assert_playable(encounter, best_of=1)
 
         self.assertEqual(422, ctx.exception.status_code)
-        self.assertIn("no slots", str(ctx.exception.detail))
+        self.assertIn("no candidates", str(ctx.exception.detail))
 
 
 class AFlatPoolIsNotJudgedOnLength(_FitCase):

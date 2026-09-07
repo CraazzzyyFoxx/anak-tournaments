@@ -1,5 +1,5 @@
 import { User } from "@/types/user.types";
-import { Tournament, TournamentGroup } from "@/types/tournament.types";
+import { Tournament, TeamGroup } from "@/types/tournament.types";
 import { LogStatsName } from "@/types/stats.types";
 import { Hero } from "@/types/hero.types";
 
@@ -39,7 +39,7 @@ export interface Team {
   players: Player[];
   tournament: Tournament | null;
   placement: number | null;
-  group: TournamentGroup | null;
+  group: TeamGroup | null;
 }
 
 export interface PlayerWithStats extends Player {

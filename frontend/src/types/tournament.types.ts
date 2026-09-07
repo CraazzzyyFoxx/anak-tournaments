@@ -19,18 +19,12 @@ export type StageItemInputType = "final" | "tentative" | "empty";
 export type EncounterResultStatus = "none" | "pending_confirmation" | "confirmed" | "disputed";
 
 
-// ─── Legacy (kept for backward compat) ──────────────────────────────────────
+// ─── Team group ─────────────────────────────────────────────────────────────
 
-export interface TournamentGroup {
+/** The group a team played in: a `StageItem` of type `group`, name only. */
+export interface TeamGroup {
   id: number;
-  created_at: Date;
-  updated_at: Date | null;
   name: string;
-  description: string | null;
-  is_groups: boolean;
-  challonge_id: number | null;
-  challonge_slug: string | null;
-  stage_id: number | null;
 }
 
 // ─── Stage Model ────────────────────────────────────────────────────────────
@@ -51,6 +45,8 @@ export interface StageItem {
   name: string;
   type: StageItemType;
   order: number;
+  /** Per-group override of `Stage.advance_count`; `null` inherits the stage. */
+  advance_count: number | null;
   inputs: StageItemInput[];
 }
 
@@ -103,13 +99,18 @@ export interface Tournament {
   team_formation: string;
   status: TournamentStatus;
   auto_transitions_enabled: boolean;
+  /**
+   * Admits latecomers past the REGISTRATION window's `ends_at`, so an organizer
+   * can keep the advertised closing date on the page instead of erasing it by
+   * pushing `ends_at` out. Lifts `ends_at` ONLY — see `isRegistrationOpen`.
+   */
+  allow_late_registration: boolean;
   phase_schedule: TournamentPhaseSchedule[];
   win_points: number;
   draw_points: number;
   loss_points: number;
 
   stages: StageSummary[];
-  groups?: TournamentGroup[];
   participants_count: number | null;
   registrations_count: number | null;
   teams_count: number | null;
@@ -131,6 +132,29 @@ export interface Tournament {
    * responses still sitting in a client cache from before this field existed.
    */
   links?: TournamentLink[];
+  /** Wide banner for the tournament hero. Uploaded separately from the
+   * settings PATCH (see `adminService.uploadTournamentImage`). */
+  cover_image_url: string | null;
+  /** Square-ish mark shown beside the tournament name. */
+  logo_url: string | null;
+}
+
+/** Which of a tournament's two images an upload/delete targets. */
+export type TournamentImageSlot = "cover" | "logo";
+
+/**
+ * Counts behind the public tournaments filter bar. Each group is counted with
+ * the OTHER filters applied but its own dimension released, so a chip shows
+ * how many rows selecting it would yield rather than how many it yields now.
+ * `total`/`live` ignore every filter — they are the unfiltered headline.
+ */
+export interface TournamentFacets {
+  total: number;
+  /** `live` + `playoffs` combined: "matches happening right now". */
+  live: number;
+  by_status: Record<TournamentStatus, number>;
+  league: number;
+  standard: number;
 }
 
 // ─── Shared pick-ban vocabulary ─────────────────────────────────────────────
@@ -215,7 +239,13 @@ export interface Standings {
   draw: number;
   lose: number;
   points: number;
+  /** The TRIMMED (median) Buchholz; `null` also marks a playoff row. */
   buchholz: number | null;
+  /** Every opponent's points, nothing trimmed — a later, separate tiebreaker. */
+  full_buchholz: number | null;
+  /** Position of this row's tie-cluster head. Rows sharing a value were equal
+   *  on every configured tiebreaker; their order was assigned, not earned. */
+  tie_group: number | null;
   tb: number | null;
   score_differential: number | null;
   ranking_context: Record<string, string | number | null> | null;
@@ -227,8 +257,6 @@ export interface Standings {
   tournament: Tournament | null;
   stage: Stage | null;
   stage_item: StageItem | null;
-  group?: TournamentGroup | null;
-  group_id?: number;
   matches_history: Encounter[];
 }
 

@@ -1596,7 +1596,9 @@ class ChallongeSyncService:
         encounter.round = match.round
         encounter.stage_id = refs.stage_id
         encounter.stage_item_id = refs.stage_item_id
-        encounter.status = status
+        newly_completed = not was_completed and status == enums.EncounterStatus.COMPLETED
+        if not newly_completed:
+            encounter.status = status
         await session.flush()
         if teams_changed:
             # Challonge corrected a team slot: sync map/hero pick-ban sessions
@@ -1604,7 +1606,6 @@ class ChallongeSyncService:
             await pick_ban_session_service.sync_all_pick_ban_sessions_after_team_change(session, encounter)
         await self.mapping._ensure_match_mapping(session, source, match.id, encounter, match_lookup)
 
-        newly_completed = not was_completed and status == enums.EncounterStatus.COMPLETED
         if newly_completed:
             from_result_status = encounter.result_status
             home_score_before, away_score_before = before.get("home_score"), before.get("away_score")

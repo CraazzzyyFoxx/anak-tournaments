@@ -1,6 +1,21 @@
-const PARTICIPANT_SEARCH_PARAM = "participantSearch";
+// Public URL contract for this section (redesign plan §1.2): `q` for search,
+// `view` for the pool/table switch. `participantStatus`/`participantColumns`
+// keep their prefixed names — they are table-only knobs with no counterpart on
+// the other public sections.
+const PARTICIPANT_SEARCH_PARAM = "q";
 const PARTICIPANT_STATUS_PARAM = "participantStatus";
 const PARTICIPANT_COLUMNS_PARAM = "participantColumns";
+const PARTICIPANT_VIEW_PARAM = "view";
+const PARTICIPANT_DIVISION_PARAM = "division";
+
+/** The two shapes the roster renders in; `pool` exists only for balancer/draft. */
+export type ParticipantView = "pool" | "table";
+
+export const PARTICIPANT_VIEWS: readonly ParticipantView[] = ["pool", "table"];
+
+function isParticipantView(value: string | null): value is ParticipantView {
+  return value === "pool" || value === "table";
+}
 
 export const PARTICIPANT_SEARCH_MAX_LENGTH = 120;
 const PARTICIPANT_MANDATORY_COLUMN_IDS = ["battle_tag", "_status"] as const;
@@ -184,6 +199,9 @@ interface ParticipantUrlState {
   search: string;
   status: string;
   visibleColumnIds: string[];
+  view: ParticipantView;
+  /** Division number the pool is narrowed to; `null` = every division. */
+  division: number | null;
 }
 
 export interface ParticipantUrlReadResult {
@@ -195,6 +213,7 @@ export interface ParticipantUrlReadResult {
 export type ParticipantUrlUpdate =
   | { type: "search"; value: string }
   | { type: "status"; value: string }
+  | { type: "division"; value: number | null }
   | { type: "columns"; value: string[]; defaultValue: string[] }
   | { type: "reset" };
 
@@ -212,6 +231,7 @@ interface ParticipantResultsScrollContext {
 interface ParticipantResultsTransitionContext {
   search: string;
   status: string;
+  division?: number | null;
   visibleColumnIds: readonly string[];
 }
 
@@ -240,9 +260,10 @@ export function participantResultsScrollTarget(
 export function participantResultsTransitionSignature({
   search,
   status,
+  division = null,
   visibleColumnIds,
 }: ParticipantResultsTransitionContext): string {
-  return `${status}|${search}|${visibleColumnIds.join(",")}`;
+  return `${status}|${division ?? "all"}|${search}|${visibleColumnIds.join(",")}`;
 }
 
 function sameValues(left: readonly string[], right: readonly string[]): boolean {
@@ -260,6 +281,32 @@ function writeStatus(params: URLSearchParams, value: string): string {
   if (value && value !== "all") params.set(PARTICIPANT_STATUS_PARAM, value);
   else params.delete(PARTICIPANT_STATUS_PARAM);
   return value || "all";
+}
+
+/** `null` (and any non-positive/garbage value) means "every division". */
+function writeDivision(params: URLSearchParams, value: number | null): number | null {
+  if (value === null) {
+    params.delete(PARTICIPANT_DIVISION_PARAM);
+    return null;
+  }
+  params.set(PARTICIPANT_DIVISION_PARAM, String(value));
+  return value;
+}
+
+function parseDivision(raw: string | null): number | null {
+  if (raw === null) return null;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+/** The default view is never written, so a bare URL means "the default". */
+function writeView(
+  params: URLSearchParams,
+  value: ParticipantView,
+  defaultValue: ParticipantView,
+): void {
+  if (value === defaultValue) params.delete(PARTICIPANT_VIEW_PARAM);
+  else params.set(PARTICIPANT_VIEW_PARAM, value);
 }
 
 function writeColumns(
@@ -287,6 +334,8 @@ export function readParticipantUrlState(
   allowedStatuses: readonly string[],
   columns: readonly ParticipantColumnOption[],
   storedColumnIds: readonly string[] | null = null,
+  /** `pool` for balancer/draft tournaments, `table` everywhere else. */
+  defaultView: ParticipantView = "table",
 ): ParticipantUrlReadResult {
   const original = source.toString();
   const params = new URLSearchParams(original);
@@ -296,6 +345,12 @@ export function readParticipantUrlState(
   const status =
     rawStatus === "all" || allowedStatuses.includes(rawStatus) ? rawStatus : "all";
   writeStatus(params, status);
+
+  const rawView = source.get(PARTICIPANT_VIEW_PARAM);
+  const view = isParticipantView(rawView) ? rawView : defaultView;
+  writeView(params, view, defaultView);
+
+  const division = writeDivision(params, parseDivision(source.get(PARTICIPANT_DIVISION_PARAM)));
 
   const mandatoryColumnIds = columns
     .filter((column) => isMandatoryParticipantColumnId(column.id))
@@ -350,7 +405,7 @@ export function readParticipantUrlState(
   }
 
   return {
-    state: { search, status, visibleColumnIds },
+    state: { search, status, visibleColumnIds, view, division },
     params,
     needsNormalization: params.toString() !== original,
   };
@@ -369,6 +424,9 @@ export function updateParticipantUrlState(
     case "status":
       writeStatus(params, update.value);
       return { params, history: "push" };
+    case "division":
+      writeDivision(params, update.value);
+      return { params, history: "push" };
     case "columns":
       writeColumns(params, update.value, update.defaultValue);
       return { params, history: "push" };
@@ -376,6 +434,7 @@ export function updateParticipantUrlState(
       params.delete(PARTICIPANT_SEARCH_PARAM);
       params.delete(PARTICIPANT_STATUS_PARAM);
       params.delete(PARTICIPANT_COLUMNS_PARAM);
+      params.delete(PARTICIPANT_DIVISION_PARAM);
       return { params, history: "push" };
   }
 }

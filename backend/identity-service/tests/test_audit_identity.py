@@ -29,52 +29,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.models.platform.audit import AuditLog  # noqa: E402
 from src import models, schemas  # noqa: E402
-from src.services.api_keys import ApiKeyService, api_keys  # noqa: E402
+from src.services.api_keys import api_keys  # noqa: E402
 from src.services.rbac_admin import PermissionDenyService, RoleAdminService  # noqa: E402
+from tests._fakes import FakeSessionCache as _NoopCache  # noqa: E402
+from tests._fakes import make_api_key_row  # noqa: E402
+from tests._fakes import make_auth_user as _api_actor  # noqa: E402
+from tests._fakes import make_root_actor as _actor  # noqa: E402
 
 _SECRET = "secret-token"
 _PUBLIC_ID = "publicid"
 
 
-def _actor(user_id: int = 1) -> SimpleNamespace:
-    """The RBAC operator, as ``_with_active_user`` hands it to a flow."""
-    return SimpleNamespace(
-        id=user_id,
-        username="root",
-        email="root@example.com",
-        is_superuser=True,
-        has_permission=lambda _resource, _action: True,
-    )
-
-
-def _api_actor() -> models.AuthUser:
-    return models.AuthUser(
-        id=7,
-        email="ada@example.com",
-        username="ada",
-        is_active=True,
-        is_superuser=False,
-        is_verified=True,
-    )
-
-
 def _api_key_row(*, revoked_at: datetime | None = None) -> models.ApiKey:
-    return models.ApiKey(
-        id=123,
-        auth_user_id=7,
-        workspace_id=11,
-        public_id=_PUBLIC_ID,
-        secret_hash=api_keys._hash_secret(_SECRET),
-        name="Balancer API",
-        scopes_json=["team.create"],
-        limits_json=dict(ApiKeyService.DEFAULT_LIMITS),
-        config_policy_json=dict(ApiKeyService.DEFAULT_CONFIG_POLICY),
-        expires_at=None,
-        revoked_at=revoked_at,
-        last_used_at=None,
-        created_at=datetime.now(UTC),
-        updated_at=None,
-    )
+    return make_api_key_row(revoked_at=revoked_at)
 
 
 class _Result:
@@ -143,14 +110,6 @@ class _EventSession:
         if not self._results:
             raise AssertionError("unexpected scalar() call")
         return self._results.pop(0)
-
-
-class _NoopCache:
-    """Stands in for the ``session_cache`` singleton: these tests assert on the
-    journal, not on Redis."""
-
-    async def invalidate_rbac(self, _user_id: int) -> None:
-        return None
 
 
 def _audit_rows(session: _EventSession) -> list[AuditLog]:

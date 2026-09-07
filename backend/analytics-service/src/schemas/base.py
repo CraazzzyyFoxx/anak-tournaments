@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict
 __all__ = (
     "BaseRead",
     "UserReadMin",
-    "TournamentGroupMin",
+    "TeamGroupMin",
     "TournamentMin",
     "PlayerRead",
     "TeamRead",
@@ -45,9 +45,11 @@ class UserReadMin(BaseRead):
     avatar_url: str | None = None
 
 
-class TournamentGroupMin(BaseRead):
+class TeamGroupMin(BaseModel):
+    """The group a team played in: a ``StageItem`` of type GROUP, name only."""
+
+    id: int
     name: str
-    tournament_id: int
 
 
 class TournamentMin(BaseRead):
@@ -81,4 +83,4 @@ class TeamRead(BaseRead):
     tournament_id: int
     tournament: TournamentMin | None = None
     placement: int | None = None
-    group: TournamentGroupMin | None = None
+    group: TeamGroupMin | None = None

@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tests._fakes import FakeRedisClient as _FakeRedisClient  # noqa: E402
+from tests._fakes import make_oauth_info as _oauth_info  # noqa: E402
 
 from src.schemas.oauth import OAuthUserInfo  # noqa: E402
 from src.services.oauth import oauth  # noqa: E402
@@ -50,37 +51,9 @@ from src.services.tickets import LINK_TICKETS  # noqa: E402
 _GET_REDIS = "src.core.cache.get_redis"
 
 
-class _NxRedisClient(_FakeRedisClient):
-    """``FakeRedisClient`` plus ``SETNX``, which the state-nonce claim needs.
-
-    ``_fakes`` is shared and only models what the ticket stores use; the nonce
-    store additionally does a set-if-absent, so it gets modelled here.
-    """
-
-    async def set(self, key: str, value: str, ex: int | None = None, nx: bool = False) -> bool | None:
-        if nx and key in self._store:
-            return None
-        self._store[key] = value
-        return True
-
-
 def _use_redis(monkeypatch: pytest.MonkeyPatch, client: object) -> object:
     monkeypatch.setattr(_GET_REDIS, lambda: client)
     return client
-
-
-def _oauth_info(**overrides: object) -> OAuthUserInfo:
-    fields = {
-        "provider": "discord",
-        "provider_user_id": "provider-uid-1",
-        "email": "player@example.com",
-        "username": "player1",
-        "display_name": "Player One",
-        "avatar_url": None,
-        "raw_data": {"id": "provider-uid-1"},
-    }
-    fields.update(overrides)
-    return OAuthUserInfo(**fields)
 
 
 def _link_state(
@@ -131,7 +104,7 @@ def _issue_link_ticket(guard_hash: str | None = None, *, payload: dict[str, obje
 def test_link_platform_origin_links_directly_and_never_issues_ticket(monkeypatch: pytest.MonkeyPatch) -> None:
     """Unchanged existing behavior: a platform-host link with a resolvable
     user links immediately and never touches the pending-link ticket store."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     _install_fake_provider(monkeypatch, _oauth_info())
     link_mock = _install_link_mock(monkeypatch)
     issue_mock = AsyncMock(side_effect=AssertionError("must not issue a ticket for a platform-host link"))
@@ -154,7 +127,7 @@ def test_link_custom_origin_issues_ticket_and_never_links(monkeypatch: pytest.Mo
     for THIS user here -- see SECURITY INVARIANT #1) -- it can only mint a
     ticket. Task 10R fix 1: the issued ticket must carry the verified state's
     guard_hash as its `lg`."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     _install_fake_provider(monkeypatch, _oauth_info())
     link_mock = _install_link_mock(monkeypatch, reason="must not link directly on a custom-domain link")
 
@@ -186,7 +159,7 @@ def test_link_custom_origin_without_guard_hash_never_issues_ticket(monkeypatch: 
     apex bounce never ran) must be rejected outright -- never issue a ticket
     with no binding at all, which sso_exchange/link_complete could never
     verify against anything."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     _install_fake_provider(monkeypatch, _oauth_info())
     link_mock = _install_link_mock(monkeypatch, reason="must not link when guard_hash is missing")
     issue_mock = AsyncMock(side_effect=AssertionError("must not issue an unbound ticket"))
@@ -208,7 +181,7 @@ def test_link_custom_origin_ignores_any_resolved_user(monkeypatch: pytest.Monkey
     link must still never link that user -- it is NOT the custom domain's
     live session and must be ignored entirely. The branch is decided by the
     signed state's origin ALONE."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     _install_fake_provider(monkeypatch, _oauth_info())
     link_mock = _install_link_mock(monkeypatch, reason="must not link ANY user on a custom-domain link")
 
@@ -226,7 +199,7 @@ def test_link_platform_origin_without_user_raises_not_authenticated(monkeypatch:
     """The existing login-required signal, unchanged: a platform-host link
     with no resolvable user (missing/invalid bearer) is rejected. A bearer is
     required ONLY on this branch -- the custom-domain branch above needs none."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
     _install_fake_provider(monkeypatch, _oauth_info())
     link_mock = _install_link_mock(monkeypatch, reason="must not link when unauthenticated")
 
@@ -241,7 +214,7 @@ def test_link_platform_origin_without_user_raises_not_authenticated(monkeypatch:
 def test_link_verifies_state_before_contacting_the_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     """State verification precedes everything, including the code exchange --
     and is completely unaffected by whether a bearer was resolved."""
-    _use_redis(monkeypatch, _NxRedisClient())
+    _use_redis(monkeypatch, _FakeRedisClient())
 
     def _explode(name: str) -> SimpleNamespace:
         raise AssertionError("must not touch the provider for an unverified state")

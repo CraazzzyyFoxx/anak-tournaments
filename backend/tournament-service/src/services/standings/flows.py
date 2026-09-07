@@ -142,6 +142,7 @@ class StandingsFlowsService:
                 "match_wins": standing.win,
                 "head_to_head": standing.tb,
                 "median_buchholz": standing.buchholz,
+                "buchholz": standing.full_buchholz,
                 "score_differential": standing.score_differential,
             },
             source_rule_profile=source_rule_profile,

@@ -22,14 +22,11 @@ from pathlib import Path
 from unittest import TestCase
 
 import sqlalchemy as sa
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 backend_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(backend_root))
-
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 
 from shared.models.achievements.achievement import (  # noqa: E402
     AchievementEvaluationResult,
@@ -38,22 +35,9 @@ from shared.models.achievements.achievement import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import WorkspaceMember  # noqa: E402
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery  # noqa: E402
+from shared.testing import install_postgres_type_shims  # noqa: E402
 
-
-@compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
-    return "JSON"
-
-
-@compiles(ARRAY, "sqlite")
-def _compile_array_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
-    return "JSON"
-
-
-@compiles(sa.BigInteger, "sqlite")
-def _compile_bigint_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
-    return "INTEGER"
-
+install_postgres_type_shims()
 
 WORKSPACE = 1
 IN_COHORT = (10, 11)

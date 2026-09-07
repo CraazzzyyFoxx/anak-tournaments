@@ -150,6 +150,20 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "admin.balance_export", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.balancer.admin.balance_ranks_export")
+    async def _balance_ranks_export(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            c.require_admin_panel(user)
+            balance_id = c.require_id(data)
+            ws_id = await _get_balance_workspace_id(session, balance_id)
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
+            balance, updated = await balancer_admin_service.export_balance_ranks(session, balance_id)
+            await emit_balancer_data_event(balance.tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=user.id)
+            return schemas.RanksExportResponse(success=True, updated_players=updated)
+
+        return await c.envelope(logger, "admin.balance_ranks_export", op, session_factory=_SF)
+
     # --- workspace balancer config -----------------------------------------
     @broker.subscriber("rpc.balancer.admin.workspace_config_get")
     async def _workspace_config_get(data: dict, msg: RabbitMessage) -> dict:

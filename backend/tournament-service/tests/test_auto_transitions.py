@@ -205,6 +205,9 @@ async def _make_tournament(
     tournament = Tournament(
         workspace_id=workspace_id,
         name=f"Auto-Transitions Tournament {suffix}",
+        # NOT NULL and globally unique; production writes go through
+        # `generate_unique_tournament_slug`, which this factory bypasses.
+        slug=f"autotrans-{suffix}",
         status=status,
         auto_transitions_enabled=auto_transitions_enabled,
     )

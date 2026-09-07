@@ -1,6 +1,5 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
   MappingParserDef,
   MappingTargetDef,
@@ -11,12 +10,9 @@ import type {
 import type { SubroleCatalog } from "@/types/registration.types";
 
 import { MappingFieldRow } from "./MappingFieldRow";
-import {
-  GROUP_DESCRIPTIONS,
-  GROUP_LABELS,
-  orderedRoleSubgroups,
-  roleSubgroupId,
-} from "./mappingConfig";
+import { orderedRoleSubgroups, roleSubgroupId } from "./mappingConfig";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { cn } from "@/lib/utils";
 
 interface MappingRowHandlers {
   onModeChange: (key: string, mode: MappingTargetMode) => void;
@@ -83,34 +79,28 @@ export function MappingGroupSection({
     );
   };
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{GROUP_LABELS[group]}</CardTitle>
-        <CardDescription>{GROUP_DESCRIPTIONS[group]}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {group === "roles" ? (
-          <div className="space-y-4">
-            {orderedRoleSubgroups(targets).map((subgroup) => {
-              const subTargets = targets.filter((target) => roleSubgroupId(target.key) === subgroup.id);
-              if (subTargets.length === 0) {
-                return null;
-              }
-              return (
-                <div key={subgroup.id} className="overflow-hidden rounded-lg border">
-                  <div className="border-b bg-muted/40 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {subgroup.label}
-                  </div>
-                  <div className="divide-y">{subTargets.map(renderRow)}</div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="divide-y rounded-lg border">{targets.map(renderRow)}</div>
-        )}
-      </CardContent>
-    </Card>
-  );
+  // Rows only — the enclosing card, its title and the group switcher live in
+  // `ColumnMappingTab`, so one card carries the whole editor.
+  if (group === "roles") {
+    return (
+      <div className="space-y-4">
+        {orderedRoleSubgroups(targets).map((subgroup) => {
+          const subTargets = targets.filter((target) => roleSubgroupId(target.key) === subgroup.id);
+          if (subTargets.length === 0) {
+            return null;
+          }
+          return (
+            <div key={subgroup.id} className="overflow-hidden rounded-lg border">
+              <div className={cn(EYEBROW_CLASS, "border-b bg-muted/40 px-4 py-2")}>
+                {subgroup.label}
+              </div>
+              <div className="divide-y">{subTargets.map(renderRow)}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return <div className="divide-y rounded-lg border">{targets.map(renderRow)}</div>;
 }

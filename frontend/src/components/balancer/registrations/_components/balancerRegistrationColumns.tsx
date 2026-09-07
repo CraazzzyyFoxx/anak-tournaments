@@ -1,9 +1,13 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useFormatter, type DateTimeFormatOptions } from "next-intl";
+import type { ColumnDef, Row, SortingFn } from "@tanstack/react-table";
+import { useFormatter, useTranslations, type DateTimeFormatOptions } from "next-intl";
 
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { TONE_CLASS, TONE_TEXT } from "@/components/admin/tone";
+import { Badge } from "@/components/ui/badge";
 import {
   AdmissionStatusBadge,
   SubscriptionStatusBadge,
@@ -12,6 +16,12 @@ import {
   ProfileStatusBadge,
   RegistrationStatusBadge,
 } from "@/components/status/RegistrationBadges";
+import {
+  ADMISSION_ORDER,
+  ADMISSION_SEARCH_TEXT,
+  formatAdmissionReason,
+  primaryAdmissionReason,
+} from "@/lib/admission";
 import { cn } from "@/lib/utils";
 import { ROLE_LABELS, getRoleIconName, getSubroleLabel } from "@/lib/roles";
 import type {
@@ -31,17 +41,17 @@ interface DateFormatter {
   dateTime: (value: Date, options?: DateTimeFormatOptions) => string;
 }
 
-export interface BalancerRegistrationColumnDefinition {
-  id: string;
-  label: string;
-  category: "core" | "meta" | "admin";
-  defaultVisible: boolean;
-  render: (registration: AdminRegistration, index: number) => ReactNode;
-  searchValue?: (registration: AdminRegistration) => string | null;
-  responsive?: "always" | "sm" | "md" | "lg";
-  widthClass?: string;
-  align?: "left" | "center" | "right";
-}
+/**
+ * Locale-aware compare shared by every text column. Sorting used to live in one
+ * `switch` in the table; the options here are the ones that switch used, so the
+ * order organizers are used to does not change.
+ */
+const localeTextSort: SortingFn<AdminRegistration> = (rowA, rowB, columnId) =>
+  String(rowA.getValue(columnId) ?? "").localeCompare(
+    String(rowB.getValue(columnId) ?? ""),
+    undefined,
+    { sensitivity: "base", numeric: true },
+  );
 
 function parseValidDate(dateString: string | null | undefined): Date | null {
   if (!dateString) {
@@ -164,7 +174,7 @@ function RolesCell({
             >
               <PlayerRoleIcon role={getRoleIconName(role.role)} size={20} />
             </span>
-            <span className="text-center text-[11px] font-semibold uppercase leading-none tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
+            <span className="text-center text-xs font-semibold uppercase leading-none tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
               {subroleLabel ?? role.rank_value ?? ""}
             </span>
           </div>
@@ -177,16 +187,12 @@ function RolesCell({
 function SourceCell({ source }: Readonly<{ source: AdminRegistration["source"] }>) {
   const isSheets = source === "google_sheets";
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-        isSheets
-          ? "border-sky-500/20 bg-sky-500/10 text-sky-300"
-          : "border-[color:var(--aqt-border-2)] bg-white/5 text-[color:var(--aqt-fg-muted)]",
-      )}
+    <Badge
+      variant="outline"
+      className={cn("font-medium", isSheets ? TONE_CLASS.info : TONE_CLASS.neutral)}
     >
       {isSheets ? "Sheets" : "Manual"}
-    </span>
+    </Badge>
   );
 }
 
@@ -206,7 +212,7 @@ function CompactListCell({ values }: Readonly<{ values: string[] }>) {
         </div>
       ))}
       {hiddenCount > 0 ? (
-        <div className="text-[11px] font-medium text-emerald-300/75">
+        <div className={cn("text-xs font-medium", TONE_TEXT.success)}>
           +{hiddenCount} more
         </div>
       ) : null}
@@ -262,242 +268,392 @@ function ExclusionCell({ registration }: Readonly<{ registration: AdminRegistrat
 
   const reason = registration.exclude_reason ?? "Excluded";
   return (
+    <StatusPill tone="warning" className="max-w-[220px]" title={reason}>
+      <span className="truncate">{reason}</span>
+    </StatusPill>
+  );
+}
+
+/**
+ * The reason behind one row's admission verdict.
+ *
+ * Amber for a blocker, muted for a requirement that is merely failing open — the
+ * second is not keeping anybody out today, but it will keep doing so silently
+ * until somebody looks, so it must be visible without reading as a refusal.
+ */
+function AdmissionReasonCell({ registration }: Readonly<{ registration: AdminRegistration }>) {
+  const t = useTranslations();
+  const reason = primaryAdmissionReason(registration.admission);
+  if (!reason) {
+    return <span className="text-[color:var(--aqt-fg-faint)]">—</span>;
+  }
+
+  const text = formatAdmissionReason(t, reason);
+  const isBlocking = registration.admission.blockers.length > 0;
+  return (
     <span
-      className="inline-flex max-w-[220px] truncate rounded-md border border-orange-500/20 bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-300"
-      title={reason}
+      className={cn(
+        "block max-w-[240px] truncate text-xs",
+        isBlocking ? "text-[color:var(--aqt-amber)]" : "text-[color:var(--aqt-fg-dim)]",
+      )}
+      title={text}
     >
-      {reason}
+      {text}
     </span>
   );
 }
 
 export function buildBalancerRegistrationColumns(
   subroleCatalog?: SubroleCatalog,
-  requireOpenProfile = false,
+  /** Gates the presence of the Subscription chip column only. Admission itself
+   *  is read off each row, so the old `requireOpenProfile` twin of this flag is
+   *  gone: nothing outside that column needed either of them. */
   requireSubscription = false,
   customFields: CustomFieldDefinition[] = [],
-): BalancerRegistrationColumnDefinition[] {
-  return [
-    {
-      id: "participant",
-      label: "Participant",
-      category: "core",
-      defaultVisible: true,
-      responsive: "always",
-      widthClass: "min-w-[240px]",
-      render: (registration) => <ParticipantCell registration={registration} />,
-      searchValue: (registration) =>
-        [
-          registration.battle_tag,
-          registration.display_name,
-          registration.discord_nick,
-          registration.twitch_nick,
-          registration.boosty_nick,
-          registration.source_record_key,
-        ]
-          .filter(Boolean)
-          .join(" "),
-    },
-    {
-      id: "smurfs",
-      label: "Smurfs",
+  /** Values offered by the `status` header filter, as the endpoint reports them. */
+  statusOptions: readonly { value: string; label: string }[] = [],
+): ColumnDef<AdminRegistration>[] {
+  // Built apart from the list below only to keep its old place between check-in
+  // and admission instead of being appended after the admin columns.
+  const subscriptionColumns: ColumnDef<AdminRegistration>[] = requireSubscription
+    ? [
+        {
+          // ONE column with the COMPOSED outcome. One column per provider would
+          // not scale, and under `any` mode a red provider cell next to a green
+          // one reads as a failure when it is not.
+          id: "subscription",
+          header: "Subscription",
+          // The old client-side sort had no case for this column.
+          enableSorting: false,
+          cell: ({ row }) => <SubscriptionStatusBadge outcome={row.original.subscription_outcome} />,
+          meta: adminColumnMeta<AdminRegistration>({
+            category: "meta",
+            defaultHidden: false,
+            responsive: "md",
+            align: "center",
+            searchValue: (registration) => registration.subscription_outcome ?? "unknown",
+          }),
+        },
+      ]
+    : [];
+
+  // One column per organizer-defined field, same definitions the public
+  // roster renders. Off by default: a form may define a dozen of them.
+  const customFieldColumns: ColumnDef<AdminRegistration>[] = customFields.map((field) => ({
+    id: `custom_${field.key}`,
+    header: field.label,
+    // Free-form answers: the old client-side sort had no case for them either.
+    enableSorting: false,
+    cell: ({ row }) =>
+      renderCustomFieldValue(field, row.original.custom_fields_json?.[field.key] ?? null),
+    meta: adminColumnMeta<AdminRegistration>({
       category: "admin",
-      defaultVisible: true,
-      responsive: "md",
-      widthClass: "min-w-[180px]",
-      render: (registration) => <CompactListCell values={registration.smurf_tags_json ?? []} />,
-      searchValue: (registration) => registration.smurf_tags_json.join(" "),
-    },
-    {
-      id: "roles",
-      label: "Roles",
-      category: "core",
-      defaultVisible: true,
-      responsive: "always",
-      align: "center",
-      render: (registration) => <RolesCell roles={registration.roles} catalog={subroleCatalog} />,
-      searchValue: (registration) =>
-        registration.roles
-          .map((role) => [role.role, role.subrole, role.rank_value].filter(Boolean).join(" "))
-          .join(" "),
-    },
-    {
-      id: "status",
-      label: "Status",
-      category: "core",
-      defaultVisible: true,
-      responsive: "always",
-      align: "center",
-      render: (registration) => <RegistrationStatusBadge status={registration.status} meta={registration.status_meta} />,
-      searchValue: (registration) => registration.status,
-    },
-    {
-      id: "balancer",
-      label: "Balancer",
-      category: "core",
-      defaultVisible: true,
-      responsive: "always",
-      align: "center",
-      render: (registration) => <BalancerStatusBadge status={registration.balancer_status} meta={registration.balancer_status_meta} />,
-      searchValue: (registration) => registration.balancer_status,
-    },
-    {
-      id: "checkin",
-      label: "Check-in",
-      category: "core",
-      defaultVisible: true,
-      responsive: "always",
-      align: "center",
-      render: (registration) => <CheckInStatusBadge checkedIn={registration.checked_in} />,
-      searchValue: (registration) => (registration.checked_in ? "checked in" : "not checked in"),
-    },
-    ...(requireSubscription
-      ? [
-          {
-            // ONE column with the COMPOSED outcome. One column per provider would
-            // not scale, and under `any` mode a red provider cell next to a green
-            // one reads as a failure when it is not.
-            id: "subscription",
-            label: "Subscription",
-            category: "meta" as const,
-            defaultVisible: true,
-            responsive: "md" as const,
-            align: "center" as const,
-            render: (registration: AdminRegistration) => (
-              <SubscriptionStatusBadge outcome={registration.subscription_outcome} />
-            ),
-            searchValue: (registration: AdminRegistration) =>
-              registration.subscription_outcome ?? "unknown",
-          },
-        ]
-      : []),
-    {
-      id: "admission",
-      label: "Admission",
-      category: "meta",
-      defaultVisible: true,
-      responsive: "md",
-      align: "center",
-      render: (registration) => (
-        <AdmissionStatusBadge
-          registrationStatus={registration.status}
-          balancerStatus={registration.balancer_status}
-          checkedIn={registration.checked_in}
-          requireOpenProfile={requireOpenProfile}
-          profilesOpen={registration.profiles_open}
-          requireSubscription={requireSubscription}
-          subscriptionOutcome={registration.subscription_outcome}
-        />
-      ),
+      defaultHidden: true,
+      responsive: "lg",
       searchValue: (registration) => {
-        const isProfileClosed = requireOpenProfile && registration.profiles_open === false;
-        const isSubscriptionRefused =
-          requireSubscription && registration.subscription_outcome === "refused";
-        const isApprovedAndReady =
-          registration.status === "approved" &&
-          registration.balancer_status === "ready" &&
-          !isProfileClosed &&
-          !isSubscriptionRefused;
-        if (!isApprovedAndReady) return "not admitted";
-        return registration.checked_in ? "admitted" : "check-in pending";
-      },
-    },
-    {
-      id: "profile",
-      label: "Profile",
-      category: "meta",
-      defaultVisible: false,
-      responsive: "lg",
-      align: "center",
-      render: (registration) =>
-        registration.profiles_open != null ? (
-          <ProfileStatusBadge profilesOpen={registration.profiles_open} />
-        ) : (
-          <span className="text-[color:var(--aqt-fg-faint)]">—</span>
-        ),
-      searchValue: (registration) =>
-        registration.profiles_open === false
-          ? "profile closed"
-          : registration.profiles_open === true
-            ? "profile open"
-            : "",
-    },
-    {
-      id: "submitted",
-      label: "Submitted",
-      category: "meta",
-      defaultVisible: true,
-      responsive: "md",
-      render: (registration) => <SubmittedCell submittedAt={registration.submitted_at} />,
-      searchValue: (registration) => registration.submitted_at,
-    },
-    {
-      id: "source",
-      label: "Source",
-      category: "admin",
-      defaultVisible: false,
-      responsive: "md",
-      render: (registration) => <SourceCell source={registration.source} />,
-      searchValue: (registration) => `${registration.source} ${registration.source_record_key ?? ""}`.trim(),
-    },
-    {
-      id: "notes",
-      label: "Notes",
-      category: "admin",
-      defaultVisible: false,
-      responsive: "lg",
-      widthClass: "min-w-[220px]",
-      render: (registration) => <TextBlockCell value={registration.notes} />,
-      searchValue: (registration) => registration.notes,
-    },
-    {
-      id: "admin_notes",
-      label: "Admin Notes",
-      category: "admin",
-      defaultVisible: false,
-      responsive: "lg",
-      widthClass: "min-w-[220px]",
-      render: (registration) => <TextBlockCell value={registration.admin_notes} />,
-      searchValue: (registration) => registration.admin_notes,
-    },
-    {
-      id: "reviewed",
-      label: "Reviewed",
-      category: "admin",
-      defaultVisible: false,
-      responsive: "lg",
-      widthClass: "min-w-[180px]",
-      render: (registration) => <ReviewedCell registration={registration} />,
-      searchValue: (registration) =>
-        [registration.reviewed_by_username, registration.reviewed_at].filter(Boolean).join(" "),
-    },
-    {
-      id: "excluded",
-      label: "Exclusion",
-      category: "admin",
-      defaultVisible: false,
-      responsive: "lg",
-      widthClass: "min-w-[180px]",
-      render: (registration) => <ExclusionCell registration={registration} />,
-      searchValue: (registration) =>
-        registration.balancer_status === "excluded"
-          ? [registration.exclude_reason, "excluded from balancer"].filter(Boolean).join(" ")
-          : null,
-    },
-    // One column per organizer-defined field, same definitions the public
-    // roster renders. Off by default: a form may define a dozen of them.
-    ...customFields.map((field) => ({
-      id: `custom_${field.key}`,
-      label: field.label,
-      category: "admin" as const,
-      defaultVisible: false,
-      responsive: "lg" as const,
-      render: (registration: AdminRegistration) =>
-        renderCustomFieldValue(field, registration.custom_fields_json?.[field.key] ?? null),
-      searchValue: (registration: AdminRegistration) => {
         const value = registration.custom_fields_json?.[field.key];
         return value == null || value === "" ? null : String(value);
       },
-    })),
+    }),
+  }));
+
+  return [
+    {
+      id: "participant",
+      header: "Participant",
+      accessorFn: (registration) => registration.battle_tag || registration.display_name || "",
+      sortingFn: localeTextSort,
+      cell: ({ row }) => <ParticipantCell registration={row.original} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "core",
+        defaultHidden: false,
+        responsive: "always",
+        sticky: true,
+        className: "min-w-[240px]",
+        searchValue: (registration) =>
+          [
+            registration.battle_tag,
+            registration.display_name,
+            registration.discord_nick,
+            registration.twitch_nick,
+            registration.boosty_nick,
+            registration.source_record_key,
+          ]
+            .filter(Boolean)
+            .join(" "),
+      }),
+    },
+    {
+      id: "smurfs",
+      header: "Smurfs",
+      accessorFn: (registration) => (registration.smurf_tags_json || []).join(" "),
+      sortingFn: localeTextSort,
+      cell: ({ row }) => <CompactListCell values={row.original.smurf_tags_json ?? []} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "admin",
+        defaultHidden: false,
+        responsive: "md",
+        className: "min-w-[180px]",
+        searchValue: (registration) => registration.smurf_tags_json.join(" "),
+      }),
+    },
+    {
+      id: "roles",
+      header: "Roles",
+      // Highest playable rank, so the strongest players sort together regardless
+      // of which role they filled. Taken from the server's `best_rank` — maxing
+      // the roles here computed the same number a second time, which is the one
+      // way it could ever disagree with the engine.
+      accessorFn: (registration) => registration.best_rank ?? 0,
+      cell: ({ row }) => <RolesCell roles={row.original.roles} catalog={subroleCatalog} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "core",
+        defaultHidden: false,
+        responsive: "always",
+        align: "center",
+        searchValue: (registration) =>
+          registration.roles
+            .map((role) => [role.role, role.subrole, role.rank_value].filter(Boolean).join(" "))
+            .join(" "),
+      }),
+    },
+    {
+      id: "status",
+      header: "Status",
+      accessorFn: (registration) => registration.status || "",
+      sortingFn: localeTextSort,
+      filterFn: (row: Row<AdminRegistration>, _columnId: string, values: string[]) =>
+        values.length === 0 || values.includes(row.original.status),
+      cell: ({ row }) => (
+        <RegistrationStatusBadge status={row.original.status} meta={row.original.status_meta} />
+      ),
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "core",
+        defaultHidden: false,
+        responsive: "always",
+        align: "center",
+        filter: {
+          param: "status",
+          mode: "multi",
+          options: statusOptions,
+        },
+        searchValue: (registration) => registration.status,
+      }),
+    },
+    {
+      id: "balancer",
+      header: "Balancer",
+      accessorFn: (registration) => registration.balancer_status || "",
+      sortingFn: localeTextSort,
+      // `excluded` keeps what the balancer drops, `included` keeps the pool.
+      filterFn: (row: Row<AdminRegistration>, _columnId: string, values: string[]) => {
+        if (values.length === 0) {
+          return true;
+        }
+
+        const isExcluded = row.original.balancer_status_meta?.excludes_from_balancer === true;
+        return values.includes("excluded") ? isExcluded : !isExcluded;
+      },
+      cell: ({ row }) => (
+        <BalancerStatusBadge
+          status={row.original.balancer_status}
+          meta={row.original.balancer_status_meta}
+        />
+      ),
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "core",
+        defaultHidden: false,
+        responsive: "always",
+        align: "center",
+        filter: {
+          param: "inclusion",
+          mode: "single",
+          options: [
+            { value: "included", label: "Included" },
+            { value: "excluded", label: "Excluded" },
+          ],
+        },
+        searchValue: (registration) => registration.balancer_status,
+      }),
+    },
+    {
+      id: "checkin",
+      header: "Check-in",
+      accessorFn: (registration) => (registration.checked_in ? 1 : 0),
+      cell: ({ row }) => <CheckInStatusBadge checkedIn={row.original.checked_in} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "core",
+        defaultHidden: false,
+        responsive: "always",
+        align: "center",
+        searchValue: (registration) => (registration.checked_in ? "checked in" : "not checked in"),
+      }),
+    },
+    ...subscriptionColumns,
+    {
+      id: "admission",
+      header: "Admission",
+      // D6: the sort is now projected from the same `decision` the cell renders.
+      // The accessor this replaced was deliberately blind to the subscription
+      // condition its own cell showed, so the column could order a refused
+      // subscriber above an admitted one. That divergence existed only because
+      // there was no single source of truth; ordering saved views change, and
+      // that is the accepted cost of a column whose sort matches its contents.
+      accessorFn: (registration) => ADMISSION_ORDER[registration.admission.decision],
+      cell: ({ row }) => <AdmissionStatusBadge admission={row.original.admission} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "meta",
+        defaultHidden: false,
+        responsive: "md",
+        align: "center",
+        searchValue: (registration) =>
+          ADMISSION_SEARCH_TEXT[registration.admission.decision],
+      }),
+    },
+    {
+      // Why a row is not admitted, or why it is only failing open. The organizer
+      // used to have to open the OW-Profile and Subscriptions screens one row at
+      // a time to learn this, because the badge showed that something was wrong
+      // and never what.
+      id: "reason",
+      header: "Reason",
+      accessorFn: (registration) =>
+        primaryAdmissionReason(registration.admission)?.code ?? "",
+      sortingFn: localeTextSort,
+      cell: ({ row }) => <AdmissionReasonCell registration={row.original} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "meta",
+        defaultHidden: false,
+        responsive: "lg",
+        className: "min-w-[180px]",
+        searchValue: (registration) =>
+          primaryAdmissionReason(registration.admission)?.code ?? null,
+      }),
+    },
+    {
+      // The raw `profiles_open` SIGNAL, not the decision. The comparisons here
+      // and in `searchValue` below are a tri-state chip projection — open /
+      // closed / not checked — and must not be consolidated with the admission
+      // column above: whether the player is in comes from `admission.decision`
+      // and nowhere else, and a closed profile an organizer has already checked
+      // the player in past is still an admitted row.
+      id: "profile",
+      header: "Profile",
+      accessorFn: (registration) =>
+        registration.profiles_open === true ? 2 : registration.profiles_open === false ? 1 : 0,
+      cell: ({ row }) =>
+        row.original.profiles_open != null ? (
+          <ProfileStatusBadge profilesOpen={row.original.profiles_open} />
+        ) : (
+          <span className="text-[color:var(--aqt-fg-faint)]">—</span>
+        ),
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "meta",
+        defaultHidden: true,
+        responsive: "lg",
+        align: "center",
+        searchValue: (registration) =>
+          registration.profiles_open === false
+            ? "profile closed"
+            : registration.profiles_open === true
+              ? "profile open"
+              : "",
+      }),
+    },
+    {
+      id: "submitted",
+      header: "Submitted",
+      accessorFn: (registration) => parseValidDate(registration.submitted_at)?.getTime() ?? 0,
+      cell: ({ row }) => <SubmittedCell submittedAt={row.original.submitted_at} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "meta",
+        defaultHidden: false,
+        responsive: "md",
+        searchValue: (registration) => registration.submitted_at,
+      }),
+    },
+    {
+      id: "source",
+      header: "Source",
+      accessorFn: (registration) => registration.source || "",
+      sortingFn: localeTextSort,
+      filterFn: (row: Row<AdminRegistration>, _columnId: string, values: string[]) =>
+        values.length === 0 || values.includes(row.original.source),
+      cell: ({ row }) => <SourceCell source={row.original.source} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "admin",
+        defaultHidden: true,
+        responsive: "md",
+        filter: {
+          param: "source",
+          mode: "single",
+          options: [
+            { value: "manual", label: "Manual" },
+            { value: "google_sheets", label: "Google Sheets" },
+          ],
+        },
+        searchValue: (registration) =>
+          `${registration.source} ${registration.source_record_key ?? ""}`.trim(),
+      }),
+    },
+    {
+      id: "notes",
+      header: "Notes",
+      accessorFn: (registration) => registration.notes || "",
+      sortingFn: localeTextSort,
+      cell: ({ row }) => <TextBlockCell value={row.original.notes} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "admin",
+        defaultHidden: true,
+        responsive: "lg",
+        className: "min-w-[220px]",
+        searchValue: (registration) => registration.notes,
+      }),
+    },
+    {
+      id: "admin_notes",
+      header: "Admin Notes",
+      accessorFn: (registration) => registration.admin_notes || "",
+      sortingFn: localeTextSort,
+      cell: ({ row }) => <TextBlockCell value={row.original.admin_notes} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "admin",
+        defaultHidden: true,
+        responsive: "lg",
+        className: "min-w-[220px]",
+        searchValue: (registration) => registration.admin_notes,
+      }),
+    },
+    {
+      id: "reviewed",
+      header: "Reviewed",
+      accessorFn: (registration) => parseValidDate(registration.reviewed_at)?.getTime() ?? 0,
+      cell: ({ row }) => <ReviewedCell registration={row.original} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "admin",
+        defaultHidden: true,
+        responsive: "lg",
+        className: "min-w-[180px]",
+        searchValue: (registration) =>
+          [registration.reviewed_by_username, registration.reviewed_at].filter(Boolean).join(" "),
+      }),
+    },
+    {
+      id: "excluded",
+      header: "Exclusion",
+      accessorFn: (registration) => (registration.balancer_status === "excluded" ? 1 : 0),
+      cell: ({ row }) => <ExclusionCell registration={row.original} />,
+      meta: adminColumnMeta<AdminRegistration>({
+        category: "admin",
+        defaultHidden: true,
+        responsive: "lg",
+        className: "min-w-[180px]",
+        searchValue: (registration) =>
+          registration.balancer_status === "excluded"
+            ? [registration.exclude_reason, "excluded from balancer"].filter(Boolean).join(" ")
+            : null,
+      }),
+    },
+    ...customFieldColumns,
   ];
 }

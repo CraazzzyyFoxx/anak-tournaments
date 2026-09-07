@@ -300,6 +300,7 @@ export interface TournamentUpdateInput {
   start_date?: string;
   end_date?: string;
   auto_transitions_enabled?: boolean;
+  allow_late_registration?: boolean;
   win_points?: number;
   draw_points?: number;
   loss_points?: number;
@@ -402,6 +403,7 @@ export interface StageItemCreateInput {
   name: string;
   type: StageItemType;
   order?: number;
+  advance_count?: number | null;
 }
 
 export interface StageItemInputCreateInput {
@@ -422,6 +424,29 @@ export interface StageItemInputUpdateInput {
 export interface StageMergeGroupStagesInput {
   source_stage_ids: number[];
   target_name?: string | null;
+}
+
+/**
+ * One match of the bracket a stage would generate — `GET
+ * /admin/stages/{id}/bracket-preview`, i.e. the real generator's skeleton.
+ *
+ * `local_id` is 1-based and skeleton-local, and `sources[].local_id` points at
+ * another row of the same response rather than at an encounter, because these
+ * matches have no encounter row yet.
+ */
+export interface StageBracketPreviewMatch {
+  local_id: number;
+  round: number;
+  /** "A vs. B", with the wired teams' names when they are known. */
+  name: string;
+  best_of: number;
+  home_team_id: number | null;
+  away_team_id: number | null;
+  sources: {
+    local_id: number;
+    role: "winner" | "loser";
+    slot: "home" | "away";
+  }[];
 }
 
 
@@ -738,7 +763,6 @@ export interface AdminMatchesQuery {
 
 export interface EncounterCreateInput {
   tournament_id: number;
-  tournament_group_id?: number | null;
   stage_id: number | null;
   stage_item_id: number | null;
   home_team_id: number | null;
@@ -753,7 +777,6 @@ export interface EncounterCreateInput {
 }
 
 export interface EncounterUpdateInput {
-  tournament_group_id?: number | null;
   stage_id?: number | null;
   stage_item_id?: number | null;
   home_team_id?: number | null;
@@ -766,6 +789,8 @@ export interface EncounterUpdateInput {
   name?: string;
   closeness?: number | null;
   best_of?: number;
+  /** ISO instant, or `null` to clear the planned start time. */
+  scheduled_at?: string | null;
 }
 
 export interface MatchUpdateInput {
@@ -1302,7 +1327,7 @@ export interface TournamentComputationJob {
 // ─── Platform audit log ──────────────────────────────────────────────────────
 
 /** Curated set the backend writes today. `source` stays a `string` on the wire. */
-export type AuditSource = "admin" | "challonge" | "discord" | "scheduler" | "system";
+export type AuditSource = "admin" | "api_key" | "challonge" | "discord" | "scheduler" | "system";
 
 export interface AuditLogRead {
   id: number;

@@ -88,3 +88,32 @@ class SwissStageGenerationTests(IsolatedAsyncioTestCase):
 
         self.assertEqual([], result.pairings)
         self.assertTrue(swiss_settings.swiss_scope_stopped(stage, 501))
+
+    async def test_full_circle_swiss_is_generated_as_a_round_robin(self) -> None:
+        """max_rounds >= teams - 1 means every team meets every other, so the
+        whole schedule is built at once instead of one paired round at a time —
+        round-by-round pairing can corner itself into an unplayable round."""
+        stage = SimpleNamespace(
+            id=77,
+            stage_type=enums.StageType.SWISS,
+            max_rounds=5,
+            settings_json={"swiss_stopped_scopes": ["501"]},
+        )
+
+        with patch.object(
+            stage_service.stage_service,
+            "_get_swiss_generation_context",
+            AsyncMock(return_value=(None, None, 1)),
+        ):
+            result = await stage_service.stage_service._generate_stage_skeleton(
+                SimpleNamespace(),
+                stage,
+                [1, 2, 3, 4, 5, 6],
+                501,
+            )
+
+        self.assertEqual(5, result.total_rounds)
+        self.assertEqual(15, len(result.pairings))
+        pairs = {frozenset({pairing.home_team_id, pairing.away_team_id}) for pairing in result.pairings}
+        self.assertEqual(15, len(pairs))
+        self.assertFalse(swiss_settings.swiss_scope_stopped(stage, 501))

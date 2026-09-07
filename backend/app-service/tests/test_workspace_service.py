@@ -217,6 +217,35 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
         ensure_for_auth_user.assert_awaited_once_with(session, auth_user_id=22, name_hint="staff")
         get_or_create.assert_awaited_once_with(session, workspace_id=2, player_id=77)
 
+    async def test_resolve_member_role_ids_prefers_explicit_ids(self) -> None:
+        session = SimpleNamespace()
+        with (
+            patch.object(workspace_service, "ensure_workspace_system_roles", AsyncMock()) as ensure,
+            patch.object(workspace_service, "get_workspace_system_role", AsyncMock()) as get_role,
+        ):
+            result = await workspaces.resolve_member_role_ids(
+                session, 2, role_ids=[9, 8], role_name="admin"
+            )
+        ensure.assert_awaited_once_with(session, 2)
+        get_role.assert_not_awaited()
+        self.assertEqual([9, 8], result)
+
+    async def test_resolve_member_role_ids_looks_up_named_system_role(self) -> None:
+        session = SimpleNamespace()
+        role = SimpleNamespace(id=4)
+        with (
+            patch.object(workspace_service, "ensure_workspace_system_roles", AsyncMock()),
+            patch.object(
+                workspace_service, "get_workspace_system_role", AsyncMock(return_value=role)
+            ) as get_role,
+        ):
+            result = await workspaces.resolve_member_role_ids(
+                session, 2, role_ids=None, role_name=None
+            )
+        get_role.assert_awaited_once_with(session, 2, "member")
+        self.assertEqual([4], result)
+
+
 class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
     """``is_hidden`` only gates the anonymous/other-member view of ``get_all``:
     a workspace member always sees their own hidden workspace, and a

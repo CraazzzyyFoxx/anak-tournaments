@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
+from sqlalchemy.sql.elements import ColumnElement
 
 from shared.core import http_status as status
 from shared.core.enums import DraftStatus
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 __all__ = (
     "assert_no_active_draft_session",
     "has_unfinished_draft_session",
+    "unfinished_draft_clause",
     "unfinished_draft_session_status",
 )
 
@@ -37,12 +39,19 @@ async def unfinished_draft_session_status(session: AsyncSession, tournament_id: 
     """
     return await session.scalar(
         select(DraftSession.status)
-        .where(
-            DraftSession.tournament_id == tournament_id,
-            DraftSession.status.notin_(_TERMINAL_DRAFT_STATUSES),
-        )
+        .where(DraftSession.tournament_id == tournament_id, unfinished_draft_clause())
         .limit(1)
     )
+
+
+def unfinished_draft_clause() -> ColumnElement[bool]:
+    """What "in flight" means, for callers that scope it differently.
+
+    ``roster_shape_guards`` asks the same question across every tournament of a
+    workspace, so the status set lives here once instead of being restated per
+    query.
+    """
+    return DraftSession.status.notin_(_TERMINAL_DRAFT_STATUSES)
 
 
 async def has_unfinished_draft_session(session: AsyncSession, tournament_id: int) -> bool:

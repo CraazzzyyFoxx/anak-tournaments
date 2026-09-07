@@ -549,12 +549,17 @@ class ScrimService:
                 round=None,
             )
             slots = len(config.slots) if config is not None else 0
-            if reason == REASON_SLOT_COUNT_MISMATCH:
+            if config is not None and not pick_ban_session_service.has_pool(config):
+                # A rules template: rotation and timer authored for narrower
+                # scopes to inherit, with no candidates of its own to play.
+                detail = (
+                    f"That {kind.value} pool has no candidates configured — it is a rules template. "
+                    "Pick a different round, or author the pool at that scope."
+                )
+            elif reason == REASON_SLOT_COUNT_MISMATCH:
                 detail = (
                     f"That pool has {slots} map slot(s), so it plays a best-of-{slots} at most. "
                     f"Lower best_of to {slots} or copy a round with more slots."
-                    if slots
-                    else "That pool is slot-based but has no slots configured. Pick a different round."
                 )
             elif reason == REASON_SLOT_UNDERFILLED:
                 detail = (

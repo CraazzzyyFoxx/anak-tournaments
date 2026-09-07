@@ -213,6 +213,57 @@ class CreatingAnAlreadyCompleteMatch(IsolatedAsyncioTestCase):
         self.assertEqual([], audits)
 
 
+
+class CompletingAnExistingOpenMatch(IsolatedAsyncioTestCase):
+    """The create path was already fixed to be born OPEN then finalize.
+
+    The UPDATE path still assigned ``status=COMPLETED`` and flushed before
+    finalize, tripping ``ck_encounter_result_status_matches_status``
+    (OWT-TOURNAMENTS-295 / 29P).
+    """
+
+    async def test_does_not_flush_completed_before_finalize(self) -> None:
+        encounter = _encounter(
+            status=enums.EncounterStatus.OPEN,
+            result_status=enums.EncounterResultStatus.NONE,
+        )
+        source = sync._ImportSource(challonge_id=100, stage=SimpleNamespace())
+        match_lookup = sync._MatchLookup(
+            by_source_key={}, by_challonge_id={1: encounter}, mapped_keys=set(), unlinked_by_slot={}
+        )
+        session = SimpleNamespace(flush=AsyncMock())
+
+        with (
+            patch.object(
+                sync.sync_service.structure,
+                "_resolve_stage_refs_for_match",
+                AsyncMock(return_value=sync.StageRefs(stage_id=None, stage_item_id=None)),
+            ),
+            patch.object(sync.sync_service.mapping, "_ensure_match_mapping", AsyncMock()),
+            patch.object(
+                sync.pick_ban_session_service,
+                "sync_all_pick_ban_sessions_after_team_change",
+                AsyncMock(),
+            ),
+            patch.object(sync.finalize_service, "finalize_encounter_score", AsyncMock()) as finalize,
+            patch.object(sync, "record_result_transition"),
+        ):
+            result = await sync.sync_service._upsert_encounter_from_challonge(
+                session,
+                SimpleNamespace(id=1),
+                source,
+                CreatingAnAlreadyCompleteMatch()._match(state="complete"),
+                match_lookup=match_lookup,
+                team_lookup=sync._TeamLookup(by_source_key={}, by_key={}, teams_by_id={}),
+            )
+
+        self.assertEqual("updated", result.action)
+        self.assertTrue(result.newly_completed)
+        self.assertEqual(enums.EncounterStatus.OPEN, encounter.status)
+        session.flush.assert_awaited()
+        finalize.assert_awaited_once()
+
+
 class AdoptingAnUnlinkedLocalEncounter(IsolatedAsyncioTestCase):
     """A bracket generated locally (StageService.generate_encounters) before its
     Challonge source was ever imported already has real Encounter rows sitting in

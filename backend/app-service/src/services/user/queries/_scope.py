@@ -26,9 +26,6 @@ away_score_case = sa.case(
 )
 
 
-winrate_sum = sa.func.sum(home_score_case) / (sa.func.sum(home_score_case) + sa.func.sum(away_score_case))
-
-
 def _team_load_options(entities: list[str]) -> list[_AbstractLoad]:
     """Load options for selecting Team with optional related entities.
 

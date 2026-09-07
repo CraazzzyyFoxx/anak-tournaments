@@ -90,6 +90,22 @@ export function hasPerRoundBestOf(config: StageBestOfConfig): boolean {
   return Object.keys(config.by_round ?? {}).length > 0 || config.final != null;
 }
 
+/**
+ * The longest series a stage's config can produce, over every round it sets.
+ *
+ * A pool that has to cover a whole stage must be sized to this, not to the
+ * stage's `default`: the server plays the first `best_of` groups of a slot pool
+ * and refuses to open the room when there are fewer (`pick_ban_session`
+ * `REASON_SLOT_COUNT_MISMATCH`), so the final's Bo5 decides the count.
+ */
+export function maxBestOf(config: StageBestOfConfig): number {
+  return Math.max(
+    config.default ?? DEFAULT_BEST_OF,
+    config.final ?? 0,
+    ...Object.values(config.by_round ?? {})
+  );
+}
+
 /** A round the best-of editor can target, identified by its `by_round` key. */
 interface BestOfRoundOption {
   /** Signed round number — negative is a lower-bracket round. */

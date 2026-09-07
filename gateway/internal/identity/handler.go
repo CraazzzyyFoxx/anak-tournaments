@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apierr"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/clientip"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/httplog"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
@@ -440,8 +441,8 @@ func (h *Handler) RevokeApiKey(w http.ResponseWriter, r *http.Request) {
 }
 
 // SelfApiKey mirrors GET /api-keys/self: the descriptor of the key the CALLER
-// is presenting (name, scopes, limits, config_policy, expiry), so a scripted
-// client can discover its own budget and authority without an admin token.
+// is presenting (name, scopes, expiry), so a scripted client can discover its
+// own authority without an admin token.
 //
 // Deliberately not gated by credential type here. identity-svc resolves the
 // bearer itself and answers 403 "API key credential required" for a browser
@@ -732,24 +733,10 @@ func (h *Handler) callIdentity(w http.ResponseWriter, r *http.Request, queue str
 	}
 
 	if !env.OK {
-		status := http.StatusInternalServerError
-		msg := "internal error"
-		if env.Error != nil {
-			status = rpc.StatusForCode(env.Error.Code)
-			msg = env.Error.Message
-		}
-		writeDetail(w, status, msg)
+		apierr.WriteEnvelopeError(w, env.Error)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(successStatus)
-	// Relay a literal JSON `null` for nullable response models rather than an
-	// empty body, so callers' response.json() doesn't throw on a 200. See the
-	// note in edge/dispatch.go. 204 still carries no body.
-	if successStatus != http.StatusNoContent && len(env.Data) > 0 {
-		_, _ = w.Write(env.Data)
-	}
+	apierr.WriteOK(w, successStatus, env)
 }
 
 // decodeRawBody returns the request body bytes, rejecting invalid JSON.
@@ -832,9 +819,13 @@ func setClientMeta(r *http.Request, body map[string]any) {
 	body["ip_address"] = ip
 }
 
-// writeDetail emits a FastAPI-style error body: {"detail": "..."}.
-func writeDetail(w http.ResponseWriter, status int, detail string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"detail": detail})
+// writeDetail emits the gateway's error body (see internal/apierr) for this
+// handler's OWN failures. Upstream envelope errors go through
+// apierr.WriteEnvelopeError instead, so their structured details survive.
+func writeDetail(w http.ResponseWriter, status int, detail string, code ...string) {
+	c := ""
+	if len(code) > 0 {
+		c = code[0]
+	}
+	apierr.WriteError(w, status, detail, c, nil)
 }

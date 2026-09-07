@@ -16,18 +16,15 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 from sqlalchemy.orm import configure_mappers  # noqa: E402
 
 import src.models  # noqa: E402,F401  (import registers all models)
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.models.balancer import draft as draft_models  # noqa: E402
 from shared.models.balancer.draft import (  # noqa: E402
     DraftPick,
     DraftPlayer,
-    DraftPlayerRole,
     DraftSession,
     DraftTeam,
 )
 from shared.models.tenancy.workspace import WorkspaceMember  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
-from src.domain.draft.rules import role_is_legal  # noqa: E402
 
 
 def test_mappers_configure_cleanly() -> None:
@@ -104,52 +101,56 @@ def test_unique_constraints_present() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# dbarch03 compatibility read shims
+# draftreg1: the seat IS a registration reference
 #
-# The autopick/select/board/export paths read these properties off eager-loaded
-# rows (member + roles child rows) instead of the dropped user_id/role_ranks/
-# secondary_roles_json/captain_user_id/picked_by_user_id columns. These pure,
-# DB-free tests assert the shims reconstruct the pre-dbarch03 read shape — the
-# invariant the eager-load option sets exist to protect. (The DB-backed autopick
-# path is covered by the integration suite, which skips without Postgres.)
+# ``DraftPlayerRole``/``DraftPlayerRoleHero`` and the ``primary_role`` /
+# ``sub_role`` / ``is_flex`` / ``division_number`` / ``rank_value`` /
+# ``battle_tag`` / ``additional_info`` columns are gone: every one of them was a
+# copy of the registration written once at seed time and never re-synced, while
+# the balancer resolved the same rank through three layers. What is left on the
+# row is draft state plus the FK, and these DB-free tests pin exactly that, so
+# a re-added column cannot pass unnoticed.
 # --------------------------------------------------------------------------- #
-def test_player_compat_properties_reconstruct_old_shape() -> None:
-    player = DraftPlayer(
-        session_id=1,
-        primary_role="dps",
-        rank_value=4000,
-        member=WorkspaceMember(player_id=7),
-        roles=[
-            DraftPlayerRole(role="dps", rank_value=4000, is_secondary=False, priority=0),
-            DraftPlayerRole(role="support", rank_value=2800, is_secondary=True, priority=1),
-        ],
-    )
-    assert player.user_id == 7
-    assert player.secondary_roles_json == ["support"]
-    assert player.role_ranks == {"dps": 4000, "support": 2800}
+def test_seat_is_anchored_on_a_registration_and_carries_no_roles_or_ranks() -> None:
+    columns = set(DraftPlayer.__table__.columns.keys())
+
+    assert columns == {
+        "id",
+        "created_at",
+        "updated_at",
+        "session_id",
+        "registration_id",
+        "workspace_member_id",
+        "status",
+        "is_captain",
+        "drafted_by_team_id",
+        "version",
+    }
+    registration_id = DraftPlayer.__table__.c.registration_id
+    assert registration_id.nullable is False
+    # RESTRICT: a registration is soft-deleted, so a hard delete is somebody
+    # erasing a row a draft depends on. Refusing beats dropping draft history.
+    assert registration_id.foreign_keys.pop().ondelete == "RESTRICT"
 
 
-def test_player_compat_properties_empty_without_member_or_roles() -> None:
-    player = DraftPlayer(session_id=1, primary_role="dps", rank_value=3000)
-    assert player.user_id is None
-    assert player.secondary_roles_json is None  # empty -> None, matching old writer
-    assert player.role_ranks == {}
+def test_one_seat_per_registration_per_session() -> None:
+    names = {c.name for c in DraftPlayer.__table__.constraints if c.name}
+    assert "uq_draft_player_session_registration" in names
 
 
-def test_role_is_legal_reads_off_role_from_child_rows() -> None:
-    # The autopick/select legality gate reads secondary_roles_json (roles rows).
-    player = DraftPlayer(
-        session_id=1,
-        primary_role="dps",
-        rank_value=4000,
-        roles=[
-            DraftPlayerRole(role="dps", is_secondary=False, priority=0),
-            DraftPlayerRole(role="support", rank_value=2800, is_secondary=True, priority=1),
-        ],
-    )
-    assert role_is_legal(player, HeroClass.support) is True  # declared off-role
-    assert role_is_legal(player, HeroClass.tank) is False  # not playable
-    assert role_is_legal(player, None) is True  # no requested role
+def test_draft_player_role_tables_are_gone() -> None:
+    # The draft's roles snapshot is what went stale; nothing may reintroduce it.
+    assert not hasattr(draft_models, "DraftPlayerRole")
+    assert not hasattr(draft_models, "DraftPlayerRoleHero")
+    assert "draft_player_role" not in {table.name for table in DraftPlayer.metadata.tables.values()}
+
+
+def test_seat_resolves_its_domain_player_through_its_member() -> None:
+    # The one derivation left on the row: the draft's own ACL and audit rows
+    # join on the member, so ``user_id`` still has to answer.
+    seated = DraftPlayer(session_id=1, registration_id=5, member=WorkspaceMember(player_id=7))
+    assert seated.user_id == 7
+    assert DraftPlayer(session_id=1, registration_id=6).user_id is None
 
 
 def test_team_and_pick_compat_properties() -> None:

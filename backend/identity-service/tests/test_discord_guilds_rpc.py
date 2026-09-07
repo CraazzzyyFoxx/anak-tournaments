@@ -24,6 +24,12 @@ import pytest  # noqa: E402
 from src.core import db  # noqa: E402
 from src.rpc import oauth as oauth_rpc  # noqa: E402
 from src.services.oauth import oauth  # noqa: E402
+from tests._fakes import (  # noqa: E402
+    CapturingBroker as _CapturingBroker,
+    FakeSessionMaker as _FakeSessionMaker,
+    SilentLogger as _SilentLogger,
+    handler as _handler,
+)
 
 
 class _FakeConnection:
@@ -36,44 +42,6 @@ class _FakeProvider:
     def __init__(self, raw_guilds: list[dict]) -> None:
         self.get_user_guilds = AsyncMock(return_value=raw_guilds)
 
-
-class _CapturingBroker:
-    """Collects each subscriber under its queue name so a test can call it directly."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject: str):
-        def decorator(function):
-            self.handlers[subject] = function
-            return function
-
-        return decorator
-
-
-class _SilentLogger:
-    def exception(self, *_args, **_kwargs) -> None:
-        return None
-
-
-def _handler(module, subject: str):
-    broker = _CapturingBroker()
-    module.register(broker, _SilentLogger())
-    return broker.handlers[subject]
-
-
-class _FakeSessionMaker:
-    def __init__(self, session: object) -> None:
-        self._session = session
-
-    def __call__(self) -> _FakeSessionMaker:
-        return self
-
-    async def __aenter__(self) -> object:
-        return self._session
-
-    async def __aexit__(self, *_exc) -> bool:
-        return False
 
 
 # --- service layer ----------------------------------------------------------

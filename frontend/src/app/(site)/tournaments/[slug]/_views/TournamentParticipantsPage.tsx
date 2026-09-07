@@ -25,7 +25,9 @@ import {
   XCircle,
   Tv,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  LayoutGrid,
+  Table2
 } from "lucide-react";
 
 import {
@@ -39,7 +41,15 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { FilterChip } from "@/components/ui/filter-chip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { cn, hexToRgba } from "@/lib/utils";
+import { activeRequirements, formatAdmissionReason, formatRequirementName } from "@/lib/admission";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { isPhaseWindowActive } from "@/lib/tournament-status";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
@@ -57,6 +67,7 @@ import {
   getRoleLabel,
   useHeroesMap
 } from "./_components/participantsColumns";
+import ParticipantsPool, { poolDivisionOptions } from "./_components/ParticipantsPool";
 import {
   PARTICIPANT_SEARCH_MAX_LENGTH,
   claimCheckInPrompt,
@@ -71,7 +82,8 @@ import {
   subscribeParticipantColumnsStorage,
   updateParticipantUrlState,
   writeStoredParticipantColumnIds,
-  type ParticipantUrlUpdate
+  type ParticipantUrlUpdate,
+  type ParticipantView
 } from "./_components/participants-url-state";
 import { useParticipantSearchInput } from "./_components/useParticipantSearchInput";
 import VirtualParticipantsList from "./_components/VirtualParticipantsList";
@@ -86,6 +98,8 @@ import { formatSubroleSlug } from "@/lib/roles";
 import { TournamentParticipantsSkeleton } from "../_components/TournamentSkeletons";
 import { TournamentPageState } from "../_components/TournamentPageState";
 import { useTournamentQuery } from "../_hooks/useTournamentClientData";
+import { ViewSegment } from "../_components/ViewSegment";
+import { usePermissions } from "@/hooks/usePermissions";
 import styles from "../TournamentDetail.module.css";
 
 // ---------------------------------------------------------------------------
@@ -199,6 +213,10 @@ interface RegistrationStep {
   key: string;
   label: string;
   tone: RegistrationStepTone;
+  /** The reader is the one who can clear this step. Set only for requirement
+   *  steps whose reason carries `actor: "player"`; an organizer's
+   *  misconfiguration or a provider outage stays plain text. */
+  actionable?: boolean;
 }
 
 /** Statuses that permanently take the registration out of the tournament. */
@@ -210,6 +228,24 @@ const CHECK_IN_OVER_TOURNAMENT_STATUSES = new Set<string>([
   "completed",
   "archived"
 ]);
+
+/** Team formations whose roster is a player pool rather than a list of teams. */
+const POOL_TEAM_FORMATIONS: Record<string, true> = { balancer: true, draft: true };
+
+/** Organizer-only columns: private notes and smurf tags — the two fields the
+ *  organizer writes about a player rather than reads off them. Filtered out of
+ *  the column CONFIG rather than blanked per cell, so they leave the table, the
+ *  search and the column picker together.
+ *
+ *  Check-in, the subscription verdict and the balancer status are deliberately
+ *  NOT here: all three are the registration's own public state — "am I in, and
+ *  what is still missing" is the question this section is opened with, and the
+ *  public read already ships `checked_in`, `subscription_outcome`, `admission`
+ *  and `balancer_status` on every row. */
+const ADMIN_ONLY_COLUMN_IDS: Record<string, true> = {
+  notes: true,
+  smurf_tags: true
+};
 
 function RegistrationStepMarker({ tone }: Readonly<{ tone: RegistrationStepTone }>) {
   switch (tone) {
@@ -282,9 +318,7 @@ function MyRegistrationCard({
   onWithdraw,
   isCheckingIn,
   isWithdrawing,
-  tournament,
-  requireOpenProfile,
-  requireSubscription
+  tournament
 }: Readonly<{
   registration: Registration;
   canCheckIn: boolean;
@@ -293,8 +327,6 @@ function MyRegistrationCard({
   isCheckingIn: boolean;
   isWithdrawing: boolean;
   tournament: Tournament;
-  requireOpenProfile: boolean;
-  requireSubscription: boolean;
 }>) {
   const t = useTranslations();
   const tSlot = useTranslations("rosterShape.slotCodes");
@@ -356,54 +388,55 @@ function MyRegistrationCard({
   // drafted against a confirmed attendee list (backend returns 409 too).
   const canWithdraw =
     !isCheckedIn && (registration.status === "pending" || registration.status === "approved");
-  // "ready" is the terminal balancer state: the organizers added the player to
-  // the pool and assigned a rank. Anything else (not_in_balancer, incomplete,
-  // custom slugs, missing field) means the rank is still pending.
-  const balancerReady = registration.balancer_status === "ready";
+  // D3: `ready` is the server's own "the data is complete" — approved AND holding
+  // a rank in the balancer pool. It is deliberately NOT a requirement and is
+  // never spent by check-in, which is why it travels beside the decision rather
+  // than inside `requirements`. Read from there rather than re-tested against
+  // `balancer_status === "ready"`: that literal was the last raw admission input
+  // this card derived anything from, and it disagreed with the server whenever a
+  // ranked player had not been approved yet.
+  const balancerReady = registration.admission.ready;
 
-  // Registration journey: submitted -> review/approved -> profile visibility
-  // (when required) -> balancing (rank assignment) -> check-in.
-  const profileStep: RegistrationStep | null = requireOpenProfile
-    ? {
-        key: "profile",
-        label:
-          registration.profiles_open === true
-            ? t("common.profileOpen")
-            : registration.profiles_open === false
-              ? t("common.profileClosed")
-              : t("common.profileNotChecked"),
+  // Registration journey: submitted -> review/approved -> one step per active
+  // requirement -> balancing (rank assignment) -> check-in.
+  //
+  // ONE map over what the server sent, not two hand-written blocks behind two
+  // `require_*` flags. Those blocks were the sixth and seventh re-derivations of
+  // the admission rule, and a third requirement would have added an eighth.
+  // `not_applicable` verdicts are dropped here rather than server-side: the list
+  // ships whole so that this is the only place that decides what to show.
+  const requirementSteps: RegistrationStep[] = activeRequirements(registration.admission).map(
+    (requirement) => {
+      // A `satisfied` verdict can still carry reasons — under subscription `any`
+      // mode every losing provider contributes one — so its label must come from
+      // the requirement's name, never from a reason that no longer applies.
+      const reason = requirement.state === "satisfied" ? null : (requirement.reasons[0] ?? null);
+      return {
+        key: `requirement:${requirement.key}`,
+        label: reason
+          ? formatAdmissionReason(t, reason)
+          : formatRequirementName(t, requirement.key),
+        // Only `blocked` is a failure. `undetermined` is the requirement failing
+        // OPEN — a provider outage or an unfinished rank collection — and drawing
+        // it red would tell a player they are out when they are not.
         tone:
-          registration.profiles_open === true
+          requirement.state === "satisfied"
             ? "done"
-            : registration.profiles_open === false
+            : requirement.state === "blocked"
               ? "failed"
               : isTerminal
                 ? "idle"
-                : "active"
-      }
-    : null;
-
-  // Subscription step: only a CONFIRMED refusal is a failure. An undetermined
-  // verdict shows as still-pending, matching the gate that fails open.
-  const subscriptionStep: RegistrationStep | null = requireSubscription
-    ? {
-        key: "subscription",
-        label:
-          registration.subscription_outcome === "satisfied"
-            ? t("common.subscription.satisfied")
-            : registration.subscription_outcome === "refused"
-              ? t("common.subscription.refused")
-              : t("common.subscription.undetermined"),
-        tone:
-          registration.subscription_outcome === "satisfied"
-            ? "done"
-            : registration.subscription_outcome === "refused"
-              ? "failed"
-              : isTerminal
-                ? "idle"
-                : "active"
-      }
-    : null;
+                : "active",
+        // Only the player's own reasons get the call-to-action treatment. An
+        // organizer's misconfiguration or a provider outage is not theirs to fix,
+        // and inviting them to try is worse than saying nothing. The action
+        // itself lives in the copy (the `player` messages are imperative) rather
+        // than in a link: a per-code route map would be twenty-four guesses, and
+        // "make your career profile public" is not even on this site.
+        actionable: reason?.actor === "player"
+      };
+    }
+  );
 
   // Check-in is the one step whose marker has four distinct outcomes, so it is
   // resolved here rather than inline: a completed check-in wins outright, a dead
@@ -438,8 +471,7 @@ function MyRegistrationCard({
             : t("registration.myCard.steps.review"),
       tone: isApproved || isCheckedIn ? "done" : isTerminal ? "failed" : "active"
     },
-    ...(profileStep ? [profileStep] : []),
-    ...(subscriptionStep ? [subscriptionStep] : []),
+    ...requirementSteps,
     {
       key: "balancing",
       label: t("registration.myCard.steps.balancing"),
@@ -592,7 +624,10 @@ function MyRegistrationCard({
               className="inline-flex items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--aqt-rose)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_5%,transparent)] px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--aqt-rose)] transition-all hover:border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--aqt-rose)_10%,transparent)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
               {isWithdrawing && (
-                <Loader2 className="mr-1 size-3 animate-spin motion-reduce:animate-none" aria-hidden />
+                <Loader2
+                  className="mr-1 size-3 animate-spin motion-reduce:animate-none"
+                  aria-hidden
+                />
               )}
               {isWithdrawing ? t("common.withdrawing") : t("common.withdraw")}
             </button>
@@ -641,8 +676,14 @@ function MyRegistrationCard({
                   step.tone === "done" && "text-[color:var(--aqt-emerald)]",
                   step.tone === "active" && "font-medium text-[color:var(--aqt-amber)]",
                   step.tone === "failed" && "text-[color:var(--aqt-rose)]",
-                  step.tone === "idle" && "text-[color:var(--aqt-fg-dim)]"
+                  step.tone === "idle" && "text-[color:var(--aqt-fg-dim)]",
+                  // The affordance for "this one is yours": emphasis plus an
+                  // underline, on a label already phrased as an instruction.
+                  step.actionable &&
+                    step.tone !== "done" &&
+                    "font-semibold underline decoration-dotted underline-offset-2"
                 )}
+                title={step.actionable ? t("admission.playerActionable") : undefined}
               >
                 {step.label}
               </span>
@@ -719,7 +760,10 @@ function MyRegistrationCard({
                 )}
                 {registration.discord_nick && (
                   <div className="flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-2 py-1">
-                    <DiscordIcon aria-hidden className="size-3.5 text-[color:var(--aqt-brand-discord)]" />
+                    <DiscordIcon
+                      aria-hidden
+                      className="size-3.5 text-[color:var(--aqt-brand-discord)]"
+                    />
                     <span className="text-[color:var(--aqt-fg-muted)]">
                       {registration.discord_nick}
                     </span>
@@ -727,7 +771,10 @@ function MyRegistrationCard({
                 )}
                 {registration.twitch_nick && (
                   <div className="flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-2 py-1">
-                    <TwitchIcon aria-hidden className="size-3.5 text-[color:var(--aqt-brand-twitch)]" />
+                    <TwitchIcon
+                      aria-hidden
+                      className="size-3.5 text-[color:var(--aqt-brand-twitch)]"
+                    />
                     <span className="text-[color:var(--aqt-fg-muted)]">
                       {registration.twitch_nick}
                     </span>
@@ -890,11 +937,17 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
   // carries no team-registration flag.
   const hasTeams = useMemo(() => registrations.some((reg) => reg.team != null), [registrations]);
 
-  // Dynamic columns
-  const allColumns = useMemo(
-    () => buildParticipantColumns(form, t, locale, divisionGrid, heroesMap, hasTeams),
-    [form, t, locale, divisionGrid, heroesMap, hasTeams]
-  );
+  // Dynamic columns. Organizer-only columns are dropped from the config here,
+  // which is the single place the table, the search and the column picker all
+  // read — a per-cell blank would still leak the column heading and the filter.
+  const { canAccessPermission } = usePermissions();
+  const canReadOrganizerColumns = canAccessPermission("registration.read", tournament.workspace_id);
+  const allColumns = useMemo(() => {
+    const columns = buildParticipantColumns(form, t, locale, divisionGrid, heroesMap, hasTeams);
+    return canReadOrganizerColumns
+      ? columns
+      : columns.filter((column) => !ADMIN_ONLY_COLUMN_IDS[column.id]);
+  }, [canReadOrganizerColumns, form, t, locale, divisionGrid, heroesMap, hasTeams]);
 
   // Status counts + chips present in the data.
   const statusCounts = useMemo(() => {
@@ -986,19 +1039,31 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
     setActiveSearchParams(searchParamsString);
   }, [searchParamsString]);
 
+  // The table is the default everywhere: it answers "is my registration in and
+  // what is its state" for every reader, which is what the section is opened
+  // for. The by-role pool is the second read, offered only where a pool exists
+  // (balancer/draft) — team registration has no pool to show.
+  const hasPoolView = POOL_TEAM_FORMATIONS[tournament.team_formation] === true;
+  const defaultView: ParticipantView = "table";
+
   const participantUrl = useMemo(
     () =>
       readParticipantUrlState(
         new URLSearchParams(activeSearchParams),
         allowedStatuses,
         allColumns,
-        storedColumnIds
+        storedColumnIds,
+        defaultView
       ),
-    [activeSearchParams, allColumns, allowedStatuses, storedColumnIds]
+    [activeSearchParams, allColumns, allowedStatuses, defaultView, storedColumnIds]
   );
   const latestParamsRef = useRef(searchParamsString);
   const searchQuery = participantUrl.state.search;
   const statusFilter = participantUrl.state.status as StatusFilter;
+  const divisionFilter = participantUrl.state.division;
+  // `view=pool` in the URL of a team-registration tournament means nothing:
+  // that roster has no pool to show.
+  const view: ParticipantView = hasPoolView ? participantUrl.state.view : "table";
   const displayedStatuses = useMemo(
     () =>
       statusFilter !== "all" && !presentStatuses.includes(statusFilter)
@@ -1020,14 +1085,14 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
     [allColumns, visibleColumnIdSet]
   );
 
-  // The hero catalogue backs only the top_heroes cells, so its request stays
-  // unsent while that column is hidden. Latched on: toggling the column off
-  // must not discard a catalogue the user can re-reveal in one click.
+  // The hero catalogue backs the top_heroes cells and every pool row, so its
+  // request stays unsent while neither is on screen. Latched on: toggling the
+  // column off must not discard a catalogue the user can re-reveal in one click.
   useEffect(() => {
-    if (visibleColumnIdSet.has("top_heroes")) {
+    if (view === "pool" || visibleColumnIdSet.has("top_heroes")) {
       setNeedsHeroes(true);
     }
-  }, [visibleColumnIdSet]);
+  }, [view, visibleColumnIdSet]);
 
   useEffect(() => {
     latestParamsRef.current = searchParamsString;
@@ -1139,9 +1204,10 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
       participantResultsTransitionSignature({
         search: searchQuery,
         status: statusFilter,
+        division: divisionFilter,
         visibleColumnIds
       }),
-    [searchQuery, statusFilter, visibleColumnIds]
+    [divisionFilter, searchQuery, statusFilter, visibleColumnIds]
   );
   useEffect(() => {
     if (previousResultsSignatureRef.current === null) {
@@ -1175,6 +1241,10 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
 
   const trueEmpty = listQuery.data !== undefined && registrations.length === 0;
   const filteredEmpty = !trueEmpty && filtered.length === 0;
+  const divisionOptions = useMemo(
+    () => (view === "pool" ? poolDivisionOptions(registrations, divisionGrid) : []),
+    [divisionGrid, registrations, view]
+  );
 
   if (listQuery.isPending && listQuery.data === undefined) {
     return <TournamentParticipantsSkeleton />;
@@ -1196,8 +1266,6 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           isCheckingIn={checkInMutation.isPending}
           isWithdrawing={withdrawMutation.isPending}
           tournament={tournament}
-          requireOpenProfile={formQuery.data?.require_open_profile ?? false}
-          requireSubscription={formQuery.data?.require_subscription ?? false}
         />
       )}
 
@@ -1285,61 +1353,143 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
         </AlertDialogContent>
       </AlertDialog>
 
-      <p aria-atomic="true" aria-live="polite" className="sr-only">
-        {t("tournamentDetail.participants.resultCount", { count: filtered.length })}
-      </p>
+      {view === "table" && (
+        <p aria-atomic="true" aria-live="polite" className="sr-only">
+          {t("tournamentDetail.participants.resultCount", { count: filtered.length })}
+        </p>
+      )}
 
-      {/* Status filter chips + search + column picker */}
+      {/* One toolbar for both views, two clusters: what you are looking at on
+          the left (view switch, status chips), how you are narrowing it on the
+          right (search, division, columns). The switch stays put when the view
+          changes — `.filter-search` owns the single `auto` margin between the
+          clusters, and a second one would scatter the controls across the bar. */}
       {!trueEmpty && (
-        <div className="filters" role="group" aria-label={t("common.filters")} ref={resultsHeadingRef}>
-          <FilterChip
-            active={statusFilter === "all"}
-            count={registrations.length}
-            onClick={() => navigateParticipantUrl({ type: "status", value: "all" })}
-          >
-            {t("common.all")}
-          </FilterChip>
-          {displayedStatuses.map((status) => {
-            const meta = statusMetaMap[status];
-            return (
-              <FilterChip
-                key={status}
-                active={statusFilter === status}
-                count={statusCounts[status] ?? 0}
-                dotColor={meta?.dot ?? "var(--aqt-fg-dim)"}
-                onClick={() =>
-                  navigateParticipantUrl({
-                    type: "status",
-                    value: statusFilter === status ? "all" : status
-                  })
+        <div
+          className="filters"
+          role="group"
+          aria-label={t("common.filters")}
+          ref={resultsHeadingRef}
+        >
+          {hasPoolView && (
+            <ViewSegment<ParticipantView>
+              param="view"
+              defaultValue={defaultView}
+              label={t("tournamentDetail.participantsPool.viewLabel")}
+              options={[
+                {
+                  value: "table",
+                  label: <Table2 aria-hidden width={14} height={14} />,
+                  ariaLabel: t("tournamentDetail.participantsPool.view.table")
+                },
+                {
+                  value: "pool",
+                  label: <LayoutGrid aria-hidden width={14} height={14} />,
+                  ariaLabel: t("tournamentDetail.participantsPool.view.pool")
                 }
+              ]}
+            />
+          )}
+          {view === "table" && (
+            <>
+              <FilterChip
+                active={statusFilter === "all"}
+                count={registrations.length}
+                onClick={() => navigateParticipantUrl({ type: "status", value: "all" })}
               >
-                {meta?.name ?? status}
+                {t("common.all")}
               </FilterChip>
-            );
-          })}
+              {displayedStatuses.map((status) => {
+                const meta = statusMetaMap[status];
+                return (
+                  <FilterChip
+                    key={status}
+                    active={statusFilter === status}
+                    count={statusCounts[status] ?? 0}
+                    dotColor={meta?.dot ?? "var(--aqt-fg-dim)"}
+                    onClick={() =>
+                      navigateParticipantUrl({
+                        type: "status",
+                        value: statusFilter === status ? "all" : status
+                      })
+                    }
+                  >
+                    {meta?.name ?? status}
+                  </FilterChip>
+                );
+              })}
+            </>
+          )}
           <div className="filter-search">
             <Search size={13} aria-hidden />
             <input
-              aria-label={t("common.searchParticipants")}
+              aria-label={
+                view === "pool"
+                  ? t("tournamentDetail.participantsPool.searchLabel")
+                  : t("common.searchParticipants")
+              }
               defaultValue={searchQuery}
               maxLength={PARTICIPANT_SEARCH_MAX_LENGTH}
               onChange={handleParticipantSearchChange}
-              placeholder={t("common.searchParticipants")}
+              placeholder={
+                view === "pool"
+                  ? t("tournamentDetail.participantsPool.searchLabel")
+                  : t("common.searchParticipants")
+              }
               ref={participantSearchInputRef}
             />
           </div>
-          <ColumnPicker
-            columns={allColumns}
-            visibility={visibility}
-            onToggle={toggleColumn}
-            onReset={resetToDefaults}
-          />
+          {view === "pool" && divisionOptions.length > 0 && (
+            <Select
+              value={divisionFilter === null ? "all" : String(divisionFilter)}
+              onValueChange={(value) =>
+                navigateParticipantUrl({
+                  type: "division",
+                  value: value === "all" ? null : Number(value)
+                })
+              }
+            >
+              <SelectTrigger
+                aria-label={t("tournamentDetail.participantsPool.divisionFilterLabel")}
+                className="filter-sort h-8 w-[10.5rem] shadow-none focus:ring-0 focus:ring-offset-0"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  {t("tournamentDetail.participantsPool.allDivisions")}
+                </SelectItem>
+                {divisionOptions.map((division) => (
+                  <SelectItem key={division} value={String(division)}>
+                    {t("tournamentDetail.participantsPool.divisionOption", { division })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {view === "table" && (
+            <ColumnPicker
+              columns={allColumns}
+              visibility={visibility}
+              onToggle={toggleColumn}
+              onReset={resetToDefaults}
+            />
+          )}
         </div>
       )}
 
       {/* Participants list */}
-      {filtered.length > 0 ? (
+      {view === "pool" ? (
+        <ParticipantsPool
+          registrations={registrations}
+          rosterShape={tournament.roster_shape}
+          divisionGrid={divisionGrid}
+          heroesMap={heroesMap}
+          search={searchQuery}
+          division={divisionFilter}
+          onResetFilters={() => navigateParticipantUrl({ type: "reset" })}
+        />
+      ) : filtered.length > 0 ? (
         <VirtualParticipantsList
           allColumns={allColumns}
           expandedIds={expandedIds}

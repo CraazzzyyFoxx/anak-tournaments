@@ -10,13 +10,18 @@ import { describe, expect, it } from "vitest";
 import type { PickBanConfig, Stage } from "@/types/tournament.types";
 
 import {
+  alignSlots,
   effectiveSequence,
   emptyPickBanDraft,
+  fanOutRoundDrafts,
   findScopeCollision,
+  isRulesTemplate,
   pickBanDraftFromConfig,
   pickBanDraftToInput,
   protectHasNoStep,
   resolveSeriesLength,
+  resolveSlotCount,
+  roundSlotsForStage,
   roundsPlayed,
   stageRoundOptions,
   validatePickBanDraft,
@@ -169,8 +174,12 @@ describe("validation mirrors what the server would reject", () => {
     expect(validatePickBanDraft(draft(), 3)).toEqual([]);
   });
 
-  it("reports an empty pool", () => {
-    expect(validatePickBanDraft(draft({ itemIds: [] }), 3)).toEqual([{ key: "emptyPool" }]);
+  // A pool-less draft is a rules template, not a rejection: it is how the rules
+  // of a whole tournament are authored once for narrower scopes to inherit.
+  it("accepts an empty pool as a rules template", () => {
+    expect(validatePickBanDraft(draft({ itemIds: [] }), 3)).toEqual([]);
+    expect(isRulesTemplate(draft({ itemIds: [] }))).toBe(true);
+    expect(isRulesTemplate(draft())).toBe(false);
   });
 
   it("reports a custom order with no steps", () => {
@@ -207,10 +216,14 @@ describe("validation mirrors what the server would reject", () => {
     ).toEqual([{ key: "sequenceLongerThanPool", values: { steps: 3, items: 2 } }]);
   });
 
-  it("reports slot mode with no groups, and a group with nothing to ban", () => {
-    expect(validatePickBanDraft(draft({ mode: "slots", slots: [] }), 3)).toEqual([
-      { key: "emptySlots" },
-    ]);
+  it("accepts groups with no candidates as a template, and reports a half-filled one", () => {
+    expect(validatePickBanDraft(draft({ mode: "slots", slots: [] }), 3)).toEqual([]);
+    expect(
+      validatePickBanDraft(
+        draft({ mode: "slots", slots: [{ candidates: [], reserveItemId: null }] }),
+        3
+      )
+    ).toEqual([]);
     expect(
       validatePickBanDraft(
         draft({
@@ -266,6 +279,179 @@ describe("scope resolution", () => {
         undefined
       ).source
     ).toBe("variesByRound");
+  });
+
+  // 2026-09-05: a Bo5 grand final was previewed as Bo3, so its slot pool got
+  // three map groups instead of five. `best_of.final` only outranks `default`
+  // for the round that IS the final, and `round === max_rounds` cannot name it:
+  // double elimination's grand final is `upperRounds + 1` off the team count,
+  // while `max_rounds` is an independent planning field a new stage defaults
+  // to 5. The bracket projection knows which round it is.
+  it("gives a double elimination's grand final the length `final` sets", () => {
+    const playoffs = stage({
+      id: 10,
+      stage_type: "double_elimination",
+      // Four teams in the upper bracket: semifinal, final, then grand final as
+      // round 3 -- two short of `max_rounds`.
+      max_rounds: 5,
+      items: [
+        {
+          id: 100,
+          stage_id: 10,
+          name: "Upper bracket",
+          type: "bracket",
+          order: 0,
+          inputs: Array.from({ length: 4 }, (_, index) => ({
+            id: 200 + index,
+            stage_item_id: 100,
+            slot: index + 1,
+            input_type: "final",
+            team_id: index + 1,
+            source_stage_item_id: null,
+            source_position: null,
+          })),
+        },
+      ],
+      settings_json: { best_of: { default: 3, final: 5 } },
+    } as unknown as Partial<Stage>);
+
+    expect(resolveSeriesLength(10, 3, [playoffs], [])).toEqual({ bestOf: 5, source: "round" });
+    // The rounds before it keep the stage default, and so does the lower bracket.
+    expect(resolveSeriesLength(10, 2, [playoffs], []).bestOf).toBe(3);
+    expect(resolveSeriesLength(10, -1, [playoffs], []).bestOf).toBe(3);
+    // The groups a round scope's slot pool needs follow it.
+    expect(resolveSlotCount(10, 3, [playoffs], [])).toBe(5);
+  });
+});
+
+// A slot pool is sized by the bracket, never by hand: the server plays the
+// first `best_of` groups and keeps the room shut when there are fewer
+// (`REASON_SLOT_COUNT_MISMATCH`), so a scope covering matches of different
+// lengths needs the LONGEST one's count -- the preview length would leave the
+// final unplayable.
+describe("round groups are counted from the bracket", () => {
+  it("takes a round scope's exact series length", () => {
+    expect(resolveSlotCount(10, 1, [stage({ id: 10 })], [{ stage_id: 10, round: 1, best_of: 2 }])).toBe(
+      2
+    );
+  });
+
+  it("covers the longest match of a stage-wide or tournament-wide scope", () => {
+    const encounters = [
+      { stage_id: 10, round: 1, best_of: 3 },
+      { stage_id: 10, round: 2, best_of: 5 },
+      { stage_id: 11, round: 1, best_of: 7 },
+    ];
+
+    expect(resolveSlotCount(10, null, [stage({ id: 10 })], encounters)).toBe(5);
+    expect(resolveSlotCount(null, null, [stage({ id: 10 })], encounters)).toBe(7);
+  });
+
+  it("reads the stage's configuration before the bracket exists, final included", () => {
+    const stages = [stage({ id: 10, settings_json: { best_of: { default: 3, final: 5 } } })];
+
+    expect(resolveSlotCount(10, null, stages, [])).toBe(5);
+    expect(resolveSlotCount(10, null, stages, undefined)).toBe(5);
+  });
+
+  it("resizes a stored pool to that count, keeping the groups that survive", () => {
+    const slots = [
+      { candidates: [1, 2], reserveItemId: 9 },
+      { candidates: [3, 4], reserveItemId: null },
+    ];
+
+    expect(alignSlots(slots, 2)).toBe(slots);
+    expect(alignSlots(slots, 1)).toEqual([slots[0]]);
+    expect(alignSlots(slots, 3)).toEqual([...slots, { candidates: [], reserveItemId: null }]);
+  });
+});
+
+// A stage plays several rounds and a regulation routinely gives each its own
+// maps. The store has no round dimension inside a config -- the scope key is
+// `(stage, round)` -- so the stage screen holds every round at once and a save
+// is one upsert per round.
+describe("a stage's rounds each carry their own groups", () => {
+  const slotConfig = (round: number | null, candidates: number[][]) =>
+    config({
+      id: round == null ? 1 : 100 + round,
+      stage_id: 10,
+      round,
+      mode: "slots",
+      item_ids: [],
+      slots: candidates.map((group, index) => ({
+        position: index + 1,
+        reserve_item_id: null,
+        candidates: group,
+      })),
+    });
+
+  it("authors a round from its own config and the rest from what they inherit", () => {
+    const sections = roundSlotsForStage({
+      kind: "map",
+      stageId: 10,
+      rounds: [1, 2],
+      configs: [slotConfig(2, [[7, 8], [8, 9]])],
+      fallback: [{ candidates: [1, 2], reserveItemId: null }],
+      slotCountFor: () => 2,
+    });
+
+    expect(sections[0].round).toBe(1);
+    // Round 1 has no config: it starts from the stage's groups, padded to what
+    // its bracket plays rather than left short.
+    expect(sections[0].slots).toEqual([
+      { candidates: [1, 2], reserveItemId: null },
+      { candidates: [], reserveItemId: null },
+    ]);
+    expect(sections[1].slots.map((slot) => slot.candidates)).toEqual([
+      [7, 8],
+      [8, 9],
+    ]);
+  });
+
+  it("fans one stage draft out into a config per round, scoped to it", () => {
+    const stageDraft = draft({
+      mode: "slots",
+      stageId: 10,
+      round: null,
+      itemIds: [],
+      roundSlots: [
+        { round: 1, slots: [{ candidates: [1, 2], reserveItemId: null }] },
+        { round: -1, slots: [{ candidates: [3, 4], reserveItemId: null }] },
+      ],
+    });
+
+    const fanned = fanOutRoundDrafts(stageDraft);
+
+    expect(fanned.map((one) => one.round)).toEqual([1, -1]);
+    expect(fanned.map((one) => one.slots[0].candidates)).toEqual([
+      [1, 2],
+      [3, 4],
+    ]);
+    // Each one is a config of its own, and none of them carries the round
+    // dimension any further.
+    expect(fanned.every((one) => one.configId == null && one.roundSlots.length === 0)).toBe(true);
+    expect(pickBanDraftToInput(fanned[1], 3).round).toBe(-1);
+  });
+
+  it("leaves a draft with no round dimension alone", () => {
+    const single = draft({ mode: "slots", slots: [{ candidates: [1, 2], reserveItemId: null }] });
+
+    expect(fanOutRoundDrafts(single)).toEqual([single]);
+  });
+
+  it("reports an underfilled group per round, since each round is saved on its own", () => {
+    const stageDraft = draft({
+      mode: "slots",
+      stageId: 10,
+      roundSlots: [
+        { round: 1, slots: [{ candidates: [1, 2], reserveItemId: null }] },
+        { round: 2, slots: [{ candidates: [1], reserveItemId: null }] },
+      ],
+    });
+
+    expect(validatePickBanDraft(stageDraft, 3)).toEqual([
+      { key: "roundSlotTooFewCandidates", values: { round: 2, slot: 1 } },
+    ]);
   });
 });
 

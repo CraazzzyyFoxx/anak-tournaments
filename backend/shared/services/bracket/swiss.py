@@ -5,18 +5,26 @@ The generator keeps Monrad ordering as the primary preference:
 - same-score opponents are preferred over float-down pairings
 - within a score group, top-half vs bottom-half pairings are preferred
 
-Re-matches are never allowed. When a full round cannot be built without a
-re-match, the Swiss scope must end early.
+A round is chosen so the *next* round stays pairable: a locally fine pairing
+can strand the field in a state where no rematch-free round exists at all (six
+teams, round 3). When the field has played itself into a corner anyway, the
+round is built with the fewest rematches a greedy pass can manage rather than
+leaving anyone idle -- a full field is worth more than a first meeting.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
-from functools import cache
+from itertools import islice
 
 from .types import BracketSkeleton, Pairing
 
 _NON_CANONICAL_DISTANCE = 10_000
+# How many rematch-free rounds to weigh before taking the best-ranked one as is.
+# Monrad order puts the good pairings first, so the cap only bounds a field that
+# is nearly played out; the fallback keeps such a round valid, just not vetted.
+_LOOKAHEAD_BUDGET = 200
 
 
 class SwissPairingImpossibleError(ValueError):
@@ -136,46 +144,78 @@ def _pair_priority(
     )
 
 
-def _find_pairings(
+def _has_perfect_matching(team_ids: list[int], played_pairs: set[frozenset[int]]) -> bool:
+    """Can every team still be given an unplayed opponent?"""
+
+    def _search(remaining: tuple[int, ...]) -> bool:
+        if not remaining:
+            return True
+        anchor = remaining[0]
+        for candidate in remaining[1:]:
+            if frozenset({anchor, candidate}) in played_pairs:
+                continue
+            if _search(tuple(team_id for team_id in remaining[1:] if team_id != candidate)):
+                return True
+        return False
+
+    return _search(tuple(team_ids))
+
+
+def _keeps_next_round_pairable(
+    team_ids: list[int],
+    played_pairs: set[frozenset[int]],
+    pair_order: list[tuple[int, int]],
+) -> bool:
+    """Would another rematch-free round still exist after playing this one?
+
+    Only an even field is checked: with an odd one the bye absorbs the team that
+    has run out of opponents, so the round after is always pairable. A field that
+    has played itself out entirely is fine too -- there is no next round to save.
+    """
+    if len(team_ids) % 2:
+        return True
+
+    after = played_pairs | {frozenset(pair) for pair in pair_order}
+    if len(after) >= len(team_ids) * (len(team_ids) - 1) // 2:
+        return True
+    return _has_perfect_matching(team_ids, after)
+
+
+def _iter_pairings(
     team_ids: list[int],
     *,
     metadata: dict[int, _TeamMeta],
     played_pairs: set[frozenset[int]],
-) -> list[tuple[int, int]] | None:
-    ordered_team_ids = tuple(team_ids)
+    allow_rematches: bool = False,
+) -> Iterator[list[tuple[int, int]]]:
+    """Rounds for this field, best Monrad pairing first.
 
-    @cache
-    def _search(remaining: tuple[int, ...]) -> tuple[tuple[int, int], ...] | None:
+    Rematch-free by default. With ``allow_rematches`` a played pair is still
+    the last thing considered for any anchor, so the first round yielded uses
+    as few of them as a greedy pass can manage.
+    """
+
+    def _priority(anchor_team_id: int, candidate_team_id: int) -> tuple[int, ...]:
+        rematch = 1 if frozenset({anchor_team_id, candidate_team_id}) in played_pairs else 0
+        return (rematch, *_pair_priority(anchor_team_id, candidate_team_id, metadata=metadata))
+
+    def _search(remaining: tuple[int, ...]) -> Iterator[tuple[tuple[int, int], ...]]:
         if not remaining:
-            return ()
+            yield ()
+            return
 
         anchor_team_id = remaining[0]
-        candidates = sorted(
-            remaining[1:],
-            key=lambda candidate_team_id: _pair_priority(
-                anchor_team_id,
-                candidate_team_id,
-                metadata=metadata,
-            ),
-        )
+        candidates = sorted(remaining[1:], key=lambda candidate: _priority(anchor_team_id, candidate))
 
         for candidate_team_id in candidates:
-            pair_key = frozenset({anchor_team_id, candidate_team_id})
-            if pair_key in played_pairs:
+            if not allow_rematches and frozenset({anchor_team_id, candidate_team_id}) in played_pairs:
                 continue
-
             next_remaining = tuple(team_id for team_id in remaining[1:] if team_id != candidate_team_id)
-            remainder = _search(next_remaining)
-            if remainder is None:
-                continue
-            return ((anchor_team_id, candidate_team_id),) + remainder
+            for remainder in _search(next_remaining):
+                yield ((anchor_team_id, candidate_team_id),) + remainder
 
-        return None
-
-    result = _search(ordered_team_ids)
-    if result is None:
-        return None
-    return list(result)
+    for pairing in _search(tuple(team_ids)):
+        yield list(pairing)
 
 
 def generate_round(
@@ -197,23 +237,34 @@ def generate_round(
     team_ids = [standing.team_id for standing in sorted_teams]
     bye_history = bye_history or set()
 
-    bye_candidate: int | None = None
-    pair_order: list[tuple[int, int]] | None = None
-    for candidate in _bye_candidates(team_ids, bye_history):
-        pairing_standings = [standing for standing in sorted_teams if standing.team_id != candidate]
-        pairing_team_ids = [standing.team_id for standing in pairing_standings]
-        metadata = _build_team_meta(pairing_standings)
-        pair_order = _find_pairings(
-            pairing_team_ids,
-            metadata=metadata,
-            played_pairs=played_pairs,
-        )
-        if pair_order is not None:
-            bye_candidate = candidate
-            break
+    def _pick(allow_rematches: bool) -> tuple[int | None, list[tuple[int, int]]] | None:
+        first: tuple[int | None, list[tuple[int, int]]] | None = None
+        for candidate in _bye_candidates(team_ids, bye_history):
+            pairing_standings = [standing for standing in sorted_teams if standing.team_id != candidate]
+            pairing_team_ids = [standing.team_id for standing in pairing_standings]
+            metadata = _build_team_meta(pairing_standings)
+            for option in islice(
+                _iter_pairings(
+                    pairing_team_ids,
+                    metadata=metadata,
+                    played_pairs=played_pairs,
+                    allow_rematches=allow_rematches,
+                ),
+                _LOOKAHEAD_BUDGET,
+            ):
+                if first is None:
+                    first = (candidate, option)
+                if _keeps_next_round_pairable(team_ids, played_pairs, option):
+                    return candidate, option
+        return first
 
-    if pair_order is None:
-        raise SwissPairingImpossibleError("Unable to generate a complete Swiss round without rematches")
+    # A rematch-free round is always preferred. Only when the field has played
+    # itself into a corner is one reused, and then the fewest the greedy pass
+    # can manage -- a round where two teams sit idle is worse than a repeat.
+    chosen = _pick(allow_rematches=False) or _pick(allow_rematches=True)
+    if chosen is None:
+        raise SwissPairingImpossibleError("Unable to pair a Swiss round for this field")
+    bye_candidate, pair_order = chosen
 
     pairings = [
         Pairing(

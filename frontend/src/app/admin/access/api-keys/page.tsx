@@ -1,46 +1,30 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Check, Clipboard, KeyRound, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, Clipboard, KeyRound, Plus, Trash2, X } from "lucide-react";
 import { useFormatter } from "next-intl";
 
+import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { InlineEditText } from "@/components/admin/InlineEditText";
+import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog";
+  PermissionPicker,
+  type PermissionCatalogEntry
+} from "@/components/admin/access/PermissionPicker";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
+import { createKebabColumn } from "@/components/admin/kit/kebab-column";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
+import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { TONE_CLASS, TONE_TEXT, type Tone } from "@/components/admin/tone";
+import type { AdminDateFormatter } from "@/components/admin/format-time";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
-import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT, type Tone } from "@/components/admin/tone";
-import type { AdminDateFormatter } from "@/components/admin/format-time";
 import {
   fetchAccountApiKeys,
   useCreateAccountApiKey,
@@ -52,42 +36,20 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { AccountApiKey, ApiKeyConfigPolicy, ApiKeyLimits } from "@/types/auth.types";
+import type { AccountApiKey } from "@/types/auth.types";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const PAGE_SIZE = 20;
 
 /**
- * The catalog wildcard: `resource="*" action="*"`. It grants every permission the
- * owner holds, including ones added to the catalog later, so it is rendered apart
- * from the per-resource groups and toned as destructive.
+ * The catalog wildcard: `resource="*" action="*"`. It grants every permission
+ * the owner holds, including ones added to the catalog later, so the picker
+ * renders it apart from the per-resource groups and locks what it covers.
  */
 const FULL_ACCESS_SCOPE = "admin.*";
 
 /** Scope chips rendered inline in the table before collapsing into a `+N` count. */
 const SCOPE_PREVIEW_COUNT = 2;
-
-const DEFAULT_LIMITS: ApiKeyLimits = {
-  requests_per_minute: 60,
-  jobs_per_day: 100,
-  concurrent_jobs: 2,
-  max_upload_bytes: 10 * 1024 * 1024,
-  max_players: 500
-};
-
-const DEFAULT_POLICY: ApiKeyConfigPolicy = {
-  allowed_keys: [
-    "role_mask",
-    "population_size",
-    "generation_count",
-    "use_captains",
-    "max_result_variants"
-  ],
-  max_values: {
-    population_size: 150,
-    generation_count: 500,
-    max_result_variants: 10
-  }
-};
 
 const EMPTY_COUNTS: AccountApiKeyStatusCounts = { total: 0, active: 0, expired: 0, revoked: 0 };
 
@@ -102,33 +64,13 @@ const STATUS_META: Record<ApiKeyStatus, { label: string; tone: Tone }> = {
 function formatTimestamp(format: AdminDateFormatter, value: string | null | undefined): string {
   if (!value) return "Never";
 
-  return format.dateTime(new Date(value), {
-    dateStyle: "medium",
-    timeStyle: "short"
-  });
-}
-
-function formatBytes(value: number): string {
-  if (value >= 1024 * 1024) return `${Math.round(value / (1024 * 1024))} MiB`;
-  if (value >= 1024) return `${Math.round(value / 1024)} KiB`;
-  return `${value} B`;
-}
-
-function isPastTimestamp(value: string | null | undefined): boolean {
-  if (!value) return false;
-  const timestamp = new Date(value).getTime();
-  return Number.isFinite(timestamp) && timestamp <= Date.now();
-}
-
-function toIsoTimestamp(value: string): string | null {
-  if (!value) return null;
-  const timestamp = new Date(value);
-  return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
+  return format.dateTime(new Date(value), { dateStyle: "medium", timeStyle: "short" });
 }
 
 function getApiKeyStatus(apiKey: AccountApiKey): ApiKeyStatus {
   if (apiKey.revoked_at) return "revoked";
-  if (isPastTimestamp(apiKey.expires_at)) return "expired";
+  const expiresAt = apiKey.expires_at ? new Date(apiKey.expires_at).getTime() : NaN;
+  if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return "expired";
   return "active";
 }
 
@@ -146,31 +88,9 @@ function StatusCell({ status }: Readonly<{ status: ApiKeyStatus }>) {
 }
 
 /**
- * Scope names bucketed by resource prefix (`team.create` → `team`), so a ~90-entry
- * catalog reads as a dozen short groups instead of one unusable column of boxes.
- * `admin.*` is excluded — it is not a member of any resource group.
- */
-function groupScopes(scopes: readonly string[]): { resource: string; scopes: string[] }[] {
-  const groups = new Map<string, string[]>();
-
-  for (const scope of scopes) {
-    if (scope === FULL_ACCESS_SCOPE) continue;
-    const separator = scope.indexOf(".");
-    const resource = separator > 0 ? scope.slice(0, separator) : scope;
-    const bucket = groups.get(resource);
-    if (bucket) bucket.push(scope);
-    else groups.set(resource, [scope]);
-  }
-
-  return [...groups.entries()]
-    .map(([resource, names]) => ({ resource, scopes: names.sort() }))
-    .sort((left, right) => left.resource.localeCompare(right.resource));
-}
-
-/**
- * Granted scopes for one row. Relies on the `TooltipProvider` mounted by the admin
- * layout. A key with no scopes authenticates but fails every permission check, so
- * it is flagged in the danger tone rather than shown as an empty cell.
+ * Granted scopes for one row. Relies on the `TooltipProvider` mounted by the
+ * admin layout. A key with no scopes authenticates but fails every permission
+ * check, so it is flagged in the danger tone rather than shown as empty.
  */
 function ScopesCell({ scopes }: Readonly<{ scopes: readonly string[] }>) {
   if (scopes.length === 0) {
@@ -228,184 +148,31 @@ function ScopesCell({ scopes }: Readonly<{ scopes: readonly string[] }>) {
 }
 
 /**
- * Scope selector for the create dialog. Driven entirely by `available` — the set the
- * server says this user may delegate — so the UI cannot offer a grant the backend
- * would silently drop. Nothing is pre-selected: an inert key is a deliberate choice,
- * never an accident of a default.
+ * Workspace API keys (T2, F15).
+ *
+ * The three dialogs this screen used to mount are down to two: renaming is
+ * inline in the row (`InlineEditText`), revoking is the screen's single
+ * `ConfirmDialog`, and creating is an `EntityFormDialog` whose scope list is
+ * the shared `PermissionPicker` rather than a fourth private implementation of
+ * a checkbox tree.
  */
-function ScopePicker({
-  available,
-  selected,
-  disabled,
-  onToggle
-}: Readonly<{
-  available: readonly string[];
-  selected: readonly string[];
-  disabled: boolean;
-  onToggle: (scope: string, checked: boolean) => void;
-}>) {
-  const fieldId = useId();
-
-  if (available.length === 0) {
-    return (
-      <div className="space-y-1.5">
-        <Label>Scopes</Label>
-        <p className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-          You hold no delegatable permissions in this workspace, so every key you create here would
-          be inert. Ask a workspace admin to grant you the permissions first.
-        </p>
-      </div>
-    );
-  }
-
-  const groups = groupScopes(available);
-  const fullAccessOffered = available.includes(FULL_ACCESS_SCOPE);
-  const fullAccessSelected = selected.includes(FULL_ACCESS_SCOPE);
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <Label>Scopes</Label>
-        <span
-          className={cn(
-            "text-xs tabular-nums",
-            selected.length === 0 ? TONE_TEXT.warning : "text-muted-foreground"
-          )}
-        >
-          {selected.length} selected
-        </span>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Each scope is one permission the key may use, and it can never exceed your own rights in
-        the workspace. Selecting nothing is allowed but creates a key that authenticates and then
-        fails every request.
-      </p>
-      <div className="max-h-56 space-y-3 overflow-y-auto rounded-md border border-border/60 bg-muted/10 p-2">
-        {fullAccessOffered ? (
-          <label
-            htmlFor={`${fieldId}-full`}
-            className={cn(
-              "flex cursor-pointer items-start gap-2 rounded-md border p-2",
-              TONE_CLASS.danger
-            )}
-          >
-            <Checkbox
-              id={`${fieldId}-full`}
-              className="mt-0.5"
-              checked={fullAccessSelected}
-              disabled={disabled}
-              onCheckedChange={(checked) => onToggle(FULL_ACCESS_SCOPE, checked === true)}
-            />
-            <span className="min-w-0">
-              <span className="block font-mono text-xs font-semibold">{FULL_ACCESS_SCOPE}</span>
-              <span className="mt-0.5 block text-xs opacity-90">
-                Full access, including permissions added later. Grant it only to a key you trust as
-                much as your own account.
-              </span>
-            </span>
-          </label>
-        ) : null}
-        {groups.map((group) => (
-          <div key={group.resource} className="space-y-1">
-            <p className={EYEBROW_CLASS}>{group.resource}</p>
-            <div className="grid gap-x-3 gap-y-1 sm:grid-cols-2">
-              {group.scopes.map((scope) => (
-                <label
-                  key={scope}
-                  htmlFor={`${fieldId}-${scope}`}
-                  className={cn(
-                    "flex cursor-pointer items-center gap-2 font-mono text-xs",
-                    fullAccessSelected ? "text-muted-foreground/60" : "text-foreground"
-                  )}
-                >
-                  <Checkbox
-                    id={`${fieldId}-${scope}`}
-                    checked={fullAccessSelected || selected.includes(scope)}
-                    // admin.* already implies every scope, so the individual boxes
-                    // would be a no-op — show them satisfied and lock them instead.
-                    disabled={disabled || fullAccessSelected}
-                    onCheckedChange={(checked) => onToggle(scope, checked === true)}
-                  />
-                  <span className="truncate">{scope}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LimitsText({ limits }: Readonly<{ limits: Partial<ApiKeyLimits> | undefined }>) {
-  const merged: ApiKeyLimits = { ...DEFAULT_LIMITS, ...(limits ?? {}) };
-
-  return (
-    <span className="text-xs tabular-nums text-muted-foreground">
-      {merged.requests_per_minute}/min · {merged.jobs_per_day}/day · {merged.concurrent_jobs}{" "}
-      concurrent · {formatBytes(merged.max_upload_bytes)}
-    </span>
-  );
-}
-
-function PolicyText({ policy }: Readonly<{ policy: Partial<ApiKeyConfigPolicy> | undefined }>) {
-  const merged = {
-    allowed_keys: policy?.allowed_keys ?? DEFAULT_POLICY.allowed_keys,
-    max_values: policy?.max_values ?? DEFAULT_POLICY.max_values
-  };
-  const caps = Object.entries(merged.max_values ?? {});
-  const capSummary =
-    caps.length > 0 ? caps.map(([field, cap]) => `${field} ≤ ${cap}`).join(", ") : "No caps";
-
-  return (
-    <div className="max-w-72 text-xs text-muted-foreground">
-      <p className="truncate">Allowed: {merged.allowed_keys.join(", ") || "None"}</p>
-      <p className="truncate tabular-nums">{capSummary}</p>
-    </div>
-  );
-}
-
-function DefaultPolicyPreview() {
-  return (
-    <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-      <div className="rounded-md border border-border/60 bg-muted/20 p-2">
-        <p className="font-medium text-foreground">Limits</p>
-        <p className="mt-1 tabular-nums">
-          {DEFAULT_LIMITS.requests_per_minute}/min · {DEFAULT_LIMITS.jobs_per_day}/day ·{" "}
-          {DEFAULT_LIMITS.concurrent_jobs} concurrent
-        </p>
-      </div>
-      <div className="rounded-md border border-border/60 bg-muted/20 p-2">
-        <p className="font-medium text-foreground">Policy</p>
-        <p className="mt-1">Allowed keys: {DEFAULT_POLICY.allowed_keys.join(", ")}</p>
-      </div>
-    </div>
-  );
-}
-
 export default function AccessAdminApiKeysPage() {
   const format = useFormatter();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
   const { hasWorkspacePermission, isSuperuser, isWorkspaceAdmin } = usePermissions();
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<number | null>(currentWorkspaceId);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createName, setCreateName] = useState("Balancer API");
-  const [createWorkspaceId, setCreateWorkspaceId] = useState<number | null>(currentWorkspaceId);
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
   const [createExpiresAt, setCreateExpiresAt] = useState("");
-  const [createScopes, setCreateScopes] = useState<string[]>([]);
+  const [createScopes, setCreateScopes] = useState<Set<string>>(new Set());
   const [oneTimeKey, setOneTimeKey] = useState<string | null>(null);
-  const [renameTarget, setRenameTarget] = useState<AccountApiKey | null>(null);
-  const [renameName, setRenameName] = useState("");
-  const [revokeTarget, setRevokeTarget] = useState<AccountApiKey | null>(null);
+  const [copiedSecret, setCopiedSecret] = useState(false);
+  const [pendingRevoke, setPendingRevoke] = useState<AccountApiKey | null>(null);
   const [counts, setCounts] = useState<AccountApiKeyStatusCounts>(EMPTY_COUNTS);
   const [availableScopes, setAvailableScopes] = useState<string[]>([]);
-  const [copiedSecret, setCopiedSecret] = useState(false);
-  const workspaceFilterId = useId();
   const createNameId = useId();
-  const createWorkspaceFieldId = useId();
-  const renameNameId = useId();
   const secretId = useId();
 
   useEffect(() => {
@@ -420,281 +187,165 @@ export default function AccessAdminApiKeysPage() {
       isWorkspaceAdmin(workspace.id) ||
       hasWorkspacePermission(workspace.id, "team.create")
   );
-  const selectedWorkspaceIsManageable =
-    selectedWorkspaceId !== null &&
-    manageableWorkspaces.some((workspace) => workspace.id === selectedWorkspaceId);
-  const currentWorkspaceIsManageable =
-    currentWorkspaceId !== null &&
-    manageableWorkspaces.some((workspace) => workspace.id === currentWorkspaceId);
-  const createWorkspaceIsManageable =
-    createWorkspaceId !== null &&
-    manageableWorkspaces.some((workspace) => workspace.id === createWorkspaceId);
-  const effectiveSelectedWorkspaceId = selectedWorkspaceIsManageable
-    ? selectedWorkspaceId
-    : currentWorkspaceIsManageable
-      ? currentWorkspaceId
-      : (manageableWorkspaces[0]?.id ?? null);
-  const effectiveCreateWorkspaceId = createWorkspaceIsManageable
-    ? createWorkspaceId
-    : effectiveSelectedWorkspaceId;
-  const selectedWorkspace =
-    manageableWorkspaces.find((workspace) => workspace.id === effectiveSelectedWorkspaceId) ?? null;
+
+  const defs = useMemo<FilterDef[]>(
+    () => [
+      {
+        key: "workspace",
+        label: "Workspace",
+        kind: "single",
+        options: manageableWorkspaces.map((workspace) => ({
+          value: String(workspace.id),
+          label: workspace.name
+        }))
+      }
+    ],
+    [manageableWorkspaces]
+  );
+  const filters = useAdminFilters(defs);
+
+  // A key is always scoped to exactly one workspace, so there is no "all"
+  // reading: an absent or unusable chip falls back to the workspace the shell
+  // is already in, then to the first one this account administers.
+  const chipWorkspaceId = Number(filters.values.workspace ?? "");
+  const workspaceId =
+    manageableWorkspaces.find((workspace) => workspace.id === chipWorkspaceId)?.id ??
+    manageableWorkspaces.find((workspace) => workspace.id === currentWorkspaceId)?.id ??
+    manageableWorkspaces[0]?.id ??
+    null;
+  const workspace = manageableWorkspaces.find((entry) => entry.id === workspaceId) ?? null;
 
   const createMutation = useCreateAccountApiKey();
-  const renameMutation = useRenameAccountApiKey(effectiveSelectedWorkspaceId);
-  const revokeMutation = useRevokeAccountApiKey(effectiveSelectedWorkspaceId);
+  const renameMutation = useRenameAccountApiKey(workspaceId);
+  const revokeMutation = useRevokeAccountApiKey(workspaceId);
 
-  const openRenameDialog = (apiKey: AccountApiKey) => {
-    setRenameTarget(apiKey);
-    setRenameName(apiKey.name);
-  };
+  // `available_scopes` is computed per workspace, so moving the chip drops the
+  // draft selection: keeping it would offer the previous workspace's grants.
+  const scopeCatalog: PermissionCatalogEntry[] = availableScopes
+    .filter((scope) => !scope.endsWith(".*"))
+    .map((scope) => {
+      const separator = scope.indexOf(".");
+      return {
+        key: scope,
+        resource: separator > 0 ? scope.slice(0, separator) : scope,
+        action: separator > 0 ? scope.slice(separator + 1) : "*"
+      };
+    });
+  const scopeWildcards = availableScopes.filter((scope) => scope.endsWith(".*"));
 
-  /**
-   * Scopes are relative to one workspace, and `available_scopes` arrives with the
-   * list query for the *selected* workspace. Moving the create target therefore has
-   * to move the list filter too, otherwise the picker would offer the previous
-   * workspace's grants; the chosen scopes are dropped for the same reason.
-   */
-  const changeCreateWorkspace = (workspaceId: number) => {
-    setCreateWorkspaceId(workspaceId);
-    setSelectedWorkspaceId(workspaceId);
-    setCreateScopes([]);
-  };
-
-  const toggleCreateScope = (scope: string, checked: boolean) => {
-    setCreateScopes((current) =>
-      checked
-        ? [...current, scope].sort()
-        : current.filter((selected) => selected !== scope)
-    );
-  };
-
-  const handleCreate = () => {
-    if (createName.trim().length === 0) {
-      notify.error("Name the key before creating it.", {
-        description: 'Use something that says where it is used, such as "Balancer API".'
-      });
-      return;
-    }
-    if (effectiveCreateWorkspaceId === null) {
-      notify.error("Pick a workspace for this key.", {
-        description: "An API key is always scoped to exactly one workspace."
-      });
-      return;
-    }
-    if (createScopes.length === 0) {
-      // Not a blocker: a scope-less key is a legitimate placeholder. It is only
-      // worth saying out loud, because the key will 403 on everything.
-      notify.warning("Creating a key with no scopes.", {
-        description: "It will authenticate but every permission check rejects it."
-      });
-    }
-
-    createMutation.mutate(
+  const columns = useMemo<ColumnDef<AccountApiKey>[]>(
+    () => [
       {
-        workspace_id: effectiveCreateWorkspaceId,
-        expires_at: toIsoTimestamp(createExpiresAt),
-        name: createName.trim(),
-        scopes: createScopes
+        accessorKey: "name",
+        header: "Name",
+        cell: ({ row }) => {
+          const apiKey = row.original;
+          return (
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border/60">
+                <KeyRound aria-hidden className="size-4 text-muted-foreground" />
+              </span>
+              <div className="min-w-0">
+                <InlineEditText
+                  value={apiKey.name}
+                  label={`name of API key ${apiKey.name}`}
+                  canEdit={getApiKeyStatus(apiKey) === "active"}
+                  textClassName="text-sm font-medium"
+                  onSave={(next) =>
+                    renameMutation.mutateAsync(
+                      { id: apiKey.id, name: next },
+                      { onSuccess: () => notify.success("API key renamed") }
+                    )
+                  }
+                />
+                <p className="truncate font-mono text-xs text-muted-foreground">
+                  owt_sk_{apiKey.public_id}_…
+                </p>
+              </div>
+            </div>
+          );
+        }
       },
       {
-        onSuccess: (result) => {
-          setOneTimeKey(result.key);
-          setCopiedSecret(false);
-          setSelectedWorkspaceId(result.api_key.workspace_id);
-          setCreateWorkspaceId(result.api_key.workspace_id);
-          setCreateExpiresAt("");
-          setCreateName("Balancer API");
-          setCreateScopes([]);
-          setIsCreateOpen(false);
-          notify.success("API key created", {
-            description: "Copy the secret now. It will not be shown again."
-          });
-        }
-      }
-    );
-  };
-
-  const handleRename = () => {
-    if (!renameTarget) return;
-    if (renameName.trim().length === 0) {
-      notify.error("Enter a name for this key.", {
-        description: "The name is how you recognise the key in this list."
-      });
-      return;
-    }
-
-    renameMutation.mutate(
-      { id: renameTarget.id, name: renameName.trim() },
+        id: "owner",
+        header: "Owner",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="truncate text-sm">{row.original.owner_username}</span>
+        )
+      },
       {
-        onSuccess: () => {
-          setRenameTarget(null);
-          setRenameName("");
-          notify.success("API key renamed");
-        }
-      }
-    );
-  };
-
-  const handleRevoke = () => {
-    if (!revokeTarget) return;
-
-    revokeMutation.mutate(revokeTarget.id, {
-      onSuccess: () => {
-        setRevokeTarget(null);
-        notify.success("API key revoked");
-      }
-    });
-  };
-
-  const copyOneTimeKey = async () => {
-    if (!oneTimeKey) return;
-    await navigator.clipboard.writeText(oneTimeKey);
-    setCopiedSecret(true);
-    notify.success("API key copied");
-  };
-
-  const columns: ColumnDef<AccountApiKey>[] = [
-    {
-      accessorKey: "name",
-      header: "Name",
-      cell: ({ row }) => {
-        const apiKey = row.original;
-        return (
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20">
-              <KeyRound aria-hidden className="size-4 text-muted-foreground" />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-foreground">{apiKey.name}</p>
-              <p className="truncate font-mono text-xs text-muted-foreground">
-                aqt_sk_{apiKey.public_id}_…
-              </p>
-            </div>
-          </div>
-        );
-      }
-    },
-    {
-      id: "status",
-      header: "Status",
-      enableSorting: false,
-      cell: ({ row }) => <StatusCell status={getApiKeyStatus(row.original)} />
-    },
-    {
-      id: "scopes",
-      header: "Scopes",
-      enableSorting: false,
-      cell: ({ row }) => <ScopesCell scopes={row.original.scopes} />
-    },
-    {
-      accessorKey: "created_at",
-      header: "Created",
-      cell: ({ row }) => (
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {formatTimestamp(format, row.original.created_at)}
-        </span>
+        id: "status",
+        header: "Status",
+        enableSorting: false,
+        cell: ({ row }) => <StatusCell status={getApiKeyStatus(row.original)} />
+      },
+      {
+        id: "scopes",
+        header: "Scopes",
+        enableSorting: false,
+        cell: ({ row }) => <ScopesCell scopes={row.original.scopes} />
+      },
+      {
+        accessorKey: "created_at",
+        header: "Created",
+        cell: ({ row }) => (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {formatTimestamp(format, row.original.created_at)}
+          </span>
+        )
+      },
+      {
+        accessorKey: "last_used_at",
+        header: "Last used",
+        cell: ({ row }) => (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {formatTimestamp(format, row.original.last_used_at)}
+          </span>
+        )
+      },
+      {
+        accessorKey: "expires_at",
+        header: "Expires",
+        cell: ({ row }) => (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {formatTimestamp(format, row.original.expires_at)}
+          </span>
+        )
+      },
+      createKebabColumn<AccountApiKey>(
+        (row) => [
+          {
+            label: "Revoke key",
+            icon: Trash2,
+            destructive: true,
+            hidden: getApiKeyStatus(row) !== "active",
+            onSelect: () => setPendingRevoke(row)
+          }
+        ],
+        { rowLabel: (row) => `API key ${row.name}` }
       )
-    },
-    {
-      accessorKey: "last_used_at",
-      header: "Last used",
-      cell: ({ row }) => (
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {formatTimestamp(format, row.original.last_used_at)}
-        </span>
-      )
-    },
-    {
-      accessorKey: "expires_at",
-      header: "Expires",
-      cell: ({ row }) => (
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {formatTimestamp(format, row.original.expires_at)}
-        </span>
-      )
-    },
-    {
-      id: "limits",
-      header: "Limits",
-      enableSorting: false,
-      cell: ({ row }) => <LimitsText limits={row.original.limits} />
-    },
-    {
-      id: "policy",
-      header: "Policy",
-      enableSorting: false,
-      cell: ({ row }) => <PolicyText policy={row.original.config_policy} />
-    },
-    {
-      id: "actions",
-      header: "",
-      cell: ({ row }) => {
-        const apiKey = row.original;
-        if (getApiKeyStatus(apiKey) !== "active") {
-          return <span className="text-xs text-muted-foreground">No actions</span>;
-        }
-        return (
-          <div className="flex justify-end gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 rounded-md"
-              aria-label={`Rename API key ${apiKey.name}`}
-              disabled={renameMutation.isPending || revokeMutation.isPending}
-              onClick={() => openRenameDialog(apiKey)}
-            >
-              <Pencil aria-hidden className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 rounded-md text-destructive hover:text-destructive"
-              aria-label={`Revoke API key ${apiKey.name}`}
-              disabled={revokeMutation.isPending}
-              onClick={() => setRevokeTarget(apiKey)}
-            >
-              <Trash2 aria-hidden className="size-4" />
-            </Button>
-          </div>
-        );
-      }
-    }
-  ];
+    ],
+    [format, renameMutation]
+  );
 
   if (manageableWorkspaces.length === 0) {
     return (
-      <div className="space-y-4">
-        <AdminPageHeader
-          title="API keys"
-          description="Manage workspace-scoped credentials for the balancer public API."
-        />
-        <div className="rounded-lg border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
-          API keys are scoped to a workspace, and you do not administer one yet. Ask a superuser for
-          workspace admin rights, then reload this page.
-        </div>
-      </div>
+      <PageStateCard
+        state="empty"
+        title="You do not administer a workspace yet"
+        description="API keys are scoped to a workspace. Ask a superuser for workspace admin rights, then reload this page."
+      />
     );
   }
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader
-        title="API keys"
-        description="Manage workspace-scoped credentials for the balancer public API."
-        actions={
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus aria-hidden className="size-4" />
-            Create key
-          </Button>
-        }
-      />
-
       <StatTileGrid>
         <StatTile
           label="Total keys"
           value={counts.total}
-          detail={selectedWorkspace ? `In ${selectedWorkspace.name}` : undefined}
+          detail={workspace ? `In ${workspace.name}` : undefined}
           icon={KeyRound}
         />
         <StatTile label="Active" value={counts.active} tone="success" />
@@ -703,7 +354,7 @@ export default function AccessAdminApiKeysPage() {
       </StatTileGrid>
 
       {oneTimeKey ? (
-        <div className="rounded-xl border border-success/40 bg-success/10 p-3">
+        <div className={cn("rounded-xl border p-3", TONE_CLASS.success)}>
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="min-w-0 flex-1">
               <Label htmlFor={secretId} className="text-sm font-medium text-foreground">
@@ -717,7 +368,7 @@ export default function AccessAdminApiKeysPage() {
                 id={secretId}
                 readOnly
                 value={oneTimeKey}
-                className="mt-2 bg-background/80 font-mono text-xs"
+                className="mt-2 font-mono text-xs"
                 onFocus={(event) => event.currentTarget.select()}
               />
             </div>
@@ -733,9 +384,12 @@ export default function AccessAdminApiKeysPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 rounded-md"
                 aria-label="Copy the API key secret to the clipboard"
-                onClick={() => void copyOneTimeKey()}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(oneTimeKey);
+                  setCopiedSecret(true);
+                  notify.success("API key copied");
+                }}
               >
                 <Clipboard aria-hidden className="size-4" />
                 Copy secret
@@ -743,7 +397,7 @@ export default function AccessAdminApiKeysPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 rounded-md"
+                className="size-8"
                 aria-label="Dismiss the one-time secret"
                 onClick={() => {
                   setOneTimeKey(null);
@@ -757,13 +411,51 @@ export default function AccessAdminApiKeysPage() {
         </div>
       ) : null}
 
-      <AdminDataTable
+      <AdminDataTable<AccountApiKey>
+        columns={columns}
         initialPageSize={PAGE_SIZE}
         pageSizeOptions={[10, 20, 50, 100]}
+        searchPlaceholder="Search by name…"
+        filterKey={filters.filterKey}
+        getRowId={(row) => String(row.id)}
+        emptyMessage="No API keys in this workspace yet. Create one to call the balancer public API."
+        toolbar={
+          <AdminFilterBar
+            defs={defs}
+            filters={filters}
+            trailing={
+              <Button
+                size="sm"
+                onClick={() => {
+                  setCreateName("");
+                  setCreateExpiresAt("");
+                  setCreateScopes(new Set());
+                  setCreateOpen(true);
+                }}
+              >
+                <Plus aria-hidden className="size-4" />
+                Create key
+              </Button>
+            }
+          />
+        }
+        renderMobileCard={(row) => (
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{row.original.name}</p>
+            <p className="truncate font-mono text-xs text-muted-foreground">
+              owt_sk_{row.original.public_id}_…
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {STATUS_META[getApiKeyStatus(row.original)].label} ·{" "}
+              {row.original.scopes.length} scope
+              {row.original.scopes.length === 1 ? "" : "s"}
+            </p>
+          </div>
+        )}
         queryKey={(page, search, pageSize, sortField, sortDir) => [
           "account",
           "api-keys",
-          effectiveSelectedWorkspaceId,
+          workspaceId,
           page,
           search,
           pageSize,
@@ -771,11 +463,11 @@ export default function AccessAdminApiKeysPage() {
           sortDir
         ]}
         queryFn={async (page, search, pageSize, sortField, sortDir) => {
-          if (effectiveSelectedWorkspaceId === null) {
+          if (workspaceId === null) {
             return { results: [], total: 0, page: 1, per_page: pageSize };
           }
           const result = await fetchAccountApiKeys({
-            workspaceId: effectiveSelectedWorkspaceId,
+            workspaceId,
             page,
             perPage: pageSize,
             sort: sortField ?? undefined,
@@ -783,197 +475,133 @@ export default function AccessAdminApiKeysPage() {
             search: search || undefined
           });
           setCounts(result.counts);
-          setAvailableScopes(result.available_scopes);
+          // Never let a missing array reach the picker: it reads `.length`
+          // first, and an undefined there took the whole admin page down.
+          setAvailableScopes(result.available_scopes ?? []);
           return result;
         }}
-        columns={columns}
-        searchPlaceholder="Search by name…"
-        emptyMessage="No API keys in this workspace yet. Create one to call the balancer public API."
-        actions={
-          <div className="flex items-center gap-2">
-            <Label htmlFor={workspaceFilterId} className="text-xs text-muted-foreground">
-              Workspace
-            </Label>
-            <Select
-              value={
-                effectiveSelectedWorkspaceId !== null
-                  ? String(effectiveSelectedWorkspaceId)
-                  : undefined
-              }
-              onValueChange={(value) => changeCreateWorkspace(Number(value))}
-            >
-              <SelectTrigger id={workspaceFilterId} className="h-9 w-56 bg-muted/20">
-                <SelectValue placeholder="Select workspace" />
-              </SelectTrigger>
-              <SelectContent>
-                {manageableWorkspaces.map((workspace) => (
-                  <SelectItem key={workspace.id} value={String(workspace.id)}>
-                    {workspace.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        }
       />
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-lg rounded-xl">
-          <DialogHeader>
-            <DialogTitle>Create API key</DialogTitle>
-            <DialogDescription>
-              The key is scoped to one workspace and carries only the permissions you grant it
-              here.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor={createNameId}>Name</Label>
-              <Input
-                id={createNameId}
-                value={createName}
-                onChange={(event) => setCreateName(event.target.value)}
-                maxLength={100}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={createWorkspaceFieldId}>Workspace</Label>
-              <Select
-                value={
-                  effectiveCreateWorkspaceId !== null
-                    ? String(effectiveCreateWorkspaceId)
-                    : undefined
-                }
-                onValueChange={(value) => changeCreateWorkspace(Number(value))}
-              >
-                <SelectTrigger id={createWorkspaceFieldId}>
-                  <SelectValue placeholder="Select workspace" />
-                </SelectTrigger>
-                <SelectContent>
-                  {manageableWorkspaces.map((workspace) => (
-                    <SelectItem key={workspace.id} value={String(workspace.id)}>
-                      {workspace.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <ScopePicker
-              available={availableScopes}
-              selected={createScopes}
-              disabled={createMutation.isPending}
-              onToggle={toggleCreateScope}
-            />
-            <DateTimePicker
-              id="create-api-key-expires-date"
-              timeId="create-api-key-expires-time"
-              dateLabel="Expires"
-              timeLabel="Time"
-              value={createExpiresAt}
-              onChange={setCreateExpiresAt}
-              placeholder="Never"
-              clearLabel="Never"
-              minDate={new Date()}
-              disabled={createMutation.isPending}
-            />
-            <DefaultPolicyPreview />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsCreateOpen(false)}
-              disabled={createMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? (
-                <Loader2 aria-hidden className="size-4 animate-spin" />
-              ) : (
-                <Plus aria-hidden className="size-4" />
-              )}
-              {createMutation.isPending ? "Creating…" : "Create key"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={renameTarget !== null}
+      <EntityFormDialog
+        open={createOpen}
         onOpenChange={(open) => {
-          if (!open) {
-            setRenameTarget(null);
-            setRenameName("");
+          setCreateOpen(open);
+          if (!open) createMutation.reset();
+        }}
+        title="Create API key"
+        description={`The key lives in ${workspace?.name ?? "this workspace"} and carries only the permissions you grant it here — never more than you hold yourself.`}
+        submitLabel="Create key"
+        submittingLabel="Creating…"
+        isSubmitting={createMutation.isPending}
+        isDirty={createName.trim().length > 0 || createScopes.size > 0}
+        contentClassName="!max-w-2xl"
+        onSubmit={(event: FormEvent) => {
+          event.preventDefault();
+          if (createName.trim().length === 0) {
+            notify.error("Name the key before creating it.", {
+              description: "Use something that says where it is used, such as a bot or CI job."
+            });
+            return;
           }
+          if (workspaceId === null) return;
+          if (createScopes.size === 0) {
+            // Not a blocker: a scope-less key is a legitimate placeholder. It
+            // is only worth saying out loud, because it will 403 on everything.
+            notify.warning("Creating a key with no scopes.", {
+              description: "It will authenticate but every permission check rejects it."
+            });
+          }
+
+          const expires = createExpiresAt ? new Date(createExpiresAt) : null;
+          createMutation.mutate(
+            {
+              workspace_id: workspaceId,
+              expires_at:
+                expires && !Number.isNaN(expires.getTime()) ? expires.toISOString() : null,
+              name: createName.trim(),
+              scopes: [...createScopes]
+            },
+            {
+              onSuccess: (result) => {
+                setOneTimeKey(result.key);
+                setCopiedSecret(false);
+                setCreateOpen(false);
+                setCreateName("");
+                setCreateExpiresAt("");
+                setCreateScopes(new Set());
+                notify.success("API key created", {
+                  description: "Copy the secret now. It will not be shown again."
+                });
+              }
+            }
+          );
         }}
       >
-        <DialogContent className="max-w-md rounded-xl">
-          <DialogHeader>
-            <DialogTitle>Rename API key</DialogTitle>
-            <DialogDescription>Update the display name used in this admin list.</DialogDescription>
-          </DialogHeader>
+        <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor={renameNameId}>Name</Label>
+            <Label htmlFor={createNameId}>Name</Label>
             <Input
-              id={renameNameId}
-              value={renameName}
-              onChange={(event) => setRenameName(event.target.value)}
+              id={createNameId}
+              required
               maxLength={100}
+              value={createName}
+              onChange={(event) => setCreateName(event.target.value)}
             />
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setRenameTarget(null);
-                setRenameName("");
-              }}
-              disabled={renameMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleRename} disabled={renameMutation.isPending}>
-              {renameMutation.isPending ? (
-                <Loader2 aria-hidden className="size-4 animate-spin" />
-              ) : (
-                <Check aria-hidden className="size-4" />
-              )}
-              {renameMutation.isPending ? "Saving…" : "Save name"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      <AlertDialog
-        open={revokeTarget !== null}
-        onOpenChange={(open) => !open && setRevokeTarget(null)}
-      >
-        <AlertDialogContent className="rounded-xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Revoke API key</AlertDialogTitle>
-            <AlertDialogDescription>
-              Revoking {revokeTarget?.name ?? "this key"} stops every request that uses it
-              immediately, so any integration still sending it starts failing with 401. The key
-              cannot be restored — issue a new one instead.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={revokeMutation.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={revokeMutation.isPending}
-              onClick={handleRevoke}
-            >
-              {revokeMutation.isPending ? (
-                <Loader2 aria-hidden className="size-4 animate-spin" />
-              ) : (
-                <Trash2 aria-hidden className="size-4" />
-              )}
-              {revokeMutation.isPending ? "Revoking…" : "Revoke key"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          <DateTimePicker
+            id="create-api-key-expires-date"
+            timeId="create-api-key-expires-time"
+            dateLabel="Expires"
+            timeLabel="Time"
+            value={createExpiresAt}
+            onChange={setCreateExpiresAt}
+            placeholder="Never"
+            clearLabel="Never"
+            minDate={new Date()}
+            disabled={createMutation.isPending}
+          />
+
+          {availableScopes.length === 0 ? (
+            <EmptyNote size="sm">
+              You hold no delegatable permissions in this workspace, so every key created here
+              would be inert. Ask a workspace admin to grant you the permissions first.
+            </EmptyNote>
+          ) : (
+            <PermissionPicker
+              mode="list"
+              catalog={scopeCatalog}
+              wildcards={scopeWildcards}
+              value={createScopes}
+              onChange={setCreateScopes}
+              readOnly={createMutation.isPending}
+            />
+          )}
+        </div>
+      </EntityFormDialog>
+
+      <ConfirmDialog
+        open={pendingRevoke !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRevoke(null);
+        }}
+        pending={revokeMutation.isPending}
+        intent={{
+          title: "Revoke API key",
+          description: `Revoking “${pendingRevoke?.name ?? "this key"}” stops every request that uses it immediately, so any integration still sending it starts failing with 401. The key cannot be restored — issue a new one instead.`,
+          confirmLabel: "Revoke key",
+          tone: "danger"
+        }}
+        onConfirm={() => {
+          if (!pendingRevoke) return;
+          revokeMutation.mutate(pendingRevoke.id, {
+            onSuccess: () => {
+              setPendingRevoke(null);
+              notify.success("API key revoked");
+            }
+          });
+        }}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Crown, Shuffle } from "lucide-react";
+import { Ban, Crown, Shuffle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
@@ -65,11 +65,13 @@ function computeTeamRosterView(
   shape: RosterShape,
   divisionGrid: DivisionGrid
 ): TeamRosterView {
-  const roster = [...(rosters.get(team.id) ?? [])].sort(
-    (a, b) =>
-      ROSTER_SLOT_CODES.indexOf(rosterRoleForPlayer(a, picks)) -
-      ROSTER_SLOT_CODES.indexOf(rosterRoleForPlayer(b, picks))
-  );
+  // A player with no playable role holds no slot: sort them after every slot
+  // code instead of pretending they fill one.
+  const slotOrder = (player: DraftPlayer) => {
+    const role = rosterRoleForPlayer(player, picks);
+    return role == null ? ROSTER_SLOT_CODES.length : ROSTER_SLOT_CODES.indexOf(role);
+  };
+  const roster = [...(rosters.get(team.id) ?? [])].sort((a, b) => slotOrder(a) - slotOrder(b));
   const rosterRoles = roster.map((player) => rosterRoleForPlayer(player, picks));
   const counters: SlotCounter[] = orderSlotCodes(shape.slots).map((code) =>
     isRoleSlotCode(code)
@@ -81,7 +83,7 @@ function computeTeamRosterView(
       : { code, target: shape.slots[code] ?? 0 }
   );
   const rankValues = roster
-    .map((player) => slotRankForPlayer(player, rosterRoleForPlayer(player, picks), shape))
+    .map((player, index) => slotRankForPlayer(player, rosterRoles[index], shape))
     .filter((value): value is number => value != null);
   const avgRank =
     rankValues.length > 0 ? rankValues.reduce((sum, value) => sum + value, 0) / rankValues.length : null;
@@ -130,8 +132,10 @@ function SlotCounters({ counters, accented }: Readonly<{ counters: SlotCounter[]
 /**
  * The glyph on a roster row. A role-less (all-flex) roster assigns nobody a
  * role, so it gets the flex glyph: a role icon there would state an assignment
- * the shape never made, which is exactly the mirror this feature removes. The
- * captain's crown outranks both — it is a position, not a slot.
+ * the shape never made, which is exactly the mirror this feature removes. A
+ * `null` role is different — the player has no playable role at all — and gets
+ * the ban glyph rather than a stand-in role. The captain's crown outranks all
+ * three: it is a position, not a slot.
  */
 function RosterRowIcon({
   player,
@@ -139,11 +143,12 @@ function RosterRowIcon({
   hasRoleSlots
 }: Readonly<{
   player: DraftPlayer;
-  role: RosterRoleSlotCode;
+  role: RosterRoleSlotCode | null;
   hasRoleSlots: boolean;
 }>) {
   if (player.is_captain) return <Crown className="h-4 w-4 text-[color:var(--aqt-warm)]" />;
   if (!hasRoleSlots) return <Shuffle className="h-4 w-4 text-[color:var(--aqt-fg-muted)]" aria-hidden />;
+  if (role == null) return <Ban className="h-4 w-4 text-[color:var(--aqt-fg-faint)]" aria-hidden />;
   return <PlayerRoleIcon role={getRoleIconName(role)} size={16} />;
 }
 
@@ -247,8 +252,12 @@ export function TeamRosters({
                   {view.roster.map((player) => {
                     const role = rosterRoleForPlayer(player, picks);
                     const rank = slotRankForPlayer(player, role, shape);
-                    const slotLabel = shape.has_role_slots ? t(`roles.${role}`) : t("roles.flex");
-                    const division = player.division_number ?? resolveDivisionFromRank(divisionGrid, rank);
+                    const slotLabel = !shape.has_role_slots
+                      ? t("roles.flex")
+                      : role == null
+                        ? t("noRole")
+                        : t(`roles.${role}`);
+                    const division = resolveDivisionFromRank(divisionGrid, rank);
                     const divisionLabel = division == null ? null : getDivisionLabel(divisionGrid, division);
                     return (
                       <div
@@ -376,8 +385,12 @@ export function TeamRosters({
                       {roster.map((player) => {
                         const role = rosterRoleForPlayer(player, picks);
                         const rank = slotRankForPlayer(player, role, shape);
-                        const slotLabel = shape.has_role_slots ? t(`roles.${role}`) : t("roles.flex");
-                        const division = player.division_number ?? resolveDivisionFromRank(divisionGrid, rank);
+                        const slotLabel = !shape.has_role_slots
+                          ? t("roles.flex")
+                          : role == null
+                            ? t("noRole")
+                            : t(`roles.${role}`);
+                        const division = resolveDivisionFromRank(divisionGrid, rank);
                         const divisionLabel =
                           division == null ? null : getDivisionLabel(divisionGrid, division);
                         return (

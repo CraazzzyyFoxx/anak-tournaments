@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apierr"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
@@ -160,27 +161,15 @@ func (b *Binary) relayJSON(w http.ResponseWriter, r *http.Request, queue string,
 		return
 	}
 	if !env.OK {
-		status := http.StatusInternalServerError
-		msg := "internal error"
-		if env.Error != nil {
-			status = rpc.StatusForCode(env.Error.Code)
-			msg = env.Error.Message
-		}
-		writeDetail(w, status, msg)
+		apierr.WriteEnvelopeError(w, env.Error)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(success)
-	// Relay a literal JSON `null` rather than an empty body (see edge/dispatch.go).
-	if len(env.Data) > 0 {
-		_, _ = w.Write(env.Data)
-	}
+	apierr.WriteOK(w, success, env)
 }
 
-// writeDetail emits a FastAPI-style error body: {"detail": "..."}.
+// writeDetail emits the gateway's error body for this handler's OWN failures;
+// upstream envelope errors go through apierr.WriteEnvelopeError so their code,
+// structured details and Retry-After survive.
 func writeDetail(w http.ResponseWriter, status int, detail string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"detail": detail})
+	apierr.WriteError(w, status, detail, "", nil)
 }

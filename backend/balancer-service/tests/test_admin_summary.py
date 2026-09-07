@@ -190,7 +190,14 @@ class TournamentSummaryRpcTests(IsolatedAsyncioTestCase):
             ws = Workspace(slug=f"ws-{suffix}", name=f"WS {suffix}")
             s.add(ws)
             await s.flush()
-            hidden = Tournament(workspace_id=ws.id, name=f"Hidden T {suffix}", is_hidden=True)
+            # ``slug`` is NOT NULL and globally unique (migration tslug0001), so
+            # it carries the same per-run suffix the workspace slug does.
+            hidden = Tournament(
+                workspace_id=ws.id,
+                name=f"Hidden T {suffix}",
+                slug=f"hidden-t-{suffix}",
+                is_hidden=True,
+            )
             s.add(hidden)
             await s.flush()
             self.workspace_id = ws.id

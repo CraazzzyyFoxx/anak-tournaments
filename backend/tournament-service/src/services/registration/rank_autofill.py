@@ -19,19 +19,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.balancer_registration_statuses import is_balancer_status_excluded
 from shared.division_grid import DivisionGrid
+from shared.domain.roster import PlayerRoster
+from shared.services.roster import roster_engine
 from src import models
-from src.domain.registration.utils import (
-    DEFAULT_SORT_PRIORITY_SENTINEL,
-    normalize_battle_tag_key,
-)
+from src.domain.registration.utils import normalize_battle_tag_key
 from src.services.registration._common import (
     RegistrationCommonService,
-    _active_roles,
     _common_service,
     included_balancer_status,
+    resolve_roster,
     sync_included_balancer_status,
 )
-from src.services.registration import rank_resolution
 from src.services.registration.rank_sources import (
     OW_RANK_WEEK_WINDOW,
     RANK_ROLE_BY_REGISTRATION_ROLE,
@@ -94,6 +92,7 @@ def build_registration_rank_autofill_plan(
     registration: models.BalancerRegistration | Any,
     rank_snapshots_by_role: dict[str, models.UserRankSnapshot | Any],
     *,
+    roster: PlayerRoster | None,
     battle_tag_linked: bool,
     overwrite_existing: bool,
     allow_partial: bool = False,
@@ -101,11 +100,18 @@ def build_registration_rank_autofill_plan(
 ) -> tuple[dict[str, Any], list[tuple[Any, Any]]]:
     """Build the rank autofill preview row and pending role updates.
 
-    Only active registration roles are considered, and parsed ranks are expected to come from the
-    registration's main battle tag only. With ``allow_partial`` the found role ranks are still
-    applied when other active roles have no parsed rank (instead of skipping the whole registration);
-    unfilled roles are left untouched — an existing rank is never cleared. A role that has a current
-    rank no enabled source could corroborate is reported as ``unverified`` (informational only).
+    The role set is the registration's resolved ``roster`` -- every role the
+    tournament has it declaring, in priority order, playable or not. Reading the
+    raw ``is_active`` column instead is what used to make autofill skip exactly
+    the rows it exists to fill: under a non-optional flex mode all three roles are
+    the player's, and a sheet row whose rank did not parse landed inactive.
+
+    Parsed ranks are expected to come from the registration's main battle tag
+    only. With ``allow_partial`` the found role ranks are still applied when other
+    roles have no parsed rank (instead of skipping the whole registration);
+    unfilled roles are left untouched -- an existing rank is never cleared. A role
+    that has a current rank no enabled source could corroborate is reported as
+    ``unverified`` (informational only).
     """
 
     display_name = getattr(registration, "display_name", None)
@@ -124,11 +130,15 @@ def build_registration_rank_autofill_plan(
         row["reason"] = "Registration has no main BattleTag."
         return row, []
 
-    active_roles = sorted(
-        _active_roles(registration),
-        key=lambda role: (getattr(role, "priority", DEFAULT_SORT_PRIORITY_SENTINEL), getattr(role, "role", "")),
-    )
-    if not active_roles:
+    # The plan WRITES ``registration_role.rank_value``, so a declared role with no
+    # row of its own has nothing to write to and is skipped.
+    rows_by_role = {getattr(entry, "role", None): entry for entry in getattr(registration, "roles", [])}
+    declared_roles = [
+        rows_by_role[entry.role.slot_code]
+        for entry in (roster.roles if roster is not None else ())
+        if entry.role.slot_code in rows_by_role
+    ]
+    if not declared_roles:
         row["reason"] = "Registration has no active roles."
         return row, []
 
@@ -140,7 +150,7 @@ def build_registration_rank_autofill_plan(
     missing_roles: list[str] = []
     kept_existing = False
 
-    for role_entry in active_roles:
+    for role_entry in declared_roles:
         role_code = getattr(role_entry, "role", None)
         rank_role = RANK_ROLE_BY_REGISTRATION_ROLE.get(role_code)
         snapshot = rank_snapshots_by_role.get(rank_role or "")
@@ -207,21 +217,21 @@ def build_registration_rank_autofill_plan(
     return row, []
 
 
-def _active_roles_ranked_after_updates(
-    registration: models.BalancerRegistration | Any,
+def _roles_ranked_after_updates(
+    roster: PlayerRoster | None,
     updates: list[tuple[Any, Any]],
-    resolved_ranks: dict[str, int | None] | None = None,
 ) -> bool:
-    roles = _active_roles(registration)
-    if not roles:
+    """Would every declared role carry a rank once ``updates`` land?
+
+    ``is_playable`` already folds in the inherited layers, so a role whose number
+    only exists as the workspace canon counts as ranked here -- which is the point:
+    those registrations used to be told they were "missing active role ranks" and
+    kept out of the pool.
+    """
+    if roster is None or not roster.roles:
         return False
     updated_roles = {getattr(role_entry, "role", None) for role_entry, _snapshot in updates}
-    return all(
-        (resolved_ranks or {}).get(getattr(role, "role", None)) is not None
-        or getattr(role, "rank_value", None) is not None
-        or getattr(role, "role", None) in updated_roles
-        for role in roles
-    )
+    return all(entry.is_playable or entry.role.slot_code in updated_roles for entry in roster.roles)
 
 
 def _rank_autofill_balancer_addition(
@@ -229,7 +239,7 @@ def _rank_autofill_balancer_addition(
     updates: list[tuple[Any, Any]],
     *,
     add_to_balancer: bool,
-    resolved_ranks: dict[str, int | None] | None = None,
+    roster: PlayerRoster | None = None,
 ) -> tuple[bool, str | None]:
     if not add_to_balancer:
         return False, None
@@ -237,7 +247,7 @@ def _rank_autofill_balancer_addition(
         return False, "Registration must be approved before it can be added to balancer."
     if not is_balancer_status_excluded(getattr(registration, "balancer_status", None)):
         return False, "Registration is already in balancer."
-    if not _active_roles_ranked_after_updates(registration, updates, resolved_ranks):
+    if not _roles_ranked_after_updates(roster, updates):
         return False, "Registration will still be missing active role ranks."
     return True, None
 
@@ -358,6 +368,11 @@ class RankAutofillService:
             session, tournament_id, registration_ids
         )
         battle_tags_by_key = await self.rank_sources._load_main_battle_tags_by_key(session, registrations)
+        # One resolve for the whole run: the role SET the plan fills, and the
+        # "would this be complete" verdict, both come from these rosters.
+        rosters = await roster_engine.resolve(
+            session, registrations, workspace_id=workspace_id, tournament_id=tournament_id, grid=grid
+        )
 
         # Only load a source when its stage is enabled (skips its DB query otherwise). A disabled
         # source contributes no candidate, so it can never win the priority chain.
@@ -433,9 +448,11 @@ class RankAutofillService:
                 if resolved is not None:
                     rank_data_by_role[rank_role] = resolved
 
+            roster = rosters.get(registration.id)
             row, updates = build_registration_rank_autofill_plan(
                 registration,
                 rank_data_by_role,
+                roster=roster,
                 battle_tag_linked=main_battle_tag is not None,
                 overwrite_existing=overwrite_existing,
                 allow_partial=allow_partial,
@@ -445,6 +462,7 @@ class RankAutofillService:
                 registration,
                 updates,
                 add_to_balancer=add_to_balancer,
+                roster=roster,
             )
             row["will_add_to_balancer"] = will_add_to_balancer
             row["balancer_reason"] = balancer_reason
@@ -460,6 +478,10 @@ class RankAutofillService:
                         continue
                     if overwrite_existing or getattr(role_entry, "rank_value", None) is None:
                         role_entry.rank_value = value
+                        # A number nobody can see is not a fill: an inactive row
+                        # keeps the role out of every roster, so the write that
+                        # gives it a rank is also the write that declares it.
+                        role_entry.is_active = True
                 role_updates += len(updates)
                 applied_registrations += 1
                 changed = True
@@ -467,15 +489,10 @@ class RankAutofillService:
                 role_updates += len(updates)
 
             if apply and will_add_to_balancer:
-                values = await rank_resolution.resolved_value_map(
-                    session, registration, workspace_id=workspace_id, grid=grid
-                )
-                for role_entry, rank_data in updates:
-                    val = getattr(rank_data, "rank_value", None)
-                    if val is not None:
-                        values[role_entry.role] = val
                 registration.exclude_reason = None
-                registration.balancer_status = included_balancer_status(registration, values)
+                # Re-resolved AFTER the writes above: autoflush publishes them, so
+                # the verdict is the one the pool will actually see.
+                registration.balancer_status = included_balancer_status(await resolve_roster(session, registration))
                 balancer_additions += 1
                 changed = True
             elif not apply and will_add_to_balancer:
@@ -483,14 +500,7 @@ class RankAutofillService:
 
             if apply and changed:
                 if not will_add_to_balancer:
-                    values = await rank_resolution.resolved_value_map(
-                        session, registration, workspace_id=workspace_id, grid=grid
-                    )
-                    for role_entry, rank_data in updates:
-                        val = getattr(rank_data, "rank_value", None)
-                        if val is not None:
-                            values[role_entry.role] = val
-                    sync_included_balancer_status(registration, values)
+                    sync_included_balancer_status(registration, await resolve_roster(session, registration))
                 self.common._register_registration_changed(session, registration)
 
             players.append(row)

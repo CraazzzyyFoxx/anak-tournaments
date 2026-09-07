@@ -2,6 +2,8 @@ import importlib
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
+from shared.testing.factories import division_tier
+
 division_grid = importlib.import_module("shared.division_grid")
 division_grid_access = importlib.import_module("shared.services.division_grid.access")
 division_grid_cache = importlib.import_module("shared.services.division_grid.cache")
@@ -12,24 +14,8 @@ def make_grid() -> division_grid.DivisionGrid:
     return division_grid.DivisionGrid(
         version_id=77,
         tiers=(
-            division_grid.DivisionTier(
-                id=1,
-                slug="top",
-                number=1,
-                name="Top",
-                rank_min=500,
-                rank_max=None,
-                icon_url="/top.png",
-            ),
-            division_grid.DivisionTier(
-                id=2,
-                slug="mid",
-                number=2,
-                name="Mid",
-                rank_min=100,
-                rank_max=499,
-                icon_url="/mid.png",
-            ),
+            division_tier(1, 1, 500, None, slug="top", name="Top", icon_url="/top.png"),
+            division_tier(2, 2, 100, 499, slug="mid", name="Mid", icon_url="/mid.png"),
         ),
     )
 
@@ -46,7 +32,9 @@ class DivisionRankDomainTests(TestCase):
         grid = make_grid()
 
         self.assertEqual(500, division_rank.resolve_rank_for_division(grid, 1))
-        self.assertEqual(299, division_rank.resolve_rank_for_division(grid, 2))
+        # Tier floor, not the band midpoint: a division->rank round trip has to land on
+        # the same rank_value every other grid path uses (the 4449-for-Grandmaster-1 bug).
+        self.assertEqual(100, division_rank.resolve_rank_for_division(grid, 2))
         self.assertEqual(1, division_rank.clamp_division_to_grid(grid, -4))
         self.assertEqual(2, division_rank.clamp_division_to_grid(grid, 99))
 

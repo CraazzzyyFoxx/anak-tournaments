@@ -130,7 +130,19 @@ const credentialNote = "\n\n## Authentication\n\n" +
 	"`GET /api/auth/api-keys/self` is the inverse: it describes the calling key, so it needs a " +
 	"key. WebSocket connections (`/ws`, `/api/realtime/ws`) accept either credential, but a key " +
 	"only authenticates the socket if it holds at least one grant in its workspace; a " +
-	"zero-scope key connects anonymously and cannot subscribe to auth-gated topics."
+	"zero-scope key connects anonymously and cannot subscribe to auth-gated topics.\n\n" +
+	"## Errors\n\n" +
+	"Failed responses carry the HTTP status plus a single envelope: `detail` is the human " +
+	"message and is always present; `code` is the machine reason (`forbidden`, `not_found`, " +
+	"`rate_limited`, ...); `fields` lists per-item validation/business detail when there is " +
+	"any; `retry_after` (seconds) accompanies 429 and mirrors the `Retry-After` header. " +
+	"Branch on `code`, show `detail`, and never parse `detail` — see the `Error` schema.\n\n" +
+	"## Workspace scope\n\n" +
+	"Workspace-scoped reads take a `workspace_id` query parameter. When the credential is " +
+	"pinned to exactly ONE workspace — always true for an API key — it may be omitted and the " +
+	"gateway fills it in from the credential. An explicit value always wins, and a credential " +
+	"holding several workspaces must send one (the read fails closed rather than guessing a " +
+	"tenant)."
 
 // Build assembles an OpenAPI 3.1.0 document (indented JSON) from the groups.
 // Output is deterministic: encoding/json sorts the paths/methods maps, and the
@@ -138,12 +150,50 @@ const credentialNote = "\n\n## Authentication\n\n" +
 // the schemas transitively referenced by this document's operations, so the
 // public spec never leaks admin-only model shapes.
 func Build(info Info, groups []Group) []byte {
+	return build(info, groups, false)
+}
+
+// BuildV2 is Build with /api/v1 paths rewritten to /api/v2 and every JSON
+// response wrapped in the RPC envelope. Auth routes under /api/auth are omitted.
+func BuildV2(info Info, groups []Group) []byte {
+	info.Title = info.Title + " v2"
+	if info.Description != "" {
+		info.Description = envelopeNote + info.Description
+	} else {
+		info.Description = envelopeNote
+	}
+	return build(info, v2Groups(groups), true)
+}
+
+const envelopeNote = "v2 JSON bodies are the RPC envelope: `{ok: true, data, warnings?}` on success and `{ok: false, error: {code, message, details?}}` on error. HTTP status still reflects the outcome. `/api/v1` is unchanged.\n\n"
+
+func v2Groups(groups []Group) []Group {
+	out := make([]Group, 0, len(groups))
+	for _, g := range groups {
+		routes := make([]edge.RouteSpec, 0, len(g.Routes))
+		for _, r := range g.Routes {
+			if !strings.Contains(r.Pattern, "/api/v1") {
+				continue
+			}
+			r.Pattern = strings.Replace(r.Pattern, "/api/v1", "/api/v2", 1)
+			routes = append(routes, r)
+		}
+		if len(routes) == 0 {
+			continue
+		}
+		g.Routes = routes
+		out = append(out, g)
+	}
+	return out
+}
+
+func build(info Info, groups []Group, envelope bool) []byte {
 	version := info.Version
 	if version == "" {
 		version = "dev"
 	}
 
-	b := &builder{man: loadedManifest, refs: map[string]bool{}}
+	b := &builder{man: loadedManifest, refs: map[string]bool{}, envelope: envelope}
 	tags := make([]any, 0, len(groups))
 	paths := map[string]any{}
 
@@ -185,8 +235,9 @@ func Build(info Info, groups []Group) []byte {
 // builder carries the manifest and accumulates the set of referenced schema
 // names while operations are generated.
 type builder struct {
-	man  manifest
-	refs map[string]bool
+	man      manifest
+	refs     map[string]bool
+	envelope bool
 }
 
 // operation builds the OpenAPI operation object for one route.
@@ -296,12 +347,27 @@ func (b *builder) refSchema(sr schemaRef) map[string]any {
 }
 
 func (b *builder) responseSchema(route edge.RouteSpec) map[string]any {
+	inner := map[string]any{"type": "object"}
 	if op, ok := b.man.Operations[b.key(route)]; ok && op.Response != nil {
 		if s := b.refSchema(*op.Response); s != nil {
-			return s
+			inner = s
 		}
 	}
-	return map[string]any{"type": "object"}
+	if !b.envelope {
+		return inner
+	}
+	return map[string]any{
+		"type":     "object",
+		"required": []any{"ok", "data"},
+		"properties": map[string]any{
+			"ok":   map[string]any{"type": "boolean", "enum": []any{true}},
+			"data": inner,
+			"warnings": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"$ref": "#/components/schemas/Warning"},
+			},
+		},
+	}
 }
 
 func (b *builder) requestBody(route edge.RouteSpec) map[string]any {
@@ -352,12 +418,18 @@ func (b *builder) responses(route edge.RouteSpec) map[string]any {
 // referenced model) and the two bearer security schemes.
 func (b *builder) components() map[string]any {
 	schemas := map[string]any{
-		"Error": map[string]any{
-			"type":        "object",
-			"description": "FastAPI-style error envelope.",
-			"properties":  map[string]any{"detail": map[string]any{"type": "string"}},
-			"required":    []any{"detail"},
-		},
+		"Error": b.errorSchema(),
+	}
+	if b.envelope {
+		schemas["Warning"] = map[string]any{
+			"type":     "object",
+			"required": []any{"code", "message"},
+			"properties": map[string]any{
+				"code":    map[string]any{"type": "string"},
+				"message": map[string]any{"type": "string"},
+				"field":   map[string]any{"type": []any{"string", "null"}},
+			},
+		}
 	}
 	for name := range b.closure() {
 		var raw any
@@ -386,6 +458,58 @@ func (b *builder) components() map[string]any {
 			},
 		},
 		"schemas": schemas,
+	}
+}
+
+func (b *builder) errorSchema() map[string]any {
+	if b.envelope {
+		return map[string]any{
+			"type":     "object",
+			"required": []any{"ok", "error"},
+			"description": "v2 error envelope. HTTP status still carries the outcome; " +
+				"`error.code` is the machine reason; `error.details` is optional structured data " +
+				"(fields, retry_after).",
+			"properties": map[string]any{
+				"ok": map[string]any{"type": "boolean", "enum": []any{false}},
+				"error": map[string]any{
+					"type":     "object",
+					"required": []any{"code", "message"},
+					"properties": map[string]any{
+						"code":    map[string]any{"type": "string"},
+						"message": map[string]any{"type": "string"},
+						"details": map[string]any{"type": "object"},
+					},
+				},
+			},
+		}
+	}
+	return map[string]any{
+		"type": "object",
+		"description": "Error envelope. `detail` is the human message and is always present; " +
+			"`code` is the machine reason; `fields` carries per-item validation/business detail; " +
+			"`retry_after` (seconds) accompanies 429 and mirrors the Retry-After header.",
+		"properties": map[string]any{
+			"detail": map[string]any{"type": "string"},
+			"code":   map[string]any{"type": "string"},
+			"retry_after": map[string]any{
+				"type":        "integer",
+				"description": "Seconds to wait before retrying (429 only).",
+			},
+			"fields": map[string]any{
+				"type":        "array",
+				"description": "Per-item detail: which input was rejected and why.",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"field": map[string]any{"type": []any{"string", "null"}},
+						"msg":   map[string]any{"type": "string"},
+						"code":  map[string]any{"type": "string"},
+					},
+					"required": []any{"msg", "code"},
+				},
+			},
+		},
+		"required": []any{"detail"},
 	}
 }
 

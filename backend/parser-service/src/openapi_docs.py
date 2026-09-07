@@ -20,7 +20,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.parser.logs.retry": {
         "summary": "Retry log processing",
-        "description": "Resets a failed/processed log record to pending and re-enqueues it for processing; requires log.update on the record's workspace.",
+        "description": "Resets a failed/processed log record to pending, re-enqueues it for processing and returns the updated record, 404ing when the record does not exist; requires log.update on the record's workspace.",
     },
     "rpc.parser.logs.upload": {
         "summary": "Upload match logs",
@@ -28,7 +28,12 @@ DOCS: dict[str, dict] = {
     },
     "rpc.parser.logs.process_tournament": {
         "summary": "Process tournament logs",
-        "description": "Enqueues processing of all stored match logs for a tournament; requires log.update in the tournament's workspace.",
+        "description": "Enqueues reprocessing of all stored match logs for a tournament and returns an ack message — the work itself runs asynchronously on the log queue — 404ing on an unknown tournament; requires log.update in the tournament's workspace.",
+    },
+    # ── impact baselines ──────────────────────────────────────────────────────
+    "rpc.parser.impact.recompute_baselines": {
+        "summary": "Recompute impact baselines",
+        "description": "Rebuilds the statistical baselines MVP-impact scoring is measured against (`matches.stat_baselines`) for the active formula version, aggregating a mean/standard deviation per (role, rank bucket, stat) over every historical match-statistics row — global, with no tournament or workspace scope — and returns the row count plus that formula version. Superuser-only. Each run atomically replaces the version's rows and aborts rather than wiping them when the aggregation yields nothing, so repeating it is safe; it does scan the whole statistics table and drops the 10-minute baseline cache every time, so avoid running it back to back.",
     },
     # ── OverFast rank ────────────────────────────────────────────────────────
     "rpc.parser.rank.user_history": {
@@ -83,11 +88,11 @@ DOCS: dict[str, dict] = {
     # ── achievement calculate ─────────────────────────────────────────────────
     "rpc.parser.ach.calculate": {
         "summary": "Run achievement calculation",
-        "description": "Runs the achievement condition-tree engine across a workspace (optionally seeding rules and scoping to specific slugs); requires achievement.update in the requested workspace.",
+        "description": "Runs the achievement condition-tree engine across a workspace (optionally seeding the built-in rules first and scoping the run to given slugs) and returns the slugs actually evaluated, rejecting unknown slugs and a missing workspace_id with 400; requires achievement.update in the requested workspace.",
     },
     "rpc.parser.ach.calculate_tournament": {
         "summary": "Calculate tournament achievements",
-        "description": "Runs the achievement engine for a single tournament's workspace; requires achievement.update in that workspace.",
+        "description": "Runs the achievement engine for a single tournament — the workspace is taken from the tournament unless an explicitly matching workspace_id is supplied — and returns the tournament id plus the slugs evaluated, 404ing on an unknown tournament; requires achievement.update in that workspace.",
     },
     # ── achievement rules admin (workspace-scoped) ────────────────────────────
     "rpc.parser.ach.condition_types": {
@@ -116,7 +121,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.parser.ach.delete": {
         "summary": "Delete achievement rule",
-        "description": "Deletes a workspace achievement rule; requires workspace achievement.delete.",
+        "description": "Deletes a workspace achievement rule and returns no content, 404ing when the rule does not exist in that workspace; requires workspace achievement.delete.",
     },
     "rpc.parser.ach.seed": {
         "summary": "Seed achievement rules",
@@ -209,8 +214,12 @@ DOCS: dict[str, dict] = {
         "summary": "Upsert tournament Discord channel",
         "description": "Creates or updates a tournament's Discord guild/channel binding; requires discord_channel.update on the workspace.",
     },
+    "rpc.parser.discord_channel.backfill": {
+        "summary": "Backfill Discord channel history",
+        "description": "Queues a rescan of the tournament's Discord channel history — the same `process_all` command the bot runs at startup — resubmitting every attachment found in the last 500 messages of each channel bound to the tournament; returns an ack immediately, the scan itself is asynchronous. Requires discord_channel.update on the workspace and 404s when no channel is configured. Ingestion deduplicates on the SHA-256 of a log file's bytes, so logs already processed for the tournament are skipped rather than duplicated, but each call re-downloads and re-uploads every attachment — repeat it only when logs are genuinely missing.",
+    },
     "rpc.parser.discord_channel.delete": {
         "summary": "Delete tournament Discord channel",
-        "description": "Removes a tournament's Discord channel configuration; requires discord_channel.delete on the workspace.",
+        "description": "Removes a tournament's Discord channel configuration and returns no content, 404ing when no channel is configured; requires discord_channel.delete on the workspace.",
     },
 }

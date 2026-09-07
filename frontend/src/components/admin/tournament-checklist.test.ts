@@ -183,10 +183,10 @@ describe("buildChecklist", () => {
 
   it("hrefs point at final tab addresses (D20)", () => {
     const items = buildChecklist(readiness({ logs_used: true }), ctx());
-    expect(byKey(items, "approved").href).toBe("/admin/tournaments/7/registration");
-    expect(byKey(items, "pool_ready").href).toBe("/admin/tournaments/7/teams");
-    expect(byKey(items, "stages").href).toBe("/admin/tournaments/7/stages");
-    expect(byKey(items, "logs").href).toBe("/admin/tournaments/7/matches?tab=logs");
+    expect(byKey(items, "approved").href).toBe("/admin/tournaments/7/registration/entries");
+    expect(byKey(items, "pool_ready").href).toBe("/admin/tournaments/7/teams/roster");
+    expect(byKey(items, "stages").href).toBe("/admin/tournaments/7/bracket");
+    expect(byKey(items, "logs").href).toBe("/admin/tournaments/7/matches/logs");
   });
 
   it("completion tracks the state machine status", () => {

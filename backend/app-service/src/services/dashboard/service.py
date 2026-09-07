@@ -204,10 +204,22 @@ class DashboardService:
             )
         )
 
-        # Users that have no social account (battle_tag / discord / twitch / …)
+        # Users that have no social account (battle_tag / discord / twitch / …).
+        # Player identities are platform-wide, so unlike every count above there is
+        # no Tournament to hang ``ws_filters`` on: the workspace is reached through
+        # ``workspace_member``, the same hop the Player-identities list uses
+        # (``services.admin.user.get_users``). Without it a workspace owner — who
+        # now sees this card — would be handed the platform-wide number and land on
+        # a page listing only their own roster.
         users_without_identities_q = sa.select(sa.func.count(models.User.id)).where(
             ~sa.exists().where(models.SocialAccount.user_id == models.User.id)
         )
+        if workspace_id is not None:
+            users_without_identities_q = users_without_identities_q.where(
+                sa.exists()
+                .where(models.WorkspaceMember.player_id == models.User.id)
+                .where(models.WorkspaceMember.workspace_id == workspace_id)
+            )
 
         results = await session.execute(
             sa.select(

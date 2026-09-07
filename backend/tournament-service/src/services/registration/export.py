@@ -1,26 +1,24 @@
-"""Registration exports: balancer payload and domain-user provisioning.
+"""Registration exports: domain-user provisioning.
 
-Two export surfaces live here: the legacy "xv-1" balancer payload of active
-registrations, and ``export_registrations_to_users`` which provisions domain
-players + social identities from approved registrations.
+``export_registrations_to_users`` provisions domain players + social identities
+from approved registrations. The balancer's ``xv-1`` payload used to be
+assembled here from raw role rows -- it now comes from
+:meth:`shared.services.roster.RosterEngine.balancer_input`, which is the same
+roster the draft and the balance job read.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
-from uuid import uuid4
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from shared.balancer_registration_statuses import balancer_pool_included_clause
 from shared.core.social import SocialProvider, normalize_social_handle
 from shared.repository import BalancerRegistrationRepository, SocialAccountRepository, UserRepository
 from shared.services import social_identity
 from src import models
-from src.domain.registration.utils import BATTLE_TAG_RE, UNKNOWN_PRIORITY_SENTINEL
+from src.domain.registration.utils import BATTLE_TAG_RE
 from src.services.registration.lifecycle import RegistrationLifecycleService, lifecycle_service
 
 logger = logging.getLogger(__name__)
@@ -29,42 +27,11 @@ __all__ = (
     "RegistrationExportService",
     "export_service",
     "registration_source",
-    "serialize_registration_for_export",
 )
 
 
 def registration_source(registration: models.BalancerRegistration) -> str:
     return "google_sheets" if registration.google_sheet_binding is not None else "manual"
-
-
-def serialize_registration_for_export(registration: models.BalancerRegistration, export_uuid: str) -> dict[str, Any]:
-    role_entries = sorted(registration.roles, key=lambda role: role.priority)
-    role_map = {role.role: role for role in role_entries}
-    is_full_flex = registration.is_flex_computed
-
-    def build_class(role_code: str) -> dict[str, Any]:
-        role = role_map.get(role_code)
-        return {
-            "isActive": bool(role and role.is_active and role.rank_value is not None),
-            "rank": int(role.rank_value) if role and role.rank_value is not None else 0,
-            "priority": 0 if is_full_flex else int(role.priority) if role else UNKNOWN_PRIORITY_SENTINEL,
-            "subtype": role.subrole if role else None,
-        }
-
-    return {
-        "uuid": export_uuid,
-        "identity": {
-            "name": registration.battle_tag or registration.display_name or f"registration-{registration.id}",
-            "isFullFlex": is_full_flex,
-        },
-        "stats": {
-            "classes": {
-                "tank": build_class("tank"),
-                "dps": build_class("dps"),
-                "support": build_class("support"),
-            }
-        },
-    }
 
 
 def _registration_identity_handles(registration: models.BalancerRegistration) -> list[tuple[str, str]]:
@@ -99,43 +66,6 @@ class RegistrationExportService:
         self.user_repo = user_repo
         self.social_account_repo = social_account_repo
         self.lifecycle = lifecycle
-
-    async def list_active_registrations_for_balancer(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-    ) -> list[models.BalancerRegistration]:
-        # Analytical: the balancer-pool predicate is a correlated subquery over the
-        # tournament's workspace, mirroring the panel's "in balancer" rule.
-        workspace_id_expr = (
-            sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id).scalar_subquery()
-        )
-        result = await session.execute(
-            self.registration_repo.select()
-            .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.status == "approved",
-                # Mirror the panel's "in balancer" rule (load_pool): a registration is
-                # part of the pool only once it has been added and isn't excluded.
-                balancer_pool_included_clause(models.BalancerRegistration.balancer_status, workspace_id_expr),
-            )
-            .options(selectinload(models.BalancerRegistration.roles))
-            .order_by(models.BalancerRegistration.battle_tag_normalized.asc().nullslast())
-        )
-        return list(result.scalars().all())
-
-    async def export_active_registrations(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-    ) -> dict[str, Any]:
-        registrations = await self.list_active_registrations_for_balancer(session, tournament_id)
-        payload_players: dict[str, Any] = {}
-        for registration in registrations:
-            export_uuid = str(uuid4())
-            payload_players[export_uuid] = serialize_registration_for_export(registration, export_uuid)
-        return {"format": "xv-1", "players": payload_players}
 
     async def _find_user_by_battle_tag(self, session: AsyncSession, battle_tag: str) -> models.User | None:
         user_id = await social_identity.find_player_id_by_handle(

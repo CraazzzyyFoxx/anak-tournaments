@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apierr"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
@@ -21,10 +22,10 @@ const (
 
 // Binary serves the tournament-service endpoints the generic JSON edge.Dispatcher
 // can't: the multipart image uploads, base64-encoded into the RPC body — the
-// admin team logo and the captain-owned registered-team crest. Both paired
-// deletes are plain JSON and ride the typed dispatcher (admin_routes.go /
-// public_routes.go). Permission is enforced in the worker; the gateway only
-// injects the resolved identity.
+// admin team logo, the captain-owned registered-team crest and the admin
+// tournament cover/logo. Every paired delete is plain JSON and rides the typed
+// dispatcher (admin_routes.go / public_routes.go). Permission is enforced in the
+// worker; the gateway only injects the resolved identity.
 type Binary struct {
 	rpc      edge.RPCCaller
 	identity edge.IdentityResolver
@@ -63,6 +64,22 @@ func (b *Binary) RegistrationTeamImageUpload(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	b.relayJSON(w, r, "rpc.tournament.regteam_image_upload", data, http.StatusOK)
+}
+
+// TournamentImageUpload: POST /api/v1/admin/tournaments/{tournament_id}/images/{slot}
+// (tournament.update in the worker). Unlike its siblings the target picture also
+// travels in the path: {slot} is "cover" or "logo", relayed verbatim so the
+// worker owns both the permission check and the slot validation — the gateway
+// never has to learn which slots exist.
+func (b *Binary) TournamentImageUpload(w http.ResponseWriter, r *http.Request) {
+	data, ok := b.identityInto(w, r, map[string]any{"id": r.PathValue("tournament_id"), "slot": r.PathValue("slot")})
+	if !ok {
+		return
+	}
+	if !b.attachFile(w, r, data) {
+		return
+	}
+	b.relayJSON(w, r, "rpc.tournament.tournaments.image_upload", data, http.StatusOK)
 }
 
 // identityInto resolves the bearer identity (required) and injects it into data.
@@ -136,27 +153,15 @@ func (b *Binary) relayJSON(w http.ResponseWriter, r *http.Request, queue string,
 		return
 	}
 	if !env.OK {
-		status := http.StatusInternalServerError
-		msg := "internal error"
-		if env.Error != nil {
-			status = rpc.StatusForCode(env.Error.Code)
-			msg = env.Error.Message
-		}
-		writeDetail(w, status, msg)
+		apierr.WriteEnvelopeError(w, env.Error)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(success)
-	// Relay a literal JSON `null` rather than an empty body (see edge/dispatch.go).
-	if len(env.Data) > 0 {
-		_, _ = w.Write(env.Data)
-	}
+	apierr.WriteOK(w, success, env)
 }
 
-// writeDetail emits a FastAPI-style error body: {"detail": "..."}.
+// writeDetail emits the gateway's error body for this handler's OWN failures;
+// upstream envelope errors go through apierr.WriteEnvelopeError so their code,
+// structured details and Retry-After survive.
 func writeDetail(w http.ResponseWriter, status int, detail string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"detail": detail})
+	apierr.WriteError(w, status, detail, "", nil)
 }

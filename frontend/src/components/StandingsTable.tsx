@@ -34,6 +34,65 @@ export function getStandingsStagesQueryOptions(
   };
 }
 
+/**
+ * Where the advancing block splits into Upper and Lower bracket, or `null` when
+ * it does not split at all.
+ *
+ * Mirrors `advance_split` (backend `domain/stage/seeds.py`): a later split
+ * double elimination sends the top of each group's advancing teams up and the
+ * rest down, so a tie ACROSS this line decides who starts a bracket down —
+ * every bit as load-bearing as the advance line itself, and invisible until now.
+ *
+ * Without a dedicated Lower-bracket item the engine halves the concatenated
+ * seed list instead of each group's share; that lands on a per-group boundary
+ * only when the advancing count is even, so an odd count returns `null` rather
+ * than drawing a line this table cannot honestly place.
+ */
+export function upperBracketCut(
+  stages: Stage[],
+  groupStage: Stage | null | undefined,
+  advanceCount: number
+): number | null {
+  if (!groupStage || advanceCount < 2) return null;
+  const playoff = stages
+    .filter(
+      (candidate) =>
+        candidate.stage_type === "double_elimination" &&
+        candidate.split_lower_bracket &&
+        (candidate.order > groupStage.order ||
+          (candidate.order === groupStage.order && candidate.id > groupStage.id))
+    )
+    .sort((left, right) => left.order - right.order || left.id - right.id)[0];
+  if (!playoff) return null;
+
+  const hasLowerItem = (playoff.items ?? []).some((item) => item.type === "bracket_lower");
+  const upper = hasLowerItem
+    ? advanceCount - Math.floor(advanceCount / 2)
+    : advanceCount % 2 === 0
+      ? advanceCount / 2
+      : null;
+  return upper != null && upper > 0 && upper < advanceCount ? upper : null;
+}
+
+/**
+ * The tie clusters sitting on both sides of `boundary`.
+ *
+ * For those teams the assigned order — not anything they earned on the pitch —
+ * decides which side of the line they land on, which is the one thing a
+ * standings table has to say out loud. Soft signal: callers mark the rows and
+ * block nothing.
+ */
+export function straddlingTieGroups(rows: Standings[], boundary: number): Set<number> {
+  const groups = new Set<number>();
+  for (const row of rows) {
+    if (row.tie_group == null || row.position > boundary) continue;
+    if (rows.some((other) => other.tie_group === row.tie_group && other.position > boundary)) {
+      groups.add(row.tie_group);
+    }
+  }
+  return groups;
+}
+
 type ResultKind = "w" | "l" | "t";
 
 function resultOf(teamId: number, encounter: Encounter): ResultKind {
@@ -144,7 +203,21 @@ const StandingsTable = ({
     }
   }
 
-  const resolvedAdvanceCount = settingsCount ?? advanceCount;
+  // A group may override the stage's number for itself. This table renders one
+  // group at a time, so the rendered group's override — when it has one — is
+  // the cut-line; everything else keeps the stage-wide resolution above. The
+  // standing carries its own group, so the line is right before the separate
+  // stages query lands.
+  const renderedItemId = standings[0]?.stage_item_id ?? null;
+  const itemAdvanceCount =
+    standings[0]?.stage_item?.advance_count ??
+    (renderedItemId == null
+      ? null
+      : (stages
+          .flatMap((s) => s.items ?? [])
+          .find((item) => item.id === renderedItemId)?.advance_count ?? null));
+
+  const resolvedAdvanceCount = itemAdvanceCount ?? settingsCount ?? advanceCount;
 
   const sortedStandings = [...standings].sort((a, b) => {
     const left = is_groups ? a.position : a.overall_position;
@@ -153,6 +226,23 @@ const StandingsTable = ({
   });
 
   const showCut = is_groups && sortedStandings.length > resolvedAdvanceCount;
+
+  // The second boundary inside the advancing block: Upper vs Lower bracket.
+  const upperCut = is_groups
+    ? upperBracketCut(stages, standings[0]?.stage ?? null, resolvedAdvanceCount)
+    : null;
+  const showUpperCut = upperCut != null && sortedStandings.length > upperCut;
+
+  // Which clusters are cut by which line. A cluster split by BOTH reports the
+  // advance line: being out beats starting a bracket down.
+  const tiedAtCut = showCut
+    ? straddlingTieGroups(sortedStandings, resolvedAdvanceCount)
+    : new Set<number>();
+  const tiedAtUpperCut =
+    showUpperCut && upperCut != null
+      ? straddlingTieGroups(sortedStandings, upperCut)
+      : new Set<number>();
+  const tieClusterTitle = t("standings.tieCluster");
   const columnCount = is_groups ? 9 : 6;
 
   // "Ranked by …" legend — resolve metric ids through i18n, falling back to the
@@ -174,7 +264,9 @@ const StandingsTable = ({
           <thead>
             {is_groups ? (
               <tr>
-                <th scope="col" style={{ width: 36 }}>
+                {/* Wide enough for a two-digit rank plus the tie `=` marker,
+                    which otherwise wraps under the number. */}
+                <th scope="col" className="whitespace-nowrap" style={{ width: 52 }}>
                   #
                 </th>
                 <th scope="col" className={styles.stickyTeamColumn}>
@@ -189,7 +281,15 @@ const StandingsTable = ({
                 <th scope="col" className="r" style={{ width: 48 }} title={t("common.headToHead")}>
                   {t("standings.colH2H")}
                 </th>
-                <th scope="col" className="r" style={{ width: 72 }}>
+                {/* Two numbers, and `13.0 · 17.5` is the widest they get: the
+                    column is sized for that so the pair never breaks onto a
+                    second line and doubles the row's height. */}
+                <th
+                  scope="col"
+                  className="r whitespace-nowrap"
+                  style={{ width: 116 }}
+                  title={t("standings.buchholzMedianFull")}
+                >
                   {t("common.buchholz")}
                 </th>
                 <th scope="col" className="r" style={{ width: 54 }} title={t("common.scoreDiff")}>
@@ -228,6 +328,7 @@ const StandingsTable = ({
           <tbody>
             {sortedStandings.map((standing, index) => {
               const position = is_groups ? standing.position : standing.overall_position;
+              const tieHead = is_groups ? standing.tie_group : null;
               const history = sortStandingsMatches(standing.matches_history ?? []);
               const results = history.map((encounter) => resultOf(standing.team_id, encounter));
               const maps = computeMaps(standing.team_id, history);
@@ -235,15 +336,54 @@ const StandingsTable = ({
               const wPct = total > 0 ? (maps.won / total) * 100 : 0;
               const advancing = is_groups && position <= resolvedAdvanceCount;
               const crowned = !is_groups && crownTop && position === 1;
-              const rowClass = crowned ? "crown" : advancing ? "advance" : undefined;
+              // A tie the line cuts through is the row's real status: whether it
+              // advances (or starts a bracket down) is not settled by results.
+              const tieVerdict =
+                tieHead == null
+                  ? null
+                  : tiedAtCut.has(tieHead)
+                    ? ("advance" as const)
+                    : tiedAtUpperCut.has(tieHead)
+                      ? ("upper" as const)
+                      : null;
+              const tieVerdictTitle =
+                tieVerdict === "advance"
+                  ? t("standings.tieDecidesAdvance")
+                  : tieVerdict === "upper"
+                    ? t("standings.tieDecidesUpper")
+                    : undefined;
+              const rowClass = cn(
+                crowned ? "crown" : advancing ? "advance" : undefined,
+                tieVerdict ? "tie" : undefined
+              );
 
               return (
                 <React.Fragment
                   key={`${standing.stage_item_id ?? standing.stage_id ?? "s"}-${standing.team_id}`}
                 >
-                  <tr className={rowClass}>
-                    <td>
-                      <span className="st-rank">{position}</span>
+                  <tr className={rowClass || undefined}>
+                    <td className="whitespace-nowrap">
+                      {/* Every row of a cluster shows its head's position, so
+                          4/4/6 reads as "these two were never separated". The
+                          next distinct row keeps the position it earned.
+                          `tie_group` is a GROUP-relative position, so it means
+                          nothing in the overall table, which ranks by
+                          `overall_position`. */}
+                      <span
+                        className="st-rank"
+                        title={tieHead != null ? tieClusterTitle : undefined}
+                      >
+                        {tieHead ?? position}
+                      </span>
+                      {tieHead != null && (
+                        <span
+                          className="ml-0.5 text-[color:var(--fg-dim)]"
+                          title={tieClusterTitle}
+                          aria-label={tieClusterTitle}
+                        >
+                          =
+                        </span>
+                      )}
                     </td>
                     <td className={styles.stickyTeamColumn}>
                       <TeamCell standing={standing} showGroup={!is_groups} />
@@ -266,8 +406,22 @@ const StandingsTable = ({
                         <td className="r font-mono tabular-nums text-[color:var(--fg-dim)]">
                           {standing.tb ? standing.tb : "—"}
                         </td>
-                        <td className="r font-mono tabular-nums text-[color:var(--fg-dim)]">
-                          {standing.buchholz != null ? standing.buchholz.toFixed(1) : "—"}
+                        <td className="r font-mono tabular-nums whitespace-nowrap text-[color:var(--fg-dim)]">
+                          {standing.buchholz == null ? (
+                            "—"
+                          ) : (
+                            <>
+                              {standing.buchholz.toFixed(1)}
+                              {/* Two teams level on the median but split by the
+                                  full value can now be read off the table. */}
+                              {standing.full_buchholz != null && (
+                                <span className="opacity-55">
+                                  {" · "}
+                                  {standing.full_buchholz.toFixed(1)}
+                                </span>
+                              )}
+                            </>
+                          )}
                         </td>
                         <td className="r">
                           <MapDiff diff={standing.score_differential ?? maps.diff} />
@@ -276,7 +430,14 @@ const StandingsTable = ({
                           <FormChips results={results} />
                         </td>
                         <td className="c">
-                          {advancing ? (
+                          {/* The tie IS the status: the line cuts through this
+                              cluster, so "advancing" would be a promise the
+                              results have not made. */}
+                          {tieVerdict ? (
+                            <span className="st-status tie" title={tieVerdictTitle}>
+                              {t("standings.tieStatus")}
+                            </span>
+                          ) : advancing ? (
                             <span className="st-status adv">
                               <span className="arrow" />
                               {t("standings.advancing")}
@@ -317,6 +478,16 @@ const StandingsTable = ({
                       </>
                     )}
                   </tr>
+
+                  {showUpperCut && index === upperCut - 1 && (
+                    <tr>
+                      <td
+                        colSpan={columnCount}
+                        className="st-cut st-upper-cut"
+                        data-label={t("standings.upperBracketCut", { count: upperCut })}
+                      />
+                    </tr>
+                  )}
 
                   {showCut && index === resolvedAdvanceCount - 1 && (
                     <tr>

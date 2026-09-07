@@ -1,16 +1,12 @@
 "use client";
 
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowLeft, Loader2, Save } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 
+import { SaveBar } from "@/components/admin/kit/SaveBar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
-import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
   AdminGoogleSheetFeedSyncResponse,
@@ -36,14 +32,7 @@ const PREVIEW_SAMPLE_ROWS = 5;
 
 // D25: rendered by both the hub sub-route (tournament from the path) and the
 // legacy balancer route (tournament from the ?tournament query) until T14.
-export default function SheetsFeedPage({
-  tournamentId,
-  basePath
-}: Readonly<{
-  tournamentId: number | null;
-  basePath: string;
-}>) {
-  const searchParams = useSearchParams();
+export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId: number | null }>) {
   const queryClient = useQueryClient();
 
   const [sourceUrl, setSourceUrl] = useState("");
@@ -247,13 +236,15 @@ export default function SheetsFeedPage({
     );
   }
 
-  const registrationsHref = searchParams.toString()
-    ? `${basePath}?${searchParams.toString()}`
-    : basePath;
+  // One feed, one save: the four sections used to sit behind in-page tabs under
+  // the hub's two routed tab rows, with a second <h1> and a back button the
+  // sub-tab bar already provides.
 
-  const feedExists = feedQuery.data != null;
+  const feed = feedQuery.data ?? null;
+  const catalog = catalogQuery.data;
+  const feedExists = feed !== null;
   const canSave = sourceUrl.trim().length > 0;
-  const canPreview = sourceUrl.trim().length > 0 || feedExists;
+  const canPreview = canSave || feedExists;
   const hasChanges = mapping.hasChanges || sourceHasChanges;
   const canSync = feedExists && !hasChanges;
 
@@ -274,118 +265,105 @@ export default function SheetsFeedPage({
     setSourceHasChanges(true);
   };
 
+  const discard = () => {
+    mapping.discard(catalog, feed);
+    setSourceUrl(feed?.source_url ?? "");
+    setTitle(feed?.title ?? "");
+    setAutoSyncEnabled(feed?.auto_sync_enabled ?? false);
+    setAutoSyncIntervalSeconds(String(feed?.auto_sync_interval_seconds ?? 300));
+    setSourceHasChanges(false);
+    setFieldErrors({});
+    setFormError(null);
+  };
+
+  const save = () => {
+    if (!canSave) {
+      setFormError("A sheet URL is required.");
+      return;
+    }
+    saveMutation.mutate();
+  };
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Google Sheets Feed</h1>
-            <p className="text-sm text-muted-foreground">
-              Configure the source, map columns visually, translate values, and preview parsed rows.
-            </p>
-          </div>
-          <Button variant="outline" asChild className={MUTED_BUTTON_CLASS}>
-            <Link href={registrationsHref}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to registrations
-            </Link>
-          </Button>
-        </div>
+    <div className="flex flex-col gap-4">
+      {formError ? (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Mapping could not be saved</AlertTitle>
+          <AlertDescription>{formError}</AlertDescription>
+        </Alert>
+      ) : null}
 
-        {formError ? (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Mapping could not be saved</AlertTitle>
-            <AlertDescription>{formError}</AlertDescription>
-          </Alert>
-        ) : null}
+      <SourceSyncTab
+        feed={feed}
+        sourceUrl={sourceUrl}
+        title={title}
+        autoSyncEnabled={autoSyncEnabled}
+        autoSyncIntervalSeconds={autoSyncIntervalSeconds}
+        syncResult={syncResult}
+        isSyncing={syncMutation.isPending}
+        canSync={canSync}
+        onChangeSourceUrl={changeSourceUrl}
+        onChangeTitle={changeTitle}
+        onChangeAutoSyncEnabled={changeAutoSyncEnabled}
+        onChangeAutoSyncIntervalSeconds={changeAutoSyncIntervalSeconds}
+        onSync={() => syncMutation.mutate()}
+      />
 
-        <Tabs defaultValue="source" className="flex min-h-0 flex-1 flex-col">
-          <TabsList className="self-start">
-            <TabsTrigger value="source">Source &amp; Sync</TabsTrigger>
-            <TabsTrigger value="columns">Column Mapping</TabsTrigger>
-            <TabsTrigger value="values">Value Mapping</TabsTrigger>
-            <TabsTrigger value="preview">Preview</TabsTrigger>
-          </TabsList>
+      <ColumnMappingTab
+        catalog={catalog}
+        mappingState={mapping.mappingState}
+        headerKeys={headerKeys}
+        previewByTarget={previewByTarget}
+        errorsByTarget={fieldErrors}
+        isSuggesting={suggestMutation.isPending}
+        onSuggest={() => suggestMutation.mutate()}
+        onModeChange={mapping.setTargetMode}
+        onColumnsChange={mapping.setTargetColumns}
+        onValueChange={mapping.setTargetValue}
+        onParserChange={mapping.setTargetParser}
+        onIsListChange={mapping.setTargetIsList}
+      />
 
-          <TabsContent value="source">
-            <SourceSyncTab
-              feed={feedQuery.data}
-              sourceUrl={sourceUrl}
-              title={title}
-              autoSyncEnabled={autoSyncEnabled}
-              autoSyncIntervalSeconds={autoSyncIntervalSeconds}
-              syncResult={syncResult}
-              isSyncing={syncMutation.isPending}
-              canSync={canSync}
-              onChangeSourceUrl={changeSourceUrl}
-              onChangeTitle={changeTitle}
-              onChangeAutoSyncEnabled={changeAutoSyncEnabled}
-              onChangeAutoSyncIntervalSeconds={changeAutoSyncIntervalSeconds}
-              onSync={() => syncMutation.mutate()}
-            />
-          </TabsContent>
+      <ValueMappingTab
+        valueState={mapping.valueState}
+        valueCategories={catalog.value_categories}
+        subroleCatalog={catalog.subrole_catalog ?? {}}
+        onAdd={mapping.addValueRow}
+        onUpdate={mapping.updateValueRow}
+        onRemove={mapping.removeValueRow}
+        onSeedDefaults={mapping.seedValueDefaults}
+      />
 
-          <TabsContent value="columns">
-            <ColumnMappingTab
-              catalog={catalogQuery.data}
-              mappingState={mapping.mappingState}
-              headerKeys={headerKeys}
-              previewByTarget={previewByTarget}
-              errorsByTarget={fieldErrors}
-              isSuggesting={suggestMutation.isPending}
-              onSuggest={() => suggestMutation.mutate()}
-              onModeChange={mapping.setTargetMode}
-              onColumnsChange={mapping.setTargetColumns}
-              onValueChange={mapping.setTargetValue}
-              onParserChange={mapping.setTargetParser}
-              onIsListChange={mapping.setTargetIsList}
-            />
-          </TabsContent>
+      <PreviewTab
+        catalog={catalog}
+        mappingState={mapping.mappingState}
+        preview={preview}
+        activeRowIndex={activeRowIndex}
+        isRefreshing={previewMutation.isPending}
+        canPreview={canPreview}
+        onRefresh={() => previewMutation.mutate()}
+        onChangeRow={setActiveRowIndex}
+      />
 
-          <TabsContent value="values">
-            <ValueMappingTab
-              valueState={mapping.valueState}
-              valueCategories={catalogQuery.data.value_categories}
-              subroleCatalog={catalogQuery.data.subrole_catalog ?? {}}
-              onAdd={mapping.addValueRow}
-              onUpdate={mapping.updateValueRow}
-              onRemove={mapping.removeValueRow}
-              onSeedDefaults={mapping.seedValueDefaults}
-            />
-          </TabsContent>
-
-          <TabsContent value="preview">
-            <PreviewTab
-              catalog={catalogQuery.data}
-              mappingState={mapping.mappingState}
-              preview={preview}
-              activeRowIndex={activeRowIndex}
-              isRefreshing={previewMutation.isPending}
-              canPreview={canPreview}
-              onRefresh={() => previewMutation.mutate()}
-              onChangeRow={setActiveRowIndex}
-            />
-          </TabsContent>
-        </Tabs>
-      </div>
-
-      <div className="flex items-center justify-end gap-3 border-t bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        {hasChanges ? <span className="text-xs text-muted-foreground">Unsaved changes</span> : null}
-        <Button
-          size="lg"
-          className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending || !canSave || (!hasChanges && feedExists)}
-        >
-          {saveMutation.isPending ? (
-            <Loader2 className="mr-2 size-4 animate-spin" />
-          ) : (
-            <Save className="mr-2 size-4" />
-          )}
-          {feedExists ? "Save changes" : "Create feed"}
-        </Button>
-      </div>
+      {/* Same SaveBar as every settings section: present only while dirty, with
+          the shared unsaved-navigation guard. A tournament with no feed yet
+          becomes dirty the moment a URL is typed, which is also the first
+          moment "Create feed" could succeed. */}
+      <SaveBar
+        dirty={hasChanges}
+        saving={saveMutation.isPending}
+        primaryLabel={feedExists ? "Save changes" : "Create feed"}
+        summary={
+          canSave
+            ? feedExists
+              ? "Unsaved feed changes"
+              : "New Google Sheets feed"
+            : "A sheet URL is required"
+        }
+        onDiscard={discard}
+        onSave={save}
+      />
     </div>
   );
 }

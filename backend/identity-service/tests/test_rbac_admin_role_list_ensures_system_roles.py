@@ -26,27 +26,6 @@ from src import models, schemas  # noqa: E402
 from src.services.rbac_admin import RoleAdminService  # noqa: E402
 
 
-@pytest.fixture
-def db_session():
-    """Yield a live AsyncSession, or skip the test if the DB is unreachable.
-
-    Mirrors ``test_signup_provisions_player.py``'s ``db_session`` fixture.
-    """
-    from src.core import db as db_module
-
-    async def _make():
-        try:
-            session = db_module.async_session_maker()
-            await session.execute(__import__("sqlalchemy").text("SELECT 1"))
-        except Exception as exc:  # pragma: no cover - environment guard
-            pytest.skip(f"database unavailable: {exc}")
-        return session
-
-    session = asyncio.run(_make())
-    yield session
-    asyncio.run(session.close())
-
-
 def test_listing_workspace_roles_creates_missing_system_roles(db_session) -> None:
     suffix = uuid.uuid4().hex[:10]
 

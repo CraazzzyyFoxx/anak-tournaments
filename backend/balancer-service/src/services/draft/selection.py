@@ -36,6 +36,7 @@ from src.domain.draft.fit import FitConfig, FitPlayer, best_fit
 from src.services.draft import loaders
 from src.services.draft._errors import err as _err
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
+from src.services.draft.rosters import DraftRosterService, draft_rosters
 
 __all__ = ("DraftSelectionService", "selection_service")
 
@@ -48,11 +49,13 @@ class DraftSelectionService:
         players_repo: DraftPlayerRepository = DraftPlayerRepository(),
         picks_repo: DraftPickRepository = DraftPickRepository(),
         feasibility: DraftFeasibilityService = feasibility_service,
+        rosters: DraftRosterService = draft_rosters,
     ) -> None:
         self.teams_repo = teams_repo
         self.players_repo = players_repo
         self.picks_repo = picks_repo
         self.feasibility = feasibility
+        self.rosters = rosters
 
     async def _actor_member_id(
         self, session: AsyncSession, draft_session: DraftSession, actor_user_id: int | None
@@ -113,17 +116,27 @@ class DraftSelectionService:
         if rule not in rules.DYNAMIC_ROUND_RULES:
             return False
 
-        # Average the drafted-role rank (off-role aware), not the primary-role
-        # rank_value.
+        # Average the drafted-role rank (off-role aware), not the lead-role one.
         avg_by_team = await self._team_avg_drafted_rank(
-            session, draft_session.id, await self.feasibility.resolve_shape(session, draft_session)
+            session, draft_session, await self.feasibility.resolve_shape(session, draft_session)
         )
         teams = await self.teams_repo.list_by_session(session, draft_session.id)
+        # Tie-break for equal averages — same shape as lifecycle.resync_pick_order's,
+        # so a live re-seat and a settings resync rank captains identically.
+        captains = await self.players_repo.list_drafted_captains(session, draft_session.id)
+        captain_rosters = await self.rosters.load(session, draft_session, captains)
+        captain_ranks = {
+            captain.drafted_by_team_id: (
+                (captain_rosters[captain.id].best_rank or -1) if captain.id in captain_rosters else -1
+            )
+            for captain in captains
+        }
         sorted_team_ids = [
             team.id
             for team in rules.average_seat_order(
                 list(teams),
                 averages=avg_by_team,
+                captain_ranks=captain_ranks,
                 descending=rule == "team_avg_desc",
             )
         ]
@@ -195,24 +208,26 @@ class DraftSelectionService:
         )
 
     async def _team_avg_drafted_rank(
-        self, session: AsyncSession, draft_session_id: int, shape: RosterShape
+        self, session: AsyncSession, draft_session: DraftSession, shape: RosterShape
     ) -> dict[int, float]:
         """Average drafted-role rank per team (picked players + captains).
 
-        Uses each pick's frozen ``target_rank_value``; falls back to the rank the
-        shape gives the drafted/primary role (captains have no pick). A role-less
-        shape ignores the frozen value: it was frozen against a role the shape gives
-        no meaning to, so ``slot_rank`` re-derives the same maximum every other
-        reader of a flex draft shows.
+        Uses each pick's frozen ``target_rank_value`` -- the one derivation the
+        draft still stores, because it is a fact about a pick that happened.
+        Captains have no pick, so they are valued live on their lead role. A
+        role-less shape ignores the frozen value: it was frozen against a role
+        the shape gives no meaning to, so ``slot_rank`` re-derives the same
+        maximum every other reader of a flex draft shows.
         """
         all_players = await self.players_repo.list_by_session(
-            session, draft_session_id, options=loaders.player_options()  # role_rank reads role_ranks
+            session, draft_session.id, options=loaders.player_options()
         )
         players = [
             p for p in all_players if p.drafted_by_team_id is not None and p.status == DraftPlayerStatus.PICKED.value
         ]
-        picks = await self.picks_repo.list_resolved(session, draft_session_id)
+        picks = await self.picks_repo.list_resolved(session, draft_session.id)
         pick_by_player_id = {pk.picked_player_id: pk for pk in picks if pk.picked_player_id is not None}
+        rosters = await self.rosters.load(session, draft_session, players)
 
         sums: dict[int, float] = {}
         counts: dict[int, int] = {}
@@ -221,8 +236,10 @@ class DraftSelectionService:
             if shape.has_role_slots and pk is not None and pk.target_rank_value is not None:
                 rank = pk.target_rank_value
             else:
-                role = (pk.target_role if pk else None) or p.primary_role
-                rank = domain_ranks.slot_rank(p, role, shape) or 0
+                roster = rosters.get(p.id)
+                lead = roster.primary if roster is not None else None
+                role = (pk.target_role if pk else None) or (lead.role if lead is not None else None)
+                rank = domain_ranks.slot_rank(roster, role, shape) or 0
             tid = p.drafted_by_team_id
             sums[tid] = sums.get(tid, 0.0) + rank
             counts[tid] = counts.get(tid, 0) + 1
@@ -261,8 +278,11 @@ class DraftSelectionService:
         snapshot = await self.feasibility.load_snapshot(session, draft_session)
         shape = await self.feasibility.resolve_shape(session, draft_session)
         player = rules.available_player_from(snapshot, player_id)
-        counts = rules.team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape)
-        decision = rules.resolve_pick_slot(shape, counts, player, target_role)
+        roster = snapshot.roster(player.id)
+        counts = rules.team_slot_counts(
+            snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters
+        )
+        decision = rules.resolve_pick_slot(shape, counts, roster, target_role)
 
         feasibility_report = await self.feasibility.analyze_session(
             session,
@@ -293,7 +313,7 @@ class DraftSelectionService:
         # pick is a complete (player, role, rank) record regardless of off-role. A
         # role-less roster records no role: recorded_role is None there.
         pick.target_role = decision.recorded_role
-        pick.target_rank_value = domain_ranks.slot_rank(player, decision.role, shape)
+        pick.target_rank_value = domain_ranks.slot_rank(roster, decision.role, shape)
         return await self._apply_won(session, draft_session, pick, player)
 
     async def autopick(
@@ -308,23 +328,27 @@ class DraftSelectionService:
         rules.validate_current_pick(draft_session, pick)
         snapshot = await self.feasibility.load_snapshot(session, draft_session)
         shape = await self.feasibility.resolve_shape(session, draft_session)
-        # Fit construction reads secondary_roles_json/user_id/role_ranks; snapshot
-        # players carry loaders.player_options() so those never lazy-load.
         available = [p for p in snapshot.players if p.status == DraftPlayerStatus.AVAILABLE.value]
-        counts = rules.team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape)
+        counts = rules.team_slot_counts(
+            snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters
+        )
         capacity = rules.role_openings(shape, counts)
 
+        # Fit is built from the engine's rosters: a player is scored at the rank
+        # of the role they would actually fill, and a player the balancer ranks
+        # on no role is not a candidate at all (rather than a rank-0 last resort).
         fit_players = [
             FitPlayer(
                 player_id=p.id,
-                rank_value=p.rank_value or 0,
-                playable_roles=rules.playable_roles(p),
-                preference_order=(HeroClass.from_slot_code(p.primary_role),),
-                is_flex=p.is_flex,
+                rank_value=roster.best_rank or 0,
+                playable_roles=roster.playable_roles,
+                preference_order=((lead.role,) if (lead := roster.primary) is not None else ()),
+                is_flex=roster.is_full_flex,
                 user_id=p.user_id,
-                rank_by_role={HeroClass.from_slot_code(k): v for k, v in (p.role_ranks or {}).items()},
+                rank_by_role={HeroClass.from_slot_code(code): rank for code, rank in roster.role_ranks.items()},
             )
             for p in available
+            if (roster := snapshot.roster(p.id)) is not None and roster.is_draftable
         ]
         options = await self.feasibility.evaluate_session_pick_options(
             session,
@@ -360,12 +384,12 @@ class DraftSelectionService:
         )
         if not won:
             raise _err("pick_already_resolved", "Pick was already resolved")
-        # domain_ranks.slot_rank(player, ...) reads role_ranks -> roles; the chosen
-        # row came from the snapshot's eager-loaded players, so no re-fetch is needed.
         player = next(p for p in available if p.id == chosen_id)
-        resolved_role = chosen_role or HeroClass.from_slot_code(player.primary_role)
+        roster = snapshot.roster(player.id)
+        lead = roster.primary if roster is not None else None
+        resolved_role = chosen_role or (lead.role if lead is not None else HeroClass.damage)
         pick.target_role = resolved_role.slot_code if shape.has_role_slots else None
-        pick.target_rank_value = domain_ranks.slot_rank(player, resolved_role, shape)
+        pick.target_rank_value = domain_ranks.slot_rank(roster, resolved_role, shape)
         return await self._apply_won(session, draft_session, pick, player)
 
     async def override(
@@ -387,8 +411,11 @@ class DraftSelectionService:
         snapshot = await self.feasibility.load_snapshot(session, draft_session)
         shape = await self.feasibility.resolve_shape(session, draft_session)
         player = rules.available_player_from(snapshot, player_id)
-        counts = rules.team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape)
-        decision = rules.resolve_pick_slot(shape, counts, player, target_role)
+        roster = snapshot.roster(player.id)
+        counts = rules.team_slot_counts(
+            snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters
+        )
+        decision = rules.resolve_pick_slot(shape, counts, roster, target_role)
         feasibility_report = await self.feasibility.analyze_session(
             session,
             draft_session,
@@ -415,7 +442,7 @@ class DraftSelectionService:
         if not won:
             raise _err("pick_already_resolved", "Pick was already resolved")
         pick.target_role = decision.recorded_role
-        pick.target_rank_value = domain_ranks.slot_rank(player, decision.role, shape)
+        pick.target_rank_value = domain_ranks.slot_rank(roster, decision.role, shape)
         return await self._apply_won(session, draft_session, pick, player)
 
 

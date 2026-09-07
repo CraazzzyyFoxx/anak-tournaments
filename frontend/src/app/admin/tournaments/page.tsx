@@ -8,7 +8,7 @@ import { Plus, Trash2, CheckCircle, CircleDot, Crown, Trophy } from "lucide-reac
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -174,8 +174,8 @@ export default function TournamentsPage() {
         description="Manage tournaments and their stages"
         actions={
           canCreate ? (
-            <Button onClick={() => router.push("/admin/tournaments/new")}>
-              <Plus className="mr-2 h-4 w-4" aria-hidden />
+            <Button size="sm" onClick={() => router.push("/admin/tournaments/new")}>
+              <Plus className="size-3.5" aria-hidden />
               Create tournament
             </Button>
           ) : null
@@ -238,20 +238,24 @@ export default function TournamentsPage() {
 
       {/* Delete Dialog */}
       {canDelete ? (
-        <DeleteConfirmDialog
+        <ConfirmDialog
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
           onConfirm={handleConfirmDelete}
-          title="Delete tournament"
-          description={`Deleting "${selectedTournament?.name}" also removes its stages, teams, encounters and standings. This cannot be undone.`}
-          cascadeInfo={[
-            "All tournament stages",
-            "All teams in this tournament",
-            "All players in these teams",
-            "All encounters in this tournament",
-            "All standings data"
-          ]}
-          isDeleting={deleteMutation.isPending}
+          pending={deleteMutation.isPending}
+          intent={{
+            title: "Delete tournament",
+            description: `Deleting "${selectedTournament?.name}" also removes its stages, teams, encounters and standings. This cannot be undone.`,
+            confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+            tone: "danger",
+            cascade: [
+              "All tournament stages",
+              "All teams in this tournament",
+              "All players in these teams",
+              "All encounters in this tournament",
+              "All standings data"
+            ]
+          }}
         />
       ) : null}
     </div>

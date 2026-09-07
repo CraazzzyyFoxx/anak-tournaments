@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Plus } from "lucide-react";
+import { useFormatter } from "next-intl";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -17,7 +19,8 @@ import tournamentService from "@/services/tournament.service";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import type { Tournament } from "@/types/tournament.types";
 
-import { GreetingBar } from "@/components/admin/dashboard/GreetingBar";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { KpiStrip, kpiColumnsClass } from "@/components/admin/dashboard/KpiStrip";
 import { ActiveTournamentCard } from "@/components/admin/dashboard/ActiveTournamentCard";
 import { ActiveTournamentReadiness } from "@/components/admin/dashboard/ActiveTournamentReadiness";
@@ -59,18 +62,22 @@ function emptyPaginated<T>(): PaginatedResponse<T> {
 }
 
 export default function AdminDashboard() {
-  const { canAccessPermission, canAccessAdminRoute } = usePermissions();
+  const { canAccessPermission } = usePermissions();
   const workspaceId = useCurrentWorkspaceId();
+  const { user } = useAuthProfile();
+  const format = useFormatter();
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const today = format.dateTime(new Date(), { weekday: "long", month: "long", day: "numeric" });
 
   const canReadTournaments = canAccessPermission("tournament.read", workspaceId);
   const canCreateTournaments = canAccessPermission("tournament.create", workspaceId);
   const canReadTeams = canAccessPermission("team.read", workspaceId);
   const canReadMatches = canAccessPermission("match.read", workspaceId);
-  // /admin/users is globalOnly (players are not workspace-scoped, see
-  // admin-navigation.ts), so this must use the same global gate as the nav
-  // item and route guard -- not a workspace-scoped check, which a workspace
-  // admin's `user.read` grant would satisfy while the page itself 403s them.
-  const canReadUsers = canAccessAdminRoute({ permissions: ["user.read"], globalOnly: true });
+  // Same gate as the nav item and route guard for /admin/users: a
+  // workspace-scoped `user.read` opens it now (the list is filtered to the
+  // workspace's roster, see admin-navigation.ts and `users_admin._scope`).
+  const canReadUsers = canAccessPermission("user.read", workspaceId);
 
   // Aggregated counts from backend (single lightweight query). `workspace_id` is
   // injected by apiFetch, so it MUST be part of the key or a workspace switch
@@ -78,7 +85,7 @@ export default function AdminDashboard() {
   const statsQuery = useQuery({
     queryKey: ["admin", "dashboard", "stats", workspaceId],
     queryFn: () =>
-      apiFetch("/api/v1/statistics/dashboard").then((r) => r.json() as Promise<DashboardStats>),
+      apiFetch("/api/v1/statistics/dashboard").then((r) => r.json() as Promise<DashboardStats>)
   });
 
   // Tournaments still needed for Active Tournament Card & Recent Tournaments display
@@ -87,7 +94,7 @@ export default function AdminDashboard() {
     queryFn: () =>
       canReadTournaments
         ? tournamentService.getAll(null)
-        : Promise.resolve(emptyPaginated<Tournament>()),
+        : Promise.resolve(emptyPaginated<Tournament>())
   });
 
   const stats = statsQuery.data;
@@ -107,35 +114,30 @@ export default function AdminDashboard() {
   const readinessQuery = useQuery({
     queryKey: getTournamentWorkspaceQueryKeys(activeTournament?.id ?? 0).readiness,
     queryFn: () => adminService.getTournamentReadiness(activeTournament!.id),
-    enabled: canReadReadiness && activeTournament != null,
+    enabled: canReadReadiness && activeTournament != null
   });
 
   // One tile per KPI the reader may actually see — the loading skeleton reserves
   // the same count, so a two-permission role no longer gets a four-tile shimmer.
   const kpiCount = (canReadTournaments ? 2 : 0) + (canReadMatches ? 2 : 0);
 
-  const derived = useMemo(() => {
-    const activeStats = stats?.active_tournament_stats;
-    const encounterCount = activeStats?.encounters_total ?? 0;
-    const missingLogs = activeStats?.encounters_missing_logs ?? 0;
-    const logCoveragePercent = activeStats?.log_coverage_percent ?? 100;
-
+  const issueItems = useMemo(() => {
     const issues = stats?.issues;
-    const issueItems: IssueItem[] = [
+    const items: IssueItem[] = [
       canReadMatches && (issues?.encounters_pending_confirmation ?? 0) > 0
         ? {
             label: "Results awaiting confirmation",
             count: issues!.encounters_pending_confirmation,
-            href: "/admin/encounters",
-            tone: "critical" as const,
+            href: "/admin/matches?view=encounters",
+            tone: "critical" as const
           }
         : null,
       canReadMatches && (issues?.encounters_awaiting_result ?? 0) > 0
         ? {
             label: "Overdue match results",
             count: issues!.encounters_awaiting_result,
-            href: "/admin/encounters",
-            tone: "critical" as const,
+            href: "/admin/matches?view=encounters",
+            tone: "critical" as const
           }
         : null,
       // Warning, not critical: an unrecorded or unconfirmed result blocks the
@@ -144,8 +146,8 @@ export default function AdminDashboard() {
         ? {
             label: "Missing encounter logs",
             count: issues!.encounters_missing_logs,
-            href: "/admin/encounters",
-            tone: "warning" as const,
+            href: "/admin/matches?view=encounters",
+            tone: "warning" as const
           }
         : null,
       canReadTournaments && (issues?.stage_slots_empty ?? 0) > 0
@@ -153,7 +155,7 @@ export default function AdminDashboard() {
             label: "Empty bracket slots",
             count: issues!.stage_slots_empty,
             href: "/admin/tournaments",
-            tone: "warning" as const,
+            tone: "warning" as const
           }
         : null,
       canReadTeams && (issues?.teams_without_players ?? 0) > 0
@@ -161,7 +163,7 @@ export default function AdminDashboard() {
             label: "Teams without rosters",
             count: issues!.teams_without_players,
             href: "/admin/teams",
-            tone: "warning" as const,
+            tone: "warning" as const
           }
         : null,
       canReadTournaments && (issues?.tournaments_without_stages ?? 0) > 0
@@ -169,41 +171,40 @@ export default function AdminDashboard() {
             label: "Tournaments missing stages",
             count: issues!.tournaments_without_stages,
             href: "/admin/tournaments",
-            tone: "warning" as const,
+            tone: "warning" as const
           }
         : null,
       canReadUsers && (issues?.users_without_identities ?? 0) > 0
         ? {
             label: "Unlinked player identities",
             count: issues!.users_without_identities,
-            href: "/admin/users",
-            tone: "info" as const,
+            href: "/admin/people",
+            tone: "info" as const
           }
-        : null,
+        : null
     ].filter((item): item is IssueItem => item !== null);
-
-    return { encounterCount, missingLogs, logCoveragePercent, issueItems };
+    return items;
   }, [stats, canReadMatches, canReadTeams, canReadTournaments, canReadUsers]);
 
   if (statsQuery.isLoading || tournamentsQuery.isLoading) {
     return (
       <div className="flex flex-col gap-4">
-        <Skeleton className="h-14 rounded-2xl" />
+        <Skeleton className="h-12 rounded-xl" />
         {kpiCount > 0 && (
           <div className={cn("grid gap-3 md:grid-cols-2", kpiColumnsClass(kpiCount))}>
             {Array.from({ length: kpiCount }).map((_, i) => (
-              <Skeleton key={i} className="h-24 rounded-2xl" />
+              <Skeleton key={i} className="h-24 rounded-xl" />
             ))}
           </div>
         )}
         <div className="grid gap-4 xl:grid-cols-[7fr_3fr]">
           <div className="flex flex-col gap-4">
-            <Skeleton className="h-56 rounded-2xl" />
-            <Skeleton className="h-64 rounded-2xl" />
+            <Skeleton className="h-28 rounded-xl" />
+            <Skeleton className="h-72 rounded-xl" />
           </div>
           <div className="flex flex-col gap-4">
-            <Skeleton className="h-48 rounded-2xl" />
-            <Skeleton className="h-64 rounded-2xl" />
+            <Skeleton className="h-40 rounded-xl" />
+            <Skeleton className="h-64 rounded-xl" />
           </div>
         </div>
       </div>
@@ -215,8 +216,21 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* [1] GREETING BAR */}
-      <GreetingBar canCreateTournament={canCreateTournaments} />
+      {/* [1] HEADER — the same primitive every other admin screen opens with */}
+      <AdminPageHeader
+        title="Dashboard"
+        description={`${greeting}, ${user?.username ?? "Admin"} · ${today}`}
+        actions={
+          canCreateTournaments ? (
+            <Button asChild size="sm">
+              <Link href="/admin/tournaments/new">
+                <Plus className="size-3.5" aria-hidden />
+                Create tournament
+              </Link>
+            </Button>
+          ) : null
+        }
+      />
 
       {/* [2] LOAD FAILURE — a failed fetch must not read as a real zero */}
       {(statsFailed || tournamentsFailed) && (
@@ -253,14 +267,12 @@ export default function AdminDashboard() {
               ? { active: stats?.tournaments_active ?? 0, total: stats?.tournaments_total ?? 0 }
               : null
           }
-          registrationOpen={
-            canReadTournaments ? (stats?.tournaments_registration_open ?? 0) : null
-          }
+          registrationOpen={canReadTournaments ? (stats?.tournaments_registration_open ?? 0) : null}
           matches={
             canReadMatches
               ? {
                   completed: stats?.encounters_completed ?? 0,
-                  total: stats?.encounters_total ?? 0,
+                  total: stats?.encounters_total ?? 0
                 }
               : null
           }
@@ -269,7 +281,7 @@ export default function AdminDashboard() {
               ? {
                   covered:
                     (stats?.encounters_total ?? 0) - (stats?.issues.encounters_missing_logs ?? 0),
-                  total: stats?.encounters_total ?? 0,
+                  total: stats?.encounters_total ?? 0
                 }
               : null
           }
@@ -280,14 +292,7 @@ export default function AdminDashboard() {
       <section className={cn("grid gap-4", !tournamentsFailed && "xl:grid-cols-[7fr_3fr]")}>
         {!tournamentsFailed && (
           <div className="flex flex-col gap-4">
-            <ActiveTournamentCard
-              canRead={canReadTournaments}
-              tournament={activeTournament}
-              encounterCount={derived.encounterCount}
-              missingLogs={derived.missingLogs}
-              logCoveragePercent={derived.logCoveragePercent}
-              canReadMatches={canReadMatches}
-            />
+            <ActiveTournamentCard canRead={canReadTournaments} tournament={activeTournament} />
             <ActiveTournamentReadiness
               canRead={canReadReadiness}
               tournament={activeTournament}
@@ -300,7 +305,7 @@ export default function AdminDashboard() {
 
         {(!statsFailed || !tournamentsFailed) && (
           <div className="flex flex-col gap-4">
-            {!statsFailed && <IssuesQueue items={derived.issueItems} />}
+            {!statsFailed && <IssuesQueue items={issueItems} />}
             {!tournamentsFailed && (
               <RecentTournaments canRead={canReadTournaments} tournaments={tournaments} />
             )}

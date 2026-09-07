@@ -23,6 +23,7 @@ import type {
 import type { RealtimeConnectionState } from "@/types/realtime.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import type { useDraftMutations } from "@/hooks/useDraftData";
+import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 
 import { CaptainShortlist } from "./CaptainShortlist";
 import { DraftOrder } from "./DraftOrder";
@@ -36,6 +37,7 @@ interface CaptainDraftWorkspaceProps {
   gating: DraftGating;
   options: DraftPickOptionsResponse | null;
   optionsLoading: boolean;
+  onRetryOptions: () => void;
   connectionState: RealtimeConnectionState;
   viewParams: DraftViewParams;
   onViewParamsChange: (patch: Partial<DraftViewParams>) => void;
@@ -51,6 +53,7 @@ export function CaptainDraftWorkspace({
   gating,
   options,
   optionsLoading,
+  onRetryOptions,
   connectionState,
   viewParams,
   onViewParamsChange,
@@ -61,7 +64,12 @@ export function CaptainDraftWorkspace({
   const t = useTranslations("draftRedesign");
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [selectedRole, setSelectedRole] = useState<DraftRole | null>(null);
-  const [shortlist, setShortlist] = useState<Set<number>>(() => new Set());
+  // Persisted per session so a reload (or an accidental tab close) keeps the shortlist.
+  const [shortlistIds, setShortlistIds] = useLocalStorageState<number[]>(
+    `aqt.draft.shortlist.${board.session.id}`,
+    []
+  );
+  const shortlist = useMemo(() => new Set(shortlistIds), [shortlistIds]);
   const [announcement, setAnnouncement] = useState("");
   const availablePlayers = useMemo(
     () => board.players.filter((player) => player.status === "available"),
@@ -87,7 +95,11 @@ export function CaptainDraftWorkspace({
   const shortlistPlayers = availablePlayers.filter((player) => shortlist.has(player.id));
   const myTeam = board.teams.find((team) => team.id === gating.myTeamId) ?? null;
   const currentPick = board.current_pick;
-  const safetyRequired = gating.isMyPick;
+  // Only claim a player is safe or blocked when the server's option list is
+  // actually here. Without it every row would read as "no role keeps every
+  // remaining roster feasible" — a verdict nobody computed.
+  const safetyRequired = gating.isMyPick && options != null;
+  const optionsUnavailable = gating.isMyPick && options == null && !optionsLoading;
   const selection = selectedPlayer && selectedRole
     ? { playerId: selectedPlayer.id, role: selectedRole }
     : null;
@@ -106,12 +118,9 @@ export function CaptainDraftWorkspace({
     setAnnouncement("");
   };
   const toggleShortlist = (playerId: number) => {
-    setShortlist((current) => {
-      const next = new Set(current);
-      if (next.has(playerId)) next.delete(playerId);
-      else next.add(playerId);
-      return next;
-    });
+    setShortlistIds((current) =>
+      current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId]
+    );
   };
   const confirm = () => {
     if (!confirmAllowed || !currentPick || !selectedPlayer || !selectedRole) return;
@@ -199,6 +208,18 @@ export function CaptainDraftWorkspace({
         // line box instead of down the whole notice.
         <output className="block border-l-2 border-[color:var(--aqt-teal)] pl-3 text-sm text-[color:var(--aqt-fg-muted)]">
           {t("checkingSafeOptions")}
+        </output>
+      )}
+      {optionsUnavailable && (
+        <output className="flex flex-wrap items-center gap-2 border-l-2 border-[color:var(--aqt-live)] pl-3 text-sm text-[color:var(--aqt-fg-muted)]">
+          {t("safeOptionsUnavailable")}
+          <button
+            type="button"
+            onClick={onRetryOptions}
+            className="min-h-11 text-[color:var(--aqt-teal)] underline outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+          >
+            {t("retry")}
+          </button>
         </output>
       )}
 

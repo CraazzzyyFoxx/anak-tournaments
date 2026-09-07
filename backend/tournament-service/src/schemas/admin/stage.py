@@ -45,12 +45,15 @@ class StageItemCreate(BaseModel):
     name: str
     type: StageItemType
     order: int = 0
+    #: Overrides ``Stage.advance_count`` for this group only; None = inherit.
+    advance_count: int | None = Field(default=None, ge=1)
 
 
 class StageItemUpdate(BaseModel):
     name: str | None = None
     type: StageItemType | None = None
     order: int | None = None
+    advance_count: int | None = Field(default=None, ge=1)
 
 
 class StageItemInputCreate(BaseModel):

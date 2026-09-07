@@ -20,7 +20,7 @@ export interface CatalogEntry {
  * sub-role is offered on this tournament's registration form (a role with no
  * explicit selection offers all of its catalog options).
  *
- * The catalog itself is workspace-global and is managed on `/admin/sub-roles`:
+ * The catalog itself is workspace-global and is managed in workspace settings:
  * creating or removing an entry from here used to rewrite the options of every
  * other tournament in the workspace, plus the player, roster and balancer
  * pickers that read the same table.
@@ -44,24 +44,26 @@ export function SubrolesTab({
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div>
-          <CardTitle asChild><h2>{t("title")}</h2></CardTitle>
+          <CardTitle asChild>
+            <h2>{t("title")}</h2>
+          </CardTitle>
           <CardDescription>{t("description")}</CardDescription>
         </div>
         <Button variant="outline" size="sm" asChild className="shrink-0">
-          <Link href="/admin/sub-roles">
+          <Link href="/admin/settings/sub-roles">
             {t("editCatalog")}
             <ArrowRight className="ml-2 size-3.5" aria-hidden />
           </Link>
         </Button>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="divide-y">
         {ROLES.map((role) => {
           const options = catalog[role.code] ?? [];
           const roleSelection = selection[role.code];
           const allSlugs = options.map((option) => option.slug);
 
           return (
-            <div key={role.code} className="space-y-2 rounded-lg border p-4">
+            <div key={role.code} className="space-y-2 py-3 first:pt-0 last:pb-0">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">
                   {ROLE_LABELS[role.code] ?? role.display}
@@ -70,7 +72,7 @@ export function SubrolesTab({
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {t("offeredCount", {
                       count: roleSelection.filter((slug) => allSlugs.includes(slug)).length,
-                      total: options.length,
+                      total: options.length
                     })}
                   </span>
                 )}
@@ -78,7 +80,8 @@ export function SubrolesTab({
 
               <div className="flex flex-wrap items-center gap-1.5">
                 {options.map((option) => {
-                  const offered = roleSelection === undefined || roleSelection.includes(option.slug);
+                  const offered =
+                    roleSelection === undefined || roleSelection.includes(option.slug);
                   return (
                     <button
                       key={option.id}

@@ -1,8 +1,11 @@
 "use client";
 
-import { Loader2, RefreshCcw } from "lucide-react";
+import { ChevronRight, Loader2, RefreshCcw } from "lucide-react";
 
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS, type Tone } from "@/components/admin/tone";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,8 +15,6 @@ import type {
   AdminGoogleSheetFeed,
   AdminGoogleSheetFeedSyncResponse,
 } from "@/types/balancer-admin.types";
-
-import { FeedStatusCard } from "./FeedStatusCard";
 
 interface SourceSyncTabProps {
   feed: AdminGoogleSheetFeed | null | undefined;
@@ -31,6 +32,24 @@ interface SourceSyncTabProps {
   onSync: () => void;
 }
 
+function statusTone(status: string | null | undefined): Tone {
+  switch (status) {
+    case "ok":
+    case "success":
+      return "success";
+    case "error":
+    case "failed":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+/**
+ * Source, sync status and the last sync outcome — one card. The three used to
+ * be stacked cards each stretching its inputs across the whole hub width; the
+ * status is a header fact, not a section.
+ */
 export function SourceSyncTab({
   feed,
   sourceUrl,
@@ -46,14 +65,47 @@ export function SourceSyncTab({
   onChangeAutoSyncIntervalSeconds,
   onSync,
 }: Readonly<SourceSyncTabProps>) {
+  const headers = feed?.header_row_json ?? [];
+
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
+    <Card>
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+        <div className="space-y-1.5">
           <CardTitle>Source</CardTitle>
           <CardDescription>Where registrations are read from and how often the worker re-syncs.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {feed ? (
+            <>
+              <StatusPill tone={statusTone(feed.last_sync_status)} dot>
+                {feed.last_sync_status ?? "pending"}
+              </StatusPill>
+              <span className="text-xs text-muted-foreground">
+                Last sync {feed.last_synced_at ? new Date(feed.last_synced_at).toLocaleString() : "never"}
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground">No feed yet</span>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onSync}
+            disabled={isSyncing || !canSync}
+            title={canSync ? undefined : "Save the feed and any pending changes before syncing."}
+          >
+            {isSyncing ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="mr-2 size-4" />
+            )}
+            Sync now
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="space-y-2">
             <Label htmlFor="sheet-url">Sheet URL</Label>
             <Input
@@ -72,52 +124,55 @@ export function SourceSyncTab({
               placeholder="Optional label"
             />
           </div>
-          <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-              <div>
-                <p className="text-sm font-medium">Auto-sync</p>
-                <p className="text-xs text-muted-foreground">Run periodic feed sync in the parser worker.</p>
-              </div>
-              <Switch checked={autoSyncEnabled} onCheckedChange={onChangeAutoSyncEnabled} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sheet-interval">Interval (seconds)</Label>
-              <Input
-                id="sheet-interval"
-                inputMode="numeric"
-                value={autoSyncIntervalSeconds}
-                onChange={(event) => onChangeAutoSyncIntervalSeconds(event.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={onSync} disabled={isSyncing || !canSync}>
-              {isSyncing ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCcw className="mr-2 h-4 w-4" />
-              )}
-              Sync now
-            </Button>
-            {!canSync ? (
-              <span className="text-xs text-muted-foreground">
-                Save the feed and any pending changes before syncing.
-              </span>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      <FeedStatusCard feed={feed} />
+        <div className="flex flex-wrap items-center gap-4 rounded-lg border px-3 py-2">
+          <Switch
+            id="sheet-auto-sync"
+            checked={autoSyncEnabled}
+            onCheckedChange={onChangeAutoSyncEnabled}
+          />
+          <div className="min-w-0 flex-1">
+            <Label htmlFor="sheet-auto-sync" className="text-sm font-medium">
+              Auto-sync
+            </Label>
+            <p className="text-xs text-muted-foreground">Run periodic feed sync in the parser worker.</p>
+          </div>
+          <Label htmlFor="sheet-interval" className="flex items-center gap-2 text-sm font-normal text-muted-foreground">
+            every
+            <Input
+              id="sheet-interval"
+              inputMode="numeric"
+              value={autoSyncIntervalSeconds}
+              onChange={(event) => onChangeAutoSyncIntervalSeconds(event.target.value)}
+              disabled={!autoSyncEnabled}
+              className="h-8 w-20 text-right tabular-nums"
+            />
+            seconds
+          </Label>
+        </div>
 
-      {syncResult ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Last sync result</CardTitle>
-            <CardDescription>Outcome of the most recent manual sync.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {feed?.last_error ? <p className="text-sm text-danger">{feed.last_error}</p> : null}
+
+        {headers.length > 0 ? (
+          <details className="group">
+            <summary className={`${EYEBROW_CLASS} inline-flex cursor-pointer list-none items-center gap-1 rounded focus-visible:outline-2 focus-visible:outline-offset-2`}>
+              <ChevronRight className="size-3 transition-transform group-open:rotate-90" aria-hidden />
+              {headers.length} detected header{headers.length === 1 ? "" : "s"}
+            </summary>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {headers.map((header, index) => (
+                <Badge key={`${header}-${index}`} variant="secondary" className="font-normal">
+                  {header}
+                </Badge>
+              ))}
+            </div>
+          </details>
+        ) : null}
+
+        {syncResult ? (
+          <div className="space-y-3 border-t pt-4">
+            <dl className="flex flex-wrap gap-x-6 gap-y-2">
               {[
                 { label: "Created", value: syncResult.created },
                 { label: "Updated", value: syncResult.updated },
@@ -125,12 +180,12 @@ export function SourceSyncTab({
                 { label: "Skipped", value: syncResult.skipped },
                 { label: "Total", value: syncResult.total },
               ].map((stat) => (
-                <div key={stat.label} className="rounded-lg border px-3 py-2 text-center">
-                  <p className="text-lg font-semibold tabular-nums">{stat.value}</p>
-                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+                <div key={stat.label} className="flex items-baseline gap-1.5">
+                  <dt className={EYEBROW_CLASS}>{stat.label}</dt>
+                  <dd className="text-lg font-semibold tabular-nums">{stat.value}</dd>
                 </div>
               ))}
-            </div>
+            </dl>
             {syncResult.errors.length > 0 ? (
               <Alert variant="destructive">
                 <AlertTitle>
@@ -151,9 +206,9 @@ export function SourceSyncTab({
                 </AlertDescription>
               </Alert>
             ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-    </div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }

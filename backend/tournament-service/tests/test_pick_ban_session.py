@@ -386,6 +386,21 @@ class UnavailableReasonTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(REASON_NOT_CONFIGURED, reason)
 
+    async def test_a_pool_less_template_is_not_configured(self) -> None:
+        """A config with no candidates is a rules template a narrower scope
+        inherits from; it opens no room, so the scope that resolves to it reads
+        as unconfigured rather than as a slot problem."""
+        session = _FakeSession(config=_config(mode=MapVetoMode.POOL, items=[]))
+
+        reason = await pick_ban_session_service.unavailable_reason(session, _encounter(best_of=3), PickBanKind.MAP)
+
+        self.assertEqual(REASON_NOT_CONFIGURED, reason)
+        self.assertIsNone(
+            await pick_ban_session_service.ensure_pick_ban_session(
+                session, _encounter(best_of=3), PickBanKind.MAP, commit=False
+            )
+        )
+
     async def test_more_rounds_than_slots_is_slot_count_mismatch(self) -> None:
         config = _config(slots=[_slot(1, [11, 12]), _slot(2, [21, 22, 23])])
         session = _FakeSession(config=config)

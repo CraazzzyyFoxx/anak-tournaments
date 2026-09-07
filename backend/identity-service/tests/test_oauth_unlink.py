@@ -24,40 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.services.oauth import OAuthFlowService  # noqa: E402
-
-
-class _FakeConnections:
-    """``OAuthConnectionRepository`` stand-in over an in-memory row list."""
-
-    def __init__(self, conns):
-        self.conns = list(conns)
-        self.deleted: list[tuple[str, str | None]] = []
-
-    async def list_by_user(self, session, auth_user_id):
-        return list(self.conns)
-
-    async def delete_for_provider(self, session, *, auth_user_id, provider, provider_user_id=None):
-        gone = [
-            conn
-            for conn in self.conns
-            if conn.provider == provider and (provider_user_id is None or conn.provider_user_id == provider_user_id)
-        ]
-        for conn in gone:
-            self.conns.remove(conn)
-        self.deleted.append((provider, provider_user_id))
-        return len(gone)
-
-
-class _FakeSocials:
-    """``SocialAccountRepository`` stand-in; ``unverified`` is the rowcount."""
-
-    def __init__(self, unverified: int = 0):
-        self._unverified = unverified
-        self.calls: list[SimpleNamespace] = []
-
-    async def unverify_for_player(self, session, *, user_id, provider, provider_user_id=None):
-        self.calls.append(SimpleNamespace(user_id=user_id, provider=provider, provider_user_id=provider_user_id))
-        return self._unverified
+from tests._fakes import FakeOAuthConnections as _FakeConnections, FakeSocialAccounts as _FakeSocials  # noqa: E402
 
 
 _LINKED_PLAYER = SimpleNamespace(id=7)
@@ -93,7 +60,7 @@ def _service(conns, *, unverified: int = 0, player=_LINKED_PLAYER):
     actually asked of each one.
     """
     connections = _FakeConnections(conns)
-    socials = _FakeSocials(unverified)
+    socials = _FakeSocials(unverified=unverified)
     service = OAuthFlowService(connections=connections, socials=socials, players=_FakePlayers(player))
     return service, connections, socials
 

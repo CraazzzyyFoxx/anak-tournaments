@@ -119,7 +119,7 @@ const MatchStatsSection = ({ match, tournamentGrid }: MatchStatsSectionProps) =>
           type="single"
           value={mode}
           onValueChange={(value) => value && setMode(value as ViewMode)}
-          variant="outline"
+          variant="pill"
           size="sm"
         >
           <ToggleGroupItem value="simple">{t("matches.view.simple")}</ToggleGroupItem>

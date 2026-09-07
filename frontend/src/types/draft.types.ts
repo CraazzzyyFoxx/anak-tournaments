@@ -58,31 +58,38 @@ interface DraftPlayerCustomField {
   value: unknown;
 }
 
+/** Where a role's resolved rank came from — mirrors `shared.domain.roster.RankSource`. */
+export type DraftRankSource = "registration" | "workspace" | "ow" | "none";
+
 export interface DraftPlayer {
   id: number;
   session_id: number;
+  registration_id: number;
   user_id: number | null;
   battle_tag: string | null;
-  primary_role: DraftRole;
+  /**
+   * `null` when the player has no playable role left — an organizer can strip
+   * every rank mid-draft. Render that as "no role", never as a default one.
+   */
+  primary_role: DraftRole | null;
   sub_role: string | null;
   is_flex: boolean;
-  division_number: number | null;
-  rank_value: number | null;
   /**
    * Server-resolved: the ONE rank that represents this player in THIS draft.
-   * `rank_value` under a shape with role slots, their best role rank under a
-   * role-less (all-flex) one, where nobody is assigned a role. Render this,
-   * not `rank_value`, wherever a player is shown without a role — the flex
-   * rule lives once, in `services.draft.ranks.slot_rank`.
+   * Their primary role's rank under a shape with role slots, their best role
+   * rank under a role-less (all-flex) one, where nobody is assigned a role.
+   * The rule lives once, in the roster engine.
    */
   effective_rank: number | null;
   status: DraftPlayerStatus;
   is_captain: boolean;
   drafted_by_team_id: number | null;
-  secondary_roles_json: string[] | null;
+  secondary_roles: string[];
   role_ranks: Record<string, number>;
+  /** Per-role provenance of `role_ranks`, keyed the same way. */
+  role_sources: Record<string, DraftRankSource>;
   role_top_heroes: Record<string, Array<string | { slug: string; image_path: string | null }>>;
-  additional_info: Record<string, unknown>;
+  notes: string | null;
   custom_fields: DraftPlayerCustomField[];
   version: number;
 }
@@ -211,24 +218,6 @@ export interface DraftSessionCreateRequest {
   settings?: Record<string, unknown>;
 }
 
-interface DraftSeedCaptainInput {
-  user_id?: number | null;
-  battle_tag?: string | null;
-  name: string;
-  draft_position: number;
-}
-
-interface DraftSeedPlayerInput {
-  user_id?: number | null;
-  battle_tag?: string | null;
-  primary_role: DraftRole;
-  secondary_roles?: DraftRole[];
-  sub_role?: string | null;
-  is_flex?: boolean;
-  division_number?: number | null;
-  rank_value?: number | null;
-}
-
 interface DraftPoolCaptainInput {
   registration_id: number;
   name?: string | null;
@@ -243,9 +232,8 @@ export interface DraftSeedRequest {
   captain_order?: DraftCaptainOrder;
   // Preferred: captains chosen from the existing balancer pool.
   pool_captains?: DraftPoolCaptainInput[];
-  // Manual fallback.
-  captains?: DraftSeedCaptainInput[];
-  players?: DraftSeedPlayerInput[];
+  // Captains are the only seed input: the pool itself comes from the
+  // tournament's registrations, resolved server-side.
   preview_only?: boolean;
   expected_version?: number | null;
 }
@@ -270,8 +258,12 @@ export interface DraftSeedResponse {
 
 export interface DraftRoleEditRequest {
   role: DraftRole;
-  rank_value: number | null;
-  rank_absence_confirmed: boolean;
+  /**
+   * REQUIRED and positive. A rankless role is not playable, so adding one used
+   * to create a role the draft would never offer; the server dropped the
+   * "confirm there is no rank" escape hatch along with it.
+   */
+  rank_value: number;
   reason: string;
   expected_version: number;
   preview_only?: boolean;

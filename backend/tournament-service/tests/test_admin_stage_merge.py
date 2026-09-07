@@ -89,7 +89,6 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
         )
         playoff_stage = SimpleNamespace(id=13, tournament_id=99, order=3)
 
-        group_row = SimpleNamespace(stage_id=11)
         encounter_row = SimpleNamespace(stage_id=11)
         standing_row = SimpleNamespace(stage_id=12)
         challonge_row = SimpleNamespace(stage_id=12)
@@ -114,7 +113,7 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
                     # _merge_pick_ban_configs(kind=HERO): target, then source.
                     _scalars_result([]),
                     _scalars_result([]),
-                    _scalars_result([group_row]),
+                    # Retarget: Encounter, Standing, ChallongeSource.
                     _scalars_result([encounter_row]),
                     _scalars_result([standing_row]),
                     _scalars_result([challonge_row]),
@@ -161,7 +160,6 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
         self.assertEqual(target_stage.id, source_item_c.stage_id)
         self.assertEqual(1, source_item_b.order)
         self.assertEqual(2, source_item_c.order)
-        self.assertEqual(target_stage.id, group_row.stage_id)
         self.assertEqual(target_stage.id, encounter_row.stage_id)
         self.assertEqual(target_stage.id, standing_row.stage_id)
         self.assertEqual(target_stage.id, challonge_row.stage_id)

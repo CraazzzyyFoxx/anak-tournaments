@@ -7,9 +7,11 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.models.division_grid import DivisionGrid as DivisionGridModel
 from shared.models.division_grid import DivisionGridMapping, DivisionGridVersion
+from shared.models.identity.auth_user import AuthUser
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Tournament
 from shared.services.division_grid import cache as division_grid_cache
@@ -22,6 +24,27 @@ from shared.services.division_grid.normalization import (
     DivisionGridNormalizer,
     WeightedDivisionTarget,
 )
+
+
+def require_grid_version_read_access(user: AuthUser, workspace_id: int | None) -> None:
+    """System grids (workspace_id IS NULL) are readable by any authenticated user.
+
+    Workspace-owned grids require membership so versions cannot be enumerated
+    cross-workspace by id. Superuser is a workspace member of every workspace.
+    """
+    if workspace_id is not None and not user.is_workspace_member(workspace_id):
+        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+
+
+def require_marketplace_source_access(
+    user: AuthUser,
+    *,
+    source_workspace_id: int,
+    source_is_hidden: bool,
+) -> None:
+    """Hidden source workspaces stay members/superuser-only on the marketplace."""
+    if source_is_hidden and not user.is_superuser and source_workspace_id not in user.get_workspace_ids():
+        raise HTTPException(status_code=403, detail="Source workspace is not accessible")
 
 
 async def get_workspace_division_grid_version(

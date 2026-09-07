@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -16,11 +16,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, LoaderCircle } from "lucide-react";
-import {
-  getInternalNavigationTarget,
-  isChangedInternalNavigation,
-  shouldIgnoreNavigationClick,
-} from "@/lib/navigation-guard.mjs";
+import { useUnsavedGuard } from "@/components/admin/kit/useUnsavedGuard";
 import { cn } from "@/lib/utils";
 
 interface EntityFormDialogProps {
@@ -91,68 +87,19 @@ export function EntityFormDialog({
     onSubmit(e);
   };
 
-  useEffect(() => {
-    if (!open || !isDirty) {
-      return;
-    }
+  const handleNavigationBlocked = useCallback((href: string) => {
+    setPendingNavigationHref(href);
+    setDiscardDialogOpen(true);
+  }, []);
 
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [isDirty, open]);
-
-  useEffect(() => {
-    if (!open || !isDirty || isSubmitting || isReadOnly || !guardNavigation) {
-      return;
-    }
-
-    const handleDocumentClick = (event: MouseEvent) => {
-      if (shouldIgnoreNavigationClick(event)) {
-        return;
-      }
-
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) {
-        return;
-      }
-
-      const anchor = target.closest("a[href]");
-      if (!anchor) {
-        return;
-      }
-
-      const href = anchor.getAttribute("href");
-      if (!href || (anchor as HTMLAnchorElement).target === "_blank" || anchor.hasAttribute("download")) {
-        return;
-      }
-
-      const nextTarget = getInternalNavigationTarget(href, window.location.origin);
-      if (!nextTarget) {
-        return;
-      }
-
-      const currentHref = window.location.href;
-      if (!isChangedInternalNavigation(currentHref, href, window.location.origin)) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      setPendingNavigationHref(nextTarget);
-      setDiscardDialogOpen(true);
-    };
-
-    document.addEventListener("click", handleDocumentClick, true);
-    return () => {
-      document.removeEventListener("click", handleDocumentClick, true);
-    };
-  }, [guardNavigation, isDirty, isSubmitting, open, isReadOnly]);
+  // `beforeunload` arms on dirty alone; the in-app link interception also
+  // stands down while submitting or read-only, exactly as it did when both
+  // effects lived in this file.
+  useUnsavedGuard({
+    dirty: open && isDirty,
+    guardNavigation: guardNavigation && !isSubmitting && !isReadOnly,
+    onNavigationBlocked: handleNavigationBlocked
+  });
 
   const handleCancel = () => {
     if (isSubmitting) {

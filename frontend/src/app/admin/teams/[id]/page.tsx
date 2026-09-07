@@ -4,12 +4,12 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Trash2, Trophy, Users } from "lucide-react";
+import { Trash2, Trophy, Users } from "lucide-react";
 
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { InlineEditText } from "@/components/admin/InlineEditText";
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
+import { EntityHubHeader } from "@/components/admin/kit/EntityHubHeader";
 import { TeamRosterEditor } from "@/components/admin/teams/TeamRosterEditor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -166,77 +166,73 @@ export default function AdminTeamWorkspacePage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader
-        title={team.name}
-        titleHidden
-        meta={
-          <>
-            <EditableAvatar
-              src={team.image_url}
-              name={team.name}
-              size={40}
-              shape="rounded"
-              editable={canUpdateTeam}
-              busy={uploadImage.isPending || deleteImage.isPending}
-              onSelectFile={(file) => uploadImage.mutate(file)}
-              onDelete={team.image_url ? () => deleteImage.mutate() : undefined}
-              maxSizeBytes={MAX_AVATAR_BYTES}
-              onError={(message) => notify.error(message)}
-            />
-            <InlineEditText
-              value={team.name}
-              label="team name"
-              canEdit={canUpdateTeam}
-              onSave={(name) => updateTeam.mutateAsync({ name })}
-              textClassName="text-lg font-semibold tracking-tight text-foreground"
-            />
-          </>
-        }
-        footer={
-          <p className="text-sm text-muted-foreground">
-            {team.tournament ? (
-              <>
-                {team.tournament.name}
-                {" · "}
+      <div className="flex items-start gap-4">
+        <EditableAvatar
+          src={team.image_url}
+          name={team.name}
+          size={40}
+          shape="rounded"
+          editable={canUpdateTeam}
+          busy={uploadImage.isPending || deleteImage.isPending}
+          onSelectFile={(file) => uploadImage.mutate(file)}
+          onDelete={team.image_url ? () => deleteImage.mutate() : undefined}
+          maxSizeBytes={MAX_AVATAR_BYTES}
+          onError={(message) => notify.error(message)}
+        />
+        <div className="min-w-0 flex-1">
+          <EntityHubHeader
+            // The `<h1>` is the editable name itself: the page is the team
+            // editor, so a read-only heading beside an edit field would print
+            // the same name twice.
+            title={
+              <InlineEditText
+                value={team.name}
+                label="team name"
+                canEdit={canUpdateTeam}
+                onSave={(name) => updateTeam.mutateAsync({ name })}
+              />
+            }
+            status={team.captain_id > 0 ? undefined : { label: "No captain", tone: "warning" }}
+            // Roster counts sit in the tiles one row below, so the meta line
+            // carries only what those tiles do not: where this team plays.
+            meta={[
+              team.tournament?.name ?? "No linked tournament",
+              team.tournament ? (
                 <span className="tabular-nums">
                   {new Date(team.tournament.start_date).toLocaleDateString()} –{" "}
                   {new Date(team.tournament.end_date).toLocaleDateString()}
                 </span>
+              ) : null
+            ]}
+            backHref={
+              team.tournament_id ? `/admin/teams?tournament=${team.tournament_id}` : "/admin/teams"
+            }
+            actions={
+              <>
+                {team.tournament ? (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/admin/tournaments/${team.tournament.id}`}>
+                      <Trophy className="size-4" aria-hidden />
+                      Open tournament
+                    </Link>
+                  </Button>
+                ) : null}
+                {canDeleteTeam ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="size-4" aria-hidden />
+                    Delete team
+                  </Button>
+                ) : null}
               </>
-            ) : (
-              "No linked tournament loaded."
-            )}
-          </p>
-        }
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link href={`/admin/teams?tournament=${team.tournament_id}`}>
-                <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
-                Back to teams
-              </Link>
-            </Button>
-            {team.tournament ? (
-              <Button asChild variant="outline">
-                <Link href={`/admin/tournaments/${team.tournament.id}`}>
-                  <Trophy className="mr-2 h-4 w-4" aria-hidden />
-                  Open tournament
-                </Link>
-              </Button>
-            ) : null}
-            {canDeleteTeam ? (
-              <Button
-                variant="outline"
-                className="text-destructive"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" aria-hidden />
-                Delete team
-              </Button>
-            ) : null}
-          </div>
-        }
-      />
+            }
+          />
+        </div>
+      </div>
 
       <StatTileGrid>
         <StatTile label="Average SR" value={team.avg_sr.toFixed(0)} detail="Starters only" />
@@ -302,14 +298,18 @@ export default function AdminTeamWorkspacePage() {
       </Card>
 
       {canDeleteTeam ? (
-        <DeleteConfirmDialog
+        <ConfirmDialog
           open={deleteOpen}
           onOpenChange={setDeleteOpen}
+          pending={deleteTeam.isPending}
+          intent={{
+            title: `Delete ${team.name}`,
+            description: `Deleting “${team.name}” removes the roster from ${team.tournament?.name ?? "its tournament"} along with every player and match statistic below. This cannot be undone.`,
+            confirmLabel: "Delete team",
+            tone: "danger",
+            cascade: ["All players in this team", "All related match statistics"]
+          }}
           onConfirm={() => deleteTeam.mutate()}
-          title={`Delete ${team.name}`}
-          description={`Deleting “${team.name}” removes the roster from ${team.tournament?.name ?? "its tournament"} along with every player and match statistic below. This cannot be undone.`}
-          cascadeInfo={["All players in this team", "All related match statistics"]}
-          isDeleting={deleteTeam.isPending}
         />
       ) : null}
     </div>

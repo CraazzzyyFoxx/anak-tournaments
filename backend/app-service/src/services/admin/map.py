@@ -37,6 +37,9 @@ class MapAdminService:
         if params.gamemode_id is not None:
             filters.append(models.Map.gamemode_id == params.gamemode_id)
 
+        if params.in_competitive is not None:
+            filters.append(models.Map.in_competitive.is_(params.in_competitive))
+
         maps_page, total = await self.repo.list(
             session,
             params,

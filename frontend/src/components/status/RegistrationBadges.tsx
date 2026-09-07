@@ -5,6 +5,7 @@ import {
   HeartCrack,
   HeartHandshake,
   Lock,
+  ShieldCheck,
   Unlock,
   XCircle
 } from "lucide-react";
@@ -15,8 +16,10 @@ import {
   StatusIconBadge,
   type StatusTone
 } from "@/components/status/StatusIconBadge";
+import { formatAdmissionReason } from "@/lib/admission";
 import { cn } from "@/lib/utils";
 import type {
+  Admission,
   StatusMeta,
   SubscriptionOutcome,
   SubscriptionProviderVerdict
@@ -70,96 +73,97 @@ export function CheckInStatusBadge({ checkedIn, className }: Readonly<CheckInSta
   );
 }
 
-interface AdmissionOptions {
-  /** When the tournament requires open profiles, a confirmed-closed profile blocks admission. */
-  requireOpenProfile?: boolean;
-  /** True = public, False = closed, null/undefined = unknown (fails open). */
-  profilesOpen?: boolean | null;
-  /** When the tournament requires a subscription, a confirmed refusal blocks admission. */
-  requireSubscription?: boolean;
-  /**
-   * Composed outcome as sent by the server. Deliberately NOT re-derived on the
-   * client: under `any` mode one red per-provider chip next to a green one is
-   * still a pass, so only the composed answer may drive admission.
-   */
-  subscriptionOutcome?: SubscriptionOutcome | null;
-}
-
-interface AdmissionStatusBadgeProps extends AdmissionOptions {
-  registrationStatus: string;
-  balancerStatus: string | undefined | null;
-  checkedIn: boolean | undefined | null;
+interface AdmissionStatusBadgeProps {
+  /** The server's composed answer. The ONLY input: this badge used to take five
+   *  raw fields plus two requirement flags and re-derive the decision itself,
+   *  which is why a hand-checked-in player with a closed profile read as "Not
+   *  admitted" forever. */
+  admission: Admission;
   className?: string;
 }
 
-export function isAdmitted(
-  registrationStatus: string,
-  balancerStatus: string | undefined | null,
-  checkedIn: boolean | undefined | null,
-  options?: AdmissionOptions
-): boolean {
-  if (registrationStatus !== "approved" || balancerStatus !== "ready" || checkedIn !== true) {
-    return false;
-  }
-  // Open-profile requirement: only a *confirmed* closed profile blocks admission
-  // (unknown fails open, matching the server-side check-in gate).
-  if (options?.requireOpenProfile && options.profilesOpen === false) {
-    return false;
-  }
-  // Subscription requirement: identical rule, one layer over — only a confirmed
-  // refusal blocks. "undetermined" (provider outage, unlinked account, missing
-  // scope) fails open exactly as the server gate does.
-  if (options?.requireSubscription && options.subscriptionOutcome === "refused") {
-    return false;
-  }
-  return true;
-}
-
+/**
+ * The composed admission verdict, icon-only for dense tables.
+ *
+ * Switches on `admission.decision` and nothing else. The accessible name carries
+ * the reasons, because a lone glyph in a table cell tells an organizer that
+ * something is wrong without ever telling them what.
+ */
 export function AdmissionStatusBadge({
-  registrationStatus,
-  balancerStatus,
-  checkedIn,
-  requireOpenProfile,
-  profilesOpen,
-  requireSubscription,
-  subscriptionOutcome,
+  admission,
   className
 }: Readonly<AdmissionStatusBadgeProps>) {
   const t = useTranslations();
 
-  const isProfileClosed = requireOpenProfile && profilesOpen === false;
-  const isSubscriptionRefused = requireSubscription && subscriptionOutcome === "refused";
-  const isApprovedAndReady =
-    registrationStatus === "approved" &&
-    balancerStatus === "ready" &&
-    !isProfileClosed &&
-    !isSubscriptionRefused;
+  // D4/D5: check-in is the last gate of every requirement, so a requirement
+  // blocked behind it is spent, not fatal. It stays VISIBLE — a distinct glyph
+  // and the reason in the label — but the tone stays positive, because the row
+  // IS admitted and painting it amber would send an organizer chasing a row that
+  // needs no action.
+  //
+  // The wording is neutral by necessity, never "granted manually": the verdicts
+  // carry no as-of time, so an organizer's hand check-in and a subscription that
+  // lapsed a week after a legitimate one are indistinguishable here, and
+  // claiming the former would routinely accuse an organizer of something they
+  // did not do.
+  const isOverride = admission.decision === "admitted" && admission.overridden.length > 0;
+  const why = (
+    admission.decision === "not_admitted"
+      ? admission.blockers
+      : isOverride
+        ? admission.overridden
+        : []
+  )
+    .flatMap((requirement) => requirement.reasons)
+    .map((reason) => formatAdmissionReason(t, reason))
+    .join(", ");
 
-  if (!isApprovedAndReady) {
+  if (admission.decision === "not_admitted") {
     return (
       <StatusIconBadge
         icon={XCircle}
-        label={t("common.admissionStatus.notAdmitted")}
+        label={
+          why
+            ? `${t("common.admissionStatus.notAdmitted")}: ${why}`
+            : t("common.admissionStatus.notAdmitted")
+        }
         tone="negative"
         className={className}
       />
     );
   }
-  if (checkedIn === true) {
+
+  if (admission.decision === "pending_check_in") {
     return (
       <StatusIconBadge
-        icon={CheckCircle2}
-        label={t("common.admissionStatus.admitted")}
+        icon={Clock}
+        label={t("common.admissionStatus.pendingCheckIn")}
+        tone="warning"
+        className={className}
+      />
+    );
+  }
+
+  if (isOverride) {
+    return (
+      <StatusIconBadge
+        icon={ShieldCheck}
+        label={
+          why
+            ? `${t("common.admissionStatus.admitted")} — ${t("common.admissionStatus.overridden")}: ${why}`
+            : `${t("common.admissionStatus.admitted")} — ${t("common.admissionStatus.overridden")}`
+        }
         tone="positive"
         className={className}
       />
     );
   }
+
   return (
     <StatusIconBadge
-      icon={Clock}
-      label={t("common.admissionStatus.pendingCheckIn")}
-      tone="warning"
+      icon={CheckCircle2}
+      label={t("common.admissionStatus.admitted")}
+      tone="positive"
       className={className}
     />
   );
@@ -171,6 +175,16 @@ interface ProfileStatusBadgeProps {
   className?: string;
 }
 
+/**
+ * The raw `profiles_open` SIGNAL as a tri-state chip: public, closed, or never
+ * checked.
+ *
+ * Not the decision, and the comparisons below are not a copy of the admission
+ * rule — whether the player is in comes from `admission.decision` and nowhere
+ * else. A closed profile behind a completed check-in is still an admitted row,
+ * which is exactly why this chip and `AdmissionStatusBadge` read different
+ * fields and must stay separate.
+ */
 export function ProfileStatusBadge({ profilesOpen, className }: Readonly<ProfileStatusBadgeProps>) {
   const t = useTranslations();
 
@@ -219,6 +233,13 @@ interface SubscriptionStatusBadgeProps {
  * in the row detail (see `SubscriptionProviderBadge`) — one column per provider
  * would not scale, and under `any` mode a red provider cell beside a green one
  * reads as a failure when it is not.
+ *
+ * This renders a SIGNAL, never the decision. `outcome === "refused"` below is not
+ * a copy of the admission rule and must not be consolidated into one: whether the
+ * player is in comes from `admission.decision` and nowhere else, and a refused
+ * subscription an organizer has already checked the player in past is still an
+ * admitted row. That is why `subscription_outcome` stays on the read beside
+ * `admission` rather than being folded into it.
  */
 export function SubscriptionStatusBadge({ outcome, className }: Readonly<SubscriptionStatusBadgeProps>) {
   const t = useTranslations();

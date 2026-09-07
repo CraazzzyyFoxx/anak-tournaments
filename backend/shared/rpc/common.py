@@ -43,6 +43,10 @@ __all__ = (
     "require_query_int",
     "require_path_int",
     "dump",
+    "field_entry",
+    "http_error",
+    "validation_error",
+    "retry_after_seconds",
     "envelope",
 )
 
@@ -160,20 +164,87 @@ def dump(obj: Any, exclude_none: bool) -> Any:
     return obj
 
 
-def _detail_message(exc: HTTPException) -> str:
-    """Flatten an HTTPException detail into a clean string.
+def _loc_path(loc: Any) -> str | None:
+    """Dotted field path from a pydantic ``loc``, minus the envelope wrappers.
+
+    ``body``/``payload`` are artefacts of where the value was carried, not part of
+    the field's name as the client knows it.
+    """
+    if not isinstance(loc, (list, tuple)):
+        return str(loc) if loc else None
+    return ".".join(str(p) for p in loc if p not in ("body", "payload")) or None
+
+
+def field_entry(item: dict[str, Any]) -> dict[str, Any]:
+    """One ``details["fields"]`` entry from an error item.
+
+    Accepts both dialects that reach here: ``ApiExc`` items (``msg``/``code``,
+    sometimes ``field``) and pydantic items (``loc``/``msg``/``type``).
+    """
+    field = _loc_path(item.get("loc")) or item.get("field")
+    return {
+        "field": str(field) if field else None,
+        "msg": str(item.get("msg") or "invalid value"),
+        "code": str(item.get("code") or item.get("type") or "error"),
+    }
+
+
+def retry_after_seconds(exc: HTTPException) -> int | None:
+    """Seconds from a ``Retry-After`` header, which a worker cannot itself emit.
+
+    Rate limiters set the header because the same exception is also raised on the
+    HTTP path; over RPC only the envelope crosses the queue, so the value has to
+    ride ``details`` for the gateway to put the header back.
+    """
+    headers = getattr(exc, "headers", None)
+    if not isinstance(headers, dict):
+        return None
+    raw = next((v for k, v in headers.items() if str(k).lower() == "retry-after"), None)
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def http_error(exc: HTTPException) -> tuple[str, dict[str, Any]]:
+    """Split an HTTPException into a human ``message`` and machine ``details``.
 
     ``ApiHTTPException`` (the v1 read flows) carries ``detail`` as a
-    ``list[{msg, code}]``; the gateway emits ``{"detail": "<string>"}`` either
-    way, so join the ``msg`` fields instead of leaking a Python list repr. The
-    HTTP status is preserved via ``status_to_code(exc.status_code)``; only the
-    per-item machine ``code`` is dropped (the frontend tolerates this).
+    ``list[{msg, code}]``. Joining the ``msg`` fields is what a human reads, but
+    the per-item ``code`` is the only thing a client can branch on -- it used to
+    be dropped here, so it now rides ``details["fields"]`` instead.
     """
     detail = exc.detail
+    details: dict[str, Any] = {}
     if isinstance(detail, list):
-        msgs = [str(d.get("msg")) for d in detail if isinstance(d, dict) and d.get("msg")]
-        return "; ".join(msgs) if msgs else "error"
-    return str(detail)
+        items = [d for d in detail if isinstance(d, dict)]
+        if items:
+            details["fields"] = [field_entry(d) for d in items]
+        msgs = [str(d.get("msg")) for d in items if d.get("msg")]
+        message = "; ".join(msgs) if msgs else "error"
+    else:
+        message = str(detail)
+    retry_after = retry_after_seconds(exc)
+    if retry_after is not None:
+        details["retry_after"] = retry_after
+    return message, details
+
+
+def validation_error(exc: ValidationError) -> tuple[str, dict[str, Any]]:
+    """Split a pydantic ValidationError into a human summary + per-field details.
+
+    ``str(exc)`` is a multi-line developer repr (model name, doc urls, echoed
+    input) and used to be shipped to clients verbatim as the message. Its actual
+    content -- which field, why -- belongs in ``details["fields"]``, where a
+    client can render it per input instead of parsing prose.
+    """
+    errors = exc.errors()
+    if not errors:
+        return "validation error", {}
+    fields = [field_entry(e) for e in errors]
+    first = fields[0]
+    message = f"{first['field']}: {first['msg']}" if first["field"] else first["msg"]
+    return message, {"fields": fields}
 
 
 async def envelope(
@@ -197,9 +268,11 @@ async def envelope(
     except MissingIdentityError as exc:
         return rpc_error("unauthorized", str(exc) or "Not authenticated")
     except HTTPException as exc:
-        return rpc_error(status_to_code(exc.status_code), _detail_message(exc))
+        message, details = http_error(exc)
+        return rpc_error(status_to_code(exc.status_code), message, details)
     except ValidationError as exc:
-        return rpc_error("unprocessable", str(exc))
+        message, details = validation_error(exc)
+        return rpc_error("unprocessable", message, details)
     except Exception:  # pragma: no cover - defensive worker guard
         logger.exception("%s rpc failed: %s", service, label)
         return rpc_error("internal", "internal error")

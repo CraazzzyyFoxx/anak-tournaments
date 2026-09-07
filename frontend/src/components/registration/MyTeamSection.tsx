@@ -18,8 +18,8 @@ import MyTeamPanel from "./MyTeamPanel";
  * the team they are on, or a line explaining why they cannot found one.
  *
  * Creating a team is NOT here — that button lives in the tournament header, in
- * `TeamRegistrationEntry`, beside the solo Register button so the two choices are
- * presented together.
+ * `TeamRegistrationEntry`, which on a team-registration tournament is the only
+ * entry point there (the solo Register button is suppressed for this mode).
  *
  * Reuses the query keys the rest of the page already uses, so TanStack serves the
  * roster read from the same cache entry rather than issuing a second request.
@@ -74,8 +74,7 @@ export default function MyTeamSection({ tournament }: Readonly<{ tournament: Tou
 
   // Nothing to show: registration closed, or no registration to explain. The
   // "Register a team" button deliberately does NOT live here — it is in the
-  // tournament header (`TeamRegistrationEntry`), beside the solo Register button,
-  // so the two choices are presented together. Rendering it here too put two
+  // tournament header (`TeamRegistrationEntry`). Rendering it here too put two
   // identical buttons on one screen.
   if (!open || !myRegistration) return null;
 

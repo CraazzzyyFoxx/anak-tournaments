@@ -14,17 +14,17 @@ import {
   XCircle
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 
-import { TONE_CLASS, TONE_TEXT, type Tone } from "@/components/admin/tone";
+import { TONE_CLASS, type Tone } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRealtimeCoalescedRefetch } from "@/hooks/useRealtimeCoalescedRefetch";
 import { notify } from "@/lib/notify";
@@ -41,6 +41,7 @@ import {
   getTournamentWorkspaceQueryKeys,
   invalidateTournamentWorkspace
 } from "./tournamentWorkspace.queryKeys";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const PAGE_SIZE = 25;
 /**
@@ -53,7 +54,7 @@ const ACTIVE_QUEUE_POLL_MS = 10_000;
 /** Collapse a burst of completions into one refetch. */
 const REALTIME_REFRESH_DEBOUNCE_MS = 500;
 
-type LogFilter = LogProcessingStatus | "all";
+type LogFilter = LogProcessingStatus;
 
 const STATUS_META: Record<LogProcessingStatus, { label: string; icon: LucideIcon; tone: Tone }> = {
   pending: { label: "Queued", icon: Clock3, tone: "neutral" },
@@ -62,8 +63,8 @@ const STATUS_META: Record<LogProcessingStatus, { label: string; icon: LucideIcon
   failed: { label: "Failed", icon: XCircle, tone: "danger" }
 };
 
-/** Filter order is scan order: the states that need action come first. */
-const LOG_FILTERS: LogFilter[] = ["all", "failed", "processing", "pending", "done"];
+/** Chip order is scan order: the states that need action come first. */
+const LOG_FILTERS: LogFilter[] = ["failed", "processing", "pending", "done"];
 
 const SOURCE_LABELS: Record<LogProcessingRecord["source"], string> = {
   upload: "Upload",
@@ -72,7 +73,8 @@ const SOURCE_LABELS: Record<LogProcessingRecord["source"], string> = {
 };
 
 interface TournamentLogsTabProps {
-  tournamentId: number;
+  /** `null` = every tournament in the workspace. */
+  tournamentId: number | null;
   workspaceId: number | null;
   encounters: Encounter[];
   canUploadLogs: boolean;
@@ -125,7 +127,7 @@ function LogStatusBadge({ status }: Readonly<{ status: LogProcessingStatus }>) {
   return (
     <Badge
       variant="outline"
-      className={cn("gap-1.5 whitespace-nowrap px-1.5 text-[11px]", TONE_CLASS[meta.tone])}
+      className={cn("gap-1.5 whitespace-nowrap px-1.5 text-xs", TONE_CLASS[meta.tone])}
     >
       <Icon className={cn("size-3", status === "processing" && "animate-spin")} aria-hidden />
       {meta.label}
@@ -133,10 +135,9 @@ function LogStatusBadge({ status }: Readonly<{ status: LogProcessingStatus }>) {
   );
 }
 
-/** Counts come from the server aggregate, so a filter shows its real size. */
+/** Counts come from the server aggregate, so a chip shows its real size. */
 function getFilterCount(filter: LogFilter, stats: LogProcessingStats | undefined) {
-  if (!stats) return null;
-  return filter === "all" ? stats.total : stats[filter];
+  return stats ? stats[filter] : undefined;
 }
 
 export function TournamentLogsTab({
@@ -147,29 +148,62 @@ export function TournamentLogsTab({
   enabled
 }: Readonly<TournamentLogsTabProps>) {
   const queryClient = useQueryClient();
-  const queryKeys = getTournamentWorkspaceQueryKeys(tournamentId);
-  const [statusFilter, setStatusFilter] = useState<LogFilter>("all");
+  // Scoped to a tournament inside the hub, to the workspace on the
+  // cross-tournament browser. Both keys are what realtime and the tab badge
+  // address, so nothing here invents a key of its own.
+  const historyKey =
+    tournamentId != null
+      ? getTournamentWorkspaceQueryKeys(tournamentId).logHistory
+      : (["admin", "workspace", workspaceId, "log-history"] as const);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch] = useDebounce(searchInput, 300);
   const searchTerm = debouncedSearch.trim();
 
   const statsQuery = useQuery({
-    queryKey: [...queryKeys.logHistory, "stats"],
-    queryFn: () => adminService.getLogStats(tournamentId),
+    queryKey: [...historyKey, "stats"],
+    queryFn: () =>
+      tournamentId != null
+        ? adminService.getLogStats(tournamentId)
+        : adminService.getLogStats(undefined, { workspaceId }),
     enabled
   });
   const stats = statsQuery.data;
   const queueActive = stats != null && stats.pending + stats.processing > 0;
   const pollInterval = enabled && queueActive ? ACTIVE_QUEUE_POLL_MS : false;
 
+  // One single-select chip instead of a five-button toggle group, and the
+  // choice now lives in the URL: a "show me the failures" link is shareable,
+  // which component state could never be.
+  const defs = useMemo<FilterDef[]>(
+    () => [
+      {
+        key: "status",
+        label: "Status",
+        kind: "single",
+        options: LOG_FILTERS.map((filter) => ({
+          value: filter,
+          label: STATUS_META[filter].label,
+          count: getFilterCount(filter, stats)
+        }))
+      }
+    ],
+    [stats]
+  );
+  const filters = useAdminFilters(defs);
+  const rawStatus = String(filters.values.status ?? "");
+  const statusFilter = (LOG_FILTERS as readonly string[]).includes(rawStatus)
+    ? (rawStatus as LogFilter)
+    : null;
+
   const historyQuery = useInfiniteQuery({
-    queryKey: [...queryKeys.logHistory, "list", statusFilter, searchTerm],
+    queryKey: [...historyKey, "list", statusFilter ?? "all", searchTerm],
     queryFn: ({ pageParam }) =>
-      adminService.getLogHistory(tournamentId, {
+      adminService.getLogHistory(tournamentId ?? undefined, {
         limit: PAGE_SIZE,
         offset: pageParam,
-        status: statusFilter === "all" ? undefined : statusFilter,
-        search: searchTerm
+        status: statusFilter ?? undefined,
+        search: searchTerm,
+        ...(tournamentId == null && { workspaceId })
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
@@ -195,7 +229,7 @@ export function TournamentLogsTab({
   );
   const matchedTotal = historyQuery.data?.pages[0]?.total;
   const loadedFailures = records.filter((record) => record.status === "failed");
-  const hasActiveFilter = statusFilter !== "all" || searchTerm.length > 0;
+  const hasActiveFilter = statusFilter != null || searchTerm.length > 0;
 
   const refreshAll = () => {
     void statsQuery.refetch();
@@ -204,11 +238,14 @@ export function TournamentLogsTab({
 
   // Parser signals completions on the workspace topic, so the console stays live
   // without polling. Coalesced: a batch upload emits one signal per file.
-  useRealtimeCoalescedRefetch(enabled && workspaceId != null ? `workspace:${workspaceId}:logs` : null, {
-    minDelayMs: REALTIME_REFRESH_DEBOUNCE_MS,
-    onEvent: (_event, schedule) => schedule(),
-    onFlush: refreshAll
-  });
+  useRealtimeCoalescedRefetch(
+    enabled && workspaceId != null ? `workspace:${workspaceId}:logs` : null,
+    {
+      minDelayMs: REALTIME_REFRESH_DEBOUNCE_MS,
+      onEvent: (_event, schedule) => schedule(),
+      onFlush: refreshAll
+    }
+  );
 
   const retryLogMutation = useMutation({
     mutationFn: (recordId: number) => adminService.retryLogRecord(recordId),
@@ -239,7 +276,7 @@ export function TournamentLogsTab({
   });
 
   const processAllLogsMutation = useMutation({
-    mutationFn: () => adminService.processAllTournamentLogs(tournamentId),
+    mutationFn: () => adminService.processAllTournamentLogs(tournamentId!),
     onSuccess: () => {
       notify.success("Processing queued for all S3 logs");
       refreshAll();
@@ -268,7 +305,7 @@ export function TournamentLogsTab({
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-1">
-              {canUploadLogs ? (
+              {canUploadLogs && tournamentId != null ? (
                 <TournamentLogUploadDialog
                   tournamentId={tournamentId}
                   encounters={encounters}
@@ -283,18 +320,22 @@ export function TournamentLogsTab({
                   }
                 />
               ) : null}
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8"
-                disabled={processAllLogsMutation.isPending}
-                onClick={() => processAllLogsMutation.mutate()}
-              >
-                {processAllLogsMutation.isPending ? (
-                  <Loader2 className="animate-spin" aria-hidden />
-                ) : null}
-                Process S3 logs
-              </Button>
+              {/* Both endpoints are per tournament, so the workspace-wide
+                  console reads without offering them. */}
+              {tournamentId != null ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={processAllLogsMutation.isPending}
+                  onClick={() => processAllLogsMutation.mutate()}
+                >
+                  {processAllLogsMutation.isPending ? (
+                    <Loader2 className="animate-spin" aria-hidden />
+                  ) : null}
+                  Process S3 logs
+                </Button>
+              ) : null}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -320,49 +361,21 @@ export function TournamentLogsTab({
         </CardHeader>
 
         <CardContent className="flex flex-col gap-3 p-4 pt-0">
-          {/*
-            One row replaces the old five stat tiles plus a separate filter
-            group: both listed the same statuses, and the tiles only ever
-            counted the page that happened to be loaded.
-          */}
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-            <ToggleGroup
-              type="single"
-              value={statusFilter}
-              onValueChange={(value) => value && setStatusFilter(value as LogFilter)}
-              className="w-full flex-wrap justify-start xl:w-auto"
-              size="sm"
-              variant="outline"
-              aria-label="Filter logs by processing status"
-            >
-              {LOG_FILTERS.map((filter) => {
-                const count = getFilterCount(filter, stats);
-                // Only the states that need an operator get a tone; tinting
-                // "Processed" too would pull the eye to the inert majority.
-                const tone = filter === "failed" || filter === "processing";
-
-                return (
-                  <ToggleGroupItem key={filter} value={filter} className="h-8 gap-1.5 text-xs">
-                    {filter === "all" ? "All" : STATUS_META[filter].label}
-                    <span
-                      className={cn(
-                        "tabular-nums",
-                        tone && count
-                          ? TONE_TEXT[STATUS_META[filter].tone]
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {count?.toLocaleString() ?? "—"}
-                    </span>
-                  </ToggleGroupItem>
-                );
-              })}
-            </ToggleGroup>
-
-            <div className="flex items-center gap-3">
-              {stats ? (
+          <AdminFilterBar
+            defs={defs}
+            filters={filters}
+            search={{
+              placeholder: "file, error, uploader, encounter",
+              value: searchInput,
+              onChange: setSearchInput
+            }}
+            trailing={
+              stats ? (
                 <p className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                  Avg{" "}
+                  <span className="tabular-nums text-foreground/80">
+                    {stats.total.toLocaleString()}
+                  </span>
+                  {" logs · avg "}
                   <span className="tabular-nums text-foreground/80">
                     {stats.avg_duration_seconds != null
                       ? `${stats.avg_duration_seconds.toFixed(1)}s`
@@ -377,22 +390,9 @@ export function TournamentLogsTab({
                     </>
                   ) : null}
                 </p>
-              ) : null}
-              <div className="relative w-full xl:w-64">
-                <Search
-                  className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden
-                />
-                <Input
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="file, error, uploader, encounter"
-                  className="h-8 pl-8 text-base sm:text-xs"
-                  aria-label="Search all logs for this tournament"
-                />
-              </div>
-            </div>
-          </div>
+              ) : null
+            }
+          />
 
           {stats && stats.failed > 0 ? (
             <div className="flex flex-col gap-2 rounded-lg border border-danger/25 bg-danger/5 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
@@ -405,7 +405,7 @@ export function TournamentLogsTab({
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => setStatusFilter("failed")}
+                    onClick={() => filters.set("status", "failed")}
                   >
                     Show failed
                   </Button>
@@ -440,39 +440,37 @@ export function TournamentLogsTab({
               <Skeleton className="h-11 w-full" />
             </div>
           ) : records.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
-              {hasActiveFilter ? (
-                <>
-                  <Search className="mx-auto size-6 text-muted-foreground" aria-hidden />
-                  <p className="mt-3 text-sm font-medium">
-                    {searchTerm ? `No logs match “${searchTerm}”` : "No logs in this status"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Search covers every log in this tournament, not just the loaded rows.
-                  </p>
+            hasActiveFilter ? (
+              <EmptyNote
+                icon={Search}
+                title={searchTerm ? `No logs match “${searchTerm}”` : "No logs in this status"}
+                action={
                   <Button
                     variant="outline"
                     size="sm"
-                    className="mt-4"
                     onClick={() => {
-                      setStatusFilter("all");
+                      filters.clear();
                       setSearchInput("");
                     }}
                   >
                     Clear filters
                   </Button>
-                </>
-              ) : (
-                <>
-                  <FileText className="mx-auto size-6 text-muted-foreground" aria-hidden />
-                  <p className="mt-3 text-sm font-medium">No logs for this tournament yet</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Upload log files or process the tournament&apos;s stored S3 logs to populate
-                    this console.
-                  </p>
-                </>
-              )}
-            </div>
+                }
+              >
+                Search covers every log in this scope, not just the loaded rows.
+              </EmptyNote>
+            ) : (
+              <EmptyNote
+                icon={FileText}
+                title={
+                  tournamentId != null
+                    ? "No logs for this tournament yet"
+                    : "No logs in this workspace yet"
+                }
+              >
+                Upload log files or process stored S3 logs to populate this console.
+              </EmptyNote>
+            )
           ) : (
             <>
               <ul className="divide-y divide-border/30 overflow-hidden rounded-lg border border-border/40">
@@ -513,7 +511,7 @@ export function TournamentLogsTab({
                         <div className="flex w-28 shrink-0 items-center gap-1.5">
                           <LogStatusBadge status={record.status} />
                           {record.attempts > 1 ? (
-                            <span className="text-[11px] tabular-nums text-muted-foreground">
+                            <span className="text-xs tabular-nums text-muted-foreground">
                               ×{record.attempts}
                             </span>
                           ) : null}

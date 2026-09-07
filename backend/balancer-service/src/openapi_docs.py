@@ -33,6 +33,13 @@ DOCS: dict[str, dict] = {
         "summary": "Export balance to teams",
         "description": "Materializes a saved balance into tournament teams, returning removed/imported counts and emitting a teams-changed realtime event.",
     },
+    "rpc.balancer.admin.balance_ranks_export": {
+        "summary": "Re-export balance ranks",
+        "description": (
+            "Updates the ranks of players already materialized from the saved balance, "
+            "without removing or creating any team, and emits a teams-changed realtime event."
+        ),
+    },
     "rpc.balancer.admin.workspace_config_get": {
         "summary": "Get workspace balancer config",
         "description": "Returns the workspace-level balancer config (rank-delta threshold and pool-hide flag) for members with workspace read permission.",
@@ -129,6 +136,13 @@ DOCS: dict[str, dict] = {
         "summary": "Export draft to teams",
         "description": "Finalizes the drafted rosters into tournament teams (requires team-create) and publishes a draft-completed realtime event.",
     },
+    "rpc.balancer.draft.export_ranks": {
+        "summary": "Re-export draft ranks",
+        "description": (
+            "Updates the ranks of players already exported from this completed draft "
+            "(requires team-create), leaving the tournament teams themselves untouched."
+        ),
+    },
     "rpc.balancer.draft.pick_select": {
         "summary": "Select draft pick",
         "description": "Makes a pick for the current slot as the on-clock captain (or admin), enforcing role fit and optimistic version, then broadcasts pick-made/next-pick events.",
@@ -140,5 +154,171 @@ DOCS: dict[str, dict] = {
     "rpc.balancer.draft.pick_override": {
         "summary": "Override draft pick",
         "description": "Admin-overrides a pick to an arbitrary player (requires team-create), bypassing captain/clock constraints, and broadcasts a pick-made event.",
+    },
+    "rpc.balancer.custom.create": {
+        "summary": "Create custom game",
+        "description": (
+            "Opens a pickup mix in the workspace and returns it with its roster; the caller becomes "
+            "its host. Requires the workspace custom_game create permission, and member_ids may be "
+            "empty to start from an empty lineup."
+        ),
+    },
+    "rpc.balancer.custom.list": {
+        "summary": "List custom games",
+        "description": "Returns every pickup mix in the workspace with its settings and host display name, but without rosters; open to any workspace member.",
+    },
+    "rpc.balancer.custom.get": {
+        "summary": "Get custom game",
+        "description": (
+            "Returns one pickup mix with its full lineup: each seat's participation state, role "
+            "order, the ranks the balancer would use and which layer each came from. Open to any "
+            "workspace member; 404 when the mix belongs to another workspace."
+        ),
+    },
+    "rpc.balancer.custom.update_roster": {
+        "summary": "Replace custom game roster",
+        "description": (
+            "Replaces the mix lineup with the given workspace_member ids (at most 100) and returns "
+            "the refreshed mix. Host or co-host only; a member with no linked login account can be "
+            "rostered here, unlike the host and co-host grants."
+        ),
+    },
+    "rpc.balancer.custom.update_player": {
+        "summary": "Update custom game player",
+        "description": "Patches one seat's participation state, role order or flex flag and returns the refreshed mix. Host or co-host only; 404 when the member is not on this mix's roster.",
+    },
+    "rpc.balancer.custom.set_participation": {
+        "summary": "Set custom game participation",
+        "description": (
+            "Moves several seats between must_play, pool and benched in one transaction -- the whole "
+            "rotation verdict at once -- and returns the refreshed mix. Host or co-host only; 404 if "
+            "any member is not on the roster."
+        ),
+    },
+    "rpc.balancer.custom.balance": {
+        "summary": "Balance custom game",
+        "description": (
+            "Balances the non-benched lineup, reading the host's own rank book above the workspace "
+            "canon, stores the resulting options on the mix and returns it. Host or co-host only; "
+            "422 when the lineup is empty or a seated player has no ranked role."
+        ),
+    },
+    "rpc.balancer.custom.set_team_names": {
+        "summary": "Set custom game team names",
+        "description": "Renames the balanced teams by index and returns the refreshed mix. Host or co-host only.",
+    },
+    "rpc.balancer.custom.set_role_mask": {
+        "summary": "Set custom game role mask",
+        "description": "Overrides how many seats of each role a team gets in this mix; null restores the workspace default shape. Host or co-host only.",
+    },
+    "rpc.balancer.custom.set_points_per_win": {
+        "summary": "Set custom game points per win",
+        "description": "Sets how far a decided match moves both teams' ranks in the host's own book, or null to record matches without touching ranks. Host or co-host only.",
+    },
+    "rpc.balancer.custom.set_balancer_config": {
+        "summary": "Set custom game balancer config",
+        "description": "Replaces the mix's solver overrides with a validated config, or clears them with null, and returns the refreshed mix. Host or co-host only.",
+    },
+    "rpc.balancer.custom.transfer_host": {
+        "summary": "Transfer custom game host",
+        "description": (
+            "Hands primary ownership to another signed-in member of the workspace, dropping their "
+            "co-host grant if they held one. Host or co-host only; 404 when the target has no linked "
+            "login account here, since a host is an auth.user id and not a roster member."
+        ),
+    },
+    "rpc.balancer.custom.add_co_host": {
+        "summary": "Add custom game co-host",
+        "description": (
+            "Grants another signed-in workspace member the same write access as the host. Host or "
+            "co-host only; 404 when the target has no linked login account here, and 422 once the "
+            "mix is at its co-host limit."
+        ),
+    },
+    "rpc.balancer.custom.remove_co_host": {
+        "summary": "Remove custom game co-host",
+        "description": "Revokes a co-host grant, including a co-host removing themselves, and returns the refreshed mix. An account that has since left the workspace stays revocable.",
+    },
+    "rpc.balancer.custom.swap_seats": {
+        "summary": "Swap custom game seats",
+        "description": (
+            "Swaps two seated players between teams inside one balance option, same role only, and "
+            "returns the refreshed mix. Host or co-host only; 404 when the option or either seat is "
+            "missing, 422 when the seats hold different roles or sit on the same team."
+        ),
+    },
+    "rpc.balancer.custom.record_outcome": {
+        "summary": "Record custom game match",
+        "description": (
+            "Freezes one played match of a balance option into the mix's history, moving both teams' "
+            "ranks in the host's book by points_per_win when a winner is given and redeeming every "
+            "seat's must_play pin back to the pool. Host or co-host only, and repeatable until the "
+            "mix is closed."
+        ),
+    },
+    "rpc.balancer.custom.match_history": {
+        "summary": "List custom game matches",
+        "description": "Returns every match recorded for the mix, newest first, with team names, scores, winner and map. Open to any workspace member.",
+    },
+    "rpc.balancer.custom.rotation": {
+        "summary": "Get custom game rotation hints",
+        "description": "Recommends who is owed the next seat and who should sit out, computed from this mix's own match history. Read-only and open to any workspace member.",
+    },
+    "rpc.balancer.custom.close": {
+        "summary": "Close custom game",
+        "description": (
+            "Marks the mix completed so no further writes land. Nothing is destroyed -- the mix and "
+            "every match it recorded stay readable -- so this is the reversible end of a mix, and any "
+            "host or co-host may call it."
+        ),
+    },
+    "rpc.balancer.custom.hard_delete": {
+        "summary": "Delete custom game",
+        "description": (
+            "Permanently erases the mix together with its roster and every match it recorded, and "
+            "returns the deleted id. Irreversible, and unlike close it is restricted to workspace "
+            "admins rather than the mix's host and co-hosts."
+        ),
+    },
+    "rpc.balancer.players.list": {
+        "summary": "List workspace players",
+        "description": (
+            "Returns a page of the workspace roster carrying two rank dictionaries that are never "
+            "merged: `ranks` is the workspace canon and `author_ranks` is one author's own book, "
+            "which is what lets a row say whether a number is its own or inherited. Any workspace "
+            "member may read another organiser's book through `author_user_id`."
+        ),
+    },
+    "rpc.balancer.players.summary": {
+        "summary": "Get workspace roster summary",
+        "description": 'Returns the workspace roster size alongside how many of those members the read author has personally ranked, which is what the "My ranks" filter counts. Open to any workspace member.',
+    },
+    "rpc.balancer.players.upsert": {
+        "summary": "Upsert workspace player",
+        "description": "Creates or reuses a workspace member for a BattleTag and returns it shaped exactly like a roster row. Open to any workspace member; 422 when battle_tag is missing or blank.",
+    },
+    "rpc.balancer.players.set_ranks": {
+        "summary": "Set workspace player ranks",
+        "description": (
+            'Writes one rank layer for a member and returns that layer. `scope: "workspace"` edits '
+            'the shared canon every author inherits; `scope: "author"` edits the caller\'s own book '
+            "and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes "
+            "roles from the layer instead of zeroing them, so a cleared author rank falls back to "
+            "canon, while an omitted role is left alone. 404 when the member belongs to another "
+            "workspace."
+        ),
+    },
+    "rpc.balancer.players.authors": {
+        "summary": "List rank authors",
+        "description": "Returns everyone who has personally rank-corrected a member in this workspace, busiest first, with their display name and correction count. Open to any workspace member.",
+    },
+    "rpc.balancer.teams.export_registered": {
+        "summary": "Export registered teams",
+        "description": (
+            "Materializes the tournament's complete registered teams into balancer teams, optionally "
+            "narrowed to given team ids, and returns removed/imported/created counts plus every team "
+            "skipped and why. Requires admin panel access and workspace team-create permission, and "
+            "emits a teams-changed realtime event when anything was imported."
+        ),
     },
 }

@@ -1,860 +1,337 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
-import { ColumnDef } from "@tanstack/react-table";
-import {
-  Building2,
-  CheckSquare,
-  Eye,
-  Globe,
-  Lock,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  ShieldAlert,
-  Trash2,
-  Wrench,
-  XSquare
-} from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 
-import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { StatusIcon } from "@/components/admin/StatusIcon";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
-import { TONE_CLASS } from "@/components/admin/tone";
-import { Badge } from "@/components/ui/badge";
+import { RoleEditor } from "@/components/admin/access/RoleEditor";
+import { RoleList } from "@/components/admin/access/RoleList";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
+import { MasterDetail } from "@/components/admin/kit/MasterDetail";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useQueryParams } from "@/hooks/useQueryParams";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import { rbacService } from "@/services/rbac.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type {
-  RbacPermission,
-  RbacRole,
-  RbacRoleDetail,
-  UpsertRolePayload
-} from "@/types/rbac.types";
+import type { RbacRole } from "@/types/rbac.types";
 
-const PAGE_SIZE = 15;
-const ACTION_ORDER = [
-  "*",
-  "read",
-  "create",
-  "update",
-  "delete",
-  "assign",
-  "import",
-  "export",
-  "sync",
-  "recalculate",
-  "calculate",
-  "publish",
-  "generate",
-  "approve",
-  "reject",
-  "check_in",
-  "upload",
-  "stream",
-  "reprocess",
-  "revoke"
-];
+/** The `scope` chip's value for roles with `workspace_id IS NULL`. */
+const GLOBAL_SCOPE = "global";
 
-/** "global" = global roles (workspace_id IS NULL), number = workspace-scoped */
-type RoleScope = "global" | number;
-
-function formatPermissionLabel(value: string): string {
-  if (value === "*") {
-    return "All";
-  }
-  return value.replaceAll("_", " ");
-}
-
-function sortActions(left: string, right: string): number {
-  const leftIndex = ACTION_ORDER.indexOf(left);
-  const rightIndex = ACTION_ORDER.indexOf(right);
-  if (leftIndex !== -1 || rightIndex !== -1) {
-    return (
-      (leftIndex === -1 ? ACTION_ORDER.length : leftIndex) -
-      (rightIndex === -1 ? ACTION_ORDER.length : rightIndex)
-    );
-  }
-  return left.localeCompare(right);
-}
-
-function samePermissionIds(left: number[], right: number[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  const rightIds = new Set(right);
-  return left.every((permissionId) => rightIds.has(permissionId));
-}
-
-function hasRoleFormChanges(current: UpsertRolePayload, initial: UpsertRolePayload): boolean {
-  return (
-    current.name !== initial.name ||
-    (current.description || "") !== (initial.description || "") ||
-    !samePermissionIds(current.permission_ids, initial.permission_ids)
-  );
-}
-
-const emptyRoleForm: UpsertRolePayload = {
-  name: "",
-  description: "",
-  permission_ids: []
-};
-
-function roleToForm(role: RbacRoleDetail): UpsertRolePayload {
-  return {
-    name: role.name,
-    description: role.description || "",
-    permission_ids: role.permissions.map((permission) => permission.id)
-  };
-}
-
-type PermissionMatrixRow = {
-  resource: string;
-  permissions: RbacPermission[];
-  permissionIds: number[];
-  byAction: Map<string, RbacPermission>;
-};
-
-type PermissionMatrixColumn = {
-  action: string;
-  permissionIds: number[];
-};
-
-function MatrixCheckbox({
-  checked,
-  disabled,
-  label,
-  onChange
-}: Readonly<{
-  checked: boolean;
-  disabled?: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}>) {
-  return (
-    <input
-      type="checkbox"
-      className="h-4 w-4 shrink-0 cursor-pointer rounded border border-primary bg-background accent-primary disabled:cursor-not-allowed disabled:opacity-40"
-      checked={checked}
-      disabled={disabled}
-      aria-label={label}
-      onChange={(event) => onChange(event.currentTarget.checked)}
-    />
-  );
-}
-
+/**
+ * Roles (T4, F15): the roles of one scope on the left, one role's editor on
+ * the right.
+ *
+ * `?role=` is written with `mode: "push"` on purpose — below `md`
+ * `MasterDetail` shows either the list or the editor, and its "Back to list"
+ * button steps the history entry back, so a `replace` here would trap the user
+ * in the editor.
+ */
 export default function AccessAdminRolesPage() {
   const queryClient = useQueryClient();
   const { hasPermission, isSuperuser, canAccessPermission, canAccessAnyPermission } =
     usePermissions();
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const { searchParams, setParams } = useQueryParams({ mode: "push" });
 
-  const { workspaces } = useWorkspaceStore();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
+  const [editorDirty, setEditorDirty] = useState(false);
+  /**
+   * The screen's single `ConfirmDialog` serves both interruptions: deleting a
+   * role, and leaving an unsaved draft behind by picking another one.
+   */
+  const [pending, setPending] = useState<
+    { kind: "delete"; role: RbacRole } | { kind: "switch"; roleId: number } | null
+  >(null);
+
+  const canReadGlobalRoles = isSuperuser || hasPermission("role.read");
   const adminWorkspaces = workspaces.filter(
-    (ws) =>
+    (workspace) =>
       isSuperuser ||
       canAccessAnyPermission(
         ["role.read", "role.create", "role.update", "role.delete"],
-        ws.id
+        workspace.id
       )
   );
 
-  // Scope selector: "global" or a workspace id
-  const [selectedScope, setSelectedScope] = useState<RoleScope>("global");
-  const scopeSelectId = useId();
-  const canReadGlobalRoles = isSuperuser || hasPermission("role.read");
-  const effectiveScope =
-    selectedScope === "global" && !canReadGlobalRoles && adminWorkspaces[0]
-      ? adminWorkspaces[0].id
-      : selectedScope;
+  const defs = useMemo<FilterDef[]>(
+    () => [
+      {
+        key: "scope",
+        label: "Scope",
+        kind: "single",
+        options: [
+          ...(canReadGlobalRoles ? [{ value: GLOBAL_SCOPE, label: "Global" }] : []),
+          ...adminWorkspaces.map((workspace) => ({
+            value: String(workspace.id),
+            label: workspace.name
+          }))
+        ]
+      }
+    ],
+    [canReadGlobalRoles, adminWorkspaces]
+  );
+  const filters = useAdminFilters(defs);
 
-  // For global scope: use global RBAC permissions
-  // For workspace scope: user just needs to be workspace admin
+  // Falls back to whatever the reader may actually see: a workspace admin
+  // without the global `role.read` would otherwise land on an empty Global
+  // scope and think there are no roles at all.
+  const scopeParam = String(filters.values.scope ?? "");
+  const requestedScope =
+    scopeParam === "" ? (canReadGlobalRoles ? GLOBAL_SCOPE : "") : scopeParam;
+  const scope: string | number =
+    requestedScope === GLOBAL_SCOPE
+      ? GLOBAL_SCOPE
+      : requestedScope === ""
+        ? (adminWorkspaces[0]?.id ?? GLOBAL_SCOPE)
+        : Number(requestedScope);
+  const workspaceId = scope === GLOBAL_SCOPE ? null : (scope as number);
+
   const canReadPermissions =
-    effectiveScope === "global"
+    workspaceId === null
       ? hasPermission("permission.read")
-      : typeof effectiveScope === "number" &&
-        canAccessPermission("permission.read", effectiveScope);
-  const canManageInScope =
-    effectiveScope === "global"
-      ? hasPermission("role.create") && canReadPermissions
-      : typeof effectiveScope === "number" && canAccessPermission("role.create", effectiveScope);
-  const canCreateRole = canManageInScope && canReadPermissions;
+      : canAccessPermission("permission.read", workspaceId);
+  const canCreateRole =
+    (workspaceId === null
+      ? hasPermission("role.create")
+      : canAccessPermission("role.create", workspaceId)) && canReadPermissions;
   const canUpdateRole =
-    effectiveScope === "global"
-      ? hasPermission("role.update") && canReadPermissions
-      : typeof effectiveScope === "number" &&
-        canAccessPermission("role.update", effectiveScope) &&
-        canReadPermissions;
+    (workspaceId === null
+      ? hasPermission("role.update")
+      : canAccessPermission("role.update", workspaceId)) && canReadPermissions;
   const canDeleteRole =
-    effectiveScope === "global"
+    workspaceId === null
       ? hasPermission("role.delete")
-      : typeof effectiveScope === "number" && canAccessPermission("role.delete", effectiveScope);
+      : canAccessPermission("role.delete", workspaceId);
 
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editingRoleId, setEditingRoleId] = useState<number | null>(null);
-  const [deletingRole, setDeletingRole] = useState<RbacRole | null>(null);
-  const [formOverride, setFormOverride] = useState<UpsertRolePayload | null>(emptyRoleForm);
-  const [isReadOnly, setIsReadOnly] = useState(false);
+  const rolesQuery = useQuery({
+    queryKey: ["access-admin", "roles", "scope", scope],
+    queryFn: () => rbacService.listRolesAll({ workspace_id: workspaceId })
+  });
 
   const permissionsQuery = useQuery({
-    queryKey: ["access-admin", "permissions", effectiveScope],
+    queryKey: ["access-admin", "permissions", "scope", scope],
     queryFn: () =>
-      rbacService.listPermissionsAll(
-        effectiveScope === "global" ? undefined : { workspace_id: effectiveScope }
-      ),
-    enabled: canReadPermissions && (createDialogOpen || editingRoleId !== null)
+      rbacService.listPermissionsAll(workspaceId === null ? undefined : { workspace_id: workspaceId }),
+    enabled: canReadPermissions
   });
 
-  const roleDetailQuery = useQuery({
-    queryKey: ["access-admin", "roles", editingRoleId],
-    queryFn: () => rbacService.getRole(editingRoleId as number),
-    enabled: editingRoleId !== null
-  });
+  const roles = rolesQuery.data ?? [];
+  const roleParam = Number(searchParams?.get("role"));
+  const selectedRole = roles.find((role) => role.id === roleParam) ?? null;
 
-  const createRoleMutation = useMutation({
+  const createMutation = useMutation({
     meta: { suppressErrorToast: true },
-    mutationFn: (payload: UpsertRolePayload) => rbacService.createRole(payload),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["access-admin", "roles"] }),
-        queryClient.invalidateQueries({ queryKey: ["access-admin", "permissions"] })
-      ]);
-      setCreateDialogOpen(false);
-      setFormOverride(emptyRoleForm);
-      notify.success("Role created");
+    mutationFn: () =>
+      rbacService.createRole({
+        name: createName.trim(),
+        description: createDescription,
+        permission_ids: [],
+        workspace_id: workspaceId
+      }),
+    onSuccess: async (created) => {
+      await queryClient.invalidateQueries({ queryKey: ["access-admin", "roles"] });
+      setCreateOpen(false);
+      setCreateName("");
+      setCreateDescription("");
+      notify.success("Role created", { description: "Now grant it the permissions it needs." });
+      setParams({ role: created.id });
     }
   });
 
-  const updateRoleMutation = useMutation({
-    meta: { suppressErrorToast: true },
-    mutationFn: ({ id, payload }: { id: number; payload: Partial<UpsertRolePayload> }) =>
-      rbacService.updateRole(id, payload),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["access-admin", "roles"] }),
-        queryClient.invalidateQueries({ queryKey: ["access-admin", "users"] })
-      ]);
-      setEditingRoleId(null);
-      setFormOverride(emptyRoleForm);
-      notify.success("Role updated");
-    }
-  });
-
-  const deleteRoleMutation = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: (roleId: number) => rbacService.deleteRole(roleId),
-    onSuccess: async () => {
+    onSuccess: async (_result, roleId) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["access-admin", "roles"] }),
         queryClient.invalidateQueries({ queryKey: ["access-admin", "users"] })
       ]);
-      setDeletingRole(null);
+      setPending(null);
+      if (roleId === roleParam) setParams({ role: null });
       notify.success("Role deleted");
-    }
+    },
+    onError: (error) => notify.apiError(error, { title: "Could not delete the role" })
   });
 
-  const columns: ColumnDef<RbacRole>[] = [
-    {
-      accessorKey: "name",
-      header: "Role"
-    },
-    {
-      accessorKey: "description",
-      header: "Description",
-      enableSorting: false,
-      cell: ({ row }) =>
-        row.original.description || <span className="text-muted-foreground">No description</span>
-    },
-    {
-      id: "scope",
-      header: "Scope",
-      cell: ({ row }) => {
-        const role = row.original;
-        if (role.workspace_id) {
-          const ws = workspaces.find((w) => w.id === role.workspace_id);
-          return (
-            <div className="flex items-center gap-1.5">
-              <Building2 aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-sm">{ws?.name ?? `#${role.workspace_id}`}</span>
-            </div>
-          );
-        }
-        return (
-          <div className="flex items-center gap-1.5">
-            <Globe aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm">Global</span>
-          </div>
-        );
-      }
-    },
-    {
-      id: "system",
-      header: "Type",
-      cell: ({ row }) =>
-        row.original.is_system ? (
-          <StatusIcon icon={Lock} label="System" variant="muted" />
-        ) : (
-          <StatusIcon icon={Wrench} label="Custom" variant="info" />
-        )
-    },
-    {
-      id: "actions",
-      header: "",
-      cell: ({ row }) => {
-        const role = row.original;
-
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button aria-label={`Open actions for role ${role.name}`} variant="ghost" size="icon">
-                <MoreHorizontal aria-hidden className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => {
-                  updateRoleMutation.reset();
-                  setFormOverride(null);
-                  setEditingRoleId(role.id);
-                  setIsReadOnly(true);
-                }}
-              >
-                <Eye aria-hidden className="mr-2 h-4 w-4" />
-                View role
-              </DropdownMenuItem>
-              {canUpdateRole && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    disabled={role.is_system}
-                    onClick={() => {
-                      updateRoleMutation.reset();
-                      setFormOverride(null);
-                      setEditingRoleId(role.id);
-                      setIsReadOnly(false);
-                    }}
-                  >
-                    <Pencil aria-hidden className="mr-2 h-4 w-4" />
-                    Edit role
-                  </DropdownMenuItem>
-                </>
-              )}
-              {canDeleteRole && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    disabled={role.is_system}
-                    onClick={() => setDeletingRole(role)}
-                  >
-                    <Trash2 aria-hidden className="mr-2 h-4 w-4" />
-                    Delete role
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      }
-    }
-  ];
-
-  const permissionMatrix = useMemo(() => {
-    const groups = new Map<string, RbacPermission[]>();
-    const actions = new Set<string>();
-
-    for (const permission of permissionsQuery.data ?? []) {
-      actions.add(permission.action);
-      const current = groups.get(permission.resource) ?? [];
-      current.push(permission);
-      groups.set(permission.resource, current);
-    }
-
-    const rows: PermissionMatrixRow[] = Array.from(groups.entries())
-      .map(([resource, permissions]) => {
-        const sortedPermissions = [...permissions].sort((left, right) =>
-          sortActions(left.action, right.action)
-        );
-        return {
-          resource,
-          permissions: sortedPermissions,
-          permissionIds: sortedPermissions.map((permission) => permission.id),
-          byAction: new Map(sortedPermissions.map((permission) => [permission.action, permission]))
-        };
-      })
-      .sort((left, right) => left.resource.localeCompare(right.resource));
-
-    const sortedActions = Array.from(actions).sort(sortActions);
-    const columns: PermissionMatrixColumn[] = sortedActions.map((action) => ({
-      action,
-      permissionIds: rows
-        .map((row) => row.byAction.get(action)?.id)
-        .filter((permissionId): permissionId is number => permissionId !== undefined)
-    }));
-
-    return {
-      columns,
-      rows,
-      allPermissionIds: rows.flatMap((row) => row.permissionIds)
-    };
-  }, [permissionsQuery.data]);
-
-  const isSubmitting = createRoleMutation.isPending || updateRoleMutation.isPending;
-  const isEditing = editingRoleId !== null;
-  const roleDetail = roleDetailQuery.data?.id === editingRoleId ? roleDetailQuery.data : undefined;
-  const currentBaseline = useMemo(
-    () => (isEditing && roleDetail ? roleToForm(roleDetail) : emptyRoleForm),
-    [isEditing, roleDetail]
-  );
-  const formData = formOverride ?? currentBaseline;
-  const selectedPermissionIds = useMemo(
-    () => new Set(formData.permission_ids),
-    [formData.permission_ids]
-  );
-  const permissionSelectionStats = useMemo(() => {
-    const selectedIds = selectedPermissionIds;
-    const rowSelectedCounts = new Map<string, number>();
-    const rowChecked = new Map<string, boolean>();
-    const columnChecked = new Map<string, boolean>();
-
-    for (const row of permissionMatrix.rows) {
-      const selectedCount = row.permissionIds.filter((permissionId) =>
-        selectedIds.has(permissionId)
-      ).length;
-      rowSelectedCounts.set(row.resource, selectedCount);
-      rowChecked.set(
-        row.resource,
-        row.permissionIds.length > 0 && selectedCount === row.permissionIds.length
-      );
-    }
-
-    for (const column of permissionMatrix.columns) {
-      columnChecked.set(
-        column.action,
-        column.permissionIds.length > 0 &&
-          column.permissionIds.every((permissionId) => selectedIds.has(permissionId))
-      );
-    }
-
-    return { columnChecked, rowChecked, rowSelectedCounts };
-  }, [permissionMatrix.columns, permissionMatrix.rows, selectedPermissionIds]);
-  const isFormDirty = useMemo(
-    () =>
-      !isReadOnly &&
-      (createDialogOpen || isEditing) &&
-      hasRoleFormChanges(formData, currentBaseline),
-    [isReadOnly, createDialogOpen, currentBaseline, formData, isEditing]
-  );
-
-  const updateFormData = (
-    updater: UpsertRolePayload | ((current: UpsertRolePayload) => UpsertRolePayload)
-  ) => {
-    setFormOverride((current) => {
-      const value = current ?? currentBaseline;
-      return typeof updater === "function" ? updater(value) : updater;
-    });
-  };
-
-  const togglePermission = (permissionId: number, checked: boolean) => {
-    updateFormData((current) => ({
-      ...current,
-      permission_ids: checked
-        ? [...current.permission_ids, permissionId]
-        : current.permission_ids.filter((id) => id !== permissionId)
-    }));
-  };
-
-  const setPermissions = (permissionIds: number[]) => {
-    updateFormData((current) => ({
-      ...current,
-      permission_ids: Array.from(new Set(permissionIds))
-    }));
-  };
-
-  const togglePermissionGroup = (permissionIds: number[], checked: boolean) => {
-    updateFormData((current) => {
-      const next = new Set(current.permission_ids);
-      for (const permissionId of permissionIds) {
-        if (checked) {
-          next.add(permissionId);
-        } else {
-          next.delete(permissionId);
-        }
-      }
-      return {
-        ...current,
-        permission_ids: Array.from(next)
-      };
-    });
-  };
-
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (isEditing) {
-      updateRoleMutation.mutate({ id: editingRoleId, payload: formData });
+  // The role list is buttons, not links, because `MasterDetail`'s narrow-mode
+  // Back needs the selection PUSHED through `useQueryParams`. `SaveBar`'s
+  // guard only sees anchors, so the interception for an unsaved draft is here.
+  const selectRole = (roleId: number) => {
+    if (editorDirty && roleId !== roleParam) {
+      setPending({ kind: "switch", roleId });
       return;
     }
-    // Include workspace_id when creating in workspace scope
-    const payload: UpsertRolePayload = {
-      ...formData,
-      workspace_id: effectiveScope === "global" ? null : effectiveScope
-    };
-    createRoleMutation.mutate(payload);
+    setParams({ role: roleId });
   };
 
-  const scopeLabel =
-    effectiveScope === "global"
-      ? "Global"
-      : (workspaces.find((w) => w.id === effectiveScope)?.name ?? "Workspace");
+  if (rolesQuery.isError) {
+    return (
+      <PageStateCard
+        state="error"
+        title="Could not load the roles"
+        onAction={() => void rolesQuery.refetch()}
+        actionLabel="Try again"
+      />
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <AdminPageHeader
-        title="Roles"
-        description="Create custom roles, inspect protected system roles, and manage permission bundles."
-        meta={<Badge variant="secondary">RBAC</Badge>}
-        actions={
+    <div className="space-y-4">
+      <AdminFilterBar
+        defs={defs}
+        filters={filters}
+        trailing={
           canCreateRole ? (
             <Button
+              size="sm"
               onClick={() => {
-                createRoleMutation.reset();
-                updateRoleMutation.reset();
-                setFormOverride(emptyRoleForm);
-                setIsReadOnly(false);
-                setCreateDialogOpen(true);
+                createMutation.reset();
+                setCreateOpen(true);
               }}
             >
-              <Plus aria-hidden className="mr-2 h-4 w-4" />
+              <Plus aria-hidden className="size-4" />
               Create role
             </Button>
           ) : undefined
         }
       />
 
-      <AdminDataTable
-        initialPageSize={PAGE_SIZE}
-        pageSizeOptions={[10, 20, 50, 100]}
-        queryKey={(page, search, pageSize, sortField, sortDir) => [
-          "access-admin",
-          "roles",
-          effectiveScope,
-          page,
-          search,
-          pageSize,
-          sortField,
-          sortDir
-        ]}
-        queryFn={(page, search, pageSize, sortField, sortDir) => {
-          const workspaceId = effectiveScope === "global" ? undefined : effectiveScope;
-          return rbacService.listRoles({
-            page,
-            per_page: pageSize,
-            sort: sortField ?? undefined,
-            order: sortDir,
-            search: search || undefined,
-            workspace_id: workspaceId,
-          });
-        }}
-        columns={columns}
-        searchPlaceholder="Search roles…"
-        emptyMessage="No roles exist in this scope yet. Switch scope, or create a role to bundle permissions."
-        actions={
-          <div className="flex items-center gap-2">
-            <Label htmlFor={scopeSelectId} className="text-sm text-muted-foreground">
-              Scope
-            </Label>
-            <Select
-              value={String(effectiveScope)}
-              onValueChange={(value) =>
-                setSelectedScope(value === "global" ? "global" : Number(value))
+      {rolesQuery.isLoading ? (
+        <Skeleton className="h-72 w-full rounded-xl" />
+      ) : (
+        <MasterDetail
+          listWidth={260}
+          list={
+            <RoleList
+              roles={roles}
+              selectedRoleId={selectedRole?.id ?? null}
+              onSelect={selectRole}
+            />
+          }
+          detail={
+            selectedRole ? (
+              <RoleEditor
+                key={selectedRole.id}
+                role={selectedRole}
+                permissions={permissionsQuery.data ?? []}
+                workspaceName={
+                  workspaces.find((workspace) => workspace.id === selectedRole.workspace_id)?.name
+                }
+                canUpdate={canUpdateRole}
+                canDelete={canDeleteRole}
+                onRequestDelete={() => setPending({ kind: "delete", role: selectedRole })}
+                onDirtyChange={setEditorDirty}
+              />
+            ) : null
+          }
+          emptyDetail={
+            <PageStateCard
+              state="empty"
+              title={roles.length > 0 ? "No role selected" : "No roles in this scope"}
+              description={
+                roles.length > 0
+                  ? "Pick a role on the left to see and change the permissions it bundles."
+                  : "Create a role to bundle the permissions a group of people needs."
               }
-            >
-              <SelectTrigger id={scopeSelectId} className="w-56">
-                <SelectValue placeholder="Select scope" />
-              </SelectTrigger>
-              <SelectContent>
-                {canReadGlobalRoles && (
-                  <SelectItem value="global">
-                    <div className="flex items-center gap-2">
-                      <Globe aria-hidden className="h-3.5 w-3.5" />
-                      Global
-                    </div>
-                  </SelectItem>
-                )}
-                {adminWorkspaces.map((ws) => (
-                  <SelectItem key={ws.id} value={String(ws.id)}>
-                    <div className="flex items-center gap-2">
-                      <Building2 aria-hidden className="h-3.5 w-3.5" />
-                      {ws.name}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        }
-        onRowDoubleClick={(row) => {
-          updateRoleMutation.reset();
-          setFormOverride(null);
-          setEditingRoleId(row.original.id);
-          setIsReadOnly(row.original.is_system || !canUpdateRole);
-        }}
-      />
+            />
+          }
+        />
+      )}
 
       <EntityFormDialog
-        open={createDialogOpen || isEditing}
+        open={createOpen}
         onOpenChange={(open) => {
+          setCreateOpen(open);
           if (!open) {
-            setCreateDialogOpen(false);
-            setEditingRoleId(null);
-            setFormOverride(emptyRoleForm);
-            setIsReadOnly(false);
+            createMutation.reset();
+            setCreateName("");
+            setCreateDescription("");
           }
         }}
-        title={
-          isReadOnly
-            ? `Role ${roleDetail?.name ?? ""}`
-            : isEditing
-              ? "Edit role"
-              : `Create role (${scopeLabel})`
-        }
-        description={
-          isReadOnly
-            ? "Inspect role metadata and its permission matrix."
-            : isEditing
-              ? "Update role metadata and its permission bundle."
-              : `Create a new custom role in the ${scopeLabel} scope and attach explicit permissions.`
-        }
-        onSubmit={handleSubmit}
-        isSubmitting={isSubmitting}
-        submittingLabel={isEditing ? "Updating role…" : "Creating role…"}
-        errorMessage={
-          (isEditing ? updateRoleMutation.error : createRoleMutation.error) instanceof Error
-            ? (isEditing ? updateRoleMutation.error : createRoleMutation.error)?.message
-            : undefined
-        }
-        isDirty={isFormDirty}
-        isReadOnly={isReadOnly}
-        contentClassName="!max-w-[min(96vw,1440px)] sm:!max-h-[94dvh]"
+        title="Create role"
+        description={`Name the role, then grant its permissions in the editor. It is created in the ${
+          workspaceId === null
+            ? "global"
+            : (workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? "workspace")
+        } scope.`}
+        submitLabel="Create role"
+        submittingLabel="Creating role…"
+        isSubmitting={createMutation.isPending}
+        errorMessage={createMutation.error instanceof Error ? createMutation.error.message : undefined}
+        isDirty={createName.trim().length > 0 || createDescription.length > 0}
+        onSubmit={(event: FormEvent) => {
+          event.preventDefault();
+          if (!createName.trim()) return;
+          createMutation.mutate();
+        }}
       >
-        <div className="space-y-5">
-          {roleDetail?.is_system ? (
-            <div
-              className={cn(
-                "flex items-start gap-3 rounded-md border p-3 text-sm",
-                TONE_CLASS.warning
-              )}
-            >
-              <ShieldAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                {isReadOnly
-                  ? "System roles are system-defined and cannot be modified."
-                  : "System roles are protected. Some edits may be rejected by the API."}
-              </span>
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <Label htmlFor="role-name">Name</Label>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="create-role-name">Name</Label>
             <Input
-              id="role-name"
-              value={formData.name}
-              onChange={(event) =>
-                updateFormData((current) => ({ ...current, name: event.target.value }))
-              }
-              placeholder="support_admin"
+              id="create-role-name"
               required
-              disabled={isReadOnly}
+              value={createName}
+              placeholder="support_admin"
+              onChange={(event) => setCreateName(event.target.value)}
             />
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="role-description">Description</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="create-role-description">Description</Label>
             <Input
-              id="role-description"
-              value={formData.description || ""}
-              onChange={(event) =>
-                updateFormData((current) => ({ ...current, description: event.target.value }))
-              }
+              id="create-role-description"
+              value={createDescription}
               placeholder="Describe what this role is allowed to do"
-              disabled={isReadOnly}
+              onChange={(event) => setCreateDescription(event.target.value)}
             />
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-medium">Permission matrix</h3>
-                <Badge variant="outline" className="tabular-nums">
-                  {formData.permission_ids.length}/{permissionMatrix.allPermissionIds.length}{" "}
-                  selected
-                </Badge>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPermissions(permissionMatrix.allPermissionIds)}
-                  disabled={isReadOnly || permissionMatrix.allPermissionIds.length === 0}
-                >
-                  <CheckSquare aria-hidden className="h-4 w-4" />
-                  Grant all
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPermissions([])}
-                  disabled={isReadOnly || formData.permission_ids.length === 0}
-                >
-                  <XSquare aria-hidden className="h-4 w-4" />
-                  Revoke all
-                </Button>
-              </div>
-            </div>
-
-            <div className="max-h-[62dvh] overflow-auto rounded-md border border-border/60">
-              <Table wrapperClassName="min-w-[900px] overflow-visible">
-                <TableHeader className="sticky top-0 z-10 bg-background">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="sticky left-0 z-20 w-60 bg-background">
-                      Resource
-                    </TableHead>
-                    {permissionMatrix.columns.map((column) => {
-                      return (
-                        <TableHead
-                          key={column.action}
-                          className="min-w-24 bg-background text-center"
-                        >
-                          <div className="flex flex-col items-center gap-1.5">
-                            <MatrixCheckbox
-                              checked={
-                                permissionSelectionStats.columnChecked.get(column.action) ?? false
-                              }
-                              label={`Toggle all ${column.action} permissions`}
-                              disabled={isReadOnly || column.permissionIds.length === 0}
-                              onChange={(checked) =>
-                                togglePermissionGroup(column.permissionIds, checked)
-                              }
-                            />
-                            <span className="text-xs capitalize">
-                              {formatPermissionLabel(column.action)}
-                            </span>
-                          </div>
-                        </TableHead>
-                      );
-                    })}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {permissionMatrix.rows.map((row) => {
-                    const rowChecked =
-                      permissionSelectionStats.rowChecked.get(row.resource) ?? false;
-                    const rowSelectedCount =
-                      permissionSelectionStats.rowSelectedCounts.get(row.resource) ?? 0;
-
-                    return (
-                      <TableRow key={row.resource}>
-                        <TableCell className="sticky left-0 z-[1] bg-background">
-                          <div className="flex items-center gap-3">
-                            <MatrixCheckbox
-                              checked={rowChecked}
-                              label={`Toggle all ${row.resource} permissions`}
-                              disabled={isReadOnly}
-                              onChange={(checked) =>
-                                togglePermissionGroup(row.permissionIds, checked)
-                              }
-                            />
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">
-                                {formatPermissionLabel(row.resource)}
-                              </p>
-                              <p className="text-xs tabular-nums text-muted-foreground">
-                                {rowSelectedCount}/{row.permissionIds.length}
-                              </p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        {permissionMatrix.columns.map((column) => {
-                          const permission = row.byAction.get(column.action);
-                          if (!permission) {
-                            return (
-                              <TableCell
-                                key={column.action}
-                                className="text-center text-muted-foreground"
-                              >
-                                <span aria-hidden>—</span>
-                                <span className="sr-only">Not applicable</span>
-                              </TableCell>
-                            );
-                          }
-
-                          return (
-                            <TableCell key={column.action} className="text-center">
-                              <div className="flex justify-center">
-                                <MatrixCheckbox
-                                  checked={selectedPermissionIds.has(permission.id)}
-                                  label={`Toggle ${permission.name}`}
-                                  disabled={isReadOnly}
-                                  onChange={(checked) => togglePermission(permission.id, checked)}
-                                />
-                              </div>
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
           </div>
         </div>
       </EntityFormDialog>
 
-      {deletingRole ? (
-        <DeleteConfirmDialog
-          open={!!deletingRole}
-          onOpenChange={(open) => !open && setDeletingRole(null)}
-          onConfirm={() => deleteRoleMutation.mutate(deletingRole.id)}
-          isDeleting={deleteRoleMutation.isPending}
-          title={`Delete role ${deletingRole.name}`}
-          description={`This removes the ${deletingRole.name} role definition permanently. Every user currently assigned to it immediately loses the access it granted. This cannot be undone.`}
-          confirmLabel="Delete role"
-        />
-      ) : null}
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(open) => {
+          if (!open) setPending(null);
+        }}
+        pending={deleteMutation.isPending}
+        intent={
+          pending?.kind === "switch"
+            ? {
+                title: "Discard unsaved changes?",
+                description:
+                  "This role has unsaved changes. Open another role now and the current edits will be lost.",
+                confirmLabel: "Discard changes",
+                tone: "warning"
+              }
+            : {
+                title: "Delete role",
+                description: `Deleting “${pending?.kind === "delete" ? pending.role.name : "this role"}” removes the definition permanently. Everyone assigned to it immediately loses the access it granted. This cannot be undone.`,
+                confirmLabel: "Delete role",
+                tone: "danger"
+              }
+        }
+        onConfirm={() => {
+          if (pending === null) return;
+          if (pending.kind === "switch") {
+            const roleId = pending.roleId;
+            setPending(null);
+            setEditorDirty(false);
+            setParams({ role: roleId });
+            return;
+          }
+          deleteMutation.mutate(pending.role.id);
+        }}
+      />
     </div>
   );
 }

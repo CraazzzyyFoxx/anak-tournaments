@@ -33,6 +33,7 @@ from shared.services.division_grid.normalization import (
     DivisionGridNormalizer,
     build_division_grid_normalizer,
 )
+from shared.services.roster import registration_load_options
 from src import models
 from src.domain.registration.utils import normalize_battle_tag_key
 
@@ -498,7 +499,10 @@ class RankSourcesService:
                 models.BalancerRegistration.tournament_id == tournament_id,
                 models.BalancerRegistration.deleted_at.is_(None),
             )
-            .options(selectinload(models.BalancerRegistration.roles))
+            # These rows go to the roster engine for their role set and ranks; it
+            # reads roles, their heroes and the member anchor, none of which may
+            # lazy-load on an async session.
+            .options(*registration_load_options())
             .order_by(
                 models.BalancerRegistration.battle_tag_normalized.asc().nullslast(),
                 models.BalancerRegistration.id.asc(),

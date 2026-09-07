@@ -42,14 +42,14 @@ class HeroClass(StrEnum):
         return "dps" if self is HeroClass.damage else self.name
 
     @classmethod
-    def from_slot_code(cls, code: str) -> "HeroClass":
+    def from_slot_code(cls, code: str) -> HeroClass:
         """Inverse of :attr:`slot_code`. Raises ``ValueError`` for an unknown code."""
         if code == "dps":
             return cls.damage
         return cls(code.capitalize())
 
     @classmethod
-    def parse(cls, value: object) -> "HeroClass | None":
+    def parse(cls, value: object) -> HeroClass | None:
         """Lenient parse: case-insensitive, accepts ``Enum`` members, the canonical
         name/value, and the :attr:`slot_code` spelling. No other aliases --
         this is the strict boundary for the single role vocabulary; a caller
@@ -305,6 +305,29 @@ class TournamentStatus(StrEnum):
     PLAYOFFS = "playoffs"
     COMPLETED = "completed"
     ARCHIVED = "archived"
+
+
+class MixStatus(StrEnum):
+    DRAFT = "draft"
+    BALANCED = "balanced"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class MixParticipation(StrEnum):
+    MUST_PLAY = "must_play"
+    POOL = "pool"
+    BENCHED = "benched"
+
+
+class MixRoleSelectionMode(StrEnum):
+    ALL_RANKED = "all_ranked"
+    EXPLICIT = "explicit"
+
+
+class CasualTeamSide(StrEnum):
+    HOME = "home"
+    AWAY = "away"
 
 
 class DraftStatus(StrEnum):

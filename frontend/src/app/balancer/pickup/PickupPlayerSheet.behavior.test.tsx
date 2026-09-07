@@ -69,10 +69,8 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     workspace_member_id: 7,
     display_name: null,
     battle_tag: "Aria#1111",
-    team_index: null,
     sort_order: 0,
-    is_active: true,
-    must_play: false,
+    participation: "pool",
     roles: ["tank", "dps"],
     ranks: { tank: 3300, dps: 2700, support: 2900 },
     rank_sources: { tank: "author", dps: "workspace", support: "ow" },
@@ -175,8 +173,7 @@ describe("PickupPlayerSheet ranks", () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     const [patch, rankChange] = onSave.mock.calls[0];
     expect(patch).toEqual({
-      is_active: true,
-      must_play: false,
+      participation: "pool",
       roles: ["tank", "dps"],
       is_flex: false,
     });
@@ -289,7 +286,7 @@ describe("PickupPlayerSheet bench", () => {
 
     await click(findButton(scope, "Save"));
     const [patch] = onSave.mock.calls[0];
-    expect(patch).toMatchObject({ is_active: false, must_play: false });
+    expect(patch).toMatchObject({ participation: "benched" });
   });
 
   it("guarantees a seat when Must play is picked", async () => {
@@ -301,11 +298,11 @@ describe("PickupPlayerSheet bench", () => {
 
     await click(findButton(scope, "Save"));
     const [patch] = onSave.mock.calls[0];
-    expect(patch).toMatchObject({ is_active: true, must_play: true });
+    expect(patch).toMatchObject({ participation: "must_play" });
   });
 
   it("starts on the player's current status", async () => {
-    const scope = await mount(row({ is_active: false, must_play: false }));
+    const scope = await mount(row({ participation: "benched" }));
 
     expect(
       scope.querySelector('[aria-label="Benched for Aria#1111"]')?.getAttribute("aria-checked"),

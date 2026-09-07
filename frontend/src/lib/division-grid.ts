@@ -108,23 +108,13 @@ export function resolveDivisionFromRank(
   return getTierForRank(grid, rank)?.number ?? null;
 }
 
+/**
+ * The `rank_value` representing a division — its tier floor. A division is a band, so
+ * the floor is the canonical point (matches the backend `resolve_rank_for_division`, the
+ * grid normalizer and the rank slider). A band midpoint produced off-grid values such as
+ * 4449 for Grandmaster 1 (4400..4499).
+ */
 export function resolveRankFromDivision(
-  grid: DivisionGridLike,
-  division: number | null | undefined,
-): number | null {
-  const tier = getTierByDivision(grid, division);
-  if (!tier) {
-    return null;
-  }
-
-  if (tier.rank_max === null) {
-    return tier.rank_min;
-  }
-
-  return Math.floor((tier.rank_min + tier.rank_max) / 2);
-}
-
-export function resolveExactRankFromDivision(
   grid: DivisionGridLike,
   division: number | null | undefined,
 ): number | null {

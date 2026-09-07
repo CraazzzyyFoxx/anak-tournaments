@@ -157,10 +157,15 @@ def prepare_openskill_data(
         if encounter.home_team is None or encounter.away_team is None:
             continue
 
-        home_team = [get_id_role(player) for player in encounter.home_team.players]
-        away_team = [get_id_role(player) for player in encounter.away_team.players]
+        home_players = list(encounter.home_team.players or ())
+        away_players = list(encounter.away_team.players or ())
+        if not home_players or not away_players:
+            continue
 
-        for player in [*encounter.home_team.players, *encounter.away_team.players]:
+        home_team = [get_id_role(player) for player in home_players]
+        away_team = [get_id_role(player) for player in away_players]
+
+        for player in [*home_players, *away_players]:
             id_role = get_id_role(player)
             if players_rating.get(id_role) is None:
                 players_rating[id_role] = get_player_rating(pl, player)

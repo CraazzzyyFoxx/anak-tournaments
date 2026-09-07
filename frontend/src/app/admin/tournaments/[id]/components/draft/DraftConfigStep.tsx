@@ -96,7 +96,7 @@ export function DraftConfigStep({
           </p>
           <p className="text-xs text-muted-foreground">{t("rosterShapeHint")}</p>
           <Link
-            href={`/admin/tournaments/${tournamentId}/settings`}
+            href={`/admin/tournaments/${tournamentId}/settings/general`}
             className="inline-flex items-center text-xs font-medium text-primary hover:underline"
           >
             {t("openTournamentSettings")}

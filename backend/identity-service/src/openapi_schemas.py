@@ -13,7 +13,7 @@ No generic-CRUD engine; KEY = the full RPC subject string.
 from __future__ import annotations
 
 from shared.core.pagination import Paginated
-from shared.rpc.openapi import Op
+from shared.rpc.openapi import Op, QueryParam
 from src import schemas
 
 OPERATIONS: dict[str, Op] = {
@@ -35,6 +35,10 @@ OPERATIONS: dict[str, Op] = {
     "rpc.identity.oauth_providers": Op(response=schemas.OAuthProviderAvailability, response_array=True),
     "rpc.identity.oauth_url": Op(response=schemas.OAuthURL),
     "rpc.identity.oauth_callback": Op(response=schemas.Token),
+    # The redeemed ticket yields the session token pair; the handler hand-rolls
+    # {access_token, refresh_token} rather than dumping Token, so token_type is
+    # absent from the body (it is optional-with-default in the schema).
+    "rpc.identity.sso_exchange": Op(response=schemas.Token),
     "rpc.identity.oauth_connections": Op(response=schemas.OAuthUserInfo, response_array=True),
     # ── api keys ───────────────────────────────────────────────────────────
     "rpc.identity.list_api_keys": Op(response=schemas.ApiKeyListResponse, query=schemas.ApiKeyListQueryParams),
@@ -60,6 +64,11 @@ OPERATIONS: dict[str, Op] = {
     "rpc.identity.rbac.assign_linked_player": Op(request=schemas.AuthUserPlayerLinkAssign),
     "rpc.identity.rbac.assign_role": Op(request=schemas.UserRoleAssign),
     "rpc.identity.rbac.remove_role": Op(request=schemas.UserRoleRemove),
+    # ── RBAC: user permission denies ───────────────────────────────────────
+    # The deny rows are ad-hoc dicts (permission_id/name/resource/action/
+    # description/workspace_id) with no Pydantic model, so only the scope query
+    # param is declared here; delete_auth_user returns 204.
+    "rpc.identity.rbac.remove_user_deny": Op(query_params=(QueryParam("workspace_id", "integer"),)),
     # ── RBAC: oauth connections / sessions (admin) ─────────────────────────
     "rpc.identity.rbac.list_oauth_connections": Op(
         response=Paginated[schemas.OAuthConnectionAdminRead], query=schemas.OAuthConnectionListQueryParams

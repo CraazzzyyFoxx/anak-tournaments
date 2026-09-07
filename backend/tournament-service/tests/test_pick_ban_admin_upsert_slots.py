@@ -42,6 +42,8 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
+from tests._rpc_fakes import CapturingBroker, make_identity
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
@@ -92,20 +94,15 @@ FLAT_ITEM_IDS = [101, 102, 103, 104, 105, 106]
 
 #: Grants exactly the gate this subject checks (``match.update``) and nothing
 #: else, and is not a superuser, so the real permission path runs.
-IDENTITY = {
-    "user_id": 7,
-    "is_superuser": False,
-    "is_active": True,
-    "roles": [],
-    "permissions": [],
-    "workspaces": [
+IDENTITY = make_identity(
+    workspaces=[
         {
             "workspace_id": WORKSPACE_ID,
             "rbac_roles": [],
             "rbac_permissions": [{"resource": "match", "action": "update"}],
         }
-    ],
-}
+    ]
+)
 
 
 def slot_payload(
@@ -225,20 +222,6 @@ class _Result:
         return self._rows[0] if self._rows else None
 
 
-class _CapturingBroker:
-    """Records the handler behind each subject instead of binding a queue."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject, *args, **kwargs):
-        def register(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return register
-
-
 class _FakeSession:
     """Answers each query by the entity it targets, and records every statement.
 
@@ -326,7 +309,7 @@ class _FakeSession:
 
 class _UpsertCase(IsolatedAsyncioTestCase):
     async def invoke(self, body: dict, *, existing=None, stage_tournament_id=TOURNAMENT_ID):
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         pick_ban_admin.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         self.assertIn(UPSERT, broker.handlers, "subject is not registered")
 
@@ -466,11 +449,15 @@ class CustomPresetIsUnstorableInSlotMode(_UpsertCase):
 
 
 class SlotValidationGuards(_UpsertCase):
-    async def test_an_empty_slot_list_is_refused(self) -> None:
+    async def test_an_empty_slot_list_is_kept_as_a_rules_template(self) -> None:
+        """No groups is no pool, which is a rules TEMPLATE: rotation, timer and
+        the rest, saved at a wide scope for narrower ones to inherit. It opens no
+        room (`PickBanSessionService.has_pool`), so the group-shaped rules have
+        nothing to hold and are not applied."""
         envelope, session = await self.invoke(slot_body(slots=[]))
 
-        self.assert_unprocessable(envelope, "slots must not be empty")
-        self.assertEqual(0, session.commits)
+        config = self.written_config(envelope, session)
+        self.assertEqual([], config.slots)
 
     async def test_an_underfilled_slot_is_named_by_its_one_based_position(self) -> None:
         # The offender is the SECOND slot, so an ordinal taken from a 0-based
@@ -628,27 +615,37 @@ class FlatModeIsUnchanged(_UpsertCase):
         self.assert_unprocessable(envelope, "decider must be the last step of the sequence")
         self.assertEqual(0, session.commits)
 
-    async def test_the_flat_validator_still_rejects_an_empty_pool(self) -> None:
+    async def test_an_empty_pool_is_kept_as_a_rules_template(self) -> None:
+        """The rules and the pool share one row, so "author the rotation and the
+        timer once for the whole tournament, pick the maps per stage" needs a
+        pool-less row to exist. It plays nothing, so the pool-shaped rules (a
+        sequence that fits inside the pool, a pick or a decider to end on) are
+        not applied to it."""
         envelope, session = await self.invoke(flat_body(item_ids=[]))
 
-        self.assert_unprocessable(envelope, "item_ids must not be empty")
+        config = self.written_config(envelope, session)
+        self.assertEqual([], config.items)
+
+    async def test_a_template_is_still_held_to_the_step_vocabulary(self) -> None:
+        envelope, session = await self.invoke(
+            flat_body(item_ids=[], sequence=["ban_first", "nonsense"], preset="custom")
+        )
+
+        self.assert_unprocessable(envelope, "Invalid sequence token(s): nonsense")
         self.assertEqual(0, session.commits)
 
-    async def test_omitting_the_list_fields_entirely_is_still_refused(self) -> None:
+    async def test_omitting_the_sequence_of_a_config_with_a_pool_is_still_refused(self) -> None:
         # ``sequence`` and ``item_ids`` default to empty so that slot mode has
-        # one spelling of "this mode does not use it". Flat mode must not
-        # become laxer for it: the refusal moves from the schema to
-        # ``validate_pick_ban_config``, which is the message an organizer
-        # already knows, but it still refuses.
-        for missing in ("sequence", "item_ids"):
-            with self.subTest(missing=missing):
-                body = flat_body()
-                del body[missing]
+        # one spelling of "this mode does not use it". A flat config that DOES
+        # carry a pool must not become laxer for it: the refusal moves from the
+        # schema to ``validate_pick_ban_config``, but it still refuses.
+        body = flat_body()
+        del body["sequence"]
 
-                envelope, session = await self.invoke(body)
+        envelope, session = await self.invoke(body)
 
-                self.assert_unprocessable(envelope, f"{missing} must not be empty")
-                self.assertEqual(0, session.commits)
+        self.assert_unprocessable(envelope, "sequence must not be empty")
+        self.assertEqual(0, session.commits)
 
     async def test_a_hero_sequence_may_be_bans_only(self) -> None:
         # A hero sequence is ONE round's steps, replayed per map of the series,
@@ -802,14 +799,16 @@ class RunningSessionsAreUntouched(_UpsertCase):
     async def test_the_handler_reads_and_writes_only_config_rows(self) -> None:
         # A session carries its own sequence and reserve snapshots and must
         # not follow a config edit. The fake raises on any other entity, so
-        # this pins both halves -- nothing queried, nothing added.
+        # this pins both halves -- nothing queried, and the only row added
+        # besides the config itself (untouched here, this is an update) is the
+        # admin audit entry.
         existing = _config(SLOTS, slots=CANDIDATES)
 
         envelope, session = await self.invoke(slot_body(), existing=existing)
 
         self.assertTrue(envelope["ok"], envelope)
         self.assertEqual(["PickBanConfig"], sorted(session.statements))
-        self.assertEqual([], session.added)
+        self.assertEqual(["AuditLog"], [type(obj).__name__ for obj in session.added])
 
 
 # ── the eager loads serialize_pick_ban_config now depends on ────────────────
@@ -830,7 +829,7 @@ class SerializeNeedsTheSlotChain(_UpsertCase):
         eager_loading.assert_eager_loads(self, statement, "PickBanConfig.items")
 
     async def test_the_admin_list_loads_the_slot_chain(self) -> None:
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         pick_ban_admin.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         session = _FakeSession(configs=[_config(SLOTS, slots=CANDIDATES)])
 

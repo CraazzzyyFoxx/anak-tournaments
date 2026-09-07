@@ -56,6 +56,25 @@ RULE_PRESET_DEFAULTS: dict[str, list[str]] = {
 }
 
 
+#: Every metric ``_metric_value`` can actually score. A stage's configured order
+#: is filtered against this: an unknown string would silently rank every team
+#: equal (``return 0``), which reads as "the tiebreaker did nothing" instead of
+#: "the tiebreaker does not exist".
+KNOWN_TIEBREAK_METRICS = frozenset(
+    {
+        "points",
+        "match_wins",
+        "head_to_head",
+        "buchholz",
+        "median_buchholz",
+        "score_differential",
+        "map_differential",
+        "wins_as_higher_stage_specific_metric",
+        "manual_override",
+    }
+)
+
+
 @dataclass
 class RankedStageTeam:
     team_id: int
@@ -69,6 +88,10 @@ class RankedStageTeam:
     median_buchholz: float = 0.0
     head_to_head: int = 0
     score_differential: int = 0
+    #: Position of the head of this team's tie cluster, ``None`` when it is not
+    #: tied. Teams sharing a value were equal on every configured metric; their
+    #: relative order is assigned (manual override, else team id), not earned.
+    tie_group: int | None = None
 
 
 def _entity_requested(in_entities: list[str], entity: str) -> bool:
@@ -134,14 +157,43 @@ def _rule_profile(stage: models.Stage) -> str:
     return "bracket_default"
 
 
+def normalize_tiebreak_order(metrics: typing.Iterable[typing.Any]) -> list[str]:
+    """The order the engine will actually apply, from whatever was configured.
+
+    Strictly additive — the stored order's own sequence is honoured verbatim,
+    including where it puts ``points`` (see a0f866e2: hoisting ``points`` to the
+    front overrode an explicit organizer choice, and every preset already leads
+    with it). What this does fix are the two things a stored list can say that
+    mean nothing, plus the one it cannot say at all:
+
+    - unknown metrics are dropped: ``_metric_value`` scores them 0 for every
+      team, which is indistinguishable from a tiebreaker that never fires;
+    - duplicates collapse to their first occurrence — a second pass over one
+      metric can never separate teams the first pass left equal;
+    - ``manual_override`` is appended when absent, so an organizer's pinned
+      position works on a stage whose order never mentioned the step. An order
+      that DOES mention it keeps it where it was put. It is a no-op unless
+      ``manual_positions`` names the team.
+    """
+    ordered: list[str] = []
+    for metric in metrics:
+        if not isinstance(metric, str) or metric not in KNOWN_TIEBREAK_METRICS:
+            continue
+        if metric not in ordered:
+            ordered.append(metric)
+    if "manual_override" not in ordered:
+        ordered.append("manual_override")
+    return ordered
+
+
 def _tiebreak_order(stage: models.Stage) -> list[str]:
     settings = _stage_settings(stage)
     explicit = settings.get("tiebreak_order")
-    if isinstance(explicit, list):
-        filtered = [str(metric) for metric in explicit if isinstance(metric, str)]
-        if filtered:
-            return filtered
-    return RULE_PRESET_DEFAULTS.get(_rule_profile(stage), RULE_PRESET_DEFAULTS["bracket_default"])
+    if isinstance(explicit, list) and any(isinstance(metric, str) for metric in explicit):
+        return normalize_tiebreak_order(explicit)
+    return normalize_tiebreak_order(
+        RULE_PRESET_DEFAULTS.get(_rule_profile(stage), RULE_PRESET_DEFAULTS["bracket_default"])
+    )
 
 
 def _manual_positions(stage: models.Stage) -> dict[int, int]:
@@ -182,16 +234,18 @@ def _metric_value(
         return team.wins
     if metric == "head_to_head":
         return team.head_to_head
+    # Buchholz hundredths are noise (custom scoring / bye points): round to 0.1
+    # so near-equal opposition falls through to the next tiebreaker instead.
     if metric == "buchholz":
-        return team.buchholz
+        return round(team.buchholz, 1)
     if metric == "median_buchholz":
-        return team.median_buchholz
+        return round(team.median_buchholz, 1)
     if metric in {"score_differential", "map_differential"}:
         return team.score_differential
     if metric == "wins_as_higher_stage_specific_metric":
         return team.wins
     if metric == "manual_override":
-        return -manual_positions.get(team.team_id, 10**9)
+        return manual_positions.get(team.team_id, 10**9)
     return 0
 
 
@@ -202,6 +256,13 @@ def _sort_ranked_teams(
     manual_positions: dict[int, int],
 ) -> list[RankedStageTeam]:
     ordered = list(teams)
+    # Lowest-priority key first: the metric loop below is applied in reverse, so
+    # this decides only teams every configured metric left equal. Without it the
+    # order of two identical teams is whatever order they were first seen in
+    # (encounter iteration), which is not stable across recalculations -- and
+    # ``position`` feeds playoff seeding, so an unstable pair silently moves a
+    # team between the upper and lower bracket.
+    ordered.sort(key=lambda team: team.team_id)
     for metric in reversed(tiebreak_order):
         reverse = metric != "manual_override"
         ordered.sort(
@@ -209,6 +270,37 @@ def _sort_ranked_teams(
             reverse=reverse,
         )
     return ordered
+
+
+def assign_tie_groups(
+    ordered: typing.Sequence[RankedStageTeam],
+    *,
+    tiebreak_order: typing.Sequence[str],
+    manual_positions: dict[int, int],
+) -> None:
+    """Mark runs of teams no configured metric could separate.
+
+    ``manual_override`` is excluded from the comparison on purpose: an organizer
+    breaking a tie by hand decides the ORDER, it does not make the teams unequal.
+    The cluster stays visible so the table can say "this order was assigned", and
+    so the admin panel keeps offering the group after it has been resolved once.
+    """
+    metrics = [metric for metric in tiebreak_order if metric != "manual_override"]
+
+    def key(team: RankedStageTeam) -> tuple:
+        return tuple(_metric_value(team, metric, manual_positions=manual_positions) for metric in metrics)
+
+    for team in ordered:
+        team.tie_group = None
+    start = 0
+    for index in range(1, len(ordered) + 1):
+        if index < len(ordered) and key(ordered[index]) == key(ordered[start]):
+            continue
+        if index - start > 1:
+            head_position = start + 1
+            for team in ordered[start:index]:
+                team.tie_group = head_position
+        start = index
 
 
 def _calculate_buchholz(
@@ -301,11 +393,13 @@ def prepare_teams_for_groups(
 
     _calculate_buchholz(team_cache)
     _calculate_head_to_head(team_cache, completed_encounters)
-    return _sort_ranked_teams(
-        list(team_cache.values()),
-        tiebreak_order=tiebreak_order or RULE_PRESET_DEFAULTS["bracket_default"],
-        manual_positions=manual_positions or {},
-    )
+    # Normalized here too: a caller passing a raw stage order (tests, the Swiss
+    # pairing preview) must rank by the same list the stored standings did.
+    order = normalize_tiebreak_order(tiebreak_order or RULE_PRESET_DEFAULTS["bracket_default"])
+    positions = manual_positions or {}
+    ordered = _sort_ranked_teams(list(team_cache.values()), tiebreak_order=order, manual_positions=positions)
+    assign_tie_groups(ordered, tiebreak_order=order, manual_positions=positions)
+    return ordered
 
 
 def prepare_teams_for_playoffs_double_elimination(
@@ -543,6 +637,8 @@ def _build_group_stage_standings(
                 lose=team.loses,
                 points=team.points,
                 buchholz=team.median_buchholz,
+                full_buchholz=team.buchholz,
+                tie_group=team.tie_group,
                 tb=team.head_to_head,
                 score_differential=team.score_differential,
                 stage=stage,
@@ -757,14 +853,27 @@ class StandingsService:
         session: AsyncSession,
         tournament_id: int,
     ) -> typing.Sequence[models.Encounter]:
+        """Completed encounters of *closed* rounds, for the standings history.
+
+        Deliberately the same set the ranking engine counts
+        (:func:`_completed_encounters_in_finished_rounds`): the embedded
+        ``matches_history`` feeds the FORM column, which sits in the same row as
+        W·D·L / points / Buchholz. Serving every completed encounter here made
+        FORM run a round ahead of its own row — a team could show a ``W`` chip
+        with zero wins because the rest of its round had not reported yet.
+
+        Open encounters are selected too (not filtered in SQL): a round is only
+        closed if *none* of its playable encounters is still open, which cannot
+        be seen from the completed ones alone. Rounds are scoped per
+        (stage, stage_item) — the same scope ``_history_for_standing`` slices by
+        — so an unfinished round in group A cannot hide group B's results.
+        """
         query = (
             self.encounter_repo.select()
             .where(
                 models.Encounter.tournament_id == tournament_id,
                 models.Encounter.home_team_id.isnot(None),
                 models.Encounter.away_team_id.isnot(None),
-                # Single form (encres0001 pins it to result_status == CONFIRMED).
-                models.Encounter.status == enums.EncounterStatus.COMPLETED,
             )
             .order_by(
                 models.Encounter.stage_id.asc().nullslast(),
@@ -775,7 +884,16 @@ class StandingsService:
             )
         )
         result = await session.execute(query)
-        return result.scalars().all()
+        by_scope: defaultdict[tuple[int | None, int | None], list[models.Encounter]] = defaultdict(list)
+        for encounter in result.scalars().all():
+            by_scope[(encounter.stage_id, encounter.stage_item_id)].append(encounter)
+        # Groups are keyed by the leading ORDER BY columns and each keeps its
+        # rows' relative order, so concatenating them restores the query order.
+        return [
+            encounter
+            for scope_encounters in by_scope.values()
+            for encounter in _completed_encounters_in_finished_rounds(scope_encounters)
+        ]
 
     async def delete_by_tournament(self, session: AsyncSession, tournament_id: int, *, commit: bool = True) -> None:
         """Delete all Standing rows for a tournament.

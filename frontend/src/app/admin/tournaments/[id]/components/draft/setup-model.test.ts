@@ -5,7 +5,6 @@ import type { RosterShape } from "@/lib/roster-shape";
 import {
   buildDraftSchedule,
   canCancelDraftSetup,
-  canNavigateToSetupStep,
   derivePoolReadiness,
   filterCaptainRows,
   moveCaptain,
@@ -45,12 +44,9 @@ describe("draft setup model", () => {
     ]);
   });
 
-  it("allows the setup flow to move back to configuration", () => {
+  it("moves the setup flow back one step at a time", () => {
     expect(previousSetupStep("pool")).toBe("config");
-    expect(canNavigateToSetupStep("pool", "config")).toBe(true);
-    expect(canNavigateToSetupStep("ready", "config")).toBe(true);
-    expect(canNavigateToSetupStep("captains", "order")).toBe(false);
-    expect(canNavigateToSetupStep("ready", "ready")).toBe(false);
+    expect(previousSetupStep("config")).toBe("config");
   });
 
   it("allows cancelling local and persisted unfinished setup", () => {
@@ -61,7 +57,7 @@ describe("draft setup model", () => {
     expect(canCancelDraftSetup("ready", "cancelled")).toBe(false);
   });
 
-  it("reports pool blockers without hiding missing ranks or accounts", () => {
+  it("blocks the seed on missing ranks and still counts accounts and exclusions", () => {
     const readiness = derivePoolReadiness(
       [
         { id: 1, roles: ["tank"], rank: 3000, hasAccount: true, excluded: false },
@@ -79,6 +75,9 @@ describe("draft setup model", () => {
     expect(readiness.missingAccounts).toBe(1);
     expect(readiness.excludedPlayers).toBe(1);
     expect(readiness.blockers).toContain("not_enough_players");
+    // The server refuses to seed an unranked pool player, so the wizard must
+    // say so rather than let the organizer walk into a 4xx.
+    expect(readiness.blockers).toContain("pool_unranked");
   });
 
   it("reorders captains deterministically for manual order", () => {

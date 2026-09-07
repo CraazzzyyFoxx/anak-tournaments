@@ -25,6 +25,19 @@ _HTTP_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=100)
 _HTTP_TIMEOUT = httpx.Timeout(30.0)
 
 
+def _raise_provider_call_error(exc: BaseException, *, provider_label: str, error_detail: str) -> None:
+    if isinstance(exc, HTTPException):
+        raise exc
+    if isinstance(exc, httpx.TimeoutException):
+        logger.error("%s API timeout", provider_label)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"{provider_label} service unavailable",
+        ) from exc
+    logger.error("%s: %s", error_detail, exc)
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_detail) from exc
+
+
 class OAuthHttpClient:
     """One pooled client per process for all provider calls.
 
@@ -120,18 +133,10 @@ class DiscordOAuthProvider(OAuthProviderBase):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to exchange Discord code")
 
             return response.json()
-        except httpx.TimeoutException as exc:
-            logger.error("Discord API timeout")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Discord service unavailable"
-            ) from exc
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Discord token exchange error: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Discord authentication failed"
-            ) from e
+        except Exception as exc:
+            _raise_provider_call_error(
+                exc, provider_label="Discord", error_detail="Discord authentication failed"
+            )
 
     async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
         """Get Discord user information"""
@@ -160,18 +165,10 @@ class DiscordOAuthProvider(OAuthProviderBase):
                 else None,
                 raw_data=user_data,
             )
-        except httpx.TimeoutException as exc:
-            logger.error("Discord API timeout")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Discord service unavailable"
-            ) from exc
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Discord user info error: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get Discord user info"
-            ) from e
+        except Exception as exc:
+            _raise_provider_call_error(
+                exc, provider_label="Discord", error_detail="Failed to get Discord user info"
+            )
 
     async def get_user_guilds(self, access_token: str) -> list[dict[str, Any]]:
         """Guilds (``id``, ``owner``, ``permissions``, ...) the token's holder
@@ -195,18 +192,10 @@ class DiscordOAuthProvider(OAuthProviderBase):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Discord guild list")
 
             return response.json()
-        except httpx.TimeoutException as exc:
-            logger.error("Discord API timeout")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Discord service unavailable"
-            ) from exc
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Discord guild list error: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get Discord guild list"
-            ) from e
+        except Exception as exc:
+            _raise_provider_call_error(
+                exc, provider_label="Discord", error_detail="Failed to get Discord guild list"
+            )
 
 
 # Discord permission bitfield flag for MANAGE_GUILD (see Discord's Permissions
@@ -266,20 +255,10 @@ class TwitchOAuthProvider(OAuthProviderBase):
                     detail="Failed to exchange Twitch code",
                 )
             return response.json()
-        except httpx.TimeoutException as exc:
-            logger.error("Twitch API timeout")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Twitch service unavailable",
-            ) from exc
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Twitch token exchange error: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Twitch authentication failed",
-            ) from e
+        except Exception as exc:
+            _raise_provider_call_error(
+                exc, provider_label="Twitch", error_detail="Twitch authentication failed"
+            )
 
     async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
         headers = {
@@ -322,20 +301,10 @@ class TwitchOAuthProvider(OAuthProviderBase):
                 avatar_url=user_data.get("profile_image_url"),
                 raw_data=user_data,
             )
-        except httpx.TimeoutException as exc:
-            logger.error("Twitch API timeout")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Twitch service unavailable",
-            ) from exc
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Twitch user info error: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to get Twitch user info",
-            ) from e
+        except Exception as exc:
+            _raise_provider_call_error(
+                exc, provider_label="Twitch", error_detail="Failed to get Twitch user info"
+            )
 
 
 class BattleNetOAuthProvider(OAuthProviderBase):
@@ -382,20 +351,10 @@ class BattleNetOAuthProvider(OAuthProviderBase):
                 )
 
             return response.json()
-        except httpx.TimeoutException as exc:
-            logger.error("Battle.net API timeout")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Battle.net service unavailable",
-            ) from exc
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Battle.net token exchange error: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Battle.net authentication failed",
-            ) from e
+        except Exception as exc:
+            _raise_provider_call_error(
+                exc, provider_label="Battle.net", error_detail="Battle.net authentication failed"
+            )
 
     async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
         headers = {"Authorization": f"Bearer {access_token}"}
@@ -434,20 +393,10 @@ class BattleNetOAuthProvider(OAuthProviderBase):
                 avatar_url=None,
                 raw_data=user_data,
             )
-        except httpx.TimeoutException as exc:
-            logger.error("Battle.net API timeout")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Battle.net service unavailable",
-            ) from exc
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Battle.net user info error: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to get Battle.net user info",
-            ) from e
+        except Exception as exc:
+            _raise_provider_call_error(
+                exc, provider_label="Battle.net", error_detail="Failed to get Battle.net user info"
+            )
 
 
 class OAuthProviderRegistry:

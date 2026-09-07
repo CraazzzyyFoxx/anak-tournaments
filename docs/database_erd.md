@@ -1,103 +1,134 @@
-# ERD базы данных — anak-tournaments
+# Database ERD — OWT
 
-Единая PostgreSQL-база, которую делят все Python-сервисы монорепы. ORM-модели
-(SQLAlchemy) разложены по **доменным подпакетам** внутри
-`backend/shared/models/<domain>/` — `identity/` (auth_user, rbac, oauth,
-api_key, user, social, user_merge_audit), `tenancy/` (workspace, settings),
-`catalog/` (hero, map, gamemode), `division_grid/`, `tournament/` (tournament,
-stage, team, encounter, encounter_link, encounter_map, standings, computation,
-challonge), `registration/`, `balancer/` (balance, draft), `matches/`,
-`achievements/`, `analytics/`, `ranks/`, `ingestion/`, `preferences/`,
-`platform/`. Физически таблицы разложены по **Postgres-схемам** — они же
-служат границами доменов (имя подпакета не всегда совпадает с именем схемы:
-напр. `ranks/` → схема `overwatch_rank`, `ingestion/` → `log_processing`).
+A single PostgreSQL database shared by every Python service in the monorepo. The ORM models
+(SQLAlchemy) live in `backend/shared/models/<package>/`; the tables themselves are split across
+**Postgres schemas**, which double as domain boundaries. A package name does not always match a
+schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_processing`, and
+`tournament/` spans `tournament` and `casual`.
 
-Ниже — обзор схем, карта доменов и отдельная ER-диаграмма на каждый домен
-(Mermaid `erDiagram`, рендерится в GitHub / VS Code / любом Mermaid-вьюере).
+> **Every entity diagram in this document is generated** from `Base.metadata` by
+> `backend/scripts/export_erd.py`, one diagram per model package. The prose around them is
+> written by hand. Regenerate with `cd backend && uv run python scripts/export_erd.py`; CI runs
+> `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
-> **Актуальность.** Документ отражает финальное состояние после
-> identity/workspace-рефактора и нормализаций Challonge / map-veto / draft /
-> predictions. Alembic head — **`catalias0001`**. Сводка изменений — в конце
-> файла («История изменений схемы»).
+<!-- ERD:auto _alembic_head -->
+Alembic head: **`tiegrp01`** (45 revisions in `backend/migrations/versions/`).
+<!-- /ERD:auto -->
 
-> Соглашение об именах на диаграммах: имя сущности = `SCHEMA_TABLE`, потому что
-> одно и то же имя таблицы встречается в разных схемах (`auth.user` vs
-> `players.user` vs `achievements.user`; `tournament.team` vs `balancer.team`;
-> `tournament.tournament` vs `analytics.tournament`). Столбцы в диаграммах —
-> это PK, FK, UK и ключевые бизнес-поля; широкие таблицы обрезаны (помечено
-> `… прочие поля`). Пунктирные/серые сущности со звёздочкой `*` — «чужие»
-> якорные таблицы из другого домена, показаны только для связи.
+**Reading the diagrams**
+
+- Entity name is `SCHEMA_TABLE`. Qualifying is not decoration: `user` exists in `auth`,
+  `players` and `achievements`; `team` and `tournament` each exist in two schemas.
+- Every column is shown, with `PK` / `FK` / `UK` markers and `"nullable"` where it applies.
+  Multi-column unique constraints cannot be expressed in Mermaid and are listed under the
+  diagram that owns them.
+- A relationship whose parent lives in another package is still drawn — the parent appears as a
+  bare node with no attributes. Cross-domain coupling is the thing an ERD exists to show.
+- Cardinality is read off the schema: `||` means the foreign key is `NOT NULL`, `|o` that it is
+  nullable, `o|` that the child side is unique (one-to-one), `o{` that it is not.
+- **Multitenancy.** Almost every business row carries `workspace_id`, directly or transitively
+  through `tournament` or `public.workspace_member`. Rows that are deliberately global —
+  system roles, permission denials, division grids, registration statuses — allow
+  `workspace_id = NULL`.
+- **Dual identity.** `auth.user` is the login account, `players.user` is the player, and the
+  link between them is a nullable unique FK on the player side. A player with no account — a
+  "shadow" or "virtual" player imported from a match log or a CSV — is therefore an ordinary
+  row, not an anomaly. Anything scoped to a tenant anchors on `public.workspace_member`, never
+  on a bare player; `players.favorite_player` is the one deliberate exception, because a
+  favourite belongs to an account and follows it across workspaces.
+- Self-references and cycles are real edges, not drawing artefacts:
+  `balancer.draft_session.current_pick_id` ↔ `balancer.draft_pick.session_id` (declared with
+  `use_alter`), `public.division_grid_version.created_from_version_id`,
+  `public.division_grid.source_grid_id`, `tournament.player.related_player_id`.
+- Only tables in `Base.metadata` are drawn. `matches.mv_hero_global_stats` is a materialized
+  view refreshed out of band and does not appear. Append-only journals carry their
+  `workspace_id` / `tournament_id` / actor ids as plain `BigInteger` with no FK, so they appear
+  unconnected — see [platform](#platform--public-realtime).
+
+## Postgres schemas
+
+| Schema | Domain | Owner (service) |
+| --- | --- | --- |
+| `auth` | Login accounts, sessions, OAuth, API keys, RBAC | identity-service |
+| `players` | Player identity and social accounts | app-service |
+| `public` | Workspaces, membership, division grids, settings, outbox | app-service |
+| `tournament` | Tournament structure, bracket, encounters, pick/ban, reports | tournament-service |
+| `casual` | Casual and scrim matches outside the tournament tree | tournament-service |
+| `overwatch` | Game catalog — heroes, maps, game modes | app-service / parser-service |
+| `overwatch_rank` | Overwatch rank telemetry from OverFast | parser-service |
+| `matches` | Parsed match logs and derived statistics | parser-service |
+| `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
+| `achievements` | Achievement rules, evaluations and overrides | parser-service / app-service |
+| `analytics` | Analytics signals and ML model registry | analytics-service |
+| `log_processing` | Match-log upload and parse records | parser-service / discord-service |
+| `realtime` | Realtime event journal used for WebSocket replay | gateway (Go) |
+| `subscriptions` | Subscription providers, requirements and entitlements | tournament-service / parser-service |
+
+The hubs almost every domain converges on:
+
+- **`public.workspace`** — the tenant. Nearly every business row is scoped by `workspace_id`.
+- **`public.workspace_member`** — a player's membership in one workspace, unique on
+  `workspace_id + player_id`. Rosters, registrations, drafts, ranks and achievements all anchor
+  here rather than on a bare player, which is what keeps workspaces isolated by construction.
+- **`players.user`** — the domain player. Can exist with no login account (a "virtual" or
+  "shadow" player imported from match logs or a CSV).
+- **`auth.user`** — the login account. Links to `players.user` `1:0..1`.
+- **`tournament.tournament`** — the root for stages, teams, encounters, registrations and
+  analytics.
+- **`overwatch.hero`** — referenced by statistics, registration preferences and achievements.
+
+Full identity semantics — who owns which table, what a virtual player is, how linking works —
+are in [`users-identity.md`](./users-identity.md). System context is in
+[`architecture.md`](./architecture.md).
 
 ---
 
-## Postgres-схемы
+## Domain map
 
-| Схема | Домен | Ключевые таблицы | Владелец (сервис) |
-|-------|-------|------------------|-------------------|
-| `auth` | Аутентификация и RBAC | `user`, `refresh_token`, `oauth_connections`, `api_key`, `roles`, `permissions`, `user_roles`, `role_permissions`, `user_permission_deny` | identity-service |
-| `players` | Идентичность игрока | `user`, `social_account`, `social_account_visibility`, `user_merge_audit` | app-service |
-| `public` | Воркспейсы, сетки дивизионов, инфра | `workspace`, `workspace_member`, `division_grid*`, `settings`, `event_outbox` | app-service |
-| `tournament` | Структура турнира и сетка | `tournament`, `stage`, `stage_item`, `team`, `player`, `standing`, `encounter`, `encounter_link`, `challonge_*`, `computation_job` | tournament-service |
-| `overwatch` | Справочник игры | `hero`, `map`, `gamemode` | app / parser |
-| `overwatch_rank` | Телеметрия рангов OW | `rank_snapshot`, `battle_tag_state`, `fetch_log` | parser-service |
-| `matches` | Разобранные матч-логи | `match`, `statistics`, `kill_feed`, `assists`, `mv_hero_global_stats` (MV) | parser-service |
-| `balancer` | Регистрация и балансировка | `registration*`, `balance*`, `team*`, `tournament_config`, `draft_*` | balancer-service |
-| `achievements` | Движок достижений | `rule`, `evaluation_result`, `override`, `evaluation_run` | parser / app |
-| `analytics` | Аналитика и ML | `tournament`, `shifts`, `performance`, `standings_distribution`, `match_quality`, `ml_*`, `job`, … | analytics-service |
-| `log_processing` | Загрузка/парсинг логов | `record`, `discord_channel` | parser / discord |
-| `realtime` | Журнал realtime-событий | `workspace_event` | gateway (Go) |
-| `subscriptions` | Подписки и энтайтлменты | `provider_config`, `requirement`, `entitlement`, `check_log` | tournament / parser |
-
-Общие «хабы», к которым сходятся почти все домены:
-
-- **`public.workspace`** — арендатор (мультитенантность). Почти всё скоупится по `workspace_id`.
-- **`players.user`** — доменная идентичность игрока (может существовать без аккаунта — «shadow player» из логов/CSV).
-- **`auth.user`** — учётная запись для входа; линк к `players.user` — `1:0..1`.
-- **`workspace_member`** — якорь принадлежности игрока к воркспейсу (уникальность по `workspace_id + player_id`); на него по `workspace_member_id` ссылаются ростер (`tournament.player`), регистрации (`balancer.registration`), драфт (`draft_team`/`draft_player`/`draft_pick`) и достижения (`evaluation_result`/`override`). Денормализованной роли нет — роль выводится из RBAC.
-- **`tournament.tournament`** — турнир; корень для стадий, команд, матчей, регистраций, аналитики.
-- **`overwatch.hero`** — герой; на него ссылаются статистика, топ-герои регистрации, достижения.
-
----
-
-## 0. Карта доменов (какие схемы на что ссылаются)
+Which schema depends on which, read in foreign-key direction (child → parent). Actor columns
+(`created_by`, `reviewed_by`, `*_auth_user_id`) point at `auth` from nearly every domain and are
+left out here; so are the append-only journals, which have no foreign keys at all.
 
 ```mermaid
 flowchart TB
-    subgraph IDENTITY["Идентичность и доступ"]
-        AUTH["auth<br/>(учётки, RBAC)"]
-        PLAYERS["players<br/>(игроки, соц-аккаунты)"]
+    subgraph IDENTITY["Identity and access"]
+        AUTH["auth<br/>(accounts, RBAC)"]
+        PLAYERS["players<br/>(players, social accounts)"]
         WS["public.workspace<br/>+ workspace_member"]
-        GRID["public.division_grid*<br/>(сетки дивизионов)"]
-        SUBS["subscriptions<br/>(провайдеры, правило, вердикты)"]
+        GRID["public.division_grid*<br/>(division grids)"]
+        SUBS["subscriptions<br/>(providers, requirement, verdicts)"]
     end
 
-    subgraph COMPETITION["Соревнование"]
-        TOUR["tournament<br/>(стадии, команды, сетка)"]
-        MATCHES["matches<br/>(матч-логи, статистика)"]
+    subgraph COMPETITION["Competition"]
+        TOUR["tournament<br/>(stages, teams, bracket, pick/ban)"]
+        MATCHES["matches<br/>(match logs, statistics)"]
         OW["overwatch<br/>(hero / map / gamemode)"]
-        RANK["overwatch_rank<br/>(снапшоты рангов)"]
+        RANK["overwatch_rank<br/>(rank snapshots)"]
     end
 
-    subgraph TEAMBUILD["Формирование команд"]
-        BAL["balancer<br/>(регистрация, баланс)"]
-        DRAFT["balancer.draft_*<br/>(live-драфт)"]
+    subgraph TEAMBUILD["Team formation"]
+        REG["balancer.registration*<br/>(applications, teams)"]
+        BAL["balancer<br/>(balance, member_rank)"]
+        DRAFT["balancer.draft_*<br/>(live draft)"]
+        MIX["balancer.custom_game*<br/>(mixes)"]
+        CAS["casual<br/>(mix matches)"]
     end
 
-    subgraph INSIGHT["Пост-обработка"]
-        ACH["achievements<br/>(достижения)"]
-        AN["analytics<br/>(shift / ML / прогнозы)"]
+    subgraph INSIGHT["Post-processing"]
+        ACH["achievements<br/>(rules, results, overrides)"]
+        AN["analytics<br/>(shifts / ML / distributions)"]
     end
 
-    subgraph PLATFORM["Платформа / инфра"]
+    subgraph PLATFORM["Platform / infrastructure"]
         LOG["log_processing<br/>(record, discord_channel)"]
-        RT["realtime.workspace_event"]
-        OUTBOX["public.event_outbox"]
-        SET["public.settings"]
+        RT["realtime.workspace_event<br/>(no FKs)"]
+        OUTBOX["public.event_outbox<br/>(no FKs)"]
     end
 
     WS --> AUTH
     WS --> PLAYERS
-    AUTH -. "1:0..1" .-> PLAYERS
+    PLAYERS -. "1:0..1" .-> AUTH
+    AUTH --> WS
     WS --> GRID
     SUBS --> WS
     SUBS --> AUTH
@@ -105,1555 +136,2533 @@ flowchart TB
     TOUR --> WS
     TOUR --> GRID
     TOUR --> PLAYERS
+    TOUR --> OW
     MATCHES --> TOUR
     MATCHES --> OW
     MATCHES --> PLAYERS
+    MATCHES --> LOG
+    OW --> LOG
     RANK --> PLAYERS
 
+    REG --> TOUR
+    REG --> WS
+    REG --> OW
     BAL --> TOUR
     BAL --> WS
-    BAL --> PLAYERS
-    BAL --> OW
     DRAFT --> BAL
+    DRAFT --> REG
     DRAFT --> TOUR
+    MIX --> WS
+    CAS --> MIX
+    CAS --> WS
+    CAS --> OW
 
     ACH --> WS
     ACH --> TOUR
     ACH --> MATCHES
     ACH --> OW
     AN --> TOUR
-    AN --> MATCHES
-    AN --> BAL
+    AN --> WS
 
     LOG --> TOUR
     LOG --> PLAYERS
-    RT --> WS
 ```
 
----
+Two edges the map does not draw, because the schema no longer has them: `balancer` does not
+reference `players` (registration identity goes through `workspace_member`), and `analytics`
+reads match data only through `tournament.player` and `tournament.encounter`, never through
+`matches` directly.
 
-## 1. Аутентификация и RBAC (`auth`)
+## identity — `auth`, `players`
 
-Учётные записи для входа, refresh-токены, OAuth-подключения, API-ключи и
-ролевой доступ. RBAC — grant-only (роли → права) плюс **негативный overlay**
-`user_permission_deny` (точечный запрет, перебивает даже суперюзера).
+Login accounts, refresh tokens, OAuth connections, API keys, the grant-only RBAC catalog with
+its deny overlay, the domain player, and the audit trail left when two players are merged.
 
+RBAC is grant-only: roles grant permissions, and the single subtracting mechanism is
+`auth.user_permission_deny` — a targeted denial that overrides everything a role grants,
+including a superuser's implicit grant. Both `roles` and `user_permission_deny` allow a NULL
+`workspace_id`, which means "everywhere": a system role, or a platform-wide ban on one
+permission. API keys are scoped the other way round — always to one workspace — and store only
+`secret_hash`, with their scopes in a child table rather than a JSON array so a scope can be
+revoked with a `DELETE`.
+
+`players.user` is the domain player and is independent of the account: `auth_user_id` is unique
+and nullable, so a player parsed out of a match log exists long before, or instead of, anyone
+logging in. Social handles (battlenet, discord, twitch, …) are consolidated in `social_account`,
+deduplicated per `(user_id, provider, username_normalized)`, with a per-workspace visibility
+overlay — a row in `social_account_visibility` with `workspace_id = NULL` means visible
+everywhere.
+
+Merging two players is destructive at the row level, which is why `user_merge_audit` keeps the
+field policy, the identity ids that moved, the ones that were deduplicated, the affected row
+counts and a preview snapshot. Its source and target FKs are nullable so the audit outlives the
+rows it describes.
+
+<!-- ERD:auto identity -->
 ```mermaid
 erDiagram
-    AUTH_USER {
-        int id PK
-        string email UK
-        string username UK
-        string hashed_password "nullable (OAuth-only)"
-        bool is_active
-        bool is_superuser
-        bool is_verified
-        timestamp created_at
-        timestamp updated_at
+    AUTH_API_KEY {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint auth_user_id FK
+        bigint workspace_id FK
+        varchar(32) public_id UK
+        varchar(128) secret_hash
+        varchar(100) name
+        json limits_json
+        json config_policy_json
+        timestamptz expires_at "nullable"
+        timestamptz revoked_at "nullable"
+        timestamptz last_used_at "nullable"
+    }
+    AUTH_API_KEY_SCOPE {
+        bigint api_key_id PK,FK
+        varchar(64) scope PK
+    }
+    AUTH_OAUTH_CONNECTIONS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint auth_user_id FK
+        varchar(50) provider
+        varchar(255) provider_user_id
+        varchar(255) email "nullable"
+        varchar(100) username
+        varchar(100) display_name "nullable"
+        varchar(500) avatar_url "nullable"
+        text access_token "nullable"
+        text refresh_token "nullable"
+        timestamptz token_expires_at "nullable"
+        json provider_data "nullable"
+    }
+    AUTH_PERMISSIONS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar(100) name UK
+        varchar(100) resource
+        varchar(50) action
+        text description "nullable"
     }
     AUTH_REFRESH_TOKEN {
-        int id PK
-        string token UK
-        int user_id FK
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        text token UK
+        bigint user_id FK
         uuid session_id
-        timestamp expires_at
-        bool is_revoked
-        string ip_address
+        timestamptz session_started_at
+        timestamptz expires_at
+        boolean is_revoked
+        timestamptz revoked_at "nullable"
+        varchar(500) user_agent "nullable"
+        varchar(45) ip_address "nullable"
     }
-    AUTH_OAUTH_CONNECTION {
-        int id PK
-        int auth_user_id FK
-        string provider "UK(provider, provider_user_id)"
-        string provider_user_id
-        string access_token
-        string refresh_token
-        json provider_data
-    }
-    AUTH_API_KEY {
-        int id PK
-        int auth_user_id FK
-        int workspace_id FK
-        string public_id UK
-        string secret_hash
-        json scopes_json
-        timestamp expires_at
-        timestamp revoked_at
-    }
-    AUTH_ROLE {
-        int id PK
-        string name "UK per workspace (global when NULL)"
-        int workspace_id FK "nullable: NULL = глобальная роль"
-        bool is_system
-    }
-    AUTH_PERMISSION {
-        int id PK
-        string name UK
-        string resource
-        string action
-    }
-    AUTH_USER_ROLE {
-        int id PK
-        int user_id FK
-        int role_id FK
-    }
-    AUTH_ROLE_PERMISSION {
+    AUTH_ROLE_PERMISSIONS {
         int id PK
         int role_id FK
         int permission_id FK
+        timestamptz created_at
+    }
+    AUTH_ROLES {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar(100) name
+        text description "nullable"
+        boolean is_system
+        bigint workspace_id FK "nullable"
+    }
+    AUTH_USER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar(255) email UK
+        varchar(100) username UK
+        varchar(255) hashed_password "nullable"
+        boolean is_active
+        boolean is_superuser
+        boolean is_verified
+        varchar(100) first_name "nullable"
+        varchar(100) last_name "nullable"
+        varchar(500) avatar_url "nullable"
     }
     AUTH_USER_PERMISSION_DENY {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint user_id FK
+        bigint permission_id FK
+        bigint workspace_id FK "nullable"
+        bigint created_by FK "nullable"
+        text reason "nullable"
+    }
+    AUTH_USER_ROLES {
         int id PK
         int user_id FK
-        int permission_id FK
-        int workspace_id FK "nullable: NULL = глобальный deny"
-        int created_by FK "nullable → auth.user (SET NULL); FK добавлен dbarch01"
-        string reason
-    }
-    WORKSPACE {
-        int id PK
-    }
-
-    AUTH_USER ||--o{ AUTH_REFRESH_TOKEN : "сессии"
-    AUTH_USER ||--o{ AUTH_OAUTH_CONNECTION : "логинится через"
-    AUTH_USER ||--o{ AUTH_API_KEY : "владеет"
-    AUTH_USER ||--o{ AUTH_USER_ROLE : "назначены роли"
-    AUTH_ROLE ||--o{ AUTH_USER_ROLE : "назначена кому"
-    AUTH_ROLE ||--o{ AUTH_ROLE_PERMISSION : "даёт"
-    AUTH_PERMISSION ||--o{ AUTH_ROLE_PERMISSION : "включено в роль"
-    AUTH_USER ||--o{ AUTH_USER_PERMISSION_DENY : "запреты"
-    AUTH_USER |o--o{ AUTH_USER_PERMISSION_DENY : "создал (created_by)"
-    AUTH_PERMISSION ||--o{ AUTH_USER_PERMISSION_DENY : "что запрещено"
-    WORKSPACE ||--o{ AUTH_ROLE : "скоупит (nullable)"
-    WORKSPACE ||--o{ AUTH_API_KEY : "скоупит"
-    WORKSPACE ||--o{ AUTH_USER_PERMISSION_DENY : "скоупит (nullable)"
-```
-
-> **Гигиена индексов/FK (dbarch01).** Ассоциативные таблицы `auth.user_roles`
-> и `auth.role_permissions` получили индексы на обе FK-колонки (раньше
-> резолвинг прав и каскадные удаления делали seq-scan). FK `deny.created_by →
-> auth.user` добавлен как `NOT VALID` + `VALIDATE` (SET NULL).
-
----
-
-## 2. Идентичность игрока и воркспейсы (`players` + `public`)
-
-`players.user` — доменный игрок (независим от `auth.user`, может быть без
-аккаунта). Соц-идентичности (battlenet/discord/twitch/…) сведены в
-`social_account` с overlay-видимостью по воркспейсам. `workspace_member`
-привязывает игрока к арендатору и служит якорем для ростеров и достижений.
-
-`public.workspace` (арендатор) несёт мультитенантные и white-label поля:
-`timezone` (IANA, default `Europe/Moscow`), `branding_enabled` + палитра
-`brand_*` (primary/secondary/background/surface/accent/foreground/muted/
-border/ring/destructive), `subdomain` (UNIQUE), `seo_title`/`seo_description`,
-а также `custom_domain` (UNIQUE) / `custom_domain_verified_at` /
-`custom_domain_verification_token`.
-
-```mermaid
-erDiagram
-    AUTH_USER {
-        int id PK
-        string email UK
-    }
-    PLAYERS_USER {
-        int id PK
-        string name UK
-        int auth_user_id FK "UNIQUE, nullable — NULL = shadow player"
-        string avatar_url
-        timestamp created_at
+        int role_id FK
+        timestamptz created_at
     }
     PLAYERS_SOCIAL_ACCOUNT {
-        int id PK
-        int user_id FK
-        string provider "UK(user, provider, username_normalized)"
-        string username
-        string username_normalized
-        string provider_user_id "nullable; UK(provider, subject) when set"
-        bool is_verified
-        bool is_primary
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint user_id FK
+        varchar(64) provider
+        varchar(255) username
+        varchar(255) username_normalized "nullable"
+        varchar(500) url "nullable"
+        varchar(255) provider_user_id "nullable"
+        boolean is_verified
+        boolean is_primary
     }
-    PLAYERS_SOCIAL_VISIBILITY {
-        int id PK
-        int account_id FK
-        int workspace_id FK "nullable: NULL = глобальная видимость"
+    PLAYERS_SOCIAL_ACCOUNT_VISIBILITY {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint account_id FK
+        bigint workspace_id FK "nullable"
+    }
+    PLAYERS_USER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar name UK
+        varchar(500) avatar_url "nullable"
+        boolean stream_visible
+        bigint auth_user_id FK,UK "nullable"
     }
     PLAYERS_USER_MERGE_AUDIT {
-        int id PK
-        int source_user_id FK "nullable → players.user (SET NULL); FK с dbarch01"
-        int target_user_id FK "nullable → players.user (SET NULL); FK с dbarch01"
-        int operator_auth_user_id FK "nullable → auth.user"
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint source_user_id FK "nullable"
+        bigint target_user_id FK "nullable"
+        bigint operator_auth_user_id FK "nullable"
         json field_policy_json
+        json moved_identity_ids_json
+        json deduped_identity_ids_json
         json affected_counts_json
-    }
-    WORKSPACE {
-        int id PK
-        string slug UK
-        string name
-        bool is_active
-        string timezone "default Europe/Moscow"
-        bool branding_enabled
-        string brand_primary "nullable; + brand_* палитра (#RRGGBB)"
-        string subdomain UK "nullable"
-        string seo_title "nullable"
-        string seo_description "nullable"
-        string custom_domain UK "nullable"
-        timestamp custom_domain_verified_at "nullable"
-        string custom_domain_verification_token "nullable"
-        string discord_guild_id UK "nullable"
-        timestamp discord_guild_verified_at "nullable"
-        int discord_guild_verified_by_auth_user_id FK "nullable → auth.user (SET NULL)"
-        int owner_id FK "nullable → auth.user (SET NULL); accountability, decoupled from RBAC owner role"
-        int default_division_grid_version_id FK "nullable"
-    }
-    WORKSPACE_MEMBER {
-        int id PK
-        int workspace_id FK
-        int player_id FK "UK(workspace_id, player_id)"
-        timestamp created_at
-    }
-    DIVISION_GRID_VERSION {
-        int id PK
+        json preview_snapshot_json
     }
 
-    AUTH_USER |o--o| PLAYERS_USER : "владеет (1:0..1)"
-    PLAYERS_USER ||--o{ PLAYERS_SOCIAL_ACCOUNT : "хендлы + смурфы"
-    PLAYERS_SOCIAL_ACCOUNT ||--o{ PLAYERS_SOCIAL_VISIBILITY : "видимость по scope"
-    WORKSPACE ||--o{ PLAYERS_SOCIAL_VISIBILITY : "scope (nullable=global)"
-    AUTH_USER |o--o{ PLAYERS_USER_MERGE_AUDIT : "оператор merge"
-    PLAYERS_USER |o--o{ PLAYERS_USER_MERGE_AUDIT : "источник merge (SET NULL)"
-    PLAYERS_USER |o--o{ PLAYERS_USER_MERGE_AUDIT : "цель merge (SET NULL)"
-    WORKSPACE ||--o{ WORKSPACE_MEMBER : "участники"
-    PLAYERS_USER ||--o{ WORKSPACE_MEMBER : "член воркспейса"
-    DIVISION_GRID_VERSION |o--o{ WORKSPACE : "дефолтная сетка"
-    AUTH_USER |o--o{ WORKSPACE : "owner_id, accountability, decoupled от RBAC (SET NULL)"
-    AUTH_USER |o--o{ WORKSPACE : "верифицировал Discord-гильдию (SET NULL)"
+    AUTH_API_KEY ||--o| AUTH_API_KEY_SCOPE : "api_key_id"
+    AUTH_PERMISSIONS ||--o{ AUTH_ROLE_PERMISSIONS : "permission_id"
+    AUTH_PERMISSIONS ||--o{ AUTH_USER_PERMISSION_DENY : "permission_id"
+    AUTH_ROLES ||--o{ AUTH_ROLE_PERMISSIONS : "role_id"
+    AUTH_ROLES ||--o{ AUTH_USER_ROLES : "role_id"
+    AUTH_USER |o--o{ AUTH_USER_PERMISSION_DENY : "created_by"
+    AUTH_USER |o--o{ PLAYERS_USER_MERGE_AUDIT : "operator_auth_user_id"
+    AUTH_USER |o--o| PLAYERS_USER : "auth_user_id"
+    AUTH_USER ||--o{ AUTH_API_KEY : "auth_user_id"
+    AUTH_USER ||--o{ AUTH_OAUTH_CONNECTIONS : "auth_user_id"
+    AUTH_USER ||--o{ AUTH_REFRESH_TOKEN : "user_id"
+    AUTH_USER ||--o{ AUTH_USER_PERMISSION_DENY : "user_id"
+    AUTH_USER ||--o{ AUTH_USER_ROLES : "user_id"
+    PLAYERS_SOCIAL_ACCOUNT ||--o{ PLAYERS_SOCIAL_ACCOUNT_VISIBILITY : "account_id"
+    PLAYERS_USER |o--o{ PLAYERS_USER_MERGE_AUDIT : "source_user_id"
+    PLAYERS_USER |o--o{ PLAYERS_USER_MERGE_AUDIT : "target_user_id"
+    PLAYERS_USER ||--o{ PLAYERS_SOCIAL_ACCOUNT : "user_id"
+    PUBLIC_WORKSPACE |o--o{ AUTH_ROLES : "workspace_id"
+    PUBLIC_WORKSPACE |o--o{ AUTH_USER_PERMISSION_DENY : "workspace_id"
+    PUBLIC_WORKSPACE |o--o{ PLAYERS_SOCIAL_ACCOUNT_VISIBILITY : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ AUTH_API_KEY : "workspace_id"
 ```
 
-> **`workspace_member`** ключуется на `player_id` (FK → `players.user`) с
-> уникальностью `(workspace_id, player_id)`; денормализованной роли нет.
-> **`players.social_account`** имеет частичный unique-индекс (dbarch01) для
-> строк с `username_normalized IS NULL` (по `lower(btrim(username))`) — он
-> закрывает обход основного `uq(user, provider, username_normalized)`, который
-> не дедуплицирует NULL-хендлы.
+Composite unique keys:
 
----
+- `AUTH_OAUTH_CONNECTIONS` unique on (`provider`, `provider_user_id`)
+- `PLAYERS_SOCIAL_ACCOUNT` unique on (`user_id`, `provider`, `username_normalized`)
+<!-- /ERD:auto -->
 
-## 3. Сетки дивизионов (`public.division_grid*`)
+## tenancy — `public`
 
-Версионируемые «сетки» рангов: тиры с диапазонами SR + маппинги между версиями
-(для нормализации рангов между сезонами/OW-биндингами). Привязываются к
-воркспейсу (или глобальные) и выбираются турниром.
+The tenant root and its membership anchor, plus workspace-level settings: branding, subdomain
+and custom domain, Discord guild binding, default roster shape and division grid.
 
+`workspace` is the tenant and carries the white-label surface: `timezone` (IANA), the
+`brand_*` palette behind `branding_enabled`, `subdomain` and `custom_domain` (both UNIQUE, the
+domain with a verification token and timestamp), the SEO strings, and `discord_guild_id` —
+UNIQUE and verified the same way, which makes it the single source of the guild snowflake for
+every service that needs one. `owner_id` records who created the workspace and is deliberately
+decoupled from the RBAC `owner` role: the role is mutable and may have several holders, while
+ownership is an accountability fact about one account.
+
+`workspace_member` is the identity anchor for everything tenant-scoped — rosters, registrations,
+member ranks, draft entries, custom-game lineups, casual players, achievements — and is unique
+on `(workspace_id, player_id)`. It carries no denormalized role: the role is derived from RBAC,
+so there is exactly one place where a permission answer comes from.
+
+`settings` is the exception in this schema: a global key/value table (`key` UNIQUE, e.g. the
+parser's rank-collection switch), not tenant-scoped.
+
+<!-- ERD:auto tenancy -->
 ```mermaid
 erDiagram
-    DIVISION_GRID {
-        int id PK
-        int workspace_id FK "nullable: NULL = глобальная; UK(workspace_id, slug)"
-        string slug
-        string name
+    PUBLIC_SETTINGS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar key UK
+        json value
+        varchar description "nullable"
+        bigint updated_by FK "nullable"
     }
-    DIVISION_GRID_VERSION {
-        int id PK
-        int grid_id FK "UK(grid_id, version)"
-        int version
-        string label
-        string status "draft/published"
-        int created_from_version_id FK "nullable (self)"
-        timestamp published_at
+    PUBLIC_WORKSPACE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar slug UK
+        varchar name
+        varchar description "nullable"
+        varchar icon_url "nullable"
+        boolean is_active
+        boolean is_hidden
+        varchar(64) timezone
+        boolean branding_enabled
+        varchar brand_primary "nullable"
+        varchar brand_secondary "nullable"
+        varchar brand_background "nullable"
+        varchar brand_surface "nullable"
+        varchar brand_accent "nullable"
+        varchar brand_foreground "nullable"
+        varchar brand_muted "nullable"
+        varchar brand_border "nullable"
+        varchar brand_ring "nullable"
+        varchar brand_destructive "nullable"
+        varchar(63) subdomain UK "nullable"
+        varchar seo_title "nullable"
+        varchar seo_description "nullable"
+        varchar(255) custom_domain UK "nullable"
+        timestamptz custom_domain_verified_at "nullable"
+        varchar(64) custom_domain_verification_token "nullable"
+        varchar(32) discord_guild_id UK "nullable"
+        timestamptz discord_guild_verified_at "nullable"
+        bigint discord_guild_verified_by_auth_user_id FK "nullable"
+        bigint owner_id FK "nullable"
+        bigint default_division_grid_version_id FK "nullable"
+        jsonb default_roster_slots_json "nullable"
+        varchar(16) newcomer_scope
     }
-    DIVISION_GRID_TIER {
-        int id PK
-        int version_id FK "UK(version_id, slug); UK(version_id, sort_order)"
-        string slug
-        int number
-        int rank_min
-        int rank_max "nullable"
-        int ow_rank_min "nullable"
-        int ow_rank_max "nullable"
+    PUBLIC_WORKSPACE_MEMBER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        bigint player_id FK
+        varchar(255) display_name "nullable"
     }
-    DIVISION_GRID_MAPPING {
-        int id PK
-        int source_version_id FK "UK(source, target)"
-        int target_version_id FK
-        bool is_complete
+
+    AUTH_USER |o--o{ PUBLIC_SETTINGS : "updated_by"
+    AUTH_USER |o--o{ PUBLIC_WORKSPACE : "discord_guild_verified_by_auth_user_id"
+    AUTH_USER |o--o{ PUBLIC_WORKSPACE : "owner_id"
+    PLAYERS_USER ||--o{ PUBLIC_WORKSPACE_MEMBER : "player_id"
+    PUBLIC_DIVISION_GRID_VERSION |o--o{ PUBLIC_WORKSPACE : "default_division_grid_version_id"
+    PUBLIC_WORKSPACE ||--o{ PUBLIC_WORKSPACE_MEMBER : "workspace_id"
+```
+
+Composite unique keys:
+
+- `PUBLIC_WORKSPACE_MEMBER` unique on (`id`, `workspace_id`)
+- `PUBLIC_WORKSPACE_MEMBER` unique on (`workspace_id`, `player_id`)
+<!-- /ERD:auto -->
+
+## member_rank — `balancer`
+
+A player's rank inside one workspace, kept in two layers that are never merged: the workspace
+canon everyone inherits, and each ranking author's own book, which overrides canon for that
+author alone.
+
+The nullable `author_user_id` *is* the discriminator, and there is deliberately no `scope`
+column that could disagree with it. Two partial unique indexes enforce the split: one canon row
+per `(workspace, member, role)` where the author is NULL, one private row per
+`(workspace, author, member, role)` where it is not. They are partial indexes rather than plain
+unique constraints because Postgres treats NULLs in a composite unique key as distinct and would
+happily store two canon rows for the same member and role. One table replaced three earlier
+per-context rank stores, so the resolver reads both layers in a single query.
+
+<!-- ERD:auto member_rank -->
+```mermaid
+erDiagram
+    BALANCER_MEMBER_RANK {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        bigint workspace_member_id FK
+        bigint author_user_id FK "nullable"
+        varchar(16) role
+        int rank_value
     }
-    DIVISION_GRID_MAPPING_RULE {
-        int id PK
-        int mapping_id FK
-        int source_tier_id FK
-        int target_tier_id FK
+
+    AUTH_USER |o--o{ BALANCER_MEMBER_RANK : "author_user_id"
+    PUBLIC_WORKSPACE ||--o{ BALANCER_MEMBER_RANK : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_MEMBER_RANK : "workspace_member_id"
+```
+<!-- /ERD:auto -->
+
+## catalog — `overwatch`
+
+The game catalog — heroes, maps, game modes — plus the misses log that records catalog names
+arriving from logs that no alias resolves.
+
+Logs arrive with map, gamemode and hero names in the player client's locale, so every catalog
+entity carries `aliases` (a JSONB array of strings). Hero aliases are populated by the OverFast
+sync across the Blizzard locales; map and gamemode aliases are maintained by hand, because those
+endpoints take no locale parameter. This replaced three hardcoded translation dictionaries in
+the parser, each of which needed a service redeploy for every new map, hero or client locale.
+
+A name that resolves to neither a canonical value nor an alias lands in `catalog_alias_miss` —
+the "add an alias" queue in the admin UI. It is keyed on `(entity_type, raw_name)` with an
+`occurrences` counter, and `resolved_at` is cleared again when a supposedly resolved name comes
+back. Its link to the log record it last arrived on is nullable, so pruning ingestion records
+does not empty the queue.
+
+<!-- ERD:auto catalog -->
+```mermaid
+erDiagram
+    OVERWATCH_CATALOG_ALIAS_MISS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        catalogentitytype entity_type
+        varchar(128) raw_name
+        int occurrences
+        timestamptz first_seen_at
+        timestamptz last_seen_at
+        bigint last_log_record_id FK "nullable"
+        timestamptz resolved_at "nullable"
+    }
+    OVERWATCH_GAMEMODE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar slug UK
+        varchar name UK
+        varchar image_path
+        varchar description "nullable"
+        jsonb aliases
+    }
+    OVERWATCH_HERO {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar slug UK
+        varchar name UK
+        varchar image_path
+        heroclass type
+        varchar color
+        jsonb aliases
+    }
+    OVERWATCH_MAP {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint gamemode_id FK
+        varchar name UK
+        varchar image_path
+        boolean in_competitive
+        jsonb aliases
+    }
+
+    LOG_PROCESSING_RECORD |o--o{ OVERWATCH_CATALOG_ALIAS_MISS : "last_log_record_id"
+    OVERWATCH_GAMEMODE ||--o{ OVERWATCH_MAP : "gamemode_id"
+```
+
+Composite unique keys:
+
+- `OVERWATCH_CATALOG_ALIAS_MISS` unique on (`entity_type`, `raw_name`)
+<!-- /ERD:auto -->
+
+## division_grid — `public`
+
+Versioned rank grids: tiers with SR ranges, and mappings between versions so ranks stay
+comparable across seasons and Overwatch rebindings. A workspace picks the version it uses.
+
+A tier carries both the internal SR range (`rank_min`/`rank_max`) and the Overwatch-side range
+(`ow_rank_min`/`ow_rank_max`); mappings between two versions, with weighted rules per tier pair,
+are what keeps ranks comparable after a season change or an Overwatch rebinding. A version is
+immutable once published — a new one is forked through `created_from_version_id` — and a grid
+with `workspace_id = NULL` is global.
+
+There are two independent selectors: `workspace.default_division_grid_version_id` and
+`tournament.division_grid_version_id`. A tournament may pin its own version instead of
+inheriting the workspace default, which is what lets a finished tournament keep showing the
+ranks it was actually played at. `division_grid_import_job` covers copying a grid from another
+workspace; it is idempotent per `(workspace_id, idempotency_key)`.
+
+<!-- ERD:auto division_grid -->
+```mermaid
+erDiagram
+    PUBLIC_DIVISION_GRID {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK "nullable"
+        varchar slug
+        varchar name
+        varchar description "nullable"
+        bigint source_workspace_id FK "nullable"
+        bigint source_grid_id FK "nullable"
+        varchar(255) source_key "nullable"
+        varchar(64) source_fingerprint "nullable"
+        timestamptz imported_at "nullable"
+        timestamptz archived_at "nullable"
+    }
+    PUBLIC_DIVISION_GRID_IMPORT_JOB {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        bigint source_workspace_id FK "nullable"
+        bigint requested_by_user_id FK "nullable"
+        varchar(16) status
+        int progress
+        json request_json
+        json result_json "nullable"
+        text error "nullable"
+        varchar(255) idempotency_key
+        timestamptz started_at "nullable"
+        timestamptz finished_at "nullable"
+    }
+    PUBLIC_DIVISION_GRID_MAPPING {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint source_version_id FK
+        bigint target_version_id FK
+        varchar name
+        boolean is_complete
+    }
+    PUBLIC_DIVISION_GRID_MAPPING_RULE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint mapping_id FK
+        bigint source_tier_id FK
+        bigint target_tier_id FK
         float weight
-        bool is_primary
+        boolean is_primary
     }
-    WORKSPACE {
-        int id PK
+    PUBLIC_DIVISION_GRID_TIER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint version_id FK
+        varchar slug
+        bigint number
+        varchar name
+        bigint sort_order
+        bigint rank_min
+        bigint rank_max "nullable"
+        varchar icon_url
+        bigint ow_rank_min "nullable"
+        bigint ow_rank_max "nullable"
     }
-    TOURNAMENT {
-        int id PK
-        int division_grid_version_id FK "nullable"
+    PUBLIC_DIVISION_GRID_VERSION {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint grid_id FK
+        bigint version
+        varchar label
+        varchar status
+        bigint created_from_version_id FK "nullable"
+        timestamptz published_at "nullable"
     }
 
-    WORKSPACE ||--o{ DIVISION_GRID : "владеет (nullable)"
-    DIVISION_GRID ||--o{ DIVISION_GRID_VERSION : "версии"
-    DIVISION_GRID_VERSION ||--o{ DIVISION_GRID_TIER : "тиры"
-    DIVISION_GRID_VERSION |o--o| DIVISION_GRID_VERSION : "форкнута из"
-    DIVISION_GRID_VERSION ||--o{ DIVISION_GRID_MAPPING : "источник"
-    DIVISION_GRID_VERSION ||--o{ DIVISION_GRID_MAPPING : "цель"
-    DIVISION_GRID_MAPPING ||--o{ DIVISION_GRID_MAPPING_RULE : "правила"
-    DIVISION_GRID_TIER ||--o{ DIVISION_GRID_MAPPING_RULE : "source→target"
-    DIVISION_GRID_VERSION |o--o{ WORKSPACE : "дефолт воркспейса"
-    DIVISION_GRID_VERSION |o--o{ TOURNAMENT : "выбрана турниром"
+    AUTH_USER |o--o{ PUBLIC_DIVISION_GRID_IMPORT_JOB : "requested_by_user_id"
+    PUBLIC_DIVISION_GRID |o--o{ PUBLIC_DIVISION_GRID : "source_grid_id"
+    PUBLIC_DIVISION_GRID ||--o{ PUBLIC_DIVISION_GRID_VERSION : "grid_id"
+    PUBLIC_DIVISION_GRID_MAPPING ||--o{ PUBLIC_DIVISION_GRID_MAPPING_RULE : "mapping_id"
+    PUBLIC_DIVISION_GRID_TIER ||--o{ PUBLIC_DIVISION_GRID_MAPPING_RULE : "source_tier_id"
+    PUBLIC_DIVISION_GRID_TIER ||--o{ PUBLIC_DIVISION_GRID_MAPPING_RULE : "target_tier_id"
+    PUBLIC_DIVISION_GRID_VERSION |o--o{ PUBLIC_DIVISION_GRID_VERSION : "created_from_version_id"
+    PUBLIC_DIVISION_GRID_VERSION ||--o{ PUBLIC_DIVISION_GRID_MAPPING : "source_version_id"
+    PUBLIC_DIVISION_GRID_VERSION ||--o{ PUBLIC_DIVISION_GRID_MAPPING : "target_version_id"
+    PUBLIC_DIVISION_GRID_VERSION ||--o{ PUBLIC_DIVISION_GRID_TIER : "version_id"
+    PUBLIC_WORKSPACE |o--o{ PUBLIC_DIVISION_GRID : "source_workspace_id"
+    PUBLIC_WORKSPACE |o--o{ PUBLIC_DIVISION_GRID : "workspace_id"
+    PUBLIC_WORKSPACE |o--o{ PUBLIC_DIVISION_GRID_IMPORT_JOB : "source_workspace_id"
+    PUBLIC_WORKSPACE ||--o{ PUBLIC_DIVISION_GRID_IMPORT_JOB : "workspace_id"
 ```
 
----
+Composite unique keys:
 
-## 4. Структура турнира: стадии, команды, ростер (`tournament`)
+- `PUBLIC_DIVISION_GRID` unique on (`workspace_id`, `slug`)
+- `PUBLIC_DIVISION_GRID_IMPORT_JOB` unique on (`workspace_id`, `idempotency_key`)
+- `PUBLIC_DIVISION_GRID_MAPPING` unique on (`source_version_id`, `target_version_id`)
+- `PUBLIC_DIVISION_GRID_TIER` unique on (`version_id`, `slug`)
+- `PUBLIC_DIVISION_GRID_TIER` unique on (`version_id`, `sort_order`)
+- `PUBLIC_DIVISION_GRID_VERSION` unique on (`grid_id`, `version`)
+<!-- /ERD:auto -->
 
-Турнир → стадии (Stage/StageItem/StageItemInput — новая модель сетки, `group` —
-legacy) → команды и их ростер (`player`, привязан к `workspace_member`). Итоги —
-в `standing`.
+## ranks — `overwatch_rank`
 
+Rank telemetry polled from OverFast against a linked BattleTag: the snapshot time series, the
+per-BattleTag fetch state, and the fetch log.
+
+Collection is bound to the battlenet `social_account`, not to a bare BattleTag string, so a
+re-linked or renamed account keeps its history. `rank_snapshot` is append-only and stores one
+row per role per capture, together with `mapping_version` — which SR mapping produced
+`rank_value` — and the raw provider payload, so a mapping change can be replayed instead of
+re-fetched.
+
+`battle_tag_state` is the scheduler, one row per social account (UNIQUE): `next_eligible_at`,
+`consecutive_failures` and `priority_tier` are the backoff, and `last_snapshot_id` is the
+shortcut to the newest reading. `fetch_log` is the attempt history, with a nullable account FK
+so it survives unlinking.
+
+<!-- ERD:auto ranks -->
 ```mermaid
 erDiagram
-    TOURNAMENT {
-        int id PK
-        int workspace_id FK
-        int number
-        string name
-        string status "draft/…"
-        string team_formation "balancer/draft"
-        int division_grid_version_id FK "nullable"
-        bool is_finished
-    }
-    TOURNAMENT_GROUP {
-        int id PK
-        int tournament_id FK
-        int stage_id FK "nullable (legacy → Stage)"
-        string name
-        bool is_groups
-    }
-    STAGE {
-        int id PK
-        int tournament_id FK
-        string name
-        string stage_type
-        int order
-        bool is_active
-        bool is_completed
-    }
-    STAGE_ITEM {
-        int id PK
-        int stage_id FK
-        string name
-        string type
-        int order
-    }
-    STAGE_ITEM_INPUT {
-        int id PK
-        int stage_item_id FK
-        int slot
-        string input_type
-        int team_id FK "nullable"
-        int source_stage_item_id FK "nullable"
-        int source_position "nullable"
-    }
-    TOURNAMENT_TEAM {
-        int id PK
-        int tournament_id FK
-        int captain_id FK "nullable → players.user"
-        string name
-        float avg_sr
-        int total_sr
-    }
-    PLAYER {
-        int id PK
-        int tournament_id FK
-        int team_id FK
-        int workspace_member_id FK "якорь идентичности ростера"
-        int related_player_id FK "nullable (self)"
-        string role
-        string sub_role
-        int rank
-        bool is_substitution
-    }
-    PLAYER_SUB_ROLE {
-        int id PK
-        int workspace_id FK "UK(workspace_id, role, slug)"
-        string role
-        string slug
-        string label
-        bool is_active
-    }
-    STANDING {
-        int id PK
-        int tournament_id FK
-        int team_id FK
-        int stage_id FK "nullable"
-        int stage_item_id FK "nullable"
-        int group_id FK "nullable (legacy)"
-        int position
-        int overall_position
-        float points
-    }
-    WORKSPACE {
-        int id PK
-    }
-    WORKSPACE_MEMBER {
-        int id PK
-    }
-    PLAYERS_USER {
-        int id PK
-    }
-
-    WORKSPACE ||--o{ TOURNAMENT : "проводит"
-    TOURNAMENT ||--o{ STAGE : "стадии"
-    TOURNAMENT ||--o{ TOURNAMENT_GROUP : "группы (legacy)"
-    STAGE ||--o{ STAGE_ITEM : "элементы"
-    STAGE ||--o{ TOURNAMENT_GROUP : "новая стадия ↔ legacy-группа"
-    STAGE_ITEM ||--o{ STAGE_ITEM_INPUT : "слоты входа"
-    TOURNAMENT_TEAM |o--o{ STAGE_ITEM_INPUT : "посев команды"
-    STAGE_ITEM |o--o{ STAGE_ITEM_INPUT : "источник (advance)"
-    TOURNAMENT ||--o{ TOURNAMENT_TEAM : "команды"
-    PLAYERS_USER |o--o{ TOURNAMENT_TEAM : "капитан"
-    TOURNAMENT_TEAM ||--o{ PLAYER : "ростер"
-    TOURNAMENT ||--o{ PLAYER : "участники"
-    WORKSPACE_MEMBER ||--o{ PLAYER : "идентичность"
-    PLAYER |o--o{ PLAYER : "замена (related)"
-    WORKSPACE ||--o{ PLAYER_SUB_ROLE : "каталог суб-ролей"
-    TOURNAMENT ||--o{ STANDING : "итоги"
-    TOURNAMENT_TEAM ||--o{ STANDING : "место команды"
-    STAGE |o--o{ STANDING : "по стадии"
-    STAGE_ITEM |o--o{ STANDING : "по элементу"
-```
-
----
-
-## 5. Встречи, сетка и синхронизация с Challonge (`tournament`)
-
-`encounter` — конкретная встреча (best-of), `encounter_link` — явные рёбра
-продвижения (winner/loser → слот). Пул карт и вето (пул `map_veto_config`
-нормализован из JSON `map_pool_ids` в дочернюю `map_veto_config_map` —
-dbarch05). Плюс мост к Challonge (source/participant/match mapping + журнал
-синка) и сохранённые фильтры.
-
-> **Нормализация Challonge (dbarch04 + dbarch04b, применено на проде).**
-> Легаси-колонки `challonge_id`/`challonge_slug` на `tournament`/`stage` и
-> `encounter.challonge_id`, а также таблица `challonge_team` — **удалены**.
-> Единственный источник правды: `challonge_source` +
-> `challonge_participant_mapping` + `challonge_match_mapping` +
-> `challonge_sync_log`. Исключение — `tournament.group.challonge_id` /
-> `challonge_slug` **оставлены**: они хранят Challonge-значение маршрутизации
-> `match.group_id` по группам (не покрывается source-моделью).
-
-```mermaid
-erDiagram
-    ENCOUNTER {
-        int id PK
-        int tournament_id FK
-        int tournament_group_id FK "nullable"
-        int stage_id FK "nullable"
-        int stage_item_id FK "nullable"
-        int home_team_id FK "nullable"
-        int away_team_id FK "nullable"
-        int home_score
-        int away_score
-        int round
-        int best_of
-        string status
-        string result_status "confirmed ⟺ status=COMPLETED (CHECK, encres0001)"
-        timestamp confirmed_at "nullable — единственный провенанс на строке"
-    }
-    ENCOUNTER_CAPTAIN_REPORT {
-        int id PK
-        int encounter_id FK "UK(encounter, team)"
-        int team_id FK
-        int reporter_user_id FK "nullable → players.user"
-        int home_score
-        int away_score
-        int closeness "1..10"
-    }
-    ENCOUNTER_MAP_CODE {
-        int id PK
-        int report_id FK "UK(report, map_index)"
-        int map_index "1-based"
-        int map_id FK "nullable — мягкая ссылка на пик вето"
-        string code
-    }
-    ENCOUNTER_RESULT_AUDIT {
-        int id PK
-        int encounter_id FK
-        int actor_user_id FK "nullable = машинный актор"
-        string action "confirm/reopen/auto_confirm/auto_dispute/import/cascade_reset"
-        string from_result_status "nullable"
-        string to_result_status
-        int home_score_after
-        int away_score_after
-        int adopted_team_id FK "nullable — чей репорт приняли"
-        string source
-    }
-    ENCOUNTER_LINK {
-        int id PK
-        int source_encounter_id FK "UK(source, role)"
-        int target_encounter_id FK
-        string role "winner/loser"
-        string target_slot "home/away"
-    }
-    ENCOUNTER_MAP_POOL {
-        int id PK
-        int encounter_id FK
-        int map_id FK
-        int order
-        string picked_by "nullable"
-        string status
-    }
-    MAP_VETO_CONFIG {
-        int id PK
-        int tournament_id FK
-        int stage_id FK "nullable"
-        json veto_sequence_json "шаги ban/pick — остаётся JSON"
-    }
-    MAP_VETO_CONFIG_MAP {
-        int id PK
-        int map_veto_config_id FK "UK(config, map)"
-        int map_id FK "→ overwatch.map"
-        int sort_order
-    }
-    ENCOUNTER_SAVED_VIEW {
-        int id PK
-        int workspace_id FK
-        int auth_user_id FK "UK(workspace, user, name)"
-        string name
-        json filters_json
-    }
-    CHALLONGE_SOURCE {
-        int id PK
-        int tournament_id FK "UK(tournament, challonge_tournament_id)"
-        int stage_id FK "nullable (SET NULL)"
-        int stage_item_id FK "nullable (SET NULL)"
-        int challonge_tournament_id
-        string slug "nullable"
-        string source_type "tournament/stage/group/playoff"
-    }
-    CHALLONGE_PARTICIPANT_MAPPING {
-        int id PK
-        int source_id FK
-        int team_id FK
-        int challonge_participant_id
-    }
-    CHALLONGE_MATCH_MAPPING {
-        int id PK
-        int source_id FK
-        int encounter_id FK
-        int challonge_match_id
-    }
-    CHALLONGE_SYNC_LOG {
-        int id PK
-        int tournament_id FK
-        int source_id FK "nullable"
-        string direction "import/export"
-        string entity_type
-        string status
-    }
-    TOURNAMENT {
-        int id PK
-    }
-    TOURNAMENT_TEAM {
-        int id PK
-    }
-    MAP {
-        int id PK
-    }
-
-    TOURNAMENT ||--o{ ENCOUNTER : "встречи"
-    TOURNAMENT_TEAM |o--o{ ENCOUNTER : "home/away"
-    ENCOUNTER ||--o{ ENCOUNTER_LINK : "источник продвижения"
-    ENCOUNTER ||--o{ ENCOUNTER_LINK : "цель продвижения"
-    ENCOUNTER ||--o{ ENCOUNTER_MAP_POOL : "пул карт"
-    ENCOUNTER ||--o{ ENCOUNTER_CAPTAIN_REPORT : "репорты капитанов (по одному на команду)"
-    TOURNAMENT_TEAM ||--o{ ENCOUNTER_CAPTAIN_REPORT : "чей репорт"
-    ENCOUNTER_CAPTAIN_REPORT ||--o{ ENCOUNTER_MAP_CODE : "коды карт"
-    MAP |o--o{ ENCOUNTER_MAP_CODE : "карта пика"
-    ENCOUNTER ||--o{ ENCOUNTER_RESULT_AUDIT : "история решений по результату"
-    MAP ||--o{ ENCOUNTER_MAP_POOL : "карта"
-    TOURNAMENT ||--o{ MAP_VETO_CONFIG : "конфиг вето"
-    MAP_VETO_CONFIG ||--o{ MAP_VETO_CONFIG_MAP : "пул карт (нормализован)"
-    MAP ||--o{ MAP_VETO_CONFIG_MAP : "карта пула"
-    TOURNAMENT ||--o{ CHALLONGE_SOURCE : "источники Challonge"
-    CHALLONGE_SOURCE ||--o{ CHALLONGE_PARTICIPANT_MAPPING : "участники"
-    TOURNAMENT_TEAM ||--o{ CHALLONGE_PARTICIPANT_MAPPING : "команда"
-    CHALLONGE_SOURCE ||--o{ CHALLONGE_MATCH_MAPPING : "матчи"
-    ENCOUNTER ||--o{ CHALLONGE_MATCH_MAPPING : "встреча"
-    TOURNAMENT ||--o{ CHALLONGE_SYNC_LOG : "журнал синка"
-    CHALLONGE_SOURCE |o--o{ CHALLONGE_SYNC_LOG : "по источнику"
-    WORKSPACE ||--o{ ENCOUNTER_SAVED_VIEW : "сохранённые фильтры"
-```
-
----
-
-## 6. Матч-логи и справочник Overwatch (`matches` + `overwatch`)
-
-Разобранные лог-файлы: `match` (карта во встрече), детальная per-round
-`statistics`, `kill_feed`, события `assists`. Справочник игры — `hero`, `map`,
-`gamemode`. `mv_hero_global_stats` — materialized view с глобальными рекордами
-по героям (не таблица).
-
-Логи приходят с именами карт, режимов и героев на локали клиента игрока,
-поэтому каждая сущность справочника несёт `aliases` (JSONB-массив строк):
-у героев его наполняет синк OverFast по 13 локалям Blizzard, у карт и режимов
-записи ручные (у `/maps` и `/gamemodes` параметра `locale` нет). Имя, которое
-не разрешилось ни в канон, ни в алиас, попадает в `catalog_alias_miss` —
-очередь «добавьте алиас» в админке, ключ `(entity_type, raw_name)` со
-счётчиком `occurrences` (`catalias0001`).
-
-```mermaid
-erDiagram
-    GAMEMODE {
-        int id PK
-        string slug UK
-        string name UK
-        json aliases "JSONB list[str], default '[]' (catalias0001) — ручные"
-    }
-    MAP {
-        int id PK
-        int gamemode_id FK
-        string name UK
-        string image_path
-        json aliases "JSONB list[str], default '[]' (catalias0001) — ручные"
-    }
-    HERO {
-        int id PK
-        string slug UK
-        string name UK
-        string type "tank/damage/support"
-        string color
-        json aliases "JSONB list[str], default '[]' (catalias0001) — 13 локалей OverFast"
-    }
-    CATALOG_ALIAS_MISS {
-        int id PK
-        string entity_type "enum catalogentitytype: hero/map/gamemode; UK(entity_type, raw_name)"
-        string raw_name "имя из лога, 128"
-        int occurrences "инкремент на повторном промахе"
-        datetime first_seen_at
-        datetime last_seen_at
-        int last_log_record_id FK "nullable → log_processing.record (ON DELETE SET NULL)"
-        datetime resolved_at "nullable; сбрасывается в NULL при повторном промахе"
-    }
-    MATCH {
-        int id PK
-        int encounter_id FK
-        int map_id FK
-        int map_index "nullable — 1-based позиция карты в серии (mapidx01); NULL у распарсенных логов"
-        int home_team_id FK
-        int away_team_id FK
-        int home_score
-        int away_score
-        float time
-        string log_name "имя файла; из него всё ещё строится ключ S3"
-        int log_record_id FK "nullable → log_processing.record (mtchlog001, ON DELETE SET NULL)"
-    }
-    MATCH_STATISTICS {
-        int id PK
-        int match_id FK
-        int team_id FK
-        int user_id FK "→ players.user"
-        int hero_id FK "nullable"
-        int round
-        string name "enum LogStatsName"
-        float value
-    }
-    MATCH_KILL_FEED {
-        int id PK
-        int match_id FK
-        int killer_id FK
-        int victim_id FK
-        int killer_hero_id FK
-        int victim_hero_id FK
-        int killer_team_id FK
-        int victim_team_id FK
-        float damage
-        bool is_critical_hit
-    }
-    MATCH_EVENT {
-        int id PK
-        int match_id FK
-        int team_id FK
-        int user_id FK
-        int hero_id FK "nullable"
-        int related_user_id FK "nullable"
-        string name "enum MatchEvent"
-    }
-    ENCOUNTER {
-        int id PK
-    }
-    TOURNAMENT_TEAM {
-        int id PK
-    }
-    PLAYERS_USER {
-        int id PK
-    }
-
-    GAMEMODE ||--o{ MAP : "карты режима"
-    ENCOUNTER ||--o{ MATCH : "карты встречи"
-    MAP ||--o{ MATCH : "сыграна карта"
-    TOURNAMENT_TEAM |o--o{ MATCH : "home/away"
-    MATCH ||--o{ MATCH_STATISTICS : "статистика"
-    MATCH ||--o{ MATCH_KILL_FEED : "kill feed"
-    MATCH ||--o{ MATCH_EVENT : "события/ассисты"
-    PLAYERS_USER ||--o{ MATCH_STATISTICS : "игрок"
-    HERO |o--o{ MATCH_STATISTICS : "герой"
-    HERO ||--o{ MATCH_KILL_FEED : "killer/victim hero"
-    PLAYERS_USER ||--o{ MATCH_KILL_FEED : "killer/victim"
-    PLAYERS_USER ||--o{ MATCH_EVENT : "актор"
-    HERO |o--o{ MATCH_EVENT : "герой"
-```
-
----
-
-## 7. Телеметрия рангов Overwatch (`overwatch_rank`)
-
-Периодический сбор рангов через OverFast, привязан к battlenet-`social_account`
-и `players.user`. `rank_snapshot` — временной ряд, `battle_tag_state` — стейт
-планировщика (backoff/приоритет), `fetch_log` — история попыток воркера.
-
-```mermaid
-erDiagram
-    RANK_SNAPSHOT {
-        int id PK
-        int user_id FK "→ players.user"
-        int social_account_id FK "→ players.social_account (battlenet)"
-        string battle_tag
-        string platform
-        string role
-        string division "nullable (unranked)"
-        int tier "nullable"
-        int rank_value "nullable (mapped SR)"
-        timestamp captured_at
-    }
-    BATTLE_TAG_STATE {
-        int id PK
-        int social_account_id FK "UNIQUE"
-        int last_snapshot_id FK "nullable"
-        string battle_tag
-        string status
+    OVERWATCH_RANK_BATTLE_TAG_STATE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint social_account_id FK,UK
+        varchar(255) battle_tag
+        varchar(255) player_id_slug
+        timestamptz last_checked_at "nullable"
+        timestamptz last_success_at "nullable"
+        bigint last_snapshot_id FK "nullable"
+        varchar(32) status
         int consecutive_failures
-        timestamp next_eligible_at
-        int priority_tier
+        timestamptz next_eligible_at "nullable"
+        text last_error "nullable"
+        smallint priority_tier
     }
-    FETCH_LOG {
-        int id PK
-        int social_account_id FK "nullable"
-        string battle_tag
-        string status
-        string source
+    OVERWATCH_RANK_FETCH_LOG {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint social_account_id FK "nullable"
+        varchar(255) battle_tag
+        varchar(32) status
+        varchar(32) source
+        text error "nullable"
         int snapshots_written
-        timestamp created_at
     }
-    PLAYERS_USER {
-        int id PK
-    }
-    PLAYERS_SOCIAL_ACCOUNT {
-        int id PK
+    OVERWATCH_RANK_RANK_SNAPSHOT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint user_id FK
+        bigint social_account_id FK
+        varchar(255) battle_tag
+        varchar(16) platform
+        varchar(16) role
+        varchar(32) division "nullable"
+        smallint tier "nullable"
+        int season "nullable"
+        int rank_value "nullable"
+        varchar(64) mapping_version "nullable"
+        boolean is_ranked
+        jsonb raw_payload "nullable"
+        timestamptz captured_at
+        varchar(32) source
     }
 
-    PLAYERS_USER ||--o{ RANK_SNAPSHOT : "ранги игрока"
-    PLAYERS_SOCIAL_ACCOUNT ||--o{ RANK_SNAPSHOT : "по battlenet-аккаунту"
-    PLAYERS_SOCIAL_ACCOUNT |o--o| BATTLE_TAG_STATE : "стейт сбора (1:0..1)"
-    RANK_SNAPSHOT |o--o{ BATTLE_TAG_STATE : "последний снапшот"
-    PLAYERS_SOCIAL_ACCOUNT |o--o{ FETCH_LOG : "история попыток"
+    OVERWATCH_RANK_RANK_SNAPSHOT |o--o{ OVERWATCH_RANK_BATTLE_TAG_STATE : "last_snapshot_id"
+    PLAYERS_SOCIAL_ACCOUNT |o--o{ OVERWATCH_RANK_FETCH_LOG : "social_account_id"
+    PLAYERS_SOCIAL_ACCOUNT ||--o{ OVERWATCH_RANK_RANK_SNAPSHOT : "social_account_id"
+    PLAYERS_SOCIAL_ACCOUNT ||--o| OVERWATCH_RANK_BATTLE_TAG_STATE : "social_account_id"
+    PLAYERS_USER ||--o{ OVERWATCH_RANK_RANK_SNAPSHOT : "user_id"
 ```
+<!-- /ERD:auto -->
 
----
+## tournament — `tournament`, `casual`
 
-## 8. Балансировка и регистрация (`balancer`)
+The largest domain: the tournament itself and its lifecycle, stages and stage items, teams and
+their rosters, encounters and the advancement edges that form the bracket, the pick/ban engine,
+standings and their computation jobs, match reports, Challonge synchronisation, scrim rooms, and
+preview access.
 
-Форма регистрации (`registration_form`), заявки игроков (`registration` + роли +
-топ-герои + статусы), опциональный импорт из Google Sheets. Результат баланса —
-`balance` → варианты → команды → слоты игроков. Конфиг балансера на уровне
-турнира и воркспейса.
+The structure is `tournament → stage → stage_item → stage_item_input`. A stage item is a group,
+a bracket or a round-robin; the legacy `tournament.group` table is gone, and a group is a stage
+item of that type. Seeding and advancement live in `stage_item_input`: a slot is filled either
+by a team directly or by "position N of stage item M", which makes the bracket declarative
+instead of derived from a shape.
 
+A roster entry is `tournament.player`, anchored on `workspace_member` with a NOT NULL FK — a
+roster slot cannot exist for someone who is not a member of the tenant. `related_player_id` is a
+self-reference linking a substitute to the player they stand in for, and sub-roles come from the
+per-workspace `player_sub_role` catalog. `tournament.team` deliberately stores no SR: team
+strength is derived from the roster, never cached on the row.
+
+`encounter` is one best-of meeting; `encounter_link` holds the advancement edges explicitly
+(`winner`/`loser` → `home`/`away` slot). Results are a small state machine rather than a score
+write: `result_status` plus `confirmed_at` on the row, and one `encounter_result_audit` row per
+transition — confirm, reopen, auto-confirm, dispute, import, cascade reset — recording the
+scores after the change and whose report was adopted. Captains report through
+`encounter_captain_report` (one per team per encounter) with per-map lobby codes, and
+`encounter_map_report` records per-map scores; `encounter_report_form` is the per-tournament
+field definition, `encounter_readiness` the per-side ready signal.
+
+Pick/ban is generic: `pick_ban_config` is the template (mode, first-pick rule, ban rotation,
+resolved sequence) with its pool in `pick_ban_config_item` and `pick_ban_config_slot*`;
+`pick_ban_session` is one live run per `(encounter, kind)` and `pick_ban_entry` a single step.
+`encounter_pick_ban_ledger` keeps what was banned in which round, which is what a no-repeat
+scope spanning several encounters reads. This engine replaced the earlier map-veto tables; there
+is no `map_veto_config` any more.
+
+The Challonge bridge has exactly one source of truth: `challonge_source` (per tournament, stage
+or stage item) plus `challonge_participant_mapping`, `challonge_match_mapping` and
+`challonge_sync_log`. No Challonge id is stored on `tournament`, `stage` or `encounter`.
+
+Recomputation is durable: `computation_job` carries an idempotency key so a retry does not
+double-run, and `recalculation_state` is one row per tournament holding a requested and a
+completed generation counter — a burst of change events collapses into one recompute instead of
+queueing several. `slug_redirect` keeps old URLs alive after a rename, `scrim_room` is a
+tokenized link for one encounter, and `tournament_preview_access` is the allow-list for a
+tournament that is still hidden.
+
+<!-- ERD:auto tournament -->
 ```mermaid
 erDiagram
-    BAL_REGISTRATION_FORM {
-        int id PK
-        int tournament_id FK "UNIQUE"
-        int workspace_id FK
-        bool is_open
-        bool auto_approve
+    TOURNAMENT_CHALLONGE_MATCH_MAPPING {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint source_id FK
+        int challonge_match_id
+        bigint encounter_id FK
+    }
+    TOURNAMENT_CHALLONGE_PARTICIPANT_MAPPING {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint source_id FK
+        int challonge_participant_id
+        bigint team_id FK
+    }
+    TOURNAMENT_CHALLONGE_SOURCE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint stage_id FK "nullable"
+        bigint stage_item_id FK "nullable"
+        int challonge_tournament_id
+        varchar slug "nullable"
+        varchar(32) source_type
+    }
+    TOURNAMENT_CHALLONGE_SYNC_LOG {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint source_id FK "nullable"
+        varchar(10) direction
+        varchar(32) operation "nullable"
+        varchar(32) entity_type
+        int entity_id "nullable"
+        int challonge_id "nullable"
+        varchar(16) status
+        varchar(32) conflict_type "nullable"
+        json payload_json "nullable"
+        json before_json "nullable"
+        json after_json "nullable"
+        text error_message "nullable"
+    }
+    TOURNAMENT_COMPUTATION_JOB {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar(16) kind
+        varchar(48) operation
+        bigint tournament_id FK
+        bigint stage_id FK "nullable"
+        bigint stage_item_id FK "nullable"
+        varchar(16) status
+        json payload_json
+        json result_json "nullable"
+        text error "nullable"
+        bigint requested_by_user_id FK "nullable"
+        varchar(255) idempotency_key
+        int attempts
+        timestamptz started_at "nullable"
+        timestamptz finished_at "nullable"
+    }
+    TOURNAMENT_ENCOUNTER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar name
+        bigint home_team_id FK "nullable"
+        bigint away_team_id FK "nullable"
+        int home_score
+        int away_score
+        int round
+        float closeness "nullable"
+        int best_of
+        timestamptz scheduled_at "nullable"
+        timestamptz started_at "nullable"
+        timestamptz ended_at "nullable"
+        int current_map_index "nullable"
+        bigint tournament_id FK
+        bigint stage_id FK "nullable"
+        bigint stage_item_id FK "nullable"
+        encounterstatus status
+        encounterresultstatus result_status
+        timestamptz confirmed_at "nullable"
+    }
+    TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        bigint team_id FK
+        bigint reporter_user_id FK "nullable"
+        int home_score
+        int away_score
+        int closeness "nullable"
+        text comment "nullable"
+        json custom_fields_json
+    }
+    TOURNAMENT_ENCOUNTER_LINK {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        int source_encounter_id FK
+        int target_encounter_id FK
+        encounterlinkrole role
+        encounterlinkslot target_slot
+    }
+    TOURNAMENT_ENCOUNTER_MAP_CODE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint report_id FK
+        int map_index
+        bigint map_id FK "nullable"
+        varchar(32) code
+    }
+    TOURNAMENT_ENCOUNTER_MAP_REPORT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        bigint map_id FK
+        int map_index
+        bigint team_id FK
+        bigint reporter_user_id FK "nullable"
+        int home_score
+        int away_score
+    }
+    TOURNAMENT_ENCOUNTER_PICK_BAN_LEDGER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        pickbankind kind
+        int item_id
+        pickbanside banned_by_side
+        int round
+    }
+    TOURNAMENT_ENCOUNTER_READINESS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        varchar(16) side
+        bigint ready_user_id FK "nullable"
+    }
+    TOURNAMENT_ENCOUNTER_REPORT_FORM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK,UK
         json built_in_fields_json
         json custom_fields_json
     }
-    BAL_REGISTRATION {
-        int id PK
-        int tournament_id FK
-        int workspace_member_id FK "nullable, единственный якорь идентичности (SET NULL); dbarch02 удалил user_id"
-        string battle_tag
-        string battle_tag_normalized "UK(tournament, tag) активные"
-        string status
-        string balancer_status
-        bool checked_in
-        bool exclude_from_balancer
-        timestamp submitted_at
-        timestamp deleted_at "soft-delete"
+    TOURNAMENT_ENCOUNTER_RESULT_AUDIT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        bigint actor_user_id FK "nullable"
+        encounterresultauditaction action
+        encounterresultstatus from_result_status "nullable"
+        encounterresultstatus to_result_status
+        int home_score_before "nullable"
+        int away_score_before "nullable"
+        int home_score_after
+        int away_score_after
+        bigint adopted_team_id FK "nullable"
+        varchar(16) source
     }
-    BAL_REGISTRATION_ROLE {
-        int id PK
-        int registration_id FK "UK(registration, role)"
-        string role
-        string subrole "nullable"
-        bool is_primary
-        int priority
-        int rank_value "nullable"
+    TOURNAMENT_PICK_BAN_CONFIG {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        pickbankind kind
+        bigint stage_id FK "nullable"
+        int round "nullable"
+        pickbanmode mode
+        pickbanfirstpickrule first_pick_rule
+        pickbanrotation first_ban_rotation
+        int turn_timer_seconds "nullable"
+        varchar(32) preset "nullable"
+        json sequence_json
+        pickbannorepeatscope no_repeat_scope
+        varchar(32) unique_attribute_per_side_per_round "nullable"
+        boolean allow_protect
     }
-    BAL_REGISTRATION_ROLE_HERO {
-        int id PK
-        int role_id FK "UK(role, priority); UK(role, hero)"
-        int hero_id FK
-        int priority
+    TOURNAMENT_PICK_BAN_CONFIG_ITEM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint pick_ban_config_id FK
+        int item_id
+        int sort_order
     }
-    BAL_REGISTRATION_STATUS {
-        int id PK
-        int workspace_id FK "nullable; UK(workspace, scope, slug, kind)"
-        string scope
-        string slug
-        string name
+    TOURNAMENT_PICK_BAN_CONFIG_SLOT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint pick_ban_config_id FK
+        int position
+        int reserve_item_id "nullable"
     }
-    BAL_SHEET_FEED {
-        int id PK
-        int tournament_id FK "UNIQUE"
-        string source_url
-        string sheet_id
-        bool auto_sync_enabled
-        timestamp last_synced_at
+    TOURNAMENT_PICK_BAN_CONFIG_SLOT_ITEM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint pick_ban_config_slot_id FK
+        int item_id
+        int sort_order
     }
-    BAL_SHEET_BINDING {
-        int id PK
-        int feed_id FK
-        int registration_id FK "UNIQUE"
-        string source_record_key "UK(feed, key)"
-        string row_hash
+    TOURNAMENT_PICK_BAN_ENTRY {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        int item_id
+        int order
+        int action_index "nullable"
+        int round "nullable"
+        pickbanside picked_by "nullable"
+        pickbanentrystatus status
+        bigint team_id FK "nullable"
+        pickbanside protected_by "nullable"
     }
-    BAL_BALANCE {
-        int id PK
-        int tournament_id FK "UNIQUE"
-        int workspace_id FK "nullable"
-        string algorithm
-        json result_json
-        int saved_by FK "nullable → auth.user"
-        timestamp exported_at
+    TOURNAMENT_PICK_BAN_SESSION {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        pickbankind kind
+        bigint config_id FK "nullable"
+        pickbanside first_side "nullable"
+        pickbanseedsource seed_source
+        int home_seed "nullable"
+        int away_seed "nullable"
+        json resolved_sequence_json
+        json slot_reserves_json "nullable"
+        int turn_timer_seconds "nullable"
+        pickbansessionstatus status
+        boolean awaiting_choice
+        pickbanside pending_loser_side "nullable"
+        pickbanside undo_requested_by "nullable"
+        int undo_target_index "nullable"
+        timestamptz started_at "nullable"
+        timestamptz current_step_started_at "nullable"
     }
-    BAL_BALANCE_VARIANT {
-        int id PK
-        int balance_id FK "UK(balance, variant_number)"
-        int variant_number
-        string algorithm
-        float objective_score
-        bool is_selected
+    TOURNAMENT_PLAYER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar name
+        varchar(128) sub_role "nullable"
+        int rank
+        heroclass role "nullable"
+        boolean is_substitution
+        bigint related_player_id FK "nullable"
+        bigint tournament_id FK
+        boolean is_newcomer
+        boolean is_newcomer_role
+        bigint workspace_member_id FK
+        bigint team_id FK
     }
-    BAL_TEAM {
-        int id PK
-        int balance_id FK
-        int variant_id FK "nullable"
-        int exported_team_id FK "nullable → tournament.team"
-        string name
-        float avg_sr
-        int total_sr
+    TOURNAMENT_PLAYER_SUB_ROLE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar(64) role
+        varchar(128) slug
+        varchar(128) label
+        text description "nullable"
+        int sort_order
+        boolean is_active
     }
-    BAL_TEAM_SLOT {
-        int id PK
-        int team_id FK
-        string battle_tag_normalized
-        string role
-        int assigned_rank
-        int discomfort
-        bool is_captain
+    TOURNAMENT_RECALCULATION_STATE {
+        bigint tournament_id PK,FK
+        bigint requested_generation
+        bigint completed_generation
+        timestamptz created_at
+        timestamptz updated_at "nullable"
     }
-    BAL_TOURNAMENT_CONFIG {
-        int id PK
-        int tournament_id FK "UNIQUE"
-        int workspace_id FK
-        json config_json
+    TOURNAMENT_SCRIM_ROOM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar(32) token UK
+        varchar(255) label
+        bigint workspace_id FK
+        bigint tournament_id FK
+        bigint stage_id FK
+        bigint encounter_id FK,UK
+        bigint created_by_auth_user_id FK
+        timestamptz closed_at "nullable"
     }
-    BAL_WORKSPACE_CONFIG {
-        int id PK
-        int workspace_id FK "UNIQUE"
-        json config_json
+    TOURNAMENT_SLUG_REDIRECT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar old_slug UK
+        bigint tournament_id FK
     }
-    TOURNAMENT {
-        int id PK
+    TOURNAMENT_STAGE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        varchar name
+        varchar description "nullable"
+        stagetype stage_type
+        int max_rounds
+        int advance_count "nullable"
+        boolean split_lower_bracket
+        int order
+        boolean is_active
+        boolean is_published
+        boolean is_completed
+        json settings_json "nullable"
     }
-    WORKSPACE {
-        int id PK
+    TOURNAMENT_STAGE_ITEM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint stage_id FK
+        varchar name
+        stageitemtype type
+        int order
+        int advance_count "nullable"
     }
-    WORKSPACE_MEMBER {
-        int id PK
+    TOURNAMENT_STAGE_ITEM_INPUT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint stage_item_id FK
+        int slot
+        stageiteminputtype input_type
+        bigint team_id FK "nullable"
+        bigint source_stage_item_id FK "nullable"
+        int source_position "nullable"
     }
-    HERO {
-        int id PK
-    }
-    TOURNAMENT_TEAM {
-        int id PK
-    }
-
-    TOURNAMENT |o--o| BAL_REGISTRATION_FORM : "форма (1:0..1)"
-    TOURNAMENT ||--o{ BAL_REGISTRATION : "заявки"
-    WORKSPACE_MEMBER |o--o{ BAL_REGISTRATION : "член (nullable — единственный якорь)"
-    BAL_REGISTRATION ||--o{ BAL_REGISTRATION_ROLE : "роли"
-    BAL_REGISTRATION_ROLE ||--o{ BAL_REGISTRATION_ROLE_HERO : "топ-герои"
-    HERO ||--o{ BAL_REGISTRATION_ROLE_HERO : "герой"
-    WORKSPACE ||--o{ BAL_REGISTRATION_STATUS : "каталог статусов (nullable)"
-    TOURNAMENT |o--o| BAL_SHEET_FEED : "google-sheet (1:0..1)"
-    BAL_SHEET_FEED ||--o{ BAL_SHEET_BINDING : "строки"
-    BAL_REGISTRATION |o--o| BAL_SHEET_BINDING : "привязка строки"
-    TOURNAMENT |o--o| BAL_BALANCE : "баланс (1:0..1)"
-    BAL_BALANCE ||--o{ BAL_BALANCE_VARIANT : "варианты"
-    BAL_BALANCE ||--o{ BAL_TEAM : "команды"
-    BAL_BALANCE_VARIANT |o--o{ BAL_TEAM : "вариант"
-    BAL_TEAM ||--o{ BAL_TEAM_SLOT : "слоты игроков"
-    TOURNAMENT_TEAM |o--o{ BAL_TEAM : "экспорт в команду"
-    TOURNAMENT |o--o| BAL_TOURNAMENT_CONFIG : "конфиг (1:0..1)"
-    WORKSPACE |o--o| BAL_WORKSPACE_CONFIG : "конфиг (1:0..1)"
-```
-
----
-
-## 9. Live-драфт (`balancer.draft_*`)
-
-Snake-драфт: сессия на турнир, команды с капитанами, пул игроков и последовательность
-пиков (server-authoritative часы, optimistic-concurrency `version`). Пул берётся
-из сохранённого баланса. Идентичность капитана/игрока/актора пика якорится на
-`workspace_member` (dbarch03 удалил легаси `*_user_id`-колонки). Per-role
-данные игрока (`role_ranks`/`role_top_heroes`/`secondary_roles_json`) вынесены
-из JSON в дочерние `draft_player_role` + `draft_player_role_hero` (dbarch03).
-
-```mermaid
-erDiagram
-    DRAFT_SESSION {
-        int id PK
-        int tournament_id FK "1 активная на турнир (partial-unique)"
-        int workspace_id FK
-        int current_pick_id FK "nullable (circular)"
-        int source_balance_id FK "nullable → balancer.balance"
-        string status "setup/ready/live/paused/…"
-        string format "snake"
-        int rounds
-        int pick_time_seconds
-    }
-    DRAFT_TEAM {
-        int id PK
-        int session_id FK "UK(session, draft_position)"
-        int captain_workspace_member_id FK "nullable → workspace_member (SET NULL); dbarch03 удалил captain_user_id"
-        int captain_auth_user_id FK "nullable → auth.user (сигнал 'это я')"
-        int exported_team_id FK "nullable → tournament.team"
-        string name
-        int draft_position
-    }
-    DRAFT_PLAYER {
-        int id PK
-        int session_id FK "UK(session, workspace_member_id)"
-        int workspace_member_id FK "nullable → workspace_member (SET NULL); dbarch03 удалил user_id"
-        int drafted_by_team_id FK "nullable"
-        string battle_tag
-        string primary_role
-        string status "available/drafted/…"
-        int rank_value "nullable"
-        json additional_info "прочий per-player bag (role_ranks/top_heroes/secondary вынесены в дочерние)"
-    }
-    DRAFT_PLAYER_ROLE {
-        int id PK
-        int draft_player_id FK "UK(draft_player, role)"
-        string role
-        int rank_value "nullable"
-        bool is_secondary
-        int priority
-    }
-    DRAFT_PLAYER_ROLE_HERO {
-        int id PK
-        int draft_player_role_id FK "UK(role, priority); UK(role, hero)"
-        int hero_id FK "→ overwatch.hero"
-        int priority
-    }
-    DRAFT_PICK {
-        int id PK
-        int session_id FK "UK(session, overall_no)"
-        int draft_team_id FK
-        int picked_player_id FK "nullable"
-        int picked_by_workspace_member_id FK "nullable → workspace_member (SET NULL); dbarch03 удалил picked_by_user_id"
-        int overall_no
-        int round_no
-        string status "upcoming/…"
-        int version "optimistic lock"
-    }
-    TOURNAMENT {
-        int id PK
-    }
-    WORKSPACE {
-        int id PK
-    }
-    BAL_BALANCE {
-        int id PK
-    }
-    WORKSPACE_MEMBER {
-        int id PK
-    }
-    HERO {
-        int id PK
-    }
-    TOURNAMENT_TEAM {
-        int id PK
-    }
-
-    TOURNAMENT ||--o{ DRAFT_SESSION : "драфты"
-    WORKSPACE ||--o{ DRAFT_SESSION : "скоуп"
-    BAL_BALANCE |o--o{ DRAFT_SESSION : "пул из баланса"
-    DRAFT_SESSION ||--o{ DRAFT_TEAM : "команды"
-    DRAFT_SESSION ||--o{ DRAFT_PLAYER : "пул игроков"
-    DRAFT_SESSION ||--o{ DRAFT_PICK : "пики"
-    DRAFT_TEAM ||--o{ DRAFT_PICK : "чей пик"
-    DRAFT_TEAM |o--o{ DRAFT_PLAYER : "задрафтован в"
-    DRAFT_PLAYER ||--o{ DRAFT_PLAYER_ROLE : "роли (primary + off-role)"
-    DRAFT_PLAYER_ROLE ||--o{ DRAFT_PLAYER_ROLE_HERO : "топ-герои"
-    HERO ||--o{ DRAFT_PLAYER_ROLE_HERO : "герой"
-    DRAFT_PLAYER |o--o{ DRAFT_PICK : "выбранный игрок"
-    DRAFT_PICK |o--o| DRAFT_SESSION : "текущий пик"
-    WORKSPACE_MEMBER |o--o{ DRAFT_TEAM : "капитан (member)"
-    WORKSPACE_MEMBER |o--o{ DRAFT_PLAYER : "игрок (member)"
-    WORKSPACE_MEMBER |o--o{ DRAFT_PICK : "актор пика (member)"
-    TOURNAMENT_TEAM |o--o{ DRAFT_TEAM : "экспорт команды"
-```
-
----
-
-## 10. Достижения (`achievements`)
-
-Декларативный движок: `rule` (условие как JSON-дерево) → `evaluation_result`
-(кто и почему квалифицировался) + `override` (ручной grant/revoke overlay) +
-`evaluation_run` (аудит прогонов). Идентичность — через `workspace_member`.
-Легаси-таблицы `achievements.achievement` и `achievements.user`
-(`AchievementUser`) **удалены** (данные смигрированы, таблицы дропнуты).
-
-```mermaid
-erDiagram
-    ACH_RULE {
-        int id PK
-        int workspace_id FK "UK(workspace, slug)"
-        int hero_id FK "nullable"
-        string slug
-        string name
-        string category
-        string scope
-        string grain
-        json condition_tree
-        bool enabled
-        int rule_version
-    }
-    ACH_EVALUATION_RESULT {
-        int id PK
-        int achievement_rule_id FK
-        int workspace_member_id FK "UK(rule, member, tournament, match)"
-        int tournament_id FK "nullable"
-        int match_id FK "nullable"
-        json evidence_json
-        uuid run_id
-    }
-    ACH_OVERRIDE {
-        int id PK
-        int achievement_rule_id FK
-        int workspace_member_id FK
-        int tournament_id FK "nullable"
-        int match_id FK "nullable"
-        string action "grant/revoke"
-        int granted_by FK "→ auth.user"
-    }
-    ACH_EVALUATION_RUN {
-        uuid id PK
-        int workspace_id FK
-        int tournament_id FK "nullable"
-        string trigger
-        string status
-        int results_created
-    }
-    WORKSPACE {
-        int id PK
-    }
-    WORKSPACE_MEMBER {
-        int id PK
-    }
-    TOURNAMENT {
-        int id PK
-    }
-    MATCH {
-        int id PK
-    }
-    HERO {
-        int id PK
-    }
-
-    WORKSPACE ||--o{ ACH_RULE : "определяет"
-    HERO |o--o{ ACH_RULE : "герой-достижение"
-    ACH_RULE ||--o{ ACH_EVALUATION_RESULT : "результаты"
-    WORKSPACE_MEMBER ||--o{ ACH_EVALUATION_RESULT : "получатель"
-    TOURNAMENT |o--o{ ACH_EVALUATION_RESULT : "по турниру"
-    MATCH |o--o{ ACH_EVALUATION_RESULT : "по матчу"
-    ACH_RULE ||--o{ ACH_OVERRIDE : "overlay"
-    WORKSPACE_MEMBER ||--o{ ACH_OVERRIDE : "получатель"
-    WORKSPACE ||--o{ ACH_EVALUATION_RUN : "прогоны"
-    ACH_EVALUATION_RUN |o--o{ ACH_EVALUATION_RESULT : "прогон (run_id, SET NULL; FK dbarch01)"
-```
-
----
-
-## 11. Аналитика и ML (`analytics`)
-
-Сигналы поверх матч-логов: per-tournament статистика игрока (`analytics.tournament`),
-shift-алгоритмы, снапшоты качества баланса, feature-store и реестр ML-моделей,
-per-player performance (v2), распределения мест (Монте-Карло,
-`standings_distribution` — **единственный** источник прогноза мест: скалярный
-`predicted_place = round(mean_position)`; v1-таблица `predictions` удалена
-dbarch06), качество матчей и аномалии + обратная связь ревьюера. `job` — единый
-трекер пересчёта.
-
-```mermaid
-erDiagram
-    AN_ALGORITHM {
-        int id PK
-        string name UK
-        bool produces_shifts
-    }
-    AN_PLAYER {
-        int id PK
-        int tournament_id FK
-        int player_id FK "→ tournament.player"
-        int wins
-        int losses
-        int shift "nullable"
-    }
-    AN_SHIFT {
-        int id PK
-        int tournament_id FK
-        int algorithm_id FK
-        int player_id FK
-        float shift
-        float confidence
-    }
-    AN_PERFORMANCE {
-        int id PK
-        int tournament_id FK
-        int player_id FK
-        int algorithm_id FK "UK(tournament, player, algorithm)"
-        float impact_score
-        float raw_value
-        float local_percentile
-    }
-    AN_STANDINGS_DISTRIBUTION {
-        int id PK
+    TOURNAMENT_STANDING {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
         int tournament_id FK
         int team_id FK
-        int algorithm_id FK
-        float mean_position
-        float prob_top1
-        json position_histogram
-    }
-    AN_MATCH_QUALITY {
-        int id PK
-        int encounter_id FK
-        int algorithm_id FK "UK(encounter, algorithm)"
-        float quality_score
-        json anomaly_flags
-    }
-    AN_PLAYER_ANOMALY {
-        int id PK
-        int tournament_id FK
-        int player_id FK
-        int source_encounter_id FK "nullable"
-        string kind
-        float score
-    }
-    AN_ANOMALY_FEEDBACK {
-        int id PK
-        int tournament_id FK
-        int player_id FK "UK(tournament, player, kind)"
-        int reviewer_user_id FK "nullable → auth.user"
-        string kind
-        string verdict
-    }
-    AN_BALANCE_SNAPSHOT {
-        int id PK
-        int tournament_id FK
-        int balance_id FK "→ balancer.balance"
-        int variant_id FK "nullable"
-        int workspace_id FK "nullable"
-        float avg_sr_overall
-        float sr_std_dev
-    }
-    AN_BALANCE_PLAYER_SNAPSHOT {
-        int id PK
-        int balance_snapshot_id FK
-        int tournament_id FK
-        int user_id FK "nullable → players.user"
-        int team_id FK "nullable"
-        string assigned_role
-        int assigned_rank
-    }
-    AN_ML_FEATURE {
-        int id PK
-        int tournament_id FK "UK(tournament, granularity, entity, feature_version)"
-        string granularity
-        int entity_id
-        string feature_version
-        json features
-    }
-    AN_ML_MODEL_ARTIFACT {
-        int id PK
-        int algorithm_id FK "UK(algorithm, model_kind, role, version)"
-        int training_cutoff_tournament_id FK "nullable"
-        string model_kind
-        string version
-        string storage_uri
-        bool is_active
-    }
-    AN_EXPLANATION {
-        int id PK
-        int algorithm_id FK
-        int tournament_id FK
-        int entity_id
-        string entity_kind
-        json contributions
-    }
-    AN_JOB {
-        int id PK
-        int workspace_id FK "nullable; 1 running per workspace (partial-unique)"
-        int tournament_id FK
-        int requested_by_user_id FK "nullable → auth.user"
-        string kind "compute/train_ml"
-        string status
-        json progress
-    }
-    TOURNAMENT {
-        int id PK
-    }
-    PLAYER {
-        int id PK
-    }
-    TOURNAMENT_TEAM {
-        int id PK
-    }
-    ENCOUNTER {
-        int id PK
-    }
-    BAL_BALANCE {
-        int id PK
-    }
-
-    TOURNAMENT ||--o{ AN_PLAYER : "статистика игрока"
-    PLAYER ||--o{ AN_PLAYER : "игрок"
-    AN_ALGORITHM ||--o{ AN_SHIFT : "алгоритм"
-    TOURNAMENT ||--o{ AN_SHIFT : "турнир"
-    PLAYER ||--o{ AN_SHIFT : "игрок"
-    AN_ALGORITHM ||--o{ AN_PERFORMANCE : "алгоритм"
-    PLAYER ||--o{ AN_PERFORMANCE : "игрок"
-    AN_ALGORITHM ||--o{ AN_STANDINGS_DISTRIBUTION : "алгоритм"
-    TOURNAMENT_TEAM ||--o{ AN_STANDINGS_DISTRIBUTION : "команда"
-    ENCOUNTER ||--o{ AN_MATCH_QUALITY : "встреча"
-    AN_ALGORITHM ||--o{ AN_MATCH_QUALITY : "алгоритм"
-    PLAYER ||--o{ AN_PLAYER_ANOMALY : "аномалия"
-    ENCOUNTER |o--o{ AN_PLAYER_ANOMALY : "источник"
-    PLAYER ||--o{ AN_ANOMALY_FEEDBACK : "вердикт"
-    BAL_BALANCE ||--o{ AN_BALANCE_SNAPSHOT : "снапшот баланса"
-    AN_BALANCE_SNAPSHOT ||--o{ AN_BALANCE_PLAYER_SNAPSHOT : "по игрокам"
-    AN_ALGORITHM ||--o{ AN_ML_MODEL_ARTIFACT : "модель"
-    AN_ALGORITHM ||--o{ AN_EXPLANATION : "атрибуция"
-    TOURNAMENT ||--o{ AN_JOB : "пересчёты"
-```
-
----
-
-## 12. Платформа / операционные таблицы
-
-Кросс-доменная инфраструктура: transactional outbox (`event_outbox`), журнал
-realtime-событий (`workspace_event`), глобальные настройки (`settings`),
-пайплайн загрузки логов (`log_processing.record`, `discord_channel`) и durable-
-джобы вычисления сетки/итогов (`computation_job`, `recalculation_state`).
-
-> `event_outbox` и `workspace_event` намеренно **без FK** — это append-only
-> шины/журналы (`workspace_id`/`tournament_id`/`actor_user_id` хранятся как
-> обычные `BigInteger` для развязки от жизненного цикла бизнес-строк).
-
-```mermaid
-erDiagram
-    EVENT_OUTBOX {
-        int id PK
-        string event_id UK
-        string event_type
-        string routing_key
-        json payload_json
-        string status
-        int attempts
-        timestamp next_attempt_at
-    }
-    WORKSPACE_EVENT {
-        int id PK
-        string topic
-        string event_type
-        int workspace_id "не FK"
-        int tournament_id "не FK"
-        int actor_user_id "не FK"
-        json payload
-        timestamp occurred_at
-    }
-    SETTINGS {
-        int id PK
-        string key UK "напр. parser.rank_collection"
-        json value
-        int updated_by FK "nullable → auth.user"
-    }
-    LOG_RECORD {
-        int id PK
-        int tournament_id FK
-        int uploader_id FK "nullable → players.user"
-        int attached_encounter_id FK "nullable"
-        string filename
-        string status "pending/processing/done/failed"
-        string source "upload/discord/manual"
-        string content_hash
-        int attempts "logretry0001 — бюджет повторов reaper'а, живёт на строке"
-    }
-    DISCORD_CHANNEL {
-        int id PK
-        int tournament_id FK "UNIQUE"
-        int channel_id UK
-        bool is_active
-    }
-    COMPUTATION_JOB {
-        int id PK
-        int tournament_id FK
         int stage_id FK "nullable"
         int stage_item_id FK "nullable"
-        int requested_by_user_id FK "nullable → auth.user"
-        string kind
-        string status
-        string idempotency_key "partial-unique активные"
+        int position
+        int overall_position
+        int matches
+        int win
+        int draw
+        int lose
+        float points
+        float buchholz "nullable"
+        float full_buchholz "nullable"
+        int tie_group "nullable"
+        int tb "nullable"
+        int score_differential "nullable"
     }
-    RECALCULATION_STATE {
-        int tournament_id PK "FK → tournament"
-        int requested_generation
-        int completed_generation
+    TOURNAMENT_TEAM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar balancer_name
+        varchar name
+        varchar image_url "nullable"
+        bigint captain_id FK "nullable"
+        bigint tournament_id FK
     }
-    TOURNAMENT {
-        int id PK
+    TOURNAMENT_TOURNAMENT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar name
+        varchar slug UK
+        varchar description "nullable"
+        boolean is_league
+        boolean is_finished
+        boolean is_hidden
+        varchar team_formation
+        tournamentstatus status
+        timestamptz start_date "nullable"
+        timestamptz end_date "nullable"
+        boolean auto_transitions_enabled
+        boolean allow_late_registration
+        float win_points
+        float draw_points
+        float loss_points
+        bigint division_grid_version_id FK "nullable"
+        jsonb roster_slots_json "nullable"
+        varchar cover_image_url "nullable"
+        varchar logo_url "nullable"
     }
-    STAGE {
-        int id PK
+    TOURNAMENT_TOURNAMENT_LINK {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        varchar(32) kind
+        varchar(128) label "nullable"
+        varchar(500) url
+        int sort_order
+        boolean is_active
     }
-    ENCOUNTER {
-        int id PK
+    TOURNAMENT_TOURNAMENT_PHASE_SCHEDULE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        tournamentstatus status
+        timestamptz starts_at
+        timestamptz ends_at "nullable"
     }
-    PLAYERS_USER {
-        int id PK
-    }
-    AUTH_USER {
-        int id PK
+    TOURNAMENT_TOURNAMENT_PREVIEW_ACCESS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint auth_user_id FK
     }
 
-    TOURNAMENT ||--o{ LOG_RECORD : "логи турнира"
-    PLAYERS_USER |o--o{ LOG_RECORD : "загрузивший"
-    ENCOUNTER |o--o{ LOG_RECORD : "привязка к встрече"
-    LOG_RECORD |o--o{ MATCH : "провенанс распаршенной карты (mtchlog001)"
-    TOURNAMENT |o--o| DISCORD_CHANNEL : "канал сбора (1:0..1)"
-    TOURNAMENT ||--o{ COMPUTATION_JOB : "джобы вычисления"
-    STAGE |o--o{ COMPUTATION_JOB : "по стадии"
-    TOURNAMENT |o--o| RECALCULATION_STATE : "счётчик поколений (1:1)"
-    AUTH_USER |o--o{ SETTINGS : "кто менял"
-    AUTH_USER |o--o{ COMPUTATION_JOB : "инициатор"
+    AUTH_USER |o--o{ TOURNAMENT_COMPUTATION_JOB : "requested_by_user_id"
+    AUTH_USER ||--o{ TOURNAMENT_SCRIM_ROOM : "created_by_auth_user_id"
+    AUTH_USER ||--o{ TOURNAMENT_TOURNAMENT_PREVIEW_ACCESS : "auth_user_id"
+    OVERWATCH_MAP |o--o{ TOURNAMENT_ENCOUNTER_MAP_CODE : "map_id"
+    OVERWATCH_MAP ||--o{ TOURNAMENT_ENCOUNTER_MAP_REPORT : "map_id"
+    PLAYERS_USER |o--o{ TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT : "reporter_user_id"
+    PLAYERS_USER |o--o{ TOURNAMENT_ENCOUNTER_MAP_REPORT : "reporter_user_id"
+    PLAYERS_USER |o--o{ TOURNAMENT_ENCOUNTER_READINESS : "ready_user_id"
+    PLAYERS_USER |o--o{ TOURNAMENT_ENCOUNTER_RESULT_AUDIT : "actor_user_id"
+    PLAYERS_USER |o--o{ TOURNAMENT_TEAM : "captain_id"
+    PUBLIC_DIVISION_GRID_VERSION |o--o{ TOURNAMENT_TOURNAMENT : "division_grid_version_id"
+    PUBLIC_WORKSPACE ||--o{ TOURNAMENT_PLAYER_SUB_ROLE : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ TOURNAMENT_SCRIM_ROOM : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ TOURNAMENT_TOURNAMENT : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o{ TOURNAMENT_PLAYER : "workspace_member_id"
+    TOURNAMENT_CHALLONGE_SOURCE |o--o{ TOURNAMENT_CHALLONGE_SYNC_LOG : "source_id"
+    TOURNAMENT_CHALLONGE_SOURCE ||--o{ TOURNAMENT_CHALLONGE_MATCH_MAPPING : "source_id"
+    TOURNAMENT_CHALLONGE_SOURCE ||--o{ TOURNAMENT_CHALLONGE_PARTICIPANT_MAPPING : "source_id"
+    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_CHALLONGE_MATCH_MAPPING : "encounter_id"
+    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT : "encounter_id"
+    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_LINK : "source_encounter_id"
+    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_LINK : "target_encounter_id"
+    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_MAP_REPORT : "encounter_id"
+    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_PICK_BAN_LEDGER : "encounter_id"
+    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_READINESS : "encounter_id"
+    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_RESULT_AUDIT : "encounter_id"
+    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_PICK_BAN_SESSION : "encounter_id"
+    TOURNAMENT_ENCOUNTER ||--o| TOURNAMENT_SCRIM_ROOM : "encounter_id"
+    TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT ||--o{ TOURNAMENT_ENCOUNTER_MAP_CODE : "report_id"
+    TOURNAMENT_PICK_BAN_CONFIG |o--o{ TOURNAMENT_PICK_BAN_SESSION : "config_id"
+    TOURNAMENT_PICK_BAN_CONFIG ||--o{ TOURNAMENT_PICK_BAN_CONFIG_ITEM : "pick_ban_config_id"
+    TOURNAMENT_PICK_BAN_CONFIG ||--o{ TOURNAMENT_PICK_BAN_CONFIG_SLOT : "pick_ban_config_id"
+    TOURNAMENT_PICK_BAN_CONFIG_SLOT ||--o{ TOURNAMENT_PICK_BAN_CONFIG_SLOT_ITEM : "pick_ban_config_slot_id"
+    TOURNAMENT_PICK_BAN_SESSION ||--o{ TOURNAMENT_PICK_BAN_ENTRY : "session_id"
+    TOURNAMENT_PLAYER |o--o{ TOURNAMENT_PLAYER : "related_player_id"
+    TOURNAMENT_STAGE |o--o{ TOURNAMENT_CHALLONGE_SOURCE : "stage_id"
+    TOURNAMENT_STAGE |o--o{ TOURNAMENT_COMPUTATION_JOB : "stage_id"
+    TOURNAMENT_STAGE |o--o{ TOURNAMENT_ENCOUNTER : "stage_id"
+    TOURNAMENT_STAGE |o--o{ TOURNAMENT_PICK_BAN_CONFIG : "stage_id"
+    TOURNAMENT_STAGE |o--o{ TOURNAMENT_STANDING : "stage_id"
+    TOURNAMENT_STAGE ||--o{ TOURNAMENT_SCRIM_ROOM : "stage_id"
+    TOURNAMENT_STAGE ||--o{ TOURNAMENT_STAGE_ITEM : "stage_id"
+    TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_CHALLONGE_SOURCE : "stage_item_id"
+    TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_COMPUTATION_JOB : "stage_item_id"
+    TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_ENCOUNTER : "stage_item_id"
+    TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_STAGE_ITEM_INPUT : "source_stage_item_id"
+    TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_STANDING : "stage_item_id"
+    TOURNAMENT_STAGE_ITEM ||--o{ TOURNAMENT_STAGE_ITEM_INPUT : "stage_item_id"
+    TOURNAMENT_TEAM |o--o{ TOURNAMENT_ENCOUNTER : "away_team_id"
+    TOURNAMENT_TEAM |o--o{ TOURNAMENT_ENCOUNTER : "home_team_id"
+    TOURNAMENT_TEAM |o--o{ TOURNAMENT_ENCOUNTER_RESULT_AUDIT : "adopted_team_id"
+    TOURNAMENT_TEAM |o--o{ TOURNAMENT_PICK_BAN_ENTRY : "team_id"
+    TOURNAMENT_TEAM |o--o{ TOURNAMENT_STAGE_ITEM_INPUT : "team_id"
+    TOURNAMENT_TEAM ||--o{ TOURNAMENT_CHALLONGE_PARTICIPANT_MAPPING : "team_id"
+    TOURNAMENT_TEAM ||--o{ TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT : "team_id"
+    TOURNAMENT_TEAM ||--o{ TOURNAMENT_ENCOUNTER_MAP_REPORT : "team_id"
+    TOURNAMENT_TEAM ||--o{ TOURNAMENT_PLAYER : "team_id"
+    TOURNAMENT_TEAM ||--o{ TOURNAMENT_STANDING : "team_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_CHALLONGE_SOURCE : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_CHALLONGE_SYNC_LOG : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_COMPUTATION_JOB : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_ENCOUNTER : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_PICK_BAN_CONFIG : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_PLAYER : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_SCRIM_ROOM : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_SLUG_REDIRECT : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_STAGE : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_STANDING : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_TEAM : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_TOURNAMENT_LINK : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_TOURNAMENT_PHASE_SCHEDULE : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_TOURNAMENT_PREVIEW_ACCESS : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o| TOURNAMENT_ENCOUNTER_REPORT_FORM : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o| TOURNAMENT_RECALCULATION_STATE : "tournament_id"
 ```
 
----
+Composite unique keys:
 
-## 13. Подписки и энтайтлменты (`subscriptions`)
+- `TOURNAMENT_CHALLONGE_MATCH_MAPPING` unique on (`source_id`, `encounter_id`)
+- `TOURNAMENT_CHALLONGE_MATCH_MAPPING` unique on (`source_id`, `challonge_match_id`)
+- `TOURNAMENT_CHALLONGE_PARTICIPANT_MAPPING` unique on (`source_id`, `challonge_participant_id`)
+- `TOURNAMENT_CHALLONGE_SOURCE` unique on (`tournament_id`, `challonge_tournament_id`)
+- `TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT` unique on (`encounter_id`, `team_id`)
+- `TOURNAMENT_ENCOUNTER_LINK` unique on (`source_encounter_id`, `role`)
+- `TOURNAMENT_ENCOUNTER_MAP_CODE` unique on (`report_id`, `map_index`)
+- `TOURNAMENT_ENCOUNTER_MAP_REPORT` unique on (`encounter_id`, `map_id`, `map_index`, `team_id`)
+- `TOURNAMENT_ENCOUNTER_PICK_BAN_LEDGER` unique on (`encounter_id`, `kind`, `item_id`, `banned_by_side`)
+- `TOURNAMENT_ENCOUNTER_READINESS` unique on (`encounter_id`, `side`)
+- `TOURNAMENT_PICK_BAN_CONFIG_ITEM` unique on (`pick_ban_config_id`, `item_id`)
+- `TOURNAMENT_PICK_BAN_CONFIG_SLOT` unique on (`pick_ban_config_id`, `position`)
+- `TOURNAMENT_PICK_BAN_CONFIG_SLOT_ITEM` unique on (`pick_ban_config_slot_id`, `item_id`)
+- `TOURNAMENT_PICK_BAN_SESSION` unique on (`encounter_id`, `kind`)
+- `TOURNAMENT_PLAYER_SUB_ROLE` unique on (`workspace_id`, `role`, `slug`)
+- `TOURNAMENT_TOURNAMENT_LINK` unique on (`tournament_id`, `kind`, `url`)
+- `TOURNAMENT_TOURNAMENT_PHASE_SCHEDULE` unique on (`tournament_id`, `status`)
+- `TOURNAMENT_TOURNAMENT_PREVIEW_ACCESS` unique on (`tournament_id`, `auth_user_id`)
+<!-- /ERD:auto -->
 
-Проверка подписок как условие допуска к регистрации/чек-ину. `provider_config` —
-как воркспейс верифицирует подписку у конкретного провайдера; `requirement` —
-какое правило он требует (`{mode, requirements: [{provider, min_tier_rank}]}`);
-`entitlement` — последний известный вердикт по (воркспейс, аккаунт, провайдер);
-`check_log` — append-only история живых обращений к провайдеру (зеркало
-`overwatch_rank.fetch_log`).
+## registration — `balancer`
 
-> **Правило допуска живёт на воркспейсе** (`wsreq0001`), а не на форме: одно
-> правило общее для всех турниров воркспейса, тогда как
-> `balancer.registration_form.require_subscription` остаётся пер-турнирным
-> тумблером. Таблица заведена под пресеты: больше строк плюс nullable FK на
-> форме — чисто аддитивное изменение, тогда как колонка на `workspace`
-> потребовала бы миграции данных.
+Registration forms and their fields, player and team applications, roles and top-hero
+preferences, team invites, and the Google Sheets import binding.
 
-> `state` — три значения (`active`/`inactive`/`unknown`), и `unknown` **fail-open**:
-> недоступность провайдера не должна запирать вход. Композиция вердиктов —
-> трёхзначная логика Клини, поэтому блокировка происходит только при
-> уверенности.
+`registration` is the application. `workspace_member_id` is its only identity anchor and is
+nullable, because a form can be submitted before membership exists; the earlier `user_id` column
+was dropped rather than kept alongside. Live entries are deduplicated per tournament on
+`battle_tag_normalized`, and deletion is soft (`deleted_at` / `deleted_by`), which both preserves
+the audit and frees the tag for reuse. Role preferences and top heroes are normalized into
+`registration_role` and `registration_role_hero` — a hero is unique both per priority and per
+role, so a top-three cannot contain the same hero twice or two heroes in one slot.
 
+`registration_status` is a per-workspace catalog (`workspace_id = NULL` for built-in rows) whose
+entries carry behaviour, not just a label: `excludes_from_balancer` and `excludes_from_ready`
+mean an organizer can add a status without a code change.
+
+Team registration adds `registration_team` (with an exported-team link back into `tournament`)
+and `registration_team_invite`, which stores only `token_sha256` and keeps the full lifecycle on
+the row — invited, revoked, revoked by organizer, accepted, and which registration accepted it.
+The Google Sheets import is a feed per tournament and a binding per row, unique on
+`(feed_id, source_record_key)` with a `row_hash`, so a re-sync only touches rows that changed.
+
+<!-- ERD:auto registration -->
 ```mermaid
 erDiagram
-    SUBSCRIPTION_PROVIDER_CONFIG {
-        int id PK
-        int workspace_id FK "UK(workspace, provider)"
-        string provider "discord_role / challenge_code / twitch_helix"
-        bool enabled "server_default false — создание конфига не включает проверку"
-        json config_json "снежинка гильдии тут не хранится — инжектится из workspace"
+    BALANCER_REGISTRATION {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint workspace_member_id FK "nullable"
+        varchar(255) display_name "nullable"
+        varchar(255) battle_tag "nullable"
+        varchar(255) battle_tag_normalized "nullable"
+        json smurf_tags_json "nullable"
+        varchar(255) discord_nick "nullable"
+        varchar(255) twitch_nick "nullable"
+        varchar(255) boosty_nick "nullable"
+        boolean stream_pov
+        text notes "nullable"
+        varchar(64) exclude_reason "nullable"
+        text admin_notes "nullable"
+        json custom_fields_json "nullable"
+        varchar(32) status
+        varchar(32) balancer_status
+        boolean checked_in
+        timestamptz checked_in_at "nullable"
+        bigint checked_in_by FK "nullable"
+        timestamptz submitted_at
+        timestamptz reviewed_at "nullable"
+        bigint reviewed_by FK "nullable"
+        timestamptz deleted_at "nullable"
+        bigint deleted_by FK "nullable"
+        timestamptz balancer_profile_overridden_at "nullable"
+        bigint registration_team_id FK "nullable"
+        varchar(16) team_slot_code "nullable"
+        boolean is_substitute
     }
-    SUBSCRIPTION_REQUIREMENT {
-        int id PK
-        int workspace_id FK "UK(workspace, name) + частичный unique на дефолт"
-        string name "server_default 'default'"
-        json requirement_json "{mode, requirements: [{provider, min_tier_rank}]}"
-        bool is_default
+    BALANCER_REGISTRATION_FORM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK,UK
+        bigint workspace_id FK
+        boolean is_open
+        boolean auto_approve
+        json built_in_fields_json
+        json custom_fields_json
+        boolean require_open_profile
+        varchar(8) open_profile_scope
+        boolean show_ranks
+        int max_substitutes
+        boolean require_subscription
+        varchar(16) subscription_stage
     }
-    SUBSCRIPTION_ENTITLEMENT {
-        int id PK
-        int workspace_id FK "UK(workspace, auth_user, provider)"
-        int auth_user_id FK "→ auth.user"
-        string provider
-        string state "active/inactive/unknown (default unknown, fail-open)"
-        int tier_rank "nullable — подписка без доказанного уровня читается как 1"
-        string tier_label "nullable"
-        string source "nullable — чем доказано"
-        timestamp checked_at "nullable"
-        timestamp expires_at "nullable"
-        json evidence_json "nullable"
+    BALANCER_REGISTRATION_GOOGLE_SHEET_BINDING {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint feed_id FK
+        bigint registration_id FK,UK
+        varchar(255) source_record_key
+        json raw_row_json "nullable"
+        json parsed_fields_json "nullable"
+        varchar(128) row_hash "nullable"
+        timestamptz last_seen_at "nullable"
     }
-    SUBSCRIPTION_CHECK_LOG {
-        int id PK
-        int workspace_id FK "nullable (SET NULL)"
-        int auth_user_id FK "nullable (SET NULL) — история переживает удаление аккаунта"
-        string provider
-        string state
-        int tier_rank "nullable"
-        string tier_label "nullable"
-        string source "что запустило проверку (scheduled/manual/…)"
-        string mechanism "nullable — чем доказано, в отличие от source"
-        string reason "nullable — причина вердикта (not_subscribed, missing_scope, …)"
-        string error "nullable"
-        timestamp created_at "время завершения проверки; ничего не обновляется"
+    BALANCER_REGISTRATION_GOOGLE_SHEET_FEED {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK,UK
+        text source_url
+        varchar(255) sheet_id
+        varchar(64) gid "nullable"
+        varchar(255) title "nullable"
+        boolean auto_sync_enabled
+        int auto_sync_interval_seconds
+        json header_row_json "nullable"
+        json mapping_config_json "nullable"
+        json value_mapping_json "nullable"
+        timestamptz last_synced_at "nullable"
+        varchar(32) last_sync_status "nullable"
+        text last_error "nullable"
     }
-    WORKSPACE {
-        int id PK
+    BALANCER_REGISTRATION_ROLE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint registration_id FK
+        varchar(16) role
+        varchar(128) subrole "nullable"
+        boolean is_primary
+        int priority
+        int rank_value "nullable"
+        boolean is_active
     }
-    AUTH_USER {
-        int id PK
+    BALANCER_REGISTRATION_ROLE_HERO {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint role_id FK
+        bigint hero_id FK
+        int priority
+    }
+    BALANCER_REGISTRATION_STATUS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK "nullable"
+        varchar(32) scope
+        varchar(32) slug
+        varchar(16) kind
+        varchar(128) icon_slug "nullable"
+        varchar(32) icon_color "nullable"
+        varchar(64) name
+        text description "nullable"
+        boolean excludes_from_balancer
+        boolean excludes_from_ready
+    }
+    BALANCER_REGISTRATION_TEAM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint workspace_id FK
+        varchar(255) name
+        varchar(255) name_normalized
+        varchar(255) image_url "nullable"
+        bigint captain_registration_id FK "nullable"
+        varchar(16) status
+        bigint exported_team_id FK "nullable"
+        timestamptz exported_at "nullable"
+        varchar(32) export_status "nullable"
+        text export_error "nullable"
+        timestamptz deleted_at "nullable"
+        bigint deleted_by FK "nullable"
+        timestamptz invite_cap_reset_at "nullable"
+        bigint invite_cap_reset_by FK "nullable"
+    }
+    BALANCER_REGISTRATION_TEAM_INVITE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint team_id FK
+        varchar(16) slot_code
+        boolean is_substitute
+        bigint target_auth_user_id FK "nullable"
+        varchar(64) token_sha256 "nullable"
+        timestamptz expires_at "nullable"
+        varchar(16) state
+        bigint invited_by FK "nullable"
+        timestamptz invited_at
+        bigint revoked_by FK "nullable"
+        timestamptz revoked_at "nullable"
+        boolean revoked_by_organizer
+        timestamptz accepted_at "nullable"
+        bigint accepted_registration_id FK "nullable"
     }
 
-    WORKSPACE ||--o{ SUBSCRIPTION_PROVIDER_CONFIG : "как верифицируем (UK по provider)"
-    WORKSPACE ||--o{ SUBSCRIPTION_REQUIREMENT : "правило допуска (один дефолт)"
-    WORKSPACE ||--o{ SUBSCRIPTION_ENTITLEMENT : "вердикты воркспейса"
-    AUTH_USER ||--o{ SUBSCRIPTION_ENTITLEMENT : "владелец подписки"
-    WORKSPACE |o--o{ SUBSCRIPTION_CHECK_LOG : "скоуп (SET NULL)"
-    AUTH_USER |o--o{ SUBSCRIPTION_CHECK_LOG : "проверяемый (SET NULL)"
+    AUTH_USER |o--o{ BALANCER_REGISTRATION : "checked_in_by"
+    AUTH_USER |o--o{ BALANCER_REGISTRATION : "deleted_by"
+    AUTH_USER |o--o{ BALANCER_REGISTRATION : "reviewed_by"
+    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM : "deleted_by"
+    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM : "invite_cap_reset_by"
+    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM_INVITE : "invited_by"
+    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM_INVITE : "revoked_by"
+    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM_INVITE : "target_auth_user_id"
+    BALANCER_REGISTRATION |o--o{ BALANCER_REGISTRATION_TEAM : "captain_registration_id"
+    BALANCER_REGISTRATION |o--o{ BALANCER_REGISTRATION_TEAM_INVITE : "accepted_registration_id"
+    BALANCER_REGISTRATION ||--o{ BALANCER_REGISTRATION_ROLE : "registration_id"
+    BALANCER_REGISTRATION ||--o| BALANCER_REGISTRATION_GOOGLE_SHEET_BINDING : "registration_id"
+    BALANCER_REGISTRATION_GOOGLE_SHEET_FEED ||--o{ BALANCER_REGISTRATION_GOOGLE_SHEET_BINDING : "feed_id"
+    BALANCER_REGISTRATION_ROLE ||--o{ BALANCER_REGISTRATION_ROLE_HERO : "role_id"
+    BALANCER_REGISTRATION_TEAM |o--o{ BALANCER_REGISTRATION : "registration_team_id"
+    BALANCER_REGISTRATION_TEAM ||--o{ BALANCER_REGISTRATION_TEAM_INVITE : "team_id"
+    OVERWATCH_HERO ||--o{ BALANCER_REGISTRATION_ROLE_HERO : "hero_id"
+    PUBLIC_WORKSPACE |o--o{ BALANCER_REGISTRATION_STATUS : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ BALANCER_REGISTRATION_FORM : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ BALANCER_REGISTRATION_TEAM : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER |o--o{ BALANCER_REGISTRATION : "workspace_member_id"
+    TOURNAMENT_TEAM |o--o{ BALANCER_REGISTRATION_TEAM : "exported_team_id"
+    TOURNAMENT_TOURNAMENT ||--o{ BALANCER_REGISTRATION : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ BALANCER_REGISTRATION_TEAM : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o| BALANCER_REGISTRATION_FORM : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o| BALANCER_REGISTRATION_GOOGLE_SHEET_FEED : "tournament_id"
 ```
 
----
+Composite unique keys:
 
-## Заметки по чтению диаграмм
+- `BALANCER_REGISTRATION_GOOGLE_SHEET_BINDING` unique on (`feed_id`, `source_record_key`)
+- `BALANCER_REGISTRATION_ROLE` unique on (`registration_id`, `role`)
+- `BALANCER_REGISTRATION_ROLE_HERO` unique on (`role_id`, `hero_id`)
+- `BALANCER_REGISTRATION_ROLE_HERO` unique on (`role_id`, `priority`)
+- `BALANCER_REGISTRATION_STATUS` unique on (`workspace_id`, `scope`, `slug`, `kind`)
+<!-- /ERD:auto -->
 
-- **Мультитенантность.** Почти каждая бизнес-таблица несёт `workspace_id`
-  (напрямую или транзитивно через `tournament`/`workspace_member`). Глобальные
-  сущности (роль/деней/сетка/статус) допускают `workspace_id = NULL`.
-- **Двойная идентичность.** `auth.user` (вход) и `players.user` (игрок) — разные
-  таблицы, связь `1:0..1`. Ростер (`tournament.player`), регистрации
-  (`balancer.registration`), драфт (`draft_*`) и достижения
-  (`evaluation_result`/`override`) якорятся на `workspace_member`
-  (= уникальность `workspace_id + player_id`), что и есть суть
-  identity/workspace-рефактора. Денормализованной роли на `workspace_member`
-  нет — роль выводится из RBAC.
-- **Единственный legacy.** Осталась только `tournament.group` (→ `stage`).
-  `achievements.achievement`/`achievements.user` и `analytics.predictions`
-  (v1) — **удалены** (см. «История изменений схемы»).
-- **Циклические FK.** `draft_session.current_pick_id ↔ draft_pick.session_id`
-  (создаётся с `use_alter`); `division_grid_version.created_from_version_id` и
-  `tournament.player.related_player_id` — само-ссылки.
-- **Enum `encounterstatus`.** Тип перенесён из схемы `public` в `tournament`
-  (dbarch01); хранит имя члена (`COMPLETED`/`PENDING`/`OPEN`), не `.value`.
-- `mv_hero_global_stats` — **materialized view** (не в диаграммах как таблица):
-  глобальные рекорды по (hero, stat), обновляется вне транзакций.
+## balancer — `balancer`
 
----
+Balancing runs and their resulting teams, and the live snake draft: sessions, captains, the
+player pool, the pick sequence, and the audit trail.
 
-## История изменений схемы
+There is at most one `balance` per tournament. The chosen result is stored twice on purpose: as
+`result_json` for replay, and normalized into `balance_variant` → `team` → `team_slot` for
+querying. A slot identifies its player by normalized battle tag rather than by member id,
+because the balancer works on the registration snapshot as it was submitted. `exported_team_id`
+is the boundary where balancing output becomes tournament truth — until it is set, nothing in
+`tournament` has been touched.
 
-Документ актуализирован под финальное состояние (Alembic head — **`catalias0001`**).
-Ключевые изменения относительно прежнего mid-refactor состояния:
+The draft is a snake draft with a server-authoritative clock: one session per tournament, its
+pool taken either from a saved balance (`source_balance_id`) or built directly, and `version`
+columns on the session and on each pick as the optimistic lock. Session and pick reference each
+other (`current_pick_id` ↔ `session_id`), which is why the FK is declared with `use_alter`.
 
-- **Identity/workspace-рефактор.** `players.user.auth_user_id` (unique nullable;
-  NULL = shadow-player) — линк `1:0..1` к `auth.user`. `public.workspace_member`
-  ключуется на `player_id` (FK → `players.user`) с уникальностью
-  `(workspace_id, player_id)`; денормализованная роль убрана. На
-  `workspace_member_id` теперь якорятся `balancer.registration` (dbarch02),
-  `tournament.player` (iwrefac07, NOT NULL), `draft_team`/`draft_player`/`draft_pick`
-  (dbarch03) и `achievements.evaluation_result`/`override`.
-- **Challonge-нормализация (dbarch04 + dbarch04b).** Удалены
-  `tournament.tournament.challonge_id`/`challonge_slug`,
-  `tournament.stage.challonge_id`/`challonge_slug`,
-  `tournament.encounter.challonge_id` и таблица `tournament.challonge_team`.
-  Источник правды — `challonge_source` + `challonge_participant_mapping` +
-  `challonge_match_mapping` + `challonge_sync_log`. **Оставлены**
-  `tournament.group.challonge_id`/`challonge_slug` (routing-значение
-  `match.group_id` по группам).
-- **JSON-нормализация (dbarch05).** `map_veto_config.map_pool_ids` (JSON) →
-  дочерняя `map_veto_config_map`; `veto_sequence_json` остался JSON.
-- **Draft-нормализация (dbarch03).** `draft_player.role_ranks`/`role_top_heroes`/
-  `secondary_roles_json` (JSON) → `draft_player_role` + `draft_player_role_hero`.
-- **Predictions (dbarch06).** `analytics.predictions` (v1) удалена;
-  `analytics.standings_distribution` (v2) — единственный источник прогноза мест.
-- **Гигиена индексов/FK (dbarch01).** Индексы на `auth.user_roles`/
-  `auth.role_permissions`; новые FK: `achievements.evaluation_result.run_id →
-  evaluation_run`, `players.user_merge_audit.source_user_id`/`target_user_id →
-  players.user`, `auth.user_permission_deny.created_by → auth.user`; перенос
-  типа `encounterstatus` `public` → `tournament`; частичный unique-индекс на
-  `players.social_account` для NULL-хендлов.
-- **Добавления после `dbarch06`** (цепочка `captrep0001` — ~100+ ревизий):
-  map-veto, timezone воркспейса (wstz), phase-schedule, снятие team-SR (teamsr),
-  MVP-impact scoring (mvpimp), брендинг-палитра (wsbrand), скрытые/preview
-  турниры (hidden), captain reports (captrep, `encounter_report`), draft-audit.
-- **Discord-гильдия воркспейса (`wsguild0001` + `wsguild0002`).**
-  `public.workspace.discord_guild_id` (`String(32)`, nullable) — единственный источник
-  снежинки гильдии. Пара expand/contract, порядок обязателен: `wsguild0001` добавляет
-  колонку и бэкфиллит её (до раскатки кода), затем `wsguild0002` убирает ключ из блоба
-  `subscriptions.provider_config.config_json` и удаляет столбец
-  `log_processing.discord_channel.guild_id` (после раскатки). Одной ревизией это
-  недеплоимо: старая ORM всё ещё маппит `guild_id`, поэтому ранний DROP останавливает
-  сбор логов, а новый `load_configs` джойнит колонку воркспейса, поэтому ранний код
-  ломает чтение подписок.
-- **Правило подписки на воркспейсе (`wsreq0001` + `wsreq0002`).** Новая таблица
-  `subscriptions.requirement` (`workspace_id`, `name`, `requirement_json`,
-  `is_default`; UK `(workspace_id, name)` плюс частичный unique на дефолтную строку) —
-  единственный источник правила допуска, общего для всех турниров воркспейса.
-  Пара expand/contract, порядок обязателен: `wsreq0001` создаёт таблицу и бэкфиллит
-  её из форм (до раскатки кода, потому что новый `load_requirement` селектит эту
-  таблицу), затем `wsreq0002` удаляет столбец с правилом из
-  `balancer.registration_form` (после раскатки, потому что старая ORM всё ещё маппит
-  его и SQLAlchemy эмитит его в каждом `SELECT`). Бэкфилл не выбирает правило за
-  организатора: если у воркспейса больше одного различного правила, `wsreq0001`
-  падает и откатывается, а не назначает одно из них. Тумблер `require_subscription`
-  остался на форме — он и есть пер-турнирное решение.
-- **Алиасы справочника Overwatch (`catalias0001`).** `aliases` (JSONB `list[str]`,
-  `NOT NULL DEFAULT '[]'`) на `overwatch.hero`/`map`/`gamemode` плюс таблица
-  `overwatch.catalog_alias_miss` (`UK(entity_type, raw_name)`, `occurrences`,
-  `resolved_at`, nullable FK на `log_processing.record`). Заменяет три
-  хардкод-словаря переводов в `parser-service/src/core/enums.py`
-  (`game_mode_dict`, `map_name_dict`, `hero_translation` — 103 записи), которые
-  требовали передеплоя сервиса на каждую новую карту, героя или локаль клиента.
-  Data-миграция переносит все 103 записи (7 режимов, 32 карты, 50 героев —
-  число различных канонических целей) и печатает предупреждение по каждому
-  каноническому имени, которого нет в каталоге, вместо тихой потери. Дальше
-  алиасы героев наполняет синк OverFast по 13 локалям Blizzard, алиасы карт и
-  режимов — ручные (у `/maps` и `/gamemodes` параметра `locale` нет).
-  Одна ревизия, expand/contract не нужен: колонка nullable-по-умолчанию для
-  старого кода невидима, а новый код читает её сразу после применения.
-- **Workspace self-service: верификация Discord-гильдии + owner_id (`wsgdvrf01`).**
-  `public.workspace.discord_guild_id` получает UNIQUE (раньше — свободный текст
-  без проверки владения и без уникальности); добавлены
-  `discord_guild_verified_at`/`discord_guild_verified_by_auth_user_id` (тот же
-  аудит-шаблон, что `custom_domain_verified_at`/`custom_domain_verification_token`)
-  и `owner_id` (FK → `auth.user`, `SET NULL`) — кто создал воркспейс, намеренно
-  отделено от RBAC-роли `owner` (`auth.roles`, изменяемая, может быть несколько
-  со-владельцев). Одна ревизия, чистый expand: `owner_id` бэкфиллится из текущего
-  держателя RBAC-роли `owner`, только если он единственный; при 0 или нескольких
-  держателях остаётся `NULL` (безобидно — просто не считается ни в чей лимит
-  создания воркспейсов). См.
-  `docs/superpowers/specs/2026-08-26-workspace-self-service-design.md`.
+`draft_player` is unique on `(session_id, registration_id)`: a pool entry *is* a registration,
+so roles, ranks and top heroes are read from the registration tables instead of being copied
+into draft-local child tables, which is what the earlier model did. Captain, drafted player and
+pick actor all resolve through `workspace_member`; `captain_auth_user_id` exists separately only
+as the "this is me" signal for the live UI. `draft_audit_event` is the append-only trail of what
+the session did and who caused it.
+
+Configuration exists at two levels — `workspace_config` as the default and `tournament_config`
+as the override — each unique on its scope.
+
+<!-- ERD:auto balancer -->
+```mermaid
+erDiagram
+    BALANCER_BALANCE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK,UK
+        bigint workspace_id FK "nullable"
+        varchar(32) algorithm "nullable"
+        json division_grid_json "nullable"
+        varchar(32) division_scope "nullable"
+        json config_json "nullable"
+        json result_json
+        bigint saved_by FK "nullable"
+        timestamptz saved_at
+        timestamptz exported_at "nullable"
+        varchar(32) export_status "nullable"
+        text export_error "nullable"
+    }
+    BALANCER_BALANCE_VARIANT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint balance_id FK
+        int variant_number
+        varchar(32) algorithm
+        float objective_score "nullable"
+        json statistics_json "nullable"
+        boolean is_selected
+    }
+    BALANCER_DRAFT_AUDIT_EVENT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        bigint actor_auth_user_id FK "nullable"
+        varchar(64) action
+        varchar(64) entity_type
+        bigint entity_id
+        text reason
+        json before_json
+        json after_json
+    }
+    BALANCER_DRAFT_PICK {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        int overall_no
+        int round_no
+        int pick_in_round
+        bigint draft_team_id FK
+        varchar(16) target_role "nullable"
+        int target_rank_value "nullable"
+        varchar(16) status
+        bigint picked_player_id FK "nullable"
+        bigint picked_by_workspace_member_id FK "nullable"
+        boolean is_autopick
+        boolean is_admin_override
+        timestamptz clock_started_at "nullable"
+        timestamptz clock_expires_at "nullable"
+        int clock_remaining_ms "nullable"
+        int version
+    }
+    BALANCER_DRAFT_PLAYER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        bigint registration_id FK
+        bigint workspace_member_id FK "nullable"
+        varchar(16) status
+        boolean is_captain
+        bigint drafted_by_team_id FK "nullable"
+        int version
+    }
+    BALANCER_DRAFT_SESSION {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint workspace_id FK
+        varchar(16) status
+        varchar(64) blocked_reason "nullable"
+        varchar(16) format
+        int rounds
+        int pick_time_seconds
+        bigint current_pick_id FK "nullable"
+        varchar(32) pool_source
+        bigint source_balance_id FK "nullable"
+        varchar(16) autopick_strategy
+        boolean allow_admin_override
+        timestamptz exported_at "nullable"
+        varchar(32) export_status "nullable"
+        json settings_json
+        int version
+    }
+    BALANCER_DRAFT_TEAM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        bigint captain_workspace_member_id FK "nullable"
+        bigint captain_auth_user_id FK "nullable"
+        varchar(255) name
+        int draft_position
+        bigint exported_team_id FK "nullable"
+    }
+    BALANCER_TEAM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint balance_id FK
+        bigint variant_id FK "nullable"
+        bigint exported_team_id FK "nullable"
+        varchar(255) name
+        varchar(255) balancer_name
+        varchar(255) captain_battle_tag "nullable"
+        float avg_sr
+        int total_sr
+        int sort_order
+    }
+    BALANCER_TEAM_SLOT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint team_id FK
+        varchar(255) battle_tag_normalized "nullable"
+        varchar(16) role
+        int assigned_rank
+        int discomfort
+        boolean is_captain
+        int sort_order
+    }
+    BALANCER_TOURNAMENT_CONFIG {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK,UK
+        bigint workspace_id FK
+        json config_json
+        bigint updated_by FK "nullable"
+    }
+    BALANCER_WORKSPACE_CONFIG {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK,UK
+        json config_json
+        bigint updated_by FK "nullable"
+    }
+
+    AUTH_USER |o--o{ BALANCER_BALANCE : "saved_by"
+    AUTH_USER |o--o{ BALANCER_DRAFT_AUDIT_EVENT : "actor_auth_user_id"
+    AUTH_USER |o--o{ BALANCER_DRAFT_TEAM : "captain_auth_user_id"
+    AUTH_USER |o--o{ BALANCER_TOURNAMENT_CONFIG : "updated_by"
+    AUTH_USER |o--o{ BALANCER_WORKSPACE_CONFIG : "updated_by"
+    BALANCER_BALANCE |o--o{ BALANCER_DRAFT_SESSION : "source_balance_id"
+    BALANCER_BALANCE ||--o{ BALANCER_BALANCE_VARIANT : "balance_id"
+    BALANCER_BALANCE ||--o{ BALANCER_TEAM : "balance_id"
+    BALANCER_BALANCE_VARIANT |o--o{ BALANCER_TEAM : "variant_id"
+    BALANCER_DRAFT_PICK |o--o{ BALANCER_DRAFT_SESSION : "current_pick_id"
+    BALANCER_DRAFT_PLAYER |o--o{ BALANCER_DRAFT_PICK : "picked_player_id"
+    BALANCER_DRAFT_SESSION ||--o{ BALANCER_DRAFT_AUDIT_EVENT : "session_id"
+    BALANCER_DRAFT_SESSION ||--o{ BALANCER_DRAFT_PICK : "session_id"
+    BALANCER_DRAFT_SESSION ||--o{ BALANCER_DRAFT_PLAYER : "session_id"
+    BALANCER_DRAFT_SESSION ||--o{ BALANCER_DRAFT_TEAM : "session_id"
+    BALANCER_DRAFT_TEAM |o--o{ BALANCER_DRAFT_PLAYER : "drafted_by_team_id"
+    BALANCER_DRAFT_TEAM ||--o{ BALANCER_DRAFT_PICK : "draft_team_id"
+    BALANCER_REGISTRATION ||--o{ BALANCER_DRAFT_PLAYER : "registration_id"
+    BALANCER_TEAM ||--o{ BALANCER_TEAM_SLOT : "team_id"
+    PUBLIC_WORKSPACE |o--o{ BALANCER_BALANCE : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ BALANCER_DRAFT_SESSION : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ BALANCER_TOURNAMENT_CONFIG : "workspace_id"
+    PUBLIC_WORKSPACE ||--o| BALANCER_WORKSPACE_CONFIG : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER |o--o{ BALANCER_DRAFT_PICK : "picked_by_workspace_member_id"
+    PUBLIC_WORKSPACE_MEMBER |o--o{ BALANCER_DRAFT_PLAYER : "workspace_member_id"
+    PUBLIC_WORKSPACE_MEMBER |o--o{ BALANCER_DRAFT_TEAM : "captain_workspace_member_id"
+    TOURNAMENT_TEAM |o--o{ BALANCER_DRAFT_TEAM : "exported_team_id"
+    TOURNAMENT_TEAM |o--o{ BALANCER_TEAM : "exported_team_id"
+    TOURNAMENT_TOURNAMENT ||--o{ BALANCER_DRAFT_SESSION : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o| BALANCER_BALANCE : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o| BALANCER_TOURNAMENT_CONFIG : "tournament_id"
+```
+
+Composite unique keys:
+
+- `BALANCER_BALANCE_VARIANT` unique on (`balance_id`, `variant_number`)
+- `BALANCER_DRAFT_PICK` unique on (`session_id`, `overall_no`)
+- `BALANCER_DRAFT_PLAYER` unique on (`session_id`, `registration_id`)
+- `BALANCER_DRAFT_TEAM` unique on (`session_id`, `draft_position`)
+<!-- /ERD:auto -->
+
+## custom_game — `balancer`
+
+Workspace custom games ("mixes"): the game, its host and co-hosts, the lineup, per-player role
+and must-play constraints, and the role slots that shape a team.
+
+Host and co-hosts are accounts (`auth.user`), while the lineup is workspace members: hosting is
+an act, playing is a membership. `participation` separates a player who must be in the game from
+the pool that fills the remaining slots and from the benched, and `role_slot` fixes the shape of
+a team per role. The balancer input and its output are kept as versioned JSON on the game row
+(`balancer_config_json` / `balance_result_json` with their `*_version` counters), so a re-balance
+is a new version rather than an in-place overwrite. The child tables use composite primary keys
+rather than surrogate ids — the pair *is* the fact.
+
+<!-- ERD:auto custom_game -->
+```mermaid
+erDiagram
+    BALANCER_CUSTOM_GAME {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        bigint host_user_id FK "nullable"
+        varchar(255) name
+        varchar(16) status
+        int points_per_win "nullable"
+        jsonb balancer_config_json "nullable"
+        int balancer_config_version
+        jsonb balance_result_json "nullable"
+        int balance_result_version
+    }
+    BALANCER_CUSTOM_GAME_CO_HOST {
+        bigint custom_game_id PK,FK
+        bigint user_id PK,FK
+    }
+    BALANCER_CUSTOM_GAME_PLAYER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint custom_game_id FK
+        bigint workspace_member_id FK
+        int sort_order
+        varchar(16) participation
+        varchar(16) role_selection_mode
+        boolean is_flex
+    }
+    BALANCER_CUSTOM_GAME_PLAYER_ROLE {
+        bigint custom_game_player_id PK,FK
+        varchar(16) role PK
+        int priority
+    }
+    BALANCER_CUSTOM_GAME_ROLE_SLOT {
+        bigint custom_game_id PK,FK
+        varchar(16) role PK
+        int slot_count
+    }
+    BALANCER_CUSTOM_GAME_TEAM_NAME {
+        bigint custom_game_id PK,FK
+        int team_index PK
+        varchar(60) name
+    }
+
+    AUTH_USER |o--o{ BALANCER_CUSTOM_GAME : "host_user_id"
+    AUTH_USER ||--o| BALANCER_CUSTOM_GAME_CO_HOST : "user_id"
+    BALANCER_CUSTOM_GAME ||--o{ BALANCER_CUSTOM_GAME_PLAYER : "custom_game_id"
+    BALANCER_CUSTOM_GAME ||--o| BALANCER_CUSTOM_GAME_CO_HOST : "custom_game_id"
+    BALANCER_CUSTOM_GAME ||--o| BALANCER_CUSTOM_GAME_ROLE_SLOT : "custom_game_id"
+    BALANCER_CUSTOM_GAME ||--o| BALANCER_CUSTOM_GAME_TEAM_NAME : "custom_game_id"
+    BALANCER_CUSTOM_GAME_PLAYER ||--o| BALANCER_CUSTOM_GAME_PLAYER_ROLE : "custom_game_player_id"
+    PUBLIC_WORKSPACE ||--o{ BALANCER_CUSTOM_GAME : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_CUSTOM_GAME_PLAYER : "workspace_member_id"
+```
+
+Composite unique keys:
+
+- `BALANCER_CUSTOM_GAME_PLAYER` unique on (`custom_game_id`, `workspace_member_id`)
+- `BALANCER_CUSTOM_GAME_PLAYER_ROLE` unique on (`custom_game_player_id`, `priority`)
+<!-- /ERD:auto -->
+
+## casual — `casual`
+
+Casual matches recorded outside a tournament bracket.
+
+A casual match is not free-floating: `custom_game_id` is NOT NULL, so every row here is a played
+round of a mix. Each match has exactly two teams (unique on `match_id, side`). A player row
+stores `display_name_snapshot` and allows a NULL `workspace_member_id` for the same reason — the
+result must stay readable after a rename or after the member leaves the workspace.
+
+<!-- ERD:auto casual -->
+```mermaid
+erDiagram
+    CASUAL_MATCH {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint custom_game_id FK
+        bigint map_id FK "nullable"
+        bigint recorded_by FK "nullable"
+    }
+    CASUAL_PLAYER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint team_id FK
+        bigint workspace_member_id FK "nullable"
+        varchar(255) display_name_snapshot
+        heroclass role "nullable"
+        int rank
+    }
+    CASUAL_TEAM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint match_id FK
+        varchar(8) side
+        varchar(255) name
+        int score
+    }
+
+    AUTH_USER |o--o{ CASUAL_MATCH : "recorded_by"
+    BALANCER_CUSTOM_GAME ||--o{ CASUAL_MATCH : "custom_game_id"
+    CASUAL_MATCH ||--o{ CASUAL_TEAM : "match_id"
+    CASUAL_TEAM ||--o{ CASUAL_PLAYER : "team_id"
+    OVERWATCH_MAP |o--o{ CASUAL_MATCH : "map_id"
+    PUBLIC_WORKSPACE_MEMBER |o--o{ CASUAL_PLAYER : "workspace_member_id"
+```
+
+Composite unique keys:
+
+- `CASUAL_TEAM` unique on (`match_id`, `side`)
+<!-- /ERD:auto -->
+
+## matches — `matches`
+
+Parsed match logs: one row per played map, per-round statistics, the kill feed, assists, and the
+statistical baselines derived from them.
+
+A `match` row is one played map inside an encounter, not the encounter itself; `map_index` is
+its 1-based position in the series and is nullable for logs parsed before that column existed.
+`log_record_id` is the provenance link back to the uploaded file and is nullable, so pruning
+ingestion records never deletes parsed matches.
+
+`statistics` is long-format — one row per `(match, round, team, player, hero, stat name)` with a
+single float — which is why it is by far the largest table in the database. `kill_feed` and
+`event` both record two sides of an interaction (killer/victim, actor/related) with team and
+hero on each side, so a query never has to infer who was on the other end.
+
+`stat_baselines` holds the precomputed mean and standard deviation per
+`(formula_version, role, rank_bucket, stat)`; it is what turns a raw stat into a comparable
+score without re-scanning `statistics`. The global per-hero records are served from
+`matches.mv_hero_global_stats`, a materialized view refreshed concurrently out of band — it is
+not a model, so it is not on the diagram.
+
+<!-- ERD:auto matches -->
+```mermaid
+erDiagram
+    MATCHES_EVENT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint match_id FK
+        float time
+        int round
+        bigint team_id FK
+        bigint user_id FK
+        bigint hero_id FK "nullable"
+        bigint related_team_id FK "nullable"
+        bigint related_user_id FK "nullable"
+        bigint related_hero_id FK "nullable"
+        matchevent name
+    }
+    MATCHES_KILL_FEED {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint match_id FK
+        float time
+        int round
+        int fight
+        abilityevent ability "nullable"
+        bigint killer_id FK
+        bigint killer_hero_id FK
+        bigint killer_team_id FK
+        bigint victim_id FK
+        bigint victim_team_id FK
+        bigint victim_hero_id FK
+        float damage
+        boolean is_critical_hit
+        boolean is_environmental
+    }
+    MATCHES_MATCH {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint home_team_id FK
+        bigint away_team_id FK
+        int home_score
+        int away_score
+        float time "nullable"
+        varchar log_name "nullable"
+        varchar code "nullable"
+        bigint log_record_id FK "nullable"
+        matchsource source
+        bigint encounter_id FK
+        bigint map_id FK
+        int map_index "nullable"
+    }
+    MATCHES_STAT_BASELINES {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar(64) formula_version
+        heroclass role
+        smallint rank_bucket
+        logstatsname stat
+        float mean
+        float std
+        jsonb meta "nullable"
+        timestamptz computed_at
+    }
+    MATCHES_STATISTICS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint match_id FK
+        int round
+        bigint team_id FK
+        bigint user_id FK
+        bigint hero_id FK "nullable"
+        logstatsname name
+        float value
+    }
+
+    LOG_PROCESSING_RECORD |o--o{ MATCHES_MATCH : "log_record_id"
+    MATCHES_MATCH ||--o{ MATCHES_EVENT : "match_id"
+    MATCHES_MATCH ||--o{ MATCHES_KILL_FEED : "match_id"
+    MATCHES_MATCH ||--o{ MATCHES_STATISTICS : "match_id"
+    OVERWATCH_HERO |o--o{ MATCHES_EVENT : "hero_id"
+    OVERWATCH_HERO |o--o{ MATCHES_EVENT : "related_hero_id"
+    OVERWATCH_HERO |o--o{ MATCHES_STATISTICS : "hero_id"
+    OVERWATCH_HERO ||--o{ MATCHES_KILL_FEED : "killer_hero_id"
+    OVERWATCH_HERO ||--o{ MATCHES_KILL_FEED : "victim_hero_id"
+    OVERWATCH_MAP ||--o{ MATCHES_MATCH : "map_id"
+    PLAYERS_USER |o--o{ MATCHES_EVENT : "related_user_id"
+    PLAYERS_USER ||--o{ MATCHES_EVENT : "user_id"
+    PLAYERS_USER ||--o{ MATCHES_KILL_FEED : "killer_id"
+    PLAYERS_USER ||--o{ MATCHES_KILL_FEED : "victim_id"
+    PLAYERS_USER ||--o{ MATCHES_STATISTICS : "user_id"
+    TOURNAMENT_ENCOUNTER ||--o{ MATCHES_MATCH : "encounter_id"
+    TOURNAMENT_TEAM |o--o{ MATCHES_EVENT : "related_team_id"
+    TOURNAMENT_TEAM ||--o{ MATCHES_EVENT : "team_id"
+    TOURNAMENT_TEAM ||--o{ MATCHES_KILL_FEED : "killer_team_id"
+    TOURNAMENT_TEAM ||--o{ MATCHES_KILL_FEED : "victim_team_id"
+    TOURNAMENT_TEAM ||--o{ MATCHES_MATCH : "away_team_id"
+    TOURNAMENT_TEAM ||--o{ MATCHES_MATCH : "home_team_id"
+    TOURNAMENT_TEAM ||--o{ MATCHES_STATISTICS : "team_id"
+```
+
+Composite unique keys:
+
+- `MATCHES_STAT_BASELINES` unique on (`formula_version`, `role`, `rank_bucket`, `stat`)
+<!-- /ERD:auto -->
+
+## ingestion — `log_processing`
+
+The upload and parse pipeline: the record of each processed log file, and the Discord channels
+logs arrive from.
+
+`record` is the unit of work and the retry state at once: `content_hash` rejects a re-upload of
+the same file, `status` and `source` say where it is and where it came from, and `attempts` is
+the retry budget carried on the row so a reaper can resume work without any external queue
+state. `uploader_id` and `attached_encounter_id` are both nullable — a log can arrive from a
+Discord channel with no uploader, and before anyone has bound it to an encounter.
+`discord_channel` binds one channel to one tournament (UNIQUE on both sides).
+
+<!-- ERD:auto ingestion -->
+```mermaid
+erDiagram
+    LOG_PROCESSING_DISCORD_CHANNEL {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK,UK
+        bigint channel_id UK
+        varchar(100) channel_name "nullable"
+        boolean is_active
+    }
+    LOG_PROCESSING_RECORD {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        varchar(500) filename
+        log_processing_status status
+        log_processing_source source
+        bigint uploader_id FK "nullable"
+        bigint attached_encounter_id FK "nullable"
+        text error_message "nullable"
+        timestamptz started_at "nullable"
+        timestamptz finished_at "nullable"
+        varchar(64) content_hash "nullable"
+        int attempts
+    }
+
+    PLAYERS_USER |o--o{ LOG_PROCESSING_RECORD : "uploader_id"
+    TOURNAMENT_ENCOUNTER |o--o{ LOG_PROCESSING_RECORD : "attached_encounter_id"
+    TOURNAMENT_TOURNAMENT ||--o{ LOG_PROCESSING_RECORD : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o| LOG_PROCESSING_DISCORD_CHANNEL : "tournament_id"
+```
+<!-- /ERD:auto -->
+
+## achievements — `achievements`
+
+The declarative achievement engine: a rule as a JSON condition tree, the evaluation results it
+produces, the manual grant/revoke overlay, and the evaluation runs.
+
+A rule is data, not code: `condition_tree` is the JSON condition, `scope` and `grain` say what
+it is evaluated over, `depends_on` lets one rule build on another, and `rule_version` makes a
+result produced by an older version of the same rule distinguishable. Rules are per workspace
+(`workspace_id, slug` unique), optionally tied to a hero.
+
+`evaluation_result` is unique on `(rule, member, tournament, match)`, which is what makes
+re-evaluation idempotent — a run inserts or does nothing. `override` is a separate manual
+grant/revoke overlay precisely so that a re-evaluation can never erase an admin's decision.
+`evaluation_run` is the run audit, and results point back at it by `run_id`.
+
+Recipients are `workspace_member`, not players: an achievement is earned inside one tenant. The
+earlier `achievements.achievement` and `achievements.user` tables are gone — the rule engine
+replaced them.
+
+<!-- ERD:auto achievements -->
+```mermaid
+erDiagram
+    ACHIEVEMENTS_EVALUATION_RESULT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint achievement_rule_id FK
+        bigint workspace_member_id FK
+        bigint tournament_id FK "nullable"
+        bigint match_id FK "nullable"
+        timestamptz qualified_at
+        json evidence_json "nullable"
+        int rule_version
+        uuid run_id FK "nullable"
+    }
+    ACHIEVEMENTS_EVALUATION_RUN {
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar trigger
+        bigint tournament_id FK "nullable"
+        int rules_evaluated
+        int results_created
+        int results_removed
+        timestamptz started_at
+        timestamptz finished_at "nullable"
+        varchar status
+        varchar error_message "nullable"
+        uuid id PK
+    }
+    ACHIEVEMENTS_OVERRIDE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint achievement_rule_id FK
+        bigint workspace_member_id FK
+        bigint tournament_id FK "nullable"
+        bigint match_id FK "nullable"
+        varchar action
+        varchar reason
+        bigint granted_by FK
+    }
+    ACHIEVEMENTS_RULE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar slug
+        varchar name
+        varchar description_ru
+        varchar description_en
+        varchar image_url "nullable"
+        bigint hero_id FK "nullable"
+        varchar category
+        varchar scope
+        varchar grain
+        json condition_tree
+        json depends_on
+        boolean enabled
+        int rule_version
+        int min_tournament_id "nullable"
+    }
+
+    ACHIEVEMENTS_EVALUATION_RUN |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "run_id"
+    ACHIEVEMENTS_RULE ||--o{ ACHIEVEMENTS_EVALUATION_RESULT : "achievement_rule_id"
+    ACHIEVEMENTS_RULE ||--o{ ACHIEVEMENTS_OVERRIDE : "achievement_rule_id"
+    AUTH_USER ||--o{ ACHIEVEMENTS_OVERRIDE : "granted_by"
+    MATCHES_MATCH |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "match_id"
+    MATCHES_MATCH |o--o{ ACHIEVEMENTS_OVERRIDE : "match_id"
+    OVERWATCH_HERO |o--o{ ACHIEVEMENTS_RULE : "hero_id"
+    PUBLIC_WORKSPACE ||--o{ ACHIEVEMENTS_EVALUATION_RUN : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ ACHIEVEMENTS_RULE : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o{ ACHIEVEMENTS_EVALUATION_RESULT : "workspace_member_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o{ ACHIEVEMENTS_OVERRIDE : "workspace_member_id"
+    TOURNAMENT_TOURNAMENT |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "tournament_id"
+    TOURNAMENT_TOURNAMENT |o--o{ ACHIEVEMENTS_EVALUATION_RUN : "tournament_id"
+    TOURNAMENT_TOURNAMENT |o--o{ ACHIEVEMENTS_OVERRIDE : "tournament_id"
+```
+
+Composite unique keys:
+
+- `ACHIEVEMENTS_EVALUATION_RESULT` unique on (`achievement_rule_id`, `workspace_member_id`, `tournament_id`, `match_id`)
+- `ACHIEVEMENTS_RULE` unique on (`workspace_id`, `slug`)
+<!-- /ERD:auto -->
+
+## analytics — `analytics`
+
+Signals computed on top of tournament results and match logs: rating shifts, per-player
+performance, placement distributions, encounter quality and player anomalies with their reviewer
+verdicts, the ML model registry, and the job table that tracks long-running compute.
+
+`algorithms` is the registry every derived number points at, which is why practically every
+unique key in this schema includes `algorithm_id`: two algorithms may hold different opinions
+about the same `(tournament, player)` at the same time, and neither overwrites the other.
+
+Everything here is anchored on `tournament.player` — the roster slot — rather than on a player
+or a member, so a number always belongs to one participation in one tournament and never leaks
+across tournaments. Nothing in `analytics` references `matches` directly; match data is reached
+through the encounter.
+
+`standings_distribution` is the only source of placement predictions: a Monte Carlo distribution
+per `(tournament, team, algorithm)` with mean, median, p10/p90, top-1/3/8 probabilities and the
+full histogram. A scalar "predicted place" is the rounded mean, derived at read time; the older
+scalar predictions table was dropped rather than kept in sync.
+
+`player_anomaly` flags a suspicious performance and `anomaly_feedback` records the reviewer's
+verdict, unique per `(tournament, player, kind)` — a reviewed anomaly stays reviewed instead of
+being raised again on every recompute. `job` is the single recomputation tracker for both
+ordinary compute and ML training.
+
+<!-- ERD:auto analytics -->
+```mermaid
+erDiagram
+    ANALYTICS_ALGORITHMS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar name UK
+        boolean produces_shifts
+    }
+    ANALYTICS_ANOMALY_FEEDBACK {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint player_id FK
+        varchar(32) kind
+        varchar(16) verdict
+        bigint reviewer_user_id FK "nullable"
+        text note "nullable"
+    }
+    ANALYTICS_JOB {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK "nullable"
+        bigint tournament_id FK
+        bigint requested_by_user_id FK "nullable"
+        varchar(16) kind
+        varchar(16) status
+        json algorithms "nullable"
+        json training_workspace_ids "nullable"
+        json progress
+        text error "nullable"
+        timestamptz started_at "nullable"
+        timestamptz finished_at "nullable"
+    }
+    ANALYTICS_MATCH_QUALITY {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        bigint algorithm_id FK
+        float competitiveness
+        float predictability
+        float skill_balance
+        float quality_score
+    }
+    ANALYTICS_ML_MODEL_ARTIFACT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint algorithm_id FK
+        varchar(32) model_kind
+        varchar(16) role "nullable"
+        varchar(32) version
+        text storage_uri
+        varchar(32) feature_version
+        bigint training_cutoff_tournament_id FK "nullable"
+        json metrics "nullable"
+        json feature_importance "nullable"
+        boolean is_active
+    }
+    ANALYTICS_PERFORMANCE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint player_id FK
+        bigint algorithm_id FK
+        float impact_score
+        float raw_value
+        float confidence
+        float log_coverage
+        float local_mean
+        float local_std
+        float local_residual
+        float local_zscore
+        float local_percentile
+        int local_reference_n
+        int local_band_min_div "nullable"
+        int local_band_max_div "nullable"
+        json contributions "nullable"
+        float base_value "nullable"
+    }
+    ANALYTICS_PLAYER_ANOMALY {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint player_id FK
+        varchar(32) kind
+        float score
+        float confidence
+        json reasons
+        json evidence "nullable"
+        bigint source_encounter_id FK "nullable"
+    }
+    ANALYTICS_PLAYER_SHIFT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint player_id FK
+        int wins
+        int losses
+        int shift_one "nullable"
+        int shift_two "nullable"
+        int shift "nullable"
+    }
+    ANALYTICS_SHIFTS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint algorithm_id FK
+        bigint player_id FK
+        float shift
+        float confidence
+        float effective_evidence
+        int sample_tournaments
+        int sample_matches
+        float log_coverage
+    }
+    ANALYTICS_STANDINGS_DISTRIBUTION {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint team_id FK
+        bigint algorithm_id FK
+        float mean_position
+        float median_position
+        float p10_position
+        float p90_position
+        float prob_top1
+        float prob_top3
+        float prob_top8
+        json position_histogram
+    }
+
+    ANALYTICS_ALGORITHMS ||--o{ ANALYTICS_MATCH_QUALITY : "algorithm_id"
+    ANALYTICS_ALGORITHMS ||--o{ ANALYTICS_ML_MODEL_ARTIFACT : "algorithm_id"
+    ANALYTICS_ALGORITHMS ||--o{ ANALYTICS_PERFORMANCE : "algorithm_id"
+    ANALYTICS_ALGORITHMS ||--o{ ANALYTICS_SHIFTS : "algorithm_id"
+    ANALYTICS_ALGORITHMS ||--o{ ANALYTICS_STANDINGS_DISTRIBUTION : "algorithm_id"
+    AUTH_USER |o--o{ ANALYTICS_ANOMALY_FEEDBACK : "reviewer_user_id"
+    AUTH_USER |o--o{ ANALYTICS_JOB : "requested_by_user_id"
+    PUBLIC_WORKSPACE |o--o{ ANALYTICS_JOB : "workspace_id"
+    TOURNAMENT_ENCOUNTER |o--o{ ANALYTICS_PLAYER_ANOMALY : "source_encounter_id"
+    TOURNAMENT_ENCOUNTER ||--o{ ANALYTICS_MATCH_QUALITY : "encounter_id"
+    TOURNAMENT_PLAYER ||--o{ ANALYTICS_ANOMALY_FEEDBACK : "player_id"
+    TOURNAMENT_PLAYER ||--o{ ANALYTICS_PERFORMANCE : "player_id"
+    TOURNAMENT_PLAYER ||--o{ ANALYTICS_PLAYER_ANOMALY : "player_id"
+    TOURNAMENT_PLAYER ||--o{ ANALYTICS_PLAYER_SHIFT : "player_id"
+    TOURNAMENT_PLAYER ||--o{ ANALYTICS_SHIFTS : "player_id"
+    TOURNAMENT_TEAM ||--o{ ANALYTICS_STANDINGS_DISTRIBUTION : "team_id"
+    TOURNAMENT_TOURNAMENT |o--o{ ANALYTICS_ML_MODEL_ARTIFACT : "training_cutoff_tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ ANALYTICS_ANOMALY_FEEDBACK : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ ANALYTICS_JOB : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ ANALYTICS_PERFORMANCE : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ ANALYTICS_PLAYER_ANOMALY : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ ANALYTICS_PLAYER_SHIFT : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ ANALYTICS_SHIFTS : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ ANALYTICS_STANDINGS_DISTRIBUTION : "tournament_id"
+```
+
+Composite unique keys:
+
+- `ANALYTICS_ANOMALY_FEEDBACK` unique on (`tournament_id`, `player_id`, `kind`)
+- `ANALYTICS_MATCH_QUALITY` unique on (`encounter_id`, `algorithm_id`)
+- `ANALYTICS_ML_MODEL_ARTIFACT` unique on (`algorithm_id`, `model_kind`, `role`, `version`)
+- `ANALYTICS_PERFORMANCE` unique on (`tournament_id`, `player_id`, `algorithm_id`)
+- `ANALYTICS_PLAYER_ANOMALY` unique on (`tournament_id`, `player_id`, `kind`, `source_encounter_id`)
+- `ANALYTICS_PLAYER_SHIFT` unique on (`tournament_id`, `player_id`)
+- `ANALYTICS_SHIFTS` unique on (`tournament_id`, `player_id`, `algorithm_id`)
+- `ANALYTICS_STANDINGS_DISTRIBUTION` unique on (`tournament_id`, `team_id`, `algorithm_id`)
+<!-- /ERD:auto -->
+
+## subscriptions — `subscriptions`
+
+Subscription checks used as an admission condition for registration and check-in: how a
+workspace verifies a subscription with a provider, what a tournament requires, the resulting
+entitlement, and the check log.
+
+`provider_config` describes how a workspace verifies a subscription with one provider, unique
+per `(workspace, provider)`. `enabled` is false by default: creating a config does not turn the
+check on. The Discord guild snowflake is not stored in `config_json` — it is injected from
+`workspace.discord_guild_id`, which is the single source for it.
+
+The eligibility rule lives on the workspace, not on the registration form: one `requirement` row
+is shared by every tournament in the workspace, and the per-tournament decision is the
+`require_subscription` toggle on `balancer.registration_form`. It is a table rather than a column
+because presets were intended from the start — more rows plus a nullable FK on the form is a
+purely additive change, while a column on `workspace` would have needed a data migration.
+`(workspace_id, name)` is unique, with a partial unique index pinning a single default row.
+
+`entitlement` is the last known verdict per `(workspace, auth_user, provider)`. `state` has three
+values — `active`, `inactive`, `unknown` — and `unknown` is fail-open: a provider outage must
+never lock people out. Verdicts compose under three-valued logic, so a block only happens when
+the answer is certain. `check_log` is the append-only history of live provider calls, mirroring
+`overwatch_rank.fetch_log`; both its workspace and its user FK are nullable so the history
+outlives account deletion.
+
+<!-- ERD:auto subscriptions -->
+```mermaid
+erDiagram
+    SUBSCRIPTIONS_CHECK_LOG {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK "nullable"
+        bigint auth_user_id FK "nullable"
+        varchar(32) provider
+        varchar(16) state
+        int tier_rank "nullable"
+        varchar(64) tier_label "nullable"
+        varchar(32) source
+        varchar(32) mechanism "nullable"
+        varchar(64) reason "nullable"
+        text error "nullable"
+    }
+    SUBSCRIPTIONS_ENTITLEMENT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        bigint auth_user_id FK
+        varchar(32) provider
+        varchar(16) state
+        int tier_rank "nullable"
+        varchar(64) tier_label "nullable"
+        varchar(32) source "nullable"
+        timestamptz checked_at "nullable"
+        timestamptz expires_at "nullable"
+        json evidence_json "nullable"
+    }
+    SUBSCRIPTIONS_PROVIDER_CONFIG {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar(32) provider
+        boolean enabled
+        json config_json
+    }
+    SUBSCRIPTIONS_REQUIREMENT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar(64) name
+        json requirement_json
+        boolean is_default
+    }
+
+    AUTH_USER |o--o{ SUBSCRIPTIONS_CHECK_LOG : "auth_user_id"
+    AUTH_USER ||--o{ SUBSCRIPTIONS_ENTITLEMENT : "auth_user_id"
+    PUBLIC_WORKSPACE |o--o{ SUBSCRIPTIONS_CHECK_LOG : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ SUBSCRIPTIONS_ENTITLEMENT : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ SUBSCRIPTIONS_PROVIDER_CONFIG : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ SUBSCRIPTIONS_REQUIREMENT : "workspace_id"
+```
+
+Composite unique keys:
+
+- `SUBSCRIPTIONS_ENTITLEMENT` unique on (`workspace_id`, `auth_user_id`, `provider`)
+- `SUBSCRIPTIONS_PROVIDER_CONFIG` unique on (`workspace_id`, `provider`)
+- `SUBSCRIPTIONS_REQUIREMENT` unique on (`workspace_id`, `name`)
+<!-- /ERD:auto -->
+
+## preferences — `players`, `tournament`
+
+Per-account preferences: favourite players, and saved encounter views.
+
+Both tables key on `auth_user_id`, not on `workspace_member`: a preference belongs to the logged-in
+account and follows it everywhere. `favorite_player` therefore points straight at `players.user` —
+the one place where the tenant-scoped anchor is deliberately not used — while a saved encounter
+view is workspace-scoped and unique per `(workspace, user, name)`.
+
+<!-- ERD:auto preferences -->
+```mermaid
+erDiagram
+    PLAYERS_FAVORITE_PLAYER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint auth_user_id FK
+        bigint player_id FK
+    }
+    TOURNAMENT_ENCOUNTER_SAVED_VIEW {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        bigint auth_user_id FK
+        varchar(80) name
+        json filters_json
+        int sort_order
+    }
+
+    AUTH_USER ||--o{ PLAYERS_FAVORITE_PLAYER : "auth_user_id"
+    AUTH_USER ||--o{ TOURNAMENT_ENCOUNTER_SAVED_VIEW : "auth_user_id"
+    PLAYERS_USER ||--o{ PLAYERS_FAVORITE_PLAYER : "player_id"
+    PUBLIC_WORKSPACE ||--o{ TOURNAMENT_ENCOUNTER_SAVED_VIEW : "workspace_id"
+```
+
+Composite unique keys:
+
+- `PLAYERS_FAVORITE_PLAYER` unique on (`auth_user_id`, `player_id`)
+- `TOURNAMENT_ENCOUNTER_SAVED_VIEW` unique on (`workspace_id`, `auth_user_id`, `name`)
+<!-- /ERD:auto -->
+
+## platform — `public`, `realtime`
+
+Cross-domain infrastructure: the transactional outbox, the realtime event journal the gateway
+replays from, and the platform audit log.
+
+These three tables carry `workspace_id`, `tournament_id` and actor ids as plain `BigInteger`
+with **no foreign keys**, which is why they appear unconnected on the diagram. That is the
+point: an append-only bus or journal must outlive the business rows it describes, and must not
+be draggable into a cascade delete.
+
+`event_outbox` is the transactional outbox — written in the same transaction as the business
+change, then published by a relay; `event_id` is unique so a consumer can deduplicate, and
+`status` / `attempts` / `next_attempt_at` are the retry state. `realtime.workspace_event` is the
+replay journal the Go gateway reads by topic and id when a WebSocket client reconnects;
+`schema_version` lets the payload shape change without invalidating older entries. `audit_log`
+stores `before_json` / `after_json` together with `actor_label` and `entity_label` snapshots, so
+an entry stays readable after the row it describes is gone.
+
+<!-- ERD:auto platform -->
+```mermaid
+erDiagram
+    PUBLIC_AUDIT_LOG {
+        bigint id PK
+        timestamptz created_at
+        bigint workspace_id "nullable"
+        bigint actor_auth_user_id "nullable"
+        varchar(255) actor_label "nullable"
+        varchar(16) source
+        varchar(64) action
+        varchar(64) entity_type "nullable"
+        bigint entity_id "nullable"
+        varchar(255) entity_label "nullable"
+        jsonb before_json "nullable"
+        jsonb after_json "nullable"
+        text reason "nullable"
+        varchar(45) ip_address "nullable"
+        varchar(255) user_agent "nullable"
+        varchar(64) correlation_id "nullable"
+    }
+    PUBLIC_EVENT_OUTBOX {
+        bigint id PK
+        varchar(64) event_id UK
+        varchar(128) event_type
+        varchar(255) exchange "nullable"
+        varchar(255) routing_key
+        json payload_json
+        varchar(16) status
+        int attempts
+        timestamptz next_attempt_at
+        timestamptz created_at
+        timestamptz published_at "nullable"
+        text last_error "nullable"
+    }
+    REALTIME_WORKSPACE_EVENT {
+        bigint id PK
+        text topic
+        varchar(128) event_type
+        bigint workspace_id "nullable"
+        bigint tournament_id "nullable"
+        bigint actor_user_id "nullable"
+        smallint schema_version
+        jsonb payload
+        timestamptz occurred_at
+    }
+```
+<!-- /ERD:auto -->
+
+## Schema change history
+
+What the current shape replaced, and why. Revision ids are deliberately absent: the migration
+chain was squashed into a single baseline, so anything older than that baseline exists in the
+schema but not as a separate file in `backend/migrations/versions/`. The generated head line at
+the top of this document is the only revision claim here.
+
+- **Identity/workspace refactor.** `players.user.auth_user_id` (unique, nullable) became the
+  `1:0..1` link to `auth.user`, and `public.workspace_member` — unique on
+  `(workspace_id, player_id)`, with no denormalized role — became the identity anchor for
+  `tournament.player` (NOT NULL), `balancer.registration`, the draft tables and the achievement
+  results and overrides. The parallel `*_user_id` columns those tables used to carry were
+  dropped, not kept alongside.
+- **Challonge normalization.** `challonge_id` / `challonge_slug` were removed from `tournament`,
+  `stage` and `encounter`, and the `challonge_team` table with them. The source of truth is
+  `challonge_source` plus the participant, match and sync-log tables.
+- **Groups removed.** `tournament.group` was dropped; a group is a `stage_item` of type GROUP.
+- **Map veto replaced by pick/ban.** The `map_veto_config` pair was dropped in favour of the
+  generic `pick_ban_config*` / `pick_ban_session` / `pick_ban_entry` model, which covers map and
+  hero bans under one sequence engine and keeps a per-encounter ledger for no-repeat scopes.
+- **Draft pool re-pointed at registrations.** The draft first lifted per-role data out of JSON
+  into its own child tables; those were then dropped again when `draft_player` became unique on
+  `(session_id, registration_id)` and started reading roles and top heroes from the registration
+  tables. Two copies of the same preferences were one copy too many.
+- **Predictions.** The scalar predictions table was dropped;
+  `analytics.standings_distribution` is the only source of placement predictions.
+- **Analytics cleanup.** The balance-snapshot tables and the feature/explanation stores were
+  dropped after the shift and performance models stopped reading them; what remains is anchored
+  on `tournament.player` and keyed by algorithm.
+- **Member ranks unified.** `balancer.member_rank` replaced three separate per-context rank
+  stores. The nullable `author_user_id` is the only discriminator between workspace canon and an
+  author's private book, enforced by two partial unique indexes.
+- **Catalog aliases.** `aliases` (JSONB, `NOT NULL DEFAULT '[]'`) on `overwatch.hero` / `map` /
+  `gamemode` plus `overwatch.catalog_alias_miss` replaced three hardcoded translation
+  dictionaries in the parser (103 entries across 7 gamemodes, 32 maps and 50 heroes), each of
+  which had required a service redeploy for a new map, hero or client locale. The data migration
+  carried every entry over and warned about each canonical name missing from the catalog instead
+  of dropping it silently. No expand/contract was needed: a column with a default is invisible to
+  the old code.
+- **Workspace Discord guild.** `public.workspace.discord_guild_id` became the single source of
+  the guild snowflake — UNIQUE, with a verification timestamp and verifier, mirroring the custom
+  domain pattern. Rolling it out needed a mandatory order: add and backfill the column *before*
+  the code rollout, then remove the key from `subscriptions.provider_config.config_json` and drop
+  `log_processing.discord_channel.guild_id` *after* it. It is not deployable as one step — the
+  old ORM still maps `guild_id`, so an early DROP halts log collection, while the new config
+  loader joins the workspace column, so early code breaks subscription reads.
+- **Workspace-level subscription rule.** `subscriptions.requirement` became the single source of
+  the eligibility rule shared by every tournament in a workspace, while `require_subscription`
+  stayed on the registration form as the per-tournament decision. Same mandatory order: create
+  and backfill from the forms before the code rollout, drop the rule column from the form after
+  it, because SQLAlchemy emits every mapped column in every `SELECT`. The backfill refuses to
+  choose on the organizer's behalf: if a workspace held more than one distinct rule, it fails and
+  rolls back rather than picking one.
+- **Workspace ownership.** `public.workspace.owner_id` (FK → `auth.user`) records who created
+  the workspace, deliberately decoupled from the mutable RBAC `owner` role. The backfill set it
+  from the current holder of that role only when there was exactly one; with none or several it
+  stayed NULL.
+- **Later additions.** Team registration with invites, custom games ("mixes") and the casual
+  matches played inside them, tournament slugs with redirects, phase schedules, hidden and
+  preview tournaments, captain and per-map reports with the result-status state machine, scrim
+  rooms, division-grid import jobs, and the removal of stored team SR.

@@ -80,6 +80,11 @@ jobs:
       # always current, a self-hosted one is not.
       - name: Checkout
         uses: actions/checkout@v6
+      # Self-hosted runner shares the 15G prod box. Unbounded BuildKit cache
+      # grew to 180G and the box swapped; keep 20G of recent layers.
+      - name: Cap BuildKit cache
+        run: docker builder prune --reserved-space 20GB -f > /tmp/owt-builder-prune.log 2>&1
       - run: docker compose -f docker-compose.production.yml --project-name owt build
-      # --remove-orphans drops the retired Kong container so nginx can bind APP_PORT.
-      - run: docker compose -f docker-compose.production.yml --project-name owt up -d --remove-orphans
+      # --remove-orphans drops retired containers so nginx can bind APP_PORT.
+      # PROD_SIZE=small: this 15G box is shared; bump to medium/large for events.
+      - run: make prod-up PROD_SIZE=small

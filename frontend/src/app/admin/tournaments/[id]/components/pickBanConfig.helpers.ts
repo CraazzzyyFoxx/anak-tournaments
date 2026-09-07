@@ -31,9 +31,11 @@ import {
   DEFAULT_BEST_OF,
   buildSequenceForBestOf,
   hasPerRoundBestOf,
+  maxBestOf,
   parseStageBestOf,
   resolveBestOf,
 } from "@/lib/best-of";
+import { projectStage } from "../bracket/projection";
 import type {
   MapVetoMode,
   PickBanConfig,
@@ -80,9 +82,21 @@ export const PICK_BAN_NO_REPEAT_SCOPES: PickBanNoRepeatScope[] = [
 ];
 
 /** One slot as the editor holds it: no `position`, because list order is it. */
-interface PickBanDraftSlot {
+export interface PickBanDraftSlot {
   candidates: number[];
   reserveItemId: number | null;
+}
+
+/**
+ * One bracket round's groups, as a stage-wide editor holds them.
+ *
+ * A stored config has no round dimension — the scope key is `(stage, round)`,
+ * so per-round groups are N configs, not one. This is the shape the stage
+ * screen authors them in before it fans them back out on save.
+ */
+export interface PickBanDraftRoundSlots {
+  round: number;
+  slots: PickBanDraftSlot[];
 }
 
 /** Scope of the config a draft's values were prefilled from. */
@@ -114,8 +128,13 @@ export interface PickBanDraft {
   sequence: PickBanSequenceToken[];
   /** Pool mode only. */
   itemIds: number[];
-  /** Slots mode only. */
+  /** Slots mode, one round's scope. */
   slots: PickBanDraftSlot[];
+  /**
+   * Slots mode on a stage scope: each round of the stage with its own groups.
+   * Empty everywhere else, including a round scope, where `slots` is the round.
+   */
+  roundSlots: PickBanDraftRoundSlots[];
   /**
    * Scope of the saved config this draft's rule values were prefilled from, or
    * null when they are the organizer's own. Editor-only: an upsert stores
@@ -140,6 +159,7 @@ export function emptyPickBanDraft(kind: PickBanKind): PickBanDraft {
     sequence: [],
     itemIds: [],
     slots: [],
+    roundSlots: [],
     inheritedFrom: null,
   };
 }
@@ -165,6 +185,7 @@ export function pickBanDraftFromConfig(config: PickBanConfig): PickBanDraft {
       candidates: [...slot.candidates],
       reserveItemId: slot.reserve_item_id,
     })),
+    roundSlots: [],
     inheritedFrom: null,
   };
 }
@@ -195,6 +216,10 @@ export function pickBanDraftToInput(
   seriesLength: number
 ): PickBanConfigUpsertInput {
   const slotsMode = draft.mode === "slots";
+  // A template's groups exist only because the bracket sized them; sending the
+  // empty shells would trip the server's "a slot needs two candidates" rule,
+  // where an empty list is accepted as "no pool here".
+  const slots = slotsMode && !isRulesTemplate(draft) ? draft.slots : [];
   return {
     kind: draft.kind,
     stage_id: draft.stageId,
@@ -211,13 +236,27 @@ export function pickBanDraftToInput(
     allow_protect: draft.allowProtect,
     sequence: effectiveSequence(draft, seriesLength),
     item_ids: slotsMode ? [] : draft.itemIds,
-    slots: slotsMode
-      ? draft.slots.map((slot) => ({
-          candidates: slot.candidates,
-          reserve_item_id: slot.reserveItemId,
-        }))
-      : [],
+    slots: slots.map((slot) => ({
+      candidates: slot.candidates,
+      reserve_item_id: slot.reserveItemId,
+    })),
   };
+}
+
+/**
+ * Whether this draft carries no candidates at all -- a rules TEMPLATE.
+ *
+ * The rules and the pool live in one row, so "set the rotation and the timer
+ * once for the whole tournament, pick the maps per stage" used to be
+ * unauthorable: the pool was required, and a tournament-wide pool is exactly
+ * what a per-stage regulation does NOT have. A pool-less row is accepted
+ * instead, and inherited downward by `rescopePickBanDraft` -- it opens no room
+ * of its own (`PickBanSessionService._has_pool`).
+ */
+export function isRulesTemplate(draft: PickBanDraft): boolean {
+  if (draft.mode !== "slots") return draft.itemIds.length === 0;
+  const groups = draft.roundSlots.length > 0 ? draft.roundSlots.flatMap((round) => round.slots) : draft.slots;
+  return groups.every((slot) => slot.candidates.length === 0);
 }
 
 // ── step tokens ──────────────────────────────────────────────────────────────
@@ -310,6 +349,10 @@ function ruleValues(draft: PickBanDraft): unknown[] {
     draft.kind === "hero" || draft.orderMode === "custom" ? draft.sequence : [],
     draft.itemIds,
     draft.slots.map((slot) => [slot.candidates, slot.reserveItemId]),
+    draft.roundSlots.map((round) => [
+      round.round,
+      round.slots.map((slot) => [slot.candidates, slot.reserveItemId]),
+    ]),
   ];
 }
 
@@ -401,6 +444,14 @@ export interface SeriesLength {
  * Only `"round"` is exact. A stage-wide or tournament-wide config covers
  * matches of different lengths, so the value is a preview of the generated step
  * order, not a promise — the caller must label it as such.
+ *
+ * A round with no generated encounter yet goes through `projectStage`, the same
+ * projection the bracket preview and the best-of editor read. Resolving it here
+ * instead cost a Bo5 grand final three map groups rather than five: `final`
+ * only outranks `default` when the caller says the round IS the final, and a
+ * local `round === max_rounds` guess cannot say that — double elimination's
+ * grand final is `upperRounds + 1` (derived from the team count), while
+ * `max_rounds` is an independent planning field a new stage defaults to 5.
  */
 export function resolveSeriesLength(
   stageId: number | null,
@@ -421,11 +472,133 @@ export function resolveSeriesLength(
 
   const stage = stages.find((candidate) => candidate.id === stageId);
   const bestOfConfig = parseStageBestOf(stage?.settings_json ?? null);
+
+  if (round != null && stage != null) {
+    const projected = projectStage({
+      stage,
+      stages,
+      stageType: stage.stage_type,
+      splitLowerBracket: stage.split_lower_bracket,
+      maxRounds: stage.max_rounds,
+      bestOf: bestOfConfig,
+    }).rounds.find((candidate) => candidate.round === round);
+    if (projected != null) return { bestOf: projected.bestOf, source: "round" };
+  }
+
   const bestOf = resolveBestOf(bestOfConfig, round ?? 1, {
     isFinal: round != null && stage != null && round === stage.max_rounds,
   });
   if (round != null) return { bestOf, source: "round" };
   return { bestOf, source: hasPerRoundBestOf(bestOfConfig) ? "variesByRound" : "stage" };
+}
+
+/**
+ * How many round groups a slot-mode pool needs here, from the bracket.
+ *
+ * The count is never the organizer's to type: the server plays the first
+ * `best_of` groups and keeps the room shut when the pool has fewer, so a group
+ * count that disagrees with the bracket is always a misconfiguration. Groups
+ * past the longest series a scope covers are dead weight the server ignores,
+ * which is why this is a max and not `resolveSeriesLength`'s single preview: a
+ * stage-wide pool has to cover its Bo5 final as well as its Bo3 rounds.
+ */
+export function resolveSlotCount(
+  stageId: number | null,
+  round: number | null,
+  stages: Stage[],
+  encounters: PickBanScopeEncounter[] | undefined
+): number {
+  if (stageId != null && round != null) {
+    return resolveSeriesLength(stageId, round, stages, encounters).bestOf;
+  }
+
+  // Generated encounters are the truth once the bracket exists; the stage's
+  // configuration is the only thing to go on before it does.
+  const generated = (encounters ?? [])
+    .filter((encounter) => stageId == null || encounter.stage_id === stageId)
+    .map((encounter) => encounter.best_of)
+    .filter((bestOf) => bestOf > 0);
+  if (generated.length > 0) return Math.max(...generated);
+
+  const planned = (stageId == null ? stages : stages.filter((stage) => stage.id === stageId)).map(
+    (stage) => maxBestOf(parseStageBestOf(stage.settings_json ?? null))
+  );
+  return planned.length > 0 ? Math.max(...planned) : DEFAULT_BEST_OF;
+}
+
+/** A slot list resized to `count`, keeping every group the new size still has. */
+export function alignSlots(
+  slots: PickBanDraft["slots"],
+  count: number
+): PickBanDraft["slots"] {
+  if (slots.length === count) return slots;
+  return Array.from(
+    { length: count },
+    (_, index) => slots[index] ?? { candidates: [], reserveItemId: null }
+  );
+}
+
+/**
+ * The groups of every round of a stage, for the stage screen.
+ *
+ * A round that already has its own slot-mode config is authored from it; the
+ * rest start as a copy of `fallback` — the groups the stage itself stores, or
+ * whatever it inherits — because "the same pool everywhere" is where a
+ * per-round pool is edited from, not a blank page. Each round is sized by
+ * `slotCountFor`, since a stage's final can be longer than its other rounds.
+ */
+export function roundSlotsForStage({
+  kind,
+  stageId,
+  rounds,
+  configs,
+  fallback,
+  slotCountFor,
+}: {
+  kind: PickBanKind;
+  stageId: number;
+  rounds: number[];
+  configs: PickBanConfig[];
+  fallback: PickBanDraftSlot[];
+  slotCountFor: (round: number) => number;
+}): PickBanDraftRoundSlots[] {
+  return rounds.map((round) => {
+    const own = configs.find(
+      (config) =>
+        config.kind === kind &&
+        config.stage_id === stageId &&
+        config.round === round &&
+        config.mode === "slots"
+    );
+    const slots =
+      own != null
+        ? own.slots.map((slot) => ({
+            candidates: [...slot.candidates],
+            reserveItemId: slot.reserve_item_id,
+          }))
+        : fallback.map((slot) => ({ ...slot, candidates: [...slot.candidates] }));
+    return { round, slots: alignSlots(slots, slotCountFor(round)) };
+  });
+}
+
+/**
+ * One draft per round of a stage-wide slot draft: the same rules, that round's
+ * groups, scoped to that round.
+ *
+ * The store has no round dimension inside a config (`ck` on `(stage, round)`),
+ * so a per-round pool is N configs and a save is N upserts. Nothing is written
+ * at the stage level: a stage-wide config would be shadowed by every one of
+ * them anyway.
+ */
+export function fanOutRoundDrafts(draft: PickBanDraft): PickBanDraft[] {
+  if (draft.mode !== "slots" || draft.roundSlots.length === 0) return [draft];
+  return draft.roundSlots.map((round) => ({
+    ...draft,
+    configId: null,
+    round: round.round,
+    slots: round.slots,
+    roundSlots: [],
+  }));
 }
 
 // ── validation ───────────────────────────────────────────────────────────────
@@ -440,22 +613,43 @@ export function resolveSeriesLength(
  * own slot's candidates.
  */
 export type PickBanValidationIssue =
-  | { key: "emptyPool"; values?: undefined }
   | { key: "emptySequence"; values?: undefined }
   | { key: "multipleDeciders"; values?: undefined }
   | { key: "deciderNotLast"; values?: undefined }
   | { key: "noPickOrDecider"; values?: undefined }
   | { key: "heroDecider"; values?: undefined }
   | { key: "sequenceLongerThanPool"; values: { steps: number; items: number } }
-  | { key: "emptySlots"; values?: undefined }
-  | { key: "slotTooFewCandidates"; values: { slot: number } };
+  | { key: "slotTooFewCandidates"; values: { slot: number } }
+  | { key: "roundSlotTooFewCandidates"; values: { round: number; slot: number } };
 
 export function validatePickBanDraft(
   draft: PickBanDraft,
   seriesLength: number
 ): PickBanValidationIssue[] {
+  // A pool-less draft is a rules template (`isRulesTemplate`): the server takes
+  // it, and the pool-shaped rules -- a sequence that fits inside the pool, two
+  // candidates per group -- have nothing to hold. What it cannot do is open a
+  // room, which the editor says outright rather than as a validation error.
+  if (isRulesTemplate(draft)) return [];
   if (draft.mode === "slots") {
-    if (draft.slots.length === 0) return [{ key: "emptySlots" }];
+    // A stage-wide draft authors every round of the stage at once; each round
+    // is saved as its own config, so each one has to stand on its own.
+    if (draft.roundSlots.length > 0) {
+      return draft.roundSlots.flatMap((round) =>
+        round.slots.flatMap((slot, index) =>
+          slot.candidates.length < SLOT_CANDIDATE_FLOOR
+            ? [
+                {
+                  key: "roundSlotTooFewCandidates" as const,
+                  values: { round: round.round, slot: index + 1 },
+                },
+              ]
+            : []
+        )
+      );
+    }
+    // An empty group list cannot reach here: no candidates anywhere IS a
+    // template, handled above.
     return draft.slots.flatMap((slot, index) =>
       slot.candidates.length < SLOT_CANDIDATE_FLOOR
         ? [{ key: "slotTooFewCandidates" as const, values: { slot: index + 1 } }]
@@ -464,7 +658,6 @@ export function validatePickBanDraft(
   }
 
   const issues: PickBanValidationIssue[] = [];
-  if (draft.itemIds.length === 0) issues.push({ key: "emptyPool" });
 
   const sequence = effectiveSequence(draft, seriesLength);
   if (sequence.length === 0) {

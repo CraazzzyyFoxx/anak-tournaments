@@ -42,7 +42,21 @@ class Standing(db.TimeStampIntegerMixin):
     draw: Mapped[int] = mapped_column(Integer, default=0)
     lose: Mapped[int] = mapped_column(Integer, default=0)
     points: Mapped[float] = mapped_column(Float)
+    # The TRIMMED (median) Buchholz -- and, load-bearing beyond its value, the
+    # group-vs-playoff discriminator: `buchholz IS NULL` means "playoff row" in
+    # app-service user/compare/overview queries and in parser-service achievement
+    # filters. Renaming it would touch all of those, so the untrimmed sum lives
+    # in its own column instead.
     buchholz: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Sum of every opponent's points, nothing trimmed. Separate tiebreaker from
+    #: ``buchholz`` (it sits later in the default Swiss order) and not derivable
+    #: from what else is stored, since opponents' points are not.
+    full_buchholz: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Position of the head of this row's tie cluster; equal values across rows
+    #: mean no configured tiebreaker could separate them and their order was
+    #: assigned. NULL when the row stands alone. Read-only: recomputed on every
+    #: recalculation, so editing it on a row is pointless.
+    tie_group: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tb: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Map/score differential tie-breaker (sum of map-score margins across the
     # group stage). Persisted so the API can surface an accurate value instead

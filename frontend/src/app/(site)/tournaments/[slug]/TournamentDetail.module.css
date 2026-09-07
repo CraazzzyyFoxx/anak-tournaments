@@ -8,6 +8,56 @@
   background: linear-gradient(180deg, var(--aqt-bg) 78%, transparent);
 }
 
+/* One row: an optional collapsed-title lead, the scrolling rail, an optional
+   trailing action slot. The slots mount only while the page's big title is out
+   of view, so the rail never doubles as a second header. */
+.railRow {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-bottom: 1px solid var(--aqt-border);
+  background: color-mix(in srgb, var(--aqt-bg) 96%, transparent);
+}
+
+.railRow > .railFrame {
+  flex: 1 1 auto;
+  border-bottom: none;
+  background: transparent;
+}
+
+.railLead,
+.railTrail {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.railLead {
+  max-width: 16rem;
+  padding-inline: 0.25rem 0.75rem;
+  border-inline-end: 1px solid var(--aqt-border);
+  margin-inline-end: 0.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--aqt-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.railTrail {
+  padding-inline-start: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .railLead,
+  .railTrail {
+    display: flex;
+  }
+}
+
 .railFrame {
   display: grid;
   grid-template-columns: 0 minmax(0, 1fr) 0;
@@ -132,8 +182,11 @@
   color: var(--aqt-teal);
 }
 
+/* Locked tabs read as unavailable at a glance (wireframes §2 ⑤ `.dim`), not as
+   a shade of the same grey the open ones use. */
 .navItem.locked {
   color: var(--aqt-fg-faint);
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
@@ -360,6 +413,95 @@
    0 keeps every overflow owner local. */
 .publicDataPage > * {
   min-width: 0;
+}
+
+/* ── Section vocabulary (wireframes §11, "broadcast scoreboard") ──
+   A block is a CARD: the site's first-level surface (`--aqt-card` at 8% L over
+   the page's 5%), a hairline and a 12px radius — the same treatment as
+   `.aqt-card-surface` and the tournament list's cards, so the overview speaks
+   the site's existing vocabulary.
+
+   This replaced a bare mono eyebrow over a top hairline. The hairline version
+   was chosen to avoid "a third border around every list", but with three to six
+   blocks per column the reader had to infer where one ended and the next began
+   from spacing alone — and the phase timeline, the podium and the numbers grid
+   all bleed to the same edges, so there was no edge to read. Separation is what
+   the eye needs here; the eyebrow stays as the block's anchor (§11), now inside
+   the card instead of straddling a rule.
+
+   Deliberately no `overflow: hidden` (unlike `.aqt-card-surface`): the
+   mini-bracket scrolls horizontally inside its own block, and `#phases`
+   must stay scrollable-to. */
+.block {
+  min-width: 0;
+  padding: 0.875rem 1rem 1rem;
+  border: 1px solid var(--aqt-border);
+  border-radius: 0.75rem;
+  background: var(--aqt-card);
+}
+
+.blockHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.blockTitle {
+  margin: 0;
+  font-family: var(--aqt-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--aqt-fg-faint);
+}
+
+/* A figure: label above, the number in the display face — the number is what
+   the block is for, so it is the largest thing in it. */
+.figure {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.figureLabel {
+  font-family: var(--aqt-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--aqt-fg-faint);
+}
+
+.figureValue {
+  font-family: var(--aqt-display);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--aqt-fg);
+}
+
+.figureHint {
+  margin-inline-start: 0.35rem;
+  font-family: var(--aqt-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--aqt-fg-faint);
+}
+
+/* Score in a match row: the display face, heavier and larger than the team
+   names beside it (§11: "score larger than the name"). */
+.score {
+  font-family: var(--aqt-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The bracket canvas is intrinsically wider than any viewport. It owns its own

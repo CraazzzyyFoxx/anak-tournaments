@@ -41,6 +41,30 @@ def _credentials_error() -> HTTPException:
     )
 
 
+def _stamp_rbac(user: models.AuthUser, payload: schemas.TokenPayload) -> None:
+    """Attach ``payload``'s RBAC to ``user`` as the model's instance cache.
+
+    Mandatory, not an optimisation. Both resolvers below can return a row loaded
+    with ``noload(AuthUser.roles)`` -- ``get_identity``, taken whenever the Redis
+    RBAC entry is warm, and the API-key path, which has no ORM RBAC by design.
+    ``noload`` yields an EMPTY collection rather than raising, so every
+    ``has_permission`` / ``has_workspace_permission`` on such a user silently
+    answered False: a workspace owner got 403 across the RBAC admin surface as
+    soon as the cache warmed, while a superuser (a column on the row) never
+    noticed.
+    """
+    user.set_rbac_cache(
+        role_names=payload.roles,
+        permissions=payload.permissions,
+        workspaces=[{"workspace_id": ws.workspace_id, "slug": ws.slug} for ws in payload.workspaces],
+        workspace_rbac={
+            ws.workspace_id: {"roles": ws.rbac_roles, "permissions": ws.rbac_permissions}
+            for ws in payload.workspaces
+        },
+        denies=payload.denies,
+    )
+
+
 class TokenValidationService:
     """Resolves a raw credential (JWT access token or API key) to RBAC."""
 
@@ -84,9 +108,14 @@ class TokenValidationService:
         session list/revoke) can tell the caller's own session apart from the
         others without re-decoding the token.
         """
-        user, _ = await self._resolve_bearer(session, raw_token)
+        user, cached = await self._resolve_bearer(session, raw_token)
         if not user.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+        # The row may carry no ORM roles at all (warm cache -> ``get_identity``),
+        # so the RBAC every caller then authorizes against has to come from here.
+        # ``build`` is free on a full cache hit and falls back to the database for
+        # whatever the entry is missing.
+        _stamp_rbac(user, await self.payloads.build(session, user, cached=cached))
         return user
 
     async def resolve_active_principal(
@@ -122,6 +151,7 @@ class TokenValidationService:
         user = await self.users.get_identity(session, payload.sub)
         if user is None:
             raise _credentials_error()
+        _stamp_rbac(user, payload)
         return user, payload.api_key
 
     async def _resolve_bearer(

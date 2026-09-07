@@ -18,8 +18,6 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -29,16 +27,10 @@ sys.path.insert(0, str(backend_root))
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
 from shared.services import realtime_transaction  # noqa: E402
 from shared.services.realtime_transaction import register_realtime_update  # noqa: E402
+from shared.testing import install_postgres_type_shims
 
 
-@compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
-    return "JSON"
-
-
-@compiles(sa.BigInteger, "sqlite")
-def _compile_bigint_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
-    return "INTEGER"
+install_postgres_type_shims()
 
 
 REDIS_URL = "redis://localhost:6379/0"

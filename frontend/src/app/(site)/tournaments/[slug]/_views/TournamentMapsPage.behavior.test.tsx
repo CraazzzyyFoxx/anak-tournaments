@@ -1,29 +1,19 @@
 // @vitest-environment happy-dom
 //
-// This page answers one question: which maps each round plays.
+// Maps is its own section, it holds the POOL only, and it answers in pictures.
+// What is pinned:
 //
-// Two earlier shapes are the reason it is this narrow. First it answered one
-// level at a time behind a stage/round picker whose rounds came from
-// `Stage.max_rounds`, so it could not name a lower-bracket round at all and a
-// tournament configured the normal way — per round, no tournament default —
-// opened on "the organizer has not published a map pool yet". Then it grew an
-// aggregate pool card above the rounds, which said the same thing twice: once as
-// thirty map tiles at the top and again as the tournament-default level below.
-//
-// What is pinned here:
-//  1. every configured round is listed, grouped by stage, ordered the way it is
-//     played, each with its maps in slot order;
-//  2. a stage- or tournament-wide level is dropped while any round exists, and
-//     rendered when it is the only thing configured;
-//  3. candidates render as map art, and an id the catalogue cannot resolve keeps
-//     its tile — a slot's candidate count is what the regulation is written
-//     against;
-//  4. a slot names the game mode its candidates share, and stays silent when
-//     they do not agree;
-//  5. the shared public-page shell, its states, and no per-match veto machinery.
+//  1. every map the pool names is a card with its picture, and nothing about
+//     play counts is here — those are a statistic and live in Statistics;
+//  2. the per-round pools are a matrix of cards — one row per round, one column
+//     per map of the series — because that is how organizers author them;
+//  3. `?stage=` narrows BOTH blocks to one stage, and the chips only appear
+//     when there is more than one stage to choose between;
+//  4. an empty pool and a failed read are different cards, both from
+//     `TournamentPageState`.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,67 +28,74 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const listPublicConfigs = vi.fn();
-const getStages = vi.fn();
-const getAllMaps = vi.fn();
+const TOURNAMENT_ID = 88;
+const SLUG = "anak-open";
 
-vi.mock("@/services/tournament.service", () => ({
-  default: {
-    getStages: (...args: unknown[]) => getStages(...args)
-  }
-}));
+const listPublicConfigs = vi.fn();
+const getAllMaps = vi.fn();
+const getStages = vi.fn();
+
 vi.mock("@/services/pickBan.service", () => ({
-  default: {
-    listPublicConfigs: (...args: unknown[]) => listPublicConfigs(...args)
-  }
+  default: { listPublicConfigs: (...args: unknown[]) => listPublicConfigs(...args) }
 }));
 vi.mock("@/services/map.service", () => ({
   default: { getAll: (...args: unknown[]) => getAllMaps(...args) }
 }));
+vi.mock("@/services/tournament.service", () => ({
+  default: { getStages: (...args: unknown[]) => getStages(...args) }
+}));
 
 /**
- * The query string the page reads its stage from. `render` sets it; the two
- * router shims below are the smallest surface that keeps the switcher's own
- * contract — an `<a href>` carrying `?stage=` — assertable without standing up an
- * app router.
+ * `?stage=` is the whole switcher state; `written` records what a chip asked
+ * the router for, which is the observable half of "the filter lives in the URL".
  */
 let search = new URLSearchParams();
+let written: string[] = [];
 
-vi.mock("next/navigation", () => ({
-  useSearchParams: () => search
+vi.mock("@/hooks/useQueryParams", () => ({
+  useQueryParams: () => ({
+    searchParams: search,
+    setParams: (next: Record<string, string | null>) => {
+      const params = new URLSearchParams(search);
+      for (const [key, value] of Object.entries(next)) {
+        if (value === null) params.delete(key);
+        else params.set(key, value);
+      }
+      written.push(params.toString());
+      search = params;
+    }
+  })
 }));
+
 vi.mock("next/link", () => ({
   default: ({
     href,
     children,
     ...rest
-  }: {
-    href: string;
-    children: React.ReactNode;
-  } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+  }: { href: string; children?: ReactNode } & Record<string, unknown>) => (
     <a href={href} {...rest}>
       {children}
     </a>
   )
 }));
 
-const COPY = en.mapVeto;
-/**
- * The veto room's own copy, borrowed on purpose: a slot and a map the catalogue
- * cannot resolve are named identically on both player surfaces.
- */
-const ROOM = en.encounters.veto.room;
-const TOURNAMENT_ID = 88;
+/** The optimiser adds nothing to assert here, and its loader wants a real config. */
+vi.mock("next/image", () => ({
+  default: ({ src, alt }: { src: string; alt?: string }) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={typeof src === "string" ? src : ""} alt={alt ?? ""} />
+  )
+}));
 
 /**
  * Every field spelled out rather than cast into place: `tsconfig.json` excludes
- * test files, so a fixture that lies about its shape type-checks green and feeds
- * the component a hole.
+ * test files, so a fixture that lies about its shape type-checks green and
+ * feeds the component a hole.
  */
 function map(id: number, name: string, gamemode: string, gamemodeId: number): MapRead {
   return {
     id,
-    created_at: new Date(0),
+    created_at: new Date("2025-01-01T00:00:00Z"),
     updated_at: null,
     name,
     image_path: `/maps/${id}.jpg`,
@@ -107,7 +104,7 @@ function map(id: number, name: string, gamemode: string, gamemodeId: number): Ma
     aliases: [],
     gamemode: {
       id: gamemodeId,
-      created_at: new Date(0),
+      created_at: new Date("2025-01-01T00:00:00Z"),
       updated_at: null,
       name: gamemode,
       image_path: `/gamemodes/${gamemodeId}.jpg`,
@@ -119,28 +116,17 @@ function map(id: number, name: string, gamemode: string, gamemodeId: number): Ma
 }
 
 /**
- * Six maps whose ids are deliberately not 1..6 and never equal a slot position,
- * a candidate count or the tournament id, so nothing can pass by confusing one
- * for another. Three game modes of unequal size, so a slot can be made unanimous
- * or mixed at will.
+ * Ids deliberately far from 1..n so a lookup that used an array index instead
+ * of the map id would line up with nothing.
  */
-const MAPS: MapRead[] = [
-  map(52, "Busan", "Control", 1),
-  map(37, "Ilios", "Control", 1),
-  map(71, "Oasis", "Control", 1),
-  map(63, "Numbani", "Hybrid", 2),
-  map(45, "King's Row", "Hybrid", 2),
-  map(84, "Colosseo", "Push", 3)
-];
+const KINGS_ROW = map(45, "King's Row", "Hybrid", 2);
+const ILIOS = map(37, "Ilios", "Control", 1);
+const SURAVASA = map(91, "Suravasa", "Flashpoint", 4);
+const MAPS: MapRead[] = [KINGS_ROW, ILIOS, SURAVASA];
 
-/**
- * A map id the page's catalogue does not carry. `maps` is filtered to
- * `in_competitive !== false`, so a candidate retired from rotation reaches the
- * component exactly like this: an id with nothing behind it.
- */
-const RETIRED_MAP_ID = 96;
+const GROUP_ID = 177;
+const PLAYOFF_ID = 188;
 
-/** Same reason as `map`: no field left to a default the wire does not have. */
 function config(overrides: Partial<PickBanConfig>): PickBanConfig {
   return {
     id: 1,
@@ -149,10 +135,10 @@ function config(overrides: Partial<PickBanConfig>): PickBanConfig {
     stage_id: null,
     round: null,
     mode: "pool",
-    preset: "bracket",
     first_pick_rule: "higher_seed",
-    first_ban_rotation: "fixed",
-    turn_timer_seconds: 30,
+    first_ban_rotation: "alternate",
+    turn_timer_seconds: null,
+    preset: null,
     sequence: [],
     no_repeat_scope: "none",
     unique_attribute_per_side_per_round: null,
@@ -163,40 +149,56 @@ function config(overrides: Partial<PickBanConfig>): PickBanConfig {
   };
 }
 
-/**
- * Two stages whose `order` is the reverse of their ids, so a page that sorted on
- * the id, or on whatever order the configs arrived in, would land the sections
- * the wrong way round.
- */
+/** A round's own pool: slot mode, one candidate list per map of the series. */
+function roundConfig(
+  id: number,
+  stageId: number,
+  round: number,
+  slots: number[][]
+): PickBanConfig {
+  return config({
+    id,
+    stage_id: stageId,
+    round,
+    mode: "slots",
+    slots: slots.map((candidates, index) => ({
+      position: index + 1,
+      reserve_item_id: null,
+      candidates
+    }))
+  });
+}
+
 const STAGES: Stage[] = [
-  { id: 188, name: "Groups", order: 1, stage_type: "swiss" },
-  { id: 189, name: "Playoffs", order: 0, stage_type: "double_elimination" }
-].map(
-  (stage) =>
-    ({
-      ...stage,
-      tournament_id: TOURNAMENT_ID,
-      description: null,
-      max_rounds: 5,
-      advance_count: null,
-      split_lower_bracket: false,
-      is_active: false,
-      is_completed: false,
-      settings_json: null,
-      challonge_id: null,
-      challonge_slug: null,
-      items: []
-    }) as Stage
-);
+  { id: GROUP_ID, name: "Group stage", order: 0 } as Stage,
+  { id: PLAYOFF_ID, name: "Playoff", order: 1 } as Stage
+];
+
+/** Group stage plays Ilios only; the playoff plays King's Row and Suravasa. */
+const TWO_STAGE_CONFIGS = [
+  config({ item_ids: MAPS.map((m) => m.id) }),
+  roundConfig(10, GROUP_ID, 1, [[ILIOS.id]]),
+  roundConfig(11, PLAYOFF_ID, -1, [[SURAVASA.id]]),
+  roundConfig(12, PLAYOFF_ID, 1, [[KINGS_ROW.id], [SURAVASA.id]])
+];
 
 let container: HTMLDivElement;
 let root: Root;
 let client: QueryClient;
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  getAllMaps.mockResolvedValue({ results: MAPS });
-  getStages.mockResolvedValue(STAGES);
+  search = new URLSearchParams();
+  written = [];
+
+  listPublicConfigs
+    .mockReset()
+    .mockResolvedValue({ configs: [config({ item_ids: MAPS.map((m) => m.id) })] });
+  getAllMaps
+    .mockReset()
+    .mockResolvedValue({ results: MAPS, total: MAPS.length, page: 1, per_page: -1 });
+  getStages.mockReset().mockResolvedValue(STAGES);
+
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -205,11 +207,12 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  client.clear();
 });
 
 /** Let queued promise callbacks and React Query's own scheduling drain. */
-async function settle(ticks = 3) {
-  for (let index = 0; index < ticks; index += 1) {
+async function settle(ticks = 4) {
+  for (let i = 0; i < ticks; i += 1) {
     await act(async () => {
       const { promise, resolve } = Promise.withResolvers<void>();
       setTimeout(resolve, 0);
@@ -218,554 +221,174 @@ async function settle(ticks = 3) {
   }
 }
 
-async function render(configs: PickBanConfig[], stage?: string) {
-  listPublicConfigs.mockResolvedValue({ configs });
-  search = new URLSearchParams(stage === undefined ? "" : `stage=${stage}`);
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+async function render(query?: string) {
+  if (query) search = new URLSearchParams(query);
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={en}>
-          <TournamentMapsPage tournamentId={TOURNAMENT_ID} slug={String(TOURNAMENT_ID)} />
+          <TournamentMapsPage tournamentId={TOURNAMENT_ID} slug={SLUG} />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );
   });
   await settle();
-  return container.textContent ?? "";
 }
 
-/** The stage switcher, in DOM order. Absent entirely when there is one stage. */
-function stageTabs() {
-  return Array.from(container.querySelectorAll(".stage-tabs a")).map((tab) => ({
-    label: tab.textContent?.replace(tab.querySelector(".count")?.textContent ?? "", "").trim(),
-    count: tab.querySelector(".count")?.textContent?.trim() ?? null,
-    href: tab.getAttribute("href"),
-    current: tab.getAttribute("aria-current") === "page"
+/** One pool card, flattened to what the reader sees. */
+function poolCards() {
+  return [...container.querySelectorAll("#map-pool figure")].map((card) => ({
+    name: card.querySelector("figcaption")?.textContent ?? "",
+    thumb: card.querySelector("img")?.getAttribute("src") ?? null
   }));
 }
 
-/**
- * The image a tile actually shows. `next/image` wraps the source in its own
- * optimizer URL — sometimes relative, sometimes absolute — which is Next's
- * business and not this page's, so the `url` parameter is unwrapped and the
- * underlying path is what gets asserted.
- */
-function artSrc(img: Element | null): string | null {
-  const src = img?.getAttribute("src");
-  if (!src) return null;
-  if (!src.includes("/_next/image")) return src;
-  return new URLSearchParams(src.slice(src.indexOf("?") + 1)).get("url") ?? src;
+function stageChips() {
+  return [...container.querySelectorAll('[role="group"] button')].map((chip) => ({
+    label: chip.textContent ?? "",
+    pressed: chip.getAttribute("aria-pressed") === "true"
+  }));
 }
 
-/**
- * The page, flattened to the shape the regulation document has: one card per
- * stage, then each round with one row per map of the series.
- *
- * Addressed through `data-slot-*` hooks and the tile's `img src`, not through
- * class fragments and text: the map art is the point of a row, so a candidate
- * whose picture went missing must fail, and a visual pass that renames a utility
- * class must not.
- */
-function stages() {
-  return Array.from(container.querySelectorAll("section[role=group]")).map((stage) => {
-    const bandTexts = Array.from(stage.querySelectorAll("p")).map((p) => p.textContent?.trim());
-    return {
-      title: stage.querySelector("h2")?.textContent?.trim() ?? null,
-      label: stage.getAttribute("aria-label"),
-      // The two bracket-half bands, in DOM order, and nothing else that happens
-      // to be a paragraph.
-      headings: bandTexts.filter(
-        (text) => text === COPY.roundGroupUpper || text === COPY.roundGroupLower
-      ),
-      rounds: Array.from(stage.querySelectorAll("h3")).map((heading) => {
-        const level = heading.parentElement;
-        return {
-          label: heading.textContent?.trim(),
-          rows: Array.from(level?.querySelectorAll("ol > li") ?? []).map((row) => ({
-            slot: row.querySelector("[data-slot-index]")?.textContent?.trim(),
-            slotName: row.querySelector("[data-slot-index]")?.getAttribute("aria-label") ?? null,
-            mode: row.querySelector("[data-slot-mode]")?.textContent?.trim() ?? null,
-            modeIcon: artSrc(row.querySelector("[data-slot-mode] img")),
-            maps: Array.from(row.querySelectorAll("ul > li")).map((tile) => ({
-              name: tile.querySelector("span")?.textContent?.trim(),
-              art: artSrc(tile.querySelector("img"))
-            }))
-          }))
-        };
-      })
-    };
-  });
-}
+describe("the pool, in pictures", () => {
+  it("falls back to a mode-grouped grid when there are no rounds to lay out", async () => {
+    // A single tournament-wide config: the merged list IS the rule here, so it
+    // is the one case the flat grid is drawn at all.
+    await render();
 
-/** Every map tile on the page, in DOM order. */
-function tileNames() {
-  return Array.from(container.querySelectorAll("ul > li > span")).map((span) =>
-    span.textContent?.trim()
-  );
-}
-
-/**
- * The shape the reported tournament had, and the shape its regulation document is
- * written in: every level is a per-round slot config, one slot per map of the
- * series with three candidates each, and each slot unanimous in its game mode.
- *
- * The stages are listed Groups-first and their ids ascend, while `order` puts
- * Playoffs first, so a page sorting on arrival or on id lands them wrong. Slot
- * positions in Lower R4 are gapped and listed out of order, since `position` is
- * the play order and nothing else reconstructs it.
- */
-const REGULATION = [
-  config({
-    id: 401,
-    stage_id: 188,
-    round: 1,
-    mode: "slots",
-    slots: [
-      { position: 1, candidates: [52, 37, 71], reserve_item_id: null },
-      { position: 2, candidates: [63, 45], reserve_item_id: null }
-    ]
-  }),
-  config({
-    id: 402,
-    stage_id: 188,
-    round: 5,
-    mode: "slots",
-    slots: [
-      { position: 1, candidates: [71, 52], reserve_item_id: null },
-      { position: 2, candidates: [45, 63], reserve_item_id: null }
-    ]
-  }),
-  config({
-    id: 403,
-    stage_id: 189,
-    round: 1,
-    mode: "slots",
-    slots: [
-      { position: 1, candidates: [52, 37], reserve_item_id: null },
-      { position: 2, candidates: [63, 45], reserve_item_id: null },
-      // Deliberately mixed: Control + Push, so no single mode can be named.
-      { position: 3, candidates: [71, 84], reserve_item_id: null }
-    ]
-  }),
-  config({
-    id: 404,
-    stage_id: 189,
-    round: -1,
-    mode: "slots",
-    slots: [{ position: 1, candidates: [45, 63], reserve_item_id: null }]
-  }),
-  config({
-    id: 405,
-    stage_id: 189,
-    round: -4,
-    mode: "slots",
-    slots: [
-      { position: 7, candidates: [71, 52], reserve_item_id: null },
-      { position: 2, candidates: [84, 84], reserve_item_id: 45 },
-      { position: 4, candidates: [37, 52], reserve_item_id: null }
-    ]
-  })
-];
-
-describe("every configured round, in play order", () => {
-  it("shows one stage at a time, and switches in the order they are played", async () => {
-    await render(REGULATION);
-
-    // Playoffs first: `order` says so, while the ids and the arrival order both
-    // say the opposite. It is also the one on screen with no `?stage=` to go by.
-    expect(stageTabs()).toEqual([
-      {
-        label: "Playoffs",
-        count: "3",
-        href: `/tournaments/${TOURNAMENT_ID}/maps?stage=189`,
-        current: true
-      },
-      {
-        label: "Groups",
-        count: "2",
-        href: `/tournaments/${TOURNAMENT_ID}/maps?stage=188`,
-        current: false
-      }
-    ]);
-
-    const [visible, ...rest] = stages();
-    expect(rest).toEqual([]);
-    expect(visible?.title).toBe("Playoffs");
-    expect(visible?.label).toBe("Playoffs");
-    // Upper rounds ascend, then the lower bracket by depth — play order, not the
-    // numeric order that would put -4 before -1.
-    expect(visible?.rounds.map((round) => round.label)).toEqual([
-      "Round 1",
-      "Lower R1",
-      "Lower R4"
-    ]);
+    const cards = poolCards();
+    // Grouped by game mode, and the groups are ordered by mode name:
+    // Control · Flashpoint · Hybrid.
+    expect(cards.map((card) => card.name)).toEqual([ILIOS.name, SURAVASA.name, KINGS_ROW.name]);
+    expect(cards[0]?.thumb).toBe(`/maps/${ILIOS.id}.jpg`);
+    expect(container.querySelector("[data-map-pool-round]")).toBeNull();
   });
 
-  it("follows `?stage=` to the stage it names", async () => {
-    await render(REGULATION, "188");
+  it("shows the rounds only, with no merged list above them", async () => {
+    listPublicConfigs.mockResolvedValue({ configs: TWO_STAGE_CONFIGS });
 
-    expect(stages().map((stage) => stage.title)).toEqual(["Groups"]);
-    expect(stages()[0]?.rounds.map((round) => round.label)).toEqual(["Round 1", "Round 5"]);
-    expect(stageTabs().find((tab) => tab.current)?.label).toBe("Groups");
+    await render();
+
+    // Four cards, one per candidate of the four slots the rounds declare. A
+    // merged pool list would add three more nobody plays from.
+    expect(poolCards()).toHaveLength(4);
+    expect(container.querySelectorAll("[data-map-pool-round]")).toHaveLength(3);
   });
 
-  it("falls back to the first stage when `?stage=` names one it does not have", async () => {
-    await render(REGULATION, "4242");
+  it("says nothing about play counts — those are a statistic", async () => {
+    await render();
 
-    // An empty page would be the wrong answer to a stale link.
-    expect(stages().map((stage) => stage.title)).toEqual(["Playoffs"]);
+    expect(container.textContent).not.toContain("×");
+    expect(container.textContent).not.toContain(en.tournamentDetail.mapPool.col.played);
+    // No link into the matches section either: this is the regulation, not a log.
+    expect(container.querySelector("a")).toBeNull();
   });
 
-  it("offers no switcher when the tournament configures one stage", async () => {
-    await render([
-      config({
-        id: 490,
-        stage_id: 188,
-        round: 1,
-        mode: "slots",
-        slots: [{ position: 1, candidates: [52, 37], reserve_item_id: null }]
-      })
-    ]);
-
-    expect(stageTabs()).toEqual([]);
-    expect(stages().map((stage) => stage.title)).toEqual(["Groups"]);
-  });
-
-  it("heads the two brackets only where a stage has both", async () => {
-    await render(REGULATION);
-    expect(stages()[0]?.headings).toEqual([COPY.roundGroupUpper, COPY.roundGroupLower]);
-
-    // Groups has no lower bracket, so "Upper bracket" would name a distinction it
-    // does not have.
-    await render(REGULATION, "188");
-    expect(stages()[0]?.headings).toEqual([]);
-  });
-
-  it("orders a round's rows on the slot's own position, not on the wire order", async () => {
-    await render(REGULATION);
-
-    // Lower R4 arrives as positions 7, 2, 4.
-    const lowerR4 = stages()[0]?.rounds[2];
-    expect(lowerR4?.label).toBe("Lower R4");
-    // The badge shows the bare numeral and carries the full label as its
-    // accessible name, so a screen reader hears "Slot 4" where the eye sees "4".
-    expect(lowerR4?.rows.map((row) => row.slot)).toEqual(["2", "4", "7"]);
-    expect(lowerR4?.rows.map((row) => row.slotName)).toEqual([
-      ROOM.slot.label.replace("{n}", "2"),
-      ROOM.slot.label.replace("{n}", "4"),
-      ROOM.slot.label.replace("{n}", "7")
-    ]);
-  });
-
-  it("marks the reserve of the slot that names one, and only that slot", async () => {
-    const text = await render(REGULATION);
-
-    expect(text).toContain(ROOM.slot.reserve.replace("{map}", "King's Row"));
-    // One reserve is configured across the whole fixture, so one mention.
-    expect(text.split(ROOM.slot.reserve.split("{map}")[0]).length - 1).toBe(1);
-  });
-
-  it("says a slot nobody can ban down to one map cannot open the veto", async () => {
-    // Reachable with no invalid save: `map_id` cascades from `overwatch.map`, so
-    // deleting a map drops a stored slot under the floor the upsert checks.
-    await render([
-      config({
-        id: 451,
-        stage_id: 188,
-        round: 3,
-        mode: "slots",
-        slots: [
-          { position: 1, candidates: [52], reserve_item_id: null },
-          { position: 2, candidates: [52, 37], reserve_item_id: null }
-        ]
-      })
-    ]);
-
-    const rows = stages()[0]?.rounds[0]?.rows ?? [];
-    expect(container.textContent ?? "").toContain(COPY.slotUnderfilled.replace("{n}", "1"));
-    expect(rows[1]?.maps.map((tile) => tile.name)).toEqual(["Busan", "Ilios"]);
-  });
-
-  it("gives a flat config one row for the whole series, and no slot number", async () => {
-    await render([
-      config({ id: 460, stage_id: 189, round: 2, mode: "pool", item_ids: [52, 37, 45] })
-    ]);
-
-    expect(stages()[0]?.rounds[0]).toEqual({
-      label: "Round 2",
-      rows: [
-        {
-          // A flat config plays one pool for the whole series, so there is no
-          // numeral to badge and no single mode to name.
-          slot: COPY.roundPoolShared,
-          slotName: null,
-          mode: null,
-          modeIcon: null,
-          maps: [
-            { name: "Busan", art: "/maps/52.jpg" },
-            { name: "Ilios", art: "/maps/37.jpg" },
-            { name: "King's Row", art: "/maps/45.jpg" }
-          ]
-        }
+  it("puts one row per round, with a column per map of the series", async () => {
+    listPublicConfigs.mockResolvedValue({
+      configs: [
+        config({ item_ids: MAPS.map((m) => m.id) }),
+        roundConfig(11, PLAYOFF_ID, -1, [[SURAVASA.id]]),
+        roundConfig(12, PLAYOFF_ID, 1, [[ILIOS.id], [KINGS_ROW.id]])
       ]
     });
+
+    await render();
+
+    const rows = [...container.querySelectorAll("[data-map-pool-round]")];
+    expect(rows).toHaveLength(2);
+    // Upper bracket first, lower after — the order the bracket reads in.
+    expect(rows[0]?.textContent).toContain("Round 1");
+    expect(rows[0]?.textContent).toContain("Bo2");
+    expect(rows[0]?.textContent).toContain(en.tournamentDetail.mapPool.slot.replace("{n}", "1"));
+    // Only its own candidates: round 1 cannot play Suravasa.
+    expect(rows[0]?.textContent).toContain(ILIOS.name);
+    expect(rows[0]?.textContent).not.toContain(SURAVASA.name);
+
+    expect(rows[1]?.textContent).toContain("Lower R1");
+    expect(rows[1]?.textContent).toContain(SURAVASA.name);
+  });
+
+  it("stays without a round block when a single pool decides the tournament", async () => {
+    await render();
+
+    expect(container.querySelector("[data-map-pool-round]")).toBeNull();
   });
 });
 
-describe("candidates are map art", () => {
-  it("renders one tile per configured candidate, in configured order", async () => {
-    await render(REGULATION);
-
-    // Repeats included: the same map may legitimately appear twice in one slot.
-    expect(stages()[0]?.rounds[2]?.rows[0]).toEqual({
-      slot: "2",
-      slotName: ROOM.slot.label.replace("{n}", "2"),
-      mode: "Push",
-      // The mode's own icon, from the same catalogue entry that named it.
-      modeIcon: "/gamemodes/3.jpg",
-      maps: [
-        { name: "Colosseo", art: "/maps/84.jpg" },
-        { name: "Colosseo", art: "/maps/84.jpg" }
+describe("the stage switcher", () => {
+  it("appears only once there is more than one stage to choose between", async () => {
+    listPublicConfigs.mockResolvedValue({
+      configs: [
+        config({ item_ids: MAPS.map((m) => m.id) }),
+        roundConfig(12, PLAYOFF_ID, 1, [[KINGS_ROW.id]])
       ]
     });
+
+    await render();
+
+    expect(stageChips()).toEqual([]);
   });
 
-  it("keeps the tile of an id the catalogue cannot resolve, and names it", async () => {
-    await render([
-      config({
-        id: 450,
-        stage_id: 188,
-        round: 2,
-        mode: "slots",
-        slots: [{ position: 1, candidates: [52, RETIRED_MAP_ID, 37], reserve_item_id: null }]
-      })
-    ]);
+  it("offers the whole tournament and every stage that carries a pool", async () => {
+    listPublicConfigs.mockResolvedValue({ configs: TWO_STAGE_CONFIGS });
 
-    // Three tiles for three configured candidates: dropping the retired one would
-    // report a slot the captains ban three ways as one they ban two ways.
-    expect(stages()[0]?.rounds[0]?.rows[0]?.maps).toEqual([
-      { name: "Busan", art: "/maps/52.jpg" },
-      { name: ROOM.maps.mapNumber.replace("{id}", String(RETIRED_MAP_ID)), art: null },
-      { name: "Ilios", art: "/maps/37.jpg" }
+    await render();
+
+    expect(stageChips()).toEqual([
+      { label: `${en.tournamentDetail.mapPool.allStages}3`, pressed: true },
+      { label: "Group stage1", pressed: false },
+      { label: "Playoff2", pressed: false }
     ]);
   });
 
-  it("falls back to a flat tile when the art fails to load", async () => {
-    await render([
-      config({
-        id: 480,
-        stage_id: 188,
-        round: 1,
-        mode: "slots",
-        slots: [{ position: 1, candidates: [52, 37], reserve_item_id: null }]
-      })
-    ]);
+  it("narrows the pool and the rounds to the chosen stage, through the URL", async () => {
+    listPublicConfigs.mockResolvedValue({ configs: TWO_STAGE_CONFIGS });
 
-    const first = container.querySelector("ol > li ul > li img");
-    expect(first).not.toBeNull();
+    await render();
+    const group = [...container.querySelectorAll('[role="group"] button')][1] as HTMLButtonElement;
     await act(async () => {
-      first?.dispatchEvent(new Event("error"));
+      group.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
+    expect(written.at(-1)).toBe(`stage=${GROUP_ID}`);
 
-    // The catalogue holds paths for maps whose file was never uploaded, and two of
-    // them sit in this tournament's pool. The tile keeps its name and drops the
-    // picture rather than leaving the browser's broken-image glyph on the page.
-    const maps = stages()[0]?.rounds[0]?.rows[0]?.maps;
-    expect(maps?.[0]).toEqual({ name: "Busan", art: null });
-    // Only the failing tile gives up its art.
-    expect(maps?.[1]).toEqual({ name: "Ilios", art: "/maps/37.jpg" });
-  });
-});
+    // The URL is the state, so the narrowed render is what `?stage=` produces.
+    await render(`stage=${GROUP_ID}`);
 
-describe("the game mode a slot shares", () => {
-  it("names the mode when every candidate agrees", async () => {
-    await render(REGULATION);
-    expect(stages()[0]?.rounds[1]?.rows[0]?.mode).toBe("Hybrid");
-
-    await render(REGULATION, "188");
-    expect(stages()[0]?.rounds[0]?.rows.map((row) => row.mode)).toEqual(["Control", "Hybrid"]);
+    expect(poolCards().map((card) => card.name)).toEqual([ILIOS.name]);
+    const rows = [...container.querySelectorAll("[data-map-pool-round]")];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.textContent).toContain(ILIOS.name);
+    expect(container.textContent).not.toContain(SURAVASA.name);
   });
 
-  it("stays silent on a slot whose candidates disagree", async () => {
-    await render(REGULATION);
+  it("ignores a stage that carries no pool", async () => {
+    listPublicConfigs.mockResolvedValue({ configs: TWO_STAGE_CONFIGS });
 
-    // Playoffs Round 1 slot 3 mixes Control and Push: there is no single rule to
-    // state, and picking one of the two would invent one.
-    const mixed = stages()[0]?.rounds[0]?.rows[2];
-    expect(mixed?.maps.map((tile) => tile.name)).toEqual(["Oasis", "Colosseo"]);
-    expect(mixed?.mode).toBeNull();
-  });
+    await render("stage=999");
 
-  it("stays silent when the catalogue cannot resolve a candidate's mode", async () => {
-    await render([
-      config({
-        id: 452,
-        stage_id: 188,
-        round: 4,
-        mode: "slots",
-        slots: [{ position: 1, candidates: [52, RETIRED_MAP_ID], reserve_item_id: null }]
-      })
-    ]);
-
-    // Two of two candidates would have to be Control for the rule to hold, and
-    // one of them is unknown.
-    expect(stages()[0]?.rounds[0]?.rows[0]?.mode).toBeNull();
-  });
-});
-
-describe("levels that are not rounds", () => {
-  it("drops the stage-wide and tournament-wide levels while any round exists", async () => {
-    const text = await render([
-      ...REGULATION,
-      config({ id: 470, stage_id: null, round: null, mode: "pool", item_ids: [52, 37, 71, 63] }),
-      config({ id: 471, stage_id: 188, round: null, mode: "pool", item_ids: [45, 84] })
-    ]);
-
-    // Rendered next to real rounds, a whole-series level reads as one more round
-    // holding every map — the duplicate aggregate list this page dropped.
-    expect(text).not.toContain(COPY.scope.tournamentDefault);
-    expect(text).not.toContain(COPY.wholeStage);
-    // Both stages still switchable, neither carrying a whole-series entry.
-    expect(stageTabs().map((tab) => tab.label)).toEqual(["Playoffs", "Groups"]);
-    expect(stageTabs().map((tab) => tab.count)).toEqual(["3", "2"]);
-  });
-
-  it("renders a whole-series level when it is the only thing configured", async () => {
-    await render([
-      config({ id: 470, stage_id: null, round: null, mode: "pool", item_ids: [52, 37] })
-    ]);
-
-    // Nothing else answers "what will we play", so the fallback is the answer.
-    const [tournament] = stages();
-    expect(tournament?.title).toBe(COPY.scope.tournamentDefault);
-    expect(tournament?.rounds[0]?.rows[0]?.slot).toBe(COPY.roundPoolShared);
-    expect(tileNames()).toEqual(["Busan", "Ilios"]);
-  });
-
-  it("falls back to the stage id when the stages read carries no such stage", async () => {
-    getStages.mockResolvedValue([]);
-    await render(REGULATION);
-
-    expect(stageTabs().map((tab) => tab.label)).toEqual([
-      COPY.scope.unknownStage.replace("{id}", "188"),
-      COPY.scope.unknownStage.replace("{id}", "189")
-    ]);
+    // Falls back to the whole tournament rather than an empty section: every
+    // stage's rounds are laid out again.
+    expect(container.querySelectorAll("[data-map-pool-round]")).toHaveLength(3);
   });
 });
 
 describe("nothing to show", () => {
-  it("says so when the tournament has no config at all", async () => {
-    const text = await render([]);
+  it("says the pool is empty rather than printing an empty grid", async () => {
+    listPublicConfigs.mockResolvedValue({ configs: [] });
 
-    expect(text).toContain(COPY.notConfiguredTitle);
-    expect(stages()).toEqual([]);
+    await render();
+
+    expect(container.textContent).toContain(en.tournamentDetail.maps.emptyTitle);
+    expect(container.querySelector("figure")).toBeNull();
   });
 
-  it("says so when every config is empty", async () => {
-    // An organizer who created the levels and never filled them has published no
-    // pool, which is exactly what the empty state says.
-    const text = await render([
-      config({ id: 430, stage_id: 188, round: 1, mode: "pool", item_ids: [] }),
-      config({ id: 431, stage_id: 188, round: 2, mode: "slots", slots: [] })
-    ]);
+  it("distinguishes a failed pool read from an empty pool", async () => {
+    listPublicConfigs.mockRejectedValue(new Error("boom"));
 
-    expect(text).toContain(COPY.notConfiguredTitle);
-    expect(stages()).toEqual([]);
-  });
-});
+    await render();
 
-/*
- * The page reached this file as a shadcn `Card` island with hand-rolled filter
- * pills, its own loading skeleton and its own error gate — a second design
- * system inside a tab strip whose other six pages share one. These pin the
- * shared vocabulary so it cannot drift back.
- */
-describe("the shared public-page design system", () => {
-  it("renders inside the public-page container, on shared card surfaces", async () => {
-    await render(REGULATION);
-
-    // `styles.publicDataPage` is what pins every child to `min-width: 0`, so a
-    // wide descendant owns its overflow instead of scrolling the document.
-    const shell = container.querySelector("section[class*=publicDataPage]");
-    expect(shell).not.toBeNull();
-    expect(shell?.getAttribute("aria-label")).toBe(en.common.maps);
-    // The stage on screen is a `tn-card`, the shared surface token, and it is the
-    // only one: the switcher above swaps it rather than stacking every stage.
-    const surfaces = Array.from(container.querySelectorAll("section[role=group]"));
-    expect(surfaces).toHaveLength(1);
-    expect(surfaces[0]?.classList.contains("tn-card")).toBe(true);
-    // The switcher rides the public pages' own control rail.
-    expect(container.querySelector(`[class*=controlRail] .stage-tabs`)).not.toBeNull();
-  });
-
-  it("announces the loading state instead of showing silent grey blocks", async () => {
-    // A read that never settles: the page must be in its shared skeleton.
-    // Deliberately never resolved: the resolver is dropped on the floor.
-    listPublicConfigs.mockReturnValue(Promise.withResolvers<never>().promise);
-    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => {
-      root.render(
-        <QueryClientProvider client={client}>
-          <NextIntlClientProvider locale="en" messages={en}>
-            <TournamentMapsPage tournamentId={TOURNAMENT_ID} slug={String(TOURNAMENT_ID)} />
-          </NextIntlClientProvider>
-        </QueryClientProvider>
-      );
-    });
-    await settle();
-
-    const region = container.querySelector('[role="status"]');
-    expect(region?.getAttribute("aria-busy")).toBe("true");
-    expect(region?.getAttribute("aria-live")).toBe("polite");
-    expect(region?.getAttribute("data-skeleton-variant")).toBe("maps");
-    expect(region?.textContent).toContain(en.tournamentDetail.loading.pages.maps);
-  });
-
-  it("keeps the rendered rounds on screen when a refetch fails", async () => {
-    await render(REGULATION);
-    const before = tileNames().length;
-    expect(before).toBeGreaterThan(0);
-
-    // The reads have landed once; now the catalogue refetch fails. The old gate
-    // tested `isError` before anything else and threw the whole page away for a
-    // full-page error card, losing content the viewer was already reading.
-    getAllMaps.mockRejectedValue(new Error("network"));
-    await act(async () => {
-      await client.refetchQueries({ queryKey: ["maps", "all", "gamemode"] }).catch(() => {});
-    });
-    await settle();
-
-    expect(tileNames()).toHaveLength(before);
-    expect(container.textContent ?? "").toContain(
-      en.tournamentDetail.pageState.refreshError.title
-    );
-  });
-});
-
-describe("the per-match veto machinery is not on this page", () => {
-  it("shows no scope picker, no per-match format and no step list", async () => {
-    const text = await render([
-      ...REGULATION,
-      config({
-        id: 440,
-        stage_id: 189,
-        round: 2,
-        preset: "custom",
-        sequence: ["ban_first", "pick_second", "decider"],
-        item_ids: [52, 37, 45]
-      })
-    ]);
-
-    // The picker and the cascade it fed.
-    expect(text).not.toContain(COPY.source.exact);
-    expect(text).not.toContain(COPY.source.tournament);
-    // Series length and the ban/pick order are properties of one match, not of
-    // the tournament's pool; they belong on the match's own page.
-    expect(text).not.toContain(COPY.bracketFormat);
-    expect(text).not.toContain(COPY.sequenceTitle);
-    expect(text).not.toContain(COPY.customOrder);
-    expect(text).not.toContain(en.mapVeto.step.banFirst);
-    expect(container.querySelector("select")).toBeNull();
+    expect(container.textContent).toContain(en.tournamentDetail.pageState.initialError.title);
+    expect(container.textContent).not.toContain(en.tournamentDetail.maps.emptyTitle);
   });
 });

@@ -1,178 +1,233 @@
 "use client";
 
-import { useState } from "react";
-import Image from "next/image";
-import { ColumnDef } from "@tanstack/react-table";
-import { ExternalLink, Globe, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import type { ColumnDef } from "@tanstack/react-table";
+import { Trash2, UserCog } from "lucide-react";
 import { useFormatter } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { PROVIDER_META, ProviderBadge } from "@/components/admin/OAuthProviderBadge";
-import { TONE_CLASS } from "@/components/admin/tone";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { AdminInspector } from "@/components/admin/kit/AdminInspector";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
+import { createKebabColumn } from "@/components/admin/kit/kebab-column";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
+import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useQueryParams } from "@/hooks/useQueryParams";
 import { notify } from "@/lib/notify";
+import { cn } from "@/lib/utils";
 import { rbacService } from "@/services/rbac.service";
 import type { OAuthConnectionAdmin, OAuthProvider } from "@/types/rbac.types";
 
 const PAGE_SIZE = 20;
+
+function providerLabel(provider: OAuthProvider): string {
+  return PROVIDER_META[provider]?.label ?? provider;
+}
 
 function isTokenExpired(expiresAt: string | null | undefined): boolean {
   if (!expiresAt) return false;
   return new Date(expiresAt) < new Date();
 }
 
+function accountsHref(connection: OAuthConnectionAdmin): string {
+  const needle = connection.auth_user_username ?? connection.auth_user_email ?? "";
+  return `/admin/access/accounts?search=${encodeURIComponent(needle)}`;
+}
+
+function Field({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
+  return (
+    <div className="min-w-0">
+      <p className={EYEBROW_CLASS}>{label}</p>
+      <div className="mt-0.5 break-words text-sm">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * OAuth connections (T2, F15): which provider account signs in as which auth
+ * account.
+ *
+ * The provider `<Select>` in the toolbar is now a URL chip, so "every Discord
+ * connection whose token expired" is a link rather than a sequence of clicks,
+ * and the detail a support question actually needs — provider id, token
+ * expiry, the auth account — moved from the row into the inspector.
+ */
 export default function OAuthConnectionsAdminPage() {
   const format = useFormatter();
   const queryClient = useQueryClient();
   const { hasPermission } = usePermissions();
-  const canDeleteConnections = hasPermission("auth_user.update");
-  const [providerFilter, setProviderFilter] = useState<string>("all");
-  const [deletingConnection, setDeletingConnection] = useState<OAuthConnectionAdmin | null>(null);
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const openId = searchParams?.get("id") ?? null;
 
-  const deleteConnectionMutation = useMutation({
+  const canDeleteConnections = hasPermission("auth_user.update");
+  const [pageRows, setPageRows] = useState<OAuthConnectionAdmin[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<OAuthConnectionAdmin | null>(null);
+
+  const defs = useMemo<FilterDef[]>(
+    () => [
+      {
+        key: "provider",
+        label: "Provider",
+        kind: "single",
+        options: (Object.keys(PROVIDER_META) as OAuthProvider[]).map((provider) => ({
+          value: provider,
+          label: providerLabel(provider)
+        }))
+      }
+    ],
+    []
+  );
+  const filters = useAdminFilters(defs);
+  const providerFilter = String(filters.values.provider ?? "");
+
+  const openRow = pageRows.find((row) => String(row.id) === openId) ?? null;
+  const openIndex = openRow ? pageRows.indexOf(openRow) : -1;
+
+  const deleteMutation = useMutation({
     mutationFn: (connectionId: number) => rbacService.deleteOAuthConnection(connectionId),
     onSuccess: async () => {
+      const removed = pendingDelete;
       await queryClient.invalidateQueries({ queryKey: ["access-admin", "oauth-connections"] });
-      setDeletingConnection(null);
+      setPendingDelete(null);
+      if (removed && String(removed.id) === openId) setParams({ id: null });
       notify.success("OAuth connection removed");
-    }
+    },
+    onError: (error) => notify.apiError(error)
   });
 
-  const columns: ColumnDef<OAuthConnectionAdmin>[] = [
-    {
-      accessorKey: "provider",
-      header: "Provider",
-      cell: ({ row }) => <ProviderBadge provider={row.original.provider} />
-    },
-    {
-      id: "provider_user",
-      header: "Provider account",
-      cell: ({ row }) => {
-        const conn = row.original;
-        return (
-          <div className="flex items-center gap-3">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={conn.avatar_url ?? undefined} alt={conn.username} />
-              <AvatarFallback className="text-xs">
-                {conn.username.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{conn.display_name ?? conn.username}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {conn.username}
-                {conn.email ? ` \u00B7 ${conn.email}` : ""}
-              </p>
+  const columns = useMemo<ColumnDef<OAuthConnectionAdmin>[]>(
+    () => [
+      {
+        accessorKey: "provider",
+        header: "Provider",
+        cell: ({ row }) => <ProviderBadge provider={row.original.provider} />
+      },
+      {
+        id: "provider_user",
+        header: "Provider account",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const connection = row.original;
+          return (
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar className="size-8">
+                <AvatarImage src={connection.avatar_url ?? undefined} alt={connection.username} />
+                <AvatarFallback className="text-xs">
+                  {connection.username.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {connection.display_name ?? connection.username}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {connection.username}
+                  {connection.email ? ` \u00B7 ${connection.email}` : ""}
+                </p>
+              </div>
             </div>
-          </div>
-        );
-      }
-    },
-    {
-      accessorKey: "provider_user_id",
-      header: "Provider ID",
-      cell: ({ row }) => (
-        <code className="font-mono text-xs tabular-nums text-muted-foreground">
-          {row.original.provider_user_id}
-        </code>
-      )
-    },
-    {
-      id: "auth_user",
-      header: "Auth user",
-      cell: ({ row }) => {
-        const conn = row.original;
-        const nick = conn.auth_user_username ?? conn.auth_user_email ?? "";
-        return (
-          <div className="min-w-0">
-            <a
-              href={`/admin/access/users?search=${encodeURIComponent(nick)}`}
-              className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
-            >
-              <span className="truncate text-sm font-medium text-foreground">
-                {conn.auth_user_username}
-              </span>
-              <ExternalLink aria-hidden className="h-3 w-3 shrink-0" />
-            </a>
-            <p className="truncate text-xs text-muted-foreground">{conn.auth_user_email}</p>
-          </div>
-        );
-      }
-    },
-    {
-      id: "token_status",
-      header: "Token",
-      cell: ({ row }) => {
-        const expiresAt = row.original.token_expires_at;
-        if (!expiresAt) {
-          return <span className="text-xs text-muted-foreground">No token</span>;
+          );
         }
-        const expired = isTokenExpired(expiresAt);
-        return (
-          <Badge variant="outline" className={TONE_CLASS[expired ? "danger" : "success"]}>
-            {expired ? "Expired" : "Active"}
-          </Badge>
-        );
-      }
-    },
-    {
-      accessorKey: "created_at",
-      header: "Connected",
-      cell: ({ row }) => (
-        <span className="text-sm tabular-nums text-muted-foreground">
-          {format.dateTime(new Date(row.original.created_at), {
-            year: "numeric",
-            month: "short",
-            day: "numeric"
-          })}
-        </span>
-      )
-    },
-    ...(canDeleteConnections
-      ? ([
-          {
-            id: "actions",
-            header: "",
-            cell: ({ row }) => (
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={`Remove ${PROVIDER_META[row.original.provider]?.label ?? row.original.provider} connection for ${row.original.username}`}
-                onClick={() => setDeletingConnection(row.original)}
-              >
-                <Trash2 aria-hidden className="h-4 w-4" />
-              </Button>
-            )
+      },
+      {
+        id: "auth_user",
+        header: "Auth account",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{row.original.auth_user_username}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {row.original.auth_user_email}
+            </p>
+          </div>
+        )
+      },
+      {
+        id: "token_status",
+        header: "Token",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const expiresAt = row.original.token_expires_at;
+          if (!expiresAt) {
+            return <span className="text-xs text-muted-foreground">No token</span>;
           }
-        ] satisfies ColumnDef<OAuthConnectionAdmin>[])
-      : [])
-  ];
+          const expired = isTokenExpired(expiresAt);
+          return (
+            <Badge variant="outline" className={cn(TONE_CLASS[expired ? "danger" : "success"])}>
+              {expired ? "Expired" : "Active"}
+            </Badge>
+          );
+        }
+      },
+      {
+        accessorKey: "created_at",
+        header: "Connected",
+        cell: ({ row }) => (
+          <span className="text-sm tabular-nums text-muted-foreground">
+            {format.dateTime(new Date(row.original.created_at), {
+              year: "numeric",
+              month: "short",
+              day: "numeric"
+            })}
+          </span>
+        )
+      },
+      createKebabColumn<OAuthConnectionAdmin>(
+        (row) => [
+          { label: "Open auth account", icon: UserCog, href: accountsHref(row) },
+          {
+            label: "Remove connection",
+            icon: Trash2,
+            destructive: true,
+            hidden: !canDeleteConnections,
+            onSelect: () => setPendingDelete(row)
+          }
+        ],
+        {
+          rowLabel: (row) => `${providerLabel(row.provider)} connection for ${row.username}`
+        }
+      )
+    ],
+    [canDeleteConnections, format]
+  );
 
   return (
-    <>
-      <div className="space-y-6">
-        <AdminPageHeader
-          title="OAuth connections"
-          description="View all OAuth provider connections linked to user accounts."
-          meta={<Badge variant="secondary">Auth</Badge>}
-        />
-
-        <AdminDataTable
+    <div className={cn("grid items-start gap-4", openRow && "lg:grid-cols-[minmax(0,1fr)_380px]")}>
+      <div className="min-w-0">
+        <AdminDataTable<OAuthConnectionAdmin>
+          columns={columns}
           initialPageSize={PAGE_SIZE}
           pageSizeOptions={[10, 20, 50, 100]}
+          searchPlaceholder="Search by username, email, or provider ID…"
+          filterKey={filters.filterKey}
+          inspectorId={openId}
+          getRowId={(row) => String(row.id)}
+          toolbar={<AdminFilterBar defs={defs} filters={filters} />}
+          emptyMessage="No OAuth connection matches. Clear the provider chip to see every connection."
+          onRowClick={(row) => setParams({ id: String(row.original.id) })}
+          renderMobileCard={(row) => (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">
+                {row.original.display_name ?? row.original.username}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {providerLabel(row.original.provider)} · {row.original.auth_user_username}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {row.original.token_expires_at
+                  ? isTokenExpired(row.original.token_expires_at)
+                    ? "Token expired"
+                    : "Token active"
+                  : "No token"}
+              </p>
+            </div>
+          )}
           queryKey={(page, search, pageSize, sortField, sortDir) => [
             "access-admin",
             "oauth-connections",
@@ -183,67 +238,85 @@ export default function OAuthConnectionsAdminPage() {
             sortDir,
             providerFilter
           ]}
-          queryFn={(page, search, pageSize, sortField, sortDir) =>
-            rbacService.listOAuthConnections({
+          queryFn={async (page, search, pageSize, sortField, sortDir) => {
+            const result = await rbacService.listOAuthConnections({
               page,
               per_page: pageSize,
               sort: sortField ?? undefined,
               order: sortDir,
               search: search || undefined,
-              provider: providerFilter !== "all" ? providerFilter : undefined
-            })
-          }
-          columns={columns}
-          searchPlaceholder="Search by username, email, or provider ID…"
-          emptyMessage="No OAuth connections match these filters. Try another search or switch the provider filter to all providers."
-          actions={
-            <Select value={providerFilter} onValueChange={setProviderFilter}>
-              <SelectTrigger className="w-48" aria-label="Filter by provider">
-                <SelectValue placeholder="Filter by provider" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All providers</SelectItem>
-                {(
-                  Object.entries(PROVIDER_META) as [
-                    OAuthProvider,
-                    (typeof PROVIDER_META)[OAuthProvider]
-                  ][]
-                ).map(([key, meta]) => (
-                  <SelectItem key={key} value={key}>
-                    <span className="flex items-center gap-2">
-                      {meta.icon ? (
-                        <Image
-                          src={meta.icon}
-                          alt=""
-                          width={14}
-                          height={14}
-                          className={meta.iconClass ?? ""}
-                        />
-                      ) : (
-                        <Globe aria-hidden className="h-3.5 w-3.5" />
-                      )}
-                      {meta.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          }
+              provider: providerFilter || undefined
+            });
+            setPageRows(result.results);
+            return result;
+          }}
         />
       </div>
 
-      {deletingConnection ? (
-        <DeleteConfirmDialog
-          open={!!deletingConnection}
-          onOpenChange={(open) => !open && setDeletingConnection(null)}
-          onConfirm={() => deleteConnectionMutation.mutate(deletingConnection.id)}
-          isDeleting={deleteConnectionMutation.isPending}
-          title={`Remove ${PROVIDER_META[deletingConnection.provider]?.label ?? deletingConnection.provider} connection`}
-          description={`This detaches ${deletingConnection.display_name ?? deletingConnection.username} from auth user ${deletingConnection.auth_user_username ?? `#${deletingConnection.auth_user_id}`}. That user can no longer sign in with ${PROVIDER_META[deletingConnection.provider]?.label ?? deletingConnection.provider} until they reconnect it themselves.`}
-          confirmLabel="Remove connection"
-          confirmingLabel="Removing…"
-        />
-      ) : null}
-    </>
+      <AdminInspector
+        openId={openRow ? openId : null}
+        onClose={() => setParams({ id: null })}
+        title={openRow ? (openRow.display_name ?? openRow.username) : ""}
+        subtitle={openRow ? providerLabel(openRow.provider) : undefined}
+        openHref={openRow ? accountsHref(openRow) : undefined}
+        onPrev={
+          openIndex > 0 ? () => setParams({ id: String(pageRows[openIndex - 1].id) }) : undefined
+        }
+        onNext={
+          openIndex >= 0 && openIndex < pageRows.length - 1
+            ? () => setParams({ id: String(pageRows[openIndex + 1].id) })
+            : undefined
+        }
+      >
+        {openRow ? (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Provider">
+              <ProviderBadge provider={openRow.provider} />
+            </Field>
+            <Field label="Provider id">
+              <span className="font-mono tabular-nums">{openRow.provider_user_id}</span>
+            </Field>
+            <Field label="Provider username">{openRow.username}</Field>
+            <Field label="Provider email">{openRow.email ?? "Not shared"}</Field>
+            <Field label="Auth account">
+              <Link
+                href={accountsHref(openRow)}
+                className="text-primary hover:underline"
+              >
+                {openRow.auth_user_username ?? `#${openRow.auth_user_id}`}
+              </Link>
+            </Field>
+            <Field label="Auth email">{openRow.auth_user_email ?? "Unavailable"}</Field>
+            <Field label="Connected">
+              <span className="tabular-nums">{openRow.created_at.slice(0, 10)}</span>
+            </Field>
+            <Field label="Token">
+              {openRow.token_expires_at
+                ? `${isTokenExpired(openRow.token_expires_at) ? "Expired" : "Valid until"} ${openRow.token_expires_at.slice(0, 10)}`
+                : "No stored token"}
+            </Field>
+          </div>
+        ) : null}
+      </AdminInspector>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        pending={deleteMutation.isPending}
+        intent={{
+          title: "Remove OAuth connection",
+          description: pendingDelete
+            ? `This detaches ${pendingDelete.display_name ?? pendingDelete.username} from auth account ${pendingDelete.auth_user_username ?? `#${pendingDelete.auth_user_id}`}. That account can no longer sign in with ${providerLabel(pendingDelete.provider)} until it reconnects the provider itself.`
+            : "",
+          confirmLabel: "Remove connection",
+          tone: "danger"
+        }}
+        onConfirm={() => {
+          if (pendingDelete) deleteMutation.mutate(pendingDelete.id);
+        }}
+      />
+    </div>
   );
 }

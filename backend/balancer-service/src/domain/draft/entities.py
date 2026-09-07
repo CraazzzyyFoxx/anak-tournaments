@@ -19,10 +19,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from shared.core.enums import HeroClass
+from shared.domain.roster import PlayerRoster
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
 
 __all__ = (
-    "CaptainSeed",
     "DEFAULT_ROLE_IMPACT",
     "DraftAssignment",
     "DraftFeasibilityReport",
@@ -35,22 +35,12 @@ __all__ = (
     "FitConfig",
     "FitPlayer",
     "FitResult",
-    "PlayerSeed",
-    "REGISTRATION_CUSTOM_FIELDS_KEY",
+    "PoolSeat",
     "RoleEditPreview",
     "RoleEditResult",
     "SlotDecision",
     "SlotDeficit",
 )
-
-# Where seeding parks a registration's custom-field ANSWERS
-# (``rules._registration_additional_info``). Private: which answers a
-# spectator may read is chosen per field by the organizer and projected into
-# ``custom_fields`` on the board read side, so the raw bag is stripped from
-# every public snapshot (``services/draft/board.py::public_additional_info``).
-# Shared between the seeding rule (writer) and the board service (redactor),
-# hence a domain constant rather than living in either one.
-REGISTRATION_CUSTOM_FIELDS_KEY = "registration_custom_fields"
 
 
 # --- feasibility (domain/draft/feasibility.py) ------------------------------
@@ -117,52 +107,39 @@ class DraftFeasibilityState:
 
 @dataclass(frozen=True)
 class DraftSnapshot:
-    """One consistent read of a session's team/player/pick rows.
+    """One consistent read of a session's rows plus their resolved rosters.
 
     Loaded once per request and shared by every step that needs the session
-    contents (role counts, fit construction, feasibility state) instead of
-    each step re-querying the same rows.
+    contents (role counts, fit construction, feasibility state) instead of each
+    step re-querying the same rows. ``rosters`` is keyed by ``DraftPlayer.id``
+    and comes from the one engine (``shared.services.roster``) -- no step
+    derives a role or a rank for itself.
     """
 
     teams: tuple[DraftTeam, ...]
     players: tuple[DraftPlayer, ...]
     picks: tuple[DraftPick, ...]
+    rosters: Mapping[int, PlayerRoster]
+
+    def roster(self, player_id: int) -> PlayerRoster | None:
+        return self.rosters.get(player_id)
 
 
 # --- seeding (domain/draft/rules.py) -----------------------------------------
 
 
 @dataclass(frozen=True)
-class CaptainSeed:
-    name: str
-    draft_position: int
-    user_id: int | None = None
-    auth_user_id: int | None = None
-    battle_tag: str | None = None
-    # Real role/rank when the captain is drawn from the balancer pool.
-    primary_role: HeroClass | None = None
-    sub_role: str | None = None
-    is_flex: bool = False
-    division_number: int | None = None
-    rank_value: int | None = None
-    role_ranks: dict = field(default_factory=dict)
-    role_top_heroes: dict = field(default_factory=dict)
-    additional_info: dict = field(default_factory=dict)
+class PoolSeat:
+    """One seat a seed creates: a pool registration, and whether it captains.
 
+    All a seed carries. Roles, ranks, sub-role, flex and division are NOT
+    copied: the draft reads them from the registration through the engine, so
+    there is nothing here to go stale.
+    """
 
-@dataclass(frozen=True)
-class PlayerSeed:
-    primary_role: HeroClass
-    user_id: int | None = None
-    battle_tag: str | None = None
-    secondary_roles: list[HeroClass] = field(default_factory=list)
-    sub_role: str | None = None
-    is_flex: bool = False
-    division_number: int | None = None
-    rank_value: int | None = None
-    role_ranks: dict = field(default_factory=dict)
-    role_top_heroes: dict = field(default_factory=dict)
-    additional_info: dict = field(default_factory=dict)
+    registration_id: int
+    draft_position: int | None = None
+    team_name: str | None = None
 
 
 # --- pick selection (domain/draft/rules.py) ----------------------------------
@@ -220,14 +197,16 @@ DEFAULT_ROLE_IMPACT: dict[HeroClass, float] = {
 @dataclass(frozen=True)
 class FitPlayer:
     player_id: int
+    #: The player's strongest playable role -- what they are worth with no role
+    #: context (a role-less roster, or the tie-break in a scarce-role choice).
     rank_value: int
     playable_roles: frozenset[HeroClass]
     preference_order: tuple[HeroClass, ...] = ()
     is_flex: bool = False
     user_id: int | None = None
-    # Per-role ranks (role -> SR). ``rank_value`` is the fallback when a role
-    # has no specific entry, so candidates are scored at the rank of the role
-    # they'd actually fill — not their primary-role rank.
+    #: Per-role ranks over PLAYABLE roles only, straight from the engine. No
+    #: fallback: a role the player carries no rank on is not playable, so it is
+    #: never scored -- ``best`` is only reached for a role-less slot.
     rank_by_role: Mapping[HeroClass, int] = field(default_factory=dict)
 
     def rank_for(self, role: HeroClass) -> int:

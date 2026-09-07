@@ -8,26 +8,26 @@ appears, use exactly this translation for consistency across the app.
 
 | EN | RU | Notes |
 |---|---|---|
-| Standings | Таблица | турнирная таблица; коротко «Таблица» в навигации |
+| Standings | Таблица | tournament standings; short form «Таблица» in navigation |
 | Bracket | Сетка | |
 | Playoff | Плей-офф | |
 | Group / Groups | Группа / Группы | |
 | Group stage | Групповой этап | |
 | Round-robin | Круговой | |
 | Swiss | Швейцарка | |
-| Check-in | Чек-ин | глагол: «Пройти чек-ин» |
+| Check-in | Чек-ин | verb: «Пройти чек-ин» |
 | Withdraw | Снять заявку | |
 | Roster / Rostered | Ростер / В ростере | |
 | Participants | Участники | |
 | Heroes | Герои | |
-| Tank / Damage / Support | Танк / Дамаг / Саппорт | роли |
+| Tank / Damage / Support | Танк / Дамаг / Саппорт | roles |
 | Rank | Ранг | |
-| SR | SR | не переводим |
+| SR | SR | not translated |
 | Division | Дивизион | |
 | Draft | Драфт | |
-| Pick | Пик | глагол: «пикать/выбрать» |
+| Pick | Пик | verb: «пикать/выбрать» |
 | Ban | Бан | |
-| Encounter | Встреча | пара команд в матче |
+| Encounter | Встреча | a pair of teams within a match |
 | Match | Матч | |
 | Map | Карта | |
 | Tiebreakers | Тай-брейки | |
@@ -35,25 +35,25 @@ appears, use exactly this translation for consistency across the app.
 | Head-to-Head | Личные встречи | |
 | Balancer | Балансировщик | |
 | Registration | Регистрация | |
-| Phase | Фаза | фаза жизненного цикла турнира: регистрация, чек-ин, драфт, лайв |
-| Schedule | Расписание | «Расписание фаз» — публичная страница со временем фаз |
+| Phase | Фаза | tournament lifecycle phase: registration, check-in, draft, live |
+| Schedule | Расписание | «Расписание фаз» — public page with phase times |
 | Smurf | Смурф | |
-| BattleTag | BattleTag | не переводим |
+| BattleTag | BattleTag | not translated |
 | Playtime | Тайм на героях | «% playtime» → «% тайма» |
 | Seed / Seeding | Посев | |
-| Slot | Слот | одна карта серии |
+| Slot | Слот | a single map of a series |
 | Candidate | Кандидат | «карты-кандидаты» |
-| Reserve map | Резервная карта | резерв при ничьей |
+| Reserve map | Резервная карта | reserve used on a tie |
 
 ## Style rules
 
-- Тон: обращение на «вы», без канцелярита; коротко и по делу (UI-строки).
-- Кнопки — императив («Снять заявку», «Пройти чек-ин»), заголовки — существительные.
-- Числа: русская плюрализация через ICU (`plural` с `one/few/many/other`).
-- Не переводим: `SR`, `BattleTag`, `OWAL`, названия героев/карт, `Overwatch`.
-- «Rotation» как существительное не переводим: «ротация» в этом сообществе уже
-  значит ротацию карт/героев, поэтому «ротация первого бана» читается как что-то
-  про состав пула. Контрол называется «Кто банит первым», варианты — «Всегда
+- Tone: address the user with «вы», no officialese; short and to the point (UI strings).
+- Buttons are imperative («Снять заявку», «Пройти чек-ин»), headings are nouns.
+- Numbers: Russian pluralization via ICU (`plural` with `one/few/many/other`).
+- Never translated: `SR`, `BattleTag`, `OWAL`, hero and map names, `Overwatch`.
+- «Rotation» as a noun is not translated: in this community «ротация» already means
+  map/hero rotation, so «ротация первого бана» reads as something about pool
+  composition. The control is labelled «Кто банит первым», with the options «Всегда
   высший сид» / «По очереди».
-- Английский — проверяем на естественность и единообразие (одна и та же вещь
-  называется одинаково во всех неймспейсах).
+- English — check for naturalness and consistency (the same thing is named the same
+  way across all namespaces).

@@ -28,8 +28,10 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import UserRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
+from shared.services.audit import record_admin_audit
 from src import models, schemas
 from src.core import auth
 from src.rpc._helpers import (
@@ -71,6 +73,26 @@ def _serialize_result(encounter: models.Encounter) -> dict:
     ).model_dump(mode="json")
 
 
+_user_repo = UserRepository()
+
+
+async def _actor_player_id(session: Any, user: models.AuthUser) -> int | None:
+    """Translate the caller's auth id into the ``players.user`` id the audit stores.
+
+    ``EncounterResultAudit.actor_user_id`` is a FK to ``players.user``, not to
+    ``auth.user``. Passing ``user.id`` straight through wrote an id from the wrong
+    space, and the name join then resolved to whichever unrelated player happened
+    to hold that number -- "confirmed by craazzzyyfoxx" (auth 7) read as
+    "Hardstylerz#21775" (player 7). The captain paths already store the linked
+    player id (``_resolve_captain_identity``); this is the same translation at the
+    admin boundary.
+
+    ``None`` -- an account with no linked player -- reads as a machine actor, which
+    is what an unresolvable actor already displayed as.
+    """
+    return await _user_repo.get_id_by_auth_user_id(session, user.id)
+
+
 def register(broker: Any, logger: Any) -> None:
     # ── encounters ────────────────────────────────────────────────────────
 
@@ -82,6 +104,17 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_match_workspace_id(session, match_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = schemas.MatchUpdate.model_validate(_payload(data))
+            encounter_id = await session.scalar(sa.select(models.Match.encounter_id).where(models.Match.id == match_id))
+            await record_admin_audit(
+                session,
+                action="encounter.update_match",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="encounter",
+                entity_id=encounter_id or match_id,
+                after={"match_id": match_id, **body.model_dump(mode="json", exclude_unset=True)},
+            )
             # update_match commits internally; route returns a custom dict.
             match = await enc_service.encounter_service.update_match(session, match_id, body)
             return {
@@ -107,11 +140,21 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = schemas.EncounterSetResultInput.model_validate(_payload(data))
+            await record_admin_audit(
+                session,
+                action="encounter.set_result",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="encounter",
+                entity_id=encounter_id,
+                after=body.model_dump(mode="json", exclude_none=True),
+            )
             # set_encounter_result commits internally; route returns the settled state.
             encounter = await captain_service.set_encounter_result(
                 session,
                 encounter_id,
-                actor_user_id=user.id,
+                actor_user_id=await _actor_player_id(session, user),
                 home_score=body.home_score,
                 away_score=body.away_score,
                 closeness=body.closeness,
@@ -128,7 +171,18 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            encounter = await captain_service.reopen_encounter_result(session, encounter_id, actor_user_id=user.id)
+            await record_admin_audit(
+                session,
+                action="encounter.reopen_result",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="encounter",
+                entity_id=encounter_id,
+            )
+            encounter = await captain_service.reopen_encounter_result(
+                session, encounter_id, actor_user_id=await _actor_player_id(session, user)
+            )
             return _serialize_result(encounter)
 
         return await _run(logger, op)
@@ -172,6 +226,19 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = report_form_schemas.MatchReportFormUpsert.model_validate(_payload(data))
+            await record_admin_audit(
+                session,
+                action="report_form.upsert",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={
+                    "built_in_fields": {key: config.model_dump(mode="json") for key, config in body.built_in_fields.items()},
+                    "custom_field_keys": [field.key for field in body.custom_fields],
+                },
+            )
             # get_tournament_workspace_id above already 404s on a missing
             # tournament; upsert_report_form commits internally.
             return _dump(await report_form_service.upsert_report_form(session, tournament_id, body))
@@ -191,6 +258,16 @@ def register(broker: Any, logger: Any) -> None:
                     detail="Superuser privileges required",
                 )
             tournament_id = _require_id(data)
+            ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
+            await record_admin_audit(
+                session,
+                action="tournament.finish",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=tournament_id,
+            )
             # toggle_finished commits internally.
             tournament = await tournament_service.toggle_finished(session, tournament_id)
             return _dump(await tournament_flows.flows_service.to_pydantic(session, tournament, ["stages"]))
@@ -211,6 +288,16 @@ def register(broker: Any, logger: Any) -> None:
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only superusers can bypass tournament status transitions",
                 )
+            await record_admin_audit(
+                session,
+                action="tournament.status",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={"status": body.status.value, "force": body.force},
+            )
             # transition_status commits internally.
             tournament = await tournament_service.transition_status(
                 session,
@@ -230,6 +317,16 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "tournament", "update")
             body = schemas.TournamentScheduleSet.model_validate(_payload(data))
+            await record_admin_audit(
+                session,
+                action="tournament.schedule",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={"count": len(body.schedule)},
+            )
             # set_schedule commits internally (full replace of the phase rows).
             tournament = await schedule_service.set_schedule(session, tournament_id, body.schedule)
             return _dump(await tournament_flows.flows_service.to_pydantic(session, tournament, ["stages"]))
@@ -269,6 +366,16 @@ def register(broker: Any, logger: Any) -> None:
                 auth_user_id = int(payload["auth_user_id"])
             except (KeyError, TypeError, ValueError) as exc:
                 raise HTTPException(status_code=422, detail="auth_user_id is required") from exc
+            await record_admin_audit(
+                session,
+                action="tournament.preview_access.add",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={"auth_user_id": auth_user_id},
+            )
             row = await preview_access.preview_access_service.add_preview_access(session, tournament_id, auth_user_id)
             # Refresh the (viewer-agnostic) cached tournament read so the badge/state update.
             await invalidate_tournament_cache(tournament_id, "structure_changed")
@@ -284,6 +391,16 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             _require_ws_admin(user, ws_id)
             auth_user_id = _path_int(data, "auth_user_id")
+            await record_admin_audit(
+                session,
+                action="tournament.preview_access.remove",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={"auth_user_id": auth_user_id},
+            )
             await preview_access.preview_access_service.remove_preview_access(session, tournament_id, auth_user_id)
             await invalidate_tournament_cache(tournament_id, "structure_changed")
             return None
@@ -303,6 +420,16 @@ def register(broker: Any, logger: Any) -> None:
                 tournament_id=tournament_id,
                 resource="standing",
                 action="update",
+            )
+            ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
+            await record_admin_audit(
+                session,
+                action="standing.recalculate",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=tournament_id,
             )
             # recalculate_standings commits internally; returns a job.
             job = await standing_service.recalculate_standings(

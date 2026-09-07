@@ -262,6 +262,27 @@ class RosterQueryTests(IsolatedAsyncioTestCase):
         self.assertIn("LEFT OUTER JOIN tournament.team", sql)
         self.assertIn("tournament.player.tournament_id", sql)
 
+    async def test_the_roster_existence_flag_is_uncorrelated_and_rides_the_same_select(self) -> None:
+        """``rosters_formed`` answers "is this tournament drafted", not "does this
+        user have a roster row" — the read gates teamless streamers on it, so a
+        correlated form would answer the question the LEFT JOIN already answers
+        and gate nobody. One statement either way: a second round-trip on a
+        public, cacheable read is what the column exists to avoid."""
+        session = _CapturingSession([])
+
+        await StreamTargetRepository().list_roster(session, 7, [11, 12])
+
+        sql = _compiled(session.statements[0])
+        self.assertEqual(len(session.statements), 1)
+        self.assertIn("rosters_formed", sql)
+        self.assertIn("EXISTS", sql)
+        # The EXISTS keys on the tournament alone. Naming the user/member inside
+        # it would make it per-row.
+        exists_clause = sql[sql.index("EXISTS") :]
+        exists_clause = exists_clause[: exists_clause.index("AS rosters_formed")]
+        self.assertIn("tournament.player.tournament_id", exists_clause)
+        self.assertNotIn("workspace_member", exists_clause)
+
     async def test_short_circuits_on_no_user_ids(self) -> None:
         session = _CapturingSession([])
 

@@ -1,5 +1,7 @@
 import { Lock } from "lucide-react";
 
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
+
 interface PermissionHiddenNoticeProps {
   /** What is hidden, phrased as a statement: "Tournament data is hidden". */
   title: string;
@@ -8,20 +10,16 @@ interface PermissionHiddenNoticeProps {
 }
 
 /**
- * The dashboard's permission-denied panel. Both tournament cards rendered a
- * verbatim copy of this block; they share it now so the wording stays one
- * sentence that names who can grant access.
+ * The dashboard's permission-denied panel: one sentence that names who can
+ * grant access, on the admin's shared dashed note.
  */
-export function PermissionHiddenNotice({ title, permission }: Readonly<PermissionHiddenNoticeProps>) {
+export function PermissionHiddenNotice({
+  title,
+  permission
+}: Readonly<PermissionHiddenNoticeProps>) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-background/45 p-5 text-sm text-muted-foreground">
-      <div className="flex items-center gap-2 text-foreground">
-        <Lock className="size-4 text-muted-foreground" aria-hidden />
-        <span className="font-medium">{title}</span>
-      </div>
-      <p className="leading-6">
-        Ask a workspace administrator to grant your role the {permission} permission.
-      </p>
-    </div>
+    <EmptyNote icon={Lock} title={title}>
+      Ask a workspace administrator to grant your role the {permission} permission.
+    </EmptyNote>
   );
 }

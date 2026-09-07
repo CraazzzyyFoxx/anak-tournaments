@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apierr"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
 
@@ -134,20 +135,8 @@ func (b *Binary) relayAvatar(w http.ResponseWriter, r *http.Request, queue strin
 		return
 	}
 	if !env.OK {
-		status := http.StatusInternalServerError
-		msg := "internal error"
-		if env.Error != nil {
-			status = rpc.StatusForCode(env.Error.Code)
-			msg = env.Error.Message
-		}
-		writeDetail(w, status, msg)
+		apierr.WriteEnvelopeError(w, env.Error)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	// Relay a literal JSON `null` rather than an empty body (see edge/dispatch.go).
-	if len(env.Data) > 0 {
-		_, _ = w.Write(env.Data)
-	}
+	apierr.WriteOK(w, http.StatusOK, env)
 }

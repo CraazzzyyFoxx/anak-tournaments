@@ -23,6 +23,14 @@ const nextConfig = {
     staleTimes: {
       dynamic: 30,
     },
+    // 16.3 defaults this on; 16.2 does not. prod.Dockerfile cache-mounts
+    // .next/cache so subsequent compose builds reuse Turbopack artifacts.
+    turbopackFileSystemCacheForBuild: true,
+  },
+  // `bun run typecheck` / CI already gate this. next build on the 8-core
+  // prod box should not pay for a second tsc of the same tree.
+  typescript: {
+    ignoreBuildErrors: true,
   },
   // Only use standalone output in production builds
   ...(process.env.NODE_ENV === 'production' && { output: "standalone" }),
@@ -37,32 +45,10 @@ const nextConfig = {
     // are filesystem routes and take precedence over these afterFiles rewrites.
     const gateway = process.env.NEXT_INTERNAL_API_URL?.replace(/\/$/, "");
     if (!gateway) return [];
-    return ["/api/v1", "/api/balancer", "/api/analytics", "/api/streams", "/api/auth"].map((prefix) => ({
+    return ["/api/v1", "/api/v2", "/api/balancer", "/api/analytics", "/api/streams", "/api/auth"].map((prefix) => ({
       source: `${prefix}/:path*`,
       destination: `${gateway}${prefix}/:path*`,
     }));
-  },
-  async redirects() {
-    // Framework-level so these are real HTTP redirects. The same `redirect()`
-    // call inside a page returns 200 with the redirect encoded in the RSC
-    // stream — the browser still follows it, but a crawler, a bookmark or a
-    // link checker sees a successful empty page instead of a moved one.
-    return [
-      {
-        // `/matches` is a container, not a view: its content is now the
-        // `results` sub-tab. Temporary, because the landing sub-tab is a UI
-        // decision we may revisit.
-        source: "/admin/tournaments/:id/matches",
-        destination: "/admin/tournaments/:id/matches/results",
-        permanent: false,
-      },
-      {
-        // Logs stopped being a top-level tab. This move is settled, so 308.
-        source: "/admin/tournaments/:id/logs",
-        destination: "/admin/tournaments/:id/matches/logs",
-        permanent: true,
-      },
-    ];
   },
   images: {
     unoptimized: true,

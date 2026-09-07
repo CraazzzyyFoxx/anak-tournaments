@@ -34,7 +34,7 @@ import type { DivisionGrid } from "@/types/workspace.types";
 import { formatSubRoleLabel, getHeroIconUrl, getPlayerSlug } from "@/utils/player";
 
 import type { DraftPoolRoleFilter, DraftPoolSort } from "@/lib/draft-workspace-model";
-import { allPlayerHeroes, playerRoles, roleTopHeroes } from "@/lib/draft-workspace-model";
+import { allPlayerHeroes, playerRoles, roleTopHeroes, safeRoleForPlayer } from "@/lib/draft-workspace-model";
 
 const POOL_ROLES: DraftRole[] = ["tank", "dps", "support"];
 const SEGMENT_CLASS =
@@ -228,22 +228,25 @@ export function PlayerPool({
           {visiblePlayers.map((player) => {
             const roles = playerRoles(player);
             const secondaryRoles = roles.filter((entry) => entry !== player.primary_role);
-            const playerOptions = options?.options.filter((option) => option.player_id === player.id) ?? [];
-            const safeOption = playerOptions.find((option) => option.is_safe) ?? null;
-            const blocked = safetyRequired && safeOption == null;
+            // The server lists options in its own role order (tank, dps,
+            // support), so taking its first safe one preselected a secondary
+            // role for anybody whose primary sorts later. Ask in the player's
+            // own order instead.
+            const safeRole = safeRoleForPlayer(options, player);
+            const blocked = safetyRequired && safeRole == null;
             const bookmarked = shortlist.has(player.id);
             const isSelected = selectedPlayerId === player.id;
-            // effective_rank, not rank_value: under a role-less roster the
-            // server resolves the player's best role rank, which is the rank the
-            // pick will freeze and the roster will show.
-            const division = player.division_number ?? resolveDivisionFromRank(divisionGrid, player.effective_rank);
+            // `effective_rank` is the server's one rank for this player in this
+            // draft, resolved by the roster engine.
+            const division = resolveDivisionFromRank(divisionGrid, player.effective_rank);
             const divisionTitle = [
               getDivisionLabel(divisionGrid, division),
               player.effective_rank ? `${player.effective_rank} SR` : null
             ].filter(Boolean).join(" · ");
-            const heroes = roleTopHeroes(player, player.primary_role);
+            const primaryRole = player.primary_role;
+            const heroes = primaryRole ? roleTopHeroes(player, primaryRole) : [];
             const profileSlug = player.battle_tag ? getPlayerSlug(player.battle_tag) : null;
-            const selectPlayer = () => onSelect(player, safeOption?.role ?? roles[0] ?? null);
+            const selectPlayer = () => onSelect(player, safeRole ?? roles[0] ?? null);
             return (
               <article
                 key={player.id}
@@ -251,7 +254,7 @@ export function PlayerPool({
                   "group relative grid min-h-[64px] grid-cols-[1fr_auto] items-center gap-3 border-b border-l-2 border-[color:var(--aqt-border)] py-2.5 pl-3",
                   isSelected && "bg-[color:var(--aqt-teal)]/10"
                 )}
-                style={{ borderLeftColor: isSelected ? ROLE_ACCENT[player.primary_role] : "transparent" }}
+                style={{ borderLeftColor: isSelected && primaryRole ? ROLE_ACCENT[primaryRole] : "transparent" }}
               >
                 {/* Full-row select target. A real button with a short name, so the
                     profile link below is a sibling instead of nested interactive
@@ -290,14 +293,20 @@ export function PlayerPool({
                     </span>
                   </span>
                   <span className={cn("mt-1 flex flex-wrap items-center gap-1.5", blocked && "opacity-60")}>
-                    <span className="pointer-events-auto inline-flex min-w-0 items-center gap-1" title={t(`roles.${player.primary_role}`)}>
-                      <PlayerRoleIcon role={getRoleIconName(player.primary_role)} size={18} color={ROLE_ACCENT[player.primary_role]} />
-                      {player.sub_role && (
-                        <span className="truncate text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
-                          {formatSubRoleLabel(player.sub_role)}
-                        </span>
-                      )}
-                    </span>
+                    {primaryRole ? (
+                      <span className="pointer-events-auto inline-flex min-w-0 items-center gap-1" title={t(`roles.${primaryRole}`)}>
+                        <PlayerRoleIcon role={getRoleIconName(primaryRole)} size={18} color={ROLE_ACCENT[primaryRole]} />
+                        {player.sub_role && (
+                          <span className="truncate text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
+                            {formatSubRoleLabel(player.sub_role)}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="rounded border border-[color:var(--aqt-border-2)] px-1 text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
+                        {t("noRole")}
+                      </span>
+                    )}
                     {secondaryRoles.map((entry) => (
                       <PlayerRoleIcon key={entry} role={getRoleIconName(entry)} size={12} color="var(--aqt-fg-faint)" />
                     ))}

@@ -1,22 +1,13 @@
 "use client";
 
-import { startTransition, useEffect, useId, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -25,9 +16,12 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { NumberInput } from "@/components/ui/number-input";
+import { Switch } from "@/components/ui/switch";
+import { SaveBar } from "@/components/admin/kit/SaveBar";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { notify } from "@/lib/notify";
-import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
 import { ROLES, canonicalToRegistrationRole } from "@/lib/roles";
 import adminService from "@/services/admin.service";
@@ -35,13 +29,13 @@ import balancerAdminService from "@/services/balancer-admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type {
   AdminCustomFieldDef,
+  AdminRegistrationForm,
   AdminRegistrationFormUpsert,
   BuiltInFieldConfig
 } from "@/types/balancer-admin.types";
 
 import { BuiltInFieldsCard } from "./_components/BuiltInFieldsCard";
 import { CustomFieldsCard } from "./_components/CustomFieldsCard";
-import { RegistrationStatusCard } from "./_components/RegistrationStatusCard";
 import { type CatalogEntry, SubrolesTab } from "./_components/SubrolesTab";
 import {
   ROLE_FIELD_KEYS,
@@ -53,21 +47,57 @@ import {
   supportsCustomFieldValidation
 } from "./_components/formConfig";
 
-// D25: rendered by both the hub sub-route (tournament from the path) and the
-// legacy balancer route (tournament from the ?tournament query) until T14.
+/**
+ * One setting: what it is and why on the left, the control on the right — the
+ * row every T5 settings section is built from, so this page reads like the
+ * tournament Settings tab beside it rather than a column of prose.
+ */
+function SettingRow({
+  htmlFor,
+  label,
+  hint,
+  children
+}: Readonly<{ htmlFor?: string; label: string; hint?: ReactNode; children: ReactNode }>) {
+  return (
+    <div className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-2 md:items-center">
+      <div className="min-w-0">
+        <Label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
+          {label}
+        </Label>
+        {hint ? <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">{hint}</p> : null}
+      </div>
+      <div className="flex min-w-0 items-center md:justify-end">{children}</div>
+    </div>
+  );
+}
+
+/** A group of rows under an eyebrow; groups are separated by a hairline. */
+function SettingGroup({
+  title,
+  description,
+  children
+}: Readonly<{ title: string; description?: ReactNode; children: ReactNode }>) {
+  return (
+    <section className="border-t border-border pt-5 first:border-t-0 first:pt-0">
+      <h2 className={EYEBROW_CLASS}>{title}</h2>
+      {description ? (
+        <p className="mt-1 max-w-prose text-xs text-muted-foreground">{description}</p>
+      ) : null}
+      <div className="mt-3 divide-y divide-border/60">{children}</div>
+    </section>
+  );
+}
+
 export default function RegistrationFormBuilder({
-  tournamentId,
-  basePath
+  tournamentId
 }: Readonly<{
   tournamentId: number | null;
-  basePath: string;
 }>) {
   const t = useTranslations("registrationFormAdmin.page");
-  const scopeSelectId = useId();
-  const stageSelectId = useId();
+  const tStatus = useTranslations("registrationFormAdmin.status");
+  const ids = useId();
 
   const queryClient = useQueryClient();
-  const searchParams = useSearchParams();
   const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
 
   const [isOpen, setIsOpen] = useState(false);
@@ -75,6 +105,7 @@ export default function RegistrationFormBuilder({
   const [requireOpenProfile, setRequireOpenProfile] = useState(false);
   const [openProfileScope, setOpenProfileScope] = useState<"main" | "all">("main");
   const [showRanks, setShowRanks] = useState(false);
+  const [maxSubstitutes, setMaxSubstitutes] = useState(0);
   const [requireSubscription, setRequireSubscription] = useState(false);
   const [subscriptionStage, setSubscriptionStage] = useState<"registration" | "check_in">(
     "check_in"
@@ -103,6 +134,29 @@ export default function RegistrationFormBuilder({
 
   const loadedFormKeyRef = useRef<string | null>(null);
 
+  /** Local state ← a saved form (or the defaults, for a tournament with none). */
+  const applyForm = (data: AdminRegistrationForm | null) => {
+    startTransition(() => {
+      // Derived + read-only: "is registration open right now", computed by the
+      // server from the REGISTRATION phase-schedule window.
+      setIsOpen(data?.is_open ?? false);
+      setAutoApprove(data?.auto_approve ?? false);
+      setRequireOpenProfile(data?.require_open_profile ?? false);
+      setRequireSubscription(data?.require_subscription ?? false);
+      // Default to the looser stage on a form saved before the field existed, so
+      // loading an old form never silently arms a sign-up wall.
+      setSubscriptionStage(
+        data?.subscription_stage === "registration" ? "registration" : "check_in"
+      );
+      setOpenProfileScope((data?.open_profile_scope as "main" | "all") ?? "main");
+      setShowRanks(data?.show_ranks ?? false);
+      setMaxSubstitutes(data?.max_substitutes ?? 0);
+      setBuiltInFields(getBuiltInConfig(data?.built_in_fields ?? {}));
+      setCustomFields((data?.custom_fields ?? []).map(hydrateCustomField));
+      setHasChanges(false);
+    });
+  };
+
   useEffect(() => {
     const data = formQuery.data;
     if (!data) {
@@ -115,24 +169,8 @@ export default function RegistrationFormBuilder({
       return;
     }
     loadedFormKeyRef.current = formKey;
-    startTransition(() => {
-      // Derived + read-only: "is registration open right now", computed by the
-      // server from the REGISTRATION phase-schedule window.
-      setIsOpen(data.is_open);
-      setAutoApprove(data.auto_approve ?? false);
-      setRequireOpenProfile(data.require_open_profile ?? false);
-      setRequireSubscription(data.require_subscription ?? false);
-      // Default to the looser stage on a form saved before the field existed, so
-      // loading an old form never silently arms a sign-up wall.
-      setSubscriptionStage(
-        data.subscription_stage === "registration" ? "registration" : "check_in"
-      );
-      setOpenProfileScope((data.open_profile_scope as "main" | "all") ?? "main");
-      setShowRanks(data.show_ranks ?? false);
-      setBuiltInFields(getBuiltInConfig(data.built_in_fields ?? {}));
-      setCustomFields((data.custom_fields ?? []).map(hydrateCustomField));
-      setHasChanges(false);
-    });
+    applyForm(data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyForm only closes over setters
   }, [formQuery.data, hasChanges]);
 
   // The workspace `PlayerSubRole` catalog is fetched with row ids so the tab can
@@ -169,6 +207,7 @@ export default function RegistrationFormBuilder({
         require_open_profile: requireOpenProfile,
         open_profile_scope: openProfileScope,
         show_ranks: showRanks,
+        max_substitutes: maxSubstitutes,
         require_subscription: requireSubscription,
         subscription_stage: subscriptionStage,
         built_in_fields: Object.fromEntries(
@@ -301,240 +340,203 @@ export default function RegistrationFormBuilder({
   if (formQuery.isLoading) {
     return (
       <output className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground">
-        <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+        <LoaderCircle className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden />
         {t("loading")}
       </output>
     );
   }
 
-  const registrationsHref = searchParams.toString()
-    ? `${basePath}?${searchParams.toString()}`
-    : basePath;
-
   const formExists = formQuery.data != null;
+  const mark = <T,>(set: (value: T) => void) => (value: T) => {
+    set(value);
+    setHasChanges(true);
+  };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-            <p className="max-w-prose text-sm text-muted-foreground">{t("description")}</p>
-          </div>
-          <Button variant="outline" asChild className={MUTED_BUTTON_CLASS}>
-            <Link href={registrationsHref}>
-              <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
-              {t("backToRegistrations")}
-            </Link>
-          </Button>
-        </div>
-
-        <Tabs defaultValue="status" className="flex min-h-0 flex-1 flex-col">
-          <TabsList className="self-start">
-            <TabsTrigger value="status">{t("tabs.status")}</TabsTrigger>
-            <TabsTrigger value="fields">{t("tabs.fields")}</TabsTrigger>
-            <TabsTrigger value="subroles">{t("tabs.subroles")}</TabsTrigger>
-            <TabsTrigger value="custom">{t("tabs.custom")}</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="status">
-            <div className="space-y-4">
-              <RegistrationStatusCard
-                isOpen={isOpen}
-                autoApprove={autoApprove}
-                onChangeAutoApprove={(value) => {
-                  setAutoApprove(value);
-                  setHasChanges(true);
-                }}
+    <div className="flex flex-col gap-4">
+      {/* Rules first: everything that decides WHO gets in, as setting rows in
+          the same register as the tournament Settings tab. The field builders
+          below are lists and keep their own cards. */}
+      <Card>
+        <CardContent className="flex flex-col gap-5 pt-6">
+          <SettingGroup title={tStatus("title")} description={tStatus("description")}>
+            <SettingRow label={tStatus("acceptLabel")} hint={tStatus("scheduleHint")}>
+              <StatusPill tone={isOpen ? "success" : "neutral"}>
+                {isOpen ? tStatus("stateOpen") : tStatus("stateClosed")}
+              </StatusPill>
+            </SettingRow>
+            <SettingRow
+              htmlFor={`${ids}-auto-approve`}
+              label={tStatus("autoApproveLabel")}
+              hint={tStatus("autoApproveHint")}
+            >
+              <Switch
+                id={`${ids}-auto-approve`}
+                checked={autoApprove}
+                onCheckedChange={mark(setAutoApprove)}
               />
+            </SettingRow>
+          </SettingGroup>
 
-              {/* Every section on this tab is a Card with the rule stated in its
-                  description, so the explanation precedes the control it governs
-                  instead of trailing it. */}
-              <Card>
-                <CardHeader>
-                  <CardTitle asChild><h2>{t("admission.title")}</h2></CardTitle>
-                  <CardDescription className="max-w-prose">{t("admission.hint")}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={requireOpenProfile}
-                      onCheckedChange={(checked) => {
-                        setRequireOpenProfile(checked === true);
-                        setHasChanges(true);
-                      }}
-                    />
-                    {t("admission.requireOpenProfile")}
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <Label htmlFor={scopeSelectId} className="text-muted-foreground">
-                      {t("admission.scope")}
-                    </Label>
-                    <Select
-                      value={openProfileScope}
-                      disabled={!requireOpenProfile}
-                      onValueChange={(value) => {
-                        setOpenProfileScope(value as "main" | "all");
-                        setHasChanges(true);
-                      }}
-                    >
-                      <SelectTrigger
-                        id={scopeSelectId}
-                        // Sized from content, not a pixel width: the Russian option
-                        // labels are longer and a fixed 230px clipped them.
-                        className="h-8 w-fit min-w-[230px] max-w-full text-sm"
-                        aria-label={t("admission.scopeAria")}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="main">{t("admission.scopeMain")}</SelectItem>
-                        <SelectItem value="all">{t("admission.scopeAll")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              </Card>
+          <SettingGroup title={t("team.title")} description={t("team.description")}>
+            <SettingRow
+              htmlFor={`${ids}-max-substitutes`}
+              label={t("team.maxSubstitutes")}
+              hint={t("team.maxSubstitutesHint")}
+            >
+              <NumberInput
+                id={`${ids}-max-substitutes`}
+                integer
+                min={0}
+                value={maxSubstitutes}
+                onValueChange={(next) => mark(setMaxSubstitutes)(next ?? 0)}
+                aria-label={t("team.maxSubstitutesAria")}
+                className="h-8 w-20 text-sm tabular-nums"
+              />
+            </SettingRow>
+          </SettingGroup>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle asChild><h2>{t("subscription.title")}</h2></CardTitle>
-                  <CardDescription className="max-w-prose">
-                    {t("subscription.hint")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={requireSubscription}
-                      onCheckedChange={(checked) => {
-                        setRequireSubscription(checked === true);
-                        setHasChanges(true);
-                      }}
-                    />
-                    {t("subscription.require")}
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <Label htmlFor={stageSelectId} className="text-muted-foreground">
-                      {t("subscription.stage")}
-                    </Label>
-                    <Select
-                      value={subscriptionStage}
-                      disabled={!requireSubscription}
-                      onValueChange={(value) => {
-                        setSubscriptionStage(value as "registration" | "check_in");
-                        setHasChanges(true);
-                      }}
-                    >
-                      <SelectTrigger
-                        id={stageSelectId}
-                        className="h-8 w-fit min-w-[230px] max-w-full text-sm"
-                        aria-label={t("subscription.stageAria")}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="check_in">{t("subscription.stageCheckIn")}</SelectItem>
-                        <SelectItem value="registration">
-                          {t("subscription.stageRegistration")}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1 text-sm">
-                    {/* The workspace rule reaches this card as a projection ON the
-                        form, so `resolvedRequirement === ""` means two different
-                        things: the workspace has no rule, or there is no form to read
-                        one from (`reg_form_get` returns null until the first save --
-                        rows are created lazily). Only the first licenses the "enforces
-                        nothing" claim; asserting it for a brand-new tournament states a
-                        truth nobody has looked up, right beside the toggle it describes.
-                        `!formExists` also covers `formQuery.isPending`, which implies
-                        `data === undefined`. */}
-                    <p className="max-w-prose text-muted-foreground">
-                      {!formExists
-                        ? t("subscription.resolvedUnknown")
-                        : resolvedRequirement
-                          ? t("subscription.resolved", { rule: resolvedRequirement })
-                          : t("subscription.resolvedEmpty")}
-                    </p>
-                    {/* `?tab=providers`: /admin/subscriptions opens on the collector
-                        dashboard otherwise, which is not where the rule is edited. */}
-                    <Link
-                      href="/admin/subscriptions?tab=providers"
-                      className="text-xs font-medium underline underline-offset-4"
-                    >
-                      {t("subscription.manage")}
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
+          <SettingGroup title={t("admission.title")}>
+            <SettingRow
+              htmlFor={`${ids}-open-profile`}
+              label={t("admission.requireOpenProfile")}
+              hint={t("admission.hint")}
+            >
+              <Switch
+                id={`${ids}-open-profile`}
+                checked={requireOpenProfile}
+                onCheckedChange={mark(setRequireOpenProfile)}
+              />
+            </SettingRow>
+            <SettingRow htmlFor={`${ids}-scope`} label={t("admission.scope")}>
+              <Select
+                value={openProfileScope}
+                disabled={!requireOpenProfile}
+                onValueChange={mark((value: string) => setOpenProfileScope(value as "main" | "all"))}
+              >
+                <SelectTrigger
+                  id={`${ids}-scope`}
+                  // Sized from content, not a pixel width: the Russian option
+                  // labels are longer and a fixed 230px clipped them.
+                  className="h-8 w-fit min-w-[230px] max-w-full text-sm"
+                  aria-label={t("admission.scopeAria")}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main">{t("admission.scopeMain")}</SelectItem>
+                  <SelectItem value="all">{t("admission.scopeAll")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingRow>
+          </SettingGroup>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle asChild><h2>{t("display.title")}</h2></CardTitle>
-                  <CardDescription className="max-w-prose">{t("display.hint")}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={showRanks}
-                      onCheckedChange={(checked) => {
-                        setShowRanks(checked === true);
-                        setHasChanges(true);
-                      }}
-                    />
-                    {t("display.showRanks")}
-                  </label>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
+          <SettingGroup title={t("subscription.title")} description={t("subscription.hint")}>
+            <SettingRow
+              htmlFor={`${ids}-subscription`}
+              label={t("subscription.require")}
+              hint={
+                <>
+                  {/* The workspace rule reaches this page as a projection ON the
+                      form, so `resolvedRequirement === ""` means two different
+                      things: the workspace has no rule, or there is no form to
+                      read one from (`reg_form_get` returns null until the first
+                      save — rows are created lazily). Only the first licenses the
+                      "enforces nothing" claim; asserting it for a brand-new
+                      tournament states a truth nobody has looked up. `!formExists`
+                      also covers `formQuery.isPending`. */}
+                  {!formExists
+                    ? t("subscription.resolvedUnknown")
+                    : resolvedRequirement
+                      ? t("subscription.resolved", { rule: resolvedRequirement })
+                      : t("subscription.resolvedEmpty")}{" "}
+                  {/* The workspace rule is workspace *configuration*, so it lives
+                      in settings; /admin/subscriptions is the collector dashboard. */}
+                  <Link
+                    href="/admin/settings/subscriptions"
+                    className="font-medium text-foreground underline underline-offset-4"
+                  >
+                    {t("subscription.manage")}
+                  </Link>
+                </>
+              }
+            >
+              <Switch
+                id={`${ids}-subscription`}
+                checked={requireSubscription}
+                onCheckedChange={mark(setRequireSubscription)}
+              />
+            </SettingRow>
+            <SettingRow htmlFor={`${ids}-stage`} label={t("subscription.stage")}>
+              <Select
+                value={subscriptionStage}
+                disabled={!requireSubscription}
+                onValueChange={mark((value: string) =>
+                  setSubscriptionStage(value as "registration" | "check_in")
+                )}
+              >
+                <SelectTrigger
+                  id={`${ids}-stage`}
+                  className="h-8 w-fit min-w-[230px] max-w-full text-sm"
+                  aria-label={t("subscription.stageAria")}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="check_in">{t("subscription.stageCheckIn")}</SelectItem>
+                  <SelectItem value="registration">
+                    {t("subscription.stageRegistration")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingRow>
+          </SettingGroup>
 
-          <TabsContent value="fields">
-            <BuiltInFieldsCard builtInFields={builtInFields} onUpdate={updateBuiltIn} />
-          </TabsContent>
+          <SettingGroup title={t("display.title")}>
+            <SettingRow
+              htmlFor={`${ids}-show-ranks`}
+              label={t("display.showRanks")}
+              hint={t("display.hint")}
+            >
+              <Switch
+                id={`${ids}-show-ranks`}
+                checked={showRanks}
+                onCheckedChange={mark(setShowRanks)}
+              />
+            </SettingRow>
+          </SettingGroup>
+        </CardContent>
+      </Card>
 
-          <TabsContent value="subroles">
-            <SubrolesTab
-              catalog={subroleCatalog}
-              selection={subroleSelection}
-              onToggleOffered={handleToggleSubrole}
-              isLoading={catalogQuery.isLoading}
-            />
-          </TabsContent>
+      <BuiltInFieldsCard builtInFields={builtInFields} onUpdate={updateBuiltIn} />
 
-          <TabsContent value="custom">
-            <CustomFieldsCard
-              customFields={customFields}
-              onAdd={addCustomField}
-              onUpdate={updateCustomField}
-              onRemove={removeCustomField}
-            />
-          </TabsContent>
-        </Tabs>
-      </div>
+      <SubrolesTab
+        catalog={subroleCatalog}
+        selection={subroleSelection}
+        onToggleOffered={handleToggleSubrole}
+        isLoading={catalogQuery.isLoading}
+      />
 
-      <div className="flex items-center justify-end gap-3 border-t py-3">
-        {/* Stable region, not a conditionally mounted node: a polite live region
-            only announces reliably when it is already in the tree. */}
-        <output className="text-xs text-muted-foreground">
-          {hasChanges ? t("unsavedChanges") : ""}
-        </output>
-        <Button
-          size="lg"
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending || (!hasChanges && formExists)}
-        >
-          {saveMutation.isPending ? (
-            <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden />
-          ) : (
-            <Save className="mr-2 size-4" aria-hidden />
-          )}
-          {formExists ? t("saveChanges") : t("createForm")}
-        </Button>
-      </div>
+      <CustomFieldsCard
+        customFields={customFields}
+        onAdd={addCustomField}
+        onUpdate={updateCustomField}
+        onRemove={removeCustomField}
+      />
+
+      {/* The shared bar. Shown while dirty like every settings section — and
+          also for a tournament with no saved form, where "Create form" must be
+          reachable before any edit; the navigation guard stays off in that
+          untouched state so the page does not prompt on every tab switch. */}
+      <SaveBar
+        dirty={hasChanges || !formExists}
+        guardNavigation={hasChanges}
+        summary={hasChanges ? t("unsavedChanges") : ""}
+        saving={saveMutation.isPending}
+        primaryLabel={formExists ? t("saveChanges") : t("createForm")}
+        onDiscard={() => applyForm(formQuery.data ?? null)}
+        onSave={() => saveMutation.mutate()}
+      />
     </div>
   );
 }

@@ -22,13 +22,6 @@ export const SETUP_STEPS = [
 
 export type DraftSetupStep = (typeof SETUP_STEPS)[number];
 
-export function canNavigateToSetupStep(
-  current: DraftSetupStep,
-  target: DraftSetupStep
-): boolean {
-  return target !== "ready" && SETUP_STEPS.indexOf(target) <= SETUP_STEPS.indexOf(current);
-}
-
 export function previousSetupStep(current: DraftSetupStep): DraftSetupStep {
   const currentIndex = SETUP_STEPS.indexOf(current);
   return SETUP_STEPS[Math.max(0, currentIndex - 1)];
@@ -116,8 +109,13 @@ export function derivePoolReadiness(
     }
   }
   const requiredPlayers = Math.max(0, teamCount) * shape.team_size;
+  const missingRanks = included.filter((candidate) => candidate.rank == null).length;
   const blockers: string[] = [];
   if (included.length < requiredPlayers) blockers.push("not_enough_players");
+  // A registration with no playable role has no rank the draft could seed, and
+  // the server refuses the whole seed for it (`draft_pool_unranked`). Naming it
+  // here is what turns that 4xx into an actionable step.
+  if (missingRanks > 0) blockers.push("pool_unranked");
   // The per-role targets ARE the server's roster shape. A code the shape does
   // not ask for has a target of 0 and can never be short; flex slots take any
   // role, so they never name one here.
@@ -129,7 +127,7 @@ export function derivePoolReadiness(
   return {
     requiredPlayers,
     actualPlayers: included.length,
-    missingRanks: included.filter((candidate) => candidate.rank == null).length,
+    missingRanks,
     missingAccounts: included.filter((candidate) => !candidate.hasAccount).length,
     excludedPlayers: candidates.length - included.length,
     roleCoverage,

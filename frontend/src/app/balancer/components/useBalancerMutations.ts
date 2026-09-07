@@ -7,7 +7,6 @@ import type { JobAction } from "./useBalancerJob";
 import { parseImportedBalancePayload } from "./balance-import";
 import { sanitizeBalancerConfig } from "./balancer-config-helpers";
 import {
-  buildBalancerInput,
   buildRankHistoryFromAutofillPreview,
   buildVariantFromSavedBalance,
   type BalanceVariant
@@ -138,7 +137,9 @@ export function buildRegistrationUpdateFromPlayerPayload(
         priority: entry.priority,
         is_primary: payload.is_flex ? true : index === 0,
         rank_value: entry.rank_value,
-        is_active: entry.is_active,
+        // The raw column is what a write sets: `is_active` on the entry is the
+        // resolver's verdict, so sending it would echo a computed value back.
+        is_active: entry.is_declared_active,
         ...(topHeroes.length > 0 ? { top_heroes: topHeroes } : {})
       };
     });
@@ -431,12 +432,11 @@ export function useBalancerMutations({
       if (!excludeInvalidPlayers && invalidPlayerStates.length > 0) {
         throw new Error("Resolve all pool player validation issues before balancing");
       }
+      // The pool the server balances is the tournament's own, resolved by the
+      // roster engine. The client only decides whether the run is allowed and
+      // which config to send.
       const playersForBalance = excludeInvalidPlayers ? readyPlayers : poolPlayers;
       if (playersForBalance.length === 0) throw new Error("No players available to balance");
-      const input = buildBalancerInput(playersForBalance);
-      const file = new File([JSON.stringify(input)], `balancer-${tournamentId}.json`, {
-        type: "application/json"
-      });
       const sanitizedDraftConfig = sanitizeBalancerConfig(draftConfig);
       let config =
         Object.keys(sanitizedDraftConfig).length > 0
@@ -451,11 +451,10 @@ export function useBalancerMutations({
       }
       const skipped = excludeInvalidPlayers ? invalidPlayerStates.length : 0;
       return {
-        job: await balancerService.createBalanceJob(
-          file,
-          config as BalancerConfig | undefined,
-          tournamentId
-        ),
+        job: await balancerService.createTournamentBalanceJob({
+          tournament_id: tournamentId,
+          config_overrides: (config as BalancerConfig | undefined) ?? null
+        }),
         skipped,
         config: config as BalancerConfig | undefined
       };
@@ -513,6 +512,23 @@ export function useBalancerMutations({
     }
   });
 
+  // Rank-only correction: the teams already in the tournament keep their rosters
+  // (and whatever bracket references them) — only the numbers are refreshed from
+  // the saved balance. Save first if the editor holds newer ranks.
+  const exportRanksMutation = useMutation({
+    mutationFn: async (balanceId: number) => {
+      const result = await balancerAdminService.exportBalanceRanks(balanceId);
+      await invalidateTournamentExportQueries();
+      return result;
+    },
+    onSuccess: (result) => {
+      notify.success("Ranks re-exported", {
+        description: `${result.updated_players} player ranks updated.`
+      });
+    },
+    onError: (error) => notify.apiError(error, { title: "Rank re-export failed" })
+  });
+
   // Import loads the file as another variant — creating tournament teams stays an
   // explicit Save / Export to Tournament step, same as for a generated balance.
   const importBalanceMutation = useMutation({
@@ -553,6 +569,7 @@ export function useBalancerMutations({
     runBalanceMutation,
     saveBalanceMutation,
     exportToTournamentMutation,
+    exportRanksMutation,
     importBalanceMutation
   };
 }

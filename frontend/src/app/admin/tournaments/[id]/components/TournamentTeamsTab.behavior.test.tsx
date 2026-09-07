@@ -199,7 +199,7 @@ describe("Challonge team mapping picker", () => {
     expect(options.some((label) => label?.includes("litnik"))).toBe(false);
   });
 
-  it("selecting an option maps the participant and submits that team id", async () => {
+  it("maps the participant, reads it back on the confirm step and submits that team id", async () => {
     const scope = await mount();
     const dialog = await openSyncDialog(scope);
 
@@ -213,6 +213,18 @@ describe("Challonge team mapping picker", () => {
     await settle();
 
     expect(picker().textContent).toContain("litnik");
+    // Step 1 cannot sync: the write is behind a confirm step that shows what
+    // it will write, so the mapping table alone must not reach the server.
+    expect(byText("button", "Sync mappings")).toBeUndefined();
+
+    await act(async () => {
+      click(byText("button", "Continue"));
+    });
+    await settle();
+
+    const confirmStep = dialog.textContent ?? "";
+    expect(confirmStep).toContain("litnik team");
+    expect(confirmStep).toContain("litnik");
 
     await act(async () => {
       click(byText("button", "Sync mappings"));
@@ -222,7 +234,6 @@ describe("Challonge team mapping picker", () => {
     expect(syncTeamsFromChallonge).toHaveBeenCalledWith(64, {
       mappings: [{ participant_id: 289541235, group_id: null, team_id: 13 }]
     });
-    expect(dialog).toBeTruthy();
   });
 
   it("keeps wheel and touch inside the list so it can scroll inside the dialog", async () => {

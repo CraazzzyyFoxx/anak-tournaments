@@ -99,6 +99,18 @@ DOCS: dict[str, dict] = {
         "summary": "OAuth callback",
         "description": "Exchanges the provider's code+state for an access+refresh token, logging in or creating the user; 422 if provider/code/state are missing.",
     },
+    "rpc.identity.sso_exchange": {
+        "summary": "Redeem SSO ticket",
+        "description": (
+            "Public (no bearer) redemption of the single-use, short-lived Redis ticket minted by an OAuth"
+            " callback on a workspace custom domain, returning the session access+refresh token pair. It"
+            " exists so the callback can hand a session back to the tenant origin without ever putting"
+            " tokens in a redirect URL. Called by the custom domain's own frontend route, never by the"
+            " apex, and the ticket plus the owt_xdomain_guard cookie value together are the credential."
+            " The ticket is burned before the guard is checked, so replay -- like an expired, unknown or"
+            " guard-mismatched ticket -- fails closed with an indistinguishable 400."
+        ),
+    },
     "rpc.identity.oauth_link": {
         "summary": "Link OAuth provider",
         "description": "Exchanges the provider code+state and links the connection to the active user (platform apex/subdomain), or -- for a workspace custom domain, which has no live session here -- mints a single-use provider-identity ticket (mode='link_ticket') for rpc.identity.link_complete to redeem instead.",
@@ -195,6 +207,16 @@ DOCS: dict[str, dict] = {
         "summary": "Remove linked player",
         "description": "Removes a linked game player from the given auth user (admin) by user_id/player_id; returns 204 No Content.",
     },
+    "rpc.identity.rbac.delete_auth_user": {
+        "summary": "Delete auth user",
+        "description": (
+            "Permanently deletes another user's login account (superuser only): the auth user row and,"
+            " by cascade, its roles, permission denies, sessions/refresh tokens, OAuth connections, API"
+            " keys and preview-access grants; returns 204. The linked players.user survives with its"
+            " auth_user_id nulled, so tournament history, statistics and workspace membership outlive"
+            " the login account. 400 when deleting yourself, 404 if the user id is unknown."
+        ),
+    },
     "rpc.identity.rbac.assign_role": {
         "summary": "Assign role",
         "description": "Assigns a role to a user and invalidates the RBAC cache; returns 204 No Content.",
@@ -202,6 +224,37 @@ DOCS: dict[str, dict] = {
     "rpc.identity.rbac.remove_role": {
         "summary": "Remove role",
         "description": "Removes a role from a user and invalidates the RBAC cache; returns 204 No Content.",
+    },
+    # ── RBAC: user permission denies (negative overlay) ────────────────────
+    "rpc.identity.rbac.list_user_denies": {
+        "summary": "List user permission denies",
+        "description": (
+            "Returns the permissions explicitly denied to the given user, each with the workspace_id it"
+            " is scoped to (null = denied everywhere). Denies are a subtractive overlay on the"
+            " grant-only role catalog: a deny always beats a grant, which is the whole reason the"
+            " overlay exists. Requires auth_user.read."
+        ),
+    },
+    "rpc.identity.rbac.add_user_deny": {
+        "summary": "Deny a permission to a user",
+        "description": (
+            "Adds a deny for one permission on the given user and returns the user's full deny list."
+            " workspace_id scopes the deny to a single workspace; omitted or null denies the permission"
+            " everywhere, and a user may hold both at once. The deny takes precedence over every role"
+            " grant that would otherwise confer the permission, and the RBAC cache is busted so it"
+            " applies to the next request. Idempotent. Requires auth_user.update; 400 for a governance"
+            " permission (denying the RBAC surface itself could lock administration out), 404 for an"
+            " unknown user, permission or workspace."
+        ),
+    },
+    "rpc.identity.rbac.remove_user_deny": {
+        "summary": "Remove a user permission deny",
+        "description": (
+            "Lifts one deny and returns the user's remaining deny list, restoring whatever the user's"
+            " roles grant. The scope must match exactly: with no workspace_id query param this removes"
+            " only the global deny, never a workspace-scoped one for the same permission (and vice"
+            " versa). Idempotent, busts the RBAC cache, requires auth_user.update."
+        ),
     },
     # ── RBAC: oauth connections / sessions (admin) ─────────────────────────
     "rpc.identity.rbac.list_oauth_connections": {

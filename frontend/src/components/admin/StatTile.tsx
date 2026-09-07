@@ -18,7 +18,7 @@ interface StatTileProps {
  * The admin's single status/metric tile.
  *
  * Replaces seven independent implementations that had drifted to three
- * eyebrow specs (`text-xs`, `text-[11px]`, `tracking-wider`) and three value
+ * eyebrow specs (`text-xs`, `11px`, `tracking-wider`) and three value
  * scales (`text-2xl`, `text-xl`, `text-lg`). `value` carries `tabular-nums`
  * unconditionally because every consumer feeds it a refetching number.
  */

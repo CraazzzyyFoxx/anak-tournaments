@@ -45,6 +45,8 @@ team_service = importlib.import_module("src.services.registration.teams")
 regteam_schemas = importlib.import_module("src.schemas.registration_team")
 s3_types = importlib.import_module("shared.clients.s3.types")
 
+from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
+
 UploadResult = s3_types.UploadResult
 RegistrationTeamRead = regteam_schemas.RegistrationTeamRead
 
@@ -58,42 +60,7 @@ CONTENT_B64 = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode()
 
 #: Gateway-shaped identity. No workspace membership at all — the whole point of
 #: the captain gate is that the crest's owner is an ordinary competitor.
-IDENTITY = {
-    "user_id": 7,
-    "is_superuser": False,
-    "is_active": True,
-    "roles": [],
-    "permissions": [],
-    "workspaces": [],
-}
-
-
-class _CapturingBroker:
-    """Records the handler behind each subject instead of binding a queue."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject, *args, **kwargs):
-        def register(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return register
-
-
-class _FakeSessionMaker:
-    """Stands in for ``db.async_session_maker`` — the services are stubbed, so the
-    session only has to exist."""
-
-    def __call__(self):
-        return self
-
-    async def __aenter__(self):
-        return SimpleNamespace()
-
-    async def __aexit__(self, *exc):
-        return False
+IDENTITY = make_identity()
 
 
 class _FakeS3:
@@ -141,9 +108,11 @@ class RegistrationTeamImageSubjects(IsolatedAsyncioTestCase):
         self.gate_error: Exception | None = None
         #: Overridable so a test can make the authoritative under-lock check refuse.
         self.set_image_error: Exception | None = None
+        #: Whatever the handler staged on the session -- the audit row.
+        self.staged: list = []
 
     async def _invoke(self, subject: str, data: dict, *, upload_result: object | None = None) -> dict:
-        broker = _CapturingBroker()
+        broker = CapturingBroker()
         regteam_binary.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
         self.assertIn(subject, broker.handlers, "subject is not registered")
 
@@ -176,7 +145,7 @@ class RegistrationTeamImageSubjects(IsolatedAsyncioTestCase):
             return _team_read(team.image_url)
 
         with (
-            patch.object(helpers.db, "async_session_maker", _FakeSessionMaker()),
+            patch.object(helpers.db, "async_session_maker", FakeSessionMaker(SimpleNamespace(add=self.staged.append))),
             patch.object(regteam_binary, "get_s3", fake_get_s3),
             patch.object(regteam_binary, "upload_avatar", fake_upload_avatar),
             patch.object(regteam_binary.team_service.teams_service, "assert_may_edit_team", fake_gate),
@@ -210,6 +179,30 @@ class RegistrationTeamImageSubjects(IsolatedAsyncioTestCase):
         self.assertEqual(TEAM_ID, self.upload_kwargs["entity_id"])
         self.assertEqual("image/png", self.upload_kwargs["content_type"])
         self.assertEqual(b"\x89PNG\r\n\x1a\nfake", self.upload_kwargs["file_data"])
+
+    async def test_upload_and_delete_journal_the_url_not_the_bytes(self):
+        """A captain is not an operator, so the row carries no workspace -- the
+        gate here is captaincy, not a workspace permission.
+        """
+        await self._invoke(
+            "rpc.tournament.regteam_image_upload",
+            {"team_id": TEAM_ID, "identity": IDENTITY, "content_b64": CONTENT_B64, "content_type": "image/png"},
+            upload_result=UploadResult(success=True, key="k", public_url=PUBLIC_URL),
+        )
+
+        (row,) = self.staged
+        self.assertEqual("registration_team.image_set", row.action)
+        self.assertIsNone(row.workspace_id)
+        self.assertEqual("registration_team", row.entity_type)
+        self.assertEqual(TEAM_ID, row.entity_id)
+        self.assertEqual({"image_url": PUBLIC_URL, "content_type": "image/png"}, row.after_json)
+
+        self.staged.clear()
+        await self._invoke("rpc.tournament.regteam_image_delete", {"team_id": TEAM_ID, "identity": IDENTITY})
+
+        (row,) = self.staged
+        self.assertEqual("registration_team.image_clear", row.action)
+        self.assertEqual({"image_url": None}, row.after_json)
 
     async def test_rejected_upload_400s_and_writes_nothing(self):
         envelope = await self._invoke(

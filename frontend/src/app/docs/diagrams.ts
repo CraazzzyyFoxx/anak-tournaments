@@ -225,7 +225,7 @@ export const domains: DiagramDomain[] = [
     title: "Аутентификация и RBAC",
     schemaLabel: "auth",
     schemas: ["auth"],
-    tableCount: 9,
+    tableCount: 10,
     description:
       "Учётные записи, refresh-токены, OAuth, API-ключи и ролевой доступ (grant-only + негативный overlay user_permission_deny).",
     mermaid: `erDiagram
@@ -264,9 +264,12 @@ export const domains: DiagramDomain[] = [
         int workspace_id FK
         string public_id UK
         string secret_hash
-        json scopes_json
         timestamp expires_at
         timestamp revoked_at
+    }
+    AUTH_API_KEY_SCOPE {
+        int api_key_id PK
+        string scope PK
     }
     AUTH_ROLE {
         int id PK
@@ -305,6 +308,7 @@ export const domains: DiagramDomain[] = [
     AUTH_USER ||--o{ AUTH_REFRESH_TOKEN : "сессии"
     AUTH_USER ||--o{ AUTH_OAUTH_CONNECTION : "логинится через"
     AUTH_USER ||--o{ AUTH_API_KEY : "владеет"
+    AUTH_API_KEY ||--o{ AUTH_API_KEY_SCOPE : "scopes"
     AUTH_USER ||--o{ AUTH_USER_ROLE : "назначены роли"
     AUTH_ROLE ||--o{ AUTH_USER_ROLE : "назначена кому"
     AUTH_ROLE ||--o{ AUTH_ROLE_PERMISSION : "даёт"
@@ -480,13 +484,6 @@ export const domains: DiagramDomain[] = [
         int division_grid_version_id FK "nullable"
         bool is_finished
     }
-    TOURNAMENT_GROUP {
-        int id PK
-        int tournament_id FK
-        int stage_id FK "nullable (legacy → Stage)"
-        string name
-        bool is_groups
-    }
     STAGE {
         int id PK
         int tournament_id FK
@@ -545,7 +542,6 @@ export const domains: DiagramDomain[] = [
         int team_id FK
         int stage_id FK "nullable"
         int stage_item_id FK "nullable"
-        int group_id FK "nullable (legacy)"
         int position
         int overall_position
         float points
@@ -562,9 +558,7 @@ export const domains: DiagramDomain[] = [
 
     WORKSPACE ||--o{ TOURNAMENT : "проводит"
     TOURNAMENT ||--o{ STAGE : "стадии"
-    TOURNAMENT ||--o{ TOURNAMENT_GROUP : "группы (legacy)"
     STAGE ||--o{ STAGE_ITEM : "элементы"
-    STAGE ||--o{ TOURNAMENT_GROUP : "новая стадия ↔ legacy-группа"
     STAGE_ITEM ||--o{ STAGE_ITEM_INPUT : "слоты входа"
     TOURNAMENT_TEAM |o--o{ STAGE_ITEM_INPUT : "посев команды"
     STAGE_ITEM |o--o{ STAGE_ITEM_INPUT : "источник (advance)"
@@ -593,7 +587,6 @@ export const domains: DiagramDomain[] = [
     ENCOUNTER {
         int id PK
         int tournament_id FK
-        int tournament_group_id FK "nullable"
         int stage_id FK "nullable"
         int stage_item_id FK "nullable"
         int home_team_id FK "nullable"
@@ -1050,9 +1043,9 @@ export const domains: DiagramDomain[] = [
     title: "Live-драфт",
     schemaLabel: "balancer.draft_*",
     schemas: ["balancer"],
-    tableCount: 6,
+    tableCount: 4,
     description:
-      "Snake-драфт: сессия на турнир, команды с капитанами, пул игроков и последовательность пиков (server-authoritative часы, optimistic-concurrency version).",
+      "Snake-драфт: сессия на турнир, команды с капитанами, пул игроков и последовательность пиков (server-authoritative часы, optimistic-concurrency version). Роли и ранги в драфте НЕ хранятся: draft_player ссылается на balancer.registration, а движок ростера резолвит их на чтении.",
     mermaid: `erDiagram
     DRAFT_SESSION {
         int id PK
@@ -1076,28 +1069,16 @@ export const domains: DiagramDomain[] = [
     }
     DRAFT_PLAYER {
         int id PK
-        int session_id FK "UK(session, workspace_member_id)"
+        int session_id FK "→ balancer.draft_session (CASCADE); UK(session, registration_id); IDX(session, status)"
+        int registration_id FK "NOT NULL → balancer.registration (RESTRICT); единственный источник ролей/рангов"
         int workspace_member_id FK "nullable → workspace_member (SET NULL); dbarch03 удалил user_id"
-        int drafted_by_team_id FK "nullable"
-        string battle_tag
-        string primary_role
-        string status "available/drafted/…"
-        int rank_value "nullable"
-        json additional_info "прочий per-player bag (role_ranks/top_heroes/secondary вынесены в дочерние)"
+        int drafted_by_team_id FK "nullable → balancer.draft_team (SET NULL)"
+        string status "available/picked/removed"
+        bool is_captain
+        int version "optimistic lock"
     }
-    DRAFT_PLAYER_ROLE {
+    BAL_REGISTRATION {
         int id PK
-        int draft_player_id FK "UK(draft_player, role)"
-        string role
-        int rank_value "nullable"
-        bool is_secondary
-        int priority
-    }
-    DRAFT_PLAYER_ROLE_HERO {
-        int id PK
-        int draft_player_role_id FK "UK(role, priority); UK(role, hero)"
-        int hero_id FK "→ overwatch.hero"
-        int priority
     }
     DRAFT_PICK {
         int id PK
@@ -1107,6 +1088,8 @@ export const domains: DiagramDomain[] = [
         int picked_by_workspace_member_id FK "nullable → workspace_member (SET NULL); dbarch03 удалил picked_by_user_id"
         int overall_no
         int round_no
+        string target_role "nullable; заморожен как факт о состоявшемся пике"
+        int target_rank_value "nullable; единственная сохранённая производная от ранга"
         string status "upcoming/…"
         int version "optimistic lock"
     }
@@ -1122,9 +1105,6 @@ export const domains: DiagramDomain[] = [
     WORKSPACE_MEMBER {
         int id PK
     }
-    HERO {
-        int id PK
-    }
     TOURNAMENT_TEAM {
         int id PK
     }
@@ -1137,9 +1117,7 @@ export const domains: DiagramDomain[] = [
     DRAFT_SESSION ||--o{ DRAFT_PICK : "пики"
     DRAFT_TEAM ||--o{ DRAFT_PICK : "чей пик"
     DRAFT_TEAM |o--o{ DRAFT_PLAYER : "задрафтован в"
-    DRAFT_PLAYER ||--o{ DRAFT_PLAYER_ROLE : "роли (primary + off-role)"
-    DRAFT_PLAYER_ROLE ||--o{ DRAFT_PLAYER_ROLE_HERO : "топ-герои"
-    HERO ||--o{ DRAFT_PLAYER_ROLE_HERO : "герой"
+    BAL_REGISTRATION ||--o{ DRAFT_PLAYER : "заявка (роли/ранги резолвятся live)"
     DRAFT_PLAYER |o--o{ DRAFT_PICK : "выбранный игрок"
     DRAFT_PICK |o--o| DRAFT_SESSION : "текущий пик"
     WORKSPACE_MEMBER |o--o{ DRAFT_TEAM : "капитан (member)"
@@ -1514,8 +1492,8 @@ export const readingNotes: DocEntry[] = [
     body: "`auth.user` (вход) и `players.user` (игрок) — разные таблицы, связь `1:0..1`. Ростер (`tournament.player`), регистрации (`balancer.registration`), драфт (`draft_*`) и достижения (`evaluation_result`/`override`) якорятся на `workspace_member` (= уникальность `workspace_id + player_id`), что и есть суть identity/workspace-рефактора. Денормализованной роли на `workspace_member` нет — роль выводится из RBAC."
   },
   {
-    term: "Единственный legacy",
-    body: "Осталась только `tournament.group` (→ `stage`). `achievements.achievement`/`achievements.user` и `analytics.predictions` (v1) — удалены (см. «История изменений схемы»)."
+    term: "Legacy не осталось",
+    body: "`tournament.group` снесена миграцией `dropgrp01` (группы = `stage_item` типа GROUP). `achievements.achievement`/`achievements.user` и `analytics.predictions` (v1) — удалены (см. «История изменений схемы»)."
   },
   {
     term: "Циклические FK",
@@ -1545,8 +1523,8 @@ export const changeLog: DocEntry[] = [
     body: "`map_veto_config.map_pool_ids` (JSON) → дочерняя `map_veto_config_map`; `veto_sequence_json` остался JSON."
   },
   {
-    term: "Draft-нормализация (dbarch03)",
-    body: "`draft_player.role_ranks`/`role_top_heroes`/`secondary_roles_json` (JSON) → `draft_player_role` + `draft_player_role_hero`."
+    term: "Драфт без ролей и рангов (draftreg1)",
+    body: "Роли и ранги в драфте не хранятся вообще. `dbarch03` вынес их из JSON в `balancer.draft_player_role` + `draft_player_role_hero`, а `draftreg1` снёс обе таблицы вместе с колонками `draft_player.primary_role`/`sub_role`/`is_flex`/`division_number`/`rank_value`/`battle_tag`/`additional_info`. Осталась ссылка `draft_player.registration_id → balancer.registration` (NOT NULL, RESTRICT, UK `(session_id, registration_id)` вместо `uq_draft_player_session_member`), а роли и ранги резолвятся на чтении из `balancer.registration_role` движком `shared.services.roster`. RESTRICT намеренно: заявка удаляется мягко, поэтому жёсткое удаление — это попытка стереть строку, от которой зависит драфт, и она отклоняется, а не рушит историю. Единственная сохранённая производная — `draft_pick.target_role`/`target_rank_value`, замороженные как исторический факт о состоявшемся пике."
   },
   {
     term: "Predictions (dbarch06)",

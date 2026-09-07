@@ -5,10 +5,8 @@ interface VisibilityColumn {
   defaultVisible: boolean;
 }
 
-function loadVisibility(
-  storageKey: string,
-): Record<string, boolean> | null {
-  if (typeof window === "undefined") return null;
+function loadVisibility(storageKey: string | null): Record<string, boolean> | null {
+  if (storageKey === null || typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
@@ -18,11 +16,8 @@ function loadVisibility(
   }
 }
 
-function saveVisibility(
-  storageKey: string,
-  visibility: Record<string, boolean>,
-) {
-  if (typeof window === "undefined") return;
+function saveVisibility(storageKey: string | null, visibility: Record<string, boolean>) {
+  if (storageKey === null || typeof window === "undefined") return;
   try {
     localStorage.setItem(storageKey, JSON.stringify(visibility));
   } catch {
@@ -30,8 +25,12 @@ function saveVisibility(
   }
 }
 
+/**
+ * Column visibility, persisted per table. A `null` storage key keeps the
+ * choice in memory only — for a table that does not offer the picker.
+ */
 export function useColumnVisibility<T extends VisibilityColumn>(
-  storageKey: string,
+  storageKey: string | null,
   columns: T[],
 ) {
   const defaults = useMemo(() => {
@@ -42,41 +41,39 @@ export function useColumnVisibility<T extends VisibilityColumn>(
     return d;
   }, [columns]);
 
-  const [visibility, setVisibility] = useState<Record<string, boolean>>(
-    () => {
-      const stored = loadVisibility(storageKey);
-      if (!stored) return defaults;
-      // Merge: keep stored values for known columns, use defaults for new ones
-      const merged: Record<string, boolean> = { ...defaults };
-      for (const key of Object.keys(merged)) {
-        if (key in stored) {
-          merged[key] = stored[key];
-        }
-      }
-      return merged;
-    },
-  );
+  // Loaded once: what the user last chose, for whatever columns existed then.
+  const [stored] = useState(() => loadVisibility(storageKey) ?? {});
+  // Only what the user toggled in this session. Keeping the state this thin is
+  // what lets a column that appears LATER — one per organizer-defined form
+  // field, say — still honour its own default: a merged snapshot taken at
+  // mount could not know about it, and TanStack shows any column missing from
+  // the visibility map, so `defaultHidden` was silently ignored.
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
 
-  const visibleColumns = useMemo(
-    () => columns.filter((col) => visibility[col.id] !== false),
-    [columns, visibility],
-  );
+  const visibility = useMemo(() => {
+    const next: Record<string, boolean> = {};
+    for (const [id, fallback] of Object.entries(defaults)) {
+      next[id] = overrides[id] ?? stored[id] ?? fallback;
+    }
+    return next;
+  }, [defaults, overrides, stored]);
 
   const toggleColumn = useCallback(
     (id: string) => {
-      setVisibility((prev) => {
-        const next = { ...prev, [id]: !prev[id] };
-        saveVisibility(storageKey, next);
+      setOverrides((prev) => {
+        const current = prev[id] ?? stored[id] ?? defaults[id] ?? true;
+        const next = { ...prev, [id]: !current };
+        saveVisibility(storageKey, { ...stored, ...next });
         return next;
       });
     },
-    [storageKey],
+    [storageKey, stored, defaults]
   );
 
   const resetToDefaults = useCallback(() => {
-    setVisibility(defaults);
+    setOverrides(defaults);
     saveVisibility(storageKey, defaults);
   }, [storageKey, defaults]);
 
-  return { visibleColumns, visibility, toggleColumn, resetToDefaults };
+  return { visibility, toggleColumn, resetToDefaults };
 }

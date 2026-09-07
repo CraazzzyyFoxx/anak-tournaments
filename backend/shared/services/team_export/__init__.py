@@ -15,6 +15,7 @@ from shared.services.team_export.materialization import (
     materialize_teams,
     resolve_slot_role,
 )
+from shared.services.team_export.ranks import sync_player_ranks
 from shared.services.team_export.service import (
     ExportOutcome,
     ExportPlan,
@@ -33,5 +34,6 @@ __all__ = (
     "find_users_by_battle_tags",
     "materialize_teams",
     "resolve_slot_role",
+    "sync_player_ranks",
     "team_materialization",
 )

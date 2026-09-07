@@ -18,6 +18,7 @@ __all__ = (
     "Paginated",
     "PaginationDict",
     "paginated_dict",
+    "paginated_dump",
     "PaginationQueryParams",
     "PaginationSortQueryParams",
     "PaginationParams",
@@ -48,9 +49,7 @@ class Paginated(BaseModel, Generic[SchemaType]):
     results: list[SchemaType]
 
 
-def paginated_dict(
-    results: list[ModelType], total: int, params: "PaginationParams"
-) -> PaginationDict[ModelType]:
+def paginated_dict(results: list[ModelType], total: int, params: PaginationParams) -> PaginationDict[ModelType]:
     """Build the ``{results, total, page, per_page}`` envelope typed-RPC handlers return.
 
     Every RPC-facing admin listing (gamemode/hero/map/user in app-service and
@@ -59,6 +58,23 @@ def paginated_dict(
     already-defined ``PaginationDict`` shape. Single source of truth for it.
     """
     return {"results": results, "total": total, "page": params.page, "per_page": params.per_page}
+
+
+def paginated_dump(res: dict[str, Any]) -> dict[str, Any]:
+    """Serialize a service-layer pagination envelope without enumerating its keys.
+
+    ``results`` holds Pydantic models (or already-plain dicts); every other key
+    is passed through, with Pydantic values serialized (``counts``) and plain
+    ones copied as-is (``available_scopes``). Rebuilding a fixed 4-key dict
+    instead cost the api-key list its ``available_scopes``: the service computed
+    it, the wire dropped it, and the create form silently offered no scopes at
+    all. Any list reply that grows a key gets it on the wire for free.
+    """
+    out: dict[str, Any] = {
+        key: value.model_dump(mode="json") if isinstance(value, BaseModel) else value for key, value in res.items()
+    }
+    out["results"] = [item.model_dump(mode="json") if isinstance(item, BaseModel) else item for item in res["results"]]
+    return out
 
 
 class SortOrder(Enum):

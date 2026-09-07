@@ -6,7 +6,7 @@ self-service design,
 Service-layer tests follow the ``SimpleNamespace`` + ``AsyncMock(flush=...)``
 style ``test_workspace_custom_domain.py`` uses: ``workspace_repo.update_fields``
 is the real ``BaseRepository`` method (setattr loop + ``session.flush()``), so
-no DB is needed. The identity-service round trip (``request_dict``) is patched
+no DB is needed. The identity-service round trip (``request_rpc``) is patched
 at the module-level name it is imported under in ``service.py`` -- the same
 seam discipline ``_dns_txt_contains`` gets in the custom-domain tests, rather
 than stubbing the whole method.
@@ -31,30 +31,20 @@ from sqlalchemy.exc import IntegrityError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tests.factories import make_workspace as _make_workspace  # noqa: E402
+from shared.schemas.rpc import parse_rpc, rpc_ok  # noqa: E402
+
 workspace_service = importlib.import_module("src.services.workspace.service")
 workspaces = workspace_service.workspaces
-
 _GUILD_ID = "123456789012345678"
-
-
-def _make_workspace(**overrides) -> SimpleNamespace:
-    base = {
-        "id": 7,
-        "slug": "owt",
-        "discord_guild_id": None,
-        "discord_guild_verified_at": None,
-        "discord_guild_verified_by_auth_user_id": None,
-    }
-    base.update(overrides)
-    return SimpleNamespace(**base)
 
 
 def _actor(auth_user_id: int = 42, username: str = "ada") -> SimpleNamespace:
     return SimpleNamespace(id=auth_user_id, username=username)
 
 
-def _identity_reply(guilds: list[dict]) -> dict:
-    return {"ok": True, "data": {"guilds": guilds}}
+def _identity_reply(guilds: list[dict]):
+    return parse_rpc(rpc_ok({"guilds": guilds}))
 
 
 class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
@@ -65,7 +55,7 @@ class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
         reply = _identity_reply([{"guild_id": _GUILD_ID, "name": "G", "owner": True, "can_manage": True}])
 
         with (
-            patch.object(workspace_service, "request_dict", AsyncMock(return_value=reply)) as req,
+            patch.object(workspace_service, "request_rpc", AsyncMock(return_value=reply)) as req,
             patch.object(workspace_service, "record_audit", AsyncMock()) as audit,
         ):
             result = await workspaces.verify_discord_guild(
@@ -94,7 +84,7 @@ class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
         reply = _identity_reply([{"guild_id": _GUILD_ID, "name": "G", "owner": True, "can_manage": True}])
 
         with (
-            patch.object(workspace_service, "request_dict", AsyncMock(return_value=reply)),
+            patch.object(workspace_service, "request_rpc", AsyncMock(return_value=reply)),
             patch.object(workspace_service, "record_audit", AsyncMock()),
         ):
             await workspaces.verify_discord_guild(session, workspace, _GUILD_ID, actor=actor, broker=MagicMock())
@@ -107,7 +97,7 @@ class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
         actor = _actor()
         reply = _identity_reply([{"guild_id": "999", "name": "Other Guild", "owner": False, "can_manage": False}])
 
-        with patch.object(workspace_service, "request_dict", AsyncMock(return_value=reply)):
+        with patch.object(workspace_service, "request_rpc", AsyncMock(return_value=reply)):
             with self.assertRaises(workspace_service.HTTPException) as ctx:
                 await workspaces.verify_discord_guild(session, workspace, _GUILD_ID, actor=actor, broker=MagicMock())
 
@@ -120,7 +110,7 @@ class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
         workspace = _make_workspace()
         actor = _actor()
 
-        with patch.object(workspace_service, "request_dict", AsyncMock(return_value=_identity_reply([]))):
+        with patch.object(workspace_service, "request_rpc", AsyncMock(return_value=_identity_reply([]))):
             with self.assertRaises(workspace_service.HTTPException) as ctx:
                 await workspaces.verify_discord_guild(session, workspace, _GUILD_ID, actor=actor, broker=MagicMock())
 
@@ -142,7 +132,7 @@ class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
         actor = _actor()
         reply = _identity_reply([{"guild_id": _GUILD_ID, "name": "G", "owner": True, "can_manage": True}])
 
-        with patch.object(workspace_service, "request_dict", AsyncMock(return_value=reply)):
+        with patch.object(workspace_service, "request_rpc", AsyncMock(return_value=reply)):
             with self.assertRaises(workspace_service.HTTPException) as ctx:
                 await workspaces.verify_discord_guild(session, workspace, _GUILD_ID, actor=actor, broker=MagicMock())
 
@@ -157,7 +147,7 @@ class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
         workspace = _make_workspace()
         actor = _actor()
 
-        with patch.object(workspace_service, "request_dict", AsyncMock(side_effect=TimeoutError("no reply"))):
+        with patch.object(workspace_service, "request_rpc", AsyncMock(side_effect=TimeoutError("no reply"))):
             with self.assertRaises(workspace_service.HTTPException) as ctx:
                 await workspaces.verify_discord_guild(session, workspace, _GUILD_ID, actor=actor, broker=MagicMock())
 
@@ -168,9 +158,9 @@ class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(flush=AsyncMock())
         workspace = _make_workspace()
         actor = _actor()
-        reply = {"ok": False, "error": {"code": "internal", "message": "boom"}}
+        reply = parse_rpc({"ok": False, "error": {"code": "internal", "message": "boom"}})
 
-        with patch.object(workspace_service, "request_dict", AsyncMock(return_value=reply)):
+        with patch.object(workspace_service, "request_rpc", AsyncMock(return_value=reply)):
             with self.assertRaises(workspace_service.HTTPException) as ctx:
                 await workspaces.verify_discord_guild(session, workspace, _GUILD_ID, actor=actor, broker=MagicMock())
 

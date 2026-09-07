@@ -30,6 +30,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { EncounterReportsRow, EncounterSetResultInput } from "@/types/admin.types";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { cn } from "@/lib/utils";
 
 /**
  * How the score is decided. Mirrors the server's resolution order so what the
@@ -130,7 +132,7 @@ export function ResolveResultDialog({
 
           {mapCodes.length > 0 ? (
             <div className="rounded-lg border border-border/60 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <p className={EYEBROW_CLASS}>
                 Replay codes
               </p>
               <ul className="mt-2 space-y-1">
@@ -165,7 +167,7 @@ export function ResolveResultDialog({
           <div className="rounded-lg border border-border/60">
             <button
               type="button"
-              className="flex w-full items-center gap-2 p-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+              className={cn(EYEBROW_CLASS, "flex w-full items-center gap-2 p-2 text-left")}
               aria-expanded={historyOpen}
               onClick={() => setHistoryOpen((current) => !current)}
             >
@@ -337,7 +339,7 @@ function ResolveForm({
       <fieldset className="space-y-2">
         <legend
           id={`${modeFieldId}-legend`}
-          className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+          className={EYEBROW_CLASS}
         >
           Which score is right?
         </legend>

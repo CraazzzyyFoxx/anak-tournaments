@@ -36,7 +36,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { AchievementCombobox } from "@/components/admin/achievements/AchievementCombobox";
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
@@ -101,6 +101,7 @@ import {
   MAX_ACHIEVEMENT_IMAGE_BYTES
 } from "@/lib/achievement-image";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 
 const CATEGORIES: AchievementCategory[] = ["overall", "hero", "division", "team", "standing", "match"];
 const SCOPES: AchievementScope[] = ["global", "tournament", "match"];
@@ -610,9 +611,9 @@ export default function AchievementsPage() {
           title="Achievements"
           description="Condition-tree rules, evaluation runs and manual overrides."
         />
-        <p className="rounded-lg border border-dashed border-border/60 p-6 text-sm text-muted-foreground">
+        <EmptyNote>
           Pick a workspace in the sidebar to load its achievement catalog.
-        </p>
+        </EmptyNote>
       </div>
     );
   }
@@ -631,12 +632,13 @@ export default function AchievementsPage() {
               className="hidden"
               onChange={(e) => void handleJsonImportFile(e.target.files?.[0] ?? null)}
             />
-            <Button variant="outline" onClick={() => void handleExport()}>
+            <Button variant="outline" size="sm" onClick={() => void handleExport()}>
               <Download className="mr-2 h-4 w-4" aria-hidden />
               Export JSON
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 setLibraryDialogOpen(true);
                 setLibrarySelectedSlugs(new Set());
@@ -648,6 +650,7 @@ export default function AchievementsPage() {
             {(canCreate || canUpdate) && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => jsonImportInputRef.current?.click()}
                 disabled={importMutation.isPending}
               >
@@ -657,6 +660,7 @@ export default function AchievementsPage() {
             )}
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 setEvalSelectedRuleIds(new Set());
                 setEvalTournamentId(undefined);
@@ -668,6 +672,7 @@ export default function AchievementsPage() {
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 overrideMutation.reset();
                 setOverrideFormError(null);
@@ -680,6 +685,7 @@ export default function AchievementsPage() {
             {canCreate && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => seedMutation.mutate()}
                 disabled={seedMutation.isPending}
               >
@@ -1398,34 +1404,41 @@ export default function AchievementsPage() {
 
       {/* Delete Confirmation */}
       {canDelete && deletingRule && (
-        <DeleteConfirmDialog
+        <ConfirmDialog
           open={!!deletingRule}
           onOpenChange={(open) => !open && setDeletingRule(null)}
           onConfirm={() => deleteMutation.mutate(deletingRule.id)}
-          isDeleting={deleteMutation.isPending}
-          title="Delete achievement"
-          description={`“${deletingRule.name}” (${deletingRule.slug}) is removed from this workspace. Players keep nothing from it.`}
-          cascadeInfo={[
-            "Every evaluation result awarding this achievement",
-            "Manual grant and revoke overrides referencing it",
-          ]}
+          pending={deleteMutation.isPending}
+          intent={{
+            title: "Delete achievement",
+            description: `“${deletingRule.name}” (${deletingRule.slug}) is removed from this workspace. Players keep nothing from it.`,
+            confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+            tone: "danger",
+            cascade: [
+              "Every evaluation result awarding this achievement",
+              "Manual grant and revoke overrides referencing it",
+            ],
+          }}
         />
       )}
 
       {canCreate && (
-        <DeleteConfirmDialog
+        <ConfirmDialog
           open={hardResetOpen}
           onOpenChange={setHardResetOpen}
           onConfirm={() => {
             setHardResetOpen(false);
             hardResetMutation.mutate();
           }}
-          isDeleting={hardResetMutation.isPending}
-          title="Hard reset achievements"
-          description="The rule catalog for this workspace is replaced with the defaults, every current result is cleared, and a full re-evaluation runs immediately."
-          cascadeInfo={["Custom achievements that are not part of the default set"]}
-          confirmLabel="Hard reset"
-          confirmingLabel="Resetting…"
+          pending={hardResetMutation.isPending}
+          intent={{
+            title: "Hard reset achievements",
+            description:
+              "The rule catalog for this workspace is replaced with the defaults, every current result is cleared, and a full re-evaluation runs immediately.",
+            confirmLabel: hardResetMutation.isPending ? "Resetting…" : "Hard reset",
+            tone: "danger",
+            cascade: ["Custom achievements that are not part of the default set"],
+          }}
         />
       )}
 

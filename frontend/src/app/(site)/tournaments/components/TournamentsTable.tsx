@@ -7,7 +7,6 @@ import { LayoutGrid, ArrowUpRight } from "lucide-react";
 import type { Tournament } from "@/types/tournament.types";
 import { cn, formatDateRange } from "@/lib/utils";
 import { getTournamentStatusMeta } from "@/lib/tournament-status";
-import { DataPagination } from "@/components/ui/data-pagination";
 import { tournamentHref } from "@/lib/tournament-url";
 import { relativeTime, stageProgress } from "./tournaments-helpers";
 
@@ -128,22 +127,13 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
   );
 };
 
-interface TournamentsTableProps {
-  tournaments: Tournament[];
-  page: number;
-  pageSize: number;
-  onPageChange: (page: number) => void;
-}
-
-const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: TournamentsTableProps) => {
+/**
+ * The list view. Renders exactly the tournaments it is handed: paging moved to
+ * the page's infinite query, so slicing here would hide rows the page had
+ * already fetched and counted.
+ */
+const TournamentsTable = ({ tournaments }: { tournaments: Tournament[] }) => {
   const t = useTranslations();
-  const total = tournaments.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const start = (safePage - 1) * pageSize;
-  const pageItems = tournaments.slice(start, start + pageSize);
-  const rangeStart = total === 0 ? 0 : start + 1;
-  const rangeEnd = Math.min(start + pageSize, total);
 
   return (
     <section className="tn-card">
@@ -178,24 +168,12 @@ const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: Tournam
           </tr>
         </thead>
         <tbody>
-          {pageItems.map((tournament) => (
+          {tournaments.map((tournament) => (
             <TournamentRow key={tournament.id} tournament={tournament} />
           ))}
         </tbody>
         </table>
       </section>
-
-      <DataPagination
-        className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-[18px] py-3.5"
-        page={safePage}
-        totalPages={totalPages}
-        onPageChange={onPageChange}
-        summary={t("common.showingRange", {
-          start: String(rangeStart),
-          end: String(rangeEnd),
-          total: String(total)
-        })}
-      />
     </section>
   );
 };

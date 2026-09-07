@@ -1,9 +1,42 @@
-import type { Encounter } from "@/types/encounter.types";
-import type { StageType } from "@/types/tournament.types";
+import type { EncounterSlotSource, Score } from "@/types/encounter.types";
+import type { Team } from "@/types/team.types";
+import type { EncounterResultStatus, StageType } from "@/types/tournament.types";
+
+/**
+ * What the bracket needs from a match — every field the layout, the helpers and
+ * the card read, and nothing else.
+ *
+ * `Encounter` satisfies it structurally, and so does a match that has no
+ * encounter row yet: the admin bracket preview draws the generator's own
+ * skeleton (`GET /admin/stages/{id}/bracket-preview`) through the same view, so
+ * the shape an organizer configures is the shape that will be generated.
+ */
+export interface BracketMatch {
+  id: number;
+  name?: string | null;
+  round: number;
+  status: string;
+  score: Score;
+  best_of?: number | null;
+  home_team_id: number;
+  away_team_id: number;
+  home_team?: Team | null;
+  away_team?: Team | null;
+  /** Only read by the interactive footer, which a preview does not render. */
+  tournament_id?: number;
+  result_status?: EncounterResultStatus | null;
+  scheduled_at?: Date | string | null;
+  started_at?: Date | string | null;
+  ended_at?: Date | string | null;
+  stage_item_id?: number | null;
+  challonge_id?: number | null;
+  /** Empty on a bracket whose advancement edges were never recorded. */
+  sources?: EncounterSlotSource[];
+}
 
 export interface RoundGroup {
   round: number;
-  matches: Encounter[];
+  matches: BracketMatch[];
 }
 
 export interface SlotHint {
@@ -11,7 +44,7 @@ export interface SlotHint {
   away: string | null;
 }
 
-function sortMatches(matches: Encounter[]) {
+function sortMatches(matches: BracketMatch[]) {
   return [...matches].sort((left, right) => {
     const leftKey = left.stage_item_id ?? left.challonge_id ?? left.id;
     const rightKey = right.stage_item_id ?? right.challonge_id ?? right.id;
@@ -20,8 +53,8 @@ function sortMatches(matches: Encounter[]) {
   });
 }
 
-export function buildRoundGroups(matches: Encounter[]): RoundGroup[] {
-  const groups = new Map<number, Encounter[]>();
+export function buildRoundGroups(matches: BracketMatch[]): RoundGroup[] {
+  const groups = new Map<number, BracketMatch[]>();
 
   for (const match of matches) {
     const existing = groups.get(match.round) ?? [];
@@ -97,12 +130,74 @@ function getFinalRounds(
   return positive.slice(-Math.max(1, trailingSingleMatchRounds - 1));
 }
 
-export function getDoubleEliminationFinalRounds(encounters: Encounter[]): Set<number> {
+export function getDoubleEliminationFinalRounds(encounters: BracketMatch[]): Set<number> {
   const matchesPerRound = new Map<number, number>();
   for (const match of encounters) {
     matchesPerRound.set(match.round, (matchesPerRound.get(match.round) ?? 0) + 1);
   }
   return new Set(getFinalRounds(true, [...matchesPerRound.keys()], matchesPerRound));
+}
+
+export interface EliminationRoundOrder {
+  /** Rounds in the order the bracket plays them: upper, lower, then the finals. */
+  groups: RoundGroup[];
+  /** The bracket's own match numbering (M1 … Mn) over the same order. */
+  matchNumbers: Map<number, number>;
+  /** Signed rounds the Grand Final (and its reset) occupy, ascending. */
+  finalRounds: number[];
+}
+
+/**
+ * An elimination stage's rounds in play order. `buildRoundGroups` interleaves
+ * upper and lower rounds by depth (1, -1, 2, -2, …), which is right for laying
+ * the two brackets side by side and wrong for anything that reads rounds as a
+ * sequence: the lower final (round -4) is played before the grand final
+ * (round 3), and no comparison of signed round numbers says so. The match
+ * numbering does, so the sequence is the numbering's.
+ */
+export function orderEliminationRounds(
+  encounters: BracketMatch[],
+  stageType: StageType | undefined
+): EliminationRoundOrder {
+  const finals =
+    stageType === "double_elimination"
+      ? getDoubleEliminationFinalRounds(encounters)
+      : new Set<number>();
+  const upper = buildRoundGroups(
+    encounters.filter((match) => match.round > 0 && !finals.has(match.round))
+  );
+  const lower = buildRoundGroups(encounters.filter((match) => match.round < 0));
+  const finalGroups = buildRoundGroups(
+    encounters.filter((match) => match.round > 0 && finals.has(match.round))
+  );
+  const matchNumbers = computeMatchNumbers(upper, lower, finalGroups);
+  const rank = (group: RoundGroup) =>
+    Math.max(...group.matches.map((match) => matchNumbers.get(match.id) ?? 0));
+  return {
+    groups: [...upper, ...lower, ...finalGroups].sort((left, right) => rank(left) - rank(right)),
+    matchNumbers,
+    finalRounds: [...finals].sort((left, right) => left - right)
+  };
+}
+
+/** Encounter statuses the platform treats as settled. Mirrors `BracketView`. */
+const SETTLED_STATUSES = new Set(["completed", "finished", "closed"]);
+
+/**
+ * The round a bracket is currently on: the first, in the given play order, that
+ * still holds an unsettled match — the last round once everything is played.
+ *
+ * Both bracket surfaces open here (the phone list selects it, the tree scrolls
+ * to it), because round 1 of a running playoff was decided days ago and is the
+ * least interesting column on screen. Pass rounds in play order —
+ * `orderEliminationRounds().groups`, not raw `buildRoundGroups` — or a lower
+ * final reads as "before" a grand final it follows.
+ */
+export function activeRoundNumber(groups: RoundGroup[]): number | null {
+  const inPlay = groups.find((group) =>
+    group.matches.some((match) => !SETTLED_STATUSES.has(match.status))
+  );
+  return (inPlay ?? groups[groups.length - 1])?.round ?? null;
 }
 
 /** The encounter fields `stageFinalRounds` reads. */
@@ -222,7 +317,7 @@ function inferBracketSlotHints(
 ): Map<number, SlotHint> {
   const hints = new Map<number, SlotHint>();
 
-  function label(match: Encounter | undefined, prefix: "W" | "L") {
+  function label(match: BracketMatch | undefined, prefix: "W" | "L") {
     if (!match) {
       return null;
     }
@@ -231,7 +326,7 @@ function inferBracketSlotHints(
     return matchNumber != null ? `${prefix} M${matchNumber}` : null;
   }
 
-  function setHint(target: Encounter, slot: keyof SlotHint, value: string | null) {
+  function setHint(target: BracketMatch, slot: keyof SlotHint, value: string | null) {
     if (!value) {
       return;
     }

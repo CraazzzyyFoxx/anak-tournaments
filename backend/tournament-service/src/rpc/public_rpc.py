@@ -42,7 +42,7 @@ from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.enums import PickBanKind, SubscriptionCollectionSource
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import rehydrate_user
-from shared.services.profile_visibility import resolve_profiles_open
+from shared.services.admission import AdmissionStage
 from shared.services.subscriptions.realtime import publish_subscriptions_updated
 from shared.services.subscriptions.wiring import build_resolver, build_store
 from shared.services.tournament.visibility import assert_tournament_viewable
@@ -75,10 +75,11 @@ from src.schemas.registration import (
     SubscriptionRedeemRequest,
 )
 from src.schemas.registration_build import (
+    AdmissionChips,
     _form_to_read,
+    _public_rosters,
     _reg_to_read,
     _resolve_tournament_workspace,
-    _resolved_public_ranks,
 )
 from src.schemas.registration_team import (
     RegistrationFreeAgentListResponse,
@@ -97,18 +98,12 @@ from src.services.encounter.map_report import map_report_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service
 from src.services.encounter.pick_ban_undo import pick_ban_undo_service
 from src.services.encounter.report_form import report_form_service
+from src.services.registration import _common as reg_common
 from src.services.registration import service as reg_service
 from src.services.registration import subscription_config
 from src.services.registration import teams as team_service
+from src.services.registration.admission import assert_admitted_at
 from src.services.registration.subscription_codes import redeem_challenge_code
-from src.services.registration.subscription_gate import (
-    assert_subscription_allows_check_in,
-    assert_subscription_allows_registration,
-)
-from src.services.registration.subscription_reads import (
-    build_subscription_reads,
-    serialize_verdicts,
-)
 from src.services.registration.subscription_status import (
     assert_redeem_attempt_allowed,
     subscription_status_for_user,
@@ -376,7 +371,7 @@ def register(broker: Any, logger: Any) -> None:
             # Public route — no identity required, but hidden tournaments 404.
             tournament_id = _path_int(data, "tournament_id")
             await assert_tournament_viewable(session, _optional_identity(data), tournament_id)
-            form = await reg_service.registration_service.get_registration_form(session, tournament_id)
+            form = await reg_common._common_service.get_registration_form(session, tournament_id)
             if form is None:
                 return None
             subrole_catalog = await resolve_subrole_catalog(session, form.workspace_id)
@@ -403,14 +398,23 @@ def register(broker: Any, logger: Any) -> None:
             await assert_tournament_viewable(session, user, tournament_id)
             body = RegistrationCreate.model_validate(_payload(data))
 
-            # Subscription admission gate. Blocks only what can be decided WITHOUT
-            # the patron typing anything: a provider still satisfiable by a challenge
-            # code is deferred to check-in, where that field exists.
-            form = await reg_service.registration_service.get_registration_form(session, tournament_id)
-            await assert_subscription_allows_registration(
-                form=form,
+            # Admission gate, sign-up stage. Every requirement the tournament armed
+            # at `registration` is asked here, in one call; a requirement staged at
+            # check-in stays silent by construction rather than by this handler
+            # omitting a call. There is no row yet, hence `registration=None` and the
+            # acting user as the subject.
+            #
+            # Only `blockers` refuses (see `assert_admitted_at`): a rowless subject
+            # is never `ready`, so its `decision` is `not_admitted` and means nothing
+            # here. Blocks only what can be decided WITHOUT the patron typing
+            # anything -- a provider still satisfiable by a challenge code is
+            # deferred to check-in, where that field exists.
+            await assert_admitted_at(
+                session,
+                None,
+                tournament_id=tournament_id,
                 auth_user_id=user.id,
-                resolver=_subscription_resolver(session),
+                stage=AdmissionStage.registration,
             )
 
             # Full use-case (validation, duplicate check, create, serialize)
@@ -432,21 +436,18 @@ def register(broker: Any, logger: Any) -> None:
             reg = await reg_service.registration_service.get_registration(session, tournament_id, user.id)
             if reg is None:
                 return None
-            form = await reg_service.registration_service.get_registration_form(session, tournament_id)
+            form = await reg_common._common_service.get_registration_form(session, tournament_id)
             show_ranks = form.show_ranks if form is not None else False
-            profiles_open = (
-                (await resolve_profiles_open(session, [reg], scope=form.open_profile_scope)).get(reg.id)
-                if form is not None and form.require_open_profile
-                else None
+            # The registrant's own card goes through the SAME resolver as the
+            # participants list and the admin table -- one batch of one row. That is
+            # the point of the layer: this handler used to resolve the profile
+            # verdict and the subscription verdicts itself, with its own two calls,
+            # and "why am I not admitted" was therefore answerable differently here
+            # than on the list the player was reading it next to.
+            admissions = await reg_service.registration_service.resolve_admission_list(
+                session, [reg], form=form
             )
-            # The registrant's own read carries the same verdicts the public list
-            # does, so their card can show why they are (not) admitted.
-            subscription_reads = await build_subscription_reads(
-                form=form,
-                auth_user_id_by_registration={reg.id: user.id},
-                resolver=_subscription_resolver(session),
-            )
-            own = subscription_reads.get(reg.id)
+            chips = AdmissionChips.of(admissions.get(reg.id))
             workspace_id = (
                 form.workspace_id if form is not None else await _resolve_tournament_workspace(session, tournament_id)
             )
@@ -457,10 +458,11 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=workspace_id,
                     status_meta_map=status_meta_map,
                     show_ranks=show_ranks,
-                    profiles_open=profiles_open,
-                    subscription_outcome=own.outcome.value if own is not None else None,
-                    subscription_verdicts=(serialize_verdicts(own.verdicts) if own is not None else None),
-                    resolved_ranks=(await _resolved_public_ranks(session, [reg], show_ranks=show_ranks)).get(reg.id),
+                    admission=chips.admission,
+                    profiles_open=chips.profiles_open,
+                    subscription_outcome=chips.subscription_outcome,
+                    subscription_verdicts=chips.subscription_verdicts,
+                    roster=(await _public_rosters(session, [reg], show_ranks=show_ranks)).get(reg.id),
                 )
             )
 
@@ -474,15 +476,13 @@ def register(broker: Any, logger: Any) -> None:
             await assert_tournament_viewable(session, user, tournament_id)
             body = RegistrationUpdate.model_validate(_payload(data))
 
-            form = await reg_service.registration_service.get_registration_form(session, tournament_id)
+            form = await reg_common._common_service.get_registration_form(session, tournament_id)
             if form is None:
                 raise HTTPException(status_code=404, detail="Registration form not found")
 
             reg = await reg_service.registration_service.get_registration(session, tournament_id, user.id)
             if reg is None:
                 raise HTTPException(status_code=404, detail="No registration found")
-            if reg.status != "pending":
-                raise HTTPException(status_code=400, detail="Cannot update a registration that is not pending")
 
             validate_registration_input(form, body, partial=True)
             await validation_service.validate_verified_identity(
@@ -508,9 +508,7 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=form.workspace_id,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks,
-                    resolved_ranks=(
-                        await _resolved_public_ranks(session, [updated], show_ranks=form.show_ranks)
-                    ).get(updated.id),
+                    roster=(await _public_rosters(session, [updated], show_ranks=form.show_ranks)).get(updated.id),
                 )
             )
 
@@ -541,25 +539,32 @@ def register(broker: Any, logger: Any) -> None:
             if reg is None:
                 raise HTTPException(status_code=404, detail="No registration found")
 
-            # "All profiles open" admission gate: block check-in only when the profile is
-            # confirmed closed. Unknown (not yet fetched) fails open.
-            form = await reg_service.registration_service.get_registration_form(session, tournament_id)
-            if form is not None and form.require_open_profile:
-                verdict = (await resolve_profiles_open(session, [reg], scope=form.open_profile_scope)).get(reg.id)
-                if verdict is False:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Your Overwatch profile is private. Make it public to check in.",
-                    )
-
-            # Subscription admission gate. Same contract as the profile gate one
-            # block up: block only on a CONFIRMED refusal, so a provider outage
-            # (unknown) can never lock anybody out of a live check-in.
-            await assert_subscription_allows_check_in(
-                form=form,
+            # Admission gate, check-in stage: ONE call, every requirement. The
+            # profile rule used to be an inline `if` right here and the subscription
+            # rule a call into another module, so "what refuses a check-in" could
+            # only be answered by reading two places and trusting there was no
+            # third. Both are registry entries now, and adding a requirement needs
+            # no edit to this handler at all.
+            #
+            # Only a CONFIRMED refusal blocks, so a provider outage or a BattleTag
+            # nobody has polled yet can never lock somebody out of a live check-in.
+            #
+            # The admin path (`registration_admin.py::_reg_check_in`) deliberately
+            # has NO gate: it IS the organizer's override mechanism, and
+            # `AdmissionEvaluation.overridden` is what finally makes the result of
+            # using it visible instead of the badge re-deriving a refusal forever
+            # (D2/D4). Do not add a gate there, and do not add an `override=True`
+            # parameter here -- a parameter whose only job is to skip the call is
+            # the same call written twice.
+            await assert_admitted_at(
+                session,
+                reg,
+                tournament_id=tournament_id,
                 auth_user_id=user.id,
-                resolver=_subscription_resolver(session),
+                stage=AdmissionStage.check_in,
             )
+
+            form = await reg_common._common_service.get_registration_form(session, tournament_id)
 
             # check_in_registration commits internally.
             checked_in = await reg_service.registration_service.check_in_registration(
@@ -575,10 +580,8 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=workspace_id,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks if form else False,
-                    resolved_ranks=(
-                        await _resolved_public_ranks(
-                            session, [checked_in], show_ranks=form.show_ranks if form else False
-                        )
+                    roster=(
+                        await _public_rosters(session, [checked_in], show_ranks=form.show_ranks if form else False)
                     ).get(checked_in.id),
                 )
             )
@@ -597,7 +600,7 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             tournament_id = _path_int(data, "tournament_id")
             await assert_tournament_viewable(session, user, tournament_id)
-            form = await reg_service.registration_service.get_registration_form(session, tournament_id)
+            form = await reg_common._common_service.get_registration_form(session, tournament_id)
             return _dump(
                 await subscription_status_for_user(
                     form=form,
@@ -621,7 +624,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _path_int(data, "tournament_id")
             await assert_tournament_viewable(session, user, tournament_id)
             body = SubscriptionRedeemRequest.model_validate(_payload(data))
-            form = await reg_service.registration_service.get_registration_form(session, tournament_id)
+            form = await reg_common._common_service.get_registration_form(session, tournament_id)
             if form is None:
                 raise HTTPException(status_code=404, detail="Registration form not found")
 
@@ -743,13 +746,16 @@ def register(broker: Any, logger: Any) -> None:
             await assert_tournament_viewable(session, user, tournament_id)
             body = RegistrationTeamCreateRequest.model_validate(_payload(data))
 
-            # Same gate as solo registration: the captain is a registrant like any
-            # other, so an unsubscribed account cannot slip in by founding a team.
-            form = await reg_service.registration_service.get_registration_form(session, tournament_id)
-            await assert_subscription_allows_registration(
-                form=form,
+            # Same gate as solo registration, same stage: the captain is a registrant
+            # like any other, so an unsubscribed account cannot slip in by founding a
+            # team. The row does not exist yet -- `create_team` makes it below -- so
+            # the acting user is the subject.
+            await assert_admitted_at(
+                session,
+                None,
+                tournament_id=tournament_id,
                 auth_user_id=user.id,
-                resolver=_subscription_resolver(session),
+                stage=AdmissionStage.registration,
             )
 
             team, _registration = await team_service.teams_service.create_team(

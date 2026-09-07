@@ -30,14 +30,6 @@
     --chart-4: 0 0% 99.1%;
     --chart-5: 0 3% 9%;
     --radius: 0.5rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
     /* Tone roles — see tailwind.config.ts. Light appearance: dark chromatic
        text on white, white text on the solid variant. */
     --success: 158 72% 30%;
@@ -82,14 +74,6 @@
     --chart-3: 262 83% 58%;
     --chart-4: 42 63% 60%;
     --chart-5: 337 81% 66%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
     /* Tone roles, dark appearance. Verified as text on --card: APCA |Lc|
        65.5 / 69.0 / 68.6 / 66.6 — all above the 60 non-body floor. */
     --success: 158 64% 52%;
@@ -157,26 +141,37 @@
   }
 }
 
-:root {
-  --sidebar: hsl(0 0% 98%);
-  --sidebar-foreground: hsl(240 5.3% 26.1%);
-  --sidebar-primary: hsl(240 5.9% 10%);
-  --sidebar-primary-foreground: hsl(0 0% 98%);
-  --sidebar-accent: hsl(240 4.8% 95.9%);
-  --sidebar-accent-foreground: hsl(240 5.9% 10%);
-  --sidebar-border: hsl(220 13% 91%);
-  --sidebar-ring: hsl(217.2 91.2% 59.8%);
-}
+/* ── Sidebar tokens ────────────────────────────────────────────────────────
+   The admin panel is the only sidebar consumer (`SidebarProvider` is mounted
+   nowhere else), and the app is dark-only, so there is ONE set: no light/dark
+   split and no separate admin palette. Every value aliases the site's --aqt-*
+   ladder — that is what "one colour scheme" means here, and it also means the
+   sidebar repaints with the rest of the chrome under per-tenant theming
+   instead of holding a private blue-steel hue.
 
+   Declared on `.dark` (the class on <body>), NOT on `:root`, and that is not
+   cosmetic. A custom property is substituted where it is DECLARED, so an alias
+   on `:root` reads `:root`'s --aqt-* and can never see WorkspaceThemeSync's
+   per-tenant values, which are written as inline vars on <body>. Measured in
+   Chrome against a body-level override: the alias on `:root` still resolved to
+   the untenanted hsl(220 22% 7%); the same alias on `.dark` resolved to the
+   tenant colour. Same trap as the next/font aliases — see DESIGN.md.
+
+   These hold COMPLETE colours, not shadcn's bare triplets, because the live
+   utilities come from the `@theme inline` block below: `--color-sidebar-*:
+   var(--sidebar-*)` emits `background-color: var(--sidebar)`. Never wrap one in
+   hsl() — that yields hsl(hsl(…)) and paints the subtree transparent. */
 .dark {
-  --sidebar: hsl(240 5.9% 10%);
-  --sidebar-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-primary: hsl(224.3 76.3% 48%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(240 3.7% 15.9%);
-  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-border: hsl(240 3.7% 15.9%);
-  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+  /* One step up the surface ladder from the page (--aqt-bg, 5%), so the rail
+     reads as a distinct surface against the flat content area. */
+  --sidebar: var(--aqt-bg-2);
+  --sidebar-foreground: var(--aqt-fg);
+  --sidebar-primary: var(--aqt-teal);
+  --sidebar-primary-foreground: hsl(var(--primary-foreground));
+  --sidebar-accent: var(--aqt-card-2);
+  --sidebar-accent-foreground: var(--aqt-fg);
+  --sidebar-border: var(--aqt-border);
+  --sidebar-ring: var(--aqt-teal);
 }
 
 @theme inline {
@@ -188,61 +183,6 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-}
-
-/* Admin theme — OW2 Competitive: teal primary on dark blue-steel */
-.admin-theme {
-  --background: 225 30% 6%;
-  --foreground: 210 20% 95%;
-  --card: 215 20% 8%;
-  --card-foreground: 210 20% 95%;
-  --popover: 215 20% 8%;
-  --popover-foreground: 210 20% 95%;
-  --muted: 215 16% 13%;
-  /* Secondary text carries hints, field descriptions and unit labels across the
-     admin surfaces, so it is held to the same 60 APCA floor as the tone roles
-     below. At the previous 50% lightness it measured |Lc| 32.1 on --card — dimmer
-     than the site's own dark theme — which made every hint on a settings page
-     unreadable. 71% measures |Lc| 60.4 on --card and 60.8 on --background. */
-  --muted-foreground: 215 12% 71%;
-  --accent: 215 20% 16%;
-  --accent-foreground: 210 20% 95%;
-  --secondary: 215 24% 20%;
-  --secondary-foreground: 210 20% 95%;
-  --primary: 172 70% 49%;
-  --primary-foreground: 180 20% 5%;
-  --border: 215 16% 15%;
-  --input: 215 16% 15%;
-  --ring: 172 70% 49%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 100%;
-
-  /* Tone roles on the admin surfaces (--card 8%, --background 6%). Measured
-     as text: success 65.5, warning 69.0, info 68.6, danger 66.6 APCA |Lc|. */
-  --success: 158 64% 52%;
-  --success-foreground: 158 45% 8%;
-  --warning: 38 92% 62%;
-  --warning-foreground: 38 55% 10%;
-  --info: 204 94% 74%;
-  --info-foreground: 204 55% 10%;
-  --danger: 352 95% 82%;
-  --danger-foreground: 352 55% 12%;
-
-  /* Chart palette — OW2 inspired */
-  --chart-1: 172 70% 49%;
-  --chart-2: 30 100% 50%;
-  --chart-3: 262 83% 58%;
-  --chart-4: 43 96% 56%;
-  --chart-5: 340 75% 55%;
-
-  --sidebar: hsl(225 30% 7%);
-  --sidebar-foreground: hsl(210 20% 92%);
-  --sidebar-primary: hsl(172 70% 49%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(215 20% 12%);
-  --sidebar-accent-foreground: hsl(210 20% 92%);
-  --sidebar-border: hsl(215 16% 13%);
-  --sidebar-ring: hsl(172 70% 49%);
 }
 
 /* Player-profile scope. The --aqt-* palette now lives globally on :root (see
@@ -1027,7 +967,10 @@
   isolation: isolate;
   border: 1px solid var(--aqt-border);
   background: var(--aqt-card-2);
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 .aqt-ach-tile:hover {
   transform: translateY(-3px);
@@ -1103,7 +1046,9 @@
   /* hidden until hover — the name owns the top edge at rest */
   opacity: 0;
   transform: translateY(-3px);
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
 }
 .aqt-ach-tile:hover .aqt-ach-tile__rarity,
 .aqt-ach-tile:focus-within .aqt-ach-tile__rarity {
@@ -1170,7 +1115,10 @@
   border: 1px solid hsl(0 0% 100% / 0.14);
   backdrop-filter: blur(4px);
   opacity: 0;
-  transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    color 0.18s ease,
+    background 0.18s ease;
 }
 .aqt-ach-tile:hover .aqt-ach-tile__rules,
 .aqt-ach-tile:focus-within .aqt-ach-tile__rules {
@@ -1377,13 +1325,25 @@
   z-index: 5;
 }
 .aqt-timeline .aqt-dot.gold {
-  background: linear-gradient(135deg, var(--aqt-medal-gold), color-mix(in srgb, var(--aqt-medal-gold) 65%, black));
+  background: linear-gradient(
+    135deg,
+    var(--aqt-medal-gold),
+    color-mix(in srgb, var(--aqt-medal-gold) 65%, black)
+  );
 }
 .aqt-timeline .aqt-dot.silver {
-  background: linear-gradient(135deg, var(--aqt-medal-silver), color-mix(in srgb, var(--aqt-medal-silver) 65%, black));
+  background: linear-gradient(
+    135deg,
+    var(--aqt-medal-silver),
+    color-mix(in srgb, var(--aqt-medal-silver) 65%, black)
+  );
 }
 .aqt-timeline .aqt-dot.bronze {
-  background: linear-gradient(135deg, var(--aqt-medal-bronze), color-mix(in srgb, var(--aqt-medal-bronze) 65%, black));
+  background: linear-gradient(
+    135deg,
+    var(--aqt-medal-bronze),
+    color-mix(in srgb, var(--aqt-medal-bronze) 65%, black)
+  );
 }
 .aqt-timeline .aqt-dot.mid {
   background: var(--aqt-teal);
@@ -1567,7 +1527,11 @@
      restrained teal glow. The spectrum is the single sanctioned multi-hue
      accent — everywhere else, one teal leads. */
   --aqt-spectrum: linear-gradient(90deg, var(--aqt-tank), var(--aqt-damage), var(--aqt-support));
-  --aqt-hero-glow: radial-gradient(ellipse at 30% 45%, color-mix(in srgb, var(--aqt-teal) 10%, transparent), transparent 60%);
+  --aqt-hero-glow: radial-gradient(
+    ellipse at 30% 45%,
+    color-mix(in srgb, var(--aqt-teal) 10%, transparent),
+    transparent 60%
+  );
 }
 
 /* Page-hero title accent — role-spectrum gradient text. Callers wrap the
@@ -1672,7 +1636,11 @@
   left: -5%;
   width: 65%;
   height: 130%;
-  background: radial-gradient(ellipse at 30% 50%, color-mix(in srgb, var(--teal) 18%, transparent), transparent 62%);
+  background: radial-gradient(
+    ellipse at 30% 50%,
+    color-mix(in srgb, var(--teal) 18%, transparent),
+    transparent 62%
+  );
   pointer-events: none;
 }
 .aqt-tn .glow-2 {
@@ -1681,7 +1649,11 @@
   right: 0;
   width: 55%;
   height: 100%;
-  background: radial-gradient(ellipse at 70% 30%, color-mix(in srgb, var(--rose) 10%, transparent), transparent 58%);
+  background: radial-gradient(
+    ellipse at 70% 30%,
+    color-mix(in srgb, var(--rose) 10%, transparent),
+    transparent 58%
+  );
   pointer-events: none;
 }
 .aqt-tn .hero-grid {
@@ -1928,12 +1900,30 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--rose) 14%, transparent), transparent 55%),
-    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--teal) 8%, transparent), transparent 55%);
+  background:
+    radial-gradient(
+      ellipse at 0% 0%,
+      color-mix(in srgb, var(--rose) 14%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 100% 100%,
+      color-mix(in srgb, var(--teal) 8%, transparent),
+      transparent 55%
+    );
 }
 .aqt-tn .feat-card.upcoming .feat-glow {
-  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--amber) 10%, transparent), transparent 55%),
-    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--teal) 6%, transparent), transparent 60%);
+  background:
+    radial-gradient(
+      ellipse at 0% 0%,
+      color-mix(in srgb, var(--amber) 10%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 100% 100%,
+      color-mix(in srgb, var(--teal) 6%, transparent),
+      transparent 60%
+    );
 }
 .aqt-tn .feat-hex {
   position: absolute;
@@ -2485,7 +2475,11 @@
   left: -10%;
   width: 60%;
   height: 160%;
-  background: radial-gradient(ellipse at 30% 50%, color-mix(in srgb, var(--rose) 18%, transparent), transparent 60%);
+  background: radial-gradient(
+    ellipse at 30% 50%,
+    color-mix(in srgb, var(--rose) 18%, transparent),
+    transparent 60%
+  );
   pointer-events: none;
 }
 .aqt-tn .glow-teal {
@@ -2494,7 +2488,11 @@
   right: -5%;
   width: 55%;
   height: 130%;
-  background: radial-gradient(ellipse at 70% 40%, color-mix(in srgb, var(--teal) 14%, transparent), transparent 60%);
+  background: radial-gradient(
+    ellipse at 70% 40%,
+    color-mix(in srgb, var(--teal) 14%, transparent),
+    transparent 60%
+  );
   pointer-events: none;
 }
 .aqt-tn .tn-hero-inner {
@@ -2697,52 +2695,6 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
-.aqt-tn .stage-tabs {
-  display: flex;
-  gap: 6px;
-  background: var(--tn-card);
-  border: 1px solid var(--tn-border);
-  padding: 5px;
-  border-radius: 10px;
-  align-self: flex-start;
-}
-.aqt-tn .stage-tab {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  color: var(--fg-muted);
-  font-family: inherit;
-  font-weight: 600;
-  font-size: 13px;
-  padding: 7px 14px;
-  border-radius: 7px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transition: 0.15s;
-}
-.aqt-tn .stage-tab:hover {
-  color: var(--tn-fg);
-}
-.aqt-tn .stage-tab.active {
-  background: color-mix(in srgb, var(--teal) 14%, transparent);
-  color: var(--teal);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 30%, transparent);
-}
-.aqt-tn .stage-tab .count {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--fg-faint);
-  background: var(--aqt-overlay-3);
-  padding: 1px 6px;
-  border-radius: 4px;
-}
-.aqt-tn .stage-tab.active .count {
-  color: var(--teal);
-  background: color-mix(in srgb, var(--teal) 18%, transparent);
-}
-
 .aqt-tn .groups-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3137,6 +3089,22 @@
 .aqt-tn .st-status.winner {
   background: color-mix(in srgb, var(--gold) 14%, transparent);
   color: var(--gold);
+}
+/* A tie the advance (or upper-bracket) line cuts through. Declared after
+   `tr.advance` so it wins on equal specificity: the row is amber even while it
+   is provisionally advancing, because that is exactly what is unsettled. */
+.aqt-tn table.st tr.tie {
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+}
+.aqt-tn table.st tr.tie:hover td {
+  background: color-mix(in srgb, var(--amber) 13%, transparent);
+}
+.aqt-tn tr.tie .st-rank {
+  color: var(--amber);
+}
+.aqt-tn .st-status.tie {
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+  color: var(--amber);
 }
 .aqt-tn .st-cut {
   height: 0;
@@ -3762,6 +3730,43 @@
     grid-template-columns: 140px 1fr 70px;
     gap: 10px;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Sticky admin-table columns (AdminDataTable, column `meta.sticky`).
+   A pinned cell sits ON TOP of the columns scrolling past it, so it needs an
+   OPAQUE background — the table's own `bg-card/50` is see-through and would
+   show two rows of text at once. --admin-sticky-bg is that translucent card
+   layer flattened over the page background; the rules below flatten the
+   header / hover / selected tints over the same base.
+   ═══════════════════════════════════════════════════════════════════════ */
+.admin-sticky-col {
+  --admin-sticky-bg: color-mix(in srgb, hsl(var(--card)) 50%, hsl(var(--background)));
+  position: sticky;
+  z-index: 2;
+  background-color: var(--admin-sticky-bg);
+  /* Same curve as the row's Tailwind `transition-colors`, otherwise the pinned
+     cell snaps to the hover tint while the rest of the row is still fading. */
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Headers outrank body cells: they hold both axes at the corner. */
+th.admin-sticky-col {
+  z-index: 3;
+  background-color: color-mix(in srgb, hsl(var(--muted)) 20%, var(--admin-sticky-bg));
+}
+
+tbody tr:hover > .admin-sticky-col {
+  background-color: color-mix(in srgb, hsl(var(--accent)) 20%, var(--admin-sticky-bg));
+}
+
+tbody tr[data-state="selected"] > .admin-sticky-col {
+  background-color: color-mix(in srgb, hsl(var(--accent)) 30%, var(--admin-sticky-bg));
+}
+
+/* Right edge of the pinned block — the only cue that the rest scrolls under. */
+.admin-sticky-col-edge {
+  box-shadow: inset -1px 0 0 hsl(var(--border));
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

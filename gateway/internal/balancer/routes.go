@@ -39,6 +39,9 @@ var AdminRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/tournaments/{tournament_id}/balance", Queue: "rpc.balancer.admin.balance_get", IDParam: "tournament_id", Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/tournaments/{tournament_id}/balance", Queue: "rpc.balancer.admin.balance_save", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/balances/{balance_id}/export", Queue: "rpc.balancer.admin.balance_export", IDParam: "balance_id", Auth: edge.AuthRequired},
+	// Rank-only re-export: updates the ranks of players the balance already
+	// materialized, without touching the teams (so a live bracket survives).
+	{Method: "POST", Pattern: "/api/balancer/balances/{balance_id}/export-ranks", Queue: "rpc.balancer.admin.balance_ranks_export", IDParam: "balance_id", Auth: edge.AuthRequired},
 	// Materialize pre-formed registered teams (docs/plans/2026-08-20-team-registration.md §5).
 	// `Body: true` carries the optional `team_ids` narrowing; an empty body exports
 	// every complete team. Unlike balance_export this refuses when standings exist
@@ -63,6 +66,9 @@ var RosterRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}", Queue: "rpc.balancer.custom.get", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/roster", Queue: "rpc.balancer.custom.update_roster", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/players/{workspace_member_id}", Queue: "rpc.balancer.custom.update_player", IDParam: "game_id", Path: []string{"workspace_id", "workspace_member_id"}, Body: true, Auth: edge.AuthRequired},
+	// Whole-lineup participation write: the rotation hint moves several rows at
+	// once, and one request keeps them in one transaction (and one realtime signal).
+	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/players", Queue: "rpc.balancer.custom.set_participation", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/team-names", Queue: "rpc.balancer.custom.set_team_names", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/role-mask", Queue: "rpc.balancer.custom.set_role_mask", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/custom-games/{game_id}/points-per-win", Queue: "rpc.balancer.custom.set_points_per_win", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
@@ -80,12 +86,19 @@ var RosterRoutes = []edge.RouteSpec{
 }
 
 // JobRoutes are the authenticated public job API reads (status poll + result)
-// from src/routes/balancer.py. job_id is a uuid hex string (not int). Job
-// creation is a multipart upload handled separately (binary.go); the SSE stream
-// is not migrated (dead code — progress flows over the WS topic).
+// from src/routes/balancer.py, plus the tournament balance trigger. job_id is a
+// uuid hex string (not int).
+//
+// The tournament trigger carries NO player payload: the xv-1 input is built
+// server-side from shared.services.roster, the same engine the draft reads, so
+// the browser can no longer hand the algorithm a different set of ranks than
+// the draft sees. The multipart upload route (binary.go) stays for the
+// bring-your-own-file case; the SSE stream is not migrated (dead code —
+// progress flows over the WS topic).
 var JobRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/jobs/{job_id}", Queue: "rpc.balancer.jobs.status", IDParam: "job_id", Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "GET", Pattern: "/api/balancer/jobs/{job_id}/result", Queue: "rpc.balancer.jobs.result", IDParam: "job_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/balancer/tournaments/{tournament_id}/balance", Queue: "rpc.balancer.jobs.create_for_tournament", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired, Success: 202},
 }
 
 // DraftReadRoutes are the public draft spectating reads (no auth), from
@@ -118,6 +131,8 @@ var DraftRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/cancel", Queue: "rpc.balancer.draft.cancel", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/rollback", Queue: "rpc.balancer.draft.rollback", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/export", Queue: "rpc.balancer.draft.export", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
+	// Rank-only re-export: leaves the exported teams in place, refreshes their ranks.
+	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/export-ranks", Queue: "rpc.balancer.draft.export_ranks", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	// pick actions
 	{Method: "POST", Pattern: "/api/balancer/draft/picks/{pick_id}/select", Queue: "rpc.balancer.draft.pick_select", IDParam: "pick_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/draft/picks/{pick_id}/autopick", Queue: "rpc.balancer.draft.pick_autopick", IDParam: "pick_id", Body: true, Auth: edge.AuthRequired},

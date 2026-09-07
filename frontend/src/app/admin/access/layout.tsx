@@ -1,81 +1,101 @@
 "use client";
 
-import Link from "next/link";
+import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
+
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AdminTabs, type AdminTabItem } from "@/components/admin/kit/AdminTabs";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import {
   accessApiKeysPermissions,
   accessPermissionsPermissions,
   accessRolesPermissions,
-  accessUsersPermissions,
+  accessUsersPermissions
 } from "@/lib/admin-permissions";
-import { cn } from "@/lib/utils";
 import { type AppPermission, usePermissions } from "@/hooks/usePermissions";
 
-type AccessNavItem = {
-  href: string;
+/**
+ * The six Access sections and the gate each one keeps.
+ *
+ * These MUST agree with `adminRoutePermissions` in `admin-navigation.ts` —
+ * that table guards the route, this one hides the tab, and a tab visible to
+ * someone the route rejects is a dead end. Accounts, OAuth and Permissions are
+ * global-only reads; Roles and API keys are also visible to a workspace admin;
+ * Sessions is superuser-only.
+ */
+const ACCESS_TABS: {
+  key: string;
   label: string;
   permissions: AppPermission[];
-  superuserOnly?: boolean;
   workspaceAdminVisible?: boolean;
-};
-
-const accessNavItems: AccessNavItem[] = [
-  { href: "/admin/access/users", label: "Users", permissions: accessUsersPermissions },
-  { href: "/admin/access/roles", label: "Roles", permissions: accessRolesPermissions },
-  { href: "/admin/access/permissions", label: "Permissions", permissions: accessPermissionsPermissions },
-  { href: "/admin/access/oauth", label: "OAuth connections", permissions: accessUsersPermissions },
+  superuserOnly?: boolean;
+}[] = [
+  { key: "accounts", label: "Accounts", permissions: accessUsersPermissions },
   {
-    href: "/admin/access/api-keys",
+    key: "roles",
+    label: "Roles",
+    permissions: accessRolesPermissions,
+    workspaceAdminVisible: true
+  },
+  { key: "permissions", label: "Permissions", permissions: accessPermissionsPermissions },
+  {
+    key: "api-keys",
     label: "API keys",
     permissions: accessApiKeysPermissions,
-    workspaceAdminVisible: true,
+    workspaceAdminVisible: true
   },
-  { href: "/admin/access/sessions", label: "Sessions", permissions: [], superuserOnly: true },
+  { key: "oauth", label: "OAuth", permissions: accessUsersPermissions },
+  { key: "sessions", label: "Sessions", permissions: [], superuserOnly: true }
 ];
 
-export default function AccessAdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+/**
+ * Access (F15): navigation and chrome only.
+ *
+ * The hand-rolled pill `<nav>` this replaces was the last bespoke tab bar in
+ * the admin panel; it is now the same `AdminTabs` every other hub uses, so a
+ * section reads as a tab whether you arrive from the sidebar, the command
+ * palette or a link.
+ */
+export default function AccessAdminLayout({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
-  const { isSuperuser, hasAnyPermission, hasAnyWorkspacePermission, canManageAnyWorkspace } = usePermissions();
-  const visibleNavItems = accessNavItems.filter((item) => {
-    if (item.superuserOnly) {
-      return isSuperuser;
-    }
+  const { isSuperuser, hasAnyPermission, hasAnyWorkspacePermission, canManageAnyWorkspace } =
+    usePermissions();
 
-    if (item.workspaceAdminVisible) {
-      return isSuperuser || hasAnyWorkspacePermission(item.permissions) || canManageAnyWorkspace();
-    }
+  const items: AdminTabItem[] = ACCESS_TABS.map((tab) => {
+    const visible = tab.superuserOnly
+      ? isSuperuser
+      : isSuperuser ||
+        hasAnyPermission(tab.permissions) ||
+        (tab.workspaceAdminVisible === true &&
+          (hasAnyWorkspacePermission(tab.permissions) || canManageAnyWorkspace()));
 
-    return isSuperuser || hasAnyPermission(item.permissions);
+    return {
+      key: tab.key,
+      label: tab.label,
+      href: `/admin/access/${tab.key}`,
+      hidden: !visible
+    };
   });
 
-  if (visibleNavItems.length === 0) {
-    return null;
-  }
+  const activeKey =
+    ACCESS_TABS.find((tab) => pathname.startsWith(`/admin/access/${tab.key}`))?.key ?? "";
 
   return (
-    <div className="space-y-6">
-      <nav
-        aria-label="Access sections"
-        className="flex flex-wrap gap-2 rounded-lg border border-border/60 bg-card/60 p-2"
-      >
-        {visibleNavItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={isActive ? "page" : undefined}
-              className={cn(
-                "rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-                isActive && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
-              )}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-      {children}
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="Access"
+        description="Staff accounts, roles, permissions, API keys, OAuth connections and sessions."
+      />
+      <AdminTabs items={items} activeKey={activeKey} level={1} ariaLabel="Access sections" />
+      {items.every((item) => item.hidden) ? (
+        <PageStateCard
+          state="empty"
+          title="No Access section is open to you"
+          description="Reading accounts, roles or permissions needs a global RBAC grant; API keys need workspace admin."
+        />
+      ) : (
+        children
+      )}
     </div>
   );
 }

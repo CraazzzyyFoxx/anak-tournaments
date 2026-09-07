@@ -7,6 +7,7 @@ import { Star } from "lucide-react";
 import { EncounterScoreControls } from "@/components/tournaments/EncounterScoreControls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
+import { utcToZonedInput, zonedInputToUtc } from "@/lib/timezone";
 import { useTranslations } from "next-intl";
 import adminService from "@/services/admin.service";
 import captainService from "@/services/captain.service";
@@ -68,7 +70,10 @@ export function EncounterEditDialog({ open, onOpenChange, encounter }: Readonly<
     encounter.score?.home ?? 0,
     encounter.score?.away ?? 0,
     encounter.status ?? "open",
-    encounter.closeness ?? "none"
+    encounter.closeness ?? "none",
+    encounter.scheduled_at instanceof Date
+      ? encounter.scheduled_at.toISOString()
+      : (encounter.scheduled_at ?? "none")
   ].join(":");
 
   return (
@@ -94,6 +99,13 @@ function EncounterEditDialogBody({
   const [status, setStatus] = useState<EncounterStatusOption>(() => normalizeStatus(encounter.status));
   const [stars, setStars] = useState<number>(() => closenessFloatToStars(encounter.closeness));
   const [bestOf, setBestOf] = useState<number>(() => encounter.best_of ?? 3);
+  // The per-match override of the round schedule set in the stage editor. The
+  // picker's value carries no zone, so it is read and written in the viewer's
+  // own — which is the clock the admin is looking at.
+  const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+  const [scheduledAt, setScheduledAt] = useState(() =>
+    utcToZonedInput(encounter.scheduled_at, timeZone)
+  );
   // `completed` is rejected by the field update (completion goes through the
   // result endpoint), so it is shown read-only and left out of the payload.
   const isCompleted = normalizeStatus(encounter.status) === COMPLETED_STATUS;
@@ -108,8 +120,12 @@ function EncounterEditDialogBody({
     if (homeScore < 0 || awayScore < 0) {
       return t("matchEdit.negativeScoreError");
     }
+    // A half-typed datetime would otherwise be sent as "clear the time".
+    if (scheduledAt !== "" && zonedInputToUtc(scheduledAt, timeZone) === null) {
+      return t("matchEdit.scheduledAtInvalid");
+    }
     return null;
-  }, [homeScore, awayScore, t]);
+  }, [homeScore, awayScore, scheduledAt, timeZone, t]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -118,6 +134,7 @@ function EncounterEditDialogBody({
         away_score: awayScore,
         closeness: stars > 0 ? stars / 10 : null,
         best_of: bestOf,
+        scheduled_at: scheduledAt ? zonedInputToUtc(scheduledAt, timeZone) : null,
         ...(isCompleted ? {} : { status: status as EncounterEditableStatus })
       };
       await adminService.updateEncounter(encounter.id, encounterPayload);
@@ -215,6 +232,22 @@ function EncounterEditDialogBody({
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <DateTimePicker
+            id={`encounter-scheduled-at-${encounter.id}`}
+            timeId={`encounter-scheduled-at-time-${encounter.id}`}
+            dateLabel={t("matchEdit.scheduledAt")}
+            timeLabel={t("matchEdit.scheduledAtTime")}
+            clearLabel={t("matchEdit.scheduledAtClear")}
+            placeholder={t("matchEdit.scheduledAtPlaceholder")}
+            value={scheduledAt}
+            onChange={setScheduledAt}
+          />
+          <p className="mt-1 text-[11px] font-medium leading-normal text-[color:var(--aqt-fg-dim)]">
+            {t("matchEdit.scheduledAtHint")}
+          </p>
         </div>
 
         <div className="space-y-1.5">

@@ -1,3 +1,10 @@
+"""Workspace RBAC catalog, scopes, and the Redis key the cache is stored under.
+
+``RBAC_USER_KEY_PREFIX`` is the identity-service cache *and* the key
+app-service deletes on membership changes. One constant so a version bump
+cannot leave stale entries.
+"""
+
 from .bootstrap import (
     assign_default_member_role_if_roleless,
     assign_workspace_system_role,
@@ -25,10 +32,15 @@ from .scopes import (
     unknown_scopes,
 )
 
+RBAC_CACHE_VERSION = 3
+RBAC_USER_KEY_PREFIX = f"rbac:v{RBAC_CACHE_VERSION}:user:"
+
 __all__ = (
     "ALL_SCOPE_NAMES",
     "LEGACY_SCOPE_ALIASES",
     "PERMISSION_CATALOG",
+    "RBAC_CACHE_VERSION",
+    "RBAC_USER_KEY_PREFIX",
     "SCOPE_PAIRS",
     "WORKSPACE_SYSTEM_ROLE_NAMES",
     "PermissionSpec",

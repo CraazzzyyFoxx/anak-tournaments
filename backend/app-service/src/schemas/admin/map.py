@@ -43,6 +43,9 @@ class MapListQueryParams(
     sort: typing.Literal["id", "name", "gamemode_id", "created_at", "updated_at"] = "id"
     search: str | None = None
     gamemode_id: int | None = None
+    # Read-side counterpart of ``MapCreate.in_competitive``: the admin map list
+    # filters the competitive pool apart from the casual one.
+    in_competitive: bool | None = None
 
 
 @dataclass
@@ -50,3 +53,4 @@ class MapListParams(pagination.PaginationSortParams):
     per_page: int = 50
     search: str | None = None
     gamemode_id: int | None = None
+    in_competitive: bool | None = None

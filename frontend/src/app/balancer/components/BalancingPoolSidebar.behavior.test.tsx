@@ -32,7 +32,7 @@ function player(id: number, battleTag: string, overrides: Partial<BalancerPlayer
     battle_tag_normalized: battleTag.toLowerCase(),
     user_id: id,
     role_entries_json: [
-      { role: "support", subtype: null, priority: 1, division_number: 12, rank_value: 900, is_active: true, ow_rank_value: null },
+      { role: "support", subtype: null, priority: 1, division_number: 12, rank_value: 900, is_active: true, is_declared_active: true, ow_rank_value: null },
     ],
     is_flex: false,
     is_in_pool: true,

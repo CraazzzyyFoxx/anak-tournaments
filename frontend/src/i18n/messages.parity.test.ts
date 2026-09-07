@@ -23,7 +23,7 @@ describe("message dictionaries", () => {
 /**
  * Keys looked up by INTERPOLATION rather than as literals, which the parity check
  * above cannot see: both dictionaries can agree perfectly and still be missing
- * one. `TournamentClientLayout` renders the team-formation badge as
+ * one. The overview's Format card renders team formation as
  * `t(`common.${tournament.team_formation}`)`, and adding the `registration` mode
  * shipped a badge reading the raw path `common.registration` because no key
  * existed and the TS cast claimed the value could not occur.

@@ -19,7 +19,6 @@ export default function RankAutofillSubRoutePage() {
   return (
     <RankAutofillPage
       tournamentId={Number.isFinite(tournamentId) && tournamentId > 0 ? tournamentId : null}
-      basePath={`/admin/tournaments/${params.id}/registration`}
     />
   );
 }

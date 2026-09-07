@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
@@ -34,3 +35,138 @@ class CustomGamePlayerRepository(BaseRepository[models.CustomGamePlayer]):
     async def delete_for_game(self, session: AsyncSession, custom_game_id: int) -> None:
         for row in await self.list_for_game(session, custom_game_id):
             await self.delete(session, row)
+
+
+class CustomGameCoHostRepository:
+    async def user_ids_for_game(self, session: AsyncSession, custom_game_id: int) -> list[int]:
+        result = await session.scalars(
+            sa.select(models.CustomGameCoHost.user_id).where(
+                models.CustomGameCoHost.custom_game_id == custom_game_id
+            )
+        )
+        return list(result.all())
+
+    async def add(self, session: AsyncSession, custom_game_id: int, user_id: int) -> None:
+        session.add(models.CustomGameCoHost(custom_game_id=custom_game_id, user_id=user_id))
+        await session.flush()
+
+    async def remove(self, session: AsyncSession, custom_game_id: int, user_id: int) -> None:
+        await session.execute(
+            sa.delete(models.CustomGameCoHost).where(
+                models.CustomGameCoHost.custom_game_id == custom_game_id,
+                models.CustomGameCoHost.user_id == user_id,
+            )
+        )
+        await session.flush()
+
+
+class CustomGamePlayerRoleRepository:
+    async def roles_for_players(
+        self,
+        session: AsyncSession,
+        custom_game_player_ids: Sequence[int],
+    ) -> dict[int, list[str]]:
+        if not custom_game_player_ids:
+            return {}
+        result = await session.scalars(
+            sa.select(models.CustomGamePlayerRole)
+            .where(models.CustomGamePlayerRole.custom_game_player_id.in_(custom_game_player_ids))
+            .order_by(
+                models.CustomGamePlayerRole.custom_game_player_id,
+                models.CustomGamePlayerRole.priority,
+            )
+        )
+        grouped: dict[int, list[str]] = {}
+        for row in result.all():
+            grouped.setdefault(row.custom_game_player_id, []).append(row.role)
+        return grouped
+
+    async def replace_for_player(
+        self,
+        session: AsyncSession,
+        custom_game_player_id: int,
+        roles: Sequence[str],
+    ) -> None:
+        await session.execute(
+            sa.delete(models.CustomGamePlayerRole).where(
+                models.CustomGamePlayerRole.custom_game_player_id == custom_game_player_id
+            )
+        )
+        session.add_all(
+            [
+                models.CustomGamePlayerRole(
+                    custom_game_player_id=custom_game_player_id,
+                    role=role,
+                    priority=priority,
+                )
+                for priority, role in enumerate(roles, start=1)
+            ]
+        )
+        await session.flush()
+
+
+class CustomGameTeamNameRepository:
+    async def mapping_for_game(self, session: AsyncSession, custom_game_id: int) -> dict[int, str]:
+        result = await session.execute(
+            sa.select(models.CustomGameTeamName.team_index, models.CustomGameTeamName.name).where(
+                models.CustomGameTeamName.custom_game_id == custom_game_id
+            )
+        )
+        return dict(result.all())
+
+    async def set(
+        self,
+        session: AsyncSession,
+        custom_game_id: int,
+        team_index: int,
+        name: str | None,
+    ) -> None:
+        current = await session.get(models.CustomGameTeamName, (custom_game_id, team_index))
+        if name is None:
+            if current is not None:
+                await session.delete(current)
+        elif current is None:
+            session.add(
+                models.CustomGameTeamName(
+                    custom_game_id=custom_game_id,
+                    team_index=team_index,
+                    name=name,
+                )
+            )
+        else:
+            current.name = name
+        await session.flush()
+
+
+class CustomGameRoleSlotRepository:
+    async def mapping_for_game(self, session: AsyncSession, custom_game_id: int) -> dict[str, int]:
+        result = await session.execute(
+            sa.select(models.CustomGameRoleSlot.role, models.CustomGameRoleSlot.slot_count).where(
+                models.CustomGameRoleSlot.custom_game_id == custom_game_id
+            )
+        )
+        return dict(result.all())
+
+    async def replace(
+        self,
+        session: AsyncSession,
+        custom_game_id: int,
+        role_mask: dict[str, int] | None,
+    ) -> None:
+        await session.execute(
+            sa.delete(models.CustomGameRoleSlot).where(
+                models.CustomGameRoleSlot.custom_game_id == custom_game_id
+            )
+        )
+        if role_mask:
+            session.add_all(
+                [
+                    models.CustomGameRoleSlot(
+                        custom_game_id=custom_game_id,
+                        role=role,
+                        slot_count=slot_count,
+                    )
+                    for role, slot_count in role_mask.items()
+                ]
+            )
+        await session.flush()

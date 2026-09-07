@@ -31,40 +31,10 @@ os.environ["DEBUG"] = "true"
 
 from shared.models.ingestion.log_processing import LogProcessingSource  # noqa: E402
 
+from tests._fakes import FakeBroker as _FakeBroker, active_identity as _active_identity, session_factory as _session_factory
+
 rpc_logs = importlib.import_module("src.rpc.logs")
 admin_reads = importlib.import_module("src.services.match_logs.admin_reads")
-
-
-# ── identity helper ──────────────────────────────────────────────────────────
-
-
-def _active_identity() -> dict:
-    """A gateway identity payload for an active admin user (permissions stubbed)."""
-    return {
-        "user_id": 7,
-        "sub": "7",
-        "is_active": True,
-        "is_superuser": True,
-        "roles": ["admin"],
-        "permissions": [],
-    }
-
-
-# ── fake broker + session ──────────────────────────────────────────────────────
-
-
-class _FakeBroker:
-    """Capture FastStream subscribers by subject so we can invoke them directly."""
-
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def subscriber(self, subject: str):
-        def _decorator(fn):
-            self.handlers[subject] = fn
-            return fn
-
-        return _decorator
 
 
 class _Result:
@@ -82,20 +52,6 @@ class _Result:
     def one(self):
         return self._row
 
-
-def _session_factory(session):
-    """Build a ``session_factory()`` returning an async-context-managed session."""
-
-    class _Ctx:
-        async def __aenter__(self):
-            return session
-
-        async def __aexit__(self, *exc):
-            return False
-
-    return lambda: _Ctx()
-
-
 class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.broker = _FakeBroker()
@@ -106,7 +62,8 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
         rpc_logs._SF = self._original_sf
 
     async def test_upload_queues_each_file_with_attached_encounter(self) -> None:
-        session = SimpleNamespace()
+        audit_rows: list = []
+        session = SimpleNamespace(add=audit_rows.append)
         rpc_logs._SF = _session_factory(session)
 
         async def store_uploaded_log_bytes(*args, **kwargs):
@@ -121,7 +78,7 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
             patch.object(
                 rpc_logs.tournament_flows,
                 "get",
-                AsyncMock(return_value=SimpleNamespace(id=42, name="Cup")),
+                AsyncMock(return_value=SimpleNamespace(id=42, name="Cup", workspace_id=5)),
             ),
             patch.object(
                 rpc_logs,
@@ -174,6 +131,15 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
         payloads = [call.args[1] for call in publish_mock.await_args_list]
         self.assertEqual(["one.log", "two.log"], [payload["filename"] for payload in payloads])
         self.assertEqual([42, 42], [payload["tournament_id"] for payload in payloads])
+
+        # One audit row for the call — file names only, never the uploaded bytes.
+        self.assertEqual(1, len(audit_rows))
+        row = audit_rows[0]
+        self.assertEqual("match_log.upload", row.action)
+        self.assertEqual(5, row.workspace_id)
+        self.assertEqual("tournament", row.entity_type)
+        self.assertEqual(42, row.entity_id)
+        self.assertEqual({"filenames": ["one.log", "two.log"]}, row.after_json)
 
     async def test_history_query_filters_by_attached_encounter(self) -> None:
         self._recording_session()
@@ -286,3 +252,22 @@ class ValidateAttachedEncounterTests(IsolatedAsyncioTestCase):
         result = await admin_reads._validate_attached_encounter(session, tournament_id=42, encounter_id=None)
         self.assertIsNone(result)
         session.execute.assert_not_awaited()
+
+
+class MatchLogOversizeMessageTests(IsolatedAsyncioTestCase):
+    def test_under_cap_is_silent(self) -> None:
+        from src.services.match_logs.limits import match_log_oversize_message
+
+        self.assertIsNone(match_log_oversize_message(10, 10))
+
+    def test_over_cap_names_the_file_when_given(self) -> None:
+        from src.services.match_logs.limits import match_log_oversize_message
+
+        self.assertEqual(
+            "Log file exceeds the maximum size of 10 bytes",
+            match_log_oversize_message(11, 10),
+        )
+        self.assertEqual(
+            "Log file a.log exceeds the maximum size of 10 bytes",
+            match_log_oversize_message(11, 10, filename="a.log"),
+        )

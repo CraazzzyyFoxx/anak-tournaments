@@ -35,6 +35,7 @@ from src.services.hero import service as hero_service
 from src.services.map import flows as map_flows
 from src.services.match_logs.binary import binary_match_logs
 from src.services.match_logs.event_models import KillEvent, MatchEventRow, PlayerStatRow
+from src.services.match_logs.limits import match_log_oversize_message
 from src.services.team import service as team_service
 from src.services.tournament import flows as tournament_flows
 
@@ -1237,7 +1238,7 @@ class MatchLogProcessor:
             if p.team_id == team_db.id and p.id in current_team_player_ids
         }
         if len(final_players_map_verified) != len(final_players_map):
-            logger.error(
+            logger.warning(
                 f"Team {team_db.name} player map verification failed after collision fix. "
                 f"Some players might not belong to the team."
             )
@@ -1317,14 +1318,14 @@ async def process_match_log(
         return
 
     max_log_bytes = settings.max_match_log_bytes
-    if len(raw_bytes) > max_log_bytes:
-        msg = f"Log file {filename} exceeds the maximum size of {max_log_bytes} bytes"
-        logger.warning(msg)  # same rationale as the missing-object branch above
-        await record_service.fail_unstarted(session, tournament_id, object_name, msg)
+    oversize = match_log_oversize_message(len(raw_bytes), max_log_bytes, filename=filename)
+    if oversize:
+        logger.warning(oversize)
+        await record_service.fail_unstarted(session, tournament_id, object_name, oversize)
         if is_raise:
             raise errors.ApiHTTPException(
                 status_code=413,
-                detail=[errors.ApiExc(code="match_log_too_large", msg=msg)],
+                detail=[errors.ApiExc(code="match_log_too_large", msg=oversize)],
             )
         return
 

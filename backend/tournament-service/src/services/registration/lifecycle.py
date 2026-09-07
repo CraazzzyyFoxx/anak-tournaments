@@ -24,11 +24,13 @@ from sqlalchemy.orm import selectinload
 from shared.balancer_registration_statuses import balancer_pool_excluded_clause, balancer_pool_included_clause
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.domain.roster import flex_role_mode
 from shared.repository import (
     BalancerRegistrationRepository,
     RegistrationStatusRepository,
     TournamentRepository,
 )
+from shared.services.roster import registration_load_options, roster_engine
 from src import models
 from src.domain.registration.utils import (
     normalize_battle_tag,
@@ -43,14 +45,12 @@ from src.services.registration._common import (
     VALID_REGISTRATION_STATUSES,
     RegistrationCommonService,
     _common_service,
-    flex_role_mode,
     included_balancer_status,
     replace_registration_roles,
+    resolve_roster,
     sync_included_balancer_status,
 )
-from src.services.registration import rank_resolution
 from src.services.registration.service import RegistrationService, registration_service
-from src.services.registration.windows import is_check_in_window_active
 from src.services.tournament.events import (
     enqueue_registration_approved,
     enqueue_registration_rejected,
@@ -290,11 +290,8 @@ class RegistrationLifecycleService:
             max_heroes=max_heroes,
             mode=flex_role_mode(form),
         )
-        if balancer_status_value is None or balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES:
-            registration.balancer_status = (
-                included_balancer_status(registration) if resolved_status == "approved" else NOT_ADDED_BALANCER_STATUS
-            )
-        else:
+        auto_managed = balancer_status_value is None or balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES
+        if not auto_managed:
             registration.balancer_status = balancer_status_value
         await self.registration_repo.create(session, registration)
         # Unconditional, and with the workspace: a manual registration has no auth
@@ -304,16 +301,15 @@ class RegistrationLifecycleService:
         await self.registrations.ensure_player_identity(
             session, registration, auth_user_id=auth_user_id, workspace_id=workspace_id
         )
-        if balancer_status_value is None or balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES:
-            if resolved_status == "approved":
-                registration.balancer_status = included_balancer_status(
-                    registration,
-                    await rank_resolution.resolved_value_map(
-                        session, registration, workspace_id=workspace_id
-                    ),
-                )
-            else:
-                registration.balancer_status = NOT_ADDED_BALANCER_STATUS
+        if auto_managed:
+            # Resolved only now: the member anchor above is what the inherited rank
+            # layers hang off, so a roster read before it would rate every blank
+            # role as unranked.
+            registration.balancer_status = (
+                included_balancer_status(await resolve_roster(session, registration))
+                if resolved_status == "approved"
+                else NOT_ADDED_BALANCER_STATUS
+            )
         if resolved_status == "approved":
             await enqueue_registration_approved(session, registration)
         else:
@@ -385,12 +381,7 @@ class RegistrationLifecycleService:
             registration.status = status_value
         if balancer_status_value is not None:
             if balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES:
-                sync_included_balancer_status(
-                    registration,
-                    await rank_resolution.resolved_value_map(
-                        session, registration, workspace_id=await _workspace_id_for(session, registration)
-                    ),
-                )
+                sync_included_balancer_status(registration, await resolve_roster(session, registration))
             else:
                 await self.validate_registration_status_value(
                     session,
@@ -445,10 +436,7 @@ class RegistrationLifecycleService:
             session, registration, auth_user_id=auth_user_id, workspace_id=workspace_id
         )
         if roles is not None or unpin:
-            sync_included_balancer_status(
-                registration,
-                await rank_resolution.resolved_value_map(session, registration, workspace_id=workspace_id),
-            )
+            sync_included_balancer_status(registration, await resolve_roster(session, registration))
 
         if status_value == "approved" and previous_status != "approved":
             await enqueue_registration_approved(session, registration)
@@ -530,8 +518,8 @@ class RegistrationLifecycleService:
         session: AsyncSession,
         registration_id: int,
     ) -> models.BalancerRegistration:
-        """Put an approved registration into the pool, rating it from its role
-        ranks (`ready` if every active role has one, else `incomplete`).
+        """Put an approved registration into the pool, rating it from its resolved
+        roster (`ready` if every declared role carries a rank, else `incomplete`).
 
         Replaces the former `set_registration_exclusion(..., exclude_from_balancer=False)`
         path -- the "(re)include" half of the old exclusion toggle.
@@ -543,12 +531,7 @@ class RegistrationLifecycleService:
                 detail="Registration must be approved before adding to balancer",
             )
         registration.exclude_reason = None
-        registration.balancer_status = included_balancer_status(
-            registration,
-            await rank_resolution.resolved_value_map(
-                session, registration, workspace_id=await _workspace_id_for(session, registration)
-            ),
-        )
+        registration.balancer_status = included_balancer_status(await resolve_roster(session, registration))
         self.common._register_registration_changed(session, registration)
         await session.commit()
         # Scalar-only mutation; the eagerly-loaded object stays valid after
@@ -633,12 +616,13 @@ class RegistrationLifecycleService:
         *,
         checked_in_by: int | None,
     ) -> models.BalancerRegistration:
+        """Admin check-in. Deliberately ungated by the CHECK_IN phase window --
+        organizers check people in before the phase opens, after it closes, and
+        during LIVE when someone shows up late. The window gate belongs to the
+        self-service path only (``registration_service.check_in_registration``),
+        and undo (``uncheck_in_registration``) has never had one either.
+        """
         registration = await self.get_registration_by_id(session, registration_id)
-        if not is_check_in_window_active(registration.tournament):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Check-in is not active for this tournament",
-            )
         registration.checked_in = True
         registration.checked_in_at = datetime.now(UTC)
         registration.checked_in_by = checked_in_by
@@ -683,22 +667,20 @@ class RegistrationLifecycleService:
                 models.BalancerRegistration.id.in_(registration_ids),
                 models.BalancerRegistration.status == "approved",
             )
-            # included_balancer_status inspects .roles — eager-load them since a
-            # lazy load is not available on an async session.
-            .options(selectinload(models.BalancerRegistration.roles))
+            # The engine reads roles, their heroes and the member anchor; none of
+            # them may lazy-load on an async session.
+            .options(*registration_load_options())
         )
         registrations = list(result.scalars().all())
         workspace_id = await session.scalar(
             sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
         )
-        resolved = await rank_resolution.resolve_registration_ranks(
-            session, registrations, workspace_id=workspace_id
+        rosters = await roster_engine.resolve(
+            session, registrations, workspace_id=workspace_id, tournament_id=tournament_id
         )
         for registration in registrations:
             registration.exclude_reason = None
-            registration.balancer_status = included_balancer_status(
-                registration, {role: rr.value for role, rr in resolved.get(registration.id, {}).items()}
-            )
+            registration.balancer_status = included_balancer_status(rosters.get(registration.id))
         await session.commit()
         return len(registrations), len(registration_ids) - len(registrations)
 

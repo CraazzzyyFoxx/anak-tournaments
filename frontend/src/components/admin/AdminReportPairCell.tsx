@@ -19,7 +19,7 @@ interface AdminReportPairCellProps {
 function ReportSide({ label, report }: Readonly<{ label: string; report: AdminCaptainReport | null }>) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+      <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
         {label}
       </p>
       {report ? (

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apiver"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
 
@@ -66,6 +67,54 @@ func TestDispatch_TypedSuccess(t *testing.T) {
 	_ = json.Unmarshal(m.lastBody, &sent)
 	if sent["id"] != "5" {
 		t.Fatalf("sent id=%v", sent["id"])
+	}
+}
+
+func TestDispatch_V2RelaysEnvelope(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":true,"data":{"id":5},"warnings":[{"code":"truncated","message":"capped"}]}`)}
+	d := newTestDispatcher(m, nil)
+	spec := RouteSpec{Method: "GET", Pattern: "/api/v1/tournaments/{id}", Queue: "rpc.tournament.get_tournament", IDParam: "id", Auth: AuthNone}
+	mux := http.NewServeMux()
+	d.Register(mux, []RouteSpec{spec})
+	h := apiver.Middleware(mux)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/tournaments/5", nil))
+	if w.Code != 200 {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if body["ok"] != true {
+		t.Fatalf("body=%s", w.Body.String())
+	}
+	data, _ := body["data"].(map[string]any)
+	if data["id"] != float64(5) {
+		t.Fatalf("data=%v", body["data"])
+	}
+}
+
+func TestDispatch_V2ErrorEnvelope(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":false,"error":{"code":"not_found","message":"missing"}}`)}
+	d := newTestDispatcher(m, nil)
+	spec := RouteSpec{Method: "GET", Pattern: "/api/v1/tournaments/{id}", Queue: "rpc.tournament.get_tournament", IDParam: "id", Auth: AuthNone}
+	mux := http.NewServeMux()
+	d.Register(mux, []RouteSpec{spec})
+	h := apiver.Middleware(mux)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/tournaments/5", nil))
+	if w.Code != 404 {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if body["ok"] != false {
+		t.Fatalf("body=%s", w.Body.String())
+	}
+	errObj, _ := body["error"].(map[string]any)
+	if errObj["code"] != "not_found" {
+		t.Fatalf("error=%v", body["error"])
 	}
 }
 
@@ -163,6 +212,124 @@ func TestDispatch_ErrorEnvelope(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &b)
 	if b["detail"] != "nope" {
 		t.Fatalf("detail=%q", b["detail"])
+	}
+	if b["code"] != "forbidden" {
+		t.Fatalf("code=%q", b["code"])
+	}
+}
+
+// identityWith builds an IdentityResolver returning a payload whose workspaces
+// carry the given ids — the shape identity-svc dumps (WorkspaceMembership).
+func identityWith(workspaceIDs ...int) IdentityResolver {
+	ws := make([]any, 0, len(workspaceIDs))
+	for _, id := range workspaceIDs {
+		ws = append(ws, map[string]any{"workspace_id": float64(id), "slug": "s"})
+	}
+	return func(*http.Request) (map[string]any, bool, error) {
+		return map[string]any{"user_id": float64(1), "workspaces": ws}, true, nil
+	}
+}
+
+// bodyQuery pulls data["query"] out of the captured RPC request.
+func bodyQuery(t *testing.T, m *mockCaller) map[string]any {
+	t.Helper()
+	var sent map[string]any
+	if err := json.Unmarshal(m.lastBody, &sent); err != nil {
+		t.Fatalf("rpc body not JSON: %v", err)
+	}
+	q, _ := sent["query"].(map[string]any)
+	return q
+}
+
+// A credential pinned to exactly one workspace already names its scope; making
+// the caller repeat it in the query string is the first 400 every API-key
+// integrator hits (shared/services/workspace_scope.py fails closed).
+func TestDispatch_DerivesWorkspaceIDFromSoleWorkspace(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":true,"data":{}}`)}
+	d := newTestDispatcher(m, identityWith(7))
+	spec := RouteSpec{Method: "GET", Pattern: "/x", Queue: "q", Query: []string{"workspace_id"}, Auth: AuthRequired}
+	if w := serve(d, spec, "GET", "/x", ""); w.Code != 200 {
+		t.Fatalf("code=%d", w.Code)
+	}
+	q := bodyQuery(t, m)
+	got, _ := q["workspace_id"].([]any)
+	if len(got) != 1 || got[0] != "7" {
+		t.Fatalf("query.workspace_id=%#v, want [\"7\"]", q["workspace_id"])
+	}
+}
+
+func TestDispatch_ExplicitWorkspaceIDWins(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":true,"data":{}}`)}
+	d := newTestDispatcher(m, identityWith(7))
+	spec := RouteSpec{Method: "GET", Pattern: "/x", Queue: "q", AllQuery: true, Auth: AuthRequired}
+	serve(d, spec, "GET", "/x?workspace_id=9", "")
+	q := bodyQuery(t, m)
+	got, _ := q["workspace_id"].([]any)
+	if len(got) != 1 || got[0] != "9" {
+		t.Fatalf("query.workspace_id=%#v, want [\"9\"]", q["workspace_id"])
+	}
+}
+
+// Two workspaces are ambiguous: guessing one would silently scope a read to the
+// wrong tenant, so the fail-closed 400 from the worker stays the right answer.
+func TestDispatch_NoDeriveWhenWorkspaceAmbiguous(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":true,"data":{}}`)}
+	d := newTestDispatcher(m, identityWith(7, 8))
+	spec := RouteSpec{Method: "GET", Pattern: "/x", Queue: "q", AllQuery: true, Auth: AuthRequired}
+	serve(d, spec, "GET", "/x", "")
+	if q := bodyQuery(t, m); q["workspace_id"] != nil {
+		t.Fatalf("query.workspace_id=%#v, want absent", q["workspace_id"])
+	}
+}
+
+// A route that never declared workspace_id must not grow a surprise param.
+func TestDispatch_NoDeriveWhenRouteIgnoresWorkspace(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":true,"data":{}}`)}
+	d := newTestDispatcher(m, identityWith(7))
+	spec := RouteSpec{Method: "GET", Pattern: "/x", Queue: "q", Auth: AuthRequired}
+	serve(d, spec, "GET", "/x", "")
+	if q := bodyQuery(t, m); q["workspace_id"] != nil {
+		t.Fatalf("query=%#v, want no workspace_id", q)
+	}
+}
+
+// A worker cannot set HTTP headers, so its 429 carries the budget in the
+// envelope. Dropping it left API clients with no retry signal at all.
+func TestDispatch_RateLimitedRelaysRetryAfter(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":false,"error":{"code":"rate_limited","message":"slow down","details":{"retry_after":30}}}`)}
+	d := newTestDispatcher(m, nil)
+	spec := RouteSpec{Method: "GET", Pattern: "/x", Queue: "q", Auth: AuthNone}
+	w := serve(d, spec, "GET", "/x", "")
+	if w.Code != 429 {
+		t.Fatalf("code=%d", w.Code)
+	}
+	if got := w.Header().Get("Retry-After"); got != "30" {
+		t.Fatalf("Retry-After=%q, want 30", got)
+	}
+}
+
+func TestDispatch_ErrorRelaysStructuredFields(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":false,"error":{"code":"unprocessable","message":"bad input","details":{"fields":[{"field":"name","msg":"required","code":"missing"}]}}}`)}
+	d := newTestDispatcher(m, nil)
+	spec := RouteSpec{Method: "POST", Pattern: "/x", Queue: "q", Auth: AuthNone}
+	w := serve(d, spec, "POST", "/x", "")
+	if w.Code != 422 {
+		t.Fatalf("code=%d", w.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	if body["detail"] != "bad input" || body["code"] != "unprocessable" {
+		t.Fatalf("body=%#v", body)
+	}
+	fields, _ := body["fields"].([]any)
+	if len(fields) != 1 {
+		t.Fatalf("fields=%#v, want 1 entry", body["fields"])
+	}
+	first, _ := fields[0].(map[string]any)
+	if first["code"] != "missing" || first["field"] != "name" {
+		t.Fatalf("fields[0]=%#v", first)
 	}
 }
 

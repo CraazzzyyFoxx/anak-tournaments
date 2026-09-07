@@ -24,7 +24,7 @@ const player = {
   id: 10,
   version: 4,
   primary_role: "tank",
-  secondary_roles_json: ["dps"]
+  secondary_roles: ["dps"]
 } as DraftPlayer;
 
 describe("admin draft control model", () => {
@@ -41,10 +41,13 @@ describe("admin draft control model", () => {
       before: feasible(1),
       after: feasible(2)
     };
-    expect(canCommitRoleEdit({ player, role: "support", rankValue: 2500, rankAbsent: false, reason: "Final support slot", preview })).toBe(true);
-    expect(canCommitRoleEdit({ player: { ...player, version: 5 }, role: "support", rankValue: 2500, rankAbsent: false, reason: "Final support slot", preview })).toBe(false);
-    expect(canCommitRoleEdit({ player, role: "support", rankValue: null, rankAbsent: false, reason: "Final support slot", preview })).toBe(false);
-    expect(canCommitRoleEdit({ player, role: "support", rankValue: 2500, rankAbsent: false, reason: " ", preview })).toBe(false);
+    expect(canCommitRoleEdit({ player, role: "support", rankValue: 2500, reason: "Final support slot", preview })).toBe(true);
+    expect(canCommitRoleEdit({ player: { ...player, version: 5 }, role: "support", rankValue: 2500, reason: "Final support slot", preview })).toBe(false);
+    expect(canCommitRoleEdit({ player, role: "support", rankValue: 2500, reason: " ", preview })).toBe(false);
+    // A rankless role is not playable, so there is no "confirm there is no
+    // rank" path any more: null and 0 both refuse.
+    expect(canCommitRoleEdit({ player, role: "support", rankValue: null, reason: "Final support slot", preview })).toBe(false);
+    expect(canCommitRoleEdit({ player, role: "support", rankValue: 0, reason: "Final support slot", preview })).toBe(false);
   });
 
   it("describes whether preview improves or resolves feasibility", () => {

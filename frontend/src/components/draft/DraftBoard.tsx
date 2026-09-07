@@ -137,6 +137,7 @@ export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
           gating={gating}
           options={optionsQuery.data ?? null}
           optionsLoading={optionsQuery.isFetching}
+          onRetryOptions={() => void optionsQuery.refetch()}
           connectionState={connectionState}
           viewParams={viewParams}
           onViewParamsChange={updateViewParams}

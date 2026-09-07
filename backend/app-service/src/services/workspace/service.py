@@ -8,11 +8,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.messaging.rpc import request_dict
+from shared.messaging.rpc import request_rpc
 from shared.models.identity.auth_user import AuthUser
 from shared.rbac import (
     assign_workspace_system_role,
     ensure_workspace_system_roles,
+    get_workspace_system_role,
     replace_user_workspace_roles,
     user_has_only_workspace_owner_role,
 )
@@ -525,6 +526,23 @@ class WorkspaceService:
         await session.commit()
         return assigned
 
+    async def resolve_member_role_ids(
+        self,
+        session: AsyncSession,
+        workspace_id: int,
+        *,
+        role_ids: list[int] | None,
+        role_name: str | None,
+    ) -> list[int]:
+        """Explicit ``role_ids`` win; otherwise the named workspace system role."""
+        await ensure_workspace_system_roles(session, workspace_id)
+        if role_ids is not None:
+            return role_ids
+        role = await get_workspace_system_role(session, workspace_id, role_name or "member")
+        if role is None:
+            raise HTTPException(status_code=500, detail="Workspace system role is not configured")
+        return [role.id]
+
     async def invite_member(
         self,
         session: AsyncSession,
@@ -533,6 +551,8 @@ class WorkspaceService:
         *,
         role_ids: list[int],
     ) -> models.WorkspaceMember:
+        if await self.get_member(session, workspace_id, auth_user_id):
+            raise HTTPException(status_code=400, detail="User is already a member")
         member = await self.add_member_with_roles(session, workspace_id, auth_user_id, role_ids=role_ids)
         await session.commit()
         return member
@@ -705,13 +725,14 @@ class WorkspaceService:
         ``IntegrityError`` catch alone is proportionate).
         """
         try:
-            res = await request_dict(broker, {"auth_user_id": actor.id}, _DISCORD_GUILDS_SUBJECT, timeout=5.0)
+            reply = await request_rpc(broker, {"auth_user_id": actor.id}, _DISCORD_GUILDS_SUBJECT, timeout=5.0)
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Could not reach Discord for guild verification") from exc
-        if not res or not res.get("ok"):
+        if reply is None or not reply.ok:
             raise HTTPException(status_code=503, detail="Could not reach Discord for guild verification")
 
-        guilds = (res.get("data") or {}).get("guilds") or []
+        payload = reply.data if isinstance(reply.data, dict) else {}
+        guilds = payload.get("guilds") or []
         administered = {g["guild_id"] for g in guilds if g.get("can_manage")}
         if guild_id not in administered:
             raise HTTPException(status_code=403, detail="You do not administer this Discord guild")

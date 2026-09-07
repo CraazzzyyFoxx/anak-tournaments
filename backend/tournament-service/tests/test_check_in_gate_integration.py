@@ -144,11 +144,11 @@ class TestCheckInGate(IsolatedAsyncioTestCase):
         """True when the gate refuses check-in. Providers absent from ``live`` have
         no strategy and therefore resolve to ``unknown``."""
         from shared.core.errors import BaseAPIException
+        from shared.services.admission import AdmissionConfig, AdmissionStage
+        from shared.services.admission.gates import assert_admitted
+        from shared.services.admission.resolve import resolve_admission_for_gate
         from shared.services.subscriptions.entitlements import SubscriptionResolver
         from shared.services.subscriptions.wiring import build_store
-        from src.services.registration.subscription_gate import (
-            assert_subscription_allows_check_in,
-        )
 
         resolver = SubscriptionResolver(
             store=build_store(self._session),
@@ -157,8 +157,30 @@ class TestCheckInGate(IsolatedAsyncioTestCase):
             },
         )
         await self._set_workspace_requirement(blob)
+
+        # The three calls `assert_admitted_at` makes, composed by hand. It builds
+        # its own resolver from process settings, and the stub strategies are the
+        # entire point of this suite -- so the seam it does not offer is opened
+        # here rather than reaching into the module to patch it.
+        #
+        # `registration=None` with an explicit `auth_user_id`: this suite has no
+        # `balancer_registration` row to anchor, and the subject is what the
+        # subscription requirement needs. The profile requirement is off on
+        # `_Form`, so nothing here depends on the row either.
+        config = AdmissionConfig.from_form(
+            _Form(self.ws),
+            subscription_rule=await resolver.load_requirement(workspace_id=self.ws),
+        )
+        evaluation = await resolve_admission_for_gate(
+            self._session,
+            None,
+            config=config,
+            resolver=resolver,
+            stage=AdmissionStage.check_in,
+            auth_user_id=self.au,
+        )
         try:
-            await assert_subscription_allows_check_in(form=_Form(self.ws), auth_user_id=self.au, resolver=resolver)
+            assert_admitted(evaluation, stage=AdmissionStage.check_in, config=config)
         except BaseAPIException:
             return True
         return False

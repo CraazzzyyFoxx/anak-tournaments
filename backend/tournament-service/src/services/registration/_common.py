@@ -3,12 +3,16 @@
 Cross-cutting building blocks used by more than one of the admin modules
 (``sheet_parsing`` / ``sheet_sync`` / ``rank_autofill`` / ``lifecycle`` /
 ``export``): tournament/form lookups, division-grid resolution, role
-replacement and the active-role / balancer-status predicates. Everything here
-is re-exported by the ``admin`` facade.
+replacement and the balancer-status verdict.
+
+Nothing here derives a role's rank or playability any more: that answer comes
+from :mod:`shared.services.roster`, and the ``ready``/``incomplete`` verdict is
+a straight read of :attr:`~shared.domain.roster.PlayerRoster.is_ranked_complete`.
+What stays local is the WRITE side (``apply_all_roles`` /
+``replace_registration_roles``), which the engine never touches.
 """
 
-from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,8 +23,10 @@ from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES, normalize_sub_role
+from shared.domain.roster import FlexRoleMode, PlayerRoster
 from shared.hero_catalog import HeroCatalog
 from shared.repository import RegistrationFormRepository, TournamentRepository
+from shared.services.roster import roster_engine
 from src import models
 from src.domain.registration.utils import DEFAULT_SORT_PRIORITY_SENTINEL
 from src.schemas.registration import CustomFieldDefinition
@@ -62,60 +68,6 @@ def form_custom_field_defs(
         else:
             defs.append(CustomFieldDefinition.model_validate(value or {}))
     return defs
-
-
-FlexRoleMode = Literal["optional", "all_roles", "forced"]
-
-
-def flex_role_mode(form: Any | None) -> FlexRoleMode:
-    """The tournament's ``flex_role.mode``, normalized.
-
-    - ``optional``  — the registrant picks which roles they play at all; flex is
-      an opt-in preset.
-    - ``all_roles`` — every role is mandatory; the registrant names exactly one
-      priority role, or declares flex (no preference).
-    - ``forced``    — every role is mandatory AND flex; there is no choice.
-
-    Absent key, ``None`` and an unknown string all read as ``optional``, so every
-    existing form keeps its behaviour. ``enabled: false`` bans flex outright (see
-    ``validation.py``) and therefore wins over the mode.
-
-    Reads fail closed. Guessing anything but ``optional`` would silently inflate
-    every player's effective rank, since the other two modes rate a player by
-    their highest rank across all roles.
-    """
-    if form is None:
-        return "optional"
-    config = (getattr(form, "built_in_fields_json", None) or {}).get("flex_role")
-    if not isinstance(config, dict):
-        return "optional"
-    if config.get("enabled", True) is False:
-        return "optional"
-    mode = config.get("mode")
-    return mode if mode in ("all_roles", "forced") else "optional"
-
-
-def all_roles_required(form: Any | None) -> bool:
-    """Whether role stops being a constraint: every role playable by everyone.
-
-    True for ``all_roles`` and ``forced``. This is the fact that drives the
-    max-rank policy on the read side: if the tournament requires readiness to
-    play anything, the balancer must hold a rating for every role, because
-    eligibility there is the presence of a rating (``role in ratings``), not the
-    flex flag.
-    """
-    return flex_role_mode(form) in ("all_roles", "forced")
-
-
-def forced_flex_enabled(form: Any | None) -> bool:
-    """Whether the flex choice is made FOR the registrant (``forced`` only).
-
-    Distinct from ``all_roles_required``: under ``all_roles`` the registrant
-    still names a priority role, so their non-priority roles carry discomfort and
-    the solver keeps a real balance-versus-comfort trade-off. Under ``forced``
-    every role is primary, discomfort is nil, and that trade-off collapses.
-    """
-    return flex_role_mode(form) == "forced"
 
 
 def apply_all_roles(
@@ -205,43 +157,41 @@ def replace_registration_roles(
     registration.roles[:] = next_roles
 
 
-def _active_roles(registration: models.BalancerRegistration | Any) -> list[Any]:
-    return [r for r in getattr(registration, "roles", []) if getattr(r, "is_active", False)]
-
-
-def registration_has_active_roles(registration: models.BalancerRegistration | Any) -> bool:
-    return len(_active_roles(registration)) > 0
-
-
-def active_roles_all_ranked(
+async def resolve_roster(
+    session: AsyncSession,
     registration: models.BalancerRegistration | Any,
-    resolved_ranks: Mapping[str, int | None] | None = None,
-) -> bool:
-    roles = _active_roles(registration)
-    if not roles:
-        return False
+) -> PlayerRoster | None:
+    """The resolved roster of ONE registration, straight from the engine.
 
-    def rank_of(role: Any) -> int | None:
-        resolved = resolved_ranks.get(role.role) if resolved_ranks is not None else None
-        if resolved is not None:
-            return resolved
-        return getattr(role, "rank_value", None)
+    Write paths mutate roles and then want the ``ready``/``incomplete`` verdict.
+    They hold a row loaded for their own reasons, which need not carry
+    ``registration_load_options()``, so the roster is re-read through the engine's
+    own query instead: autoflush publishes the pending role writes first, which
+    is also what makes the verdict reflect the edit that just happened.
+    """
+    rosters = await roster_engine.for_tournament(
+        session,
+        registration.tournament_id,
+        registration_ids=[registration.id],
+        include_deleted=True,
+    )
+    return rosters.get(registration.id)
 
-    return all(rank_of(role) is not None for role in roles)
 
+def included_balancer_status(roster: PlayerRoster | None) -> str:
+    """The pool verdict: ``ready`` once every declared role carries a rank.
 
-def included_balancer_status(
-    registration: models.BalancerRegistration | Any,
-    resolved_ranks: Mapping[str, int | None] | None = None,
-) -> str:
-    return "ready" if active_roles_all_ranked(registration, resolved_ranks) else "incomplete"
+    No roster at all (a registration the engine did not resolve) reads as
+    ``incomplete`` -- the same answer the old role-less case gave.
+    """
+    return "ready" if roster is not None and roster.is_ranked_complete else "incomplete"
 
 
 def sync_included_balancer_status(
     registration: models.BalancerRegistration | Any,
-    resolved_ranks: Mapping[str, int | None] | None = None,
+    roster: PlayerRoster | None,
 ) -> None:
-    """Recompute `ready`/`incomplete` from resolved role ranks -- the only two
+    """Recompute `ready`/`incomplete` from the resolved roster -- the only two
     balancer statuses a role edit is allowed to change. `not_in_balancer`,
     `excluded` and any custom status are exclusively admin-managed: they can
     no longer be picked FOR ready/incomplete (see `set_balancer_status`), so
@@ -252,7 +202,7 @@ def sync_included_balancer_status(
         getattr(registration, "status", None) == "approved"
         and current_balancer_status in AUTO_MANAGED_BALANCER_STATUSES
     ):
-        registration.balancer_status = included_balancer_status(registration, resolved_ranks)
+        registration.balancer_status = included_balancer_status(roster)
 
 
 def is_included_in_balancer(

@@ -30,24 +30,46 @@ import type { AuditLogRead, AuditSource } from "@/types/admin.types";
 const ENTITY_LABELS = {
   api_key: "API key",
   auth_user: "Account",
+  division_grid: "Division grid",
   encounter: "Encounter",
+  gamemode: "Gamemode",
+  hero: "Hero",
+  map: "Map",
+  match_log: "Match log",
   oauth_connection: "OAuth connection",
   permission: "Permission",
+  pick_ban: "Pick/ban",
   player: "Player",
   player_sub_role: "Sub-role",
   registration: "Registration",
+  registration_status: "Registration status",
+  registration_team: "Registered team",
+  report_form: "Report form",
   role: "Role",
+  session: "Session",
+  setting: "Setting",
+  social_account: "Social account",
   stage: "Stage",
   stage_item: "Stage item",
   stage_item_input: "Stage item input",
   standing: "Standing",
   team: "Team",
   tournament: "Tournament",
+  user: "User",
   workspace: "Workspace",
 } as const satisfies Record<string, string>;
 
 /** The `entity_type` values a per-entity trail may be opened for. */
 export type AuditEntityType = keyof typeof ENTITY_LABELS;
+
+/**
+ * Every entity the feed can be narrowed to, in the order the chip offers them.
+ *
+ * `Object.keys` of the map above rather than a second hand-kept list: a writer
+ * that starts recording a new entity gets its label and its filter option from
+ * the same edit, so the two cannot drift.
+ */
+export const AUDIT_ENTITY_TYPES = Object.keys(ENTITY_LABELS) as AuditEntityType[];
 
 /**
  * `Object.hasOwn`, not `in`: `"toString" in ENTITY_LABELS` is true through the
@@ -78,23 +100,42 @@ const VERB_LABELS: Record<string, string> = {
 const ACTION_PHRASES: Record<string, string> = {
   "api_key.revoke": "API key revoked",
   "auth_user.delete": "Account deleted",
+  "challonge.create": "Tournament created from Challonge",
+  "challonge.export": "Tournament exported to Challonge",
+  "challonge.import": "Challonge tournament imported",
+  "challonge.push_result": "Result pushed to Challonge",
+  "challonge.team_apply": "Challonge team mapping applied",
+  "division_grid.import": "Division grid imported",
+  "division_grid.mapping_put": "Division grid mapping saved",
+  "division_grid.save": "Division grid saved",
+  "division_grid.version_activate": "Division grid version activated",
+  "division_grid.version_clone": "Division grid version cloned",
+  "division_grid.version_create": "Division grid version created",
+  "division_grid.version_delete": "Division grid version deleted",
+  "division_grid.version_publish": "Division grid version published",
+  "division_grid.version_update": "Division grid version updated",
+  "encounter.reopen_result": "Encounter result reopened",
+  "encounter.set_result": "Encounter result set",
+  "encounter.update_match": "Match updated",
   "linked_player.assign": "Player linked to an account",
   "linked_player.remove": "Player unlinked from an account",
+  "match_log.process_tournament": "Tournament logs reprocessed",
+  "match_log.retry": "Match log retried",
+  "match_log.upload": "Match log uploaded",
   "oauth_connection.delete": "OAuth connection removed",
   "permission_deny.add": "Permission denied to a user",
   "permission_deny.remove": "Permission deny lifted",
+  "pick_ban.act": "Pick/ban taken as captain",
+  "pick_ban.config_delete": "Pick/ban config deleted",
+  "pick_ban.config_upsert": "Pick/ban config saved",
+  "pick_ban.elect_opener": "Pick/ban opener overridden",
+  "pick_ban.session_reset": "Pick/ban session reset",
   // Soft deactivation, not a hard delete (`deactivate_sub_role`): a reader who
   // acts on "deleted" would go looking for a row that is still there.
   "player_sub_role.delete": "Sub-role deactivated",
-  "role.assign": "Role granted to a user",
-  "role.remove": "Role taken from a user",
-  // Registration lifecycle. The bespoke admin handlers write these; only
-  // create/update/delete fall out of `<entity> <verb>` on their own.
   "registration.approve": "Registration approved",
   "registration.balancer_include": "Registration added to the balancer pool",
   "registration.balancer_status": "Registration balancer status changed",
-  // Bulk rows are filed on the tournament, not the registration: the phrase has
-  // to say so, or a reader takes the target for the row that changed.
   "registration.bulk_approve": "Registrations approved in bulk",
   "registration.bulk_balancer_include": "Registrations added to the balancer pool in bulk",
   "registration.bulk_balancer_status": "Registration balancer statuses changed in bulk",
@@ -103,17 +144,63 @@ const ACTION_PHRASES: Record<string, string> = {
   "registration.rank_autofill": "Registration ranks autofilled",
   "registration.reject": "Registration rejected",
   "registration.restore": "Registration restored",
+  "registration.sheet_sync": "Google Sheet feed synced",
+  "registration.sheet_upsert": "Google Sheet feed saved",
   "registration.withdraw": "Registration withdrawn",
+  "registration_status.builtin_reset": "Built-in registration status reset",
+  "registration_status.builtin_upsert": "Built-in registration status overridden",
+  "registration_team.image_clear": "Registered team image removed",
+  "registration_team.image_set": "Registered team image changed",
+  "registration_team.invite_cap_reset": "Team invite cap reset",
+  "registration_team.invite_revoke": "Team invite revoked",
+  "registration_team.reject": "Registered team rejected",
+  "report_form.upsert": "Match report form saved",
+  "role.assign": "Role granted to a user",
+  "role.remove": "Role taken from a user",
+  "session.revoke": "Session revoked",
+  "setting.upsert": "Platform setting updated",
+  "social_account.set_primary": "Social account set as primary",
+  "social_account.set_visibility": "Social account visibility changed",
+  "social_account.verify": "Social account verified",
+  "stage.activate": "Stage activated",
+  "stage.activate_and_generate": "Stage activated and bracket generated",
+  "stage.apply_best_of": "Stage best-of applied",
+  "stage.auto_wire": "Stage auto-wired",
+  "stage.deactivate": "Stage deactivated",
+  "stage.generate": "Bracket generated",
+  "stage.merge": "Group stages merged",
+  "stage.seed": "Stage seeded",
+  "stage.wire": "Stage wired from groups",
+  "standing.recalculate": "Standings recalculated",
+  "subscription.config_upsert": "Subscription provider config saved",
+  "subscription.requirement_upsert": "Subscription requirement saved",
+  "team.image_clear": "Team image removed",
+  "team.image_set": "Team image changed",
+  "tournament.cover_clear": "Tournament cover removed",
+  "tournament.cover_set": "Tournament cover changed",
+  "tournament.finish": "Tournament finish flag toggled",
+  "tournament.logo_clear": "Tournament logo removed",
+  "tournament.logo_set": "Tournament logo changed",
+  "tournament.preview_access.add": "Preview access granted",
+  "tournament.preview_access.remove": "Preview access revoked",
+  "tournament.schedule": "Tournament schedule replaced",
+  "tournament.status": "Tournament status changed",
+  "user.avatar_clear": "User avatar removed",
+  "user.avatar_set": "User avatar changed",
+  "user.merge": "Accounts merged",
   "workspace.branding_update": "Workspace branding changed",
-  // Kept alongside `domain_set`: clearing a custom domain is its own endpoint
-  // with its own security meaning, and takes a workspace off its own hostname.
   "workspace.domain_clear": "Custom domain removed",
   "workspace.domain_set": "Custom domain set",
   "workspace.domain_verified": "Custom domain verified",
+  "workspace.member_add": "Workspace member added",
+  "workspace.member_remove": "Workspace member removed",
+  "workspace.member_roles_backfill": "Workspace member roles backfilled",
+  "workspace.member_update": "Workspace member roles changed",
 };
 
 const AUDIT_SOURCE_LABELS: Record<AuditSource, string> = {
   admin: "Admin panel",
+  api_key: "API key",
   challonge: "Challonge sync",
   discord: "Discord",
   scheduler: "Scheduler",

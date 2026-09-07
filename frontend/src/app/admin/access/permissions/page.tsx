@@ -1,64 +1,183 @@
 "use client";
 
-import { ColumnDef } from "@tanstack/react-table";
+import { useMemo } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { useQuery } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
+import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
+import { AdminInspector } from "@/components/admin/kit/AdminInspector";
+import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { useQueryParams } from "@/hooks/useQueryParams";
+import { cn } from "@/lib/utils";
 import { rbacService } from "@/services/rbac.service";
 import type { RbacPermission } from "@/types/rbac.types";
 
 const PAGE_SIZE = 20;
 
+/**
+ * The permission inventory (T2, F15) — read-only, and the vocabulary every
+ * role and API key is built from.
+ *
+ * Fetched whole (roughly ninety rows) and paged client-side, because the
+ * endpoint filters only by free text: deriving the resource and action chips
+ * needs the full set anyway, and once it is in memory a second round-trip per
+ * chip buys nothing.
+ */
 export default function AccessAdminPermissionsPage() {
-  const columns: ColumnDef<RbacPermission>[] = [
-    {
-      accessorKey: "name",
-      header: "Permission",
-    },
-    {
-      accessorKey: "resource",
-      header: "Resource",
-      cell: ({ row }) => <Badge variant="outline">{row.original.resource}</Badge>,
-    },
-    {
-      accessorKey: "action",
-      header: "Action",
-      cell: ({ row }) => <Badge variant="secondary">{row.original.action}</Badge>,
-    },
-    {
-      accessorKey: "description",
-      header: "Description",
-      enableSorting: false,
-      cell: ({ row }) => row.original.description || <span className="text-muted-foreground">No description</span>,
-    },
-  ];
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const openId = searchParams?.get("id") ?? null;
+
+  const permissionsQuery = useQuery({
+    queryKey: ["access-admin", "permissions", "inventory"],
+    queryFn: () => rbacService.listPermissionsAll()
+  });
+  const permissions = permissionsQuery.data ?? [];
+
+  const defs = useMemo<FilterDef[]>(() => {
+    const resources = [...new Set(permissions.map((permission) => permission.resource))].sort();
+    const actions = [...new Set(permissions.map((permission) => permission.action))].sort();
+    return [
+      {
+        key: "resource",
+        label: "Resource",
+        kind: "single",
+        options: resources.map((resource) => ({ value: resource, label: resource }))
+      },
+      {
+        key: "action",
+        label: "Action",
+        kind: "single",
+        options: actions.map((action) => ({ value: action, label: action }))
+      }
+    ];
+  }, [permissions]);
+
+  const filters = useAdminFilters(defs);
+  const resourceFilter = String(filters.values.resource ?? "");
+  const actionFilter = String(filters.values.action ?? "");
+
+  const rows = permissions.filter(
+    (permission) =>
+      (!resourceFilter || permission.resource === resourceFilter) &&
+      (!actionFilter || permission.action === actionFilter)
+  );
+
+  const openRow = rows.find((permission) => String(permission.id) === openId) ?? null;
+  const openIndex = openRow ? rows.indexOf(openRow) : -1;
+
+  const columns = useMemo<ColumnDef<RbacPermission>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Permission",
+        meta: adminColumnMeta<RbacPermission>({
+          searchValue: (permission) => `${permission.name} ${permission.description ?? ""}`
+        }),
+        cell: ({ row }) => <span className="font-mono text-sm">{row.original.name}</span>
+      },
+      {
+        accessorKey: "resource",
+        header: "Resource",
+        cell: ({ row }) => <Badge variant="outline">{row.original.resource}</Badge>
+      },
+      {
+        accessorKey: "action",
+        header: "Action",
+        cell: ({ row }) => <Badge variant="secondary">{row.original.action}</Badge>
+      },
+      {
+        accessorKey: "description",
+        header: "Description",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.description || (
+            <span className="text-muted-foreground">No description</span>
+          )
+      }
+    ],
+    []
+  );
+
+  if (permissionsQuery.isError) {
+    return (
+      <PageStateCard
+        state="error"
+        title="Could not load the permission inventory"
+        onAction={() => void permissionsQuery.refetch()}
+        actionLabel="Try again"
+      />
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <AdminPageHeader
-        title="Permissions"
-        description="Read-only inventory of effective permission primitives available to superusers and roles."
-        meta={<Badge variant="secondary">RBAC</Badge>}
-      />
+    <div className={cn("grid items-start gap-4", openRow && "lg:grid-cols-[minmax(0,1fr)_380px]")}>
+      <div className="min-w-0">
+        <AdminDataTable<RbacPermission>
+          rows={rows}
+          isLoading={permissionsQuery.isLoading}
+          columns={columns}
+          initialPageSize={PAGE_SIZE}
+          pageSizeOptions={[10, 20, 50, 100]}
+          searchPlaceholder="Search permissions…"
+          filterKey={filters.filterKey}
+          inspectorId={openId}
+          getRowId={(row) => String(row.id)}
+          toolbar={<AdminFilterBar defs={defs} filters={filters} />}
+          emptyMessage="No permission matches. Clear the filters to see the full inventory."
+          onRowClick={(row) => setParams({ id: String(row.original.id) })}
+        />
+      </div>
 
-      <AdminDataTable
-        initialPageSize={PAGE_SIZE}
-        pageSizeOptions={[10, 20, 50, 100]}
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["access-admin", "permissions", page, search, pageSize, sortField, sortDir]}
-        queryFn={(page, search, pageSize, sortField, sortDir) =>
-          rbacService.listPermissions({
-            page,
-            per_page: pageSize,
-            sort: sortField ?? undefined,
-            order: sortDir,
-            search: search || undefined,
-          })
+      <AdminInspector
+        openId={openRow ? openId : null}
+        onClose={() => setParams({ id: null })}
+        title={openRow ? openRow.name : ""}
+        subtitle={openRow ? `${openRow.resource} · ${openRow.action}` : undefined}
+        onPrev={openIndex > 0 ? () => setParams({ id: String(rows[openIndex - 1].id) }) : undefined}
+        onNext={
+          openIndex >= 0 && openIndex < rows.length - 1
+            ? () => setParams({ id: String(rows[openIndex + 1].id) })
+            : undefined
         }
-        columns={columns}
-        searchPlaceholder="Search permissions…"
-        emptyMessage="No permissions match this search. Clear the search box to see the full inventory."
-      />
+      >
+        {openRow ? (
+          <div className="space-y-3">
+            <div>
+              <p className={EYEBROW_CLASS}>Description</p>
+              <p className="mt-0.5 text-sm">
+                {openRow.description || "This permission carries no description."}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className={EYEBROW_CLASS}>Resource</p>
+                <p className="mt-0.5 font-mono text-sm">{openRow.resource}</p>
+              </div>
+              <div>
+                <p className={EYEBROW_CLASS}>Action</p>
+                <p className="mt-0.5 font-mono text-sm">{openRow.action}</p>
+              </div>
+              <div>
+                <p className={EYEBROW_CLASS}>Id</p>
+                <p className="mt-0.5 font-mono text-sm tabular-nums">#{openRow.id}</p>
+              </div>
+              <div>
+                <p className={EYEBROW_CLASS}>Added</p>
+                <p className="mt-0.5 text-sm tabular-nums">{openRow.created_at.slice(0, 10)}</p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The inventory is defined by the platform. Grant a permission by adding it to a role
+              on the Roles tab.
+            </p>
+          </div>
+        ) : null}
+      </AdminInspector>
     </div>
   );
 }

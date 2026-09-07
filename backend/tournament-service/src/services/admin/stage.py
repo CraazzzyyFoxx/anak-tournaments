@@ -23,6 +23,7 @@ from shared.repository import (
     TournamentRepository,
 )
 from shared.schemas.events import TournamentChangedReason
+from shared.services.bracket import round_robin
 from shared.services.bracket.engine import generate_bracket, placeholder_bracket, placeholder_seeds
 from shared.services.bracket.persist import persist_skeleton
 from shared.services.bracket.swiss import SwissPairingImpossibleError, SwissStanding
@@ -39,17 +40,20 @@ from src import models, schemas
 from src.domain.admin.best_of import parse_best_of_config, resolve_best_of
 from src.domain.stage.lifecycle import stage_lifecycle
 from src.domain.stage.seeds import (
+    GroupSlice,
     SeedRanking,
     advance_split as _advance_split,
     apply_seed_ranking,
-    bracket_seeds,
+    build_seeding as _build_seeding,
     collect_item_team_ids as _collect_item_team_ids,
+    group_advance_counts,
+    group_for_index,
     lower_bracket_item as _lower_bracket_item,
+    parse_seed_mode,
     parse_seed_ranking,
     rank_team_ids,
     resolve_seeds as _resolve_seeds,
 )
-from src.domain.stage.wire import build_seeding as _build_seeding
 from src.services.tournament.events import (
     enqueue_tournament_changed,
     enqueue_tournament_recalculation,
@@ -58,12 +62,9 @@ from src.services.admin.stage_common import (
     BRACKET_STAGE_TYPES,
     GROUPED_GENERATION_STAGE_TYPES,
     _apply_seeding,
+    _bracket_seeds,
     _pick_ban_config_signature,
 )
-
-
-def _bracket_seeds(stage, sorted_items, lb_item):
-    return bracket_seeds(stage, sorted_items, lb_item, collect=_collect_item_team_ids)
 
 
 class AdminStageService:
@@ -145,6 +146,85 @@ class AdminStageService:
         skeleton = placeholder_bracket(stage.stage_type, upper_count, lower_count=lower_count)
         return sorted({pairing.round_number for pairing in skeleton.pairings})
 
+    async def get_bracket_preview(self, session: AsyncSession, stage_id: int) -> dict:
+        """The bracket this stage would generate, as a read-only skeleton.
+
+        Same generator, same seed order and same best-of resolution as
+        ``_generate_bracket_encounters`` -> ``persist_skeleton``; nothing is
+        written. That is the point: a preview drawn from a re-derived shape
+        drifts from the real thing on exactly the cases that matter (byes in a
+        non-power-of-two bracket, the lower bracket's cross-drops), so it is
+        drawn from the generator instead.
+
+        Wired teams come back under their real ids and names; an unseeded playoff
+        falls back to the projected seed counts the way generation does, and every
+        slot comes back TBD.
+
+        ``local_id`` is 1-based and skeleton-local: ``sources`` reference it and
+        not encounter ids, because these matches do not exist yet.
+        """
+        stage = await self.get_stage(session, stage_id)
+        if stage.stage_type not in BRACKET_STAGE_TYPES:
+            return {"matches": []}
+
+        sorted_items = sorted(stage.items, key=lambda item: (item.order, item.id))
+        upper_ids, lower_ids = _bracket_seeds(stage, sorted_items, _lower_bracket_item(stage, sorted_items))
+        upper_ids = await self._rank_seed_ids(session, stage, upper_ids)
+        lower_ids = await self._rank_seed_ids(session, stage, lower_ids)
+        de_include_reset = (
+            stage.stage_type == enums.StageType.DOUBLE_ELIMINATION
+            and (stage.settings_json or {}).get("de_grand_final_type") == "with_reset"
+        )
+
+        if len(upper_ids) + len(lower_ids) < 2:
+            upper_count, lower_count = await self._projected_bracket_seed_counts(session, stage)
+            if upper_count < 2:
+                return {"matches": []}
+            upper_ids = placeholder_seeds(upper_count)
+            lower_ids = placeholder_seeds(lower_count, offset=upper_count)
+
+        skeleton = _resolve_seeds(
+            generate_bracket(
+                stage.stage_type,
+                upper_ids,
+                de_include_reset=de_include_reset,
+                lower_bracket_team_ids=lower_ids,
+            ),
+            {},
+        )
+
+        team_names_by_id = await self._load_team_names(session, upper_ids + lower_ids)
+        best_of_cfg = parse_best_of_config(stage.settings_json)
+        max_round = max((pairing.round_number for pairing in skeleton.pairings), default=0)
+        sources: dict[int, list[dict]] = {}
+        for edge in skeleton.advancement_edges:
+            sources.setdefault(edge.target_local_id, []).append(
+                {"local_id": edge.source_local_id + 1, "role": edge.role, "slot": edge.target_slot}
+            )
+
+        return {
+            "matches": [
+                {
+                    "local_id": pairing.local_id + 1,
+                    "round": pairing.round_number,
+                    "name": build_encounter_name_from_ids(
+                        pairing.home_team_id,
+                        pairing.away_team_id,
+                        team_names_by_id,
+                    ),
+                    "best_of": resolve_best_of(
+                        best_of_cfg,
+                        pairing.round_number,
+                        is_final=pairing.round_number == max_round,
+                    ),
+                    "home_team_id": pairing.home_team_id,
+                    "away_team_id": pairing.away_team_id,
+                    "sources": sources.get(pairing.local_id, []),
+                }
+                for pairing in skeleton.pairings
+            ]
+        }
+
     async def _bracket_seed_counts(self, session: AsyncSession, stage: models.Stage) -> tuple[int, int]:
         """How many teams start in ``stage``'s upper and lower bracket.
 
@@ -162,25 +242,30 @@ class AdminStageService:
 
     async def _projected_bracket_seed_counts(self, session: AsyncSession, stage: models.Stage) -> tuple[int, int]:
         """The upper/lower seed counts the preceding group stage will feed into
-        ``stage``, mirroring ``_auto_wire_from_groups``: ``advance_count`` teams
-        from EACH group of the nearest earlier Swiss/round-robin stage, split the
-        way that wiring will split them. ``(0, 0)`` when there is no such source or
-        it has no ``advance_count``."""
+        ``stage``, mirroring ``_auto_wire_from_groups``: each group of the nearest
+        earlier Swiss/round-robin stage sends its own ``advance_count`` (falling
+        back to the stage's), split the way that wiring will split it. ``(0, 0)``
+        when there is no such source, or nothing is configured to advance."""
         source = await self._preceding_group_stage(session, stage)
-        if source is None or not source.advance_count or source.advance_count <= 0:
+        if source is None:
             return 0, 0
 
-        groups = len(source.items) or 1
-        top, top_lb = _advance_split(stage, source.advance_count)
-        if top_lb:
-            return groups * top, groups * top_lb
+        top, top_lb = _advance_split(stage, source.advance_count or 0)
+        items = sorted(source.items, key=lambda item: (item.order, item.id))
+        # ``or`` covers a source stage with no groups at all: one implicit group.
+        counts = group_advance_counts(stage, items, default_upper=top, default_lower=top_lb) or [(0, top, top_lb)]
+        upper = sum(item_upper for _, item_upper, _ in counts)
+        lower = sum(item_lower for _, _, item_lower in counts)
+        if upper + lower == 0:
+            return 0, 0
+        if lower:
+            return upper, lower
 
-        total = groups * top
         if stage.stage_type == enums.StageType.DOUBLE_ELIMINATION and getattr(stage, "split_lower_bracket", False):
             # One bracket item holds both halves — ``_bracket_seeds`` splits the
             # seed list down the middle instead of wiring a separate item.
-            return total // 2, total - total // 2
-        return total, 0
+            return upper // 2, upper - upper // 2
+        return upper, 0
 
     async def get_stage_item(self, session: AsyncSession, stage_item_id: int) -> models.StageItem:
         item = await self.stage_item_repo.get(
@@ -971,13 +1056,21 @@ class AdminStageService:
             )
             if swiss_standings is None:
                 clear_swiss_byes(stage, stage_item_id)
-            from src.services.standings.swiss_auto_round import stage_allows_next_round
+            from src.services.standings.swiss_auto_round import stage_allows_next_round, stage_max_rounds
 
             if not stage_allows_next_round(stage, swiss_round):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Swiss stage reached max_rounds",
                 )
+
+            # A Swiss allowed as many rounds as a full circle IS a round robin.
+            # Pairing it one round at a time only invites corners where no
+            # rematch-free round is left, and no ordering of the schedule can
+            # matter when every team meets every other anyway.
+            if swiss_standings is None and stage_max_rounds(stage) >= len(team_ids) - 1:
+                clear_swiss_scope_stopped(stage, stage_item_id)
+                return round_robin.generate(team_ids)
 
         de_include_reset = (
             stage.stage_type == enums.StageType.DOUBLE_ELIMINATION
@@ -1160,11 +1253,7 @@ class AdminStageService:
                 detail=f"Teams {[t.id for t in foreign]} do not belong to this tournament",
             )
 
-        ranking = {
-            "snake_sr": SeedRanking.AVG_SR,
-            "by_total_sr": SeedRanking.TOTAL_SR,
-            "random": SeedRanking.RANDOM,
-        }.get(mode)
+        ranking = parse_seed_mode(mode)
         if ranking is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1194,21 +1283,10 @@ class AdminStageService:
                 candidate += 1
             next_slot[item.id] = candidate
 
-        # Snake distribution: team index i → group i % num_groups on even rows,
-        # reverse on odd rows. This minimises imbalance between groups.
-        if mode == "random":
-            # round-robin is sufficient for random — no need to "snake".
-            def target_group_index(team_idx: int) -> int:
-                return team_idx % num_groups
-        else:
-
-            def target_group_index(team_idx: int) -> int:
-                row = team_idx // num_groups
-                column = team_idx % num_groups
-                return column if row % 2 == 0 else (num_groups - 1 - column)
+        snake = mode != "random"
 
         for team_idx, team in enumerate(teams_sorted):
-            group_idx = target_group_index(team_idx)
+            group_idx = group_for_index(team_idx, num_groups, snake=snake)
             target_item = stage_items[group_idx]
             slot = next_slot[target_item.id]
             next_slot[target_item.id] = slot + 1
@@ -1262,9 +1340,12 @@ class AdminStageService:
           meet group A's 2nd-seed in round 1.
         - ``snake``: simple top-down (all 1st-seeds first, then all 2nd-seeds, ...).
 
-        When ``top_lb > 0`` the target stage must be DOUBLE_ELIMINATION and must
-        have a BRACKET_LOWER stage item. Teams at positions ``top+1 … top+top_lb``
-        from each group are seeded into that item.
+        Each group sends its own ``StageItem.advance_count`` when that is set,
+        split upper/lower by the same rule auto-wiring uses; groups without one
+        take the caller's ``top``/``top_lb`` verbatim. A group's lower-bracket
+        band starts right after its own upper band, so uneven groups do not share
+        one offset. ``top_lb > 0`` requires a DOUBLE_ELIMINATION target with a
+        BRACKET_LOWER stage item.
 
         Idempotent: existing FINAL inputs are preserved; existing TENTATIVE inputs
         with the same slot are overwritten.
@@ -1287,8 +1368,8 @@ class AdminStageService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Target stage must be a bracket (single_elimination or double_elimination)",
             )
-        if top <= 0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="`top` must be positive")
+        if top < 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="`top` must be non-negative")
         if top_lb < 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="`top_lb` must be non-negative")
         if not target_stage.items:
@@ -1297,17 +1378,16 @@ class AdminStageService:
                 detail="Target stage has no stage items; create one before wiring",
             )
 
-        lb_item = None
+        lb_item = next(
+            (i for i in target_stage.items if i.type == enums.StageItemType.BRACKET_LOWER),
+            None,
+        )
         if top_lb > 0:
             if target_stage.stage_type != enums.StageType.DOUBLE_ELIMINATION:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="`top_lb` requires a double_elimination target stage",
                 )
-            lb_item = next(
-                (i for i in target_stage.items if i.type == enums.StageItemType.BRACKET_LOWER),
-                None,
-            )
             if lb_item is None:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -1323,14 +1403,22 @@ class AdminStageService:
 
         num_groups = len(source_items)
 
-        # UB: first stage_item by order.
-        ub_item = sorted(target_stage.items, key=lambda item: (item.order, item.id))[0]
-        ub_seeding = _build_seeding(source_items, top=top, mode=mode, position_offset=0)
-        _apply_seeding(session, ub_seeding, ub_item)
+        # Per group: its own ``advance_count`` if set, else the caller's top/top_lb.
+        counts = group_advance_counts(target_stage, source_items, default_upper=top, default_lower=top_lb)
+        if not any(upper or lower for _, upper, lower in counts):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nothing advances: set `top`, or an advance count on the source stage or its groups",
+            )
 
-        if top_lb > 0 and lb_item is not None:
-            lb_seeding = _build_seeding(source_items, top=top_lb, mode=mode, position_offset=top)
-            _apply_seeding(session, lb_seeding, lb_item)
+        # UB: first stage_item by order. A group's lower-bracket band starts right
+        # after its own upper one, which for uneven groups is not a shared offset.
+        ub_item = sorted(target_stage.items, key=lambda item: (item.order, item.id))[0]
+        _apply_seeding(session, _build_seeding([GroupSlice(i, 1, ub) for i, ub, _ in counts], mode), ub_item)
+
+        lb_slices = [GroupSlice(i, ub + 1, lb) for i, ub, lb in counts if lb > 0]
+        if lb_slices and lb_item is not None:
+            _apply_seeding(session, _build_seeding(lb_slices, mode), lb_item)
 
         if notify:
             await self._publish_tournament_changed(session, target_stage.tournament_id, "structure_changed")
@@ -1408,9 +1496,10 @@ class AdminStageService:
         and this stage's ``split_lower_bracket`` flag, then wire TENTATIVE inputs
         (cross seeding). Replaces the manual Automation block.
 
-        No-op when the stage is not a bracket, has no preceding group stage, or the
-        source group stage has no ``advance_count`` configured — keeping manually
-        wired playoffs working unchanged. Set ``strict=True`` (the standalone
+        No-op when the stage is not a bracket, has no preceding group stage, or
+        nothing there is configured to advance — neither the source stage's
+        ``advance_count`` nor any of its groups' own — keeping manually wired
+        playoffs working unchanged. Set ``strict=True`` (the standalone
         "Auto-wire" action) to raise a descriptive 400 for those cases instead of
         silently skipping, so an admin can see WHY nothing got wired.
 
@@ -1424,18 +1513,20 @@ class AdminStageService:
                 )
             return False
         source = await self._preceding_group_stage(session, stage)
-        if source is None or not source.advance_count or source.advance_count <= 0:
+        stage_advance = (source.advance_count or 0) if source is not None else 0
+        group_advance = any(getattr(item, "advance_count", None) for item in source.items) if source else False
+        if source is None or (stage_advance <= 0 and not group_advance):
             if strict:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=(
                         "No earlier round-robin/Swiss stage with \"Teams advancing to "
-                        "playoff\" configured to auto-wire from"
+                        "playoff\" configured — on the stage or on one of its groups"
                     ),
                 )
             return False
 
-        top, top_lb = _advance_split(stage, source.advance_count)
+        top, top_lb = _advance_split(stage, stage_advance)
 
         # The bracket engine applies standard 1-vs-N seeding (``_seeding_order``)
         # internally, which already spreads the top seeds across the bracket. Feeding
