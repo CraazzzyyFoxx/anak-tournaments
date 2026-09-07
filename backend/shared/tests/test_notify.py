@@ -228,6 +228,31 @@ class NotifyTests(IsolatedAsyncioTestCase):
 
         self.assertEqual("/changelog/2026-09", row.payload_json["href"])
 
+    async def test_control_characters_cannot_smuggle_a_protocol_relative_href(self) -> None:
+        """A browser strips tab, CR and LF out of a URL before resolving it.
+
+        So ``"/\\t/evil.com"`` passes a "starts with one slash" check while the
+        browser navigates to ``//evil.com`` -- the same open redirect the check
+        above rejects, wearing one throwaway control character as a disguise.
+        """
+        session = _Session()
+
+        for href in ("/\t/evil.com", "/\n/evil.com", "/\r/evil.com", "/ /evil.com", "/ok\tx"):
+            with self.assertRaises(ValidationError, msg=repr(href)):
+                await notify(
+                    session,
+                    kind="announcement.published",
+                    payload={
+                        "locales": {"ru": {"title": "Сбор"}},
+                        "default_locale": "ru",
+                        "href": href,
+                    },
+                    audience="workspace",
+                    workspace_id=4,
+                )
+
+        self.assertEqual([], session.added)
+
 
 class PublishNotificationCreatedTests(IsolatedAsyncioTestCase):
     async def test_signal_reaches_only_the_recipients_own_topic(self) -> None:

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { skipToken, useQuery } from "@tanstack/react-query";
 
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import AnnouncementBanner from "@/components/notifications/AnnouncementBanner";
 import { AuditTrailProvider } from "@/components/admin/AuditTrailSheet";
 import { adminRouteAccessOptions } from "@/components/admin/admin-navigation";
 import {
@@ -26,6 +27,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePermissions } from "@/hooks/usePermissions";
 import { SIDEBAR_COOKIE_NAMES } from "@/lib/sidebar-cookies";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+import type { NotificationItem } from "@/types/notification.types";
 
 function LoadingState() {
   return (
@@ -126,11 +128,15 @@ const sidebarShellStyle = {
 type AdminLayoutClientProps = {
   children: ReactNode;
   defaultSidebarOpen: boolean;
+  /** Server-rendered active announcements; `undefined` when the server-side
+   *  read failed, which makes the banner fetch them itself. */
+  announcements: NotificationItem[] | undefined;
 };
 
 export function AdminLayoutClient({
   children,
-  defaultSidebarOpen
+  defaultSidebarOpen,
+  announcements
 }: Readonly<AdminLayoutClientProps>) {
   const pathname = usePathname();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -168,6 +174,11 @@ export function AdminLayoutClient({
             <Separator orientation="vertical" className="h-5" />
             <AdminBreadcrumb />
           </header>
+          {/* Same gutters as the content below: the inset is full-bleed, so an
+              unpadded banner would run edge to edge under the header. */}
+          <div className="px-4 md:px-5">
+            <AnnouncementBanner initial={announcements} />
+          </div>
 
           {/* Full-bleed on purpose: a centered 1720px cap left ~300px of dead
               gutter each side on a 2560 display. Wide tables scroll inside

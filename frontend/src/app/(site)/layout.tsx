@@ -2,11 +2,14 @@ import React from "react";
 import { cookies, headers } from "next/headers";
 import Header from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import AnnouncementBanner from "@/components/notifications/AnnouncementBanner";
 import { Separator } from "@/components/ui/separator";
+import notificationService from "@/services/notification.service";
 import workspaceService from "@/services/workspace.service";
 import { deriveWorkspacePalette } from "@/lib/workspace-theme";
 import { WorkspaceThemeSync } from "@/components/WorkspaceThemeSync";
 import { WorkspaceHostLock } from "@/components/WorkspaceHostLock";
+import type { NotificationItem } from "@/types/notification.types";
 import type { Workspace } from "@/types/workspace.types";
 
 // Resolve the current workspace server-side. On a tenant (white-label) host
@@ -30,6 +33,22 @@ async function resolveCurrentWorkspace(): Promise<Workspace | null> {
   }
 }
 
+// Active announcements, server-side, so the banner is in the first paint rather
+// than dropping in after hydration and pushing the page down. The read is
+// `AuthOptional`, so it works for an anonymous visitor too.
+//
+// `undefined` on failure, never `[]`: an empty array is a legitimate answer
+// ("nothing to announce") that the banner would trust for a full staleTime,
+// which would swallow a real announcement whenever SSR could not reach the
+// gateway. Undefined lets the client fetch it instead.
+async function resolveActiveAnnouncements(): Promise<NotificationItem[] | undefined> {
+  try {
+    return await notificationService.activeAnnouncements();
+  } catch {
+    return undefined;
+  }
+}
+
 export default async function SiteLayout({
   children,
 }: Readonly<{
@@ -40,7 +59,10 @@ export default async function SiteLayout({
   // Custom workspace branding is tenant-only: a subdomain / custom-domain host
   // paints its workspace's palette. The shared platform (apex) host applies no
   // customization at all, so it needs neither the workspace nor a palette seed.
-  const workspace = tenantMode ? await resolveCurrentWorkspace() : null;
+  const [workspace, announcements] = await Promise.all([
+    tenantMode ? resolveCurrentWorkspace() : null,
+    resolveActiveAnnouncements()
+  ]);
 
   const seed = workspace ? deriveWorkspacePalette(workspace) : null;
   const style: React.CSSProperties | undefined = seed
@@ -60,6 +82,7 @@ export default async function SiteLayout({
       <WorkspaceThemeSync />
       <div className="w-full max-w-screen-3xl pt-6 mx-auto px-4 md:px-6 xl:px-10 h-full">
         <Header tenantMode={tenantMode} tenantWorkspace={tenantWorkspace} />
+        <AnnouncementBanner initial={announcements} />
         <div className="flex w-full flex-col min-h-[95%]">
           <main id="main-content" tabIndex={-1} className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8">
             {children}

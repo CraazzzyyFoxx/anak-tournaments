@@ -5409,6 +5409,11 @@
     "unread": "Unread",
     "empty": "No notifications yet",
     "markAllRead": "Mark all read",
+    "banner": {
+      "label": "Announcement",
+      "dismiss": "Dismiss announcement",
+      "more": "Learn more"
+    },
     "kinds": {
       "team_invite": {
         "received": "{team_name} invited you to their roster for {tournament_name}",

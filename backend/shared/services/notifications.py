@@ -144,9 +144,17 @@ class AnnouncementPayload(_Payload):
         browsers normalise to the same thing) reads as a site path while landing
         on somebody else's domain -- an open redirect wearing the platform's own
         banner. A site path is a single slash followed by something that is not
-        another separator."""
+        another separator.
+
+        Whitespace is rejected outright, before that shape check, because a
+        browser *deletes* tab/CR/LF from a URL before resolving it: ``/\\t/evil.com``
+        would otherwise read as a one-slash site path here and navigate to
+        ``//evil.com`` there. Nothing legitimate needs a raw space either -- a
+        real URL carries ``%20``."""
         if value is None:
             return value
+        if any(character.isspace() or ord(character) < 0x20 or ord(character) == 0x7F for character in value):
+            raise ValueError("href must not contain whitespace or control characters")
         if value.startswith("https://"):
             return value
         if value.startswith("/") and value[1:2] not in ("/", "\\"):

@@ -5409,6 +5409,11 @@
     "unread": "Непрочитанное",
     "empty": "Уведомлений пока нет",
     "markAllRead": "Прочитать все",
+    "banner": {
+      "label": "Объявление",
+      "dismiss": "Закрыть объявление",
+      "more": "Подробнее"
+    },
     "kinds": {
       "team_invite": {
         "received": "{team_name} приглашает вас в состав на {tournament_name}",
