@@ -11,7 +11,8 @@ import { describeApiError } from "@/lib/api-error";
  */
 export const notify = {
   success: (message: string, options?: ExternalToast) => sonnerToast.success(message, options),
-  error: (message: string, options?: ExternalToast) => sonnerToast.error(message, options),
+  error: (message: string, options?: ExternalToast) =>
+    sonnerToast.error(message, { duration: Infinity, ...options }),
   info: (message: string, options?: ExternalToast) => sonnerToast.info(message, options),
   warning: (message: string, options?: ExternalToast) => sonnerToast.warning(message, options),
   /** Neutral, untyped toast (no colored icon). */
@@ -28,6 +29,7 @@ export const notify = {
     const described = describeApiError(error);
     const { title, ...rest } = options ?? {};
     return sonnerToast.error(title ?? described.title, {
+      duration: Infinity,
       description: described.description,
       ...rest
     });
