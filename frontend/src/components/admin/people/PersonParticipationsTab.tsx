@@ -262,8 +262,9 @@ export function PersonParticipationsTab({
         id: "flags",
         header: "Flags",
         enableSorting: false,
+        meta: adminColumnMeta({ align: "center" }),
         cell: ({ row }) => (
-          <div className="flex gap-1">
+          <div className="flex justify-center gap-1">
             {row.original.is_newcomer && (
               <StatusIcon icon={Sparkles} label="Newcomer" variant="warning" />
             )}

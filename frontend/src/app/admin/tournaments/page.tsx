@@ -7,6 +7,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { Plus, Trash2, CheckCircle, CircleDot, Crown, EyeOff, Trophy } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import {
@@ -86,6 +87,7 @@ export default function TournamentsPage() {
     {
       accessorKey: "is_league",
       header: "Type",
+      meta: adminColumnMeta<Tournament>({ align: "center" }),
       cell: ({ row }) =>
         row.getValue("is_league") ? (
           <StatusIcon icon={Crown} label="League" variant="info" />
@@ -96,6 +98,7 @@ export default function TournamentsPage() {
     {
       accessorKey: "is_finished",
       header: "Status",
+      meta: adminColumnMeta<Tournament>({ align: "center" }),
       cell: ({ row }) =>
         row.getValue("is_finished") ? (
           <StatusIcon icon={CheckCircle} label="Finished" variant="muted" />

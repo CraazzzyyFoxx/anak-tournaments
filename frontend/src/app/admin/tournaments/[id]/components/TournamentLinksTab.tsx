@@ -326,6 +326,7 @@ export function TournamentLinksTab({
       header: "State",
       size: 96,
       enableSorting: false,
+      meta: adminColumnMeta<TournamentLink>({ align: "center" }),
       cell: ({ row }) =>
         row.original.is_active ? (
           <StatusIcon icon={CircleDot} label="Active" variant="success" />

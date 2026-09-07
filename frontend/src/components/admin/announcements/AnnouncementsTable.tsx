@@ -6,6 +6,7 @@ import { Archive, CircleDot, Clock } from "lucide-react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import {
   AlertDialog,
@@ -107,6 +108,7 @@ export function AnnouncementsTable({
         header: t("notifications.admin.columns.state"),
         size: 130,
         enableSorting: false,
+        meta: adminColumnMeta({ align: "center" }),
         // Read off the two stamps rather than asked of the backend: the reads
         // themselves filter on that window, so a stored flag could disagree
         // with who actually sees the row.

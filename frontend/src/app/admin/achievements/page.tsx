@@ -37,6 +37,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
@@ -493,6 +494,7 @@ export default function AchievementsPage() {
       accessorKey: "enabled",
       header: "Status",
       size: 80,
+      meta: adminColumnMeta<AchievementRule>({ align: "center" }),
       cell: ({ row }) =>
         row.original.enabled ? (
           <StatusIcon icon={CheckCircle} label="On" variant="success" />

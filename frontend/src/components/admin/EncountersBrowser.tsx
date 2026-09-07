@@ -32,6 +32,7 @@ import {
   type EncounterFormState
 } from "@/components/admin/EncounterForm";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
 import { AdminInspector } from "@/components/admin/kit/AdminInspector";
@@ -414,6 +415,7 @@ export function EncountersBrowser({
         accessorKey: "status",
         header: "Status",
         size: 132,
+        meta: adminColumnMeta<Encounter>({ align: "center" }),
         cell: ({ row }) => <EncounterStatusCell status={row.original.status} />
       },
       {
@@ -431,6 +433,7 @@ export function EncountersBrowser({
         accessorKey: "has_logs",
         header: "Logs",
         size: 108,
+        meta: adminColumnMeta<Encounter>({ align: "center" }),
         cell: ({ row }) =>
           row.original.has_logs ? (
             <StatusIcon icon={FileCheck2} label="Available" variant="success" />

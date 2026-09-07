@@ -990,8 +990,15 @@ export function AdminDataTable<TData>({
                                 <div className="flex w-full items-center justify-end">
                                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                 </div>
-                              ) : (
+                              ) : align === "left" ? (
                                 flexRender(cell.column.columnDef.cell, cell.getContext())
+                              ) : (
+                                // `text-center` on the <td> does not centre a
+                                // Tooltip/icon (inline-flex trigger inside a
+                                // full-width cell). Match the header flex.
+                                <div className={cn("flex w-full items-center", ALIGN_FLEX_CLASS[align])}>
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                </div>
                               )}
                             </TableCell>
                           );

@@ -9,6 +9,7 @@ import { CheckCircle, Eye, EyeOff, Pencil, Plus, Trash2, XCircle } from "lucide-
 import { CreateWorkspaceDialog } from "@/components/CreateWorkspaceDialog";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { AdminInspector } from "@/components/admin/kit/AdminInspector";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
@@ -143,6 +144,7 @@ export default function WorkspacesPage() {
         accessorKey: "is_active",
         header: "Status",
         size: 120,
+        meta: adminColumnMeta<Workspace>({ align: "center" }),
         cell: ({ row }) =>
           row.original.is_active ? (
             <StatusIcon icon={CheckCircle} label="Active" variant="success" />
@@ -154,6 +156,7 @@ export default function WorkspacesPage() {
         accessorKey: "is_hidden",
         header: "Visibility",
         size: 120,
+        meta: adminColumnMeta<Workspace>({ align: "center" }),
         cell: ({ row }) =>
           row.original.is_hidden ? (
             <StatusIcon icon={EyeOff} label="Hidden" variant="warning" />

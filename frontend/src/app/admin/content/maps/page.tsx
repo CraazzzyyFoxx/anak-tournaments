@@ -177,6 +177,7 @@ export default function MapsAdminPage() {
       accessorKey: "in_competitive",
       header: "Mode Pool",
       size: 120,
+      meta: adminColumnMeta<MapRead>({ align: "center" }),
       cell: ({ row }) => {
         const map = row.original;
         return map.in_competitive !== false ? (

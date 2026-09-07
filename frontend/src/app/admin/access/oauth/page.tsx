@@ -8,6 +8,7 @@ import { useFormatter } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { PROVIDER_META, ProviderBadge } from "@/components/admin/OAuthProviderBadge";
 import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
@@ -152,6 +153,7 @@ export default function OAuthConnectionsAdminPage() {
         id: "token_status",
         header: "Token",
         enableSorting: false,
+        meta: adminColumnMeta({ align: "center" }),
         cell: ({ row }) => {
           const expiresAt = row.original.token_expires_at;
           if (!expiresAt) {
