@@ -53,7 +53,7 @@ const NotificationBell = () => {
         collisionPadding={12}
         aria-labelledby={headingId}
         animate={false}
-        className="w-[380px] max-w-[calc(100vw-1.5rem)] rounded-xl border border-border/80 bg-card/95 p-0 shadow-2xl backdrop-blur-xl ring-1 ring-white/5 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=closed]:fade-out-0 motion-safe:duration-150 motion-safe:ease-out"
+        className="w-[380px] max-w-[calc(100vw-1.5rem)] p-0 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=closed]:fade-out-0 motion-safe:duration-150 motion-safe:ease-out"
       >
         <NotificationList headingId={headingId} {...notifications} />
       </PopoverContent>
