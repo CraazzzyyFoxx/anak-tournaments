@@ -79,6 +79,15 @@ async def _require_actor(
 def register(broker: Any, logger: Any) -> None:
     sf = db.async_session_maker
 
+    async def _publish_event(payload: dict[str, Any], queue: str, *, unavailable: str, failed: str) -> None:
+        if not config.settings.rabbitmq_url:
+            raise HTTPException(status_code=503, detail=unavailable)
+        try:
+            await publish_message(broker, payload, queue)
+        except Exception:
+            logger.exception("Failed to publish analytics job to RabbitMQ")
+            raise HTTPException(status_code=502, detail=failed)
+
     async def _dispatch(
         session: Any, body: AnalyticsJobCreate, workspace_id: int | None, user: Any
     ) -> Any:
@@ -182,11 +191,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_permission(c.actor(data), "analytics", "update")
             body = TrainRequestBody.model_validate(c.payload(data))
-            if not config.settings.rabbitmq_url:
-                raise HTTPException(
-                    status_code=503,
-                    detail="RabbitMQ is not configured; cannot dispatch training jobs.",
-                )
             event = AnalyticsTrainRequest(
                 cutoff_tournament_id=body.cutoff_tournament_id,
                 model_kinds=body.model_kinds,
@@ -194,11 +198,12 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_ids=body.workspace_ids,
                 source_service="analytics-svc",
             )
-            try:
-                await publish_message(broker, event.model_dump(), ANALYTICS_TRAIN_QUEUE)
-            except Exception:
-                logger.exception("Failed to publish train request to RabbitMQ")
-                raise HTTPException(status_code=502, detail="Failed to dispatch training job to queue")
+            await _publish_event(
+                event.model_dump(),
+                ANALYTICS_TRAIN_QUEUE,
+                unavailable="RabbitMQ is not configured; cannot dispatch training jobs.",
+                failed="Failed to dispatch training job to queue",
+            )
             return JobAcceptedResponse(message="Training job dispatched.", job="train", correlation_id=event.event_id)
 
         return await c.envelope(logger, "train", op, session_factory=sf)
@@ -208,22 +213,18 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_permission(c.actor(data), "analytics", "update")
             body = InferRequestBody.model_validate(c.payload(data))
-            if not config.settings.rabbitmq_url:
-                raise HTTPException(
-                    status_code=503,
-                    detail="RabbitMQ is not configured; cannot dispatch inference jobs.",
-                )
             event = AnalyticsInferRequest(
                 tournament_id=body.tournament_id,
                 model_kinds=body.model_kinds,
                 workspace_id=body.workspace_id,
                 source_service="analytics-svc",
             )
-            try:
-                await publish_message(broker, event.model_dump(), ANALYTICS_INFER_QUEUE)
-            except Exception:
-                logger.exception("Failed to publish infer request to RabbitMQ")
-                raise HTTPException(status_code=502, detail="Failed to dispatch inference job to queue")
+            await _publish_event(
+                event.model_dump(),
+                ANALYTICS_INFER_QUEUE,
+                unavailable="RabbitMQ is not configured; cannot dispatch inference jobs.",
+                failed="Failed to dispatch inference job to queue",
+            )
             return JobAcceptedResponse(message="Inference job dispatched.", job="infer", correlation_id=event.event_id)
 
         return await c.envelope(logger, "infer", op, session_factory=sf)

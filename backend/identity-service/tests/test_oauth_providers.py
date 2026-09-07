@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 
 from shared.core.errors import BaseAPIException as HTTPException
@@ -12,9 +13,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.schemas.oauth import OAuthProvider  # noqa: E402
 from src.services.oauth import oauth  # noqa: E402
-from src.services.oauth_providers import (  # noqa: E402  # noqa: E402
+from src.services.oauth_providers import (  # noqa: E402
     DiscordOAuthProvider,
     OAuthProviderRegistry,
+    _raise_provider_call_error,
     has_manage_guild,
     oauth_providers,
 )
@@ -188,3 +190,34 @@ def test_has_manage_guild_false_when_bit_is_absent() -> None:
 
 def test_has_manage_guild_true_when_combined_with_other_bits() -> None:
     assert has_manage_guild("2147483647") is True
+
+
+def test_raise_provider_call_error_maps_timeout() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        _raise_provider_call_error(
+            httpx.TimeoutException("t"),
+            provider_label="Twitch",
+            error_detail="Twitch authentication failed",
+        )
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "Twitch service unavailable"
+
+
+def test_raise_provider_call_error_rethrows_http() -> None:
+    err = HTTPException(status_code=400, detail="Failed to exchange Discord code")
+    with pytest.raises(HTTPException) as exc_info:
+        _raise_provider_call_error(
+            err, provider_label="Discord", error_detail="Discord authentication failed"
+        )
+    assert exc_info.value is err
+
+
+def test_raise_provider_call_error_maps_unknown_to_500() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        _raise_provider_call_error(
+            RuntimeError("boom"),
+            provider_label="Discord",
+            error_detail="Discord authentication failed",
+        )
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Discord authentication failed"

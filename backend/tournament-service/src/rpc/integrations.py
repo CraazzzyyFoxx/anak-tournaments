@@ -42,6 +42,10 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import WorkspaceRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.audit import record_admin_audit
+from shared.services.division_grid.access import (
+    require_grid_version_read_access,
+    require_marketplace_source_access,
+)
 from shared.services.roster import roster_engine
 from src import models, schemas
 from src.clients.challonge import challonge_client
@@ -84,15 +88,7 @@ async def require_workspace_permission(
 
 
 def _require_version_read_access(user: models.AuthUser, version: Any) -> None:
-    """Workspace-scope guard for grid version/mapping reads.
-
-    System grids (workspace_id IS NULL) are readable by any authenticated user;
-    workspace-owned grids require membership (superuser bypass included) so
-    versions can't be enumerated cross-workspace by id.
-    """
-    ws_id = version.grid.workspace_id
-    if ws_id is not None and not user.is_workspace_member(ws_id):
-        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+    require_grid_version_read_access(user, version.grid.workspace_id)
 
 
 async def _get_source_workspace_or_404(
@@ -104,20 +100,12 @@ async def _get_source_workspace_or_404(
 ) -> models.Workspace:
     if source_workspace_id == target_workspace_id:
         raise HTTPException(status_code=400, detail="Source and target workspace must be different")
-
     source_workspace = await _get_workspace_or_404(session, source_workspace_id)
-    # Marketplace browsing is cross-tenant by design (see
-    # `MarketplaceService.list_marketplace_workspaces`): the caller already
-    # proved `division_grid.read` on the TARGET workspace, so any admin able
-    # to reach this workspace's grid page may read another workspace's grids
-    # too. `is_hidden` is the one thing still worth checking -- it gates
-    # discoverability, so a hidden source workspace stays members/superuser-only.
-    if (
-        source_workspace.is_hidden
-        and not user.is_superuser
-        and source_workspace_id not in user.get_workspace_ids()
-    ):
-        raise HTTPException(status_code=403, detail="Source workspace is not accessible")
+    require_marketplace_source_access(
+        user,
+        source_workspace_id=source_workspace_id,
+        source_is_hidden=source_workspace.is_hidden,
+    )
     return source_workspace
 
 

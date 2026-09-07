@@ -177,18 +177,20 @@ export function rosterRoleForPlayer(player: DraftPlayer, picks: DraftPick[]): Dr
 
 /**
  * The rank that represents a player on their slot, mirroring the server's
- * `services.draft.ranks.slot_rank`. Role slots keep it role-specific; a
- * role-less (all-flex) roster assigns nobody a role, so the server's
- * shape-aware `effective_rank` — the player's best role rank — stands in. The
- * flex rule itself is never recomputed here.
+ * `domain.draft.ranks.slot_rank`. Role slots keep it role-specific; `role=null`
+ * (pool card / unseated) uses the server's best playable rank (`effective_rank`)
+ * when any role rank remains. A role-less (all-flex) shape values everyone
+ * that way. The flex rule itself is never recomputed here.
  */
 export function slotRankForPlayer(
   player: DraftPlayer,
   role: DraftRole | null,
   shape: Pick<RosterShape, "has_role_slots">
 ): number | null {
-  if (!shape.has_role_slots) return player.effective_rank;
-  if (role == null) return null;
+  if (!shape.has_role_slots) return player.effective_rank ?? null;
+  if (role == null) {
+    return Object.keys(player.role_ranks ?? {}).length > 0 ? (player.effective_rank ?? null) : null;
+  }
   return player.role_ranks?.[role] ?? null;
 }
 

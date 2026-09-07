@@ -13,6 +13,7 @@ from shared.models.identity.auth_user import AuthUser
 from shared.rbac import (
     assign_workspace_system_role,
     ensure_workspace_system_roles,
+    get_workspace_system_role,
     replace_user_workspace_roles,
     user_has_only_workspace_owner_role,
 )
@@ -525,6 +526,23 @@ class WorkspaceService:
         await session.commit()
         return assigned
 
+    async def resolve_member_role_ids(
+        self,
+        session: AsyncSession,
+        workspace_id: int,
+        *,
+        role_ids: list[int] | None,
+        role_name: str | None,
+    ) -> list[int]:
+        """Explicit ``role_ids`` win; otherwise the named workspace system role."""
+        await ensure_workspace_system_roles(session, workspace_id)
+        if role_ids is not None:
+            return role_ids
+        role = await get_workspace_system_role(session, workspace_id, role_name or "member")
+        if role is None:
+            raise HTTPException(status_code=500, detail="Workspace system role is not configured")
+        return [role.id]
+
     async def invite_member(
         self,
         session: AsyncSession,
@@ -533,6 +551,8 @@ class WorkspaceService:
         *,
         role_ids: list[int],
     ) -> models.WorkspaceMember:
+        if await self.get_member(session, workspace_id, auth_user_id):
+            raise HTTPException(status_code=400, detail="User is already a member")
         member = await self.add_member_with_roles(session, workspace_id, auth_user_id, role_ids=role_ids)
         await session.commit()
         return member

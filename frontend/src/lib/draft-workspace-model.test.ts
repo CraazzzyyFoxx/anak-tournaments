@@ -156,9 +156,16 @@ describe("roster role/rank", () => {
     expect(slotRankForPlayer(player, null, ROLE_SLOTS)).toBe(null);
     expect(playerRoles(player)).toEqual([]);
   });
+  it("uses effective_rank for a pool card on a role-slotted board", () => {
+    const player = mkPlayer({
+      id: 9,
+      primary_role: "support",
+      role_ranks: { dps: 3500, support: 3000 },
+      effective_rank: 3500
+    });
+    expect(slotRankForPlayer(player, null, ROLE_SLOTS)).toBe(3500);
+  });
   it("shows the server's effective rank under an all-flex shape", () => {
-    // No slot asks for a role, so the requested one may not lower the rank:
-    // the server already resolved the maximum into `effective_rank`.
     const player = mkPlayer({
       id: 7,
       primary_role: "support",

@@ -26,11 +26,6 @@ _SF = db.async_session_maker
 _SCOPES = ("workspace", "author")
 
 
-def _require_member(user: Any, workspace_id: int) -> None:
-    if not user.is_workspace_member(workspace_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a workspace member")
-
-
 def _ranks_payload(data: dict[str, Any]) -> dict[str, int]:
     body = c.payload(data)
     ranks = body.get("ranks", data.get("ranks")) or {}
@@ -185,7 +180,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             params = _list_params(data)
             author_user_id = _author_to_read(data, user.id)
             rows, total = await workspace_roster.roster_page(
@@ -216,7 +211,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             total, author_total = await workspace_roster.roster_summary(
                 session, workspace_id=workspace_id, author_user_id=_author_to_read(data, user.id)
             )
@@ -229,7 +224,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             body = c.payload(data)
             battle_tag = body.get("battle_tag", data.get("battle_tag"))
             if not isinstance(battle_tag, str) or not battle_tag.strip():
@@ -265,7 +260,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             # ``author`` is the caller's own layer, full stop: accepting an
             # author id here would let one member rewrite another's private book.
             author_user_id = user.id if _scope(data) == "author" else None
@@ -295,7 +290,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             counts = await member_rank_service.list_authors(session, workspace_id=workspace_id)
             names = await workspace_roster.hosts_by_user_id(
                 session, workspace_id=workspace_id, user_ids=[author_user_id for author_user_id, _ in counts]

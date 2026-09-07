@@ -631,6 +631,8 @@ class RegistrationService:
         registration: models.BalancerRegistration,
         **kwargs: Any,
     ) -> models.BalancerRegistration:
+        if registration.status != "pending":
+            raise HTTPException(status_code=400, detail="Cannot update a registration that is not pending")
         for key, value in kwargs.items():
             column = _SELF_UPDATE_COLUMNS.get(key)
             if column is None:

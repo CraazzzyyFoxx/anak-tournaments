@@ -14,9 +14,8 @@ the ``audit_log`` row for each bespoke mutation, so the trail lives or dies with
 the write. The workspace's own field updates are NOT audited from here at all:
 they go through the shared CRUD engine, which records them at its single hook.
 
-The role-resolution / member-payload / RBAC-cache-bust helpers are replicated
-here (not imported from the route module) so the headless worker never depends on
-route internals — the route module is deleted at decommission.
+The member-payload / RBAC-cache-bust helpers stay here so the headless worker
+never depends on route internals. Role resolution lives on ``WorkspaceService``.
 """
 
 from __future__ import annotations
@@ -35,7 +34,7 @@ from shared.messaging.config import (
     DISCORD_GUILD_ROLES_QUEUE,
 )
 from shared.messaging.rpc import request_rpc
-from shared.rbac import RBAC_USER_KEY_PREFIX, ensure_workspace_system_roles, get_workspace_system_role
+from shared.rbac import RBAC_USER_KEY_PREFIX
 from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.services.audit import record_admin_audit
@@ -114,19 +113,6 @@ def _member_read(
     )
 
 
-async def _resolve_role_ids(
-    session: AsyncSession, workspace_id: int, *, role_ids: list[int] | None, role_name: str | None
-) -> list[int]:
-    """Resolve the role ids to assign: explicit ``role_ids`` win; otherwise
-    ``role_name`` selects the workspace system role of that name (``member``
-    when omitted)."""
-    await ensure_workspace_system_roles(session, workspace_id)
-    if role_ids is not None:
-        return role_ids
-    role = await get_workspace_system_role(session, workspace_id, role_name or "member")
-    if role is None:
-        raise HTTPException(status_code=500, detail="Workspace system role is not configured")
-    return [role.id]
 
 
 async def _discord_lookup(
@@ -330,9 +316,9 @@ def register(broker: Any, logger: Any) -> None:
             body = schemas.WorkspaceMemberCreate.model_validate(c.payload(data))
             if await _auth_user_repo.get(session, body.auth_user_id) is None:
                 raise HTTPException(status_code=404, detail="Auth user not found")
-            if await workspace_service.get_member(session, workspace_id, body.auth_user_id):
-                raise HTTPException(status_code=400, detail="User is already a member")
-            role_ids = await _resolve_role_ids(session, workspace_id, role_ids=body.role_ids, role_name=body.role)
+            role_ids = await workspace_service.resolve_member_role_ids(
+                session, workspace_id, role_ids=body.role_ids, role_name=body.role
+            )
             await record_admin_audit(
                 session,
                 action="workspace.member_add",
@@ -369,7 +355,9 @@ def register(broker: Any, logger: Any) -> None:
             body = schemas.WorkspaceMemberUpdate.model_validate(c.payload(data))
             if body.role_ids is None and body.role is None:
                 raise HTTPException(status_code=400, detail="role_ids or role is required")
-            role_ids = await _resolve_role_ids(session, workspace_id, role_ids=body.role_ids, role_name=body.role)
+            role_ids = await workspace_service.resolve_member_role_ids(
+                session, workspace_id, role_ids=body.role_ids, role_name=body.role
+            )
             await record_admin_audit(
                 session,
                 action="workspace.member_update",

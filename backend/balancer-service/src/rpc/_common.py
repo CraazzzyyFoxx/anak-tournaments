@@ -45,6 +45,7 @@ __all__ = (
     "payload",
     "actor",
     "require_workspace_permission",
+    "require_member",
     "require_active",
     "active_actor",
     "require_admin_panel",
@@ -80,6 +81,11 @@ def active_actor(data: dict[str, Any]) -> AuthUser:
     user = actor(data)
     require_active(user)
     return user
+
+
+def require_member(user: AuthUser, workspace_id: int) -> None:
+    if not user.is_workspace_member(workspace_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a workspace member")
 
 
 def require_admin_panel(user: AuthUser) -> None:

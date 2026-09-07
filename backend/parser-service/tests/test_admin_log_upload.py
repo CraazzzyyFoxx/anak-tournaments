@@ -252,3 +252,22 @@ class ValidateAttachedEncounterTests(IsolatedAsyncioTestCase):
         result = await admin_reads._validate_attached_encounter(session, tournament_id=42, encounter_id=None)
         self.assertIsNone(result)
         session.execute.assert_not_awaited()
+
+
+class MatchLogOversizeMessageTests(IsolatedAsyncioTestCase):
+    def test_under_cap_is_silent(self) -> None:
+        from src.services.match_logs.limits import match_log_oversize_message
+
+        self.assertIsNone(match_log_oversize_message(10, 10))
+
+    def test_over_cap_names_the_file_when_given(self) -> None:
+        from src.services.match_logs.limits import match_log_oversize_message
+
+        self.assertEqual(
+            "Log file exceeds the maximum size of 10 bytes",
+            match_log_oversize_message(11, 10),
+        )
+        self.assertEqual(
+            "Log file a.log exceeds the maximum size of 10 bytes",
+            match_log_oversize_message(11, 10, filename="a.log"),
+        )

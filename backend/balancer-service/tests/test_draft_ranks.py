@@ -105,3 +105,9 @@ def test_slot_rank_of_a_seat_with_no_roster_is_none() -> None:
     # the export and the board both hit this and must not invent a 0.
     assert ranks.slot_rank(None, HeroClass.tank, ROLE_SHAPE) is None
     assert ranks.slot_rank(None, None, FLEX_SHAPE) is None
+
+
+def test_slot_rank_without_any_role_ranks_is_none_on_role_slots() -> None:
+    r = roster(1, ranks={})
+    assert ranks.slot_rank(r, None, ROLE_SHAPE) is None
+    assert ranks.slot_rank(r, None, FLEX_SHAPE) is None

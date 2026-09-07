@@ -483,8 +483,6 @@ def register(broker: Any, logger: Any) -> None:
             reg = await reg_service.registration_service.get_registration(session, tournament_id, user.id)
             if reg is None:
                 raise HTTPException(status_code=404, detail="No registration found")
-            if reg.status != "pending":
-                raise HTTPException(status_code=400, detail="Cannot update a registration that is not pending")
 
             validate_registration_input(form, body, partial=True)
             await validation_service.validate_verified_identity(

@@ -83,11 +83,6 @@ def _body(schema: type[_Body], data: dict[str, Any]) -> _Body:
         ) from exc
 
 
-def _require_member(user: Any, workspace_id: int) -> None:
-    if not user.is_workspace_member(workspace_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a workspace member")
-
-
 def _require_mix(data: dict[str, Any], user: Any, workspace_id: int, action: str) -> None:
     """Reading a mix is open to any workspace member; only ``create`` needs a role grant.
 
@@ -104,7 +99,7 @@ def _require_mix(data: dict[str, Any], user: Any, workspace_id: int, action: str
     knows about co-hosts. Gating here too used to 403 a co-host who held only
     the plain ``member`` role before that check ever ran.
     """
-    _require_member(user, workspace_id)
+    c.require_member(user, workspace_id)
     if action != "create":
         return
     c.require_workspace_permission(data, user, workspace_id, "custom_game", action)
@@ -751,7 +746,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_member(user, workspace_id)
+            c.require_member(user, workspace_id)
             if not user.is_workspace_admin(workspace_id):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace admin required")
             custom_game_id = _game_id(data)

@@ -33,6 +33,7 @@ from src.core import auth, db
 from src.core import clients as _clients
 from src.core.config import settings
 from src.services.match_logs import uploads as upload_service
+from src.services.match_logs.limits import match_log_oversize_message
 from src.services.match_logs.admin_reads import (
     _fetch_queue_depths,
     _record_to_dict,
@@ -290,14 +291,12 @@ def register(broker: Any, logger: Any) -> None:
                     if len(raw_b64) > (max_log_bytes // 3 + 1) * 4:
                         raise HTTPException(
                             status_code=413,
-                            detail=f"Log file exceeds the maximum size of {max_log_bytes} bytes",
+                            detail=match_log_oversize_message(max_log_bytes + 1, max_log_bytes),
                         )
                     content = base64.b64decode(raw_b64)
-                    if len(content) > max_log_bytes:
-                        raise HTTPException(
-                            status_code=413,
-                            detail=f"Log file exceeds the maximum size of {max_log_bytes} bytes",
-                        )
+                    oversize = match_log_oversize_message(len(content), max_log_bytes)
+                    if oversize:
+                        raise HTTPException(status_code=413, detail=oversize)
                     record = await upload_service.store_uploaded_log_bytes(
                         session,
                         s3=_clients.s3_client,
