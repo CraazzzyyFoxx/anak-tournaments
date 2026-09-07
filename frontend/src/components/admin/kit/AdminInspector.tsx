@@ -70,7 +70,6 @@ export function AdminInspector({
 }: Readonly<AdminInspectorProps>) {
   const isWide = useIsWideViewport();
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const returnFocusRef = useRef<Element | null>(null);
   const isOpen = openId !== null;
 
   useEffect(() => {
@@ -100,17 +99,25 @@ export function AdminInspector({
   // moved to the heading on open and handed back to the row on close. The
   // sheet gets both from Radix.
   //
+  // Two effects, not one: keyed on `openId`, the hand-back would run on every
+  // row switch and throw focus to the row that first opened the panel —
+  // scrolling the page there, which from row 500 reads as being yanked back to
+  // the top of the table. It belongs to open/close alone. This one runs first
+  // so it captures the row, not the heading the effect below focuses.
+  useEffect(() => {
+    if (!isOpen || !isWide) return;
+    const opener = document.activeElement;
+    return () => {
+      if (opener instanceof HTMLElement && document.contains(opener)) opener.focus();
+    };
+  }, [isOpen, isWide]);
+
   // `preventScroll`: the panel is sticky, so it is already on screen — letting
   // focus scroll it into view would yank the reader from row 8812 back to the
   // top of the table on every row click.
   useEffect(() => {
     if (!isOpen || !isWide) return;
-    returnFocusRef.current = document.activeElement;
     headingRef.current?.focus({ preventScroll: true });
-    return () => {
-      const previous = returnFocusRef.current;
-      if (previous instanceof HTMLElement && document.contains(previous)) previous.focus();
-    };
   }, [isOpen, isWide, openId]);
 
   if (!isOpen) return null;

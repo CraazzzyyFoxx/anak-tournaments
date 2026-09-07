@@ -53,6 +53,23 @@ function mockViewport(wide: boolean) {
   })) as unknown as typeof window.matchMedia;
 }
 
+function inspector(props: Partial<React.ComponentProps<typeof AdminInspector>>) {
+  return (
+    <AdminInspector
+      openId="8812"
+      onClose={onClose}
+      title="Encounter #8812"
+      subtitle="Anak Cup #14 · Groups · Round 3"
+      onPrev={onPrev}
+      onNext={onNext}
+      {...props}
+    >
+      <p>Team C vs Team D</p>
+      <input aria-label="Note" />
+    </AdminInspector>
+  );
+}
+
 async function render(
   props: Partial<React.ComponentProps<typeof AdminInspector>> = {},
   wide = true
@@ -62,20 +79,13 @@ async function render(
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root.render(
-      <AdminInspector
-        openId="8812"
-        onClose={onClose}
-        title="Encounter #8812"
-        subtitle="Anak Cup #14 · Groups · Round 3"
-        onPrev={onPrev}
-        onNext={onNext}
-        {...props}
-      >
-        <p>Team C vs Team D</p>
-        <input aria-label="Note" />
-      </AdminInspector>
-    );
+    root.render(inspector(props));
+  });
+}
+
+async function rerender(props: Partial<React.ComponentProps<typeof AdminInspector>>) {
+  await act(async () => {
+    root.render(inspector(props));
   });
 }
 
@@ -113,6 +123,24 @@ describe("AdminInspector", () => {
     expect(panel).not.toBeNull();
     expect(panel?.tagName).toBe("ASIDE");
     expect(panel?.textContent).toContain("Team C vs Team D");
+  });
+
+  // The row that opened the panel is handed focus back on CLOSE only. Doing it
+  // on every `openId` change scrolled the page to that first row — from row 500
+  // of a long table, a jump back to the top on every click.
+  it("hands focus back to the opening row on close, not on every row switch", async () => {
+    const row = document.createElement("button");
+    document.body.appendChild(row);
+    row.focus();
+
+    await render();
+    const rowFocus = vi.spyOn(row, "focus");
+
+    await rerender({ openId: "8813", title: "Encounter #8813" });
+    expect(rowFocus).not.toHaveBeenCalled();
+
+    await rerender({ openId: null });
+    expect(rowFocus).toHaveBeenCalledTimes(1);
   });
 
   it("becomes a sheet below lg", async () => {
