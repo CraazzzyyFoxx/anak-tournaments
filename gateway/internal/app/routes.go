@@ -39,9 +39,11 @@ var ReadRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/statistics/winrate", Queue: "rpc.app.statistics.winrate", AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/statistics/won-maps", Queue: "rpc.app.statistics.won_maps", AllQuery: true, Auth: edge.AuthNone},
 	// --- workspaces (public reads; writes + members in Phase 2) -------------
-	// list recognises an optional viewer: a workspace member still sees their
-	// own workspace.is_hidden=true entry (app-service/src/services/workspace/service.py:get_all).
-	{Method: "GET", Pattern: "/api/v1/workspaces", Queue: "rpc.app.workspaces.list", Auth: edge.AuthOptional},
+	// list takes ?scope=public|admin|all (default public — the shared home-page
+	// directory: no hidden, no unverified, superusers included). admin/all
+	// recognise the viewer: their own workspaces surface at any tier
+	// (app-service/src/services/workspace/service.py:get_all).
+	{Method: "GET", Pattern: "/api/v1/workspaces", Queue: "rpc.app.workspaces.list", Query: []string{"scope"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/workspaces/by-host", Queue: "rpc.app.workspaces.by_host", Query: []string{"host"}, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/workspaces/{id}", Queue: "rpc.app.workspaces.get", IDParam: "id", Auth: edge.AuthNone},
 	// --- users (literals + /{id}/... + bare /{name} last) -------------------

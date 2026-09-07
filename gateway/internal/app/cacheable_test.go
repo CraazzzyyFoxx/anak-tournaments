@@ -32,3 +32,22 @@ func TestByHostNeverCacheable(t *testing.T) {
 		t.Fatal("/api/v1/workspaces/by-host must not be cached")
 	}
 }
+
+// The workspaces list is one endpoint serving three scopes; dispatch only
+// forwards query params a route declares (edge/dispatch.go), so dropping
+// "scope" here would silently pin every caller to the public directory —
+// emptying the admin table and the workspace switcher.
+func TestWorkspacesListForwardsScope(t *testing.T) {
+	for _, r := range ReadRoutes {
+		if r.Pattern != "/api/v1/workspaces" || r.Method != http.MethodGet {
+			continue
+		}
+		for _, q := range r.Query {
+			if q == "scope" {
+				return
+			}
+		}
+		t.Fatalf("GET /api/v1/workspaces must forward ?scope, got Query=%v AllQuery=%v", r.Query, r.AllQuery)
+	}
+	t.Fatal("GET /api/v1/workspaces missing from ReadRoutes")
+}

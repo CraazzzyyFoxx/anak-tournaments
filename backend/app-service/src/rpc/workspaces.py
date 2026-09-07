@@ -50,6 +50,9 @@ from src.services.workspace.service import workspaces as workspace_service
 
 _SF = db.async_session_maker
 _auth_user_repo = AuthUserRepository()
+# The three shapes `workspaces.list` serves; anything else is a 422 rather
+# than a silent fallback to the widest one (see `_list`).
+_LIST_SCOPES = ("public", "admin", "all")
 
 
 def _path_int(data: dict[str, Any], key: str) -> int:
@@ -186,9 +189,22 @@ def register(broker: Any, logger: Any) -> None:
     # --- public reads -------------------------------------------------------
     @broker.subscriber("rpc.app.workspaces.list")
     async def _list(data: dict, msg: RabbitMessage) -> dict:
+        """``?scope=public|admin|all`` (default ``public``).
+
+        ``public`` is the directory the home page renders and is identical for
+        every caller, superusers included: hidden and ``unverified``
+        workspaces are absent, full stop. ``admin`` is the management list
+        (superuser: everything; otherwise the caller's own workspaces at any
+        tier) and ``all`` is that unioned with the public directory, for the
+        workspace switcher.
+        """
+
         async def op(session: Any) -> Any:
+            scope = c.q1(data, "scope", str, "public")
+            if scope not in _LIST_SCOPES:
+                raise HTTPException(status_code=422, detail="scope must be one of public, admin, all")
             viewer = rehydrate_user_optional(data.get("identity"))
-            workspaces = await workspace_service.get_all(session, user=viewer)
+            workspaces = await workspace_service.get_all(session, user=viewer, scope=scope)
             return [schemas.WorkspaceRead.model_validate(w, from_attributes=True) for w in workspaces]
 
         return await c.envelope(logger, "workspaces.list", op, session_factory=_SF)

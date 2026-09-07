@@ -200,9 +200,14 @@ export interface DivisionGridPortableDocument {
 }
 
 /** Trust tier of a workspace. New self-service workspaces start `unverified`
- * and stay off the public home-page directory until reviewed; `trusted` is
- * exactly what that directory filters on. */
+ * and stay off the public home-page directory until a superuser reviews them;
+ * the directory lists `verified` and `trusted`, and badges the latter. */
 export type WorkspaceVerificationStatus = "unverified" | "verified" | "trusted";
+
+/** `scope` of `GET /api/v1/workspaces`. `public` is the shared home-page
+ * directory (no hidden, no `unverified` — identical for superusers), `admin`
+ * the management list, `all` the switcher's union of both. */
+export type WorkspaceListScope = "public" | "admin" | "all";
 
 /** A Discord guild the signed-in user administers, from `GET /api/v1/me/discord-guilds`. */
 export interface ManageableDiscordGuild {
@@ -249,7 +254,8 @@ export interface Workspace {
   discord_guild_id: string | null;
   /** Set when an administrator of that guild proved it through Discord OAuth. */
   discord_guild_verified_at: string | null;
-  /** Self-service trust tier: only `trusted` workspaces are listed publicly. */
+  /** Self-service trust tier: `unverified` workspaces are absent from the
+   * public directory (`scope=public`) for every caller, superusers included. */
   verification_status: WorkspaceVerificationStatus;
   default_division_grid_version_id: number | null;
   default_division_grid_version: DivisionGridVersion | null;

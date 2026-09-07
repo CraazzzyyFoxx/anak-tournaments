@@ -247,11 +247,11 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
 
 
 class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
-    """``get_all`` is the public directory, gated on ``is_hidden`` AND the trust
-    tier: an anonymous or non-member caller sees non-hidden ``verified`` and
-    ``trusted`` workspaces, never ``unverified``. Membership bypasses both gates
-    (a member always sees their own workspace at any tier), and a superuser sees
-    everything."""
+    """``get_all`` serves three scopes. ``public`` is the home-page directory:
+    ``is_hidden`` and ``unverified`` are dropped for EVERY caller, membership
+    and ``is_superuser`` included. ``admin`` is the management list (superuser:
+    everything, else own memberships only) and ``all`` unions that with the
+    directory for the workspace switcher."""
 
     def _workspaces(self) -> list[SimpleNamespace]:
         return [
@@ -261,10 +261,10 @@ class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
             SimpleNamespace(id=4, is_hidden=False, verification_status="unverified"),
         ]
 
-    async def _get_all(self, user) -> list[int]:
+    async def _get_all(self, user, scope: str = "public") -> list[int]:
         session = SimpleNamespace()
         with patch.object(workspaces.workspace_repo, "list_ordered", AsyncMock(return_value=self._workspaces())):
-            result = await workspaces.get_all(session, user=user)
+            result = await workspaces.get_all(session, user=user, scope=scope)
         return [w.id for w in result]
 
     async def test_anonymous_sees_non_hidden_verified_and_trusted_workspaces(self) -> None:
@@ -283,19 +283,44 @@ class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
 
         self.assertNotIn(4, await self._get_all(user))
 
-    async def test_member_sees_their_own_hidden_workspace(self) -> None:
-        user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[2]))
+    async def test_member_does_not_see_their_own_unverified_workspace_in_the_directory(self) -> None:
+        """The directory is one shared surface: a member's own hidden or
+        ``unverified`` workspace is reachable by slug and through the switcher
+        (``scope=all``), never on the home page."""
+        user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[2, 4]))
 
-        self.assertEqual([1, 2, 3], await self._get_all(user))
+        self.assertEqual([1, 3], await self._get_all(user))
 
-    async def test_member_sees_their_own_unverified_workspace(self) -> None:
-        """A self-service organizer's brand-new workspace is invisible to the
-        public directory but never to them."""
-        user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[4]))
-
-        self.assertEqual([1, 3, 4], await self._get_all(user))
-
-    async def test_superuser_sees_every_workspace_unfiltered(self) -> None:
+    async def test_superuser_gets_the_same_directory_as_a_visitor(self) -> None:
+        """The whole point of the 2026-09-07 revision: an operator browsing the
+        home page must not be shown workspaces nobody else can see."""
         user = SimpleNamespace(is_superuser=True, get_workspace_ids=Mock(return_value=[]))
 
-        self.assertEqual([1, 2, 3, 4], await self._get_all(user))
+        self.assertEqual([1, 3], await self._get_all(user))
+
+    async def test_all_scope_adds_the_members_own_hidden_and_unverified_workspaces(self) -> None:
+        user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[2, 4]))
+
+        self.assertEqual([1, 2, 3, 4], await self._get_all(user, "all"))
+
+    async def test_all_scope_for_a_superuser_is_every_workspace(self) -> None:
+        user = SimpleNamespace(is_superuser=True, get_workspace_ids=Mock(return_value=[]))
+
+        self.assertEqual([1, 2, 3, 4], await self._get_all(user, "all"))
+
+    async def test_admin_scope_is_memberships_only_not_the_directory(self) -> None:
+        """The management table must not pad a workspace admin's rows with
+        every public workspace they have no business editing."""
+        user = SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[4]))
+
+        self.assertEqual([4], await self._get_all(user, "admin"))
+
+    async def test_admin_scope_for_a_superuser_is_every_workspace(self) -> None:
+        """Including ``unverified`` ones -- this is the list a superuser
+        verifies workspaces from, so the tier gate must not reach it."""
+        user = SimpleNamespace(is_superuser=True, get_workspace_ids=Mock(return_value=[]))
+
+        self.assertEqual([1, 2, 3, 4], await self._get_all(user, "admin"))
+
+    async def test_admin_scope_is_empty_for_an_anonymous_caller(self) -> None:
+        self.assertEqual([], await self._get_all(None, "admin"))

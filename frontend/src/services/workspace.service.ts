@@ -14,6 +14,7 @@ import {
   DivisionGridVersion,
   ManageableDiscordGuild,
   Workspace,
+  WorkspaceListScope,
   WorkspaceMember,
   WorkspaceOwner,
   WorkspaceVerificationStatus
@@ -37,8 +38,14 @@ type DivisionGridTierInput = {
   ow_rank_max: number | null;
 };
 export default class workspaceService {
-  static async getAll(): Promise<Workspace[]> {
-    return apiFetch("/api/v1/workspaces").then((r) => r.json());
+  /**
+   * `public` (default) is the home-page directory: hidden and `unverified`
+   * workspaces are absent for everyone, superusers included. `admin` is the
+   * management list (superuser: everything, else own memberships) and `all`
+   * unions that with the directory, for the switcher and slug resolution.
+   */
+  static async getAll(scope: WorkspaceListScope = "public"): Promise<Workspace[]> {
+    return apiFetch("/api/v1/workspaces", { query: { scope } }).then((r) => r.json());
   }
 
   static async getById(id: number): Promise<Workspace> {

@@ -202,6 +202,19 @@ async def count_by_owner(self, session, *, owner_id: int) -> int:
 > admission. `shared/services/workspace_tier.py::is_trusted` was deleted with its
 > only call site; `is_verified_or_trusted` is now the single tier gate in the
 > backend.
+>
+> **Revised again 2026-09-07 (shipped): the directory has no bypasses left.**
+> `unverified` (and hidden) workspaces are absent from the public directory for
+> EVERY caller — membership does not lift the gate and neither does
+> `is_superuser`, because an operator browsing the home page was seeing cards no
+> visitor could see, which made the directory unreviewable from the product
+> itself. `GET /api/v1/workspaces` now takes `?scope=public|admin|all`
+> (`public` is the default; anything else is a 422): `admin` is the management
+> list the superuser verifies workspaces from, `all` is `admin` ∪ the directory
+> for the workspace switcher and slug resolution. The three consumers that used
+> to rely on the implicit bypass now ask for the scope they need — home page
+> (default), `stores/workspace.store.ts` and `(site)/workspace/[slug]` (`all`),
+> `admin/workspaces` (`admin`).
 
 `WorkspaceService.get_all` (`service.py:89-106`) already backs the public directory ("home page + anonymous `/api/v1/workspaces` list", per the `is_hidden` column comment) and already special-cases a viewer's own membership: `not w.is_hidden or w.id in member_ids`. Extend the non-member branch with a trust check, same shape:
 

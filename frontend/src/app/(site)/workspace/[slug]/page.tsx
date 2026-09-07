@@ -47,7 +47,9 @@ export default async function WorkspaceHome({
 
   let workspace: Workspace;
   try {
-    const workspaces = await workspaceService.getAll();
+    // `all`, not the public directory: a workspace's own page must stay
+    // reachable for its members while it is still `unverified` or hidden.
+    const workspaces = await workspaceService.getAll("all");
     const found = workspaces.find((w) => w.slug === slug);
     if (!found) notFound();
     workspace = found;

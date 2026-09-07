@@ -75,6 +75,11 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
+def _is_listed(workspace: models.Workspace) -> bool:
+    """The public-directory bar: not hidden, and past the ``unverified`` tier."""
+    return not workspace.is_hidden and is_verified_or_trusted(workspace)
+
+
 class WorkspaceService:
     """Workspace + membership orchestration: repository-backed CRUD, the
     custom-domain (white-label) lifecycle, and the RBAC member queries."""
@@ -116,31 +121,49 @@ class WorkspaceService:
         return await self.workspace_repo.get_by_verified_custom_domain(session, domain)
 
     async def get_all(
-        self, session: AsyncSession, *, user: AuthUser | None = None
+        self,
+        session: AsyncSession,
+        *,
+        user: AuthUser | None = None,
+        scope: typing.Literal["public", "admin", "all"] = "public",
     ) -> typing.Sequence[models.Workspace]:
-        """Every workspace, minus ones ``user`` has no business seeing.
+        """Workspaces the caller is entitled to see under ``scope``.
 
-        This is the **public directory** (the home page), so two gates apply to
-        an anonymous or non-member caller: ``is_hidden``, and the trust tier --
-        ``verified`` and ``trusted`` are both listed, ``unverified`` is not
-        (design §4.5, revised 2026-09-07: admission to the directory is now the
-        same bar as metered resources, and ``trusted`` is surfaced as a badge on
-        the card instead of as the price of admission).
+        ``public`` (the default, and what the home-page directory asks for) is
+        the strict directory: ``not is_hidden`` AND a trust tier past
+        ``unverified`` (design §4.5). It has NO bypasses -- membership does not
+        lift it and neither does ``is_superuser``, because the directory is one
+        shared public surface and an operator browsing the home page must see
+        exactly what a visitor sees (revised 2026-09-07).
 
-        Membership bypasses both, exactly as it always did for ``is_hidden``: a
-        member (any role, via ``AuthUser.get_workspace_ids``) sees their own
-        workspace at any tier, and superusers see everything. Direct lookups
-        (``get_by_id``, ``get_by_slug``, ``get_by_subdomain``,
-        ``get_by_custom_domain``) are untouched -- a fresh ``unverified``
-        workspace is fully reachable and usable by slug, subdomain or verified
-        custom domain the moment it is created, it just does not appear here
-        until a superuser marks it ``verified``.
+        ``admin`` is the management list: everything for a superuser, otherwise
+        only the caller's own workspaces at any tier (the admin table narrows
+        that further to the ones they actually administer, which is a
+        permission question this layer does not answer).
+
+        ``all`` is ``admin`` unioned with the public directory -- the workspace
+        switcher and slug resolution, where a member must reach their own
+        brand-new ``unverified`` workspace while still being able to browse
+        every listed one.
+
+        Direct lookups (``get_by_id``, ``get_by_slug``, ``get_by_subdomain``,
+        ``get_by_custom_domain``) are untouched by all of this: a fresh
+        ``unverified`` workspace is fully reachable and usable by slug,
+        subdomain or verified custom domain the moment it is created, it just
+        does not appear in the public directory until a superuser marks it
+        ``verified``.
         """
         workspaces = await self.workspace_repo.list_ordered(session)
-        if user is not None and user.is_superuser:
+        if scope == "public":
+            return [w for w in workspaces if _is_listed(w)]
+        if user is None:
+            return [] if scope == "admin" else [w for w in workspaces if _is_listed(w)]
+        if user.is_superuser:
             return workspaces
-        member_ids = set(user.get_workspace_ids()) if user is not None else set()
-        return [w for w in workspaces if w.id in member_ids or (not w.is_hidden and is_verified_or_trusted(w))]
+        member_ids = set(user.get_workspace_ids())
+        if scope == "admin":
+            return [w for w in workspaces if w.id in member_ids]
+        return [w for w in workspaces if w.id in member_ids or _is_listed(w)]
 
     # --- custom domain (white-label Phase 2) --------------------------------
 

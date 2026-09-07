@@ -78,7 +78,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         if (get().isLoading) return;
         set({ isLoading: true });
         try {
-          const workspaces = await workspaceService.getAll();
+          // `all`: the switcher must reach the member's own hidden/unverified
+          // workspaces, which the public directory (`scope=public`) drops.
+          const workspaces = await workspaceService.getAll("all");
           const locked = get().hostLockedWorkspaceId;
           const current = get().currentWorkspaceId;
           const nextId = locked ?? resolveCurrentWorkspaceId(workspaces, current);

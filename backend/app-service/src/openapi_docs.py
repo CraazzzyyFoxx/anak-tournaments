@@ -179,7 +179,14 @@ DOCS: dict[str, dict] = {
     # ── workspaces (reads + writes + members) ──────────────────────────────────────
     "rpc.app.workspaces.list": {
         "summary": "List workspaces",
-        "description": "Returns every workspace, minus hidden ones the caller has no business seeing: a hidden workspace is dropped unless the caller is one of its members (any role) or a superuser (public, optional auth, unpaginated).",
+        "description": (
+            "Lists workspaces (public, optional auth, unpaginated). `scope=public` (the default) is the"
+            " home-page directory and is byte-identical for every caller, superusers included: hidden"
+            " and `unverified` workspaces never appear. `scope=admin` is the management list -- every"
+            " workspace for a superuser, otherwise only the caller's own memberships at any tier."
+            " `scope=all` is that unioned with the public directory (the workspace switcher). Any other"
+            " value is a 422."
+        ),
     },
     "rpc.app.workspaces.by_host": {
         "summary": "Resolve workspace by host",

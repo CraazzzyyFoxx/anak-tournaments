@@ -267,8 +267,11 @@ export default function WorkspacesPage() {
               sortDir
             ]}
             queryFn={async (page, search, pageSize, sortField, sortDir) => {
-              const all = await workspaceService.getAll();
-              // Non-superusers only see workspaces they administer.
+              // `admin`: every workspace for a superuser (this is where
+              // `unverified` ones get verified), memberships otherwise — then
+              // narrowed to the ones the caller actually administers, which is
+              // a permission question the endpoint does not answer.
+              const all = await workspaceService.getAll("admin");
               const visible = isSuperuser ? all : all.filter((ws) => isWorkspaceAdmin(ws.id));
               const needle = search.trim().toLowerCase();
               const matching = needle
