@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from unittest import IsolatedAsyncioTestCase
 
+from shared.schemas.rpc import rpc_error, rpc_ok
 from shared.services.subscriptions import SubscriptionSource, SubscriptionState
 from shared.services.subscriptions.providers.discord_role import (
     DiscordForbidden,
@@ -262,13 +263,15 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
 
         fake_broker = AsyncMock()
         fake_broker.request.return_value = _rpc_reply(
-            {
-                "guild_role_ids": ["100", "200"],
-                "members": {
-                    "discord-id-1": {"found": True, "roles": ["200"]},
-                    "discord-id-2": {"found": False, "roles": []},
-                },
-            }
+            rpc_ok(
+                {
+                    "guild_role_ids": ["100", "200"],
+                    "members": {
+                        "discord-id-1": {"found": True, "roles": ["200"]},
+                        "discord-id-2": {"found": False, "roles": []},
+                    },
+                }
+            )
         )
 
         session = AsyncMock()
@@ -293,7 +296,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
 
         fake_broker = AsyncMock()
         fake_broker.request.return_value = _rpc_reply(
-            {"guild_role_ids": ["100", "200"], "members": {"discord-id-1": {"found": True, "roles": ["200"]}}}
+            rpc_ok({"guild_role_ids": ["100", "200"], "members": {"discord-id-1": {"found": True, "roles": ["200"]}}})
         )
 
         strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
@@ -345,7 +348,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         from shared.services.subscriptions.strategies import BoostyDiscordStrategy
 
         fake_broker = AsyncMock()
-        fake_broker.request.return_value = _rpc_reply({"error": "guild_not_found", "guild_role_ids": [], "members": {}})
+        fake_broker.request.return_value = _rpc_reply(rpc_error("not_found", "guild_not_found"))
 
         strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
         dummy_resolver = AsyncMock()
@@ -376,7 +379,9 @@ class TestSeveralLinkedDiscordAccounts(IsolatedAsyncioTestCase):
         from shared.services.subscriptions.strategies import BoostyDiscordStrategy
 
         fake_broker = AsyncMock()
-        fake_broker.request.return_value = _rpc_reply({"guild_role_ids": list(guild_role_ids), "members": members})
+        fake_broker.request.return_value = _rpc_reply(
+            rpc_ok({"guild_role_ids": list(guild_role_ids), "members": members})
+        )
         strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
         with patch(
             "shared.services.subscriptions.strategies.load_provider_user_ids",

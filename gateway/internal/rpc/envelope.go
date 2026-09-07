@@ -5,14 +5,15 @@ import (
 	"strconv"
 )
 
-// Envelope is the reply shape every identity-svc RPC method returns:
+// Envelope is the reply shape every worker RPC method returns:
 //
-//	{"ok": true, "data": {...}}                 — success
-//	{"ok": false, "error": {"code","message"}}  — failure
+//	{"ok": true, "data": {...}, "warnings": [...]}  — success (warnings omitted if empty)
+//	{"ok": false, "error": {"code","message"}}      — failure
 type Envelope struct {
-	OK    bool            `json:"ok"`
-	Data  json.RawMessage `json:"data"`
-	Error *EnvelopeError  `json:"error"`
+	OK       bool            `json:"ok"`
+	Data     json.RawMessage `json:"data"`
+	Warnings json.RawMessage `json:"warnings,omitempty"`
+	Error    *EnvelopeError  `json:"error"`
 }
 
 // EnvelopeError carries a machine code (mapped to an HTTP status), a human
@@ -79,5 +80,34 @@ func StatusForCode(code string) int {
 		return 503
 	default:
 		return 500
+	}
+}
+
+// CodeForStatus is the inverse of StatusForCode for gateway-local errors that
+// have an HTTP status but no worker code. Unknown statuses become "internal".
+func CodeForStatus(status int) string {
+	switch status {
+	case 400:
+		return "bad_request"
+	case 401:
+		return "unauthorized"
+	case 403:
+		return "forbidden"
+	case 404:
+		return "not_found"
+	case 409:
+		return "conflict"
+	case 410:
+		return "gone"
+	case 413:
+		return "payload_too_large"
+	case 422:
+		return "unprocessable"
+	case 429:
+		return "rate_limited"
+	case 503, 504:
+		return "unavailable"
+	default:
+		return "internal"
 	}
 }

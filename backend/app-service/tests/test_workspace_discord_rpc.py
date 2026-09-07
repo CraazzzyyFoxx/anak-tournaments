@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.rpc.workspaces import register
+from shared.schemas.rpc import rpc_ok
 
 _IDENTITY = {"user_id": 1, "is_superuser": True, "is_active": True}
 
@@ -56,21 +57,21 @@ class WorkspaceDiscordRPCTests(IsolatedAsyncioTestCase):
     async def test_discord_roles_handler(self) -> None:
         result = await self._call(
             "rpc.app.workspaces.discord_roles",
-            reply=_rpc_reply({"guild_id": "999", "roles": [{"id": "100", "name": "Admin"}]}),
+            reply=_rpc_reply(rpc_ok({"guild_id": "999", "roles": [{"id": "100", "name": "Admin"}]})),
         )
         self.assertEqual(result["data"]["roles"][0]["name"], "Admin")
 
     async def test_discord_channels_handler(self) -> None:
         result = await self._call(
             "rpc.app.workspaces.discord_channels",
-            reply=_rpc_reply({"guild_id": "999", "channels": [{"id": "555", "name": "match-logs"}]}),
+            reply=_rpc_reply(rpc_ok({"guild_id": "999", "channels": [{"id": "555", "name": "match-logs"}]})),
         )
         self.assertEqual(result["data"]["channels"][0]["name"], "match-logs")
 
     async def test_discord_guild_handler(self) -> None:
         result = await self._call(
             "rpc.app.workspaces.discord_guild",
-            reply=_rpc_reply({"guild_id": "999", "connected": True, "name": "Server"}),
+            reply=_rpc_reply(rpc_ok({"guild_id": "999", "connected": True, "name": "Server"})),
         )
         self.assertTrue(result["data"]["connected"])
         self.assertEqual(result["data"]["name"], "Server")

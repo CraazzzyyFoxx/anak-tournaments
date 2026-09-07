@@ -18,7 +18,7 @@ from pydantic import BaseModel, ValidationError
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.common import envelope, field_entry, http_error, retry_after_seconds, validation_error
-from shared.schemas.rpc import rpc_error
+from shared.schemas.rpc import parse_rpc, rpc_error, rpc_ok
 
 
 class _Payload(BaseModel):
@@ -61,6 +61,45 @@ class RpcErrorTests(IsolatedAsyncioTestCase):
     def test_details_included_when_present(self) -> None:
         error = rpc_error("rate_limited", "slow down", {"retry_after": 30})["error"]
         self.assertEqual(error["details"], {"retry_after": 30})
+
+    def test_rpc_ok_omits_empty_warnings(self) -> None:
+        self.assertEqual(rpc_ok({"id": 1}), {"ok": True, "data": {"id": 1}})
+        self.assertEqual(rpc_ok({"id": 1}, []), {"ok": True, "data": {"id": 1}})
+
+    def test_rpc_ok_includes_warnings(self) -> None:
+        body = rpc_ok({"id": 1}, [{"code": "truncated", "message": "capped"}])
+        self.assertEqual(
+            body,
+            {
+                "ok": True,
+                "data": {"id": 1},
+                "warnings": [{"code": "truncated", "message": "capped"}],
+            },
+        )
+
+
+class ParseRpcTests(IsolatedAsyncioTestCase):
+    def test_rejects_non_envelope(self) -> None:
+        self.assertIsNone(parse_rpc(None))
+        self.assertIsNone(parse_rpc("nope"))
+        self.assertIsNone(parse_rpc({"members": {}}))
+
+    def test_ok_with_warnings(self) -> None:
+        reply = parse_rpc(rpc_ok({"id": 1}, [{"code": "truncated", "message": "capped"}]))
+        self.assertIsNotNone(reply)
+        assert reply is not None
+        self.assertTrue(reply.ok)
+        self.assertEqual(reply.data, {"id": 1})
+        self.assertEqual(reply.warnings[0]["code"], "truncated")
+
+    def test_error(self) -> None:
+        reply = parse_rpc(rpc_error("not_found", "missing", {"retry_after": 1}))
+        self.assertIsNotNone(reply)
+        assert reply is not None
+        self.assertFalse(reply.ok)
+        self.assertEqual(reply.code, "not_found")
+        self.assertEqual(reply.message, "missing")
+        self.assertEqual(reply.error["details"], {"retry_after": 1})
 
 
 class HttpErrorTests(IsolatedAsyncioTestCase):

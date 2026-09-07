@@ -164,13 +164,7 @@ func (b *Binary) relayJSON(w http.ResponseWriter, r *http.Request, queue string,
 		apierr.WriteEnvelopeError(w, env.Error)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(success)
-	// Relay a literal JSON `null` rather than an empty body (see edge/dispatch.go).
-	if len(env.Data) > 0 {
-		_, _ = w.Write(env.Data)
-	}
+	apierr.WriteOK(w, success, env)
 }
 
 // writeDetail emits the gateway's error body for this handler's OWN failures;

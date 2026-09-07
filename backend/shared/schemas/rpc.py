@@ -5,10 +5,32 @@ HTTP status. A single shape keeps the Go side simple and preserves each domain's
 HTTP contract status codes.
 """
 
-from __future__ import annotations
-
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
+
+
+@dataclass(frozen=True, slots=True)
+class RpcReply:
+    """Decoded worker-to-worker (and worker-to-gateway) RPC body."""
+
+    ok: bool
+    data: Any = None
+    error: Mapping[str, Any] | None = None
+    warnings: tuple[Mapping[str, Any], ...] = ()
+
+    @property
+    def code(self) -> str | None:
+        if not self.error:
+            return None
+        code = self.error.get("code")
+        return str(code) if code else None
+
+    @property
+    def message(self) -> str:
+        if not self.error:
+            return ""
+        return str(self.error.get("message") or "")
 
 # Error codes -> HTTP status are mapped on the gateway side:
 #   unauthorized->401, forbidden->403, bad_request->400, not_found->404,
@@ -37,8 +59,11 @@ ERROR_CODES = frozenset(
 )
 
 
-def rpc_ok(data: Any) -> dict[str, Any]:
-    return {"ok": True, "data": data}
+def rpc_ok(data: Any, warnings: list[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+    body: dict[str, Any] = {"ok": True, "data": data}
+    if warnings:
+        body["warnings"] = [dict(w) for w in warnings]
+    return body
 
 
 # Recognized ``details`` keys (anything else the gateway passes through verbatim):
@@ -57,6 +82,20 @@ def rpc_error(code: str, message: str, details: Mapping[str, Any] | None = None)
     if details:
         error["details"] = dict(details)
     return {"ok": False, "error": error}
+
+
+def parse_rpc(body: Any) -> RpcReply | None:
+    """Decode an envelope. ``None`` if ``body`` is not ``{ok, ...}``."""
+    if not isinstance(body, dict) or "ok" not in body:
+        return None
+    if body.get("ok"):
+        raw = body.get("warnings") or ()
+        warnings = tuple(w for w in raw if isinstance(w, Mapping)) if isinstance(raw, (list, tuple)) else ()
+        return RpcReply(ok=True, data=body.get("data"), warnings=warnings)
+    err = body.get("error")
+    if not isinstance(err, Mapping):
+        err = {"code": "internal", "message": str(err or "error")}
+    return RpcReply(ok=False, error=dict(err))
 
 
 def status_to_code(http_status: int) -> str:

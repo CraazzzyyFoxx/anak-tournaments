@@ -13,20 +13,24 @@ import (
 // (nginx proxies everything here) and win over the "/" frontend proxy by
 // ServeMux specificity.
 const (
-	publicSpecPath = "/api/openapi.json"
-	publicUIPath   = "/api/docs"
-	adminSpecPath  = "/api/openapi.admin.json"
-	adminUIPath    = "/api/docs/admin"
+	publicSpecPath   = "/api/openapi.json"
+	publicUIPath     = "/api/docs"
+	adminSpecPath    = "/api/openapi.admin.json"
+	adminUIPath      = "/api/docs/admin"
+	publicV2SpecPath = "/api/openapi.v2.json"
+	adminV2SpecPath  = "/api/openapi.v2.admin.json"
 )
 
 // Server serves the pre-built specs and Scalar pages. Specs and pages are
 // rendered once at construction and written verbatim per request.
 type Server struct {
-	cfg        config.Docs
-	publicSpec []byte
-	adminSpec  []byte
-	publicPage []byte
-	adminPage  []byte
+	cfg          config.Docs
+	publicSpec   []byte
+	adminSpec    []byte
+	publicV2Spec []byte
+	adminV2Spec  []byte
+	publicPage   []byte
+	adminPage    []byte
 }
 
 // New builds the public/admin specs and their Scalar pages. The public spec is
@@ -36,11 +40,13 @@ func New(cfg config.Docs, info Info, publicGroups, adminGroups []Group) *Server 
 	adminInfo.Title = info.Title + " — Admin"
 
 	return &Server{
-		cfg:        cfg,
-		publicSpec: Build(info, publicGroups),
-		adminSpec:  Build(adminInfo, adminGroups),
-		publicPage: page(info.Title, publicSpecPath, cfg.CDN),
-		adminPage:  page(adminInfo.Title, adminSpecPath, cfg.CDN),
+		cfg:          cfg,
+		publicSpec:   Build(info, publicGroups),
+		adminSpec:    Build(adminInfo, adminGroups),
+		publicV2Spec: BuildV2(info, publicGroups),
+		adminV2Spec:  BuildV2(adminInfo, adminGroups),
+		publicPage:   page(info.Title, publicSpecPath, cfg.CDN),
+		adminPage:    page(adminInfo.Title, adminSpecPath, cfg.CDN),
 	}
 }
 
@@ -55,6 +61,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+publicUIPath, htmlHandler(s.publicPage))
 	mux.HandleFunc("GET "+adminSpecPath, s.gatedAdmin(jsonHandler(s.adminSpec)))
 	mux.HandleFunc("GET "+adminUIPath, s.gatedAdmin(htmlHandler(s.adminPage)))
+	mux.HandleFunc("GET "+publicV2SpecPath, jsonHandler(s.publicV2Spec))
+	mux.HandleFunc("GET "+adminV2SpecPath, s.gatedAdmin(jsonHandler(s.adminV2Spec)))
 }
 
 func (s *Server) gatedAdmin(next http.HandlerFunc) http.HandlerFunc {

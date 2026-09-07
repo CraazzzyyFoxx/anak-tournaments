@@ -109,10 +109,11 @@ func (b *Binary) MatchLog(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	raw, ok := b.invoke(w, r, "rpc.app.matches.log", data)
+	env, ok := b.invoke(w, r, "rpc.app.matches.log", data)
 	if !ok {
 		return
 	}
+	raw := env.Data
 	var payload struct {
 		ContentB64 string `json:"content_b64"`
 		MediaType  string `json:"media_type"`
@@ -151,8 +152,6 @@ func (b *Binary) UserAvatarUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	b.relayJSON(w, r, "rpc.app.users.avatar_upload", id, http.StatusOK)
 }
-
-
 
 // identityInto resolves the bearer identity (required) and injects it into data.
 // Returns ok=false (and writes 401) when no valid identity is present.
@@ -223,23 +222,15 @@ func attachQuery(data map[string]any, r *http.Request) {
 	}
 }
 
-// relayJSON calls the RPC and relays the success envelope data as a JSON response.
 func (b *Binary) relayJSON(w http.ResponseWriter, r *http.Request, queue string, data map[string]any, success int) {
-	raw, ok := b.invoke(w, r, queue, data)
+	env, ok := b.invoke(w, r, queue, data)
 	if !ok {
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(success)
-	// Relay a literal JSON `null` rather than an empty body (see edge/dispatch.go).
-	if len(raw) > 0 {
-		_, _ = w.Write(raw)
-	}
+	apierr.WriteOK(w, success, env)
 }
 
-// invoke marshals data, performs the RPC, and maps the {ok,data,error} envelope.
-// On any failure it writes the HTTP error and returns ok=false.
-func (b *Binary) invoke(w http.ResponseWriter, r *http.Request, queue string, data map[string]any) (json.RawMessage, bool) {
+func (b *Binary) invoke(w http.ResponseWriter, r *http.Request, queue string, data map[string]any) (rpc.Envelope, bool) {
 	body, _ := json.Marshal(data)
 	ctx, cancel := context.WithTimeout(r.Context(), binaryRPCTimeout)
 	defer cancel()
@@ -250,24 +241,24 @@ func (b *Binary) invoke(w http.ResponseWriter, r *http.Request, queue string, da
 			b.log.Error("rpc unavailable", "queue", queue, "err", err)
 			w.Header().Set("Retry-After", "1")
 			writeDetail(w, http.StatusServiceUnavailable, "service unavailable")
-			return nil, false
+			return rpc.Envelope{}, false
 		}
 		b.log.Error("rpc failed", "queue", queue, "err", err)
 		writeDetail(w, http.StatusGatewayTimeout, "service timeout")
-		return nil, false
+		return rpc.Envelope{}, false
 	}
 
 	var env rpc.Envelope
 	if err := json.Unmarshal(reply, &env); err != nil {
 		b.log.Error("invalid rpc envelope", "queue", queue, "err", err)
 		writeDetail(w, http.StatusBadGateway, "invalid service response")
-		return nil, false
+		return rpc.Envelope{}, false
 	}
 	if !env.OK {
 		apierr.WriteEnvelopeError(w, env.Error)
-		return nil, false
+		return rpc.Envelope{}, false
 	}
-	return env.Data, true
+	return env, true
 }
 
 // writeDetail emits the gateway's error body for this handler's OWN failures;

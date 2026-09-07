@@ -43,10 +43,11 @@ from .config import (
     TOURNAMENT_STATE_CHANGED_DLQ,
     TOURNAMENT_STATE_CHANGED_QUEUE,
 )
-from .rpc import request_dict
+from .rpc import request_dict, request_rpc
 
 __all__ = [
     "request_dict",
+    "request_rpc",
     "DLX_EXCHANGE",
     "BALANCER_JOBS_QUEUE",
     "BALANCER_JOBS_DLQ",

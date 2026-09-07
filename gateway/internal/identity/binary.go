@@ -138,11 +138,5 @@ func (b *Binary) relayAvatar(w http.ResponseWriter, r *http.Request, queue strin
 		apierr.WriteEnvelopeError(w, env.Error)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	// Relay a literal JSON `null` rather than an empty body (see edge/dispatch.go).
-	if len(env.Data) > 0 {
-		_, _ = w.Write(env.Data)
-	}
+	apierr.WriteOK(w, http.StatusOK, env)
 }

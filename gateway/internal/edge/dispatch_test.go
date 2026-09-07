@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apiver"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
 
@@ -66,6 +67,54 @@ func TestDispatch_TypedSuccess(t *testing.T) {
 	_ = json.Unmarshal(m.lastBody, &sent)
 	if sent["id"] != "5" {
 		t.Fatalf("sent id=%v", sent["id"])
+	}
+}
+
+func TestDispatch_V2RelaysEnvelope(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":true,"data":{"id":5},"warnings":[{"code":"truncated","message":"capped"}]}`)}
+	d := newTestDispatcher(m, nil)
+	spec := RouteSpec{Method: "GET", Pattern: "/api/v1/tournaments/{id}", Queue: "rpc.tournament.get_tournament", IDParam: "id", Auth: AuthNone}
+	mux := http.NewServeMux()
+	d.Register(mux, []RouteSpec{spec})
+	h := apiver.Middleware(mux)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/tournaments/5", nil))
+	if w.Code != 200 {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if body["ok"] != true {
+		t.Fatalf("body=%s", w.Body.String())
+	}
+	data, _ := body["data"].(map[string]any)
+	if data["id"] != float64(5) {
+		t.Fatalf("data=%v", body["data"])
+	}
+}
+
+func TestDispatch_V2ErrorEnvelope(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":false,"error":{"code":"not_found","message":"missing"}}`)}
+	d := newTestDispatcher(m, nil)
+	spec := RouteSpec{Method: "GET", Pattern: "/api/v1/tournaments/{id}", Queue: "rpc.tournament.get_tournament", IDParam: "id", Auth: AuthNone}
+	mux := http.NewServeMux()
+	d.Register(mux, []RouteSpec{spec})
+	h := apiver.Middleware(mux)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/tournaments/5", nil))
+	if w.Code != 404 {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if body["ok"] != false {
+		t.Fatalf("body=%s", w.Body.String())
+	}
+	errObj, _ := body["error"].(map[string]any)
+	if errObj["code"] != "not_found" {
+		t.Fatalf("error=%v", body["error"])
 	}
 }
 

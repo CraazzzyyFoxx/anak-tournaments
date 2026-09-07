@@ -2,9 +2,11 @@ package apierr
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/apiver"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
 
@@ -150,4 +152,59 @@ func TestWriteEnvelopeError_RealWorkerEnvelopes(t *testing.T) {
 			t.Fatalf("body=%#v", body)
 		}
 	})
+}
+
+func TestWriteOK_V1UnwrapsData(t *testing.T) {
+	w := httptest.NewRecorder()
+	WriteOK(w, 200, rpc.Envelope{OK: true, Data: json.RawMessage(`{"id":5}`)})
+	if w.Body.String() != `{"id":5}` {
+		t.Fatalf("body=%q", w.Body.String())
+	}
+}
+
+func TestV2_ErrorAndOKEnvelope(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/ok":
+			WriteOK(w, 200, rpc.Envelope{
+				OK:       true,
+				Data:     json.RawMessage(`{"id":5}`),
+				Warnings: json.RawMessage(`[{"code":"truncated","message":"capped"}]`),
+			})
+		default:
+			WriteError(w, 404, "Not Found", "", nil)
+		}
+	})
+	wrap := apiver.Middleware(h)
+
+	w := httptest.NewRecorder()
+	wrap.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/ok", nil))
+	if w.Code != 200 {
+		t.Fatalf("ok code=%d", w.Code)
+	}
+	okBody := decode(t, w)
+	if okBody["ok"] != true {
+		t.Fatalf("ok body=%#v", okBody)
+	}
+	data, _ := okBody["data"].(map[string]any)
+	if data["id"] != float64(5) {
+		t.Fatalf("data=%#v", okBody["data"])
+	}
+	if _, has := okBody["warnings"]; !has {
+		t.Fatalf("warnings missing: %#v", okBody)
+	}
+
+	w = httptest.NewRecorder()
+	wrap.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/missing", nil))
+	if w.Code != 404 {
+		t.Fatalf("err code=%d", w.Code)
+	}
+	errBody := decode(t, w)
+	if errBody["ok"] != false {
+		t.Fatalf("err body=%#v", errBody)
+	}
+	errObj, _ := errBody["error"].(map[string]any)
+	if errObj["code"] != "not_found" || errObj["message"] != "Not Found" {
+		t.Fatalf("error=%#v", errObj)
+	}
 }

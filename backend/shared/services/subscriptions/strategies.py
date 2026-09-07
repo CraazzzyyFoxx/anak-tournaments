@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core.social import SocialProvider
 from shared.messaging.config import DISCORD_MEMBER_ROLES_QUEUE
-from shared.messaging.rpc import request_dict
+from shared.messaging.rpc import request_rpc
 from shared.services.subscriptions import SubscriptionState, SubscriptionVerdict
 from shared.services.subscriptions.providers.discord_role import (
     DiscordForbidden,
@@ -202,7 +202,7 @@ class BoostyDiscordStrategy:
         # two REST calls per user against Discord's per-guild rate limit bucket.
         if self._broker is not None and guild_id:
             try:
-                rpc_res = await request_dict(
+                reply = await request_rpc(
                     self._broker,
                     {
                         "guild_id": guild_id,
@@ -211,12 +211,12 @@ class BoostyDiscordStrategy:
                     DISCORD_MEMBER_ROLES_QUEUE,
                     timeout=5.0,
                 )
-                if rpc_res is not None and "members" in rpc_res and not rpc_res.get("error"):
+                if reply is not None and reply.ok and isinstance(reply.data, dict) and "members" in reply.data:
                     return await self._resolve_from_rpc(
                         config=config,
                         auth_user_ids=auth_user_ids,
                         discord_ids=discord_ids,
-                        rpc_res=rpc_res,
+                        rpc_res=reply.data,
                     )
             except Exception as exc:
                 logger.warning(f"RPC call to discord_member_roles failed, falling back to HTTP: {exc}")

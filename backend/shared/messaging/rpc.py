@@ -9,17 +9,18 @@ is exactly how the Discord entity endpoints came to answer with empty lists in
 production while their unit tests -- mocking ``request`` with a plain dict --
 stayed green.
 
-``request_dict`` is therefore the only sanctioned way to call an RPC handler
-that answers with a JSON object: it decodes, and it returns ``None`` for
-anything that is not a mapping so every call site has one obvious failure
-branch instead of an ``isinstance`` check it can forget.
+``request_dict`` decodes the JSON object. ``request_rpc`` additionally requires
+the shared ``{ok, data, error, warnings?}`` envelope every worker is supposed
+to return; a raw dict without ``ok`` is ``None`` (same as a non-object body).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-__all__ = ("request_dict",)
+from shared.schemas.rpc import RpcReply, parse_rpc
+
+__all__ = ("request_dict", "request_rpc")
 
 
 async def request_dict(
@@ -38,3 +39,15 @@ async def request_dict(
     response = await broker.request(payload, queue, timeout=timeout)
     decoded = await response.decode()
     return decoded if isinstance(decoded, dict) else None
+
+
+async def request_rpc(
+    broker: Any,
+    payload: Any,
+    queue: Any,
+    *,
+    timeout: float = 5.0,
+) -> RpcReply | None:
+    """``request_dict`` plus envelope decode. ``None`` if the body is not an envelope."""
+    decoded = await request_dict(broker, payload, queue, timeout=timeout)
+    return parse_rpc(decoded) if decoded is not None else None

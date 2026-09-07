@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.messaging.rpc import request_dict
+from shared.messaging.rpc import request_rpc
 from shared.models.identity.auth_user import AuthUser
 from shared.rbac import (
     assign_workspace_system_role,
@@ -705,13 +705,14 @@ class WorkspaceService:
         ``IntegrityError`` catch alone is proportionate).
         """
         try:
-            res = await request_dict(broker, {"auth_user_id": actor.id}, _DISCORD_GUILDS_SUBJECT, timeout=5.0)
+            reply = await request_rpc(broker, {"auth_user_id": actor.id}, _DISCORD_GUILDS_SUBJECT, timeout=5.0)
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Could not reach Discord for guild verification") from exc
-        if not res or not res.get("ok"):
+        if reply is None or not reply.ok:
             raise HTTPException(status_code=503, detail="Could not reach Discord for guild verification")
 
-        guilds = (res.get("data") or {}).get("guilds") or []
+        payload = reply.data if isinstance(reply.data, dict) else {}
+        guilds = payload.get("guilds") or []
         administered = {g["guild_id"] for g in guilds if g.get("can_manage")}
         if guild_id not in administered:
             raise HTTPException(status_code=403, detail="You do not administer this Discord guild")

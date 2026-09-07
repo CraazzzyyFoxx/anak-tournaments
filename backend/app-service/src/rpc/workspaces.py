@@ -34,7 +34,7 @@ from shared.messaging.config import (
     DISCORD_GUILD_INFO_QUEUE,
     DISCORD_GUILD_ROLES_QUEUE,
 )
-from shared.messaging.rpc import request_dict
+from shared.messaging.rpc import request_rpc
 from shared.rbac import ensure_workspace_system_roles, get_workspace_system_role
 from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
@@ -163,11 +163,15 @@ async def _discord_lookup(
         return {"guild_id": None, **empty}
 
     try:
-        res = await request_dict(broker, {"guild_id": guild_id}, queue, timeout=5.0)
-        return res or {"guild_id": guild_id, **empty}
+        reply = await request_rpc(broker, {"guild_id": guild_id}, queue, timeout=5.0)
     except Exception as exc:  # noqa: BLE001 -- the pickers degrade, they never 500
         logger.warning(f"{label} RPC failed for workspace {workspace_id}: {exc}")
         return {"guild_id": guild_id, **(degraded if degraded is not None else empty), "error": str(exc)}
+    if reply is None or not reply.ok or not isinstance(reply.data, dict):
+        return {"guild_id": guild_id, **empty}
+    data = dict(reply.data)
+    data.setdefault("guild_id", guild_id)
+    return data
 
 
 def register(broker: Any, logger: Any) -> None:
