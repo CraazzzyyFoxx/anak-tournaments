@@ -23,7 +23,12 @@ System overview (processes, RabbitMQ, gateway, deployment):
 - The ORM — every table, on one metadata (`models/`).
 - CRUD repositories over those tables (`repository/`).
 - Session-taking logic two or more services already call (`services/`): bracket advancement,
-  admission, realtime publishing, workspace scoping, distributed locks, subscriptions, audit.
+  admission, realtime publishing, workspace scoping, distributed locks, subscriptions, audit,
+  notifications — `services/notifications.py:notify()` is the one write point for a
+  `notification` row. It validates the payload against the kind's registered schema, calls
+  `session.add` and returns the row, so the caller's transaction owns the commit and a
+  rolled-back mutation notifies nobody; the realtime signal is published after that commit,
+  best-effort. Same contract as `record_audit` beside it.
 - Pure algorithms and value types two or more services already call (`domain/`).
 - Wire contracts that cross a service boundary (`schemas/`), above all the event payloads in
   `schemas/events.py`.

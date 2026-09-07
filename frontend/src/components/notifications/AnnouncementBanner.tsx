@@ -9,9 +9,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { readDismissedAnnouncements, rememberDismissedAnnouncement } from "@/lib/announcement-dismissed";
+import { announcementText } from "@/lib/announcement-text";
 import { notificationQueryKeys } from "@/lib/notification-query-keys";
 import notificationService from "@/services/notification.service";
-import type { AnnouncementLocaleText, NotificationItem } from "@/types/notification.types";
+import type { NotificationItem } from "@/types/notification.types";
 
 interface AnnouncementBannerProps {
   /** The layout's server-side read, so the banner is in the first paint instead
@@ -26,20 +27,15 @@ interface AnnouncementContent {
 }
 
 /**
- * The one row whose text is author-written, stored per locale. Falls back to the
- * publisher's default locale — a workspace announcement is only required to
- * carry one, so the viewer's may genuinely be missing.
- *
- * `href` is re-checked here even though `AnnouncementPayload._href_is_safe`
- * already rejects anything else on the way in: this value ends up as an anchor
- * target on a page every visitor sees, and a `javascript:` URL there is stored
- * XSS. Two cheap checks on a link nobody can edit twice.
+ * The banner's own reading of a row: the viewer's text (locale choice lives in
+ * `announcementText`) plus the link, which is re-checked here even though
+ * `AnnouncementPayload._href_is_safe` already rejects anything else on the way
+ * in — this value ends up as an anchor target on a page every visitor sees, and
+ * a `javascript:` URL there is stored XSS. Two cheap checks on a link nobody
+ * can edit twice.
  */
 function announcementContent(payload: Record<string, unknown>, locale: string): AnnouncementContent | null {
-  const locales = payload.locales as Record<string, AnnouncementLocaleText> | undefined;
-  if (!locales) return null;
-  const defaultLocale = typeof payload.default_locale === "string" ? payload.default_locale : null;
-  const text = locales[locale] ?? (defaultLocale ? locales[defaultLocale] : undefined);
+  const text = announcementText(payload, locale);
   if (!text?.title) return null;
 
   const raw = typeof payload.href === "string" ? payload.href : null;

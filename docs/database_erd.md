@@ -12,7 +12,7 @@ schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_proces
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`wstier001`** (46 revisions in `backend/migrations/versions/`).
+Alembic head: **`notif001`** (47 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -2542,9 +2542,9 @@ Composite unique keys:
 ## platform — `public`, `realtime`
 
 Cross-domain infrastructure: the transactional outbox, the realtime event journal the gateway
-replays from, and the platform audit log.
+replays from, the platform audit log, and the notification inbox.
 
-These three tables carry `workspace_id`, `tournament_id` and actor ids as plain `BigInteger`
+These tables carry `workspace_id`, `tournament_id` and actor ids as plain `BigInteger`
 with **no foreign keys**, which is why they appear unconnected on the diagram. That is the
 point: an append-only bus or journal must outlive the business rows it describes, and must not
 be draggable into a cascade delete.
@@ -2556,6 +2556,16 @@ replay journal the Go gateway reads by topic and id when a WebSocket client reco
 `schema_version` lets the payload shape change without invalidating older entries. `audit_log`
 stores `before_json` / `after_json` together with `actor_label` and `entity_label` snapshots, so
 an entry stays readable after the row it describes is gone.
+
+`notification` is the inbox journal — appended by `shared.services.notifications.notify()`
+inside the transaction that causes the event, never committed on its own. It stores `kind` plus
+a `payload_json` snapshot rather than rendered text, so the wording lives in the frontend
+dictionary and a deleted team still reads by name; `audience` decides who may see the row
+(`user`, `workspace` or `global`) and the check constraints keep `recipient_auth_user_id` /
+`workspace_id` filled exactly for the audience that needs one. `notification_read` is the
+read mark, primary key `(auth_user_id, notification_id)`: "read" is a fact about one viewer,
+which is what lets a global announcement be dismissed by each reader independently, and the
+mark survives the announcement being unpublished, so who saw it stays answerable.
 
 <!-- ERD:auto platform -->
 ```mermaid
@@ -2591,6 +2601,23 @@ erDiagram
         timestamptz created_at
         timestamptz published_at "nullable"
         text last_error "nullable"
+    }
+    PUBLIC_NOTIFICATION {
+        bigint id PK
+        varchar(16) audience
+        bigint recipient_auth_user_id "nullable"
+        bigint workspace_id "nullable"
+        varchar(64) kind
+        jsonb payload_json
+        bigint actor_auth_user_id "nullable"
+        timestamptz published_at
+        timestamptz expires_at "nullable"
+        timestamptz created_at
+    }
+    PUBLIC_NOTIFICATION_READ {
+        bigint auth_user_id PK
+        bigint notification_id PK
+        timestamptz read_at
     }
     REALTIME_WORKSPACE_EVENT {
         bigint id PK

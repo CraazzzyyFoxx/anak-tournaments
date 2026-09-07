@@ -3,8 +3,9 @@
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { announcementText } from "@/lib/announcement-text";
 import { cn } from "@/lib/utils";
-import type { AnnouncementLocaleText, NotificationItem } from "@/types/notification.types";
+import type { NotificationItem } from "@/types/notification.types";
 
 /** The kinds v1 ships messages for. The union exists so the dynamic key below
  *  is a cast to something real rather than to `any`; the backend is free to add
@@ -41,19 +42,6 @@ function messageValues(payload: Record<string, unknown>): Record<string, string 
   return values;
 }
 
-/**
- * An announcement is the one row with author-written text, stored per locale.
- * Falls back to the publisher's default locale — a workspace announcement is
- * only required to carry one locale, so the viewer's may genuinely be missing.
- */
-function announcementTitle(payload: Record<string, unknown>, locale: string): string | null {
-  const locales = payload.locales as Record<string, AnnouncementLocaleText> | undefined;
-  if (!locales) return null;
-  const defaultLocale = typeof payload.default_locale === "string" ? payload.default_locale : null;
-  const text = locales[locale] ?? (defaultLocale ? locales[defaultLocale] : undefined);
-  return text?.title ?? null;
-}
-
 const NotificationList = ({
   items,
   unreadCount,
@@ -77,7 +65,7 @@ const NotificationList = ({
    */
   const notificationText = (item: NotificationItem): string => {
     if (item.kind === "announcement.published") {
-      const title = announcementTitle(item.payload, locale);
+      const title = announcementText(item.payload, locale)?.title;
       if (title) return title;
     }
     // `kind` is a wire string, so it is NOT a member of the dictionary's

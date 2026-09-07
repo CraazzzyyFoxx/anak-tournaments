@@ -130,15 +130,3 @@ export function announcementState(
   if (Date.parse(row.published_at) > now) return "scheduled";
   return "active";
 }
-
-/**
- * The title as this operator reads it, falling back to the one the publisher
- * wrote in: a workspace announcement is only required to carry one locale, so
- * the viewer's may genuinely be missing.
- */
-export function announcementTitle(payload: Record<string, unknown>, locale: string): string | null {
-  const locales = payload.locales as Record<string, AnnouncementLocaleText> | undefined;
-  if (!locales) return null;
-  const fallback = typeof payload.default_locale === "string" ? payload.default_locale : null;
-  return (locales[locale] ?? (fallback ? locales[fallback] : undefined))?.title ?? null;
-}

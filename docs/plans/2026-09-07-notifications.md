@@ -1,6 +1,6 @@
 # Notifications and Announcements
 
-**Status:** design approved
+**Status:** implemented (2026-09-07)
 
 > **For Claude:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development to execute this plan task-by-task.
 > The status line above is line 2 on purpose — `docs/plans/README.md` requires it there, so this pointer sits below it.

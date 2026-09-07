@@ -130,6 +130,12 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   rule as the bracket: `stream-svc` emits one thin `stream.updated` per tournament whose
   set of live channels actually changed — never one per channel, and never for a hidden
   tournament.
+  `user:{id}:notifications` is non-durable in the same way — one thin `notification.created`
+  per row `notify()` writes, with no event row and no replay, because a client that missed the
+  signal refetches the inbox it is about to read anyway. Its ACL rule is self-only: the id in
+  the topic must equal the caller's own, and unlike every other rule it grants the platform
+  superuser no bypass — an operator's blanket read right over workspace data is not a licence
+  to watch one person's inbox arrive.
 - **Discord ingest.** The bot uploads match-log attachments as base64 to
   `UPLOAD_MATCH_LOG_QUEUE`; parser results return over a fanout `MATCH_LOG_RESULT_EXCHANGE`
   (per-replica exclusive queue) correlated by `ResultWaiter`.

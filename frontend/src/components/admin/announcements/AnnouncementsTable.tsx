@@ -17,9 +17,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { announcementText } from "@/lib/announcement-text";
 import type { NotificationItem } from "@/types/notification.types";
 
-import { announcementState, announcementTitle, type AnnouncementState } from "./announcement-draft";
+import { announcementState, type AnnouncementState } from "./announcement-draft";
 
 interface AnnouncementsTableProps {
   rows: NotificationItem[];
@@ -64,7 +65,8 @@ export function AnnouncementsTable({
           <span className="text-sm font-medium">
             {/* The operator's own language, falling back to the one it was
                 written in — a workspace announcement may carry only one. */}
-            {announcementTitle(row.original.payload, locale) ?? t("notifications.admin.untitled")}
+            {announcementText(row.original.payload, locale)?.title ??
+              t("notifications.admin.untitled")}
           </span>
         ),
       },

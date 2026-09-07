@@ -48,6 +48,20 @@ The browser uses **relative same-origin paths**; SSR and middleware use `NEXT_IN
 `frontend/src/lib/api-routes.ts`. Multidomain / white-label tenancy is resolved in
 `frontend/src/middleware.ts`, which maps the request `Host` to a workspace.
 
+## Notifications
+
+The header carries the inbox bell (`src/components/notifications/NotificationBell.tsx`, hidden
+without an identity): it reads `GET /api/notifications` and refetches when the
+`user:{id}:notifications` realtime topic signals, so the badge is the server's unread count and
+never a client-side tally. A system row carries `kind` plus a payload snapshot and no text — the
+wording comes from `notifications.kinds.*` in `src/i18n/messages/*.json`, so a copy fix reaches
+rows written months ago.
+
+Under the header, on every page and for anonymous visitors too, `AnnouncementBanner.tsx` shows
+the newest active announcement from `GET /api/announcements/active` (read server-side in both
+layouts, so it is in the first paint). Closing it writes a read mark for a signed-in viewer and a
+`localStorage` id for everyone else. Operators publish them at `/admin/announcements`.
+
 ## Branding via .env
 
 The site name and main icon/logo are configurable via environment variables.
