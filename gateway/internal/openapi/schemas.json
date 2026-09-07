@@ -3419,6 +3419,18 @@
       },
       "summary": "Get the workspace owner"
     },
+    "rpc.app.workspaces.owner_set": {
+      "description": "Stamps `Workspace.owner_id` with the given auth account, or clears it when `auth_user_id` is null, and returns the resolved owner. Superuser-only \u2014 stricter than the `workspace.update` gate on the matching read, because owner_id is what the per-account create cap is counted over. RBAC roles are untouched (the stamp and the `owner` role are decoupled), the per-account cap is not re-checked (a superuser assignment is the override for it), every call is audited including a no-op, 404 if the workspace or the target account is missing.",
+      "request": {
+        "array": false,
+        "ref": "app.WorkspaceOwnerSet"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.WorkspaceOwnerRead"
+      },
+      "summary": "Assign or clear the workspace owner"
+    },
     "rpc.app.workspaces.set_custom_domain": {
       "description": "Normalizes and stores a custom domain plus a fresh DNS TXT verification token, resetting verification; requires workspace.update, 404 if workspace missing, 400 on an invalid domain.",
       "request": {
@@ -17760,6 +17772,25 @@
         "auth_user_id"
       ],
       "title": "WorkspaceOwnerRead",
+      "type": "object"
+    },
+    "app.WorkspaceOwnerSet": {
+      "description": "Body for the superuser-only ``owner_set``. ``None`` clears the stamp --\na workspace with nobody on the hook is a real state (every workspace\npredating self-service creation is in it), so it has to be reachable, not\nonly escapable.",
+      "properties": {
+        "auth_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auth User Id"
+        }
+      },
+      "title": "WorkspaceOwnerSet",
       "type": "object"
     },
     "app.WorkspaceRead": {

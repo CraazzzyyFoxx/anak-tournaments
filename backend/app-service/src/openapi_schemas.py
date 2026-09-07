@@ -164,10 +164,9 @@ OPERATIONS: dict[str, Op] = {
         request=schemas.WorkspaceDiscordGuildVerify, response=schemas.WorkspaceRead
     ),
     "rpc.app.workspaces.my_discord_guilds": Op(response=schemas.WorkspaceDiscordGuildsRead),
-    "rpc.app.workspaces.verification_set": Op(
-        request=schemas.WorkspaceVerificationSet, response=schemas.WorkspaceRead
-    ),
+    "rpc.app.workspaces.verification_set": Op(request=schemas.WorkspaceVerificationSet, response=schemas.WorkspaceRead),
     "rpc.app.workspaces.owner_get": Op(response=schemas.WorkspaceOwnerRead),
+    "rpc.app.workspaces.owner_set": Op(request=schemas.WorkspaceOwnerSet, response=schemas.WorkspaceOwnerRead),
     # ── metadata admin (hero/map/gamemode) ─────────────────────────────────
     "rpc.app.heroes.admin_create": Op(request=schemas.HeroCreate, response=schemas.HeroRead),
     "rpc.app.heroes.admin_update": Op(request=schemas.HeroUpdate, response=schemas.HeroRead),
@@ -186,8 +185,12 @@ OPERATIONS: dict[str, Op] = {
     # ── users admin (CRUD + identities + merge) ────────────────────────────
     "rpc.app.users.admin_create": Op(request=schemas.UserCreate, response=schemas.UserRead),
     "rpc.app.users.admin_update": Op(request=schemas.UserAdminUpdate, response=schemas.UserRead),
-    "rpc.app.users.merge_preview": Op(request=schemas.UserMergePreviewRequest, response=schemas.UserMergePreviewResponse),
-    "rpc.app.users.merge_execute": Op(request=schemas.UserMergeExecuteRequest, response=schemas.UserMergeExecuteResponse),
+    "rpc.app.users.merge_preview": Op(
+        request=schemas.UserMergePreviewRequest, response=schemas.UserMergePreviewResponse
+    ),
+    "rpc.app.users.merge_execute": Op(
+        request=schemas.UserMergeExecuteRequest, response=schemas.UserMergeExecuteResponse
+    ),
     "rpc.app.users.social_add": Op(request=schemas.SocialAccountCreate, response=schemas.UserRead),
     "rpc.app.users.social_update": Op(request=schemas.SocialAccountUpdate, response=schemas.UserRead),
     "rpc.app.users.social_verify": Op(response=schemas.UserRead),

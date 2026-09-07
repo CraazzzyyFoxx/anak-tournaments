@@ -53,6 +53,17 @@ export default class workspaceService {
     return apiFetch(`/api/v1/workspaces/${id}/owner`).then((r) => r.json());
   }
 
+  /**
+   * Stamp or clear the accountable owner. Superuser-only server-side — the cap
+   * on how many workspaces an account may own is counted over this field.
+   */
+  static async setOwner(id: number, authUserId: number | null): Promise<WorkspaceOwner | null> {
+    return apiFetch(`/api/v1/workspaces/${id}/owner`, {
+      method: "PUT",
+      body: { auth_user_id: authUserId }
+    }).then((r) => r.json());
+  }
+
   static async create(data: {
     slug: string;
     name: string;

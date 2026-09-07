@@ -32,6 +32,7 @@ __all__ = (
     "WorkspaceDiscordGuildsRead",
     "WorkspaceVerificationSet",
     "WorkspaceOwnerRead",
+    "WorkspaceOwnerSet",
     "WorkspaceMemberRoleRead",
     "WorkspaceMemberRead",
     "WorkspaceMemberCreate",
@@ -237,6 +238,15 @@ class WorkspaceOwnerRead(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     avatar_url: str | None = None
+
+
+class WorkspaceOwnerSet(BaseModel):
+    """Body for the superuser-only ``owner_set``. ``None`` clears the stamp --
+    a workspace with nobody on the hook is a real state (every workspace
+    predating self-service creation is in it), so it has to be reachable, not
+    only escapable."""
+
+    auth_user_id: int | None = None
 
 
 class WorkspaceMemberRoleRead(BaseModel):

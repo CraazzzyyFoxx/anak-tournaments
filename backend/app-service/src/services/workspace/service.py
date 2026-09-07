@@ -881,5 +881,46 @@ class WorkspaceService:
         await session.commit()
         return workspace
 
+    # --- owner (accountability) ---------------------------------------------
+
+    async def set_owner(
+        self,
+        session: AsyncSession,
+        workspace: models.Workspace,
+        owner_id: int | None,
+        *,
+        actor: typing.Any,
+    ) -> models.Workspace:
+        """Superuser-only owner reassignment; the caller owns the permission gate
+        and has already proven ``owner_id`` names a real ``auth.user`` row.
+
+        Two things this deliberately does NOT do. It does not touch RBAC: the
+        stamp and the ``owner`` role are decoupled by design (§4.4), so who may
+        administer the workspace stays a ``member_update`` decision. And it does
+        not re-check ``max_owned_per_user`` -- that cap gates self-service
+        creation, and a superuser assignment is exactly the override for it; the
+        new owner is simply counted from here on.
+
+        Audited unconditionally, a no-op set included: this moves who answers for
+        a workspace, same posture as ``set_verification_status``.
+        """
+        owner_before = workspace.owner_id
+        await self.workspace_repo.update_fields(session, workspace, {"owner_id": owner_id})
+        await record_audit(
+            session,
+            action="workspace.owner_set",
+            source="admin",
+            actor=actor,
+            actor_label=actor.username,
+            workspace_id=workspace.id,
+            entity_type="workspace",
+            entity_id=workspace.id,
+            entity_label=workspace.slug,
+            before={"owner_id": owner_before},
+            after={"owner_id": workspace.owner_id},
+        )
+        await session.commit()
+        return workspace
+
 
 workspaces = WorkspaceService()

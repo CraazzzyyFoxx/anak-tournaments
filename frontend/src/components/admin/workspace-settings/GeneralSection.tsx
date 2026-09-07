@@ -17,7 +17,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { AuditTrailButton } from "@/components/admin/AuditTrailSheet";
 import { SaveBar } from "@/components/admin/kit/SaveBar";
-import { WorkspaceOwnerValue } from "@/components/admin/workspace-owner";
+import { WorkspaceOwnerControl, WorkspaceOwnerValue } from "@/components/admin/workspace-owner";
 import {
   WorkspaceNotListedNotice,
   WorkspaceVerificationIcon,
@@ -173,9 +173,10 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
                   <WorkspaceOwnerValue workspaceId={workspace.id} />
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  The account accountable for this workspace. Set once at creation and counted
-                  against that account&apos;s workspace limit; not editable here.
+                  The account accountable for this workspace, counted against that account&apos;s
+                  workspace limit.
                 </p>
+                <WorkspaceOwnerControl workspaceId={workspace.id} isSuperuser={isSuperuser} />
               </div>
 
               <WorkspaceVerificationControl

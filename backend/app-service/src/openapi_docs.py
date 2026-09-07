@@ -256,6 +256,10 @@ DOCS: dict[str, dict] = {
         "summary": "Get the workspace owner",
         "description": "Resolves `Workspace.owner_id` — the account accountable for the workspace and counted against the per-account create cap — to its username, email and avatar; requires workspace.update (the public workspace model deliberately publishes no owner), returns null data when no owner is stamped, 404 if workspace missing.",
     },
+    "rpc.app.workspaces.owner_set": {
+        "summary": "Assign or clear the workspace owner",
+        "description": "Stamps `Workspace.owner_id` with the given auth account, or clears it when `auth_user_id` is null, and returns the resolved owner. Superuser-only — stricter than the `workspace.update` gate on the matching read, because owner_id is what the per-account create cap is counted over. RBAC roles are untouched (the stamp and the `owner` role are decoupled), the per-account cap is not re-checked (a superuser assignment is the override for it), every call is audited including a no-op, 404 if the workspace or the target account is missing.",
+    },
     # ── workspace discord entities ──────────────────────────────────────────────────
     "rpc.app.workspaces.discord_roles": {
         "summary": "List workspace Discord roles",

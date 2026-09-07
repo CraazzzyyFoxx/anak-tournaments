@@ -567,6 +567,33 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "workspaces.owner_get", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.app.workspaces.owner_set")
+    async def _owner_set(data: dict, msg: RabbitMessage) -> dict:
+        """Assign or clear the accountable owner.
+
+        Superuser-only, deliberately stricter than the ``workspace.update`` gate
+        on the read next to it: ``owner_id`` is what the per-account create cap
+        is counted over, so an organizer who could reassign it could hand their
+        own cap away — or appoint an account that never agreed to answer for
+        anything. The target account is resolved here rather than left to the FK,
+        so an unknown id is a 404 instead of an integrity error.
+        """
+
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_superuser(user)
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            body = schemas.WorkspaceOwnerSet.model_validate(c.payload(data))
+            if body.auth_user_id is not None and not await _auth_user_repo.get(session, body.auth_user_id):
+                raise HTTPException(status_code=404, detail="Auth user not found")
+            workspace = await workspace_service.set_owner(session, workspace, body.auth_user_id, actor=user)
+            return await _owner_payload(session, workspace)
+
+        return await c.envelope(logger, "workspaces.owner_set", op, session_factory=_SF)
+
     # --- Discord entities (roles, channels, server status) ------------------
     # Reads of an organizer's own server config, so they carry the same
     # workspace.update gate as the custom-domain endpoints above: the role and

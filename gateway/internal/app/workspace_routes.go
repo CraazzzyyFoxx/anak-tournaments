@@ -38,8 +38,10 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	// workspace's verification_status (unverified/verified/trusted), which
 	// gates public directory listing. Enforced in app-service, not here.
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/verification", Queue: "rpc.app.workspaces.verification_set", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
-	// --- owner: resolves owner_id to a person. A read, but workspace.update in
-	// the worker like the discord_* reads -- the public workspace model carries
-	// no owner at all, so this is the only way to see one.
+	// --- owner: resolves owner_id to a person (GET, workspace.update in the
+	// worker like the discord_* reads -- the public workspace model carries no
+	// owner at all), and reassigns it (PUT, superuser-only: owner_id is what the
+	// per-account create cap is counted over).
 	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/owner", Queue: "rpc.app.workspaces.owner_get", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/v1/workspaces/{workspace_id}/owner", Queue: "rpc.app.workspaces.owner_set", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 }

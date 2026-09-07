@@ -21,11 +21,13 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const getById = vi.fn();
 const getOwner = vi.fn();
+const setOwner = vi.fn();
 
 vi.mock("@/services/workspace.service", () => ({
   default: {
     getById: (...args: unknown[]) => getById(...args),
     getOwner: (...args: unknown[]) => getOwner(...args),
+    setOwner: (...args: unknown[]) => setOwner(...args),
     update: vi.fn(),
     uploadIcon: vi.fn(),
     deleteIcon: vi.fn()
@@ -140,6 +142,7 @@ beforeEach(() => {
     last_name: null,
     avatar_url: null
   });
+  setOwner.mockReset().mockResolvedValue(null);
 });
 
 afterEach(async () => {
@@ -173,6 +176,27 @@ describe("Workspaces › [id] › General", () => {
     getOwner.mockResolvedValue(null);
     await render();
 
+    expect(container.textContent).toContain("No owner recorded");
+  });
+
+  // The reassignment control is superuser-only and writes through its own
+  // endpoint, so "Clear" is the one branch reachable without driving the
+  // account picker: it must send an explicit null, not just drop the field.
+  it("lets a superuser drop the accountability stamp in one click", async () => {
+    await render();
+    const clear = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Clear"
+    );
+
+    expect(container.querySelector("#workspace-owner")).not.toBeNull();
+    expect(clear).toBeDefined();
+
+    await act(async () => {
+      clear?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    expect(setOwner).toHaveBeenCalledWith(8, null);
     expect(container.textContent).toContain("No owner recorded");
   });
 
