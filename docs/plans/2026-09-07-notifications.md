@@ -501,14 +501,14 @@ one tab per locale. **Step 5 — tests** → PASS. **Step 6 — commit.**
 
 **Step 1 — read** `anchors-frontend.md` §7 for the namespace layout and what `messages.parity.test.ts` enforces.
 
-**Step 2 — run** `cd frontend && npx vitest run src/i18n/messages.parity.test.ts` → it must be green before and after; if the earlier
+**Step 2 — run** `cd frontend && bun test src/i18n/messages.parity.test.ts` → it must be green before and after; if the earlier
 tasks added keys to only one file, this is where it fails first.
 
 **Step 3 — sweep the namespace.** Tasks 8-10 added the keys they render. Add whatever is still missing: one message per notification
 kind (ICU interpolation of the payload fields listed in the "Notification kinds" table) and any bell/banner/admin string still absent.
 Both locales, identical key sets.
 
-**Step 4 — run** `cd frontend && npx vitest run src/i18n/messages.parity.test.ts` and the three behavior test files from Tasks 8-10.
+**Step 4 — run** `cd frontend && bun test src/i18n/messages.parity.test.ts` and the three behavior test files from Tasks 8-10.
 
 **Step 5 — update the docs** listed above. `docs/architecture.md` §3's realtime paragraph must say the topic is non-durable (no event
 row, no replay) and that its ACL rule is self-only.
