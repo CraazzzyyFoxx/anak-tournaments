@@ -5402,5 +5402,28 @@
       "cache_not_ready": "Данные подписок ещё загружаются",
       "unknown": "Причина неизвестна"
     }
+  },
+  "notifications": {
+    "title": "Уведомления",
+    "bell": "Уведомления, {count, plural, =0 {все прочитаны} one {# непрочитанное} few {# непрочитанных} many {# непрочитанных} other {# непрочитанных}}",
+    "unread": "Непрочитанное",
+    "empty": "Уведомлений пока нет",
+    "markAllRead": "Прочитать все",
+    "kinds": {
+      "team_invite": {
+        "received": "{team_name} приглашает вас в состав на {tournament_name}",
+        "answered": "{responder_name} {answer, select, accepted {принял} declined {отклонил} other {ответил на}} приглашение в команду {team_name}"
+      },
+      "registration": {
+        "approved": "Ваша заявка на {tournament_name} одобрена",
+        "rejected": "Ваша заявка на {tournament_name} отклонена"
+      },
+      "encounter": {
+        "report_disputed": "{map_index, plural, =0 {Отчёт по вашему матчу оспорен} other {Отчёт по карте # вашего матча оспорен}}"
+      },
+      "announcement": {
+        "published": "Новое объявление"
+      }
+    }
   }
 }

@@ -5402,5 +5402,28 @@
       "cache_not_ready": "Subscription data is still loading",
       "unknown": "Reason unknown"
     }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "bell": "Notifications, {count, plural, =0 {nothing unread} one {# unread} other {# unread}}",
+    "unread": "Unread",
+    "empty": "No notifications yet",
+    "markAllRead": "Mark all read",
+    "kinds": {
+      "team_invite": {
+        "received": "{team_name} invited you to their roster for {tournament_name}",
+        "answered": "{responder_name} {answer, select, accepted {accepted} declined {declined} other {answered}} your invite to {team_name}"
+      },
+      "registration": {
+        "approved": "Your registration for {tournament_name} was approved",
+        "rejected": "Your registration for {tournament_name} was rejected"
+      },
+      "encounter": {
+        "report_disputed": "{map_index, plural, =0 {A report in your match is disputed} other {The report for map # of your match is disputed}}"
+      },
+      "announcement": {
+        "published": "New announcement"
+      }
+    }
   }
 }

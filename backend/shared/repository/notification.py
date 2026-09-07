@@ -122,12 +122,21 @@ class NotificationRepository(BaseRepository[models.Notification]):
             sa.or_(model.expires_at.is_(None), model.expires_at > now),
         )
 
-    def _unread(self, auth_user_id: int) -> sa.ColumnElement[bool]:
+    def _read_mark(self, auth_user_id: int) -> sa.ColumnElement[bool]:
+        """"this identity has a read mark on this row" -- the only definition.
+
+        Scoped by ``auth_user_id`` on purpose: a read mark is a fact about the
+        *pair*, so somebody else's mark on a shared announcement must never
+        answer the question for me.
+        """
         mark = models.NotificationRead
-        return ~sa.exists().where(
+        return sa.exists().where(
             mark.auth_user_id == auth_user_id,
             mark.notification_id == self.model.id,
         )
+
+    def _unread(self, auth_user_id: int) -> sa.ColumnElement[bool]:
+        return ~self._read_mark(auth_user_id)
 
     async def page(
         self,
@@ -151,8 +160,18 @@ class NotificationRepository(BaseRepository[models.Notification]):
         model = self.model
         limit = max(1, min(int(limit), MAX_PAGE_LIMIT))
 
-        query = self.select().where(
-            self.audience_clause(auth_user_id=auth_user_id, workspace_ids=workspace_ids),
+        # The bell has to tell a new notification from one already seen, and the
+        # row alone cannot say -- "read" lives in the second table, per identity.
+        # It rides along as a correlated EXISTS in this statement rather than as
+        # a second round trip, and is attached to each returned row as a plain
+        # instance attribute: it is a property of (row, viewer), never of the
+        # row, so it is not a mapped column.
+        read_flag = self._read_mark(auth_user_id) if auth_user_id is not None else sa.false()
+
+        query = (
+            self.select()
+            .add_columns(read_flag.label("is_read"))
+            .where(self.audience_clause(auth_user_id=auth_user_id, workspace_ids=workspace_ids))
         )
         if cursor is not None:
             after_published_at, after_id = decode_cursor(cursor)
@@ -172,7 +191,10 @@ class NotificationRepository(BaseRepository[models.Notification]):
         result = await session.execute(
             query.order_by(model.published_at.desc(), model.id.desc()).limit(limit + 1),
         )
-        rows = list(result.scalars().all())
+        rows: list[models.Notification] = []
+        for row, is_read in result.all():
+            row.is_read = bool(is_read)
+            rows.append(row)
         if len(rows) > limit:
             return NotificationPage(rows[:limit], encode_cursor(rows[limit - 1]))
         return NotificationPage(rows, None)

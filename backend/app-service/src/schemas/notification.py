@@ -34,6 +34,11 @@ class NotificationItem(BaseRead):
     workspace_id: int | None = None
     published_at: datetime
     expires_at: datetime | None = None
+    # Whether *this* caller has a read mark on the row -- the inbox page
+    # computes it per identity (``NotificationRepository.page``). Defaults to
+    # ``False`` for the banner read, which by construction only ever serves
+    # rows the viewer has not dismissed.
+    is_read: bool = False
 
 
 class NotificationInboxRead(BaseModel):

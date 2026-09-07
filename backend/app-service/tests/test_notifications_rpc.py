@@ -210,6 +210,31 @@ class NotificationsRpcTests(IsolatedAsyncioTestCase):
         self.assertIsNone(second["data"]["next_cursor"])
         self.assertEqual(second["data"]["unread_count"], 3)
 
+    async def test_list_reports_which_rows_the_caller_already_read(self) -> None:
+        """``is_read`` has to reach the wire, not just the repository.
+
+        The bell distinguishes new from already-seen per row; the badge count
+        alone cannot say *which* rows it counts. The field has a default on the
+        schema (the announcement banner never serves a read row), so a broken
+        hand-off would quietly report everything unread instead of failing.
+        """
+        seen = self.personal(ALICE, published_at=PAST)
+        fresh = self.personal(ALICE, published_at=PAST + timedelta(minutes=1))
+
+        marked = await self.call(
+            "rpc.app.notifications_mark_read",
+            {"identity": _IDENTITY, "payload": {"ids": [seen]}},
+        )
+        self.assertTrue(marked["ok"], marked)
+
+        result = await self.call("rpc.app.notifications_list", {"identity": _IDENTITY, "query": {}})
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(
+            {item["id"]: item["is_read"] for item in result["data"]["items"]},
+            {fresh: False, seen: True},
+        )
+
     async def test_list_requires_identity(self) -> None:
         """No gateway identity is an ``unauthorized`` envelope, never a 500."""
         self.personal(ALICE)

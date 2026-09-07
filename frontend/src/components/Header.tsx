@@ -10,6 +10,7 @@ import MobilePlayerSearchSheet from "@/components/MobilePlayerSearchSheet";
 import { useTranslations } from "next-intl";
 import { SITE_ICON } from "@/config/site";
 import UserMenu from "@/components/UserMenu";
+import NotificationBell from "@/components/notifications/NotificationBell";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import WorkspaceBrandIcon from "@/components/WorkspaceBrandIcon";
@@ -133,7 +134,10 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
           <UserSearch />
         </div>
         {username ? (
-          <UserMenu username={username} avatarUrl={avatarUrl} profileHref={profileHref} />
+          <>
+            <NotificationBell />
+            <UserMenu username={username} avatarUrl={avatarUrl} profileHref={profileHref} />
+          </>
         ) : (
           <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-3 md:ml-0">
             <LanguageSwitcher />

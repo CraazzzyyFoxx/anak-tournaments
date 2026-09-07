@@ -203,6 +203,30 @@ class NotificationRepositoryTests(IsolatedAsyncioTestCase):
         self.assertEqual(await self.repo.unread_count(self.shim, auth_user_id=BOB), 2)
         self.assertEqual(self.read_marks(ALICE), sorted([first, announcement]))
 
+    async def test_page_marks_rows_this_identity_has_read(self) -> None:
+        """The page carries "have I seen this", or the bell cannot show it.
+
+        A row is identical for everyone; "read" is a fact about *(row, viewer)*
+        that lives in the second table, so a page without the flag leaves the
+        client with a badge count and no way to say which of the listed rows it
+        counts. Somebody else's mark on a shared announcement must not answer
+        the question for me -- that would silence a platform-wide notice for
+        every user the moment one of them read it.
+        """
+        seen = self.personal(ALICE)
+        fresh = self.personal(ALICE)
+        announcement = self.add(audience="global")
+
+        await self.repo.mark_read(self.shim, auth_user_id=ALICE, notification_ids=[seen])
+        await self.repo.mark_read(self.shim, auth_user_id=BOB, notification_ids=[announcement])
+
+        page = await self.repo.page(self.shim, auth_user_id=ALICE)
+
+        self.assertEqual(
+            {row.id: row.is_read for row in page.items},
+            {seen: True, fresh: False, announcement: False},
+        )
+
     # -- mark read --------------------------------------------------------
 
     async def test_mark_read_ignores_ids_outside_the_audience(self) -> None:

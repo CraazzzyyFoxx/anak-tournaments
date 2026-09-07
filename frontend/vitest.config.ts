@@ -204,6 +204,10 @@ export default defineConfig({
       // Same file-level rule: `src/components/match` is otherwise untested, and
       // this pins that the log download is offered only to a signed-in viewer.
       "src/components/match/MatchLogIndicator.behavior.test.tsx",
+      // `src/components/notifications` is vitest-only, so a directory glob is
+      // safe and covers the next test added without another edit to this list.
+      // Unrun, a green suite would coexist with a bell that never refetches.
+      "src/components/notifications/**/*.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/tournament-section-nav.test.ts",
       "src/app/(site)/tournaments/[slug]/_components/tournament-shared-ui.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/PhaseTimeline.behavior.test.tsx",
