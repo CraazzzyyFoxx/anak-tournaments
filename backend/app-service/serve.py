@@ -30,6 +30,7 @@ from src.rpc import (
     heroes,
     maps,
     metadata_admin,
+    notifications,
     reads_generic,
     statistics,
     users,
@@ -79,6 +80,9 @@ users_admin.register(broker, logger)
 
 # Platform audit log (read-only feed + per-entity trail), gated by audit.read.
 audit.register(broker, logger)
+
+# Notification inbox reads/mark-read + the public announcement banner.
+notifications.register(broker, logger)
 
 # Phase 3 — binary/multipart endpoints (icons, assets, match-log) over base64.
 binary.register(broker, logger)

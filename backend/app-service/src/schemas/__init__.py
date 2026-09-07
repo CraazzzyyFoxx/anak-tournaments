@@ -8,6 +8,7 @@ from .user_base import *
 from .statistics import *
 from .achievement import *
 from .user import *
+from .notification import *
 from .workspace import *
 from .admin.audit import *
 from .admin.catalog_alias import *
