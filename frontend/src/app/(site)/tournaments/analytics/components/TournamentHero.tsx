@@ -56,7 +56,8 @@ export default function TournamentHero({
   const statusMeta = getTournamentStatusMeta(tournament.status);
   const stage = stageProgress(tournament, tournament.status, t);
   const dates = formatDateRange(tournament.start_date, tournament.end_date, locale);
-  const statusText = stage?.label ? `${statusMeta?.label} · ${stage.label}` : statusMeta?.label;
+  const statusLabel = t(`common.statusBadge.${tournament.status}`);
+  const statusText = stage?.label ? `${statusLabel} · ${stage.label}` : statusLabel;
 
   const eyebrow = (
     <HeroCoord className="inline-flex flex-wrap items-center gap-2">

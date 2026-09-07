@@ -151,7 +151,7 @@ export default function ActiveEvents() {
                             statusMeta.badgeClassName
                           )}
                         >
-                          {statusMeta.badgeLabel}
+                          {t(`common.statusBadge.${tournament.status}`)}
                         </span>
                       </div>
                       <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">

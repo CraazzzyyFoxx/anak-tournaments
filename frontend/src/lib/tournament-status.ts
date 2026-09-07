@@ -1,8 +1,7 @@
 import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 
+// Display text is `common.statusBadge.<status>` in the message catalogs, never here.
 type TournamentStatusMeta = {
-  label: string;
-  badgeLabel: string;
   /**
    * Which of the four presentation buckets this status falls into. The public
    * tournament surfaces collapse seven statuses into live / upcoming /
@@ -22,8 +21,6 @@ type TournamentStatusMeta = {
 // page never disagree about what a status looks like.
 const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
   draft: {
-    label: "Draft",
-    badgeLabel: "Draft",
     variant: "draft",
     textClassName: "text-[color:var(--aqt-blue)]",
     badgeClassName: "text-[color:var(--aqt-blue)]",
@@ -32,8 +29,6 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     isEnded: false
   },
   registration: {
-    label: "Registration",
-    badgeLabel: "Registration",
     variant: "upcoming",
     textClassName: "text-[color:var(--aqt-amber)]",
     badgeClassName: "text-[color:var(--aqt-amber)]",
@@ -42,8 +37,6 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     isEnded: false
   },
   check_in: {
-    label: "Check-in",
-    badgeLabel: "Check-in",
     variant: "upcoming",
     textClassName: "text-[color:var(--aqt-amber)]",
     badgeClassName: "text-[color:var(--aqt-amber)]",
@@ -52,8 +45,6 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     isEnded: false
   },
   live: {
-    label: "Live",
-    badgeLabel: "Live",
     variant: "live",
     textClassName: "text-[color:var(--aqt-rose)]",
     badgeClassName: "text-[color:var(--aqt-rose)]",
@@ -62,8 +53,6 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     isEnded: false
   },
   playoffs: {
-    label: "Playoffs",
-    badgeLabel: "Playoffs",
     variant: "live",
     textClassName: "text-[color:var(--aqt-rose)]",
     badgeClassName: "text-[color:var(--aqt-rose)]",
@@ -72,8 +61,6 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     isEnded: false
   },
   completed: {
-    label: "Ended",
-    badgeLabel: "Ended",
     variant: "finished",
     textClassName: "text-[color:var(--aqt-fg-muted)]",
     badgeClassName: "text-[color:var(--aqt-fg-dim)]",
@@ -82,8 +69,6 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     isEnded: true
   },
   archived: {
-    label: "Archived",
-    badgeLabel: "Archived",
     variant: "finished",
     textClassName: "text-[color:var(--aqt-fg-dim)]",
     badgeClassName: "text-[color:var(--aqt-fg-dim)]",
