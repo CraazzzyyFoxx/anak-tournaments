@@ -12,6 +12,43 @@
 
 ---
 
+**Status:** implemented (2026-09-07). All four phases are live. Deviations from
+the text below, each deliberate:
+
+- **`wstier001` backfills incumbents to `trusted`, not `verified`.** §4.2 said
+  `verified`, but §4.5 makes the public directory `trusted`-only — together
+  those two would have silently dropped every pre-existing workspace off the
+  home page on deploy, which is exactly the live-incident class A6 exists to
+  prevent. Incumbents were all created by hand by a superuser, which is what
+  `trusted` means. `down_revision` is `tiegrp01` (the head moved past
+  `anlcln02` while phase 1 shipped).
+- **Subject is `rpc.app.workspaces.verification_set`, not
+  `rpc.app.admin.workspace_verification_set`.** The `rpc.app.admin.*` namespace
+  belongs to the generic CRUD dispatcher; this is a bespoke op, so it sits next
+  to its sibling `discord_guild_verify`. Route:
+  `POST /api/v1/workspaces/{workspace_id}/verification`.
+- **Task 8's `count_linked_members` + `auto_verify_min_linked_members` + their
+  uncalled-ness regression test were skipped.** Written-but-unwired code with a
+  test pinning that nothing calls it is cost without a caller; the auto-verify
+  follow-up adds them when it has one. `shared/services/workspace_tier.py`
+  ships `is_verified_or_trusted` (compute/recompute gate) and `is_trusted`
+  (public directory), both pure.
+- **The guild picker needs a client-reachable list**, so app-service gained a
+  thin actor-scoped passthrough `rpc.app.workspaces.my_discord_guilds`
+  (`GET /api/v1/me/discord-guilds`) over the internal
+  `rpc.identity.oauth_discord_guilds`. The identity subject itself stays
+  gateway-less, as §4.6 required.
+- **Deferred achievement runs reuse one row.** `AchievementEvaluateEvent`
+  carries `run_id`, so the deferred consumer resumes the same `queued`
+  `EvaluationRun` (`queued → running → done/failed`) instead of opening a
+  second one.
+- **Frontend entry point is `/get-workspace`, not an admin screen.** The whole
+  `/admin` subtree is gated on `hasAdminPanelAccessForProfile`, which a plain
+  authenticated account fails — the audience self-service was opened for could
+  never have reached the admin create dialog.
+
+---
+
 ## Phase 1 — Discord guild ownership verification
 
 ### Task 1: Pre-flight — confirm no existing `discord_guild_id` collisions

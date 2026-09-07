@@ -44,18 +44,21 @@ class NewRowsTests(IsolatedAsyncioTestCase):
         p = patch.object(workspaces_rpc, "_member_payload", AsyncMock(return_value=None))
         p.start()
         self.addCleanup(p.stop)
-        p = patch.object(workspaces_rpc, "_resolve_role_ids", AsyncMock(return_value=[5]))
+        # Role resolution moved onto ``WorkspaceService`` (the module-level
+        # ``_resolve_role_ids`` helper is gone); stub it where the handlers
+        # actually call it.
+        p = patch.object(workspaces_rpc.workspace_service, "resolve_member_role_ids", AsyncMock(return_value=[5]))
         p.start()
         self.addCleanup(p.stop)
 
-    def _assert(self, session, action, after):
+    def _assert(self, session, action, after, *, events=("add", "commit")):
         rows = session.audit_rows
         self.assertEqual(1, len(rows), f"rows={rows} events={session.events}")
         self.assertEqual(action, rows[0].action)
         self.assertEqual("admin", rows[0].source)
         self.assertEqual(42, rows[0].actor_auth_user_id)
         self.assertEqual(after, rows[0].after_json)
-        self.assertEqual(["add", "commit"], session.events[:2], f"events={session.events}")
+        self.assertEqual(list(events), session.events[:2], f"events={session.events}")
 
     async def test_create(self) -> None:
         session = _RecordingSession()
@@ -68,8 +71,14 @@ class NewRowsTests(IsolatedAsyncioTestCase):
                 {"identity": _ID, "payload": {"slug": "acme", "name": "Acme Cup"}}, MagicMock()
             )
         self.assertIn("data", envelope)
-        self._assert(session, "workspace.create", {"name": "Acme Cup", "slug": "acme"})
-        self.assertIsNone(session.audit_rows[0].workspace_id)
+        # ``create`` is the one flow whose row lands in a SECOND transaction --
+        # the id it names does not exist until ``provision`` has committed. The
+        # documented ceiling (see the handler): a crash between the two commits
+        # loses the trail, never the workspace.
+        self._assert(session, "workspace.create", {"name": "Acme Cup", "slug": "acme"}, events=("commit", "add"))
+        # Scoped to the workspace it just created, not left global: the id is
+        # what makes the row findable from that workspace's own journal.
+        self.assertEqual(_workspace().id, session.audit_rows[0].workspace_id)
         self.assertEqual("Acme Cup", session.audit_rows[0].entity_label)
 
     async def test_member_add(self) -> None:

@@ -74,6 +74,7 @@ The full method list with request/response schemas is published at `/api/docs`, 
 | `process_match_log` | `ProcessMatchLogEvent` | Parse one log file; own channel, prefetch 2 |
 | `process_tournament_logs` | `ProcessTournamentLogsEvent` | List a tournament's stored logs in S3 and fan out one `ProcessMatchLogEvent` per file |
 | `achievement_evaluate` | `AchievementEvaluateEvent` | Run the achievement engine for a workspace |
+| `achievement_evaluate.deferred` | `AchievementEvaluateEvent` | Resumes a `queued` run an unverified workspace's manual/`rule_version_bump` recompute was parked as; own channel, prefetch 1 |
 | `tournament_encounter_completed` | `EncounterCompletedEvent` | Bound to the `tournament.events` exchange; enqueues an achievement evaluation |
 | `tournament_registration_approved` | — | Bound to the same exchange; prioritises and enqueues a rank check for the approved player |
 | `rank_fetch`, `rank_fetch_priority` | `FetchRankEvent` | One OverFast call per battle tag; shared channel with prefetch `RANK_FETCH_WORKER_PREFETCH` |
@@ -186,6 +187,10 @@ global cooldown key set on a 429.
 - `match_log.result` (fanout) — `MatchLogProcessedEvent`, consumed by discord-service.
 - `process_match_log` — fanned out by the tournament-wide job and by the stall reaper.
 - `achievement_evaluate` — enqueued after a successful parse and on `EncounterCompletedEvent`.
+- `achievement_evaluate.deferred` — a manual or `rule_version_bump` run for a workspace whose
+  `verification_status` is `unverified`: the run row is created `queued` and the message carries its
+  id, so the consumer finishes that row instead of opening a second one. `parse_complete` is never
+  deferred.
 - `rank_fetch` / `rank_fetch_priority` — from the collection tick, the admin collect RPC and
   registration approval.
 - `discord_commands` — `DiscordCommandEvent` for the on-demand channel-history backfill.
@@ -307,7 +312,8 @@ consuming; liveness is judged from metrics and queue depth instead.
   each get their own channel/prefetch. Collapsing them means one long parse can close the channel
   every other consumer shares.
 - **DLQs.** `upload_match_log.dlq`, `process_match_log.dlq`, `process_tournament_logs.dlq`,
-  `achievement_evaluate.dlq`, `rank_fetch.dlq`, `rank_fetch_priority.dlq`,
+  `achievement_evaluate.dlq`, `achievement_evaluate.deferred.dlq`, `rank_fetch.dlq`,
+  `rank_fetch_priority.dlq`,
   `tournament_encounter_completed.dlq`, `tournament_registration_approved.dlq`. An achievement
   evaluation that raises is rejected without requeue straight into its DLQ.
 - **A stuck "Queued" record is a reaper question, not a queue question.** The row, not the message,

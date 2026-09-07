@@ -96,6 +96,8 @@ function workspace(overrides: Partial<Workspace> = {}): Workspace {
     custom_domain_verified_at: null,
     custom_domain_verification_token: null,
     discord_guild_id: null,
+    discord_guild_verified_at: null,
+    verification_status: "unverified",
     default_division_grid_version_id: null,
     default_division_grid_version: null,
     newcomer_scope: "workspace",
@@ -314,5 +316,24 @@ describe("/admin/workspaces", () => {
     // flags are what tells two workspaces apart on a phone.
     expect(cards[0].textContent).toContain("rivals");
     expect(cards[0].textContent).toContain("Hidden");
+  });
+
+  it("opens the create dialog for a non-superuser, because creation is no longer superuser-only", async () => {
+    superuser = false;
+    const container = await mount();
+    const create = await waitFor(
+      () =>
+        Array.from(container.querySelectorAll("button")).find(
+          (button) => button.textContent?.trim() === "Create workspace"
+        ),
+      "the create button"
+    );
+
+    expect(create.hasAttribute("disabled")).toBe(false);
+    await click(create);
+
+    const dialog = await waitFor(() => document.querySelector('[role="dialog"]'), "the dialog");
+    expect(dialog.querySelector("#slug")).not.toBeNull();
+    expect(dialog.querySelector("#name")).not.toBeNull();
   });
 });

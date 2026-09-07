@@ -28,10 +28,12 @@ from shared.repository import (
 )
 from shared.services.audit import record_audit
 from shared.services.division_grid.access import get_default_division_grid_version_id
-from shared.tenancy.hostnames import normalize_custom_domain
+from shared.services.settings_provider import get_workspace_creation_config
+from shared.services.workspace_tier import is_trusted
+from shared.tenancy.hostnames import RESERVED_SUBDOMAINS, normalize_custom_domain
 from src import models
 
-__all__ = ["MEMBERS_SORT_FIELDS", "WorkspaceService", "workspaces"]
+__all__ = ["MEMBERS_SORT_FIELDS", "RESERVED_SLUGS", "WorkspaceService", "reject_reserved_slug", "workspaces"]
 
 # Prefix for the generated per-workspace DNS verification token (the required
 # TXT value at ``_owt-verify.<custom_domain>``). Namespaced so the string is
@@ -48,8 +50,23 @@ _GUILD_CONFLICT_MESSAGE = "This Discord guild is already claimed by another work
 # because @broker.subscriber("rpc.identity.oauth_discord_guilds") declares a
 # same-named queue on the default exchange.
 _DISCORD_GUILDS_SUBJECT = "rpc.identity.oauth_discord_guilds"
+# Both Discord-guild calls (list, verify) fail closed on an unreachable
+# identity-service and say so identically -- one is the picker for the other.
+_GUILD_UNREACHABLE_MESSAGE = "Could not reach Discord for guild verification"
 
 MEMBERS_SORT_FIELDS = ("username", "role")
+
+# Slugs the platform keeps for itself, rejected by self-service create (design
+# §4.4). Built on the reserved subdomain labels because a slug is the natural
+# candidate for a workspace's ``subdomain``, plus the platform's own top-level
+# route names. Superusers are not exempt: the collision is with the platform,
+# not with a permission.
+RESERVED_SLUGS = RESERVED_SUBDOMAINS | {"docs", "status", "support"}
+
+
+def reject_reserved_slug(slug: str) -> None:
+    if slug.strip().lower() in RESERVED_SLUGS:
+        raise HTTPException(status_code=400, detail="slug_reserved")
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -102,19 +119,26 @@ class WorkspaceService:
     ) -> typing.Sequence[models.Workspace]:
         """Every workspace, minus ones ``user`` has no business seeing.
 
-        ``is_hidden`` only gates discoverability here: a member (any role, via
-        ``AuthUser.get_workspace_ids``) still sees their own hidden workspace,
-        superusers see everything, and an anonymous/non-member caller never
-        sees a hidden one. Direct lookups (``get_by_id``, ``get_by_slug``,
-        ``get_by_subdomain``, ``get_by_custom_domain``) are untouched -- a
-        hidden workspace stays reachable by slug, subdomain or verified custom
-        domain, it just drops out of this list.
+        This is the **public directory** (the home page), so two gates apply to
+        an anonymous or non-member caller: ``is_hidden``, and the trust tier --
+        only ``trusted`` workspaces are listed (design §4.5). ``verified`` is
+        deliberately not enough: it says "safe to run compute on", which is a
+        weaker statement than "worth advertising".
+
+        Membership bypasses both, exactly as it always did for ``is_hidden``: a
+        member (any role, via ``AuthUser.get_workspace_ids``) sees their own
+        workspace at any tier, and superusers see everything. Direct lookups
+        (``get_by_id``, ``get_by_slug``, ``get_by_subdomain``,
+        ``get_by_custom_domain``) are untouched -- a fresh ``unverified``
+        workspace is fully reachable and usable by slug, subdomain or verified
+        custom domain the moment it is created, it just does not appear here
+        until a superuser marks it ``trusted``.
         """
         workspaces = await self.workspace_repo.list_ordered(session)
         if user is not None and user.is_superuser:
             return workspaces
         member_ids = set(user.get_workspace_ids()) if user is not None else set()
-        return [w for w in workspaces if not w.is_hidden or w.id in member_ids]
+        return [w for w in workspaces if w.id in member_ids or (not w.is_hidden and is_trusted(w))]
 
     # --- custom domain (white-label Phase 2) --------------------------------
 
@@ -488,6 +512,28 @@ class WorkspaceService:
         )
         await self.member_repo.delete(session, member)
 
+    # --- self-service create guard (design §4.4) ----------------------------
+
+    async def ensure_create_limit(self, session: AsyncSession, user: typing.Any) -> None:
+        """403 unless ``user`` may be accountable for one more workspace.
+
+        Superusers short-circuit before any query. Everyone else has their own
+        ``auth.user`` row locked ``FOR UPDATE`` first: without it two concurrent
+        creates from one actor both read ``count == 0`` and both succeed,
+        breaching a cap whose whole point is "at most one". The lock is held
+        until ``provision`` commits -- the guard and the write share one
+        transaction on purpose.
+
+        Counted over ``Workspace.owner_id``, never over the RBAC ``owner`` role:
+        see ``WorkspaceRepository.count_by_owner``.
+        """
+        if user.is_superuser:
+            return
+        await session.scalar(sa.select(AuthUser.id).where(AuthUser.id == user.id).with_for_update())
+        limit = (await get_workspace_creation_config(session)).max_owned_per_user
+        if await self.workspace_repo.count_by_owner(session, owner_id=user.id) >= limit:
+            raise HTTPException(status_code=403, detail="workspace_create_limit_reached")
+
     # --- transactional operations -------------------------------------------
     # Everything below owns a ``session.commit()``: the transport layer never
     # closes a transaction it did not open. The primitives above stay
@@ -501,11 +547,19 @@ class WorkspaceService:
         payload: dict,
         owner_auth_user_id: int,
     ) -> models.Workspace:
-        """Create a workspace with its system roles and its first owner."""
+        """Create a workspace with its system roles and its first owner.
+
+        ``owner_id`` (accountability, for the self-service create cap) and the
+        RBAC ``owner`` role grant below (permission) are two distinct writes for
+        two distinct concerns, in one transaction -- neither replaces the other,
+        and no actor is special-cased: a superuser-created workspace is owned by
+        that superuser. ``verification_status`` is left to the column's
+        ``server_default`` (``unverified``).
+        """
         slug = payload.get("slug")
         if slug is not None and await self.get_by_slug(session, slug):
             raise HTTPException(status_code=400, detail="Workspace with this slug already exists")
-        workspace = await self.create(session, **payload)
+        workspace = await self.create(session, owner_id=owner_auth_user_id, **payload)
         await ensure_workspace_system_roles(session, workspace.id)
         await self.add_member(session, workspace.id, owner_auth_user_id)
         await assign_workspace_system_role(
@@ -727,9 +781,9 @@ class WorkspaceService:
         try:
             reply = await request_rpc(broker, {"auth_user_id": actor.id}, _DISCORD_GUILDS_SUBJECT, timeout=5.0)
         except Exception as exc:
-            raise HTTPException(status_code=503, detail="Could not reach Discord for guild verification") from exc
+            raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE) from exc
         if reply is None or not reply.ok:
-            raise HTTPException(status_code=503, detail="Could not reach Discord for guild verification")
+            raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE)
 
         payload = reply.data if isinstance(reply.data, dict) else {}
         guilds = payload.get("guilds") or []
@@ -768,6 +822,60 @@ class WorkspaceService:
                 "discord_guild_id": workspace.discord_guild_id,
                 "discord_guild_verified_at": _iso(workspace.discord_guild_verified_at),
             },
+        )
+        await session.commit()
+        return workspace
+
+    async def list_actor_discord_guilds(self, *, auth_user_id: int, broker: typing.Any) -> dict:
+        """The guilds ``auth_user_id`` administers, straight from identity-service.
+
+        Exists so the browser can render a guild picker before calling
+        ``verify_discord_guild`` -- the frontend cannot reach ``rpc.identity.*``
+        itself. Same subject, same timeout and the same fail-closed 503 as the
+        verification call it feeds: an empty list would read as "you administer
+        nothing", which is a different (and misleading) answer from "we could
+        not ask".
+        """
+        try:
+            reply = await request_rpc(broker, {"auth_user_id": auth_user_id}, _DISCORD_GUILDS_SUBJECT, timeout=5.0)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE) from exc
+        if reply is None or not reply.ok or not isinstance(reply.data, dict):
+            raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE)
+        return {"guilds": reply.data.get("guilds") or []}
+
+    # --- verification tier (design §4.3) -----------------------------------
+
+    async def set_verification_status(
+        self,
+        session: AsyncSession,
+        workspace: models.Workspace,
+        status: str,
+        *,
+        actor: typing.Any,
+    ) -> models.Workspace:
+        """Superuser-only tier move; the caller owns the permission gate.
+
+        Audited unconditionally, including a no-op set to the status the
+        workspace already has: this is the single switch that unblocks GPU
+        compute and public listing, so "a superuser looked at this and
+        re-affirmed it" is exactly the kind of trail worth keeping (same
+        posture as the custom-domain edits above).
+        """
+        status_before = workspace.verification_status
+        await self.workspace_repo.update_fields(session, workspace, {"verification_status": status})
+        await record_audit(
+            session,
+            action="workspace.verification_status_set",
+            source="admin",
+            actor=actor,
+            actor_label=actor.username,
+            workspace_id=workspace.id,
+            entity_type="workspace",
+            entity_id=workspace.id,
+            entity_label=workspace.slug,
+            before={"verification_status": status_before},
+            after={"verification_status": workspace.verification_status},
         )
         await session.commit()
         return workspace

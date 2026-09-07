@@ -1,6 +1,9 @@
 """Workspace typed-RPC subscribers: public reads + create + member management.
 
-Reads (list/get) are public. create is superuser-global. Member ops are
+Reads (list/get) are public. create is open to any ACTIVE authenticated user,
+capped per account (``ensure_create_limit``) and slug-filtered against the
+platform's reserved slugs; the tier RPC that lifts a new workspace out of
+``unverified`` (``verification_set``) is the superuser-only half. Member ops are
 workspace-scoped (workspace_member.{read,create,update,delete}). workspace
 update/delete go through the shared CRUD engine (see services/workspace/registry.py
 + rpc/admin_crud.py). The custom-domain set/verify/clear trio (white-label Phase
@@ -42,7 +45,7 @@ from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_hos
 from src import models, schemas
 from src.core import config, db
 from src.rpc import _common as c
-from src.services.workspace.service import MEMBERS_SORT_FIELDS
+from src.services.workspace.service import MEMBERS_SORT_FIELDS, reject_reserved_slug
 from src.services.workspace.service import workspaces as workspace_service
 
 _SF = db.async_session_maker
@@ -210,13 +213,15 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "workspaces.by_host", op, session_factory=_SF)
 
-    # --- create (superuser) -------------------------------------------------
+    # --- create (any active user, capped) -----------------------------------
     @broker.subscriber("rpc.app.workspaces.create")
     async def _create(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = c.actor(data)
-            c.require_superuser(user)
+            c.require_active(user)
+            await workspace_service.ensure_create_limit(session, user)
             body = schemas.WorkspaceCreate.model_validate(c.payload(data))
+            reject_reserved_slug(body.slug)
             workspace = await workspace_service.provision(
                 session, payload=body.model_dump(), owner_auth_user_id=user.id
             )
@@ -480,6 +485,44 @@ def register(broker: Any, logger: Any) -> None:
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.discord_guild_verify", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.workspaces.my_discord_guilds")
+    async def _my_discord_guilds(data: dict, msg: RabbitMessage) -> dict:
+        """The caller's own administered guilds — actor-scoped, no workspace.
+
+        Thin passthrough to identity-service so the guild picker in front of
+        ``discord_guild_verify`` has something to render. No session work at
+        all, but it still runs inside the standard envelope/session factory:
+        the transport shape is what every other subscriber here shares.
+        """
+
+        async def op(session: Any) -> Any:
+            user = c.actor(data)
+            c.require_active(user)
+            return await workspace_service.list_actor_discord_guilds(auth_user_id=user.id, broker=broker)
+
+        return await c.envelope(logger, "workspaces.my_discord_guilds", op, session_factory=_SF)
+
+    # --- verification tier (superuser) --------------------------------------
+    @broker.subscriber("rpc.app.workspaces.verification_set")
+    async def _verification_set(data: dict, msg: RabbitMessage) -> dict:
+        """Superuser-only, deliberately stricter than ``workspace.update``:
+        being an owner of a workspace must not let you self-certify it."""
+
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_superuser(user)
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            body = schemas.WorkspaceVerificationSet.model_validate(c.payload(data))
+            workspace = await workspace_service.set_verification_status(
+                session, workspace, body.verification_status, actor=user
+            )
+            return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
+
+        return await c.envelope(logger, "workspaces.verification_set", op, session_factory=_SF)
 
     # --- Discord entities (roles, channels, server status) ------------------
     # Reads of an organizer's own server config, so they carry the same

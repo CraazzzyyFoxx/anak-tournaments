@@ -34,4 +34,8 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	// caller administers the guild on Discord (via identity-service) before it
 	// can be bound to the workspace. workspace.update, like every sibling here.
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/discord-guild", Queue: "rpc.app.workspaces.discord_guild_verify", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// --- verification tier (self-service design §4.2): superuser sets a
+	// workspace's verification_status (unverified/verified/trusted), which
+	// gates public directory listing. Enforced in app-service, not here.
+	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/verification", Queue: "rpc.app.workspaces.verification_set", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 }

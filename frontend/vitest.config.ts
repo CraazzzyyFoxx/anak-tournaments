@@ -194,6 +194,9 @@ export default defineConfig({
       "src/components/FavoriteStarButton.behavior.test.tsx",
       "src/components/UserSearch.behavior.test.tsx",
       "src/components/StandingsTable.advance.behavior.test.tsx",
+      // The only workspace-creation surface a plain account can reach; unrun,
+      // a green suite would coexist with a dead self-service entry point.
+      "src/components/CreateWorkspaceLauncher.behavior.test.tsx",
       // Same file-level rule: `account-settings` is under `src/components`, and
       // these are its only vitest files so far.
       "src/components/account-settings/MyAccountSection.behavior.test.tsx",

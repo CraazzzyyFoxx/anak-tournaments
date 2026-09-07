@@ -87,6 +87,8 @@ const OTHER_WORKSPACE: Workspace = {
   custom_domain_verified_at: null,
   custom_domain_verification_token: null,
   discord_guild_id: null,
+  discord_guild_verified_at: null,
+  verification_status: "unverified",
   default_division_grid_version_id: null,
   default_division_grid_version: null,
   newcomer_scope: "workspace"
@@ -148,5 +150,39 @@ describe("Workspaces › [id] › General", () => {
 
     expect(container.textContent).toContain("Not your workspace");
     expect(container.querySelector("#workspace-name")).toBeNull();
+  });
+
+  // A self-service organiser has no other way to learn why their workspace is
+  // nowhere on the home page, so this notice is the whole explanation — and it
+  // has to disappear the moment it stops being true.
+  it.each(["unverified", "verified"] as const)(
+    "explains that a %s workspace is not listed on the home page yet",
+    async (status) => {
+      getById.mockResolvedValue({ ...OTHER_WORKSPACE, verification_status: status });
+      await render();
+
+      expect(container.textContent).toContain("Not listed on the home page yet");
+    }
+  );
+
+  it("drops the notice once the workspace is trusted", async () => {
+    getById.mockResolvedValue({ ...OTHER_WORKSPACE, verification_status: "trusted" });
+    await render();
+
+    expect(container.textContent).toContain("Trusted");
+    expect(container.textContent).not.toContain("Not listed on the home page yet");
+  });
+
+  it("keeps the tier control to superusers", async () => {
+    superuser = false;
+    getById.mockResolvedValue({ ...OTHER_WORKSPACE, verification_status: "trusted" });
+    await render();
+    expect(container.querySelector("#workspace-verification")).toBeNull();
+
+    superuser = true;
+    await act(async () => root.unmount());
+    container.remove();
+    await render();
+    expect(container.querySelector("#workspace-verification")).not.toBeNull();
   });
 });

@@ -17,6 +17,12 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { AuditTrailButton } from "@/components/admin/AuditTrailSheet";
 import { SaveBar } from "@/components/admin/kit/SaveBar";
+import {
+  WorkspaceNotListedNotice,
+  WorkspaceVerificationBadge,
+  WorkspaceVerificationControl
+} from "@/components/admin/workspace-verification";
+import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import { DEFAULT_WORKSPACE_TIMEZONE, getUtcOffsetLabel } from "@/lib/timezone";
 import workspaceService from "@/services/workspace.service";
@@ -36,6 +42,7 @@ const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
  */
 export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
   const settings = useWorkspaceSettingsForm(workspaceId, "general");
+  const { isSuperuser } = usePermissions();
   const { form, patch, invalidate } = settings;
 
   // Every IANA zone the runtime knows, with the saved value kept selectable
@@ -76,7 +83,11 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
           {/* The audit trail is a drawer the whole admin shares, not a section
               of its own: it answers "who changed this" about branding, the
               domain and the guild alike, and General is where the rail lands. */}
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">{workspace.name}</span>
+              <WorkspaceVerificationBadge status={workspace.verification_status} />
+            </div>
             <AuditTrailButton
               scope={{
                 entityType: "workspace",
@@ -87,6 +98,8 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
               showCount
             />
           </div>
+
+          <WorkspaceNotListedNotice status={workspace.verification_status} />
 
           <Card>
             <CardContent className="flex flex-col gap-4 pt-6">
@@ -152,6 +165,12 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
                   PNG, JPEG, WebP or GIF, max 2 MB. Saved as soon as you pick it.
                 </p>
               </div>
+
+              <WorkspaceVerificationControl
+                workspace={workspace}
+                isSuperuser={isSuperuser}
+                onChanged={invalidate}
+              />
             </CardContent>
           </Card>
 

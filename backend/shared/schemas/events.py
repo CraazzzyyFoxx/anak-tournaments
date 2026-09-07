@@ -268,16 +268,26 @@ class FetchRankEvent(BaseEvent):
 class AchievementEvaluateEvent(BaseEvent):
     """Event for triggering achievement evaluation after parsing.
 
-    Published by: parser-service (after match/tournament processing)
+    Published by: parser-service (after match/tournament processing, and when a
+    manual/rule_version_bump run for an unverified workspace is deferred)
     Consumed by: parser-service (achievement engine)
     """
 
     event_type: str = Field(default="achievement_evaluate", frozen=True)
     workspace_id: int = Field(..., description="Workspace to evaluate achievements for")
-    tournament_id: int = Field(..., description="Tournament that was just processed")
+    tournament_id: int | None = Field(
+        default=None,
+        description="Tournament that was just processed; None for a workspace-wide deferred run",
+    )
     changed_tables: list[str] = Field(
         ...,
         description="DB tables that changed (e.g. ['matches.statistics', 'tournament.encounter'])",
     )
+    # Deferred-queue only: the run row already exists (status ``queued``), so the
+    # consumer resumes it instead of opening a second audit row, and the slice
+    # the caller asked for has to survive the round trip.
+    run_id: str | None = Field(default=None, description="Existing queued EvaluationRun to resume")
+    match_id: int | None = Field(default=None, description="Restrict evaluation to this match")
+    rule_ids: list[int] | None = Field(default=None, description="Restrict evaluation to these rule ids")
 
 

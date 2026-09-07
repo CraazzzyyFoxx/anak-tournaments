@@ -50,9 +50,7 @@ export const FIELD_DEFS = {
 
   subdomain: field("domain", (ws) => ws.subdomain, trimOrNull),
   seo_title: field("domain", (ws) => ws.seo_title, trimOrNull),
-  seo_description: field("domain", (ws) => ws.seo_description, trimOrNull),
-
-  discord_guild_id: field("discord", (ws) => ws.discord_guild_id ?? null)
+  seo_description: field("domain", (ws) => ws.seo_description, trimOrNull)
 };
 
 export type WorkspaceFieldKey = keyof typeof FIELD_DEFS;

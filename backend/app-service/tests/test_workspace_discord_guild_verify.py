@@ -168,6 +168,44 @@ class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
         session.flush.assert_not_awaited()
 
 
+class ListActorDiscordGuildsTests(IsolatedAsyncioTestCase):
+    """The picker that feeds the verify call above: same subject, same timeout,
+    same fail-closed 503. An empty list would read as "you administer nothing",
+    which is a different -- and misleading -- answer from "we could not ask"."""
+
+    _GUILDS = [
+        {"guild_id": _GUILD_ID, "name": "G", "owner": True, "can_manage": True},
+        {"guild_id": "999999999999999999", "name": "Other", "owner": False, "can_manage": False},
+    ]
+
+    async def test_returns_every_guild_the_actor_sees_unfiltered(self) -> None:
+        """Not filtered to ``can_manage``: the picker shows what Discord
+        reported and lets ``verify_discord_guild`` be the one gate."""
+        with patch.object(
+            workspace_service, "request_rpc", AsyncMock(return_value=_identity_reply(self._GUILDS))
+        ) as req:
+            result = await workspaces.list_actor_discord_guilds(auth_user_id=42, broker=MagicMock())
+
+        self.assertEqual({"guilds": self._GUILDS}, result)
+        self.assertEqual({"auth_user_id": 42}, req.await_args.args[1])
+        self.assertEqual(workspace_service._DISCORD_GUILDS_SUBJECT, req.await_args.args[2])
+
+    async def test_identity_service_unreachable_fails_closed_with_503(self) -> None:
+        with patch.object(workspace_service, "request_rpc", AsyncMock(side_effect=TimeoutError("no reply"))):
+            with self.assertRaises(workspace_service.HTTPException) as ctx:
+                await workspaces.list_actor_discord_guilds(auth_user_id=42, broker=MagicMock())
+
+        self.assertEqual(503, ctx.exception.status_code)
+
+    async def test_identity_service_error_envelope_fails_closed_with_503(self) -> None:
+        reply = parse_rpc({"ok": False, "error": {"code": "internal", "message": "boom"}})
+        with patch.object(workspace_service, "request_rpc", AsyncMock(return_value=reply)):
+            with self.assertRaises(workspace_service.HTTPException) as ctx:
+                await workspaces.list_actor_discord_guilds(auth_user_id=42, broker=MagicMock())
+
+        self.assertEqual(503, ctx.exception.status_code)
+
+
 # --- RPC wiring ---------------------------------------------------------
 
 from src.rpc.workspaces import register  # noqa: E402
@@ -285,3 +323,27 @@ class DiscordGuildVerifyRPCTests(IsolatedAsyncioTestCase):
         self.assertEqual(_GUILD_ID, result["data"]["discord_guild_id"])
         verify.assert_awaited_once()
         self.assertEqual(_GUILD_ID, verify.await_args.args[2])
+
+
+class MyDiscordGuildsRPCTests(IsolatedAsyncioTestCase):
+    """Actor-scoped, so no workspace id and no workspace permission gate --
+    the caller only ever learns about their own Discord account."""
+
+    async def _call(self, data, *, guilds=None, error=None):
+        handler = _register(MagicMock())["rpc.app.workspaces.my_discord_guilds"]
+        listing = AsyncMock(return_value={"guilds": guilds or []}, side_effect=error)
+        with patch("src.rpc.workspaces.workspace_service.list_actor_discord_guilds", listing):
+            return await handler(data, MagicMock()), listing
+
+    async def test_returns_the_callers_own_guilds(self) -> None:
+        guilds = [{"guild_id": _GUILD_ID, "name": "G", "owner": True, "can_manage": True}]
+        result, listing = await self._call({"identity": _IDENTITY}, guilds=guilds)
+
+        self.assertEqual({"guilds": guilds}, result["data"])
+        self.assertEqual(1, listing.await_args.kwargs["auth_user_id"])
+
+    async def test_an_inactive_user_gets_nothing(self) -> None:
+        result, listing = await self._call({"identity": {**_IDENTITY, "is_active": False}})
+
+        self.assertNotIn("data", result)
+        listing.assert_not_awaited()

@@ -113,6 +113,22 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         )
         return result.scalars().all()
 
+    async def count_by_owner(self, session: AsyncSession, *, owner_id: int) -> int:
+        """How many workspaces this account is the create-time accountable party for.
+
+        Backs the self-service create cap. Deliberately a plain count over the
+        ``owner_id`` FK with no join through ``auth.user_roles``: the RBAC
+        ``owner`` role is a mutable permission grant (co-owners, reassignment,
+        revocation), so counting through it both double-counts co-owned
+        workspaces and is gameable by handing the role away.
+        """
+        return int(
+            await session.scalar(
+                sa.select(sa.func.count(models.Workspace.id)).where(models.Workspace.owner_id == owner_id)
+            )
+            or 0
+        )
+
     async def list_ids_by_discord_guild(self, session: AsyncSession, guild_id: str) -> Sequence[int]:
         """Workspace ids configured for this Discord guild — usually zero or one.
 

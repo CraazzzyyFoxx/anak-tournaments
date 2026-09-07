@@ -7,6 +7,8 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.core.social import SocialProvider, normalize_social_handle
 from shared.messaging.config import (
+    ACHIEVEMENT_EVALUATE_DEFERRED_DLQ,
+    ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE,
     ACHIEVEMENT_EVALUATE_DLQ,
     ACHIEVEMENT_EVALUATE_QUEUE,
     PROCESS_MATCH_LOG_DLQ,
@@ -68,7 +70,10 @@ from src.rpc import (
 from src.rpc import (
     subscription as rpc_subscription,
 )
-from src.services.achievement.engine.consumer import handle_achievement_evaluate
+from src.services.achievement.engine.consumer import (
+    handle_achievement_evaluate,
+    handle_achievement_evaluate_deferred,
+)
 from src.services.match_logs import flows as logs_flows
 from src.services.match_logs import realtime as logs_realtime
 from src.services.match_logs import reaper as logs_reaper
@@ -101,6 +106,10 @@ _JOBS_CHANNEL = Channel(prefetch_count=2)
 _MATCH_LOG_CHANNEL = Channel(prefetch_count=2)
 # OverFast-protective prefetch (existing setting, previously unwired).
 _RANK_FETCH_CHANNEL = Channel(prefetch_count=config.settings.rank_fetch_worker_prefetch)
+# Deferred achievement recompute for unverified workspaces: a full-history run
+# an operator asked for, on a workspace nobody has vouched for. One at a time,
+# so it can never crowd out the parse-driven evaluations on _JOBS_CHANNEL.
+_ACHIEVEMENT_DEFERRED_CHANNEL = Channel(prefetch_count=1)
 
 # Dead-letter queues this worker owns. Every queue it consumes carries
 # x-dead-letter-exchange=dlx plus an x-message-ttl, but nothing declared these or
@@ -113,6 +122,7 @@ _OWNED_DLQS = (
     PROCESS_MATCH_LOG_DLQ,
     PROCESS_TOURNAMENT_LOGS_DLQ,
     ACHIEVEMENT_EVALUATE_DLQ,
+    ACHIEVEMENT_EVALUATE_DEFERRED_DLQ,
     RANK_FETCH_DLQ,
     RANK_FETCH_PRIORITY_DLQ,
     TOURNAMENT_ENCOUNTER_COMPLETED_DLQ,
@@ -352,6 +362,17 @@ async def process_achievement_evaluate(data: dict, msg: RabbitMessage) -> None:
         logger=logger,
     ):
         await handle_achievement_evaluate(data)
+
+
+@broker.subscriber(ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE, channel=_ACHIEVEMENT_DEFERRED_CHANNEL)
+async def process_achievement_evaluate_deferred(data: dict, msg: RabbitMessage) -> None:
+    async with observe_message_processing(
+        queue=ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE,
+        handler="process_achievement_evaluate_deferred",
+        message=msg,
+        logger=logger,
+    ):
+        await handle_achievement_evaluate_deferred(data)
 
 
 @broker.subscriber(TOURNAMENT_ENCOUNTER_COMPLETED_QUEUE, exchange=TOURNAMENT_EVENTS_EXCHANGE)

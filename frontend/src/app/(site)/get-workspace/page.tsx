@@ -1,17 +1,22 @@
 import { getTranslations } from "next-intl/server";
 import { Globe, Palette, BarChart3, Users } from "lucide-react";
 
+import { CreateWorkspaceLauncher } from "@/components/CreateWorkspaceLauncher";
+
 /**
- * Explains what a workspace is and how to get one. There is no self-service
- * signup (workspace creation is superuser-only, see /admin/workspaces), so
- * this page's only job is to point visitors at the platform administrator
- * instead of leaving "get your own community space" undiscoverable.
+ * Explains what a workspace is and lets a visitor create one on the spot.
+ *
+ * This is the only workspace-creation surface a plain account can reach:
+ * `/admin/*` refuses anyone who administers nothing (`canAccessAdminRoute` →
+ * `hasAdminPanelAccessForProfile`), which is precisely the visitor this page
+ * serves. The home page's communities grid already links here, so the funnel
+ * ends where it always pointed — it just no longer ends at "email the admin".
  *
  * Feature tiles + a separate dashed action block, not one shadcn <Card> with
  * a wall-of-text description: the three things a workspace gives you (own
  * address, own theme, separate content) read as a scan-able list instead of
- * a parenthetical aside, and the "no self-service, contact the admin" part
- * gets its own visual weight instead of trailing off the same paragraph.
+ * a parenthetical aside, and the call to action gets its own visual weight
+ * instead of trailing off the same paragraph.
  * The dashed-border tile echoes the "Get your own workspace" tile that links
  * here from the home page's communities grid (see (home)/page.tsx
  * `GetWorkspaceCard`), so the destination page picks up the same visual cue.
@@ -90,6 +95,7 @@ export default async function GetWorkspacePage() {
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
             {t("getWorkspace.action.description")}
           </p>
+          <CreateWorkspaceLauncher />
         </div>
       </div>
     </div>

@@ -11,14 +11,18 @@ from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import errors
+from shared.messaging.config import ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE
 from shared.models.achievements.achievement import (
     AchievementRule,
     EvaluationRun,
     EvaluationRunStatus,
     EvaluationRunTrigger,
 )
+from shared.models.tenancy.workspace import Workspace
+from shared.observability import publish_message
 from shared.repository.support import EvaluationRunRepository
 from shared.repository.tournament import TournamentRepository
+from shared.schemas.events import AchievementEvaluateEvent
 from shared.services.division_grid.access import (
     build_workspace_division_grid_normalizer,
     get_effective_division_grid,
@@ -27,11 +31,18 @@ from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
 )
+from shared.services.workspace_tier import is_verified_or_trusted
 from src import models
+from src.core.broker import require_broker
 from src.domain.achievement_eval_context import EvalContext
 
 from .differ import EvaluationSlice, diff_and_apply
 from .evaluator import evaluate
+
+# A full recompute an operator asked for, on a workspace nobody has vouched for.
+# ``parse_complete`` is absent on purpose: it is the bounded, already-paid-for
+# follow-up to a parse and stays inline for every tier.
+_DEFERRABLE_TRIGGERS = (EvaluationRunTrigger.manual, EvaluationRunTrigger.rule_version_bump)
 
 
 class AchievementEvaluationRunnerService:
@@ -56,6 +67,12 @@ class AchievementEvaluationRunnerService:
     ) -> EvaluationRun:
         """Execute an achievement evaluation run.
 
+        A ``manual`` / ``rule_version_bump`` run for an unverified workspace is
+        not executed here: it gets a ``queued`` run row and a message on
+        ``achievement_evaluate.deferred``, which one low-prefetch consumer drains
+        (design §4.3). ``parse_complete`` stays inline for every tier — it is
+        already bounded by the parse that triggered it.
+
         Args:
             session: Database session.
             workspace_id: Workspace to evaluate.
@@ -65,16 +82,117 @@ class AchievementEvaluationRunnerService:
             changed_tables: If set, only evaluate rules that depend on these tables.
             rule_ids: If set, only evaluate these specific rules.
         """
-        run_id = str(uuid.uuid4())
+        deferred = trigger in _DEFERRABLE_TRIGGERS and not await self._may_run_inline(session, workspace_id)
         run = EvaluationRun(
-            id=run_id,
+            id=str(uuid.uuid4()),
             workspace_id=workspace_id,
             trigger=trigger,
             tournament_id=tournament_id,
-            status=EvaluationRunStatus.running,
+            status=EvaluationRunStatus.queued if deferred else EvaluationRunStatus.running,
             started_at=datetime.now(UTC),
         )
         await self.runs_repo.create(session, run)
+
+        if deferred:
+            await self._enqueue_deferred(
+                session,
+                run,
+                match_id=match_id,
+                changed_tables=changed_tables,
+                rule_ids=rule_ids,
+            )
+            return run
+
+        return await self._execute_run(
+            session,
+            run,
+            match_id=match_id,
+            changed_tables=changed_tables,
+            rule_ids=rule_ids,
+        )
+
+    async def resume_queued_run(self, session: AsyncSession, event: AchievementEvaluateEvent) -> EvaluationRun | None:
+        """Run a deferred evaluation off ``achievement_evaluate.deferred``.
+
+        Calls ``_execute_run`` directly, never ``run_evaluation``: the tier gate
+        already fired when the run was queued, so re-entering it here would just
+        re-queue the same workspace forever. The queued row is reused — the
+        caller was already handed its id.
+        """
+        run = await self.runs_repo.get(session, event.run_id) if event.run_id else None
+        if run is None:
+            logger.warning(f"Deferred evaluation for a missing run {event.run_id}; dropping")
+            return None
+        if run.status == EvaluationRunStatus.done:
+            # Redelivery after the results were already applied.
+            return run
+
+        run.status = EvaluationRunStatus.running
+        run.started_at = datetime.now(UTC)
+        await session.flush()
+        return await self._execute_run(
+            session,
+            run,
+            match_id=event.match_id,
+            changed_tables=event.changed_tables or None,
+            rule_ids=event.rule_ids,
+        )
+
+    async def _may_run_inline(self, session: AsyncSession, workspace_id: int) -> bool:
+        workspace = await session.get(Workspace, workspace_id)
+        # A workspace that does not exist has nothing to meter; the run fails on
+        # its own terms rather than sitting in a queue nobody looks at.
+        return workspace is None or is_verified_or_trusted(workspace)
+
+    async def _enqueue_deferred(
+        self,
+        session: AsyncSession,
+        run: EvaluationRun,
+        *,
+        match_id: int | None,
+        changed_tables: list[str] | None,
+        rule_ids: list[int] | None,
+    ) -> None:
+        try:
+            await session.commit()
+            await publish_message(
+                require_broker(),
+                AchievementEvaluateEvent(
+                    workspace_id=run.workspace_id,
+                    tournament_id=run.tournament_id,
+                    changed_tables=changed_tables or [],
+                    run_id=run.id,
+                    match_id=match_id,
+                    rule_ids=rule_ids,
+                ).model_dump(),
+                ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE,
+                logger=logger.bind(workspace_id=run.workspace_id, run_id=run.id),
+            )
+        except Exception as exc:
+            # A queued row nobody will ever pick up is worse than a visible
+            # failure: record why and let the caller see it.
+            await _mark_run_failed(session, run, exc)
+            logger.exception(f"Could not defer evaluation run {run.id}")
+            raise
+        logger.info(f"Evaluation run {run.id} deferred: workspace {run.workspace_id} is unverified")
+
+    async def _execute_run(
+        self,
+        session: AsyncSession,
+        run: EvaluationRun,
+        *,
+        match_id: int | None,
+        changed_tables: list[str] | None,
+        rule_ids: list[int] | None,
+    ) -> EvaluationRun:
+        """Evaluate every selected rule for ``run`` and close it out.
+
+        The single evaluation body: the inline path and the deferred consumer
+        both land here, so neither owns a copy of it.
+        """
+        run_id = run.id
+        workspace_id = run.workspace_id
+        tournament_id = run.tournament_id
 
         try:
             rules = await _get_rules(session, workspace_id, rule_ids)
@@ -201,6 +319,7 @@ class AchievementEvaluationRunnerService:
 
 achievement_evaluation_runner_service = AchievementEvaluationRunnerService()
 run_evaluation = achievement_evaluation_runner_service.run_evaluation
+resume_queued_run = achievement_evaluation_runner_service.resume_queued_run
 
 
 def _is_connection_lost(exc: BaseException) -> bool:

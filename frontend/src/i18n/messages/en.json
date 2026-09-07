@@ -2235,8 +2235,9 @@
       }
     },
     "action": {
-      "title": "No self-service signup",
-      "description": "Workspaces are currently created manually by the platform administrator. Contact them and describe the community you'd like to set up."
+      "title": "Create it yourself",
+      "description": "Set up a workspace in a minute — you become its owner and administrator. New workspaces are not listed on the home page until the platform team reviews them.",
+      "create": "Create workspace"
     }
   },
   "workspace": {
@@ -4582,7 +4583,7 @@
         },
         "workspaces": {
           "title": "Workspaces",
-          "body": "Some communities run their own branded workspace on {siteName} — a self-contained set of tournaments, teams, and stats with its own administrators. Workspace administrators can see the membership, roles, and tournament activity within their own workspace only. New workspaces are created by the platform administrator on request, not through self-service signup."
+          "body": "Some communities run their own branded workspace on {siteName} — a self-contained set of tournaments, teams, and stats with its own administrators. Workspace administrators can see the membership, roles, and tournament activity within their own workspace only. Any signed-in account can create a workspace and becomes its owner; new workspaces are listed publicly only after the platform team reviews them."
         },
         "conduct": {
           "title": "Tournament conduct",

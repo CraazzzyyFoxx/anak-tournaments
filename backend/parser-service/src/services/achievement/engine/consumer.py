@@ -15,7 +15,7 @@ from shared.observability.correlation import correlation_id_ctx
 from shared.schemas.events import AchievementEvaluateEvent
 from src.core import db
 
-from .runner import run_evaluation
+from .runner import resume_queued_run, run_evaluation
 
 
 async def handle_achievement_evaluate(data: dict) -> None:
@@ -41,3 +41,21 @@ async def handle_achievement_evaluate(data: dict) -> None:
             tournament_id=event.tournament_id,
             changed_tables=event.changed_tables,
         )
+
+
+async def handle_achievement_evaluate_deferred(data: dict) -> None:
+    """Run an evaluation that the tier gate parked on the deferred queue.
+
+    Resumes the ``queued`` run row the caller was already handed instead of
+    calling ``run_evaluation`` again — that would re-check the tier and re-queue
+    the same workspace forever.
+    """
+    correlation_id_ctx.set(str(uuid.uuid4()))
+    event = AchievementEvaluateEvent.model_validate(data)
+    logger.bind(
+        workspace_id=event.workspace_id,
+        run_id=event.run_id,
+    ).info("Processing deferred achievement evaluation from queue")
+
+    async with db.async_session_maker() as session:
+        await resume_queued_run(session, event)

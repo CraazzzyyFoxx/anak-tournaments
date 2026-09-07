@@ -75,6 +75,10 @@ class EvaluationRunTrigger(StrEnum):
 
 
 class EvaluationRunStatus(StrEnum):
+    # ``queued`` is a deferred run: the row exists so the caller gets a run id
+    # back, but no rule has been evaluated yet — an unverified workspace's
+    # manual/rule_version_bump recompute waits on ``achievement_evaluate.deferred``.
+    queued = "queued"
     running = "running"
     done = "done"
     failed = "failed"

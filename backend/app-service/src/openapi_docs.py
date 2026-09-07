@@ -244,6 +244,14 @@ DOCS: dict[str, dict] = {
         "summary": "Verify and bind a Discord guild",
         "description": "Proves the caller administers the given Discord guild (via identity-service, owner or MANAGE_GUILD) and binds it to the workspace, stamping verified_at/verified_by; requires workspace.update, 404 if workspace missing, 403 if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
     },
+    "rpc.app.workspaces.my_discord_guilds": {
+        "summary": "List my administered Discord guilds",
+        "description": "Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify; requires an active authenticated user, 503 if identity-service is unreachable.",
+    },
+    "rpc.app.workspaces.verification_set": {
+        "summary": "Set workspace verification status",
+        "description": "Moves a workspace between the `unverified`/`verified`/`trusted` trust tiers — the only way a self-service workspace is unblocked for GPU compute, inline achievement recompute and the public directory; superuser-only (a workspace owner may not self-certify), audited on every call including a no-op set, 404 if workspace missing, 422 on an unknown status.",
+    },
     # ── workspace discord entities ──────────────────────────────────────────────────
     "rpc.app.workspaces.discord_roles": {
         "summary": "List workspace Discord roles",

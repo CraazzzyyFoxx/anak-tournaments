@@ -3403,6 +3403,14 @@
       },
       "summary": "List workspace members"
     },
+    "rpc.app.workspaces.my_discord_guilds": {
+      "description": "Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify; requires an active authenticated user, 503 if identity-service is unreachable.",
+      "response": {
+        "array": false,
+        "ref": "app.WorkspaceDiscordGuildsRead"
+      },
+      "summary": "List my administered Discord guilds"
+    },
     "rpc.app.workspaces.set_custom_domain": {
       "description": "Normalizes and stores a custom domain plus a fresh DNS TXT verification token, resetting verification; requires workspace.update, 404 if workspace missing, 400 on an invalid domain.",
       "request": {
@@ -3414,6 +3422,18 @@
         "ref": "app.WorkspaceRead"
       },
       "summary": "Set workspace custom domain"
+    },
+    "rpc.app.workspaces.verification_set": {
+      "description": "Moves a workspace between the `unverified`/`verified`/`trusted` trust tiers \u2014 the only way a self-service workspace is unblocked for GPU compute, inline achievement recompute and the public directory; superuser-only (a workspace owner may not self-certify), audited on every call including a no-op set, 404 if workspace missing, 422 on an unknown status.",
+      "request": {
+        "array": false,
+        "ref": "app.WorkspaceVerificationSet"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.WorkspaceRead"
+      },
+      "summary": "Set workspace verification status"
     },
     "rpc.app.workspaces.verify_custom_domain": {
       "description": "Checks the `_owt-verify.<domain>` DNS TXT record against the stored token and stamps verified_at on a match; requires workspace.update, 404 if workspace missing, 400 if no domain is set or the record doesn't match yet.",
@@ -17377,6 +17397,35 @@
       "title": "WorkspaceCustomDomainSet",
       "type": "object"
     },
+    "app.WorkspaceDiscordGuildOption": {
+      "description": "One guild the caller administers, as reported by\n``rpc.identity.oauth_discord_guilds``. Feeds the settings guild picker, so\n``discord_guild_verify`` can be handed a snowflake the caller can actually\nprove \u2014 instead of a free-text field that only fails after the fact.",
+      "properties": {
+        "can_manage": {
+          "title": "Can Manage",
+          "type": "boolean"
+        },
+        "guild_id": {
+          "title": "Guild Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "guild_id",
+        "name",
+        "owner",
+        "can_manage"
+      ],
+      "title": "WorkspaceDiscordGuildOption",
+      "type": "object"
+    },
     "app.WorkspaceDiscordGuildVerify": {
       "description": "Body for ``discord_guild_verify``. The snowflake pattern gates shape\nonly -- the actual proof of administration happens server-side via\n``rpc.identity.oauth_discord_guilds``, not here. No blank-clears-it\nnormalization like ``WorkspaceUpdate`` used to carry: there is no \"clear\"\nverb for a verified claim, only bind (this) and whatever future admin\noverride unbinds it.",
       "properties": {
@@ -17390,6 +17439,19 @@
         "guild_id"
       ],
       "title": "WorkspaceDiscordGuildVerify",
+      "type": "object"
+    },
+    "app.WorkspaceDiscordGuildsRead": {
+      "properties": {
+        "guilds": {
+          "items": {
+            "$ref": "#/components/schemas/app.WorkspaceDiscordGuildOption"
+          },
+          "title": "Guilds",
+          "type": "array"
+        }
+      },
+      "title": "WorkspaceDiscordGuildsRead",
       "type": "object"
     },
     "app.WorkspaceMemberAutofillResult": {
@@ -17936,6 +17998,11 @@
           "default": "Europe/Moscow",
           "title": "Timezone",
           "type": "string"
+        },
+        "verification_status": {
+          "default": "unverified",
+          "title": "Verification Status",
+          "type": "string"
         }
       },
       "required": [
@@ -18247,6 +18314,25 @@
         }
       },
       "title": "WorkspaceUpdate",
+      "type": "object"
+    },
+    "app.WorkspaceVerificationSet": {
+      "description": "Body for the superuser-only ``verification_set``. The three tiers are a\nconvention, not a DB enum (the column is a plain ``String(16)``) -- this\nLiteral is where the convention is actually enforced.",
+      "properties": {
+        "verification_status": {
+          "enum": [
+            "unverified",
+            "verified",
+            "trusted"
+          ],
+          "title": "Verification Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verification_status"
+      ],
+      "title": "WorkspaceVerificationSet",
       "type": "object"
     },
     "balancer.BalanceExportResponse": {
@@ -36936,6 +37022,12 @@
           "title": "Is Open",
           "type": "boolean"
         },
+        "max_substitutes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Substitutes",
+          "type": "integer"
+        },
         "open_profile_scope": {
           "default": "main",
           "title": "Open Profile Scope",
@@ -37013,6 +37105,12 @@
           },
           "title": "Custom Fields",
           "type": "array"
+        },
+        "max_substitutes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Substitutes",
+          "type": "integer"
         },
         "open_profile_scope": {
           "default": "main",

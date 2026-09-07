@@ -94,6 +94,18 @@ class Workspace(db.TimeStampIntegerMixin):
     owner_id: Mapped[int | None] = mapped_column(
         ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Self-service trust tier (workspace self-service design §4.2). Plain
+    # string, not a Postgres enum -- same "stay flexible" precedent as
+    # ``newcomer_scope`` below: a fourth tier is a data change, not a
+    # migration. ``unverified`` (default for every self-service creation)
+    # blocks GPU compute jobs, defers full-history achievement recomputes and
+    # keeps the workspace off the public directory; ``verified`` lifts the
+    # compute gates; ``trusted`` additionally makes it publicly listed. Only a
+    # superuser moves a workspace between tiers
+    # (``rpc.app.workspaces.verification_set``) -- there is no automatic path.
+    verification_status: Mapped[str] = mapped_column(
+        String(16), server_default="unverified", nullable=False
+    )
     default_division_grid_version_id: Mapped[int | None] = mapped_column(
         ForeignKey("division_grid_version.id", ondelete="SET NULL"),
         nullable=True,

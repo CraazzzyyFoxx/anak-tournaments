@@ -199,6 +199,19 @@ export interface DivisionGridPortableDocument {
   mappings: DivisionGridPortableMapping[];
 }
 
+/** Trust tier of a workspace. New self-service workspaces start `unverified`
+ * and stay off the public home-page directory until reviewed; `trusted` is
+ * exactly what that directory filters on. */
+export type WorkspaceVerificationStatus = "unverified" | "verified" | "trusted";
+
+/** A Discord guild the signed-in user administers, from `GET /api/v1/me/discord-guilds`. */
+export interface ManageableDiscordGuild {
+  guild_id: string;
+  name: string;
+  owner: boolean;
+  can_manage: boolean;
+}
+
 export interface Workspace {
   id: number;
   slug: string;
@@ -234,6 +247,10 @@ export interface Workspace {
   custom_domain_verification_token: string | null;
   /** The one Discord guild this workspace runs in — Boosty patron roles and match-log channels alike. */
   discord_guild_id: string | null;
+  /** Set when an administrator of that guild proved it through Discord OAuth. */
+  discord_guild_verified_at: string | null;
+  /** Self-service trust tier: only `trusted` workspaces are listed publicly. */
+  verification_status: WorkspaceVerificationStatus;
   default_division_grid_version_id: number | null;
   default_division_grid_version: DivisionGridVersion | null;
   /** How "is this player new" is decided when a roster is created: `"global"`

@@ -12,8 +12,10 @@ import {
   DivisionGridPortableDocument,
   DivisionGridSaveResult,
   DivisionGridVersion,
+  ManageableDiscordGuild,
   Workspace,
-  WorkspaceMember
+  WorkspaceMember,
+  WorkspaceVerificationStatus
 } from "@/types/workspace.types";
 import type {
   DiscordChannelsResponse,
@@ -76,7 +78,6 @@ export default class workspaceService {
       subdomain?: string | null;
       seo_title?: string | null;
       seo_description?: string | null;
-      discord_guild_id?: string | null;
       newcomer_scope?: "global" | "workspace";
       default_division_grid_version_id?: number | null;
     }
@@ -170,6 +171,39 @@ export default class workspaceService {
   static async clearCustomDomain(workspaceId: number): Promise<Workspace> {
     return apiFetch(`/api/v1/workspaces/${workspaceId}/custom-domain`, {
       method: "DELETE"
+    }).then((r) => r.json());
+  }
+
+  /** Every Discord guild the signed-in user administers (owner or MANAGE_GUILD). */
+  static async myDiscordGuilds(): Promise<ManageableDiscordGuild[]> {
+    return apiFetch("/api/v1/me/discord-guilds")
+      .then((r) => r.json())
+      .then((body: { guilds?: ManageableDiscordGuild[] }) => body.guilds ?? []);
+  }
+
+  /**
+   * Bind a Discord guild to a workspace, proving the caller administers it.
+   *
+   * The guild is no longer a PATCH-able field: the backend re-asks Discord who
+   * administers it on every bind, so 403 (not yours any more), 409 (another
+   * workspace claimed it) and 503 (Discord unreachable) are all real answers a
+   * plain form field could not have produced.
+   */
+  static async verifyDiscordGuild(workspaceId: number, guildId: string): Promise<Workspace> {
+    return apiFetch(`/api/v1/workspaces/${workspaceId}/discord-guild`, {
+      method: "POST",
+      body: { guild_id: guildId }
+    }).then((r) => r.json());
+  }
+
+  /** Superuser-only trust tier change (`unverified` | `verified` | `trusted`). */
+  static async setVerificationStatus(
+    workspaceId: number,
+    status: WorkspaceVerificationStatus
+  ): Promise<Workspace> {
+    return apiFetch(`/api/v1/workspaces/${workspaceId}/verification`, {
+      method: "POST",
+      body: { verification_status: status }
     }).then((r) => r.json());
   }
 

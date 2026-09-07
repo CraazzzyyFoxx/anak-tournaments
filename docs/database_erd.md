@@ -12,7 +12,7 @@ schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_proces
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`tiegrp01`** (45 revisions in `backend/migrations/versions/`).
+Alembic head: **`wstier001`** (46 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -441,6 +441,7 @@ erDiagram
         timestamptz discord_guild_verified_at "nullable"
         bigint discord_guild_verified_by_auth_user_id FK "nullable"
         bigint owner_id FK "nullable"
+        varchar(16) verification_status
         bigint default_division_grid_version_id FK "nullable"
         jsonb default_roster_slots_json "nullable"
         varchar(16) newcomer_scope

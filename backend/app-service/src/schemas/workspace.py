@@ -28,6 +28,9 @@ __all__ = (
     "WorkspaceUpdate",
     "WorkspaceCustomDomainSet",
     "WorkspaceDiscordGuildVerify",
+    "WorkspaceDiscordGuildOption",
+    "WorkspaceDiscordGuildsRead",
+    "WorkspaceVerificationSet",
     "WorkspaceMemberRoleRead",
     "WorkspaceMemberRead",
     "WorkspaceMemberCreate",
@@ -78,6 +81,11 @@ class WorkspaceRead(BaseRead):
     # guild id or a DNS token, an arbitrary internal auth_user_id is not
     # something this design chooses to publish.
     discord_guild_verified_at: datetime | None = None
+    # Self-service trust tier (design §4.2). Public because the frontend renders
+    # it as a badge and derives the "not listed on the home page yet" notice
+    # from it; ``trusted`` is also exactly what the public directory filters on,
+    # so it is already observable from the outside.
+    verification_status: str = "unverified"
     default_division_grid_version_id: int | None
     default_division_grid_version: DivisionGridVersionRead | None = None
     default_roster_slots_json: dict[str, int] | None = None
@@ -181,6 +189,30 @@ class WorkspaceDiscordGuildVerify(BaseModel):
     override unbinds it."""
 
     guild_id: str = Field(..., pattern=_DISCORD_SNOWFLAKE)
+
+
+class WorkspaceDiscordGuildOption(BaseModel):
+    """One guild the caller administers, as reported by
+    ``rpc.identity.oauth_discord_guilds``. Feeds the settings guild picker, so
+    ``discord_guild_verify`` can be handed a snowflake the caller can actually
+    prove — instead of a free-text field that only fails after the fact."""
+
+    guild_id: str
+    name: str
+    owner: bool
+    can_manage: bool
+
+
+class WorkspaceDiscordGuildsRead(BaseModel):
+    guilds: list[WorkspaceDiscordGuildOption] = Field(default_factory=list)
+
+
+class WorkspaceVerificationSet(BaseModel):
+    """Body for the superuser-only ``verification_set``. The three tiers are a
+    convention, not a DB enum (the column is a plain ``String(16)``) -- this
+    Literal is where the convention is actually enforced."""
+
+    verification_status: Literal["unverified", "verified", "trusted"]
 
 
 class WorkspaceMemberRoleRead(BaseModel):

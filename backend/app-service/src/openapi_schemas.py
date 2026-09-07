@@ -163,6 +163,10 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.workspaces.discord_guild_verify": Op(
         request=schemas.WorkspaceDiscordGuildVerify, response=schemas.WorkspaceRead
     ),
+    "rpc.app.workspaces.my_discord_guilds": Op(response=schemas.WorkspaceDiscordGuildsRead),
+    "rpc.app.workspaces.verification_set": Op(
+        request=schemas.WorkspaceVerificationSet, response=schemas.WorkspaceRead
+    ),
     # ── metadata admin (hero/map/gamemode) ─────────────────────────────────
     "rpc.app.heroes.admin_create": Op(request=schemas.HeroCreate, response=schemas.HeroRead),
     "rpc.app.heroes.admin_update": Op(request=schemas.HeroUpdate, response=schemas.HeroRead),

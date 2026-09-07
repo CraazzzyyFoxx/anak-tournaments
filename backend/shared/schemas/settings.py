@@ -19,6 +19,7 @@ __all__ = (
     "SETTINGS_KEY_SCRIM",
     "SETTINGS_KEY_STREAM_COLLECTION",
     "SETTINGS_KEY_SUBSCRIPTION_COLLECTION",
+    "SETTINGS_KEY_WORKSPACE_CREATION",
     "SETTINGS_SCHEMAS",
     "RankCollectionConfig",
     "RankCollectionScope",
@@ -27,6 +28,7 @@ __all__ = (
     "ScrimConfig",
     "StreamCollectionConfig",
     "SubscriptionCollectionConfig",
+    "WorkspaceCreationConfig",
 )
 
 SETTINGS_KEY_RANK_COLLECTION = "parser.rank_collection"
@@ -34,6 +36,7 @@ SETTINGS_KEY_RANK_MAPPING = "parser.rank_mapping"
 SETTINGS_KEY_SCRIM = "tournament.scrim"
 SETTINGS_KEY_STREAM_COLLECTION = "stream.collection"
 SETTINGS_KEY_SUBSCRIPTION_COLLECTION = "parser.subscription_collection"
+SETTINGS_KEY_WORKSPACE_CREATION = "workspace_creation"
 
 
 RankCollectionScope = Literal["registrations_only", "all"]
@@ -150,6 +153,21 @@ class ScrimConfig(BaseModel):
     max_best_of: int = Field(default=7, ge=1, le=9)
 
 
+class WorkspaceCreationConfig(BaseModel):
+    """Self-service workspace-creation quota (workspace self-service design §4.4).
+
+    Same reasoning as ``ScrimConfig`` above: 1 is the conservative launch
+    position for "how many workspaces may one account be accountable for", not
+    a rule, so it is tunable without a deploy.
+
+    Counted over ``Workspace.owner_id`` — the create-time accountable party —
+    never over the RBAC ``owner`` role, which is a mutable permission grant a
+    workspace can hand to any number of co-owners.
+    """
+
+    max_owned_per_user: int = Field(default=1, ge=1, le=100)
+
+
 #: Registry consumed by the admin layer to validate writes per key.
 SETTINGS_SCHEMAS: dict[str, type[BaseModel]] = {
     SETTINGS_KEY_RANK_COLLECTION: RankCollectionConfig,
@@ -157,4 +175,5 @@ SETTINGS_SCHEMAS: dict[str, type[BaseModel]] = {
     SETTINGS_KEY_SCRIM: ScrimConfig,
     SETTINGS_KEY_STREAM_COLLECTION: StreamCollectionConfig,
     SETTINGS_KEY_SUBSCRIPTION_COLLECTION: SubscriptionCollectionConfig,
+    SETTINGS_KEY_WORKSPACE_CREATION: WorkspaceCreationConfig,
 }
