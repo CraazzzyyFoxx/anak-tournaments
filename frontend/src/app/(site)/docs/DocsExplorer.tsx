@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import { SearchField } from "@/components/ui/search-field";
 
 import {
   ALEMBIC_HEAD,
@@ -116,33 +117,15 @@ export function DocsExplorer() {
   const activeDomain = domains.find((d) => d.key === selected);
 
   return (
-    <div className={styles.body}>
+    <div className={styles.explorer} data-ui="card">
       <nav className={styles.sidebar} aria-label="Домены схемы">
-        <div className={styles.search}>
-          <span className={styles.searchIcon} aria-hidden>
-            ⌕
-          </span>
-          <input
-            className={styles.searchInput}
-            type="search"
-            value={query}
-            onChange={(e) => handleQueryChange(e.target.value)}
-            placeholder="Таблица или домен…"
-            spellCheck={false}
-            autoComplete="off"
-            aria-label="Поиск таблицы"
-          />
-          {query ? (
-            <button
-              type="button"
-              className={styles.searchClear}
-              onClick={() => setQuery("")}
-              aria-label="Очистить"
-            >
-              ✕
-            </button>
-          ) : null}
-        </div>
+        <SearchField
+          value={query}
+          onValueChange={handleQueryChange}
+          label="Поиск таблицы"
+          placeholder="Таблица или домен…"
+          containerClassName="mb-3"
+        />
         <div className={styles.sidebarHint}>
           PostgreSQL · {TOTAL_TABLES} таблиц · alembic {ALEMBIC_HEAD}
         </div>

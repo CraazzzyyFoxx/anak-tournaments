@@ -23,7 +23,7 @@ const ARTICLES: Record<ArticleSlug, () => JSX.Element> = {
 export function Article({ slug }: Readonly<{ slug: ArticleSlug }>) {
   const Page = ARTICLES[slug];
   return (
-    <article className={styles.article}>
+    <article className={styles.prose}>
       <Page />
     </article>
   );
