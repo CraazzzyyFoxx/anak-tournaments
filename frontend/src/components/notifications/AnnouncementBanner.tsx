@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { Info, X } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
@@ -134,19 +134,27 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
   // is a pill that hugs its text, the long one a card. One fixed width would
   // make "I was born" a 416px box of air.
   const compact = !content.body && !content.href;
-
   return (
-    <div className="fixed start-4 end-4 top-[var(--aqt-banner-top,var(--aqt-sticky-top))] z-[45] sm:start-auto sm:w-max sm:max-w-md">
+    // The card rides the layout's own container, not the viewport: `fixed` +
+    // `end-4` parked it in the dead gutter a 2560px display leaves outside the
+    // 1720px content column, which reads as "something fell off the page".
+    // `pointer-events-none` on the rail so the strip across the top of every
+    // page does not eat clicks the card itself is not under.
+    <div className="pointer-events-none fixed inset-x-0 top-[var(--aqt-banner-top,var(--aqt-sticky-top))] z-[45] mx-auto flex w-full max-w-screen-3xl justify-end px-4 md:px-6 xl:px-10">
       <Alert
         role="status"
         aria-label={t("notifications.banner.label")}
         className={cn(
-          "flex gap-2.5 rounded-xl border-primary/30 bg-card/95 pb-2.5 pe-2 ps-3.5 pt-2.5 shadow-xl backdrop-blur animate-in fade-in slide-in-from-top-2 duration-200 motion-reduce:animate-none",
-          // Single line: the text and the close button centre on each other.
-          // Multi-line: the button sits on the first line, where the eye is.
+          // `[&>svg]` overrides: the primitive's own icon slot is absolutely
+          // positioned with a padded sibling, which is a layout this card
+          // cannot use — it also carries a close button on the trailing edge.
+          "pointer-events-auto flex w-full gap-3 rounded-xl bg-card/95 p-4 shadow-xl backdrop-blur animate-in fade-in slide-in-from-top-2 duration-200 motion-reduce:animate-none [&>svg]:static [&>svg~*]:pl-0 sm:w-max sm:max-w-md",
+          // Single line: the row centres on itself. Multi-line: everything
+          // hangs off the first line, where the eye starts.
           compact ? "items-center" : "items-start"
         )}
       >
+        <Info className={cn("size-4 shrink-0 text-foreground", !compact && "mt-0.5")} aria-hidden />
         <div className="min-w-0 flex-1">
           <AlertTitle className={cn("text-sm font-semibold leading-snug text-pretty", compact && "mb-0")}>
             {content.title}
@@ -170,7 +178,10 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 shrink-0 text-muted-foreground hover:text-foreground [&_svg]:size-4"
+          className={cn(
+            "-me-1.5 size-7 shrink-0 text-muted-foreground hover:text-foreground [&_svg]:size-4",
+            !compact && "-mt-1"
+          )}
           aria-label={t("notifications.banner.dismiss")}
           onClick={onDismiss}
         >
