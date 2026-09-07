@@ -12,6 +12,7 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { readDismissedAnnouncements, rememberDismissedAnnouncement } from "@/lib/announcement-dismissed";
 import { announcementHref, announcementText } from "@/lib/announcement-text";
 import { notificationQueryKeys } from "@/lib/notification-query-keys";
+import { cn } from "@/lib/utils";
 import notificationService from "@/services/notification.service";
 import type { NotificationItem } from "@/types/notification.types";
 
@@ -129,15 +130,27 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
     contentRoot?.focus({ preventScroll: true });
   };
 
+  // A one-line notice and a three-line one are different shapes: the short one
+  // is a pill that hugs its text, the long one a card. One fixed width would
+  // make "I was born" a 416px box of air.
+  const compact = !content.body && !content.href;
+
   return (
-    <div className="fixed start-4 end-4 top-[var(--aqt-banner-top,var(--aqt-sticky-top))] z-[45] max-w-md sm:start-auto sm:w-[26rem]">
+    <div className="fixed start-4 end-4 top-[var(--aqt-banner-top,var(--aqt-sticky-top))] z-[45] sm:start-auto sm:w-max sm:max-w-md">
       <Alert
         role="status"
         aria-label={t("notifications.banner.label")}
-        className="flex items-start gap-3 rounded-xl border-primary/30 bg-card/95 shadow-xl backdrop-blur animate-in fade-in slide-in-from-top-2 duration-200 motion-reduce:animate-none"
+        className={cn(
+          "flex gap-2.5 rounded-xl border-primary/30 bg-card/95 pb-2.5 pe-2 ps-3.5 pt-2.5 shadow-xl backdrop-blur animate-in fade-in slide-in-from-top-2 duration-200 motion-reduce:animate-none",
+          // Single line: the text and the close button centre on each other.
+          // Multi-line: the button sits on the first line, where the eye is.
+          compact ? "items-center" : "items-start"
+        )}
       >
         <div className="min-w-0 flex-1">
-          <AlertTitle className="text-sm font-semibold leading-snug text-pretty">{content.title}</AlertTitle>
+          <AlertTitle className={cn("text-sm font-semibold leading-snug text-pretty", compact && "mb-0")}>
+            {content.title}
+          </AlertTitle>
           {content.body && (
             <AlertDescription className="text-muted-foreground text-pretty">{content.body}</AlertDescription>
           )}
@@ -157,11 +170,11 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
         <Button
           variant="ghost"
           size="icon"
-          className="-me-1.5 -mt-1.5 shrink-0"
+          className="size-7 shrink-0 text-muted-foreground hover:text-foreground [&_svg]:size-4"
           aria-label={t("notifications.banner.dismiss")}
           onClick={onDismiss}
         >
-          <X className="h-4 w-4" aria-hidden />
+          <X aria-hidden />
         </Button>
       </Alert>
     </div>
