@@ -24,14 +24,13 @@ from faststream.rabbit import RabbitMessage
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import HERO_TYPE_CLASSES, DraftAutopickStrategy, DraftStatus, HeroClass
+from shared.core.enums import DraftStatus, HeroClass
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.balancer.draft import DraftAuditEvent, DraftPick, DraftSession
 from shared.repository.draft import (
     DraftAuditEventRepository,
     DraftPickRepository,
     DraftSessionRepository,
-    DraftTeamRepository,
 )
 from shared.repository.identity import UserRepository
 from shared.services.roster_shape_access import get_effective_roster_shape
@@ -43,11 +42,10 @@ from src.core.auth import (
     _get_tournament_workspace_id,
 )
 from src.core.config import config
-from src.domain.draft import fit as sug
+from src.domain.draft import rules
 from src.domain.draft.entities import DraftResult
 from src.rpc import _common as c
 from src.services.draft import clock as clock_svc
-from src.services.draft import loaders
 from src.services.draft import realtime as draft_rt
 from src.services.draft.board import board_service
 from src.services.draft.export import export_service
@@ -59,7 +57,6 @@ from src.services.draft.selection import selection_service
 _SF = db.async_session_maker
 
 _sessions_repo = DraftSessionRepository()
-_teams_repo = DraftTeamRepository()
 _picks_repo = DraftPickRepository()
 _audit_repo = DraftAuditEventRepository()
 _users_repo = UserRepository()
@@ -338,25 +335,14 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             draft, pick = await _load_pick(session, c.require_id(data))
-            if draft.current_pick_id != pick.id:
-                raise HTTPException(status_code=409, detail="Options are available only for the current pick")
             public_user_ids = await _actor_player_ids(session, user.id)
-            team = await _teams_repo.get(
-                session,
-                pick.draft_team_id,
-                options=loaders.team_options(),
-                populate_existing=True,
-            )
-            if not user.is_workspace_admin(draft.workspace_id) and not rules.is_on_clock_captain(
-                team,
-                actor_auth_user_id=user.id,
-                actor_player_ids=public_user_ids,
-            ):
-                raise HTTPException(status_code=403, detail="Only the on-clock captain or an admin may read options")
-            options = await feasibility_service.evaluate_session_pick_options(
+            options = await feasibility_service.options_for_current_pick(
                 session,
                 draft,
-                team_id=pick.draft_team_id,
+                pick,
+                actor_auth_user_id=user.id,
+                actor_player_ids=public_user_ids,
+                is_workspace_admin=user.is_workspace_admin(draft.workspace_id),
             )
             return schemas.DraftPickOptionsResponse(
                 pick_id=pick.id,
@@ -423,51 +409,14 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await _get_draft_session_workspace_id(session, session_id)
             c.require_workspace_permission(data, user, ws_id, "team", "read")
             draft = await _load_session(session, session_id)
-            if draft.current_pick_id is None:
-                raise HTTPException(status_code=409, detail="Draft has no current pick")
-            current = await _picks_repo.get(session, draft.current_pick_id)
-            snapshot = await feasibility_service.load_snapshot(session, draft)
-            available = [p for p in snapshot.players if p.status == "available"]
-            shape = await feasibility_service.resolve_shape(session, draft)
-            counts = rules.team_slot_counts(
-                snapshot.players, snapshot.picks, current.draft_team_id, shape, snapshot.rosters
-            )
-            capacity = rules.role_openings(shape, counts)
-            # Same construction as autopick's, from the same snapshot rosters, so
-            # a suggestion and the autopick that follows it cannot disagree.
-            fit_players = [
-                sug.FitPlayer(
-                    player_id=p.id,
-                    rank_value=roster.best_rank or 0,
-                    playable_roles=roster.playable_roles,
-                    preference_order=((lead.role,) if (lead := roster.primary) is not None else ()),
-                    is_flex=roster.is_full_flex,
-                    user_id=p.user_id,
-                    rank_by_role={HeroClass.from_slot_code(code): rank for code, rank in roster.role_ranks.items()},
-                )
-                for p in available
-                if (roster := snapshot.roster(p.id)) is not None and roster.is_draftable
-            ]
-            options = await feasibility_service.evaluate_session_pick_options(
-                session,
-                draft,
-                team_id=current.draft_team_id,
-                state=await feasibility_service.state_from_snapshot(session, draft, snapshot),
-            )
-            safe_options = {(option.player_id, option.role) for option in options if option.is_safe}
-            ranked = sug.rank_suggestions(
-                fit_players,
-                capacity,
-                sug.FitConfig(),
-                strategy=DraftAutopickStrategy(draft.autopick_strategy),
-                limit=5,
-                allowed_options=safe_options,
-            )
+            current, ranked = await feasibility_service.rank_current_suggestions(session, draft)
             return schemas.DraftSuggestionsResponse(
                 pick_id=current.id,
                 draft_team_id=current.draft_team_id,
                 suggestions=[
-                    schemas.DraftSuggestion(player_id=r.player_id, role=r.role, fit_score=r.fit_score, breakdown=r.breakdown)
+                    schemas.DraftSuggestion(
+                        player_id=r.player_id, role=r.role, fit_score=r.fit_score, breakdown=r.breakdown
+                    )
                     for r in ranked
                 ],
             )

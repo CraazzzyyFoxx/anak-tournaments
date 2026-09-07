@@ -35,7 +35,7 @@ from shared.messaging.config import (
     DISCORD_GUILD_ROLES_QUEUE,
 )
 from shared.messaging.rpc import request_rpc
-from shared.rbac import ensure_workspace_system_roles, get_workspace_system_role
+from shared.rbac import RBAC_USER_KEY_PREFIX, ensure_workspace_system_roles, get_workspace_system_role
 from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.services.audit import record_admin_audit
@@ -57,13 +57,10 @@ def _path_int(data: dict[str, Any], key: str) -> int:
         raise HTTPException(status_code=422, detail=f"{key} is required") from exc
 
 
-CROSS_SERVICE_RBAC_KEY_PREFIX = "rbac:v2:user:"  # noqa: E501 -- must match identity-service/src/services/session_cache.py RBAC_KEY_PREFIX
-
-
 async def _invalidate_auth_rbac_cache(auth_user_id: int, logger: Any) -> None:
     redis = Redis.from_url(str(config.settings.redis_url), decode_responses=True)
     try:
-        await redis.delete(f"{CROSS_SERVICE_RBAC_KEY_PREFIX}{auth_user_id}")
+        await redis.delete(f"{RBAC_USER_KEY_PREFIX}{auth_user_id}")
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to invalidate auth RBAC cache for user %s: %s", auth_user_id, exc)
     finally:

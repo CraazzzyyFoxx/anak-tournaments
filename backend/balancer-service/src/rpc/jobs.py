@@ -22,30 +22,20 @@ import io
 import json
 from typing import Any
 
-import sqlalchemy as sa
 from faststream.rabbit import RabbitMessage
 from starlette.datastructures import Headers, UploadFile
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.models.tournament import Tournament
+from shared.rbac.workspace_lookup import get_tournament_workspace_id
 from shared.rpc.identity import MissingIdentityError
+from src import schemas
 from src.core import db
 from src.core.auth import _resolve_user_from_token
-from src import schemas
 from src.rpc import _common as c
 from src.services.balancer import jobs
 
 _SF = db.async_session_maker
-
-
-async def _tournament_workspace_id(session: Any, tournament_id: int) -> int:
-    workspace_id = await session.scalar(
-        sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id)
-    )
-    if workspace_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-    return int(workspace_id)
 
 
 async def _resolve_user(data: dict[str, Any]) -> Any:
@@ -124,7 +114,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = await _resolve_user(data)
             tournament_id = int(data["id"])
-            workspace_id = await _tournament_workspace_id(session, tournament_id)
+            workspace_id = await get_tournament_workspace_id(session, tournament_id)
             payload = schemas.TournamentBalanceRequest.model_validate(c.payload(data) or {})
             overrides = payload.config_overrides
             return await jobs.create_tournament_job(

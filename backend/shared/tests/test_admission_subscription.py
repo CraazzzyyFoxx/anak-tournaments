@@ -41,19 +41,15 @@ from shared.services.admission.requirements.subscription import (  # noqa: E402
     KEY,
     build_subscription_signal,
     eval_subscription,
+    serialize_verdicts,
 )
 from shared.services.subscriptions import Outcome, SubscriptionVerdict  # noqa: E402
 
 #: The exact public key set of the per-provider projection.
 #:
-#: This literal was written to hold two implementations together --
-#: ``build_subscription_signal`` here and ``serialize_verdicts`` in
-#: tournament-service -- while ``shared`` could not import a service. Ф3 deleted
-#: the second one, so it no longer pins anything against a twin. It stays for the
-#: other reason, which was always the more important one: ``evidence`` carries
-#: guild ids and role ids, and this set is the allow-list that keeps them
-#: internal. A field added to the projection must be added here deliberately, not
-#: leak because a provider started attaching it.
+#: ``evidence`` carries guild ids and role ids; this set is the allow-list that
+#: keeps them internal. A field added to the projection must be added here
+#: deliberately, not leak because a provider started attaching it.
 SERIALIZED_KEYS = {"state", "tier_rank", "tier_label", "reason"}
 
 CONFIG = AdmissionConfig(require_subscription=True)
@@ -139,10 +135,9 @@ class TestBuildSignalReasons:
 
 class TestBuildSignalProviders:
     def test_providers_match_serialize_verdicts_shape(self):
-        signal = build_subscription_signal(
-            Outcome.SATISFIED,
-            {"discord": _verdict("active", tier=2, reason_code="role_matched")},
-        )
+        verdicts = {"discord": _verdict("active", tier=2, reason_code="role_matched")}
+        signal = build_subscription_signal(Outcome.SATISFIED, verdicts)
+        assert signal.providers == serialize_verdicts(verdicts)
         assert signal.providers == {
             "discord": {"state": "active", "tier_rank": 2, "tier_label": "Tier 2", "reason": "role_matched"}
         }

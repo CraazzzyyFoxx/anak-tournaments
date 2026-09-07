@@ -12,9 +12,8 @@ public read. That handler is being moved onto the admission layer in the same
 pass that rewrites the gates in that file; when it lands, this whole module goes
 with it and the projection exists once.
 
-Until then the two projections MUST stay identical -- the per-row chips render
-from whichever one reached them -- and the shape is asserted against a literal in
-``shared/tests/test_admission_subscription.py``.
+The per-provider projection lives in ``shared`` as :func:`serialize_verdicts`.
+This module re-exports it so existing tournament tests keep importing here.
 
 The one guarantee still worth stating: ``force_refresh`` is always ``False``
 here. Only check-in forces a fresh look, and only for the one acting user.
@@ -26,6 +25,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from shared.services.admission.requirements.subscription import serialize_verdicts
 from shared.services.subscriptions import Outcome, SubscriptionRequirement, SubscriptionVerdict
 
 __all__ = (
@@ -52,26 +52,6 @@ class RequirementEvaluator(Protocol):
     ) -> dict[int, tuple[Outcome, dict[str, SubscriptionVerdict]]]: ...
 
     async def load_requirement(self, *, workspace_id: int) -> SubscriptionRequirement | None: ...
-
-
-def serialize_verdicts(
-    verdicts: Mapping[str, SubscriptionVerdict],
-) -> dict[str, dict[str, Any]]:
-    """Public projection of the per-provider verdicts.
-
-    Deliberately narrow: ``evidence`` can hold guild ids and role ids, which are
-    internal. Only ``reason`` is exposed, because the UI branches on it to pick a
-    call to action ("link Discord" vs "reconnect Twitch").
-    """
-    return {
-        provider: {
-            "state": verdict.state,
-            "tier_rank": verdict.tier_rank,
-            "tier_label": verdict.tier_label,
-            "reason": verdict.evidence.get("reason"),
-        }
-        for provider, verdict in verdicts.items()
-    }
 
 
 async def build_subscription_reads(

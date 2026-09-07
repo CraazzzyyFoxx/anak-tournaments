@@ -16,7 +16,7 @@ else -- including a composed value this module has never heard of -- resolves to
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Final
+from typing import Any, Final
 
 from shared.services.admission.config import AdmissionConfig
 from shared.services.admission.reasons import reason
@@ -24,7 +24,7 @@ from shared.services.admission.signals import AdmissionSignals, SubscriptionSign
 from shared.services.admission.types import AdmissionStage, RequirementState, RequirementVerdict
 from shared.services.subscriptions import Outcome, SubscriptionState, SubscriptionVerdict
 
-__all__ = ("KEY", "build_subscription_signal", "eval_subscription")
+__all__ = ("KEY", "build_subscription_signal", "eval_subscription", "serialize_verdicts")
 
 KEY = "subscription"
 
@@ -37,6 +37,26 @@ _STATES: Final[dict[str, RequirementState]] = {
     Outcome.REFUSED.value: RequirementState.blocked,
     Outcome.UNDETERMINED.value: RequirementState.undetermined,
 }
+
+
+def serialize_verdicts(
+    verdicts: Mapping[str, SubscriptionVerdict],
+) -> dict[str, dict[str, Any]]:
+    """Public projection of the per-provider verdicts.
+
+    Deliberately narrow: ``evidence`` can hold guild ids and role ids, which are
+    internal. Only ``reason`` is exposed, because the UI branches on it to pick a
+    call to action ("link Discord" vs "reconnect Twitch").
+    """
+    return {
+        provider: {
+            "state": verdict.state,
+            "tier_rank": verdict.tier_rank,
+            "tier_label": verdict.tier_label,
+            "reason": verdict.evidence.get("reason"),
+        }
+        for provider, verdict in verdicts.items()
+    }
 
 
 def build_subscription_signal(
@@ -58,11 +78,8 @@ def build_subscription_signal(
     docstring that such a verdict is a provider bug; dropping it would turn the
     bug into an empty reason list, which reads as "no problem here".
 
-    ``providers`` reproduces the ``serialize_verdicts`` projection from
-    ``tournament-service`` instead of importing it: ``shared`` must not depend on
-    a service. The two MUST stay identical -- the per-provider row chips render
-    from whichever one reached them -- and the projection stays narrow on purpose,
-    because ``evidence`` also holds guild and role ids that are internal.
+    ``providers`` is :func:`serialize_verdicts` — one projection for admission
+    chips and the registration read.
     """
     return SubscriptionSignal(
         outcome=outcome.value,
@@ -71,15 +88,7 @@ def build_subscription_signal(
             for provider in sorted(verdicts)
             if verdicts[provider].state != SubscriptionState.ACTIVE
         ),
-        providers={
-            provider: {
-                "state": verdict.state,
-                "tier_rank": verdict.tier_rank,
-                "tier_label": verdict.tier_label,
-                "reason": verdict.evidence.get("reason"),
-            }
-            for provider, verdict in verdicts.items()
-        },
+        providers=serialize_verdicts(verdicts),
     )
 
 

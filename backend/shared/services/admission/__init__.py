@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from shared.services.admission.config import AdmissionConfig
 from shared.services.admission.reasons import REASON_ACTORS, actor_for, reason
+from shared.services.admission.requirements.subscription import serialize_verdicts
 from shared.services.admission.signals import AdmissionSignals, ProfileSignal, SubscriptionSignal
 from shared.services.admission.types import (
     AdmissionDecision,
@@ -51,4 +52,5 @@ __all__ = (
     "SubscriptionSignal",
     "actor_for",
     "reason",
+    "serialize_verdicts",
 )

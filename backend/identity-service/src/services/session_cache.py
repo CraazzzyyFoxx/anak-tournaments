@@ -12,6 +12,7 @@ from typing import Any
 
 from loguru import logger
 
+from shared.rbac import RBAC_USER_KEY_PREFIX
 from src.core.cache import RedisStore
 
 # v3: the cached payload now also carries the user's workspace memberships
@@ -19,7 +20,6 @@ from src.core.cache import RedisStore
 # all. A v2 entry has no ``workspaces`` key and would look like "member of
 # nothing", so the version bump is what retires those entries rather than
 # silently stripping a user's workspaces for one TTL.
-RBAC_CACHE_VERSION = 3
 RBAC_TTL_SECONDS = 60
 
 # Concurrent refreshes of the same token must not look like a reuse attack: the
@@ -36,7 +36,7 @@ class SessionCache:
         rbac_ttl: int = RBAC_TTL_SECONDS,
         refresh_idem_ttl: int = REFRESH_IDEM_TTL_SECONDS,
     ) -> None:
-        self._rbac = RedisStore(f"rbac:v{RBAC_CACHE_VERSION}:user:", ttl=rbac_ttl, purpose="RBAC cache")
+        self._rbac = RedisStore(RBAC_USER_KEY_PREFIX, ttl=rbac_ttl, purpose="RBAC cache")
         # Access tokens are stateless and short-lived, so revoking a session
         # (logout / revoke / reuse-detection) must also block the still-valid
         # access tokens carrying its ``sid``. Entries are written with a TTL

@@ -56,6 +56,8 @@ from shared.services import pick_ban_engine as engine
 from shared.services.bracket.usability import is_encounter_live
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
 from src.services.encounter.veto_session import (
+    BRACKET_PRESET,
+    CUSTOM_PRESET,
     REASON_BRACKET_PREVIEW,
     REASON_NOT_CONFIGURED,
     REASON_SLOT_COUNT_MISMATCH,
@@ -1006,6 +1008,58 @@ def validate_pick_ban_slot_config(slots: list[list[int]], *, reserves: list[int 
             raise HTTPException(status_code=422, detail=f"slot {index} must not repeat candidate item(s): {repeated}")
         if reserve is not None and reserve in candidates:
             raise HTTPException(status_code=422, detail=f"slot {index} reserve must not be one of its own candidates")
+
+
+def validate_pick_ban_upsert(
+    *,
+    mode: MapVetoMode,
+    preset: str | None,
+    kind: PickBanKind,
+    sequence: list[str],
+    item_ids: list[int],
+    slots: list[tuple[list[int], int | None]],
+    stage_id: int | None,
+    round: int | None,
+) -> None:
+    """Cross-field upsert rules that used to live in the RPC handler.
+
+    Mode-vs-field emptiness, slots-vs-custom preset, and round-requires-stage
+    belong with the other config validators so a second write path cannot skip
+    them.
+    """
+    if mode == MapVetoMode.SLOTS:
+        if item_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="item_ids must be empty in slots mode (got item_ids/sequence instead)",
+            )
+        if sequence:
+            raise HTTPException(
+                status_code=422,
+                detail="sequence must be empty in slots mode (got item_ids/sequence instead)",
+            )
+        if preset == CUSTOM_PRESET:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "preset 'custom' is not valid in slots mode; the slots derive the sequence, "
+                    f"so send preset: '{BRACKET_PRESET}' or null"
+                ),
+            )
+        if slots:
+            validate_pick_ban_slot_config(
+                [candidates for candidates, _ in slots],
+                reserves=[reserve for _, reserve in slots],
+            )
+    else:
+        if slots:
+            raise HTTPException(
+                status_code=422,
+                detail="slots must be empty in pool mode (got slots instead)",
+            )
+        validate_pick_ban_config(sequence, item_ids, kind=kind, pool_optional=True)
+    if round is not None and stage_id is None:
+        raise HTTPException(status_code=422, detail="round requires stage_id")
 
 
 def serialize_pick_ban_config(config: PickBanConfig) -> dict:

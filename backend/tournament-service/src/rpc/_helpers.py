@@ -1,16 +1,9 @@
 """Shared helpers for tournament-service RPC subscriber modules.
 
-These were previously copy-pasted into every rpc module (reads, public_rpc,
-admin_misc, registration_admin, integrations, stage_admin) and had already
-drifted (``_dump`` existed with three different signatures). This module is the
-single source of truth; the names keep their historical leading underscore so
-subscriber bodies stay unchanged.
-
-Envelope conventions (mirrors the Go gateway contract):
-- body arrives under ``data["payload"]``; path params at the top level;
-  query params under ``data["query"]`` as ``{key: [values]}``.
-- actor identity is ONLY read from the gateway-stamped ``data["identity"]``
-  blob (never from the client-controlled payload).
+Param decoding is ``shared.rpc.common`` — the same helpers every other
+typed-RPC worker uses. ``_run``/``_read`` stay local: they do not dump
+(``_run``) or do not map ``MissingIdentityError`` (``_read``), which
+``shared.rpc.common.envelope`` would change.
 """
 
 from __future__ import annotations
@@ -21,9 +14,32 @@ from typing import Any
 from pydantic import ValidationError
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.rpc.identity import MissingIdentityError, rehydrate_user
+from shared.rpc.common import (
+    actor as _identity,
+)
+from shared.rpc.common import (
+    dump,
+)
+from shared.rpc.common import (
+    payload as _payload,
+)
+from shared.rpc.common import (
+    q as _q,
+)
+from shared.rpc.common import (
+    q1 as _q1,
+)
+from shared.rpc.common import (
+    qbool as _bool,
+)
+from shared.rpc.common import (
+    require_id as _require_id,
+)
+from shared.rpc.common import (
+    require_path_int as _path_int,
+)
+from shared.rpc.identity import MissingIdentityError
 from shared.schemas.rpc import rpc_error, rpc_ok, status_to_code
-from src import models
 from src.core import db
 
 __all__ = (
@@ -41,47 +57,6 @@ __all__ = (
 )
 
 
-def _identity(data: dict[str, Any]) -> models.AuthUser:
-    """Rehydrate the gateway-injected identity into a transient AuthUser."""
-    return rehydrate_user(data.get("identity"))
-
-
-def _payload(data: dict[str, Any]) -> dict[str, Any]:
-    return data.get("payload") or {}
-
-
-def _require_id(data: dict[str, Any]) -> int:
-    try:
-        return int(data["id"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail="id is required") from exc
-
-
-def _path_int(data: dict[str, Any], name: str) -> int:
-    raw = data.get(name)
-    try:
-        return int(raw)
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=f"{name} is required") from exc
-
-
-def _q(data: dict[str, Any], key: str) -> list[str] | None:
-    vals = (data.get("query") or {}).get(key)
-    if vals is None:
-        return None
-    return vals if isinstance(vals, list) else [vals]
-
-
-def _q1(data: dict[str, Any], key: str, cast: Callable[[str], Any] = str, default: Any = None) -> Any:
-    vals = _q(data, key)
-    if not vals:
-        return default
-    try:
-        return cast(vals[0])
-    except (TypeError, ValueError):
-        return default
-
-
 def _require_q1(data: dict[str, Any], key: str, cast: Callable[[str], Any] = str) -> Any:
     val = _q1(data, key, cast)
     if val is None:
@@ -89,18 +64,8 @@ def _require_q1(data: dict[str, Any], key: str, cast: Callable[[str], Any] = str
     return val
 
 
-def _bool(value: str) -> bool:
-    return value.lower() in ("1", "true", "yes", "on")
-
-
 def _dump(obj: Any, *, exclude_none: bool = False) -> Any:
-    if obj is None:
-        return None
-    if isinstance(obj, list):
-        return [_dump(x, exclude_none=exclude_none) for x in obj]
-    if hasattr(obj, "model_dump"):
-        return obj.model_dump(mode="json", exclude_none=exclude_none)
-    return obj
+    return dump(obj, exclude_none)
 
 
 async def _run(logger: Any, op: Callable[[Any], Awaitable[Any]]) -> dict[str, Any]:
