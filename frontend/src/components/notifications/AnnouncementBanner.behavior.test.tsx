@@ -64,7 +64,10 @@ function announcement(
 const BILINGUAL = announcement(
   31,
   "2026-09-05T10:00:00Z",
-  { en: { title: "Maintenance window", body: "Sunday 02:00 UTC" }, ru: { title: "Технические работы" } },
+  {
+    en: { title: "Maintenance window", body: "Sunday 02:00 UTC" },
+    ru: { title: "Технические работы" }
+  },
   "en",
   "/changelog"
 );
@@ -139,7 +142,9 @@ describe("announcement banner", () => {
     expect(container.textContent).not.toContain("Maintenance window");
     // No account to hang a read mark on, so the id has to live in the browser.
     expect(markRead).not.toHaveBeenCalled();
-    expect(JSON.parse(window.localStorage.getItem(DISMISSED_ANNOUNCEMENTS_STORAGE_KEY) ?? "[]")).toContain(31);
+    expect(
+      JSON.parse(window.localStorage.getItem(DISMISSED_ANNOUNCEMENTS_STORAGE_KEY) ?? "[]")
+    ).toContain(31);
 
     const remounted = await mount();
     expect(remounted.textContent).toBe("");
@@ -157,6 +162,18 @@ describe("announcement banner", () => {
     // The read mark is the record, and it travels between devices; a second
     // local copy would only be a thing to fall out of sync.
     expect(window.localStorage.getItem(DISMISSED_ANNOUNCEMENTS_STORAGE_KEY)).toBeNull();
+  });
+
+  it("restores the announcement when saving its dismissal fails", async () => {
+    authUser = { id: 7, username: "alice" };
+    markRead.mockRejectedValue(new Error("Unavailable"));
+    const container = await mount();
+
+    await dismiss(container);
+    await flush();
+
+    expect(container.textContent).toContain("Maintenance window");
+    expect(container.querySelector("button")?.disabled).toBe(false);
   });
 
   it("prefers the viewer's locale and falls back to the publisher's default", async () => {

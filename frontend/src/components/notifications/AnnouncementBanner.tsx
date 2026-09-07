@@ -9,7 +9,10 @@ import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
-import { readDismissedAnnouncements, rememberDismissedAnnouncement } from "@/lib/announcement-dismissed";
+import {
+  readDismissedAnnouncements,
+  rememberDismissedAnnouncement
+} from "@/lib/announcement-dismissed";
 import { announcementHref, announcementText } from "@/lib/announcement-text";
 import { notificationQueryKeys } from "@/lib/notification-query-keys";
 import { cn } from "@/lib/utils";
@@ -33,7 +36,10 @@ interface AnnouncementContent {
  * `announcementText`) plus the link, whose safety check `announcementHref`
  * owns for both readers of it.
  */
-function announcementContent(payload: Record<string, unknown>, locale: string): AnnouncementContent | null {
+function announcementContent(
+  payload: Record<string, unknown>,
+  locale: string
+): AnnouncementContent | null {
   const text = announcementText(payload, locale);
   if (!text?.title) return null;
 
@@ -74,8 +80,7 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
   const { user } = useAuthProfile();
   const authUserId = user?.id ?? null;
 
-  // Read once per mount: the list only grows through this component, so
-  // re-reading storage on every render would buy nothing.
+  // Read persisted guest dismissals once; failed account writes restore the notice.
   const [dismissed, setDismissed] = useState<number[]>(() => readDismissedAnnouncements());
 
   const query = useQuery({
@@ -90,6 +95,9 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
 
   const markRead = useMutation({
     mutationFn: (ids: number[]) => notificationService.markRead(ids),
+    onError: (_error, ids) => {
+      setDismissed((current) => current.filter((id) => !ids.includes(id)));
+    },
     onSuccess: () => {
       // A read mark *is* the dismissal, and the bell counts the same rows — so
       // closing the banner has to drop its badge too.
@@ -126,7 +134,8 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
     // <body> — the next Tab would then restart at the top of the document
     // instead of continuing where the visitor was. Both shells expose a
     // `tabIndex={-1}` content root, which is where reading resumes.
-    const contentRoot = document.getElementById("main-content") ?? document.getElementById("admin-content");
+    const contentRoot =
+      document.getElementById("main-content") ?? document.getElementById("admin-content");
     contentRoot?.focus({ preventScroll: true });
   };
 
@@ -135,12 +144,10 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
   // make "I was born" a 416px box of air.
   const compact = !content.body && !content.href;
   return (
-    // The card rides the layout's own container, not the viewport: `fixed` +
-    // `end-4` parked it in the dead gutter a 2560px display leaves outside the
-    // 1720px content column, which reads as "something fell off the page".
+    // Centre the notice in the same content column as both page shells.
     // `pointer-events-none` on the rail so the strip across the top of every
     // page does not eat clicks the card itself is not under.
-    <div className="pointer-events-none fixed inset-x-0 top-[var(--aqt-banner-top,var(--aqt-sticky-top))] z-[45] mx-auto flex w-full max-w-screen-3xl justify-end px-4 md:px-6 xl:px-10">
+    <div className="pointer-events-none fixed inset-x-0 top-[var(--aqt-banner-top,var(--aqt-sticky-top))] z-[45] mx-auto flex w-full max-w-screen-3xl justify-center px-4 md:px-6 xl:px-10">
       <Alert
         role="status"
         aria-label={t("notifications.banner.label")}
@@ -148,19 +155,23 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
           // `[&>svg]` overrides: the primitive's own icon slot is absolutely
           // positioned with a padded sibling, which is a layout this card
           // cannot use — it also carries a close button on the trailing edge.
-          "pointer-events-auto flex w-full gap-3 rounded-xl bg-card/95 p-4 shadow-xl backdrop-blur animate-in fade-in slide-in-from-top-2 duration-200 motion-reduce:animate-none [&>svg]:static [&>svg~*]:pl-0 sm:w-max sm:max-w-md",
+          "pointer-events-auto flex w-max max-w-full max-h-[calc(100dvh-var(--aqt-banner-top,var(--aqt-sticky-top))-1rem)] gap-3 overflow-y-auto overscroll-contain rounded-xl bg-card/95 p-3 shadow-xl backdrop-blur animate-in fade-in slide-in-from-top-2 duration-200 ease-out motion-reduce:animate-none [&>svg]:static [&>svg+div]:translate-y-0 [&>svg~*]:pl-0 sm:max-w-md",
           // Single line: the row centres on itself. Multi-line: everything
           // hangs off the first line, where the eye starts.
           compact ? "items-center" : "items-start"
         )}
       >
         <Info className={cn("size-4 shrink-0 text-foreground", !compact && "mt-0.5")} aria-hidden />
-        <div className="min-w-0 flex-1">
-          <AlertTitle className={cn("text-sm font-semibold leading-snug text-pretty", compact && "mb-0")}>
+        <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+          <AlertTitle
+            className={cn("text-sm font-semibold leading-snug text-pretty", compact && "mb-0")}
+          >
             {content.title}
           </AlertTitle>
           {content.body && (
-            <AlertDescription className="text-muted-foreground text-pretty">{content.body}</AlertDescription>
+            <AlertDescription className="text-muted-foreground text-pretty">
+              {content.body}
+            </AlertDescription>
           )}
           {content.href && (
             <Link
@@ -169,7 +180,7 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
               // destination, so the link still makes sense in a screen reader's
               // link list (and contains its visible text, per label-in-name).
               aria-label={`${t("notifications.banner.more")}: ${content.title}`}
-              className="mt-1 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
+              className="mt-1 inline-block rounded-sm text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
             >
               {t("notifications.banner.more")}
             </Link>
@@ -178,10 +189,8 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
         <Button
           variant="ghost"
           size="icon"
-          className={cn(
-            "-me-1.5 size-7 shrink-0 text-muted-foreground hover:text-foreground [&_svg]:size-4",
-            !compact && "-mt-1"
-          )}
+          static={false}
+          className="size-11 shrink-0 text-muted-foreground hover:text-foreground sm:size-9 [&_svg]:size-4"
           aria-label={t("notifications.banner.dismiss")}
           onClick={onDismiss}
         >
