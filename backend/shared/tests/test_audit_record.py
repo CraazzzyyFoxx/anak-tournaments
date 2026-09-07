@@ -86,6 +86,23 @@ class RecordAuditTests(IsolatedAsyncioTestCase):
         self.assertIsNone(machine.actor_auth_user_id)
         self.assertEqual(7, human.actor_auth_user_id)
 
+    async def test_api_key_actor_rewrites_admin_source(self) -> None:
+        session = _Session()
+        actor = SimpleNamespace(id=7, _credential_type="api_key", _api_key_public_id="pub")
+
+        row = await record_audit(session, action="team.create", source="admin", actor=actor)
+
+        self.assertEqual("api_key", row.source)
+        self.assertEqual(7, row.actor_auth_user_id)
+
+    async def test_session_actor_keeps_admin_source(self) -> None:
+        session = _Session()
+        actor = SimpleNamespace(id=7, _credential_type="access_token")
+
+        row = await record_audit(session, action="team.create", source="admin", actor=actor)
+
+        self.assertEqual("admin", row.source)
+
     async def test_client_supplied_strings_are_clipped_to_their_columns(self) -> None:
         session = _Session()
 

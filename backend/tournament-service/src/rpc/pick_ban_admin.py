@@ -33,13 +33,13 @@ from shared.models.tournament.pick_ban import (
     PickBanConfigSlot,
 )
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.audit import record_admin_audit
 from src import models
 from src.core import auth
 from src.rpc._helpers import _identity, _payload, _require_id, _run
 from src.services.encounter import pick_ban_action as pick_ban_action
 from src.services.encounter import pick_ban_config
 from src.services.encounter import pick_ban_session as pick_ban_session
-from src.services.encounter.veto_session import BRACKET_PRESET, CUSTOM_PRESET
 
 _CONFIG_LOAD = (
     selectinload(PickBanConfig.items),
@@ -109,14 +109,6 @@ class PickBanConfigUpsert(BaseModel):
     slots: list[PickBanConfigSlotUpsert] = Field(default_factory=list)
 
 
-def _reject_other_modes_field(value: list[Any], name: str, *, mode: MapVetoMode) -> None:
-    """422 a field that belongs to the pool shape this payload did not pick."""
-    if value:
-        other = "slots" if mode == MapVetoMode.POOL else "item_ids/sequence"
-        raise HTTPException(
-            status_code=422,
-            detail=f"{name} must be empty in {mode.value} mode (got {other} instead)",
-        )
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -142,39 +134,16 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanConfigUpsert.model_validate(_payload(data))
-
-            if body.mode == MapVetoMode.SLOTS:
-                _reject_other_modes_field(body.item_ids, "item_ids", mode=body.mode)
-                _reject_other_modes_field(body.sequence, "sequence", mode=body.mode)
-                if body.preset == CUSTOM_PRESET:
-                    # ``ck_pick_ban_config_slots_not_custom`` would refuse this
-                    # row, and an IntegrityError surfaces as an opaque 500 (same
-                    # reasoning veto_admin.py's legacy upsert had). A slot
-                    # config's sequence is derived from its slots, so there is
-                    # no hand-authored order for ``custom`` to name.
-                    raise HTTPException(
-                        status_code=422,
-                        detail=(
-                            "preset 'custom' is not valid in slots mode; the slots derive the sequence, "
-                            f"so send preset: '{BRACKET_PRESET}' or null"
-                        ),
-                    )
-                # An empty slot list is a rules TEMPLATE: rotation, timer and the
-                # rest, authored at a wide scope for narrower ones to inherit,
-                # with the candidates filled in where matches are actually played
-                # (`PickBanSessionService._has_pool`).
-                if body.slots:
-                    pick_ban_session.validate_pick_ban_slot_config(
-                        [slot.candidates for slot in body.slots],
-                        reserves=[slot.reserve_item_id for slot in body.slots],
-                    )
-            else:
-                _reject_other_modes_field(body.slots, "slots", mode=body.mode)
-                pick_ban_session.validate_pick_ban_config(
-                    body.sequence, body.item_ids, kind=body.kind, pool_optional=True
-                )
-            if body.round is not None and body.stage_id is None:
-                raise HTTPException(status_code=422, detail="round requires stage_id")
+            pick_ban_session.validate_pick_ban_upsert(
+                mode=body.mode,
+                preset=body.preset,
+                kind=body.kind,
+                sequence=body.sequence,
+                item_ids=body.item_ids,
+                slots=[(slot.candidates, slot.reserve_item_id) for slot in body.slots],
+                stage_id=body.stage_id,
+                round=body.round,
+            )
             config = await pick_ban_config.pick_ban_config_service.upsert_config(
                 session,
                 tournament_id=tournament_id,
@@ -198,6 +167,35 @@ def register(broker: Any, logger: Any) -> None:
                     for slot in body.slots
                 ],
             )
+            await record_admin_audit(
+                session,
+                action="pick_ban.config_upsert",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={
+                    "config_id": config.id,
+                    "kind": body.kind,
+                    "stage_id": body.stage_id,
+                    "round": body.round,
+                    "mode": body.mode,
+                    "first_pick_rule": body.first_pick_rule,
+                    "first_ban_rotation": body.first_ban_rotation,
+                    "preset": body.preset,
+                    "turn_timer_seconds": body.turn_timer_seconds,
+                    "no_repeat_scope": body.no_repeat_scope,
+                    "unique_attribute_per_side_per_round": body.unique_attribute_per_side_per_round,
+                    "allow_protect": body.allow_protect,
+                    # Counts, not the pools themselves: a slots-mode config can
+                    # carry hundreds of candidate ids and the journal is not a
+                    # config store.
+                    "sequence_length": len(body.sequence),
+                    "item_count": len(body.item_ids),
+                    "slot_count": len(body.slots),
+                },
+            )
             await session.commit()
             await session.refresh(config, ["items"])
             return _serialize_config(config)
@@ -212,6 +210,24 @@ def register(broker: Any, logger: Any) -> None:
             config = await pick_ban_config.pick_ban_config_service.get_config(session, config_id)
             ws_id = await auth.get_tournament_workspace_id(session, config.tournament_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
+            # Staged before the delete so ``config``'s scope fields are still
+            # loadable off a live row.
+            await record_admin_audit(
+                session,
+                action="pick_ban.config_delete",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=config.tournament_id,
+                before={
+                    "config_id": config.id,
+                    "kind": config.kind,
+                    "stage_id": config.stage_id,
+                    "round": config.round,
+                    "mode": config.mode,
+                },
+            )
             await pick_ban_config.pick_ban_config_service.delete_config(session, config_id)
             await session.commit()
             return {"deleted": True}
@@ -233,6 +249,16 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanAdminReset.model_validate(_payload(data))
             encounter = await _load_encounter(session, encounter_id)
+            await record_admin_audit(
+                session,
+                action="pick_ban.session_reset",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="encounter",
+                entity_id=encounter.id,
+                after={"kind": body.kind},
+            )
             # reset_pick_ban_session commits internally; the response is the
             # same state shape the room polls (viewer_side stays null for
             # admins).
@@ -249,6 +275,21 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanAdminAct.model_validate(_payload(data))
+            await record_admin_audit(
+                session,
+                action="pick_ban.act",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="encounter",
+                entity_id=encounter_id,
+                after={
+                    "kind": body.kind,
+                    "side": body.side,
+                    "action": body.action,
+                    "item_id": body.item_id,
+                },
+            )
             # Same engine as the captain act route, side supplied explicitly
             # (bypasses captain-side resolution); commits internally.
             entry = await pick_ban_action.pick_ban_action_service.perform_pick_ban_action(
@@ -274,6 +315,16 @@ def register(broker: Any, logger: Any) -> None:
             pick_ban = await pick_ban_session.pick_ban_session_service.get_pick_ban_session(session, encounter_id, body.kind)
             if pick_ban is None:
                 raise HTTPException(status_code=400, detail="No round is awaiting an opener choice")
+            await record_admin_audit(
+                session,
+                action="pick_ban.elect_opener",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="encounter",
+                entity_id=encounter_id,
+                after={"kind": body.kind, "first_side": body.first_side},
+            )
             # `acting_side=None` IS the override: the losing captain's exclusive
             # right to choose does not apply to an organizer unsticking a room
             # they are not playing in. Commits inside `advance_to_next_round`;

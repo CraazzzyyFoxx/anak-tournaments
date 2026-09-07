@@ -17,6 +17,7 @@ from shared.messaging.config import DISCORD_COMMANDS_QUEUE
 from shared.observability import publish_message
 from shared.rpc.identity import ensure_workspace_permission
 from shared.schemas.events import DiscordCommandEvent
+from shared.services.audit import record_admin_audit
 from src import schemas
 from src.core import auth, db
 from src.services.admin.discord_channel import discord_channel_service
@@ -79,6 +80,20 @@ def register(broker: Any, logger: Any) -> None:
             if not key:
                 raise HTTPException(status_code=422, detail="key is required")
             body = schemas.SettingUpsert.model_validate(c.payload(data))
+            after: dict[str, Any] = {"key": key}
+            if body.description is not None:
+                after["description"] = body.description
+            # Key (+ description) only — a setting value can carry a credential.
+            await record_admin_audit(
+                session,
+                action="setting.upsert",
+                actor=user,
+                data=data,
+                workspace_id=None,
+                entity_type="setting",
+                entity_label=key,
+                after=after,
+            )
             # `settings_service.upsert_setting` already commits — no rpc-level
             # re-commit.
             setting = await settings_service.upsert_setting(

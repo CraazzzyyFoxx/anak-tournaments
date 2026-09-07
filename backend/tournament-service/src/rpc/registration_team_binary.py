@@ -37,6 +37,7 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.clients.s3 import upload_avatar
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.services.audit import record_admin_audit
 from src.rpc._helpers import _dump, _identity, _path_int, _run
 from src.rpc._s3 import get_s3
 from src.services.registration import teams as team_service
@@ -69,6 +70,18 @@ def register(broker: Any, logger: Any) -> None:
             )
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error)
+            # ``set_team_image`` commits, so the row goes on the session first.
+            # No workspace: the gate is captaincy, not a workspace permission.
+            await record_admin_audit(
+                session,
+                action="registration_team.image_set",
+                actor=user,
+                data=data,
+                workspace_id=None,
+                entity_type="registration_team",
+                entity_id=team_id,
+                after={"image_url": result.public_url, "content_type": data.get("content_type")},
+            )
             team = await team_service.teams_service.set_team_image(
                 session,
                 team_id=team_id,
@@ -91,6 +104,16 @@ def register(broker: Any, logger: Any) -> None:
             # that no longer do.
             s3 = await get_s3()
             await s3.delete_prefix(f"avatars/registration_teams/{team_id}/")
+            await record_admin_audit(
+                session,
+                action="registration_team.image_clear",
+                actor=user,
+                data=data,
+                workspace_id=None,
+                entity_type="registration_team",
+                entity_id=team_id,
+                after={"image_url": None},
+            )
             team = await team_service.teams_service.set_team_image(
                 session,
                 team_id=team_id,

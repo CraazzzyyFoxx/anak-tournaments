@@ -62,7 +62,8 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
         rpc_logs._SF = self._original_sf
 
     async def test_upload_queues_each_file_with_attached_encounter(self) -> None:
-        session = SimpleNamespace()
+        audit_rows: list = []
+        session = SimpleNamespace(add=audit_rows.append)
         rpc_logs._SF = _session_factory(session)
 
         async def store_uploaded_log_bytes(*args, **kwargs):
@@ -77,7 +78,7 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
             patch.object(
                 rpc_logs.tournament_flows,
                 "get",
-                AsyncMock(return_value=SimpleNamespace(id=42, name="Cup")),
+                AsyncMock(return_value=SimpleNamespace(id=42, name="Cup", workspace_id=5)),
             ),
             patch.object(
                 rpc_logs,
@@ -130,6 +131,15 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
         payloads = [call.args[1] for call in publish_mock.await_args_list]
         self.assertEqual(["one.log", "two.log"], [payload["filename"] for payload in payloads])
         self.assertEqual([42, 42], [payload["tournament_id"] for payload in payloads])
+
+        # One audit row for the call — file names only, never the uploaded bytes.
+        self.assertEqual(1, len(audit_rows))
+        row = audit_rows[0]
+        self.assertEqual("match_log.upload", row.action)
+        self.assertEqual(5, row.workspace_id)
+        self.assertEqual("tournament", row.entity_type)
+        self.assertEqual(42, row.entity_id)
+        self.assertEqual({"filenames": ["one.log", "two.log"]}, row.after_json)
 
     async def test_history_query_filters_by_attached_encounter(self) -> None:
         self._recording_session()

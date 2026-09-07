@@ -38,6 +38,7 @@ from shared.messaging.rpc import request_rpc
 from shared.rbac import ensure_workspace_system_roles, get_workspace_system_role
 from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
+from shared.services.audit import record_admin_audit
 from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_host
 from src import models, schemas
 from src.core import config, db
@@ -236,6 +237,21 @@ def register(broker: Any, logger: Any) -> None:
             workspace = await workspace_service.provision(
                 session, payload=body.model_dump(), owner_auth_user_id=user.id
             )
+            # provision already committed; this row is a second transaction so it
+            # can name the new id. A crash between the two loses the trail, never
+            # the workspace — same ceiling as CRUD service_create.
+            await record_admin_audit(
+                session,
+                action="workspace.create",
+                actor=user,
+                data=data,
+                workspace_id=workspace.id,
+                entity_type="workspace",
+                entity_id=workspace.id,
+                entity_label=workspace.name,
+                after={"name": body.name, "slug": body.slug},
+            )
+            await session.commit()
             await _invalidate_auth_rbac_cache(int(user.id), logger)
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
@@ -289,6 +305,17 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, workspace_id, "workspace_member", "update")
             if not await workspace_service.get_by_id(session, workspace_id):
                 raise HTTPException(status_code=404, detail="Workspace not found")
+            # ``backfill_member_roles`` commits, so ``assigned`` is only known
+            # after the row would have to be written -- action and scope only.
+            await record_admin_audit(
+                session,
+                action="workspace.member_roles_backfill",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="workspace",
+                entity_id=workspace_id,
+            )
             assigned = await workspace_service.backfill_member_roles(session, workspace_id)
             return {"assigned": assigned}
 
@@ -309,6 +336,16 @@ def register(broker: Any, logger: Any) -> None:
             if await workspace_service.get_member(session, workspace_id, body.auth_user_id):
                 raise HTTPException(status_code=400, detail="User is already a member")
             role_ids = await _resolve_role_ids(session, workspace_id, role_ids=body.role_ids, role_name=body.role)
+            await record_admin_audit(
+                session,
+                action="workspace.member_add",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="workspace",
+                entity_id=workspace_id,
+                after={"auth_user_id": body.auth_user_id, "role_ids": role_ids},
+            )
             try:
                 member = await workspace_service.invite_member(
                     session, workspace_id, body.auth_user_id, role_ids=role_ids
@@ -336,6 +373,16 @@ def register(broker: Any, logger: Any) -> None:
             if body.role_ids is None and body.role is None:
                 raise HTTPException(status_code=400, detail="role_ids or role is required")
             role_ids = await _resolve_role_ids(session, workspace_id, role_ids=body.role_ids, role_name=body.role)
+            await record_admin_audit(
+                session,
+                action="workspace.member_update",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="workspace",
+                entity_id=workspace_id,
+                after={"auth_user_id": auth_user_id, "role_ids": role_ids},
+            )
             try:
                 member = await workspace_service.change_member_roles(session, member, role_ids=role_ids)
             except ValueError as exc:
@@ -359,6 +406,16 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=404, detail="Member not found")
             if not await workspace_service.can_remove_member(session, member):
                 raise HTTPException(status_code=400, detail="Cannot remove the last workspace owner")
+            await record_admin_audit(
+                session,
+                action="workspace.member_remove",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="workspace",
+                entity_id=workspace_id,
+                after={"auth_user_id": auth_user_id},
+            )
             await workspace_service.revoke_member(session, member)
             await _invalidate_auth_rbac_cache(auth_user_id, logger)
             return None

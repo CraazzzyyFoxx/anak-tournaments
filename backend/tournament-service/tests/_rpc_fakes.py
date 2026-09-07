@@ -47,14 +47,15 @@ class CapturingBroker:
 class FakeSessionMaker:
     """Stands in for ``db.async_session_maker``.
 
-    Defaults to handing back an empty ``SimpleNamespace()`` -- fine when the
-    services under test are themselves stubbed/mocked, so the session object
-    only has to exist. Pass an explicit ``session`` when the handler actually
-    reads/writes through it.
+    Defaults to handing back a ``SimpleNamespace`` whose only member is a no-op
+    ``add`` -- fine when the services under test are themselves stubbed/mocked,
+    so the session object only has to exist and swallow the audit row every
+    mutating handler stages on it. Pass an explicit ``session`` when the handler
+    actually reads/writes through it.
     """
 
     def __init__(self, session: Any | None = None) -> None:
-        self._session = session if session is not None else SimpleNamespace()
+        self._session = session if session is not None else SimpleNamespace(add=lambda _row: None)
 
     def __call__(self) -> "FakeSessionMaker":
         return self

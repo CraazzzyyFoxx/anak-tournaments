@@ -27,13 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.models.identity.auth_user import AuthUser
 from shared.models.platform.audit import AuditLog
 from shared.observability.correlation import get_correlation_id
-from shared.rpc.identity import api_key_label
+from shared.rpc.identity import api_key_label, credential_type
 
-__all__ = ("AuditSource", "json_safe", "record_audit")
+__all__ = ("AuditSource", "json_safe", "record_audit", "record_admin_audit")
 
 # Mirrors ``audit_log.source`` — a plain ``String(16)`` with no DB enum, the same
 # shape ``FinalizeSource`` gives ``encounter_result_audit.source``.
-AuditSource = Literal["admin", "challonge", "discord", "scheduler", "system"]
+AuditSource = Literal["admin", "api_key", "challonge", "discord", "scheduler", "system"]
 
 # ``actor_label``, ``entity_label`` and ``user_agent`` are ``String(255)``;
 # ``ip_address`` is ``String(45)``.
@@ -75,6 +75,13 @@ def _actor_label(actor: AuthUser | None, label: str | None) -> str | None:
     # username is already an accepted trade (see ``_clip``).
     suffix = f" ({credential})"
     return f"{_clip(label, _LABEL_LIMIT - len(suffix))}{suffix}"
+
+
+def _source_for(actor: AuthUser | None, source: AuditSource) -> AuditSource:
+    """API key is the request channel; callers still pass ``admin`` for operator writes."""
+    if actor is not None and credential_type(actor) == "api_key":
+        return "api_key"
+    return source
 
 
 def json_safe(value: Any) -> Any:
@@ -134,12 +141,16 @@ async def record_audit(
     ``actor_label`` is stored as given for a session actor; when the actor came
     in on an API key it gains a ``(api key: <public_id>)`` suffix, so the journal
     records which of the account's credentials acted.
+
+    ``source`` is rewritten to ``api_key`` when the actor authenticated with one.
+    Callers keep passing ``admin`` for operator writes; the credential already
+    rides the actor, so the 100+ sites do not have to know.
     """
     row = AuditLog(
         workspace_id=workspace_id,
         actor_auth_user_id=actor.id if actor else None,
         actor_label=_clip(_actor_label(actor, actor_label), _LABEL_LIMIT),
-        source=source,
+        source=_source_for(actor, source),
         action=action,
         entity_type=entity_type,
         entity_id=entity_id,
@@ -155,3 +166,37 @@ async def record_audit(
     )
     session.add(row)
     return row
+
+
+async def record_admin_audit(
+    session: AsyncSession,
+    *,
+    action: str,
+    actor: AuthUser,
+    data: dict[str, Any],
+    workspace_id: int | None = None,
+    entity_type: str | None = None,
+    entity_id: int | None = None,
+    entity_label: str | None = None,
+    before: dict[str, Any] | None = None,
+    after: dict[str, Any] | None = None,
+    reason: str | None = None,
+    source: AuditSource = "admin",
+) -> AuditLog:
+    """Operator write: ``source="admin"`` unless the actor came in on an API key."""
+    return await record_audit(
+        session,
+        action=action,
+        source=source,
+        actor=actor,
+        actor_label=actor.username,
+        workspace_id=workspace_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        entity_label=entity_label,
+        before=before,
+        after=after,
+        reason=reason,
+        ip_address=data.get("ip_address") if isinstance(data.get("ip_address"), str) else None,
+        user_agent=data.get("user_agent") if isinstance(data.get("user_agent"), str) else None,
+    )

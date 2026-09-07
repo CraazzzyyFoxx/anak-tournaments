@@ -175,6 +175,8 @@ class TeamImageSubjects(IsolatedAsyncioTestCase):
         self.trace: list[str] = []
         self.s3 = _FakeS3(self.trace)
         self.set_image_calls: list[tuple[int, str | None]] = []
+        #: Whatever the handler staged on the session -- the audit row.
+        self.staged: list = []
 
     async def _invoke(self, subject: str, data: dict, *, upload_result: object | None = None) -> dict:
         broker = CapturingBroker()
@@ -204,7 +206,7 @@ class TeamImageSubjects(IsolatedAsyncioTestCase):
             return _team_read(team.image_url)
 
         with (
-            patch.object(helpers.db, "async_session_maker", FakeSessionMaker()),
+            patch.object(helpers.db, "async_session_maker", FakeSessionMaker(SimpleNamespace(add=self.staged.append))),
             patch.object(team_binary, "get_s3", fake_get_s3),
             patch.object(team_binary, "upload_avatar", fake_upload_avatar),
             patch.object(team_binary.auth, "get_team_workspace_id", fake_workspace_id),
@@ -232,6 +234,27 @@ class TeamImageSubjects(IsolatedAsyncioTestCase):
         self.assertEqual(TEAM_ID, self.upload_kwargs["entity_id"])
         self.assertEqual("image/png", self.upload_kwargs["content_type"])
         self.assertEqual(b"\x89PNG\r\n\x1a\nfake", self.upload_kwargs["file_data"])
+
+    async def test_upload_and_delete_journal_the_url_not_the_bytes(self):
+        await self._invoke(
+            "rpc.tournament.teams.image_upload",
+            {"id": TEAM_ID, "identity": IDENTITY, "content_b64": CONTENT_B64, "content_type": "image/png"},
+            upload_result=UploadResult(success=True, key="k", public_url=PUBLIC_URL),
+        )
+
+        (row,) = self.staged
+        self.assertEqual("team.image_set", row.action)
+        self.assertEqual(WORKSPACE_ID, row.workspace_id)
+        self.assertEqual("team", row.entity_type)
+        self.assertEqual(TEAM_ID, row.entity_id)
+        self.assertEqual({"image_url": PUBLIC_URL, "content_type": "image/png"}, row.after_json)
+
+        self.staged.clear()
+        await self._invoke("rpc.tournament.teams.image_delete", {"id": TEAM_ID, "identity": IDENTITY})
+
+        (row,) = self.staged
+        self.assertEqual("team.image_clear", row.action)
+        self.assertEqual({"image_url": None}, row.after_json)
 
     async def test_rejected_upload_400s_and_writes_nothing(self):
         envelope = await self._invoke(

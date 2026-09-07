@@ -799,14 +799,16 @@ class RunningSessionsAreUntouched(_UpsertCase):
     async def test_the_handler_reads_and_writes_only_config_rows(self) -> None:
         # A session carries its own sequence and reserve snapshots and must
         # not follow a config edit. The fake raises on any other entity, so
-        # this pins both halves -- nothing queried, nothing added.
+        # this pins both halves -- nothing queried, and the only row added
+        # besides the config itself (untouched here, this is an update) is the
+        # admin audit entry.
         existing = _config(SLOTS, slots=CANDIDATES)
 
         envelope, session = await self.invoke(slot_body(), existing=existing)
 
         self.assertTrue(envelope["ok"], envelope)
         self.assertEqual(["PickBanConfig"], sorted(session.statements))
-        self.assertEqual([], session.added)
+        self.assertEqual(["AuditLog"], [type(obj).__name__ for obj in session.added])
 
 
 # ── the eager loads serialize_pick_ban_config now depends on ────────────────

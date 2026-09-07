@@ -27,6 +27,7 @@ from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE, PROCESS_TOURNAMENT_
 from shared.models.ingestion.log_processing import LogProcessingSource, LogProcessingStatus
 from shared.observability import publish_message
 from shared.schemas.events import ProcessMatchLogEvent, ProcessTournamentLogsEvent
+from shared.services.audit import record_admin_audit
 from src import models, schemas
 from src.core import auth, db
 from src.core import clients as _clients
@@ -207,6 +208,16 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = await auth._get_log_record_workspace_id(session, record_id)
             await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="update")
 
+            # `log_records_service.retry` commits — stage the row on that session first.
+            await record_admin_audit(
+                session,
+                action="match_log.retry",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="match_log",
+                entity_id=record_id,
+            )
             record = await log_records_service.retry(session, record_id)
             if record is None:
                 raise HTTPException(status_code=404, detail="Log processing record not found")
@@ -256,6 +267,19 @@ def register(broker: Any, logger: Any) -> None:
             uploaded: list[schemas.LogUploadItem] = []
             errors: list[schemas.LogUploadError] = []
             attached_encounter_id = attached_encounter.id if attached_encounter else None
+            # One row for the call, staged before the first per-file commit inside
+            # the loop. Names only — never the decoded bytes.
+            await record_admin_audit(
+                session,
+                action="match_log.upload",
+                actor=user,
+                data=data,
+                workspace_id=tournament.workspace_id,
+                entity_type="tournament",
+                entity_id=tournament.id,
+                entity_label=tournament.name,
+                after={"filenames": filenames},
+            )
 
             max_log_bytes = settings.max_match_log_bytes
             for file_obj, filename in zip(files, filenames, strict=True):
@@ -315,6 +339,19 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="log", action="update"
             )
             tournament = await tournament_flows.get(session, tournament_id, [])
+            await record_admin_audit(
+                session,
+                action="match_log.process_tournament",
+                actor=user,
+                data=data,
+                workspace_id=tournament.workspace_id,
+                entity_type="tournament",
+                entity_id=tournament.id,
+                entity_label=tournament.name,
+            )
+            # Nothing else in this handler writes, so the row needs its own commit
+            # before the event goes out.
+            await session.commit()
             event = ProcessTournamentLogsEvent(tournament_id=tournament.id)
             await publish_message(broker, event.model_dump(), PROCESS_TOURNAMENT_LOGS_QUEUE, logger=logger)
             return {"message": f"Processing all logs for tournament '{tournament.name}'"}

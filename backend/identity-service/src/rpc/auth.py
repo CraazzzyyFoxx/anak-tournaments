@@ -14,6 +14,7 @@ from faststream.rabbit.annotations import RabbitMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.services.audit import record_admin_audit
 from src import schemas
 from src.schemas.rpc import rpc_error
 from src.services.auth import auth
@@ -109,6 +110,18 @@ def register(broker: Any, logger: Any) -> None:
                 session_uuid = UUID(str(raw_session_id))
             except (TypeError, ValueError):
                 raise HTTPException(status_code=400, detail="Invalid session id")
+            # ``auth.revoke_session`` commits, so the journal row has to be on the
+            # session before it — and it is discarded with the rest if the revoke
+            # raises instead (no commit ever runs).
+            await record_admin_audit(
+                session,
+                action="session.revoke",
+                actor=user,
+                data=data,
+                workspace_id=None,
+                entity_type="session",
+                after={"session_id": str(session_uuid)},
+            )
             await auth.revoke_session(session, user, session_uuid)
 
         return await c.with_active_user(logger, data.get("access_token"), op)

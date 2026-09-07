@@ -31,6 +31,7 @@ from faststream.rabbit.annotations import RabbitMessage
 from shared.clients.s3 import avatar_prefix, upload_avatar
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.audit import record_admin_audit
 from src.core import auth
 from src.rpc._helpers import _dump, _identity, _require_id, _run
 from src.rpc._s3 import get_s3
@@ -60,21 +61,25 @@ def _slot(data: dict[str, Any]) -> str:
     return slot
 
 
-async def _gate(session: Any, data: dict[str, Any]) -> tuple[int, str]:
-    """Rehydrate the identity, resolve the workspace, require tournament.update."""
+async def _gate(session: Any, data: dict[str, Any]) -> tuple[Any, int, str, int]:
+    """Rehydrate the identity, resolve the workspace, require tournament.update.
+
+    Returns the actor and the workspace the check ran against so the audit row
+    records the same pair the permission gate used, rather than re-resolving it.
+    """
     user = _identity(data)
     tournament_id = _require_id(data)
     slot = _slot(data)
     ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
     ensure_workspace_permission(user, ws_id, "tournament", "update")
-    return tournament_id, slot
+    return user, tournament_id, slot, ws_id
 
 
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.tournament.tournaments.image_upload")
     async def _image_upload(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            tournament_id, slot = await _gate(session, data)
+            user, tournament_id, slot, ws_id = await _gate(session, data)
             file_data = base64.b64decode(data.get("content_b64", ""))
             result = await upload_avatar(
                 await get_s3(),
@@ -86,6 +91,19 @@ def register(broker: Any, logger: Any) -> None:
             )
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error)
+            # ``set_tournament_image`` commits, so the row goes on the session first.
+            # ``_slot`` already narrowed the slot to cover|logo, so the action name
+            # it builds can only be one of the two known strings.
+            await record_admin_audit(
+                session,
+                action=f"tournament.{slot}_set",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={"slot": slot, "image_url": result.public_url, "content_type": data.get("content_type")},
+            )
             tournament = await tournament_service.set_tournament_image(
                 session, tournament_id, slot=slot, url=result.public_url
             )
@@ -98,13 +116,23 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.tournament.tournaments.image_delete")
     async def _image_delete(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            tournament_id, slot = await _gate(session, data)
+            user, tournament_id, slot, ws_id = await _gate(session, data)
             # S3 first, DB second (same order as team_binary._image_delete): a
             # failed delete leaves the row pointing at bytes that still exist,
             # whereas the reverse order could leave the column pointing at bytes
             # that no longer do.
             s3 = await get_s3()
             await s3.delete_prefix(avatar_prefix("tournaments", tournament_id, slot))
+            await record_admin_audit(
+                session,
+                action=f"tournament.{slot}_clear",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={"slot": slot, "image_url": None},
+            )
             tournament = await tournament_service.set_tournament_image(
                 session, tournament_id, slot=slot, url=None
             )

@@ -17,6 +17,7 @@ from faststream.rabbit import RabbitMessage
 
 from shared.core.pagination import paginated_dump
 from shared.rpc.query import build_query_model
+from shared.services.audit import record_admin_audit
 from src import schemas
 from src.core import db
 from src.services.admin.gamemode import gamemodes as gamemode_service
@@ -26,6 +27,9 @@ from src.services.admin.map import maps as map_service
 from . import _common as c
 
 _SF = db.async_session_maker
+
+# ``prefix`` is the plural RPC namespace; the audit entity_type is singular.
+_ENTITY_TYPES = {"heroes": "hero", "maps": "map", "gamemodes": "gamemode"}
 
 
 def _gate(data: dict) -> None:
@@ -46,6 +50,8 @@ def register(broker: Any, logger: Any) -> None:
         update_fn: Any,
         delete_fn: Any,
     ) -> None:
+        entity = _ENTITY_TYPES[prefix]
+
         @broker.subscriber(f"rpc.app.{prefix}.admin_list")
         async def _list(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
@@ -59,7 +65,19 @@ def register(broker: Any, logger: Any) -> None:
         async def _create(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
                 _gate(data)
-                obj = await create_fn(session, create_schema.model_validate(c.payload(data)))
+                body = create_schema.model_validate(c.payload(data))
+                fields = body.model_dump()
+                await record_admin_audit(
+                    session,
+                    action=f"{entity}.create",
+                    actor=c.actor(data),
+                    data=data,
+                    workspace_id=None,
+                    entity_type=entity,
+                    entity_label=fields.get("name"),
+                    after={k: fields[k] for k in ("name", "slug") if k in fields},
+                )
+                obj = await create_fn(session, body)
                 return read_schema.model_validate(obj, from_attributes=True)
 
             return await c.envelope(logger, f"{prefix}.admin_create", op, session_factory=_SF)
@@ -68,7 +86,19 @@ def register(broker: Any, logger: Any) -> None:
         async def _update(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
                 _gate(data)
-                obj = await update_fn(session, c.require_id(data), update_schema.model_validate(c.payload(data)))
+                obj_id = c.require_id(data)
+                body = update_schema.model_validate(c.payload(data))
+                await record_admin_audit(
+                    session,
+                    action=f"{entity}.update",
+                    actor=c.actor(data),
+                    data=data,
+                    workspace_id=None,
+                    entity_type=entity,
+                    entity_id=obj_id,
+                    after=body.model_dump(exclude_unset=True),
+                )
+                obj = await update_fn(session, obj_id, body)
                 return read_schema.model_validate(obj, from_attributes=True)
 
             return await c.envelope(logger, f"{prefix}.admin_update", op, session_factory=_SF)
@@ -77,7 +107,17 @@ def register(broker: Any, logger: Any) -> None:
         async def _delete(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
                 _gate(data)
-                await delete_fn(session, c.require_id(data))
+                obj_id = c.require_id(data)
+                await record_admin_audit(
+                    session,
+                    action=f"{entity}.delete",
+                    actor=c.actor(data),
+                    data=data,
+                    workspace_id=None,
+                    entity_type=entity,
+                    entity_id=obj_id,
+                )
+                await delete_fn(session, obj_id)
                 return None
 
             return await c.envelope(logger, f"{prefix}.admin_delete", op, session_factory=_SF)

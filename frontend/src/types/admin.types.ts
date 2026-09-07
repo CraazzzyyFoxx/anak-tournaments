@@ -1327,7 +1327,7 @@ export interface TournamentComputationJob {
 // ─── Platform audit log ──────────────────────────────────────────────────────
 
 /** Curated set the backend writes today. `source` stays a `string` on the wire. */
-export type AuditSource = "admin" | "challonge" | "discord" | "scheduler" | "system";
+export type AuditSource = "admin" | "api_key" | "challonge" | "discord" | "scheduler" | "system";
 
 export interface AuditLogRead {
   id: number;

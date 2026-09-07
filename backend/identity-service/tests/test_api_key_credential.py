@@ -207,6 +207,7 @@ def test_audit_row_names_the_api_key_the_actor_acted_through() -> None:
     # The account is still the actor — the suffix says which of its credentials.
     assert row.actor_auth_user_id == 7
     assert row.actor_label == f"ada (api key: {_PUBLIC_ID})"
+    assert row.source == "api_key"
 
 
 def test_audit_row_is_unchanged_for_a_session_actor() -> None:
@@ -214,6 +215,7 @@ def test_audit_row_is_unchanged_for_a_session_actor() -> None:
 
     assert row.actor_auth_user_id == 7
     assert row.actor_label == "ada"
+    assert row.source == "admin"
 
 
 def test_audit_row_for_a_machine_actor_stays_actorless() -> None:

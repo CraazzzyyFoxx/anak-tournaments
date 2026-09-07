@@ -202,6 +202,8 @@ class TournamentImageSubjects(IsolatedAsyncioTestCase):
         self.s3 = _FakeS3(self.trace)
         self.set_image_calls: list[tuple[int, str, str | None]] = []
         self.upload_kwargs: dict = {}
+        #: Whatever the handler staged on the session -- the audit row.
+        self.staged: list = []
 
     async def _invoke(self, subject: str, data: dict, *, upload_result: object | None = None) -> dict:
         broker = CapturingBroker()
@@ -237,7 +239,7 @@ class TournamentImageSubjects(IsolatedAsyncioTestCase):
             )
 
         with (
-            patch.object(helpers.db, "async_session_maker", FakeSessionMaker()),
+            patch.object(helpers.db, "async_session_maker", FakeSessionMaker(SimpleNamespace(add=self.staged.append))),
             patch.object(tournament_binary, "get_s3", fake_get_s3),
             patch.object(tournament_binary, "upload_avatar", fake_upload_avatar),
             patch.object(tournament_binary.auth, "get_tournament_workspace_id", fake_workspace_id),
@@ -292,6 +294,33 @@ class TournamentImageSubjects(IsolatedAsyncioTestCase):
         self.assertEqual(LOGO_URL, envelope["data"]["logo_url"])
         self.assertIsNone(envelope["data"]["cover_image_url"])
         self.assertEqual("logo", self.upload_kwargs["variant"])
+
+    async def test_each_slot_write_journals_its_own_action_without_the_bytes(self):
+        """The action name is built from the slot, so cover and logo are separable
+        in the journal -- and the row carries the URL and content type, never the
+        decoded file.
+        """
+        await self._invoke(
+            self.UPLOAD,
+            self._upload_payload("logo"),
+            upload_result=UploadResult(success=True, key="k", public_url=LOGO_URL),
+        )
+
+        (row,) = self.staged
+        self.assertEqual("tournament.logo_set", row.action)
+        self.assertEqual(WORKSPACE_ID, row.workspace_id)
+        self.assertEqual("tournament", row.entity_type)
+        self.assertEqual(TOURNAMENT_ID, row.entity_id)
+        self.assertEqual(
+            {"slot": "logo", "image_url": LOGO_URL, "content_type": "image/png"}, row.after_json
+        )
+
+        self.staged.clear()
+        await self._invoke(self.DELETE, {"id": TOURNAMENT_ID, "slot": "cover", "identity": IDENTITY})
+
+        (row,) = self.staged
+        self.assertEqual("tournament.cover_clear", row.action)
+        self.assertEqual({"slot": "cover", "image_url": None}, row.after_json)
 
     async def test_string_id_from_the_gateway_is_accepted(self):
         # Both gateway handlers forward path params as strings (r.PathValue /

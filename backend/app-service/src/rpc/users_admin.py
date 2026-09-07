@@ -51,6 +51,7 @@ from shared.core.pagination import paginated_dump
 from shared.core.social import SOCIAL_PROVIDERS, SocialProvider
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
+from shared.services.audit import record_admin_audit
 from src import schemas
 from src.core import clients, db
 from src.services import user_cache
@@ -159,8 +160,23 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.admin_create")
     async def _create(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _gate(data, "create")
-            created = await admin_users.create_user(session, schemas.UserCreate.model_validate(c.payload(data)))
+            user = _gate(data, "create")
+            payload = schemas.UserCreate.model_validate(c.payload(data))
+            # Every write in this module edits the platform-wide player identity, so
+            # each journal row is workspace_id=None (the helper's default) — the only
+            # exception is ``social_set_visibility``, which is scoped to a workspace.
+            # ``create_user`` owns the commit, so the row is staged before it: the new
+            # id does not exist yet, the name identifies what was created.
+            await record_admin_audit(
+                session,
+                action="user.create",
+                actor=user,
+                data=data,
+                entity_type="user",
+                entity_label=payload.name,
+                after={"username": payload.name},
+            )
+            created = await admin_users.create_user(session, payload)
             return user_service.to_read(created, _ENTITIES)
 
         return await c.envelope(logger, "users.admin_create", op, session_factory=_SF)
@@ -168,10 +184,20 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.admin_update")
     async def _update(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _gate(data, "update")
-            updated = await admin_users.update_user(
-                session, c.require_id(data), schemas.UserAdminUpdate.model_validate(c.payload(data))
+            user = _gate(data, "update")
+            user_id = c.require_id(data)
+            payload = schemas.UserAdminUpdate.model_validate(c.payload(data))
+            await record_admin_audit(
+                session,
+                action="user.update",
+                actor=user,
+                data=data,
+                entity_type="user",
+                entity_id=user_id,
+                entity_label=payload.name,
+                after=payload.model_dump(exclude_unset=True),
             )
+            updated = await admin_users.update_user(session, user_id, payload)
             return user_service.to_read(updated, _ENTITIES)
 
         return await _envelope_and_invalidate(logger, "users.admin_update", op, data)
@@ -179,8 +205,17 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.admin_delete")
     async def _delete(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _gate(data, "delete")
-            await admin_users.delete_user(session, c.require_id(data))
+            user = _gate(data, "delete")
+            user_id = c.require_id(data)
+            await record_admin_audit(
+                session,
+                action="user.delete",
+                actor=user,
+                data=data,
+                entity_type="user",
+                entity_id=user_id,
+            )
+            await admin_users.delete_user(session, user_id)
             return None
 
         return await _envelope_and_invalidate(logger, "users.admin_delete", op, data)
@@ -201,9 +236,25 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_superuser(user)
+            payload = schemas.UserMergeExecuteRequest.model_validate(c.payload(data))
+            # ``execute_merge`` commits (and rolls back on failure), so this row is
+            # staged first and shares that fate. Distinct from the merge's own
+            # ``user_merge_audit`` detail row: this is the platform journal.
+            await record_admin_audit(
+                session,
+                action="user.merge",
+                actor=user,
+                data=data,
+                entity_type="user",
+                entity_id=payload.target_user_id,
+                after={
+                    "source_user_id": payload.source_user_id,
+                    "target_user_id": payload.target_user_id,
+                },
+            )
             return await merge_service.execute_merge(
                 session,
-                schemas.UserMergeExecuteRequest.model_validate(c.payload(data)),
+                payload,
                 operator_auth_user_id=user.id,
             )
 
@@ -225,10 +276,21 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.social_add")
     async def _social_add(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            c.require_superuser(c.actor(data))
+            user = c.actor(data)
+            c.require_superuser(user)
             user_id = c.require_id(data)
             payload = schemas.SocialAccountCreate.model_validate(c.payload(data))
             _validate_social_create(payload)
+            # Staged before the writer's commit, so the account id does not exist yet.
+            await record_admin_audit(
+                session,
+                action="social_account.create",
+                actor=user,
+                data=data,
+                entity_type="social_account",
+                entity_label=payload.username,
+                after={"user_id": user_id, "provider": payload.provider, "username": payload.username},
+            )
             await admin_users.add_social_account(
                 session,
                 user_id=user_id,
@@ -243,13 +305,25 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.social_update")
     async def _social_update(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            c.require_superuser(c.actor(data))
+            user = c.actor(data)
+            c.require_superuser(user)
             user_id = c.require_id(data)
+            account_id = int(data["account_id"])
             payload = schemas.SocialAccountUpdate.model_validate(c.payload(data))
+            await record_admin_audit(
+                session,
+                action="social_account.update",
+                actor=user,
+                data=data,
+                entity_type="social_account",
+                entity_id=account_id,
+                entity_label=payload.username,
+                after={"user_id": user_id, **payload.model_dump(exclude_unset=True)},
+            )
             await admin_users.update_social_account(
                 session,
                 user_id=user_id,
-                account_id=int(data["account_id"]),
+                account_id=account_id,
                 username=payload.username,
                 url=payload.url,
             )
@@ -260,9 +334,20 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.social_verify")
     async def _social_verify(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            c.require_superuser(c.actor(data))
+            user = c.actor(data)
+            c.require_superuser(user)
             user_id = c.require_id(data)
-            await admin_users.verify_social_account(session, user_id=user_id, account_id=int(data["account_id"]))
+            account_id = int(data["account_id"])
+            await record_admin_audit(
+                session,
+                action="social_account.verify",
+                actor=user,
+                data=data,
+                entity_type="social_account",
+                entity_id=account_id,
+                after={"user_id": user_id, "verified": True},
+            )
+            await admin_users.verify_social_account(session, user_id=user_id, account_id=account_id)
             return await _refresh_user(session, user_id)
 
         return await _envelope_and_invalidate(logger, "users.social_verify", op, data)
@@ -270,9 +355,20 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.social_delete")
     async def _social_delete(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            c.require_superuser(c.actor(data))
+            user = c.actor(data)
+            c.require_superuser(user)
             user_id = c.require_id(data)
-            await admin_users.delete_social_account(session, user_id=user_id, account_id=int(data["account_id"]))
+            account_id = int(data["account_id"])
+            await record_admin_audit(
+                session,
+                action="social_account.delete",
+                actor=user,
+                data=data,
+                entity_type="social_account",
+                entity_id=account_id,
+                before={"user_id": user_id},
+            )
+            await admin_users.delete_social_account(session, user_id=user_id, account_id=account_id)
             return await _refresh_user(session, user_id)
 
         return await _envelope_and_invalidate(logger, "users.social_delete", op, data)
@@ -280,9 +376,20 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.social_set_primary")
     async def _social_set_primary(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            c.require_superuser(c.actor(data))
+            user = c.actor(data)
+            c.require_superuser(user)
             user_id = c.require_id(data)
-            await admin_users.set_social_primary(session, user_id=user_id, account_id=int(data["account_id"]))
+            account_id = int(data["account_id"])
+            await record_admin_audit(
+                session,
+                action="social_account.set_primary",
+                actor=user,
+                data=data,
+                entity_type="social_account",
+                entity_id=account_id,
+                after={"user_id": user_id, "is_primary": True},
+            )
+            await admin_users.set_social_primary(session, user_id=user_id, account_id=account_id)
             return await _refresh_user(session, user_id)
 
         return await _envelope_and_invalidate(logger, "users.social_set_primary", op, data)
@@ -294,12 +401,25 @@ def register(broker: Any, logger: Any) -> None:
             # editing identities: ``user.read`` is enough. The payload names the scope
             # being changed, so it is also the scope being authorized.
             user_id = c.require_id(data)
+            account_id = int(data["account_id"])
             payload = schemas.SocialVisibilityUpdate.model_validate(c.payload(data))
             _visibility_scope(data, payload.workspace_id)
+            await record_admin_audit(
+                session,
+                action="social_account.set_visibility",
+                actor=c.actor(data),
+                data=data,
+                # The scope the gate above ran against: the workspace whose display
+                # this toggles, or None for the global switch.
+                workspace_id=payload.workspace_id,
+                entity_type="social_account",
+                entity_id=account_id,
+                after={"user_id": user_id, "visible": payload.visible},
+            )
             await admin_users.set_social_visibility(
                 session,
                 user_id=user_id,
-                account_id=int(data["account_id"]),
+                account_id=account_id,
                 workspace_id=payload.workspace_id,
                 visible=payload.visible,
             )
@@ -399,10 +519,10 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.avatar_upload")
     async def _avatar_upload(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _gate(data, "update")
+            user = _gate(data, "update")
             user_id = c.require_id(data)
             # 404 before anything reaches S3, so a bad id never leaves an orphan object.
-            await admin_users.get_user_or_404(session, user_id)
+            existing = await admin_users.get_user_or_404(session, user_id)
             file_data = base64.b64decode(data.get("content_b64", ""))
             result = await upload_avatar(
                 clients.s3_client,
@@ -413,6 +533,17 @@ def register(broker: Any, logger: Any) -> None:
             )
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error)
+            await record_admin_audit(
+                session,
+                action="user.avatar_set",
+                actor=user,
+                data=data,
+                entity_type="user",
+                entity_id=user_id,
+                entity_label=existing.name,
+                before={"avatar_url": existing.avatar_url},
+                after={"avatar_url": result.public_url},
+            )
             player_user = await admin_users.set_avatar(session, user_id=user_id, avatar_url=result.public_url)
             return user_service.to_read(player_user, _ENTITIES)
 
@@ -421,10 +552,21 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.avatar_delete")
     async def _avatar_delete(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _gate(data, "update")
+            user = _gate(data, "update")
             user_id = c.require_id(data)
-            await admin_users.get_user_or_404(session, user_id)
+            existing = await admin_users.get_user_or_404(session, user_id)
             await clients.s3_client.delete_prefix(f"avatars/players/{user_id}/")
+            await record_admin_audit(
+                session,
+                action="user.avatar_clear",
+                actor=user,
+                data=data,
+                entity_type="user",
+                entity_id=user_id,
+                entity_label=existing.name,
+                before={"avatar_url": existing.avatar_url},
+                after={"avatar_url": None},
+            )
             player_user = await admin_users.set_avatar(session, user_id=user_id, avatar_url=None)
             return user_service.to_read(player_user, _ENTITIES)
 

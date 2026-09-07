@@ -41,6 +41,7 @@ from faststream.rabbit.annotations import RabbitMessage
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import WorkspaceRepository
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.audit import record_admin_audit
 from shared.services.roster import roster_engine
 from src import models, schemas
 from src.clients.challonge import challonge_client
@@ -177,7 +178,19 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
             dry_run = _q1(data, "dry_run", _bool, default=False)
-            # import_tournament commits internally.
+            # import_tournament commits internally, so the row is staged on that
+            # session first; the workspace is the one the check above resolved.
+            await record_admin_audit(
+                session,
+                action="challonge.import",
+                actor=user,
+                data=data,
+                workspace_id=await auth.get_tournament_workspace_id(session, tournament_id),
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={"dry_run": dry_run},
+                source="challonge",
+            )
             return await challonge_sync.sync_service.import_tournament(session, tournament_id, dry_run=dry_run)
 
         return await _run(logger, op)
@@ -190,7 +203,17 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
-            # export_tournament commits internally.
+            # export_tournament commits internally — stage the row first.
+            await record_admin_audit(
+                session,
+                action="challonge.export",
+                actor=user,
+                data=data,
+                workspace_id=await auth.get_tournament_workspace_id(session, tournament_id),
+                entity_type="tournament",
+                entity_id=tournament_id,
+                source="challonge",
+            )
             return await challonge_sync.sync_service.export_tournament(session, tournament_id)
 
         return await _run(logger, op)
@@ -204,6 +227,16 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "challonge", "update")
             # auto_push_on_confirm commits internally.
+            await record_admin_audit(
+                session,
+                action="challonge.push_result",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="encounter",
+                entity_id=encounter_id,
+                source="challonge",
+            )
             await challonge_sync.sync_service.auto_push_on_confirm(session, encounter_id)
             return {"status": "ok"}
 
@@ -253,14 +286,38 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             workspace_id = _require_q1(data, "workspace_id", int)
             ensure_workspace_permission(user, workspace_id, "tournament", "create")
+            is_league = _q1(data, "is_league", _bool, default=False)
+            start_date = _require_q1(data, "start_date", date.fromisoformat)
+            end_date = _require_q1(data, "end_date", date.fromisoformat)
+            challonge_slug = _require_q1(data, "challonge_slug")
+            division_grid_version_id = _q1(data, "division_grid_version_id", int)
+            # create_tournament_from_challonge commits, so the row is staged before
+            # it: the tournament id does not exist yet, the request is the story.
+            await record_admin_audit(
+                session,
+                action="challonge.create",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="tournament",
+                entity_label=challonge_slug,
+                after={
+                    "challonge_slug": challonge_slug,
+                    "is_league": is_league,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "division_grid_version_id": division_grid_version_id,
+                },
+                source="challonge",
+            )
             tournament = await tournament_admin_service.tournament_service.create_tournament_from_challonge(
                 session,
                 workspace_id=workspace_id,
-                is_league=_q1(data, "is_league", _bool, default=False),
-                start_date=_require_q1(data, "start_date", date.fromisoformat),
-                end_date=_require_q1(data, "end_date", date.fromisoformat),
-                challonge_slug=_require_q1(data, "challonge_slug"),
-                division_grid_version_id=_q1(data, "division_grid_version_id", int),
+                is_league=is_league,
+                start_date=start_date,
+                end_date=end_date,
+                challonge_slug=challonge_slug,
+                division_grid_version_id=division_grid_version_id,
             )
             # `tournament_read`, not `to_pydantic`: `create_tournament_from_challonge`
             # just created the `challonge_source` row this response's
@@ -295,6 +352,18 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
             body = schemas.ChallongeTeamSyncRequest.model_validate(_payload(data))
+            # apply_team_mapping commits internally — stage the row first.
+            await record_admin_audit(
+                session,
+                action="challonge.team_apply",
+                actor=user,
+                data=data,
+                workspace_id=await auth.get_tournament_workspace_id(session, tournament_id),
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={"mapping_count": len(body.mappings)},
+                source="challonge",
+            )
             return _dump(await challonge_sync.sync_service.apply_team_mapping(session, tournament_id, body.mappings))
 
         return await _run(logger, op)
@@ -328,7 +397,22 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="team", action="create"
             )
             body = schemas.BalancerGoogleSheetFeedUpsert.model_validate(_payload(data))
-            # upsert_google_sheet_feed commits internally.
+            # upsert_google_sheet_feed commits internally — stage the row first.
+            await record_admin_audit(
+                session,
+                action="registration.sheet_upsert",
+                actor=user,
+                data=data,
+                workspace_id=await auth.get_tournament_workspace_id(session, tournament_id),
+                entity_type="tournament",
+                entity_id=tournament_id,
+                after={
+                    "source_url": body.source_url,
+                    "title": body.title,
+                    "auto_sync_enabled": body.auto_sync_enabled,
+                    "auto_sync_interval_seconds": body.auto_sync_interval_seconds,
+                },
+            )
             feed = await sheet_sync.sheet_sync_service.upsert_google_sheet_feed(
                 session,
                 tournament_id,
@@ -352,7 +436,18 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="create"
             )
-            # sync_google_sheet_feed commits internally.
+            # sync_google_sheet_feed commits internally (including on its error
+            # paths), so the row is staged before it — which is also why it carries
+            # no counts: those only exist once that commit has already happened.
+            await record_admin_audit(
+                session,
+                action="registration.sheet_sync",
+                actor=user,
+                data=data,
+                workspace_id=await auth.get_tournament_workspace_id(session, tournament_id),
+                entity_type="tournament",
+                entity_id=tournament_id,
+            )
             result = await sheet_sync.sheet_sync_service.sync_google_sheet_feed(session, tournament_id)
             return _dump(
                 schemas.BalancerGoogleSheetFeedSyncResponse(
@@ -474,6 +569,17 @@ def register(broker: Any, logger: Any) -> None:
             await require_workspace_permission(workspace_id, session=session, user=user, action="create")
             body = schemas.DivisionGridCreate.model_validate(_payload(data))
             grid = await division_grid_service.create_grid(session, workspace_id, body)
+            await record_admin_audit(
+                session,
+                action="division_grid.create",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="division_grid",
+                entity_id=grid.id,
+                entity_label=grid.name,
+                after={"slug": grid.slug, "name": grid.name, "description": grid.description},
+            )
             await session.commit()  # route commits explicitly (service does not).
             return _dump(schemas.DivisionGridRead.model_validate(grid, from_attributes=True))
 
@@ -488,7 +594,20 @@ def register(broker: Any, logger: Any) -> None:
             body = schemas.DivisionGridUpdate.model_validate(_payload(data))
             action = "delete" if body.archived is True else "update"
             await require_workspace_permission(grid.workspace_id, session=session, user=user, action=action)
+            before = {"name": grid.name, "archived": grid.archived_at is not None}
             updated = await division_grid_service.update_grid(session, grid_id=grid_id, data=body)
+            await record_admin_audit(
+                session,
+                action="division_grid.update",
+                actor=user,
+                data=data,
+                workspace_id=grid.workspace_id,
+                entity_type="division_grid",
+                entity_id=grid_id,
+                entity_label=updated.name,
+                before=before,
+                after={"name": updated.name, "archived": updated.archived_at is not None},
+            )
             await session.commit()
             return _dump(schemas.DivisionGridRead.model_validate(updated, from_attributes=True))
 
@@ -502,7 +621,20 @@ def register(broker: Any, logger: Any) -> None:
             grid = await division_grid_service.get_grid_by_id(session, grid_id)
             await require_workspace_permission(grid.workspace_id, session=session, user=user, action="delete")
             force = _q1(data, "force", _bool, default=False)
+            ws_id, grid_name = grid.workspace_id, grid.name
             await division_grid_service.delete_grid(session, grid_id, force=force)
+            await record_admin_audit(
+                session,
+                action="division_grid.delete",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="division_grid",
+                entity_id=grid_id,
+                entity_label=grid_name,
+                before={"name": grid_name},
+                after={"force": force},
+            )
             await session.commit()  # route commits explicitly (service does not).
             return None  # route returns 204 (no body).
 
@@ -530,6 +662,21 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 workspace_id=workspace_id,
                 request=body,
+            )
+            await record_admin_audit(
+                session,
+                action="division_grid.import",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="division_grid",
+                entity_id=grid.id,
+                entity_label=grid.name,
+                after={
+                    "mode": body.mode,
+                    "slug": body.document.slug,
+                    "version_count": len(body.document.versions),
+                },
             )
             await session.commit()
             return _dump(schemas.DivisionGridRead.model_validate(grid, from_attributes=True))
@@ -645,6 +792,22 @@ def register(broker: Any, logger: Any) -> None:
                 include_ow_rank_mappings=body.include_ow_rank_mappings,
                 source_fingerprint=preflight.source_fingerprint,
             )
+            await record_admin_audit(
+                session,
+                action="division_grid.import",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="division_grid",
+                entity_id=body.source_grid_id,
+                after={
+                    "job_id": job.id,
+                    "source_workspace_id": source_workspace.id,
+                    "source_version_id": body.source_version_id,
+                    "include_icons": body.include_icons,
+                    "include_ow_rank_mappings": body.include_ow_rank_mappings,
+                },
+            )
             await session.commit()
             return _dump(division_grid_import_jobs.to_read(job))
 
@@ -707,6 +870,22 @@ def register(broker: Any, logger: Any) -> None:
             await require_workspace_permission(grid.workspace_id, session=session, user=user, action="create")
             body = schemas.DivisionGridVersionCreate.model_validate(_payload(data))
             version = await division_grid_service.create_version(session, grid.workspace_id, grid_id, body)
+            await record_admin_audit(
+                session,
+                action="division_grid.version_create",
+                actor=user,
+                data=data,
+                workspace_id=grid.workspace_id,
+                entity_type="division_grid",
+                entity_id=version.id,
+                entity_label=version.label,
+                after={
+                    "grid_id": grid_id,
+                    "label": version.label,
+                    "version": version.version,
+                    "tier_count": len(body.tiers),
+                },
+            )
             await session.commit()  # route commits explicitly (service does not).
             return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
 
@@ -731,7 +910,25 @@ def register(broker: Any, logger: Any) -> None:
             version = await division_grid_service.get_version(session, version_id)
             await require_workspace_permission(version.grid.workspace_id, session=session, user=user, action="update")
             body = schemas.DivisionGridVersionUpdate.model_validate(_payload(data))
+            before = {"label": version.label, "status": version.status}
+            ws_id = version.grid.workspace_id
             version = await division_grid_service.update_version(session, version_id, body)
+            await record_admin_audit(
+                session,
+                action="division_grid.version_update",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="division_grid",
+                entity_id=version_id,
+                entity_label=version.label,
+                before=before,
+                after={
+                    "label": version.label,
+                    "status": version.status,
+                    "tier_count": len(body.tiers) if body.tiers is not None else None,
+                },
+            )
             await session.commit()  # route commits explicitly (service does not).
             return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
 
@@ -744,7 +941,19 @@ def register(broker: Any, logger: Any) -> None:
             version_id = _require_id(data)
             version = await division_grid_service.get_version(session, version_id)
             await require_workspace_permission(version.grid.workspace_id, session=session, user=user, action="delete")
+            ws_id, label, status = version.grid.workspace_id, version.label, version.status
             await division_grid_service.delete_version(session, version_id)
+            await record_admin_audit(
+                session,
+                action="division_grid.version_delete",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="division_grid",
+                entity_id=version_id,
+                entity_label=label,
+                before={"label": label, "status": status},
+            )
             await session.commit()  # route commits explicitly (service does not).
             return None  # route returns 204 (no body).
 
@@ -757,7 +966,19 @@ def register(broker: Any, logger: Any) -> None:
             version_id = _require_id(data)
             version = await division_grid_service.get_version(session, version_id)
             await require_workspace_permission(version.grid.workspace_id, session=session, user=user, action="update")
+            ws_id = version.grid.workspace_id
             version = await division_grid_service.publish_version(session, version_id)
+            await record_admin_audit(
+                session,
+                action="division_grid.version_publish",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="division_grid",
+                entity_id=version_id,
+                entity_label=version.label,
+                after={"status": version.status, "published_at": version.published_at},
+            )
             await session.commit()  # route commits explicitly (service does not).
             return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
 
@@ -797,6 +1018,17 @@ def register(broker: Any, logger: Any) -> None:
                 workspace=workspace,
                 version_id=version_id,
             )
+            await record_admin_audit(
+                session,
+                action="division_grid.version_activate",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="division_grid",
+                entity_id=version_id,
+                entity_label=version.label,
+                after={"grid_id": version.grid_id, "status": version.status},
+            )
             await session.commit()
             return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
 
@@ -810,6 +1042,22 @@ def register(broker: Any, logger: Any) -> None:
             workspace = await require_workspace_permission(workspace_id, session=session, user=user, action="update")
             body = schemas.DivisionGridSaveRequest.model_validate(_payload(data))
             outcome = await division_grid_service.save_workspace_grid(session, workspace=workspace, data=body)
+            await record_admin_audit(
+                session,
+                action="division_grid.save",
+                actor=user,
+                data=data,
+                workspace_id=workspace_id,
+                entity_type="division_grid",
+                entity_id=outcome.grid.id,
+                entity_label=outcome.grid.name,
+                after={
+                    "mode": outcome.mode,
+                    "active_version_id": outcome.active_version_id,
+                    "saved_version_id": outcome.saved_version_id,
+                    "tier_count": len(body.tiers),
+                },
+            )
             await session.commit()  # route commits explicitly (service does not).
             return _dump(
                 schemas.DivisionGridSaveResult(
@@ -830,7 +1078,19 @@ def register(broker: Any, logger: Any) -> None:
             version_id = _require_id(data)
             version = await division_grid_service.get_version(session, version_id)
             await require_workspace_permission(version.grid.workspace_id, session=session, user=user, action="create")
+            ws_id = version.grid.workspace_id
             cloned = await division_grid_service.clone_version(session, version_id)
+            await record_admin_audit(
+                session,
+                action="division_grid.version_clone",
+                actor=user,
+                data=data,
+                workspace_id=ws_id,
+                entity_type="division_grid",
+                entity_id=cloned.id,
+                entity_label=cloned.label,
+                after={"source_version_id": version_id, "grid_id": cloned.grid_id, "label": cloned.label},
+            )
             await session.commit()  # route commits explicitly (service does not).
             return _dump(schemas.DivisionGridVersionRead.model_validate(cloned, from_attributes=True))
 
@@ -870,6 +1130,21 @@ def register(broker: Any, logger: Any) -> None:
             _require_version_read_access(user, target_version)
             body = schemas.DivisionGridMappingWrite.model_validate(_payload(data))
             mapping = await division_grid_service.upsert_mapping(session, source_version_id, target_version_id, body)
+            await record_admin_audit(
+                session,
+                action="division_grid.mapping_put",
+                actor=user,
+                data=data,
+                workspace_id=source_version.grid.workspace_id,
+                entity_type="division_grid",
+                entity_id=source_version_id,
+                entity_label=body.name,
+                after={
+                    "target_version_id": target_version_id,
+                    "name": body.name,
+                    "rule_count": len(body.rules),
+                },
+            )
             await session.commit()  # route commits explicitly (service does not).
             return _dump(schemas.DivisionGridMappingRead.model_validate(mapping, from_attributes=True))
 
