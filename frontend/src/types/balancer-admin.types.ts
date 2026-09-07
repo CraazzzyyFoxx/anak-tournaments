@@ -321,6 +321,8 @@ export interface AdminRegistrationForm {
   require_open_profile?: boolean;
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
+  /** Extra ``is_substitute`` members per team. 0 disables the bench. */
+  max_substitutes?: number;
   require_subscription?: boolean;
   /** WHEN the requirement blocks: `registration` refuses sign-up too, `check_in`
    *  (the default) only refuses at check-in. Ordered — `registration` implies both. */
@@ -342,6 +344,8 @@ export interface AdminRegistrationFormUpsert {
   require_open_profile?: boolean;
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
+  /** Extra is_substitute members per team. 0 disables the bench. */
+  max_substitutes?: number;
   require_subscription?: boolean;
   subscription_stage?: "registration" | "check_in";
   built_in_fields: Record<string, BuiltInFieldConfig>;

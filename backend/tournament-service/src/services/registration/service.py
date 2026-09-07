@@ -1025,6 +1025,7 @@ class RegistrationService:
                     show_ranks=body.show_ranks,
                     require_subscription=body.require_subscription,
                     subscription_stage=body.subscription_stage.value,
+                    max_substitutes=body.max_substitutes,
                     built_in_fields_json=built_in_fields_json,
                     custom_fields_json=custom_fields_json,
                 ),
@@ -1036,6 +1037,7 @@ class RegistrationService:
             form.show_ranks = body.show_ranks
             form.require_subscription = body.require_subscription
             form.subscription_stage = body.subscription_stage.value
+            form.max_substitutes = body.max_substitutes
             form.built_in_fields_json = built_in_fields_json
             form.custom_fields_json = custom_fields_json
 

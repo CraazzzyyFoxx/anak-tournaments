@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
 import { SaveBar } from "@/components/admin/kit/SaveBar";
 import { StatusPill } from "@/components/admin/kit/StatusPill";
@@ -104,6 +105,7 @@ export default function RegistrationFormBuilder({
   const [requireOpenProfile, setRequireOpenProfile] = useState(false);
   const [openProfileScope, setOpenProfileScope] = useState<"main" | "all">("main");
   const [showRanks, setShowRanks] = useState(false);
+  const [maxSubstitutes, setMaxSubstitutes] = useState(0);
   const [requireSubscription, setRequireSubscription] = useState(false);
   const [subscriptionStage, setSubscriptionStage] = useState<"registration" | "check_in">(
     "check_in"
@@ -148,6 +150,7 @@ export default function RegistrationFormBuilder({
       );
       setOpenProfileScope((data?.open_profile_scope as "main" | "all") ?? "main");
       setShowRanks(data?.show_ranks ?? false);
+      setMaxSubstitutes(data?.max_substitutes ?? 0);
       setBuiltInFields(getBuiltInConfig(data?.built_in_fields ?? {}));
       setCustomFields((data?.custom_fields ?? []).map(hydrateCustomField));
       setHasChanges(false);
@@ -204,6 +207,7 @@ export default function RegistrationFormBuilder({
         require_open_profile: requireOpenProfile,
         open_profile_scope: openProfileScope,
         show_ranks: showRanks,
+        max_substitutes: maxSubstitutes,
         require_subscription: requireSubscription,
         subscription_stage: subscriptionStage,
         built_in_fields: Object.fromEntries(
@@ -370,6 +374,24 @@ export default function RegistrationFormBuilder({
                 id={`${ids}-auto-approve`}
                 checked={autoApprove}
                 onCheckedChange={mark(setAutoApprove)}
+              />
+            </SettingRow>
+          </SettingGroup>
+
+          <SettingGroup title={t("team.title")} description={t("team.description")}>
+            <SettingRow
+              htmlFor={`${ids}-max-substitutes`}
+              label={t("team.maxSubstitutes")}
+              hint={t("team.maxSubstitutesHint")}
+            >
+              <NumberInput
+                id={`${ids}-max-substitutes`}
+                integer
+                min={0}
+                value={maxSubstitutes}
+                onValueChange={(next) => mark(setMaxSubstitutes)(next ?? 0)}
+                aria-label={t("team.maxSubstitutesAria")}
+                className="h-8 w-20 text-sm tabular-nums"
               />
             </SettingRow>
           </SettingGroup>

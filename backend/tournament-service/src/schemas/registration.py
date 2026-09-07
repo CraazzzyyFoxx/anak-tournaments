@@ -96,6 +96,9 @@ class RegistrationFormRead(BaseModel):
     subscription_requirement_json: dict[str, Any] = Field(default_factory=dict)
     built_in_fields: dict[str, BuiltInFieldConfig] = Field(default_factory=dict)
     custom_fields: list[CustomFieldDefinition] = Field(default_factory=list)
+    #: Bench size for team registration. Zero disables substitutes. Not a starter
+    #: slot — see ``BalancerRegistrationForm.max_substitutes``.
+    max_substitutes: int = Field(default=0, ge=0)
     # Workspace sub-role catalog keyed by registration role code (tank/dps/support).
     # The single source of truth for available sub-roles; per-tournament
     # built_in_fields[*].subroles selects which of these are offered.
@@ -119,6 +122,9 @@ class RegistrationFormUpsert(BaseModel):
     # cannot silently turn a check-in requirement into a sign-up wall.
     subscription_stage: SubscriptionEnforcementStage = SubscriptionEnforcementStage.check_in
     built_in_fields: dict[str, BuiltInFieldConfig] = Field(default_factory=dict)
+    #: Omitted by an older client becomes 0, same as every other field on this
+    #: full-replace upsert. The builder always sends it.
+    max_substitutes: int = Field(default=0, ge=0)
     custom_fields: list[CustomFieldDefinition] = Field(default_factory=list)
 
 

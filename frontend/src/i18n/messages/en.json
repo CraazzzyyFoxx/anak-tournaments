@@ -4839,6 +4839,13 @@
         "showRanks": "Show player ranks on participants page",
         "hint": "When enabled, player rank values will be displayed on the public participants page. When disabled, rank values are completely hidden and omitted from backend payloads."
       },
+      "team": {
+        "title": "Team bench",
+        "description": "Substitutes sit outside the starter roster. Zero turns the bench off.",
+        "maxSubstitutes": "Substitutes per team",
+        "maxSubstitutesHint": "How many extra players a registered team may take. They do not fill a starter slot and do not complete the roster.",
+        "maxSubstitutesAria": "Maximum substitutes per team"
+      },
       "unsavedChanges": "Unsaved changes",
       "saveChanges": "Save changes",
       "createForm": "Create form",
