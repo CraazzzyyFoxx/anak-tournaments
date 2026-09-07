@@ -99,9 +99,11 @@ snapshots, not from joins.
 **Audience predicate** (`:me` = `auth.user.id` from the JWT, `:workspaces` = roster ∪ RBAC membership):
 
 ```sql
-(audience = 'user'      and recipient_auth_user_id = :me)
+(
+   (audience = 'user'      and recipient_auth_user_id = :me)
 or (audience = 'workspace' and workspace_id = any(:workspaces))
 or  audience = 'global'
+)
 and published_at <= now() and (expires_at is null or expires_at > now())
 ```
 
