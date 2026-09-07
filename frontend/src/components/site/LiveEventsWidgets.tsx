@@ -1,4 +1,101 @@
-import { getTranslations } from "next-intl/server";
+import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
+import { Calendar, Users } from "lucide-react";
+
+import WorkspaceBrandIcon from "@/components/WorkspaceBrandIcon";
+import { formatDateRange } from "@/lib/utils";
+import { tournamentHref } from "@/lib/tournament-url";
+import { getTournamentStatusMeta } from "@/lib/tournament-status";
+import type { Tournament } from "@/types/tournament.types";
+import type { Workspace } from "@/types/workspace.types";
+
+export type TournamentWithCount = Tournament & { registrations_count?: number };
+
+/**
+ * One live/upcoming tournament as a whole-card link: organizer identity on
+ * top, status on the right, uppercase name, dates, and a registered count
+ * with the "open" affordance. Shared by the site home and workspace home.
+ */
+export async function EventCard({
+  tournament,
+  workspace,
+}: Readonly<{ tournament: TournamentWithCount; workspace?: Workspace }>) {
+  const t = await getTranslations();
+  const locale = await getLocale();
+  const isLive = tournament.status === "live" || tournament.status === "playoffs";
+  const statusMeta = getTournamentStatusMeta(tournament.status);
+  const dateStr = formatDateRange(tournament.start_date, tournament.end_date, locale);
+
+  return (
+    <Link
+      href={tournamentHref(tournament)}
+      className="rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
+    >
+      <div className="group h-full rounded-2xl border border-border/60 bg-card/50 p-5 flex flex-col gap-4 hover:bg-card hover:border-border transition-all duration-150">
+        <div className="flex items-start justify-between gap-3">
+          {workspace ? (
+            <div className="flex min-w-0 items-center gap-3">
+              <WorkspaceBrandIcon
+                name={workspace.name}
+                iconUrl={workspace.icon_url}
+                className="size-12 rounded-xl text-base"
+              />
+              <span className="truncate text-sm font-medium text-muted-foreground">
+                {workspace.name}
+              </span>
+            </div>
+          ) : (
+            <span />
+          )}
+
+          <div className="flex shrink-0 items-center gap-2">
+            {tournament.is_league && (
+              <span className="text-[11px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-full border border-[color:color-mix(in_srgb,var(--aqt-violet)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-violet)_14%,transparent)] text-[color:var(--aqt-violet)]">
+                {t("common.league")}
+              </span>
+            )}
+            {isLive ? (
+              <span className="flex items-center gap-1.5 text-sm font-medium text-[color:var(--aqt-emerald)]">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[color:var(--aqt-emerald)] opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[color:var(--aqt-emerald)]" />
+                </span>
+                {t("common.live")}
+              </span>
+            ) : (
+              <span className={`flex items-center gap-1.5 text-sm font-medium ${statusMeta.textClassName}`}>
+                <span className={`h-2 w-2 rounded-full ${statusMeta.dotClassName ?? "bg-current"}`} />
+                {statusMeta.badgeLabel}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="font-display text-xl font-bold uppercase leading-snug tracking-wide text-foreground flex-1">
+          {tournament.name}
+        </div>
+
+        <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 shrink-0" aria-hidden />
+            {dateStr}
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2">
+              <Users className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="tabular-nums">{tournament.registrations_count ?? 0}</span>{" "}
+              {isLive ? t("common.participants") : t("common.registered")}
+            </span>
+            <span className="font-semibold text-[color:var(--aqt-blue)] group-hover:underline">
+              {t("common.view")}
+              <span aria-hidden>→</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 /**
  * "N live · M upcoming" indicator dot + label — shared by the site home

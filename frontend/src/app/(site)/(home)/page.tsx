@@ -1,12 +1,17 @@
 import React, { Suspense, cache } from "react";
 import Link from "next/link";
-import { getLocale, getTranslations } from "next-intl/server";
-import { BadgeCheck, BarChart3, Calendar, Plus, Trophy, Users } from "lucide-react";
+import { getTranslations } from "next-intl/server";
+import { BadgeCheck, BarChart3, Calendar, Plus, Trophy } from "lucide-react";
 
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
-import { LiveUpcomingBadge, EventsSkeleton } from "@/components/site/LiveEventsWidgets";
+import {
+  EventCard,
+  LiveUpcomingBadge,
+  EventsSkeleton,
+  type TournamentWithCount,
+} from "@/components/site/LiveEventsWidgets";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { PlatformStatsGrid } from "@/components/stats/PlatformStatsGrid";
@@ -14,18 +19,12 @@ import statisticsService from "@/services/statistics.service";
 import workspaceService from "@/services/workspace.service";
 import tournamentService from "@/services/tournament.service";
 import { isTenantHost } from "@/lib/tenant-host";
-import { formatDateRange } from "@/lib/utils";
-import { tournamentHref } from "@/lib/tournament-url";
 import {
   ChartCardSkeleton,
   StatsGridSkeleton,
   TableCardSkeleton,
 } from "@/components/skeletons/dashboard-skeletons";
-import {
-  isTournamentStatusActive,
-  getTournamentStatusMeta,
-} from "@/lib/tournament-status";
-import type { Tournament } from "@/types/tournament.types";
+import { isTournamentStatusActive } from "@/lib/tournament-status";
 import type { Workspace } from "@/types/workspace.types";
 import type { PlayerStatistics } from "@/types/statistics.types";
 
@@ -187,8 +186,6 @@ async function PageIntroSection({ tenantMode }: Readonly<{ tenantMode: boolean }
 // Live events section
 // ─────────────────────────────────────────────────────────────────────────────
 
-type TournamentWithCount = Tournament & { registrations_count?: number };
-
 async function LiveEventsSection() {
   const tenantMode = await getTenantMode();
   let activeTournaments: TournamentWithCount[] = [];
@@ -233,122 +230,10 @@ async function LiveEventsSection() {
             key={tour.id}
             tournament={tour}
             workspace={workspaceMap.get(tour.workspace_id)}
-            showWorkspaceBadge={!tenantMode}
           />
         ))}
       </div>
     </div>
-  );
-}
-
-async function EventCard({
-  tournament,
-  workspace,
-  showWorkspaceBadge = true,
-}: Readonly<{
-  tournament: TournamentWithCount;
-  workspace?: Workspace;
-  showWorkspaceBadge?: boolean;
-}>) {
-  const t = await getTranslations();
-  const locale = await getLocale();
-  const isLive =
-    tournament.status === "live" || tournament.status === "playoffs";
-  const statusMeta = getTournamentStatusMeta(tournament.status);
-  const accent = workspace ? workspaceAccent(workspace.id) : "var(--aqt-teal)";
-  const dateStr = formatDateRange(
-    tournament.start_date,
-    tournament.end_date,
-    locale
-  );
-
-  return (
-    <Link href={tournamentHref(tournament)} className={CARD_LINK_FOCUS}>
-      <div className="group h-full rounded-xl border border-border/60 bg-card/50 p-4 flex flex-col gap-3 hover:bg-card hover:border-border transition-all duration-150">
-        {/* Status + badges row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            {isLive ? (
-              <>
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[color:var(--aqt-emerald)] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[color:var(--aqt-emerald)]" />
-                </span>
-                <span className="text-[11px] font-bold tracking-[0.1em] uppercase text-[color:var(--aqt-emerald)]">
-                  {t("common.live")}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--aqt-amber)] inline-block flex-shrink-0" />
-                <span
-                  className={`text-[11px] font-bold tracking-[0.1em] uppercase ${statusMeta.textClassName}`}
-                >
-                  {statusMeta.badgeLabel}
-                </span>
-              </>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            {tournament.is_league && (
-              <span
-                className="text-[11px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-full"
-                style={{
-                  background: accentTint("var(--aqt-violet)", 14),
-                  border: `1px solid ${accentTint("var(--aqt-violet)", 28)}`,
-                  color: "var(--aqt-violet)",
-                }}
-              >
-                {t("common.league")}
-              </span>
-            )}
-            {workspace && showWorkspaceBadge && (
-              <span
-                className="text-[11px] font-bold tracking-[0.08em] uppercase px-1.5 py-0.5 rounded-full"
-                style={{
-                  background: accentTint(accent, 12),
-                  border: `1px solid ${accentTint(accent, 25)}`,
-                  color: accent,
-                }}
-              >
-                {workspace.name}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Tournament name */}
-        <div className="font-display text-[17px] font-bold leading-snug text-foreground flex-1">
-          {tournament.name}
-        </div>
-
-        {/* Meta info */}
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-            <Calendar className="h-3 w-3 flex-shrink-0" aria-hidden />
-            {dateStr}
-          </div>
-          <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-            <Users className="h-3 w-3 flex-shrink-0" aria-hidden />
-            <span className="tabular-nums">
-              {tournament.registrations_count ?? 0}
-            </span>{" "}
-            {isLive ? t("common.participants") : t("common.registered")}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="pt-2.5 border-t border-border/50 flex justify-end">
-          <span
-            className="text-[12px] font-semibold tracking-[0.02em]"
-            style={{ color: accent }}
-          >
-            {t("common.view")} <span aria-hidden>→</span>
-          </span>
-        </div>
-      </div>
-    </Link>
   );
 }
 
