@@ -54,20 +54,17 @@ export async function EventCard({
                 {t("common.league")}
               </span>
             )}
-            {isLive ? (
-              <span className="flex items-center gap-1.5 text-sm font-medium text-[color:var(--aqt-emerald)]">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[color:var(--aqt-emerald)] opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[color:var(--aqt-emerald)]" />
-                </span>
-                {t("common.live")}
+            <span className={`flex items-center gap-1.5 text-sm font-medium ${statusMeta.textClassName}`}>
+              <span className="relative flex h-2 w-2">
+                {isLive && (
+                  <span
+                    className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${statusMeta.dotClassName}`}
+                  />
+                )}
+                <span className={`relative inline-flex h-2 w-2 rounded-full ${statusMeta.dotClassName}`} />
               </span>
-            ) : (
-              <span className={`flex items-center gap-1.5 text-sm font-medium ${statusMeta.textClassName}`}>
-                <span className={`h-2 w-2 rounded-full ${statusMeta.dotClassName ?? "bg-current"}`} />
-                {statusMeta.badgeLabel}
-              </span>
-            )}
+              {t(`common.statusBadge.${tournament.status}`)}
+            </span>
           </div>
         </div>
 

@@ -12,19 +12,22 @@ type TournamentStatusMeta = {
   variant: "live" | "upcoming" | "finished" | "draft";
   textClassName: string;
   badgeClassName: string;
-  dotClassName?: string;
+  dotClassName: string;
   isActive: boolean;
   isEnded: boolean;
 };
 
+// Colors mirror `.status-pill.{variant}` in globals.css (draft=blue,
+// upcoming=amber, live=rose, finished=dim) so a card and the tournament
+// page never disagree about what a status looks like.
 const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
   draft: {
     label: "Draft",
     badgeLabel: "Draft",
     variant: "draft",
-    textClassName: "text-[color:var(--aqt-gold)]",
-    badgeClassName: "text-[color:var(--aqt-gold)]",
-    dotClassName: "bg-[color:var(--aqt-gold)]",
+    textClassName: "text-[color:var(--aqt-blue)]",
+    badgeClassName: "text-[color:var(--aqt-blue)]",
+    dotClassName: "bg-[color:var(--aqt-blue)]",
     isActive: true,
     isEnded: false
   },
@@ -32,9 +35,9 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     label: "Registration",
     badgeLabel: "Registration",
     variant: "upcoming",
-    textClassName: "text-[color:var(--aqt-tank)]",
-    badgeClassName: "text-[color:var(--aqt-tank)]",
-    dotClassName: "bg-[color:var(--aqt-tank)]",
+    textClassName: "text-[color:var(--aqt-amber)]",
+    badgeClassName: "text-[color:var(--aqt-amber)]",
+    dotClassName: "bg-[color:var(--aqt-amber)]",
     isActive: true,
     isEnded: false
   },
@@ -52,9 +55,9 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     label: "Live",
     badgeLabel: "Live",
     variant: "live",
-    textClassName: "text-[color:var(--aqt-emerald)]",
-    badgeClassName: "text-[color:var(--aqt-emerald)]",
-    dotClassName: "bg-[color:var(--aqt-emerald)]",
+    textClassName: "text-[color:var(--aqt-rose)]",
+    badgeClassName: "text-[color:var(--aqt-rose)]",
+    dotClassName: "bg-[color:var(--aqt-rose)]",
     isActive: true,
     isEnded: false
   },
@@ -62,9 +65,9 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     label: "Playoffs",
     badgeLabel: "Playoffs",
     variant: "live",
-    textClassName: "text-[color:var(--aqt-violet)]",
-    badgeClassName: "text-[color:var(--aqt-violet)]",
-    dotClassName: "bg-[color:var(--aqt-violet)]",
+    textClassName: "text-[color:var(--aqt-rose)]",
+    badgeClassName: "text-[color:var(--aqt-rose)]",
+    dotClassName: "bg-[color:var(--aqt-rose)]",
     isActive: true,
     isEnded: false
   },
@@ -74,6 +77,7 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     variant: "finished",
     textClassName: "text-[color:var(--aqt-fg-muted)]",
     badgeClassName: "text-[color:var(--aqt-fg-dim)]",
+    dotClassName: "bg-[color:var(--aqt-fg-dim)]",
     isActive: false,
     isEnded: true
   },
@@ -83,6 +87,7 @@ const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
     variant: "finished",
     textClassName: "text-[color:var(--aqt-fg-dim)]",
     badgeClassName: "text-[color:var(--aqt-fg-dim)]",
+    dotClassName: "bg-[color:var(--aqt-fg-dim)]",
     isActive: false,
     isEnded: true
   }
