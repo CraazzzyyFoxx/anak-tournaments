@@ -33,6 +33,7 @@ __all__ = (
     "WorkspaceVerificationSet",
     "WorkspaceOwnerRead",
     "WorkspaceOwnerSet",
+    "WorkspaceOwnerTransfer",
     "WorkspaceMemberRoleRead",
     "WorkspaceMemberRead",
     "WorkspaceMemberCreate",
@@ -247,6 +248,14 @@ class WorkspaceOwnerSet(BaseModel):
     only escapable."""
 
     auth_user_id: int | None = None
+
+
+class WorkspaceOwnerTransfer(BaseModel):
+    """Body for ``owner_transfer``. Not nullable, unlike ``WorkspaceOwnerSet``:
+    a hand-off has a recipient by definition, and "leave nobody accountable" is
+    the superuser-only clear on ``owner_set``, not a transfer."""
+
+    auth_user_id: int
 
 
 class WorkspaceMemberRoleRead(BaseModel):

@@ -44,4 +44,8 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	// per-account create cap is counted over).
 	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/owner", Queue: "rpc.app.workspaces.owner_get", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/v1/workspaces/{workspace_id}/owner", Queue: "rpc.app.workspaces.owner_set", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// Transfer moves the stamp and the owner role together, and is open to the
+	// current owner as well as superusers -- the person on the hook is the one
+	// entitled to get off it. Enforced in app-service, not here.
+	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/owner/transfer", Queue: "rpc.app.workspaces.owner_transfer", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 }

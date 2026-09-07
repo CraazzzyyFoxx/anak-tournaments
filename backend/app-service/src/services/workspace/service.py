@@ -11,6 +11,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.messaging.rpc import request_rpc
 from shared.models.identity.auth_user import AuthUser
 from shared.rbac import (
+    assign_default_member_role_if_roleless,
     assign_workspace_system_role,
     ensure_workspace_system_roles,
     get_workspace_system_role,
@@ -513,9 +514,15 @@ class WorkspaceService:
         )
         await self.member_repo.delete(session, member)
 
-    # --- self-service create guard (design §4.4) ----------------------------
+    # --- ownership cap guard (design §4.4) ----------------------------------
 
-    async def ensure_create_limit(self, session: AsyncSession, user: typing.Any) -> None:
+    async def ensure_create_limit(
+        self,
+        session: AsyncSession,
+        user: typing.Any,
+        *,
+        detail: str = "workspace_create_limit_reached",
+    ) -> None:
         """403 unless ``user`` may be accountable for one more workspace.
 
         Superusers short-circuit before any query. Everyone else has their own
@@ -527,13 +534,19 @@ class WorkspaceService:
 
         Counted over ``Workspace.owner_id``, never over the RBAC ``owner`` role:
         see ``WorkspaceRepository.count_by_owner``.
+
+        ``user`` is whoever is about to become accountable, not necessarily the
+        actor: ``owner_transfer`` runs this against the *recipient* (with its own
+        ``detail``), because transferring away frees the sender's slot -- without
+        that check one account could create, hand off and create again forever,
+        which is the exact spam vector the cap exists to close.
         """
         if user.is_superuser:
             return
         await session.scalar(sa.select(AuthUser.id).where(AuthUser.id == user.id).with_for_update())
         limit = (await get_workspace_creation_config(session)).max_owned_per_user
         if await self.workspace_repo.count_by_owner(session, owner_id=user.id) >= limit:
-            raise HTTPException(status_code=403, detail="workspace_create_limit_reached")
+            raise HTTPException(status_code=403, detail=detail)
 
     # --- transactional operations -------------------------------------------
     # Everything below owns a ``session.commit()``: the transport layer never
@@ -909,6 +922,66 @@ class WorkspaceService:
         await record_audit(
             session,
             action="workspace.owner_set",
+            source="admin",
+            actor=actor,
+            actor_label=actor.username,
+            workspace_id=workspace.id,
+            entity_type="workspace",
+            entity_id=workspace.id,
+            entity_label=workspace.slug,
+            before={"owner_id": owner_before},
+            after={"owner_id": workspace.owner_id},
+        )
+        await session.commit()
+        return workspace
+
+    async def transfer_ownership(
+        self,
+        session: AsyncSession,
+        workspace: models.Workspace,
+        new_owner_auth_user_id: int,
+        *,
+        actor: typing.Any,
+    ) -> models.Workspace:
+        """Hand a workspace over: the accountability stamp AND the ``owner`` role.
+
+        This is the difference from ``set_owner``. That one is a superuser fixing
+        a stamp; this is the workspace changing hands, so the RBAC side has to
+        move too or the new owner would answer for a workspace they cannot
+        administer. The caller owns the permission gate (current owner or
+        superuser), the recipient's ownership cap and the ``auth.user`` existence
+        check.
+
+        Order is load-bearing. The recipient is granted ``owner`` *before* the
+        outgoing owner loses it, so the "last owner" invariant
+        (``user_has_only_workspace_owner_role``, enforced on the members screen)
+        is never momentarily violated -- there are two owners in between, never
+        zero.
+
+        The outgoing owner keeps their membership and every other role they hold;
+        only ``owner`` is taken, and ``member`` steps in if that leaves them with
+        nothing. Losing the workspace is not the same as being thrown out of it.
+        """
+        owner_before = workspace.owner_id
+
+        await self.add_member(session, workspace.id, new_owner_auth_user_id)
+        await assign_workspace_system_role(
+            session, user_id=new_owner_auth_user_id, workspace_id=workspace.id, role_name="owner"
+        )
+
+        if owner_before is not None and owner_before != new_owner_auth_user_id:
+            kept = [
+                role.id
+                for role in await self.get_member_workspace_roles(session, workspace.id, owner_before)
+                if role.name != "owner"
+            ]
+            await replace_user_workspace_roles(session, user_id=owner_before, workspace_id=workspace.id, role_ids=kept)
+            await assign_default_member_role_if_roleless(session, user_id=owner_before, workspace_id=workspace.id)
+
+        await self.workspace_repo.update_fields(session, workspace, {"owner_id": new_owner_auth_user_id})
+        await record_audit(
+            session,
+            action="workspace.ownership_transferred",
             source="admin",
             actor=actor,
             actor_label=actor.username,

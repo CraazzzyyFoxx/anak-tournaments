@@ -64,6 +64,18 @@ export default class workspaceService {
     }).then((r) => r.json());
   }
 
+  /**
+   * Hand the workspace over: the accountability stamp AND the RBAC `owner`
+   * role. Allowed for the current owner as well as superusers, unlike
+   * `setOwner`, which only moves the stamp.
+   */
+  static async transferOwnership(id: number, authUserId: number): Promise<WorkspaceOwner> {
+    return apiFetch(`/api/v1/workspaces/${id}/owner/transfer`, {
+      method: "POST",
+      body: { auth_user_id: authUserId }
+    }).then((r) => r.json());
+  }
+
   static async create(data: {
     slug: string;
     name: string;

@@ -17,7 +17,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { AuditTrailButton } from "@/components/admin/AuditTrailSheet";
 import { SaveBar } from "@/components/admin/kit/SaveBar";
-import { WorkspaceOwnerControl, WorkspaceOwnerValue } from "@/components/admin/workspace-owner";
+import {
+  WorkspaceOwnerControl,
+  WorkspaceOwnerTransferControl,
+  WorkspaceOwnerValue
+} from "@/components/admin/workspace-owner";
 import {
   WorkspaceNotListedNotice,
   WorkspaceVerificationIcon,
@@ -177,6 +181,11 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
                   workspace limit.
                 </p>
                 <WorkspaceOwnerControl workspaceId={workspace.id} isSuperuser={isSuperuser} />
+                <WorkspaceOwnerTransferControl
+                  workspaceId={workspace.id}
+                  workspaceName={workspace.name}
+                  isSuperuser={isSuperuser}
+                />
               </div>
 
               <WorkspaceVerificationControl

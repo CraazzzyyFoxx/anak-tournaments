@@ -260,6 +260,10 @@ DOCS: dict[str, dict] = {
         "summary": "Assign or clear the workspace owner",
         "description": "Stamps `Workspace.owner_id` with the given auth account, or clears it when `auth_user_id` is null, and returns the resolved owner. Superuser-only — stricter than the `workspace.update` gate on the matching read, because owner_id is what the per-account create cap is counted over. RBAC roles are untouched (the stamp and the `owner` role are decoupled), the per-account cap is not re-checked (a superuser assignment is the override for it), every call is audited including a no-op, 404 if the workspace or the target account is missing.",
     },
+    "rpc.app.workspaces.owner_transfer": {
+        "summary": "Transfer workspace ownership",
+        "description": "Hands the workspace over: stamps `Workspace.owner_id` with the recipient AND moves the RBAC `owner` role to them, adding them to the workspace if they are not a member yet. Open to the workspace's current owner as well as superusers — `workspace.update` alone is not enough, a co-administrator may not give away a workspace they do not answer for. The outgoing owner keeps their membership and every other role (`member` steps in if `owner` was their only one); the recipient is granted `owner` before the outgoing owner loses it, so the workspace is never ownerless. The recipient's `max_owned_per_user` cap is enforced unless the actor is a superuser (403 `workspace_owner_limit_reached`), because create-then-transfer would otherwise loop past it. Audited, busts both accounts' RBAC cache, 404 if the workspace or the recipient is missing, 403 for anyone but the owner or a superuser.",
+    },
     # ── workspace discord entities ──────────────────────────────────────────────────
     "rpc.app.workspaces.discord_roles": {
         "summary": "List workspace Discord roles",

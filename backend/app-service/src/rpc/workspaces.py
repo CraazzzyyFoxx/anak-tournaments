@@ -594,6 +594,47 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "workspaces.owner_set", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.app.workspaces.owner_transfer")
+    async def _owner_transfer(data: dict, msg: RabbitMessage) -> dict:
+        """Hand the workspace over — stamp and ``owner`` role together.
+
+        Open to the workspace's own current owner, not just a superuser: this is
+        the self-service half of ownership, and the person on the hook is the one
+        entitled to get off it. Everyone else is refused, ``workspace.update``
+        holders included — a co-administrator must not be able to give away a
+        workspace they do not answer for. An unowned workspace has nobody to hand
+        it off, so only a superuser can seed one (via ``owner_set``).
+
+        The recipient's ownership cap is enforced unless the actor is a
+        superuser: without it, create → transfer → create would mint workspaces
+        forever past ``max_owned_per_user``.
+        """
+
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_active(user)
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            if not user.is_superuser and workspace.owner_id != user.id:
+                raise HTTPException(status_code=403, detail="Only the workspace owner may transfer ownership")
+            body = schemas.WorkspaceOwnerTransfer.model_validate(c.payload(data))
+            recipient = await _auth_user_repo.get(session, body.auth_user_id)
+            if not recipient:
+                raise HTTPException(status_code=404, detail="Auth user not found")
+            if not user.is_superuser:
+                await workspace_service.ensure_create_limit(session, recipient, detail="workspace_owner_limit_reached")
+            previous_owner_id = workspace.owner_id
+            workspace = await workspace_service.transfer_ownership(session, workspace, body.auth_user_id, actor=user)
+            # Both sides' permissions changed, so both cached RBAC payloads are
+            # stale -- same bust the member ops do after a role write.
+            for auth_user_id in {body.auth_user_id, previous_owner_id} - {None}:
+                await _invalidate_auth_rbac_cache(auth_user_id, logger)
+            return await _owner_payload(session, workspace)
+
+        return await c.envelope(logger, "workspaces.owner_transfer", op, session_factory=_SF)
+
     # --- Discord entities (roles, channels, server status) ------------------
     # Reads of an organizer's own server config, so they carry the same
     # workspace.update gate as the custom-domain endpoints above: the role and

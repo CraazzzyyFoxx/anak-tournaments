@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { AuthUserSearchCombobox } from "@/components/admin/AuthUserSearchCombobox";
+import { AuthUserSearchCombobox, type AuthUserOption } from "@/components/admin/AuthUserSearchCombobox";
+import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 
 /**
  * Shared cache contract for the owner of one workspace.
@@ -120,6 +123,81 @@ export function WorkspaceOwnerControl({
         Superusers only, and audited. This moves the accountability stamp alone: workspace roles
         are unchanged, so grant or revoke the “owner” role in Members separately.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Ownership hand-off — the stamp AND the `owner` role.
+ *
+ * Shown to the current owner as well as superusers, which is exactly the gate
+ * the backend enforces: the person on the hook is the one entitled to get off
+ * it, and a co-administrator with `workspace.update` is not. Picking an account
+ * opens the confirmation rather than firing, because unlike the reassignment
+ * above this one takes the actor's own owner role away.
+ */
+export function WorkspaceOwnerTransferControl({
+  workspaceId,
+  workspaceName,
+  isSuperuser
+}: Readonly<{ workspaceId: number | null; workspaceName: string; isSuperuser: boolean }>) {
+  const queryClient = useQueryClient();
+  const owner = useWorkspaceOwner(workspaceId).data;
+  const currentUserId = useAuthProfileStore((state) => state.user?.id);
+  const [target, setTarget] = useState<AuthUserOption | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: (authUserId: number) =>
+      workspaceService.transferOwnership(workspaceId as number, authUserId),
+    onSuccess: (next) => {
+      queryClient.setQueryData(["workspace-owner", workspaceId], next);
+      setTarget(null);
+      notify.success(
+        `Ownership transferred to ${next.username ? `@${next.username}` : `#${next.auth_user_id}`}`
+      );
+    },
+    onError: (error) => notify.apiError(error, { title: "Could not transfer ownership" })
+  });
+
+  const isOwner = currentUserId != null && owner?.auth_user_id === currentUserId;
+  if (workspaceId == null || !(isSuperuser || isOwner)) return null;
+
+  return (
+    <div className="mt-3">
+      <label htmlFor="workspace-owner-transfer" className="text-sm font-medium leading-none">
+        Transfer ownership
+      </label>
+      <div className="mt-1.5">
+        <AuthUserSearchCombobox
+          id="workspace-owner-transfer"
+          value={target?.id}
+          selectedLabel={target?.label}
+          onSelect={(account) => setTarget(account ?? null)}
+          placeholder="Hand over to…"
+          disabled={mutation.isPending}
+        />
+      </div>
+      <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+        The recipient is added to the workspace and granted the “owner” role. The outgoing owner
+        keeps their membership and every other role they hold — only “owner” moves.
+      </p>
+
+      <ConfirmDialog
+        open={target != null}
+        onOpenChange={(next) => {
+          if (!next) setTarget(null);
+        }}
+        pending={mutation.isPending}
+        intent={{
+          title: "Transfer ownership",
+          description: `${target?.label ?? "This account"} becomes the owner of “${workspaceName}” and is granted the “owner” role. ${isOwner && !isSuperuser ? "You keep your membership but lose the owner role, and only the new owner or a superuser can hand it back." : "The outgoing owner keeps their membership but loses the owner role."}`,
+          confirmLabel: "Transfer ownership",
+          tone: "danger"
+        }}
+        onConfirm={() => {
+          if (target) mutation.mutate(target.id);
+        }}
+      />
     </div>
   );
 }

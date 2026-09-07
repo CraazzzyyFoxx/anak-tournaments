@@ -3431,6 +3431,18 @@
       },
       "summary": "Assign or clear the workspace owner"
     },
+    "rpc.app.workspaces.owner_transfer": {
+      "description": "Hands the workspace over: stamps `Workspace.owner_id` with the recipient AND moves the RBAC `owner` role to them, adding them to the workspace if they are not a member yet. Open to the workspace's current owner as well as superusers \u2014 `workspace.update` alone is not enough, a co-administrator may not give away a workspace they do not answer for. The outgoing owner keeps their membership and every other role (`member` steps in if `owner` was their only one); the recipient is granted `owner` before the outgoing owner loses it, so the workspace is never ownerless. The recipient's `max_owned_per_user` cap is enforced unless the actor is a superuser (403 `workspace_owner_limit_reached`), because create-then-transfer would otherwise loop past it. Audited, busts both accounts' RBAC cache, 404 if the workspace or the recipient is missing, 403 for anyone but the owner or a superuser.",
+      "request": {
+        "array": false,
+        "ref": "app.WorkspaceOwnerTransfer"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.WorkspaceOwnerRead"
+      },
+      "summary": "Transfer workspace ownership"
+    },
     "rpc.app.workspaces.set_custom_domain": {
       "description": "Normalizes and stores a custom domain plus a fresh DNS TXT verification token, resetting verification; requires workspace.update, 404 if workspace missing, 400 on an invalid domain.",
       "request": {
@@ -17791,6 +17803,20 @@
         }
       },
       "title": "WorkspaceOwnerSet",
+      "type": "object"
+    },
+    "app.WorkspaceOwnerTransfer": {
+      "description": "Body for ``owner_transfer``. Not nullable, unlike ``WorkspaceOwnerSet``:\na hand-off has a recipient by definition, and \"leave nobody accountable\" is\nthe superuser-only clear on ``owner_set``, not a transfer.",
+      "properties": {
+        "auth_user_id": {
+          "title": "Auth User Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "auth_user_id"
+      ],
+      "title": "WorkspaceOwnerTransfer",
       "type": "object"
     },
     "app.WorkspaceRead": {
