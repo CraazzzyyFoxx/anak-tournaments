@@ -22,19 +22,24 @@ rather than to record a result nobody publishes
 
 from __future__ import annotations
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.enums import MapPoolEntryStatus, MatchSource, PickBanKind
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.models.identity.user import User
 from shared.models.matches.match import Match
 from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.encounter_report import EncounterMapReport
 from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
+from shared.models.tournament.team import Team
 from shared.repository import EncounterMapReportRepository, PickBanEntryRepository
 from shared.services import pick_ban_engine as engine
 from shared.services.bracket.usability import is_encounter_live
+from shared.services.notifications import notify, publish_notification_created
 from shared.services.scrim_scope import is_scrim_container
+from src.core.redis import get_realtime_redis
 from src.services.encounter.pick_ban_session import pick_ban_session_service
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
 
@@ -50,6 +55,51 @@ class MapReportService:
     ) -> None:
         self.report_repo = report_repo
         self.entry_repo = entry_repo
+
+    async def _notify_dispute(
+        self,
+        session: AsyncSession,
+        encounter: Encounter,
+        *,
+        map_id: int,
+        map_index: int,
+        reporter_auth_user_id: int | None,
+    ) -> list[int]:
+        """Both captains, not just the opponent.
+
+        A contradiction needs one of the two to correct their claim, and from
+        inside the reconciliation neither side is known to be the wrong one -- the
+        captain who just reported has as much to answer for as the one who
+        reported first. Telling only the opponent would leave the report standing
+        unexamined on the half that may be mistaken.
+
+        One query for the pair, not one per side; a team with no captain, or one
+        captained by a shadow player (``players.user.auth_user_id IS NULL``),
+        simply drops out of the result.
+        """
+        result = await session.execute(
+            sa.select(User.auth_user_id)
+            .join(Team, Team.captain_id == User.id)
+            .where(
+                Team.id.in_([encounter.home_team_id, encounter.away_team_id]),
+                User.auth_user_id.is_not(None),
+            )
+        )
+        recipients = [int(value) for value in result.scalars().all()]
+        for recipient in recipients:
+            await notify(
+                session,
+                kind="encounter.report_disputed",
+                recipient_auth_user_id=recipient,
+                actor_auth_user_id=reporter_auth_user_id,
+                payload={
+                    "encounter_id": encounter.id,
+                    "tournament_id": encounter.tournament_id,
+                    "map_id": map_id,
+                    "map_index": map_index,
+                },
+            )
+        return recipients
 
     async def _pending_play(
         self, session: AsyncSession, map_pick_ban: PickBanSession | None, map_id: int
@@ -135,7 +185,18 @@ class MapReportService:
         reconciliation = engine.reconcile_map_reports(pair)
 
         if reconciliation.resolved is None:
+            recipients: list[int] = []
+            if reconciliation.disputed:
+                recipients = await self._notify_dispute(
+                    session,
+                    encounter,
+                    map_id=map_id,
+                    map_index=map_index,
+                    reporter_auth_user_id=reporter_user_id,
+                )
             await session.commit()
+            for recipient in recipients:
+                await publish_notification_created(get_realtime_redis(), recipient_auth_user_id=recipient)
             return {"disputed": reconciliation.disputed, "resolved": False, "match_id": None}
 
         resolved_home, resolved_away = reconciliation.resolved

@@ -1,0 +1,545 @@
+"""The six mutations in tournament-service that append to somebody's inbox.
+
+What is asserted throughout is the *observable* outcome: after the flow ran, a
+``notification`` row exists (or does not), addressed to the right account, with
+the snapshot the frontend renders. Never "the helper was called" -- a mock echo
+would pass just as happily against a `notify()` that writes nothing.
+
+The engine is in-memory SQLite behind a synchronous ``Session`` (no async SQLite
+driver is installed), the shape ``test_scrim_recalculation_exclusion.py`` and
+``test_notification_repository.py`` already use. Three things are patched, none
+of them the behaviour under test:
+
+* the two Redis-backed invite rate limiters (`assert_invite_attempt_allowed`,
+  `assert_accept_attempt_allowed`) -- they meter, they do not decide anything a
+  notification depends on;
+* ``_assert_registration_open`` and ``_resolve_shape``, whose real
+  implementations need the phase-schedule and roster-slot fixture graphs; the
+  first is replaced by the *real* Tournament row the flow then snapshots, so the
+  `tournament_name` in the payload still comes from the database;
+* ``is_encounter_live`` / ``get_pick_ban_session`` for the map report, for the
+  same reason.
+
+The shim deliberately hides ``info``/``sync_session``: that is the handle the
+realtime-staging factories look for, and without it they no-op, so these tests
+exercise the notification write without dragging a ``workspace_event`` row and a
+Redis publish into every assertion.
+"""
+
+from __future__ import annotations
+
+import sys
+import warnings
+from datetime import UTC, datetime
+from pathlib import Path
+from types import SimpleNamespace
+from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
+
+import sqlalchemy as sa
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
+
+backend_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(backend_root))
+sys.path.insert(0, str(backend_root / "tournament-service"))
+
+from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.models.platform.notification import Notification  # noqa: E402
+from shared.testing import install_postgres_type_shims  # noqa: E402
+from src import models  # noqa: E402
+from src.schemas.registration import RegistrationCreate  # noqa: E402
+from src.services.encounter import map_report as map_report_module  # noqa: E402
+from src.services.registration import teams as teams_module  # noqa: E402
+from src.services.tournament import events as events_module  # noqa: E402
+
+install_postgres_type_shims()
+
+TABLE_NAMES = (
+    "notification",
+    "event_outbox",
+    "tournament.tournament",
+    "tournament.tournament_phase_schedule",
+    "tournament.team",
+    "tournament.encounter",
+    "tournament.encounter_map_report",
+    "matches.match",
+    "players.user",
+    "workspace_member",
+    "balancer.registration",
+    "balancer.registration_role",
+    "balancer.registration_form",
+    "balancer.registration_team",
+    "balancer.registration_team_invite",
+)
+
+WORKSPACE_ID = 1
+TOURNAMENT_ID = 10
+TOURNAMENT_NAME = "Autumn Cup"
+
+CAPTAIN_AUTH = 501
+INVITEE_AUTH = 502
+OPPONENT_AUTH = 503
+
+FIVE_STACK = parse_roster_slots({"tank": 1, "dps": 2, "support": 2})
+
+
+class _AsyncSessionShim:
+    """Async facade over a synchronous ``Session`` -- see the module docstring."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    async def execute(self, statement, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return self._session.execute(statement, *args, **kwargs)
+
+    async def scalar(self, statement, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return self._session.scalar(statement, *args, **kwargs)
+
+    async def scalars(self, statement, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return self._session.scalars(statement, *args, **kwargs)
+
+    async def flush(self) -> None:
+        self._session.flush()
+
+    async def commit(self) -> None:
+        self._session.commit()
+
+    async def rollback(self) -> None:
+        self._session.rollback()
+
+    async def refresh(self, obj) -> None:  # noqa: ANN001
+        self._session.refresh(obj)
+
+    def add(self, obj) -> None:  # noqa: ANN001
+        self._session.add(obj)
+
+    def __getattr__(self, name):  # noqa: ANN001, ANN204
+        if name in ("info", "sync_session"):
+            # Hidden on purpose: the realtime-staging factories key off these.
+            raise AttributeError(name)
+        return getattr(self._session, name)
+
+
+class _Fixture:
+    """A throwaway in-memory database plus the row builders these flows need."""
+
+    def __init__(self) -> None:
+        metadata = models.Tournament.__table__.metadata
+        tables = [metadata.tables[name] for name in TABLE_NAMES]
+        self.engine = sa.create_engine(
+            "sqlite://",
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+        )
+        with self.engine.begin() as conn:
+            for schema in sorted({table.schema for table in tables if table.schema}):
+                conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
+            for table in tables:
+                table.create(conn)
+        self.session = Session(self.engine, expire_on_commit=False)
+        self.shim = _AsyncSessionShim(self.session)
+        self.tournament = models.Tournament(
+            id=TOURNAMENT_ID,
+            workspace_id=WORKSPACE_ID,
+            name=TOURNAMENT_NAME,
+            slug="autumn-cup",
+            is_hidden=False,
+            is_league=False,
+            start_date=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        self.session.add(self.tournament)
+        self.session.flush()
+
+    def close(self) -> None:
+        self.session.close()
+        self.engine.dispose()
+
+    # -- builders ---------------------------------------------------------
+
+    def player(self, name: str, *, auth_user_id: int | None) -> models.WorkspaceMember:
+        """A domain player plus their workspace membership.
+
+        ``auth_user_id=None`` is a shadow player: a real competitor with no site
+        account behind them, which every recipient resolution has to survive.
+        """
+        user = models.User(name=name, auth_user_id=auth_user_id)
+        self.session.add(user)
+        self.session.flush()
+        member = models.WorkspaceMember(workspace_id=WORKSPACE_ID, player_id=user.id)
+        self.session.add(member)
+        self.session.flush()
+        return member
+
+    def registration(
+        self,
+        member: models.WorkspaceMember,
+        *,
+        battle_tag: str,
+        status: str = "approved",
+        team_id: int | None = None,
+        slot_code: str | None = None,
+    ) -> models.BalancerRegistration:
+        registration = models.BalancerRegistration(
+            tournament_id=TOURNAMENT_ID,
+            workspace_member_id=member.id,
+            battle_tag=battle_tag,
+            status=status,
+            registration_team_id=team_id,
+            team_slot_code=slot_code,
+            is_substitute=False,
+        )
+        self.session.add(registration)
+        self.session.flush()
+        return registration
+
+    def team(self, name: str) -> models.BalancerRegistrationTeam:
+        team = models.BalancerRegistrationTeam(
+            workspace_id=WORKSPACE_ID,
+            tournament_id=TOURNAMENT_ID,
+            name=name,
+            name_normalized=name.lower(),
+            status=teams_module.TEAM_FORMING,
+        )
+        self.session.add(team)
+        self.session.flush()
+        return team
+
+    def invite(
+        self,
+        team: models.BalancerRegistrationTeam,
+        *,
+        slot_code: str,
+        target_auth_user_id: int | None,
+    ) -> models.BalancerRegistrationTeamInvite:
+        invite = models.BalancerRegistrationTeamInvite(
+            team_id=team.id,
+            slot_code=slot_code,
+            is_substitute=False,
+            target_auth_user_id=target_auth_user_id,
+            state=teams_module.INVITE_PENDING,
+            invited_by=CAPTAIN_AUTH,
+        )
+        self.session.add(invite)
+        self.session.flush()
+        return invite
+
+    # -- assertions -------------------------------------------------------
+
+    def notifications(self, kind: str | None = None) -> list[Notification]:
+        statement = sa.select(Notification).order_by(Notification.id)
+        if kind is not None:
+            statement = statement.where(Notification.kind == kind)
+        return list(self.session.scalars(statement))
+
+
+def _auth_user(auth_user_id: int, username: str) -> SimpleNamespace:
+    """What the flows read off the identity: an id and a display handle."""
+    return SimpleNamespace(id=auth_user_id, username=username)
+
+
+class _ProducerTestCase(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.fx = _Fixture()
+        self.addCleanup(self.fx.close)
+
+
+class TeamInviteReceivedTests(_ProducerTestCase):
+    """``teams.py:invite_member`` -- only a targeted invite has an addressee."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.team = self.fx.team("Vanguard")
+        captain_member = self.fx.player("Cap", auth_user_id=CAPTAIN_AUTH)
+        captain_registration = self.fx.registration(
+            captain_member, battle_tag="Cap#1111", team_id=self.team.id, slot_code="tank"
+        )
+        self.team.captain_registration_id = captain_registration.id
+        invitee_member = self.fx.player("Rook", auth_user_id=INVITEE_AUTH)
+        self.invitee_registration = self.fx.registration(invitee_member, battle_tag="Rook#2222")
+        self.fx.session.flush()
+
+        limiter = patch.object(teams_module, "assert_invite_attempt_allowed", AsyncMock())
+        limiter.start()
+        self.addCleanup(limiter.stop)
+        window = patch.object(
+            teams_module.RegistrationTeamService,
+            "_assert_registration_open",
+            AsyncMock(return_value=self.fx.tournament),
+        )
+        window.start()
+        self.addCleanup(window.stop)
+        shape = patch.object(
+            teams_module.RegistrationTeamService, "_resolve_shape", AsyncMock(return_value=FIVE_STACK)
+        )
+        shape.start()
+        self.addCleanup(shape.stop)
+        publish = patch.object(teams_module, "publish_notification_created", AsyncMock())
+        publish.start()
+        self.addCleanup(publish.stop)
+
+    async def test_targeted_invite_notifies_the_invitee(self) -> None:
+        invite, raw_token = await teams_module.teams_service.invite_member(
+            self.fx.shim,
+            team_id=self.team.id,
+            auth_user=_auth_user(CAPTAIN_AUTH, "cap"),
+            slot_code="dps",
+            target_registration_id=self.invitee_registration.id,
+        )
+
+        self.assertIsNone(raw_token)
+        rows = self.fx.notifications()
+        self.assertEqual(1, len(rows))
+        self.assertEqual("team_invite.received", rows[0].kind)
+        self.assertEqual(INVITEE_AUTH, rows[0].recipient_auth_user_id)
+        self.assertEqual(CAPTAIN_AUTH, rows[0].actor_auth_user_id)
+        self.assertEqual(
+            {
+                "team_id": self.team.id,
+                "team_name": "Vanguard",
+                "tournament_id": TOURNAMENT_ID,
+                "tournament_name": TOURNAMENT_NAME,
+                "slot_code": "dps",
+                "is_substitute": False,
+                "invite_id": invite.id,
+            },
+            rows[0].payload_json,
+        )
+
+    async def test_link_invite_notifies_nobody(self) -> None:
+        """A shareable token has no addressee -- there is nobody's inbox to write to."""
+        _invite, raw_token = await teams_module.teams_service.invite_member(
+            self.fx.shim,
+            team_id=self.team.id,
+            auth_user=_auth_user(CAPTAIN_AUTH, "cap"),
+            slot_code="dps",
+        )
+
+        self.assertIsNotNone(raw_token)
+        self.assertEqual([], self.fx.notifications())
+
+
+class TeamInviteAnsweredTests(_ProducerTestCase):
+    """``accept_invite`` / ``decline_invite`` -- the captain is the one waiting."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.team = self.fx.team("Vanguard")
+        captain_member = self.fx.player("Cap", auth_user_id=CAPTAIN_AUTH)
+        captain_registration = self.fx.registration(
+            captain_member, battle_tag="Cap#1111", team_id=self.team.id, slot_code="tank"
+        )
+        self.team.captain_registration_id = captain_registration.id
+        invitee_member = self.fx.player("Rook", auth_user_id=INVITEE_AUTH)
+        # An existing free-agent registration: accepting attaches it to the team
+        # rather than running the whole public-registration write path.
+        self.invitee_registration = self.fx.registration(invitee_member, battle_tag="Rook#2222")
+        self.invite = self.fx.invite(self.team, slot_code="dps", target_auth_user_id=INVITEE_AUTH)
+        self.fx.session.flush()
+
+        limiter = patch.object(teams_module, "assert_accept_attempt_allowed", AsyncMock())
+        limiter.start()
+        self.addCleanup(limiter.stop)
+        window = patch.object(
+            teams_module.RegistrationTeamService,
+            "_assert_registration_open",
+            AsyncMock(return_value=self.fx.tournament),
+        )
+        window.start()
+        self.addCleanup(window.stop)
+        shape = patch.object(
+            teams_module.RegistrationTeamService, "_resolve_shape", AsyncMock(return_value=FIVE_STACK)
+        )
+        shape.start()
+        self.addCleanup(shape.stop)
+        publish = patch.object(teams_module, "publish_notification_created", AsyncMock())
+        publish.start()
+        self.addCleanup(publish.stop)
+
+    async def test_accept_notifies_the_captain(self) -> None:
+        await teams_module.teams_service.accept_invite(
+            self.fx.shim,
+            auth_user=_auth_user(INVITEE_AUTH, "rook"),
+            body=RegistrationCreate(),
+            invite_id=self.invite.id,
+        )
+
+        rows = self.fx.notifications()
+        self.assertEqual(1, len(rows))
+        self.assertEqual("team_invite.answered", rows[0].kind)
+        self.assertEqual(CAPTAIN_AUTH, rows[0].recipient_auth_user_id)
+        self.assertEqual(
+            {
+                "team_id": self.team.id,
+                "team_name": "Vanguard",
+                "invite_id": self.invite.id,
+                "answer": "accepted",
+                "responder_name": "Rook#2222",
+            },
+            rows[0].payload_json,
+        )
+
+    async def test_decline_notifies_the_captain(self) -> None:
+        await teams_module.teams_service.decline_invite(
+            self.fx.shim,
+            auth_user=_auth_user(INVITEE_AUTH, "rook"),
+            invite_id=self.invite.id,
+        )
+
+        rows = self.fx.notifications()
+        self.assertEqual(1, len(rows))
+        self.assertEqual("team_invite.answered", rows[0].kind)
+        self.assertEqual(CAPTAIN_AUTH, rows[0].recipient_auth_user_id)
+        self.assertEqual("declined", rows[0].payload_json["answer"])
+        self.assertEqual("Rook#2222", rows[0].payload_json["responder_name"])
+
+
+class RegistrationDecisionTests(_ProducerTestCase):
+    """``events.py`` -- the registrant learns their entry was decided."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        member = self.fx.player("Rook", auth_user_id=INVITEE_AUTH)
+        self.registration = self.fx.registration(member, battle_tag="Rook#2222", status="pending")
+        self.fx.session.flush()
+
+    async def test_approve_notifies_the_player(self) -> None:
+        self.registration.status = "approved"
+        await events_module.enqueue_registration_approved(self.fx.shim, self.registration)
+        await self.fx.shim.commit()
+
+        rows = self.fx.notifications()
+        self.assertEqual(1, len(rows))
+        self.assertEqual("registration.approved", rows[0].kind)
+        self.assertEqual(INVITEE_AUTH, rows[0].recipient_auth_user_id)
+        self.assertEqual(
+            {
+                "tournament_id": TOURNAMENT_ID,
+                "tournament_name": TOURNAMENT_NAME,
+                "registration_id": self.registration.id,
+            },
+            rows[0].payload_json,
+        )
+
+    async def test_reject_notifies_the_player(self) -> None:
+        self.registration.status = "rejected"
+        await events_module.enqueue_registration_rejected(self.fx.shim, self.registration)
+        await self.fx.shim.commit()
+
+        rows = self.fx.notifications()
+        self.assertEqual(1, len(rows))
+        self.assertEqual("registration.rejected", rows[0].kind)
+        self.assertEqual(INVITEE_AUTH, rows[0].recipient_auth_user_id)
+
+    async def test_shadow_player_without_auth_user_is_skipped(self) -> None:
+        """No account behind the player: no inbox, no exception, and the decision
+        itself still goes through."""
+        shadow_member = self.fx.player("Ghost", auth_user_id=None)
+        shadow_registration = self.fx.registration(shadow_member, battle_tag="Ghost#3333", status="pending")
+        shadow_registration.status = "approved"
+
+        await events_module.enqueue_registration_approved(self.fx.shim, shadow_registration)
+        await self.fx.shim.commit()
+
+        self.assertEqual([], self.fx.notifications())
+        self.assertEqual(
+            "approved",
+            self.fx.session.scalar(
+                sa.select(models.BalancerRegistration.status).where(
+                    models.BalancerRegistration.id == shadow_registration.id
+                )
+            ),
+        )
+
+
+class DisputedMapReportTests(_ProducerTestCase):
+    """``map_report.py`` -- a contradiction needs an answer from BOTH captains."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        home_captain = self.fx.player("Cap", auth_user_id=CAPTAIN_AUTH)
+        away_captain = self.fx.player("Rival", auth_user_id=OPPONENT_AUTH)
+        home = models.Team(
+            name="Vanguard",
+            balancer_name="Vanguard",
+            tournament_id=TOURNAMENT_ID,
+            captain_id=home_captain.player_id,
+        )
+        away = models.Team(
+            name="Rearguard",
+            balancer_name="Rearguard",
+            tournament_id=TOURNAMENT_ID,
+            captain_id=away_captain.player_id,
+        )
+        self.fx.session.add_all([home, away])
+        self.fx.session.flush()
+        self.encounter = models.Encounter(
+            tournament_id=TOURNAMENT_ID,
+            name="Vanguard vs Rearguard",
+            home_team_id=home.id,
+            away_team_id=away.id,
+            home_score=0,
+            away_score=0,
+            round=1,
+            closeness=0.0,
+            best_of=3,
+        )
+        self.fx.session.add(self.encounter)
+        self.fx.session.flush()
+        self.home_team_id = home.id
+        self.away_team_id = away.id
+        # The opponent already reported a contradicting score for this map.
+        self.fx.session.add(
+            models.EncounterMapReport(
+                encounter_id=self.encounter.id,
+                map_id=77,
+                map_index=0,
+                team_id=away.id,
+                home_score=1,
+                away_score=3,
+            )
+        )
+        self.fx.session.flush()
+
+        live = patch.object(map_report_module, "is_encounter_live", AsyncMock(return_value=True))
+        live.start()
+        self.addCleanup(live.stop)
+        session_lookup = patch.object(
+            map_report_module.pick_ban_session_service, "get_pick_ban_session", AsyncMock(return_value=None)
+        )
+        session_lookup.start()
+        self.addCleanup(session_lookup.stop)
+        publish = patch.object(map_report_module, "publish_notification_created", AsyncMock())
+        publish.start()
+        self.addCleanup(publish.stop)
+
+    async def test_disputed_map_report_notifies_both_captains(self) -> None:
+        result = await map_report_module.map_report_service.submit_map_report(
+            self.fx.shim,
+            self.encounter,
+            map_id=77,
+            team_id=self.home_team_id,
+            reporter_user_id=CAPTAIN_AUTH,
+            home_score=3,
+            away_score=1,
+        )
+
+        self.assertTrue(result["disputed"])
+        rows = self.fx.notifications()
+        self.assertEqual({CAPTAIN_AUTH, OPPONENT_AUTH}, {row.recipient_auth_user_id for row in rows})
+        self.assertEqual({"encounter.report_disputed"}, {row.kind for row in rows})
+        self.assertEqual(
+            {
+                "encounter_id": self.encounter.id,
+                "tournament_id": TOURNAMENT_ID,
+                "map_id": 77,
+                "map_index": 0,
+            },
+            rows[0].payload_json,
+        )
