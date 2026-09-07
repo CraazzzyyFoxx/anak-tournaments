@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { CreateWorkspaceDialog } from "@/components/CreateWorkspaceDialog";
 import { Button } from "@/components/ui/button";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { usePermissions } from "@/hooks/usePermissions";
 import { getCurrentPathForAuthRedirect } from "@/lib/auth-redirect";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -26,15 +27,22 @@ export function CreateWorkspaceLauncher() {
   const t = useTranslations("getWorkspace.action");
   const router = useRouter();
   const { user } = useAuthProfile();
+  const { isDenied } = usePermissions();
   const openAuthModal = useAuthModalStore((state) => state.open);
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
   const [open, setOpen] = useState(false);
+
+  // Allow-by-default capability, revoked per account through negative RBAC. The
+  // button is disabled rather than hidden: someone whose right was taken away
+  // should learn that from the screen, not from a 403 after filling the form.
+  const revoked = Boolean(user) && isDenied("workspace.self_create");
 
   return (
     <>
       <Button
         size="sm"
         className="mt-3"
+        disabled={revoked}
         onClick={() => {
           if (!user) {
             openAuthModal(getCurrentPathForAuthRedirect(window.location));
@@ -45,6 +53,7 @@ export function CreateWorkspaceLauncher() {
       >
         {t("create")}
       </Button>
+      {revoked ? <p className="mt-2 text-xs text-muted-foreground">{t("revoked")}</p> : null}
       <CreateWorkspaceDialog
         open={open}
         onOpenChange={setOpen}

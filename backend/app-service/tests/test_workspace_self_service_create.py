@@ -34,6 +34,7 @@ workspaces = workspace_service.workspaces
 _ACTIVE = {"user_id": 1, "username": "ada", "is_active": True, "is_superuser": False}
 _INACTIVE = {"user_id": 1, "username": "ada", "is_active": False, "is_superuser": False}
 _SUPERUSER = {"user_id": 42, "username": "kate", "is_active": True, "is_superuser": True}
+_REVOKED = {"resource": "workspace", "action": "self_create", "workspace_id": None}
 
 
 class ReservedSlugTests(IsolatedAsyncioTestCase):
@@ -156,3 +157,53 @@ class CreateRPCTests(IsolatedAsyncioTestCase):
         self.assertEqual("forbidden", envelope["error"]["code"])
         self.assertEqual("workspace_create_limit_reached", envelope["error"]["message"])
         provision.assert_not_awaited()
+
+    # --- the revocable capability (negative RBAC) ---------------------------
+
+    async def test_a_denied_account_may_not_create_and_is_never_counted(self) -> None:
+        """``workspace.self_create`` is allow-by-default, so a deny row is the
+        only way to revoke self-service creation from one account. It is checked
+        before the cap: a revoked account has no business learning how full it
+        is."""
+        envelope, provision, limit = await self._call(
+            dict(_ACTIVE, denies=[_REVOKED]), {"slug": "acme", "name": "Acme Cup"}
+        )
+
+        self.assertEqual("forbidden", envelope["error"]["code"])
+        self.assertEqual("You are not allowed to create workspaces", envelope["error"]["message"])
+        limit.assert_not_awaited()
+        provision.assert_not_awaited()
+
+    async def test_the_deny_beats_the_superuser_bypass(self) -> None:
+        """``UserPermissionDeny`` overrides every grant including that bypass —
+        and a superuser can always lift their own deny, so this loses nobody
+        their platform."""
+        envelope, provision, _ = await self._call(
+            dict(_SUPERUSER, denies=[_REVOKED]), {"slug": "acme", "name": "Acme Cup"}
+        )
+
+        self.assertEqual("forbidden", envelope["error"]["code"])
+        provision.assert_not_awaited()
+
+    async def test_a_deny_on_another_capability_leaves_creation_alone(self) -> None:
+        """Exact ``(resource, action)`` match only — no wildcard expansion, and
+        the workspace-scoped ``workspace.create`` grant is a different
+        permission from this platform-wide one."""
+        envelope, provision, _ = await self._call(
+            dict(_ACTIVE, denies=[{"resource": "workspace", "action": "create", "workspace_id": None}]),
+            {"slug": "acme", "name": "Acme Cup"},
+        )
+
+        self.assertIn("data", envelope)
+        provision.assert_awaited_once()
+
+    async def test_a_workspace_scoped_deny_cannot_revoke_a_platform_wide_right(self) -> None:
+        """Creating a workspace happens outside any workspace, so only a global
+        deny (``workspace_id=None``) can revoke it."""
+        envelope, provision, _ = await self._call(
+            dict(_ACTIVE, denies=[{"resource": "workspace", "action": "self_create", "workspace_id": 5}]),
+            {"slug": "acme", "name": "Acme Cup"},
+        )
+
+        self.assertIn("data", envelope)
+        provision.assert_awaited_once()

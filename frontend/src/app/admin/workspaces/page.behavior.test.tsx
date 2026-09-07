@@ -29,6 +29,7 @@ const fetchMock = vi.fn();
 
 let superuser = true;
 let managesAny = true;
+let mayCreate = true;
 
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/hooks/usePermissions", () => ({
@@ -36,7 +37,8 @@ vi.mock("@/hooks/usePermissions", () => ({
     isLoaded: true,
     isSuperuser: superuser,
     isWorkspaceAdmin: () => managesAny,
-    canManageAnyWorkspace: () => managesAny
+    canManageAnyWorkspace: () => managesAny,
+    canUseCapability: () => mayCreate
   })
 }));
 vi.mock("@/stores/workspace.store", () => ({
@@ -219,6 +221,7 @@ function setViewportWidth(width: number) {
 beforeEach(() => {
   superuser = true;
   managesAny = true;
+  mayCreate = true;
   replace.mockClear();
   setViewportWidth(1280);
   getAll.mockReset().mockResolvedValue([workspace()]);
@@ -346,5 +349,20 @@ describe("/admin/workspaces", () => {
     const dialog = await waitFor(() => document.querySelector('[role="dialog"]'), "the dialog");
     expect(dialog.querySelector("#slug")).not.toBeNull();
     expect(dialog.querySelector("#name")).not.toBeNull();
+  });
+
+  // `workspace.self_create` is allow-by-default and revocable per account
+  // (negative RBAC). The backend refuses a denied account outright, so the
+  // button must not be offered as a guaranteed 403.
+  it("drops the create button when the account's creation right was revoked", async () => {
+    mayCreate = false;
+    const container = await mount();
+    await waitFor(() => container.textContent?.includes("Rivals Cup"), "the workspace row");
+
+    expect(
+      Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent?.trim() === "Create workspace"
+      )
+    ).toBeUndefined();
   });
 });

@@ -55,7 +55,8 @@ type SpecialPermission =
   | "stream.update"
   | "account.avatar"
   | "account.social"
-  | "registration.self_register";
+  | "registration.self_register"
+  | "workspace.self_create";
 
 export type AppPermission = CrudPermission | SpecialPermission;
 

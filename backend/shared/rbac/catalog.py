@@ -77,6 +77,11 @@ PERMISSION_CATALOG: tuple[PermissionSpec, ...] = (
     _permission("account", "avatar", "Change one's own avatar"),
     _permission("account", "social", "Manage one's own social accounts"),
     _permission("registration", "self_register", "Self-register for a tournament"),
+    # Distinct from the workspace-scoped ``workspace.create`` above, which is a
+    # grant held inside a workspace: this one is the platform-wide right to
+    # bring a NEW workspace into existence, so denying it revokes self-service
+    # creation for one account without touching any workspace role.
+    _permission("workspace", "self_create", "Create one's own workspace"),
 )
 
 _ALL_PERMISSION_NAMES = frozenset(permission.name for permission in PERMISSION_CATALOG)

@@ -24,7 +24,7 @@ from shared.core import http_status as status
 from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.rbac import Permission, Role, UserPermissionDeny
-from shared.rbac import ensure_workspace_system_roles, user_has_only_workspace_owner_role
+from shared.rbac import ensure_permission_catalog, ensure_workspace_system_roles, user_has_only_workspace_owner_role
 from shared.repository import (
     AuthUserRepository,
     OAuthConnectionRepository,
@@ -143,6 +143,14 @@ class PermissionAdminService:
     ) -> dict:
         """List permissions visible to RBAC operators (paginated, server-side search)."""
         self._policy.require_scoped_permission(current_user, params.workspace_id, "permission", "read")
+
+        # Same staleness the roles list closes below: catalog rows are upserted by
+        # the workspace paths (``ensure_workspace_system_roles``), so a capability
+        # that landed in ``PERMISSION_CATALOG`` since the last one ran would be
+        # missing here -- and an operator cannot deny a permission the picker does
+        # not list. This is the screen that must never be behind the code.
+        await ensure_permission_catalog(session)
+        await session.commit()
 
         permissions, total = await self._permissions.list_searchable(session, params, search=params.search)
         return pagination.paginated_dict(

@@ -234,12 +234,18 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "workspaces.by_host", op, session_factory=_SF)
 
-    # --- create (any active user, capped) -----------------------------------
+    # --- create (any active user with the capability, capped) ---------------
     @broker.subscriber("rpc.app.workspaces.create")
     async def _create(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
+            # Allow-by-default capability, revocable per account through the
+            # negative-RBAC deny list (same shape as ``account.social`` and
+            # ``registration.self_register``). Checked before the cap because a
+            # revoked account has no business learning how full it is.
+            if not user.can_capability("workspace", "self_create"):
+                raise HTTPException(status_code=403, detail="You are not allowed to create workspaces")
             await workspace_service.ensure_create_limit(session, user)
             body = schemas.WorkspaceCreate.model_validate(c.payload(data))
             reject_reserved_slug(body.slug)

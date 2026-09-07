@@ -197,7 +197,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.workspaces.create": {
         "summary": "Create workspace",
-        "description": "Creates a workspace (superuser only), provisions system roles, adds the creator as owner, and busts the RBAC cache; 400 on duplicate slug.",
+        "description": "Creates a workspace, provisions system roles, stamps and adds the creator as owner, and busts the RBAC cache. Open to any ACTIVE authenticated user holding the allow-by-default `workspace.self_create` capability — deny that permission for an account (negative RBAC, global scope) to revoke self-service creation from it (403). Then capped per account by `workspace_creation.max_owned_per_user`, counted over `Workspace.owner_id` (403 `workspace_create_limit_reached`); platform slugs are unclaimable (400 `slug_reserved`), 400 on a duplicate slug, and the new workspace is born `unverified`.",
     },
     "rpc.app.admin.update#workspace": {
         "summary": "Update workspace",

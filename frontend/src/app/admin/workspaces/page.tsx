@@ -73,7 +73,8 @@ function InspectorField({
  * than reproducing a form the sections already own.
  */
 export default function WorkspacesPage() {
-  const { isSuperuser, isWorkspaceAdmin, canManageAnyWorkspace, isLoaded } = usePermissions();
+  const { isSuperuser, isWorkspaceAdmin, canManageAnyWorkspace, canUseCapability, isLoaded } =
+    usePermissions();
   const queryClient = useQueryClient();
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
   // `id` is the inspector, not a filter: opening a row must not drop the page
@@ -217,11 +218,15 @@ export default function WorkspacesPage() {
         actions={
           /* Creating a workspace is open to any active account now (the backend
              caps how many one account may own), so this is no longer a
-             superuser button. */
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="size-3.5" aria-hidden />
-            Create workspace
-          </Button>
+             superuser button — but the right is revocable per account through
+             negative RBAC, and the backend refuses a denied one, so the button
+             goes away with it rather than offering a guaranteed 403. */
+          canUseCapability("workspace.self_create") ? (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="size-3.5" aria-hidden />
+              Create workspace
+            </Button>
+          ) : null
         }
       />
 
