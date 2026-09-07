@@ -67,6 +67,8 @@ func Groups() (public, admin []openapi.Group) {
 			Routes: openapi.PublicOnly(parser.Routes)},
 		{Tag: "Auth", Description: "Authentication, sessions, profile, OAuth, API keys, player linking.",
 			Routes: identity.PublicDocRoutes},
+		{Tag: "Notifications", Description: "Personal notification inbox + the site-wide announcement banner.",
+			Routes: concat(app.NotificationRoutes, app.AnnouncementPublicRoutes)},
 	}
 	admin = []openapi.Group{
 		{Tag: "Admin: Tournaments", Description: "Tournament/team/player/encounter/standing CRUD, stages & bespoke admin actions.",
@@ -93,6 +95,8 @@ func Groups() (public, admin []openapi.Group) {
 			Routes: identity.AdminDocRoutes},
 		{Tag: "Admin: Audit", Description: "Platform audit log: who changed what, when, workspace-scoped.",
 			Routes: auditRoutes},
+		{Tag: "Admin: Announcements", Description: "Workspace and platform-wide announcements: publish, edit, retire.",
+			Routes: app.AnnouncementAdminRoutes},
 	}
 	return public, admin
 }

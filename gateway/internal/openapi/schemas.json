@@ -517,6 +517,14 @@
       },
       "summary": "Achievement earners"
     },
+    "rpc.app.active_announcements": {
+      "description": "Returns the currently-published platform-wide announcements for the site banner, newest first. Anonymous callers are welcome and get every global announcement inside its publish/expiry window; for an authenticated viewer the ones already dismissed are filtered out, which is why the route forwards identity when it is present.",
+      "response": {
+        "array": true,
+        "ref": "app.NotificationItem"
+      },
+      "summary": "Active announcements for the banner"
+    },
     "rpc.app.admin.delete#workspace": {
       "description": "Deletes a workspace via the shared CRUD engine with workspace-scoped 'workspace.delete' permission; returns 204, 404 if not found.",
       "summary": "Delete workspace"
@@ -532,6 +540,59 @@
         "ref": "app.WorkspaceRead"
       },
       "summary": "Update workspace"
+    },
+    "rpc.app.announcement_create": {
+      "description": "Publishes an announcement and audits it. A `workspace` one requires announcement.create in that workspace and at least one locale plus a default_locale among the filled ones; a `global` one renders to every visitor including anonymous ones and is therefore superuser-only and requires every supported locale (ru and en) \u2014 a workspace grant cannot reach the platform's voice. `user` is not an accepted audience: personal notifications are written by the flows that cause them, from server-resolved recipients. 422 on a locale or audience/workspace_id mismatch.",
+      "request": {
+        "array": false,
+        "ref": "app.AnnouncementCreate"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.NotificationItem"
+      },
+      "summary": "Publish an announcement"
+    },
+    "rpc.app.announcement_delete": {
+      "description": "Expires the announcement as of now and audits it, answering 204. The row is kept rather than deleted: it is a notification row that people already have in their inbox, and the read marks pointing at it must stay meaningful. Authorized from the stored audience like the edit; 404 if the id is not an announcement.",
+      "summary": "Retire an announcement"
+    },
+    "rpc.app.announcement_list": {
+      "description": "Returns one scope's announcements newest first, expired ones included \u2014 the operator view exists to show what is scheduled and what has been retired, which the banner's time window hides. `workspace_id` selects the workspace feed and requires announcement.read there; omitting it selects the platform-wide feed and is superuser-only, so the list can never read announcements the caller could not publish.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "description": "Page size (default 50, capped at 200).",
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "app.NotificationItem"
+      },
+      "summary": "List announcements"
+    },
+    "rpc.app.announcement_update": {
+      "description": "Partially edits the text and expiry of an already-published announcement and audits it. `locales` replaces the whole map when present; audience and workspace_id are immutable, and the required principal is decided from the stored audience, never from the request. Read marks are deliberately left alone \u2014 clearing them would re-show a banner to everyone who already dismissed it, for a corrected typo. 404 if the id is not an announcement.",
+      "request": {
+        "array": false,
+        "ref": "app.AnnouncementUpdate"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.NotificationItem"
+      },
+      "summary": "Edit an announcement"
     },
     "rpc.app.assets.delete": {
       "description": "Deletes an achievements/divisions asset from S3 by slug prefix (superuser only); 422 on invalid asset_type, 404 if nothing deleted.",
@@ -1131,6 +1192,44 @@
     "rpc.app.matches.log": {
       "description": "Returns the raw match-log file bytes for a match (base64 from the worker, decoded by the gateway); 404 if the match or log is missing.",
       "summary": "Download match log"
+    },
+    "rpc.app.notifications_list": {
+      "description": "Returns one page of the caller's inbox newest first, plus the unread badge count and an opaque next_cursor (null on the last page). The audience is computed from the authenticated identity alone \u2014 personal rows, rows for the workspaces the caller belongs to, and platform-wide announcements \u2014 so there is no recipient parameter to pass. Expired and not-yet-published rows are excluded. System kinds carry no text: the row is kind + payload snapshot and the client renders it. 422 on a malformed cursor.",
+      "query_params": [
+        {
+          "name": "cursor",
+          "required": false,
+          "schema": {
+            "description": "Opaque continuation from the previous page's next_cursor.",
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "description": "Page size (default 20, capped server-side).",
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.NotificationInboxRead"
+      },
+      "summary": "List the caller's notifications"
+    },
+    "rpc.app.notifications_mark_read": {
+      "description": "Inserts read marks for the given ids and returns how many actually landed together with the refreshed unread count. An omitted or null `ids` marks the whole visible inbox (the \"mark all read\" button). Ids outside the caller's audience are dropped silently rather than rejected, so the endpoint cannot be used to probe whether another user's notification exists; a repeat call marks nothing and is not an error.",
+      "request": {
+        "array": false,
+        "ref": "app.NotificationMarkRead"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.NotificationMarkReadResult"
+      },
+      "summary": "Mark notifications read"
     },
     "rpc.app.read.get#achievement": {
       "description": "Returns a single achievement rule by id with optional entity expansion (public read via the shared CRUD engine), 404 if not found.",
@@ -11051,6 +11150,143 @@
       "title": "AchievementTournamentLink",
       "type": "object"
     },
+    "app.AnnouncementCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "audience": {
+          "enum": [
+            "workspace",
+            "global"
+          ],
+          "title": "Audience",
+          "type": "string"
+        },
+        "default_locale": {
+          "title": "Default Locale",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Href"
+        },
+        "locales": {
+          "additionalProperties": true,
+          "title": "Locales",
+          "type": "object"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        }
+      },
+      "required": [
+        "audience",
+        "locales",
+        "default_locale"
+      ],
+      "title": "AnnouncementCreate",
+      "type": "object"
+    },
+    "app.AnnouncementUpdate": {
+      "additionalProperties": false,
+      "description": "A partial edit. ``locales`` replaces the whole map when present.\n\nNeither ``audience`` nor ``workspace_id`` is editable: moving a published\nrow between audiences would change who may read it *after* people have\nalready read it, and the read marks carry no audience of their own to\nre-check. Retire it and publish a new one.",
+      "properties": {
+        "default_locale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Locale"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Href"
+        },
+        "locales": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locales"
+        }
+      },
+      "title": "AnnouncementUpdate",
+      "type": "object"
+    },
     "app.AuditLogListQueryParams": {
       "description": "Query string of ``GET /api/v1/admin/audit``.\n\nDefaults are ``created_at`` descending: the feed answers \"what just\nhappened\", and ``created_at`` \u2014 not ``id`` \u2014 is the time order, because\n``func.now()`` stamps the transaction's start.",
       "properties": {
@@ -13150,6 +13386,140 @@
         "map_id"
       ],
       "title": "MatchReadWithUserStats",
+      "type": "object"
+    },
+    "app.NotificationInboxRead": {
+      "description": "One inbox round trip: the page, the badge count and the continuation.\n\nThe bell renders the count and the list together on every open, so serving\nthem from two endpoints would double the requests for a header component\nthat mounts on every page.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/app.NotificationItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        },
+        "unread_count": {
+          "title": "Unread Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "unread_count"
+      ],
+      "title": "NotificationInboxRead",
+      "type": "object"
+    },
+    "app.NotificationItem": {
+      "properties": {
+        "audience": {
+          "title": "Audience",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "published_at": {
+          "format": "date-time",
+          "title": "Published At",
+          "type": "string"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        }
+      },
+      "required": [
+        "id",
+        "audience",
+        "kind",
+        "payload",
+        "published_at"
+      ],
+      "title": "NotificationItem",
+      "type": "object"
+    },
+    "app.NotificationMarkRead": {
+      "description": "``ids=None`` marks the whole visible inbox (the \"mark all read\" button).",
+      "properties": {
+        "ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ids"
+        }
+      },
+      "title": "NotificationMarkRead",
+      "type": "object"
+    },
+    "app.NotificationMarkReadResult": {
+      "properties": {
+        "marked": {
+          "title": "Marked",
+          "type": "integer"
+        },
+        "unread_count": {
+          "title": "Unread Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "marked",
+        "unread_count"
+      ],
+      "title": "NotificationMarkReadResult",
       "type": "object"
     },
     "app.Paginated_AchievementEarned_": {

@@ -340,6 +340,9 @@ func run() error {
 	appEdge.Register(mux, app.MetadataAdminRoutes)
 	appEdge.Register(mux, app.UsersAdminRoutes)
 	appEdge.Register(mux, app.TournamentAdminRoutes)
+	appEdge.Register(mux, app.NotificationRoutes)
+	appEdge.Register(mux, app.AnnouncementPublicRoutes)
+	appEdge.Register(mux, app.AnnouncementAdminRoutes)
 	// achievements get surface: ambiguous (/{id}/users vs /user/{user_id}) -> subtree.
 	mux.Handle("/api/v1/achievements/", appEdge.Subtree(app.AchievementsSubtreeRoutes))
 	// Binary/multipart endpoints the JSON dispatcher can't handle: icon + asset

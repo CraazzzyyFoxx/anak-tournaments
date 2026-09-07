@@ -61,6 +61,9 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	d.Register(mux, app.MetadataAdminRoutes)
 	d.Register(mux, app.UsersAdminRoutes)
 	d.Register(mux, app.TournamentAdminRoutes)
+	d.Register(mux, app.NotificationRoutes)
+	d.Register(mux, app.AnnouncementPublicRoutes)
+	d.Register(mux, app.AnnouncementAdminRoutes)
 	mux.Handle("/api/v1/achievements/", d.Subtree(app.AchievementsSubtreeRoutes))
 	// parser domains folded into /api/v1. The achievement-rule admin subtree mounts
 	// at the shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes
@@ -160,6 +163,42 @@ func TestApiV1Guard_MatchSurfaceRoutesAreRegistered(t *testing.T) {
 			defer resp.Body.Close()
 			if route := resp.Header.Get("X-Route"); route == "guard" {
 				t.Fatalf("GET %s hit the /api/v1/ guard — the route is not registered", path)
+			}
+		})
+	}
+}
+
+// Notifications and announcements ride their own tables
+// (app.NotificationRoutes / app.AnnouncementPublicRoutes /
+// app.AnnouncementAdminRoutes, docs/plans/2026-09-07-notifications.md). A
+// missing main.go registration leaves the admin paths at the /api/v1/ guard's
+// 404 and the two /api/* ones at the frontend catch-all — the feature dead on
+// arrival with no compile error. The bare admin collection must also keep its
+// own pattern instead of being read as an {id}.
+func TestApiV1Guard_NotificationRoutesAreRegistered(t *testing.T) {
+	mux := buildGuardedMux(t)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	for _, c := range []struct{ method, path string }{
+		{"GET", "/api/notifications"},
+		{"POST", "/api/notifications/read"},
+		{"GET", "/api/announcements/active"},
+		{"GET", "/api/v1/admin/announcements?workspace_id=1"},
+		// The {id} routes are PATCH/DELETE only: a GET here belongs to the
+		// guard, which is why the method travels with the path.
+		{"PATCH", "/api/v1/admin/announcements/42"},
+		{"DELETE", "/api/v1/admin/announcements/42"},
+	} {
+		t.Run(c.method+" "+c.path, func(t *testing.T) {
+			req, _ := http.NewRequest(c.method, srv.URL+c.path, nil)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", c.method, c.path, err)
+			}
+			defer resp.Body.Close()
+			if route := resp.Header.Get("X-Route"); route == "guard" || route == "frontend" {
+				t.Fatalf("%s %s routed to %q — the route is not registered", c.method, c.path, route)
 			}
 		})
 	}

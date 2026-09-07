@@ -513,4 +513,77 @@ DOCS: dict[str, dict] = {
         "summary": "Delete user avatar",
         "description": "Removes a player's avatar from S3 and clears its URL; requires the global user.update permission.",
     },
+    # ── notification inbox + announcement banner ────────────────────────────────────────────────────
+    "rpc.app.notifications_list": {
+        "summary": "List the caller's notifications",
+        "description": (
+            "Returns one page of the caller's inbox newest first, plus the unread badge count and an"
+            " opaque next_cursor (null on the last page). The audience is computed from the"
+            " authenticated identity alone — personal rows, rows for the workspaces the caller belongs"
+            " to, and platform-wide announcements — so there is no recipient parameter to pass. Expired"
+            " and not-yet-published rows are excluded. System kinds carry no text: the row is kind +"
+            " payload snapshot and the client renders it. 422 on a malformed cursor."
+        ),
+    },
+    "rpc.app.notifications_mark_read": {
+        "summary": "Mark notifications read",
+        "description": (
+            "Inserts read marks for the given ids and returns how many actually landed together with the"
+            " refreshed unread count. An omitted or null `ids` marks the whole visible inbox (the"
+            " \"mark all read\" button). Ids outside the caller's audience are dropped silently rather"
+            " than rejected, so the endpoint cannot be used to probe whether another user's"
+            " notification exists; a repeat call marks nothing and is not an error."
+        ),
+    },
+    "rpc.app.active_announcements": {
+        "summary": "Active announcements for the banner",
+        "description": (
+            "Returns the currently-published platform-wide announcements for the site banner, newest"
+            " first. Anonymous callers are welcome and get every global announcement inside its"
+            " publish/expiry window; for an authenticated viewer the ones already dismissed are"
+            " filtered out, which is why the route forwards identity when it is present."
+        ),
+    },
+    # ── announcements admin (operator CRUD) ─────────────────────────────────────────────────────────
+    "rpc.app.announcement_list": {
+        "summary": "List announcements",
+        "description": (
+            "Returns one scope's announcements newest first, expired ones included — the operator view"
+            " exists to show what is scheduled and what has been retired, which the banner's time window"
+            " hides. `workspace_id` selects the workspace feed and requires announcement.read there;"
+            " omitting it selects the platform-wide feed and is superuser-only, so the list can never"
+            " read announcements the caller could not publish."
+        ),
+    },
+    "rpc.app.announcement_create": {
+        "summary": "Publish an announcement",
+        "description": (
+            "Publishes an announcement and audits it. A `workspace` one requires announcement.create in"
+            " that workspace and at least one locale plus a default_locale among the filled ones; a"
+            " `global` one renders to every visitor including anonymous ones and is therefore"
+            " superuser-only and requires every supported locale (ru and en) — a workspace grant cannot"
+            " reach the platform's voice. `user` is not an accepted audience: personal notifications are"
+            " written by the flows that cause them, from server-resolved recipients. 422 on a locale or"
+            " audience/workspace_id mismatch."
+        ),
+    },
+    "rpc.app.announcement_update": {
+        "summary": "Edit an announcement",
+        "description": (
+            "Partially edits the text and expiry of an already-published announcement and audits it."
+            " `locales` replaces the whole map when present; audience and workspace_id are immutable,"
+            " and the required principal is decided from the stored audience, never from the request."
+            " Read marks are deliberately left alone — clearing them would re-show a banner to everyone"
+            " who already dismissed it, for a corrected typo. 404 if the id is not an announcement."
+        ),
+    },
+    "rpc.app.announcement_delete": {
+        "summary": "Retire an announcement",
+        "description": (
+            "Expires the announcement as of now and audits it, answering 204. The row is kept rather"
+            " than deleted: it is a notification row that people already have in their inbox, and the"
+            " read marks pointing at it must stay meaningful. Authorized from the stored audience like"
+            " the edit; 404 if the id is not an announcement."
+        ),
+    },
 }

@@ -246,6 +246,38 @@ func TestAllow_WorkspaceMember(t *testing.T) {
 	}
 }
 
+// user:<id>:notifications is the personal inbox signal. It is the one topic
+// with NO superuser bypass: nobody needs to read someone else's inbox, and a
+// rule with no exception cannot be widened by accident later.
+func TestAllow_OwnUserNotifications(t *testing.T) {
+	ctx := context.Background()
+	r := New(fakeResolver{}, &fakeMembers{member: true}, fakeVis{})
+
+	cases := []struct {
+		name  string
+		user  *auth.User
+		topic string
+		want  bool
+	}{
+		{"owner", &auth.User{ID: 7}, "user:7:notifications", true},
+		{"other user", &auth.User{ID: 8}, "user:7:notifications", false},
+		{"anonymous", nil, "user:7:notifications", false},
+		{"superuser has no bypass", &auth.User{ID: 8, IsSuperuser: true}, "user:7:notifications", false},
+		{"unparseable id", &auth.User{ID: 7}, "user:abc:notifications", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ok, err := r.Allow(ctx, tc.user, tc.topic)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if ok != tc.want {
+				t.Fatalf("Allow(%q) = %v, want %v", tc.topic, ok, tc.want)
+			}
+		})
+	}
+}
+
 func TestAllow_UnknownTopicDenied(t *testing.T) {
 	r := New(fakeResolver{}, &fakeMembers{member: true}, fakeVis{})
 	if ok, _ := r.Allow(context.Background(), &auth.User{ID: 1}, "random:topic:here"); ok {

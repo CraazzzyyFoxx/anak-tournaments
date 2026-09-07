@@ -214,4 +214,32 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.users.me_favorites_list": Op(response=schemas.LookupItem, response_array=True),
     "rpc.app.users.avatar_delete": Op(response=schemas.UserRead),
     "rpc.app.users.avatar_upload": Op(response=schemas.UserRead),
+    # ── notification inbox + announcement banner ───────────────────────────
+    # ``cursor``/``limit`` are read ad-hoc via c.q1, so they are declared here
+    # rather than through a query model.
+    "rpc.app.notifications_list": Op(
+        response=schemas.NotificationInboxRead,
+        query_params=(
+            QueryParam("cursor", description="Opaque continuation from the previous page's next_cursor."),
+            QueryParam("limit", "integer", description="Page size (default 20, capped server-side)."),
+        ),
+    ),
+    "rpc.app.notifications_mark_read": Op(
+        request=schemas.NotificationMarkRead, response=schemas.NotificationMarkReadResult
+    ),
+    "rpc.app.active_announcements": Op(response=schemas.NotificationItem, response_array=True),
+    # ── announcements admin (operator CRUD) ────────────────────────────────
+    "rpc.app.announcement_list": Op(
+        response=schemas.NotificationItem,
+        response_array=True,
+        query_params=(
+            _WS,
+            QueryParam("limit", "integer", description="Page size (default 50, capped at 200)."),
+        ),
+    ),
+    "rpc.app.announcement_create": Op(request=schemas.AnnouncementCreate, response=schemas.NotificationItem),
+    "rpc.app.announcement_update": Op(request=schemas.AnnouncementUpdate, response=schemas.NotificationItem),
+    # delete answers 204 with no body (the gateway drops the envelope) -- same
+    # convention as the other 204 subjects above.
+    "rpc.app.announcement_delete": Op(),
 }
