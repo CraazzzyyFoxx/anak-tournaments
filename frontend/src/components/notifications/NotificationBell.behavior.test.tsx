@@ -11,8 +11,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import ru from "@/i18n/messages/ru.json";
@@ -28,6 +28,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const list = vi.fn();
 const markRead = vi.fn();
 let authUser: unknown = { id: 1, username: "alice" };
+const mounted: { root: Root; client: QueryClient }[] = [];
 
 // Topic -> handler, so a test can fire the push the server would send. The
 // factory is hoisted above these declarations, so it must reference them lazily.
@@ -52,7 +53,9 @@ const MESSAGES = { en, ru } as const;
 
 const PUBLISHED = "2026-09-07T10:00:00Z";
 
-function item(overrides: Partial<NotificationItem> & Pick<NotificationItem, "id" | "kind">): NotificationItem {
+function item(
+  overrides: Partial<NotificationItem> & Pick<NotificationItem, "id" | "kind">
+): NotificationItem {
   return {
     audience: "user",
     payload: {},
@@ -119,9 +122,11 @@ async function mount(locale: "en" | "ru" = "en"): Promise<HTMLElement> {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const root = createRoot(container);
+  mounted.push({ root, client });
 
   await act(async () => {
-    createRoot(container).render(
+    root.render(
       <NextIntlClientProvider locale={locale} messages={MESSAGES[locale]}>
         <QueryClientProvider client={client}>
           <NotificationBell />
@@ -146,6 +151,24 @@ function openPanel(): Promise<void> {
   return click(trigger);
 }
 
+function buttonNamed(name: string): HTMLButtonElement {
+  const button = [...document.body.querySelectorAll("button")].find(
+    (candidate) => candidate.textContent?.trim() === name
+  );
+  if (!button) throw new Error(`Missing button: ${name}`);
+  return button;
+}
+
+afterEach(async () => {
+  await act(async () => {
+    for (const { root, client } of mounted.splice(0)) {
+      root.unmount();
+      client.clear();
+    }
+  });
+  document.body.innerHTML = "";
+});
+
 beforeEach(() => {
   authUser = { id: 1, username: "alice" };
   realtimeHandlers.clear();
@@ -164,6 +187,63 @@ describe("notification bell", () => {
     // reach is the same as no badge at all.
     expect(trigger?.getAttribute("aria-label")).toContain("2");
     expect(container.textContent).toContain("2");
+  });
+
+  it("caps the visual badge without losing the accessible count", async () => {
+    list.mockResolvedValue(inbox([INVITE], 120));
+    const container = await mount();
+    expect(container.querySelector("button")?.getAttribute("aria-label")).toContain("120");
+    expect(container.textContent).toContain("99+");
+  });
+
+  it("does not claim an empty or all-read inbox before loading, and recovers from an initial error", async () => {
+    const request = Promise.withResolvers<NotificationInbox>();
+    list.mockReturnValueOnce(request.promise);
+    const container = await mount();
+    await openPanel();
+    expect(container.querySelector("button")?.getAttribute("aria-label")).toBe(
+      en.notifications.title
+    );
+    expect(document.body.textContent).not.toContain(en.notifications.empty);
+    expect(document.body.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(buttonNamed(en.notifications.markAllRead).getAttribute("aria-disabled")).toBe("true");
+
+    await act(async () => request.reject(new Error("offline")));
+    await flush();
+    expect(document.body.textContent).toContain(en.notifications.loadError);
+    expect(document.body.textContent).not.toContain(en.notifications.empty);
+    expect(container.querySelector("button")?.getAttribute("aria-label")).toBe(
+      en.notifications.title
+    );
+
+    list.mockResolvedValue(inbox([], 0));
+    await click(buttonNamed(en.notifications.retry));
+    await flush();
+    expect(document.body.textContent).toContain(en.notifications.empty);
+    expect(document.body.textContent).not.toContain(en.notifications.loadError);
+  });
+
+  it("retains cached rows when a refresh fails and retries without replacing them with empty state", async () => {
+    await mount();
+    await openPanel();
+    list.mockRejectedValue(new Error("offline"));
+    await act(async () =>
+      realtimeHandlers.get("user:1:notifications")?.({
+        event_id: 0,
+        event_type: "notification.created",
+        data: {}
+      })
+    );
+    await flush();
+    expect(document.body.textContent).toContain("Alpha");
+    expect(document.body.textContent).toContain(en.notifications.refreshError);
+    expect(document.body.textContent).not.toContain(en.notifications.empty);
+
+    list.mockResolvedValue(inbox([INVITE, DISPUTED_WITH_MAP, DISPUTED_NO_MAP]));
+    await click(buttonNamed(en.notifications.retry));
+    await flush();
+    expect(document.body.querySelectorAll("li")).toHaveLength(3);
+    expect(document.body.textContent).not.toContain(en.notifications.refreshError);
   });
 
   it("refetches when the realtime signal arrives, because the event carries no payload", async () => {
@@ -222,23 +302,77 @@ describe("notification bell", () => {
     expect(panel).not.toMatch(/карт\S*\s*0\b/i);
   });
 
-  it("clears the badge when the whole inbox is marked read", async () => {
+  it("keeps mark-all pending through refetch and only then clears the badge and announces success", async () => {
     const container = await mount();
     await openPanel();
-
-    const markAll = [...document.body.querySelectorAll("button")].find(
-      (button) => button.textContent?.trim() === en.notifications.markAllRead
-    );
-    expect(markAll, "no mark-all-read control").not.toBeUndefined();
-
-    list.mockResolvedValue(inbox([{ ...INVITE, is_read: true }], 0));
-    await click(markAll!);
+    const markAll = buttonNamed(en.notifications.markAllRead);
+    const refresh = Promise.withResolvers<NotificationInbox>();
+    list.mockReturnValueOnce(refresh.promise);
+    await click(markAll);
     await flush();
-
-    // No ids: "mark everything I can currently see" is the server's own
-    // semantic for an omitted list, so the client must not enumerate a page.
     expect(markRead).toHaveBeenCalledWith(undefined);
+    expect(markAll.getAttribute("aria-busy")).toBe("true");
+    expect(document.body.textContent).not.toContain(en.notifications.markedAllRead);
+    expect(container.querySelector("button")?.getAttribute("aria-label")).toContain("2");
+
+    await act(async () => refresh.resolve(inbox([{ ...INVITE, is_read: true }], 0)));
+    await flush();
+    expect(markAll.isConnected).toBe(true);
+    expect(markAll.getAttribute("aria-busy")).toBe("false");
     expect(container.querySelector("button")?.getAttribute("aria-label")).not.toContain("2");
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain(
+      en.notifications.markedAllRead
+    );
+  });
+
+  it("marks only the chosen row and retains its focused control on completion", async () => {
+    await mount();
+    await openPanel();
+    const markOne = [...document.body.querySelectorAll("button")].find((button) =>
+      button.getAttribute("aria-label")?.includes("Alpha")
+    )!;
+    markOne.focus();
+    list.mockResolvedValue(inbox([{ ...INVITE, is_read: true }, DISPUTED_WITH_MAP], 1));
+    await click(markOne);
+    await flush();
+    expect(markRead).toHaveBeenCalledWith([INVITE.id]);
+    expect(document.activeElement).toBe(markOne);
+    expect(markOne.isConnected).toBe(true);
+    expect(markOne.getAttribute("aria-disabled")).toBe("true");
+    expect(buttonNamed(en.notifications.markRead).getAttribute("aria-disabled")).toBe("false");
+    expect(document.body.textContent).toContain(en.notifications.markedRead);
+  });
+
+  it("keeps read failures in the panel and retries the same row without claiming success", async () => {
+    await mount();
+    await openPanel();
+    markRead.mockRejectedValueOnce(new Error("offline"));
+    const markOne = [...document.body.querySelectorAll("button")].find((button) =>
+      button.getAttribute("aria-label")?.includes("Alpha")
+    )!;
+    await click(markOne);
+    await flush();
+    expect(document.body.textContent).toContain(en.notifications.markReadError);
+    expect(document.body.textContent).not.toContain(en.notifications.markedRead);
+    expect(markOne.getAttribute("aria-disabled")).toBe("false");
+
+    list.mockResolvedValue(inbox([{ ...INVITE, is_read: true }, DISPUTED_WITH_MAP], 1));
+    await click(buttonNamed(en.notifications.retryMarkRead));
+    await flush();
+    expect(markRead).toHaveBeenLastCalledWith([INVITE.id]);
+    expect(document.body.textContent).not.toContain(en.notifications.markReadError);
+    expect(document.body.textContent).toContain(en.notifications.markedRead);
+  });
+
+  it("does not announce mark success if the following inbox refresh fails", async () => {
+    await mount();
+    await openPanel();
+    list.mockRejectedValue(new Error("offline"));
+    await click(buttonNamed(en.notifications.markAllRead));
+    await flush();
+    expect(document.body.textContent).toContain(en.notifications.markReadError);
+    expect(document.body.textContent).not.toContain(en.notifications.markedAllRead);
+    expect(document.body.textContent).toContain("Alpha");
   });
 
   it("reaches the page behind the cursor instead of stopping at the newest 20", async () => {
@@ -271,7 +405,54 @@ describe("notification bell", () => {
     ).toBe(false);
   });
 
-  it("links an announcement row to its href, and drops one that is not a safe target", async () => {
+  it("retries a failed older page at the same cursor and blocks duplicate in-flight loads", async () => {
+    list.mockResolvedValueOnce({ items: [INVITE], unread_count: 21, next_cursor: "cursor-1" });
+    list.mockRejectedValueOnce(new Error("offline"));
+    await mount();
+    await openPanel();
+    await click(buttonNamed(en.notifications.loadMore));
+    await flush();
+    expect(document.body.textContent).toContain(en.notifications.loadMoreError);
+    expect(document.body.textContent).not.toContain(en.notifications.refreshError);
+    expect(document.body.textContent).toContain("Alpha");
+
+    const nextPage = Promise.withResolvers<NotificationInbox>();
+    list.mockReturnValueOnce(nextPage.promise);
+    const retry = buttonNamed(en.notifications.retryLoadMore);
+    await click(retry);
+    await flush();
+    await click(retry);
+    expect(list).toHaveBeenCalledTimes(3);
+    expect(list).toHaveBeenLastCalledWith({ cursor: "cursor-1" });
+    expect(retry.disabled).toBe(true);
+    await act(async () => nextPage.resolve(inbox([DISPUTED_NO_MAP], 21)));
+    await flush();
+    expect(document.body.querySelectorAll("li")).toHaveLength(2);
+    expect(document.body.textContent).not.toContain(en.notifications.loadMoreError);
+    expect(document.body.textContent).not.toContain(en.notifications.loadMore);
+  });
+
+  it("navigates without implicitly marking an announcement read", async () => {
+    list.mockResolvedValue(inbox([ANNOUNCEMENT]));
+    await mount();
+    await openPanel();
+    const link = document.body.querySelector("a")!;
+    expect(link.getAttribute("href")).toBe("/changelog");
+    await click(link);
+    await flush();
+    expect(markRead).not.toHaveBeenCalled();
+  });
+
+  it("uses localized friendly text rather than an unknown wire kind", async () => {
+    list.mockResolvedValue(inbox([item({ id: 91, kind: "future.private_event" })]));
+    await mount("ru");
+    await openPanel();
+    expect(document.body.textContent).toContain(ru.notifications.unknownKind);
+    expect(document.body.textContent).not.toContain("future.private_event");
+    expect(document.body.textContent).not.toContain("notifications.kinds");
+  });
+
+  it("links an announcement row to its href", async () => {
     list.mockResolvedValue(inbox([ANNOUNCEMENT]));
     await mount();
     await openPanel();
@@ -280,12 +461,15 @@ describe("notification bell", () => {
     const link = document.body.querySelector("a");
     expect(link?.getAttribute("href")).toBe("/changelog");
     expect(link?.textContent).toContain("Maintenance window");
+  });
 
+  it("drops the anchor of an announcement whose href is not a safe target", async () => {
     // A `javascript:` payload on a row every recipient opens is stored XSS —
     // the row keeps its text and loses the anchor.
-    document.body.innerHTML = "";
     list.mockResolvedValue(
-      inbox([item({ ...ANNOUNCEMENT, payload: { ...ANNOUNCEMENT.payload, href: "javascript:alert(1)" } })])
+      inbox([
+        item({ ...ANNOUNCEMENT, payload: { ...ANNOUNCEMENT.payload, href: "javascript:alert(1)" } })
+      ])
     );
     await mount();
     await openPanel();

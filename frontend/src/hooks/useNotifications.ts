@@ -9,14 +9,23 @@ import type { NotificationItem } from "@/types/notification.types";
 
 interface UseNotificationsResult {
   items: NotificationItem[];
-  unreadCount: number;
+  unreadCount: number | null;
   isLoading: boolean;
+  hasData: boolean;
+  isError: boolean;
+  isFetching: boolean;
+  retry: () => void;
   markAllRead: () => void;
+  markOneRead: (id: number) => void;
   isMarkingRead: boolean;
+  markingId: number | null;
+  markReadStatus: "idle" | "pending" | "error" | "success";
+  retryMarkRead: () => void;
   /** Another page exists behind `next_cursor`. */
   hasMore: boolean;
   loadMore: () => void;
   isLoadingMore: boolean;
+  isLoadMoreError: boolean;
 }
 
 /**
@@ -40,6 +49,7 @@ export function useNotifications(authUserId: number | null | undefined): UseNoti
     queryFn: ({ pageParam }) => notificationService.list({ cursor: pageParam }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor,
+    meta: { suppressErrorToast: true },
     enabled
   });
 
@@ -52,12 +62,23 @@ export function useNotifications(authUserId: number | null | undefined): UseNoti
 
   const markRead = useMutation({
     mutationFn: (ids?: number[]) => notificationService.markRead(ids),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: notificationQueryKeys.list() });
-      // Read marks are dismissals: the same rows drive the announcement banner,
-      // so leaving its cache alone would keep showing a dismissed announcement
-      // until the next reload.
-      void queryClient.invalidateQueries({ queryKey: notificationQueryKeys.activeAnnouncements() });
+    meta: { suppressErrorToast: true },
+    onSuccess: async () => {
+      // Stay pending until both surfaces reflect the dismissal. A failed
+      // refresh must not announce success against stale unread rows.
+      const results = await Promise.allSettled([
+        queryClient.invalidateQueries(
+          { queryKey: notificationQueryKeys.list() },
+          { throwOnError: true }
+        ),
+        queryClient.invalidateQueries(
+          { queryKey: notificationQueryKeys.activeAnnouncements() },
+          { throwOnError: true }
+        )
+      ]);
+      for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+      }
     }
   });
 
@@ -67,12 +88,33 @@ export function useNotifications(authUserId: number | null | undefined): UseNoti
     items: query.data?.pages.flatMap((page) => page.items) ?? [],
     // The badge counts the whole inbox, not the loaded prefix: every page
     // carries the same total, so the first one answers it.
-    unreadCount: query.data?.pages[0]?.unread_count ?? 0,
+    unreadCount: query.data?.pages[0]?.unread_count ?? null,
     isLoading: enabled && query.isPending,
-    markAllRead: () => markRead.mutate(undefined),
+    hasData: query.data !== undefined,
+    isError: query.isError && !query.isFetchNextPageError,
+    isFetching: query.isFetching,
+    retry: () => {
+      if (!query.isFetching) void query.refetch();
+    },
+    markAllRead: () => {
+      if (!markRead.isPending) markRead.mutate(undefined);
+    },
+    markOneRead: (id) => {
+      if (!markRead.isPending) markRead.mutate([id]);
+    },
     isMarkingRead: markRead.isPending,
+    markingId: markRead.variables?.[0] ?? null,
+    markReadStatus: markRead.status,
+    retryMarkRead: () => {
+      if (!markRead.isPending) markRead.mutate(markRead.variables);
+    },
     hasMore: query.hasNextPage,
-    loadMore: () => void query.fetchNextPage(),
-    isLoadingMore: query.isFetchingNextPage
+    loadMore: () => {
+      if (query.hasNextPage && !query.isFetching && !markRead.isPending) {
+        void query.fetchNextPage({ cancelRefetch: false });
+      }
+    },
+    isLoadingMore: query.isFetchingNextPage,
+    isLoadMoreError: query.isFetchNextPageError
   };
 }
