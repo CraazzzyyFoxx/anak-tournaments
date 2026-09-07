@@ -14,4 +14,10 @@
 export const notificationQueryKeys = {
   list: () => ["notifications"] as const,
   activeAnnouncements: () => ["announcements", "active"] as const,
+  /**
+   * The operator list, keyed by the scope it asked for: `null` is the
+   * platform-wide feed, and it is a different list from any workspace's, so
+   * switching audience must not read the previous scope's rows from the cache.
+   */
+  announcementsAdmin: (workspaceId: number | null) => ["announcements", "admin", workspaceId] as const,
 };

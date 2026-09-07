@@ -30,6 +30,7 @@ const resourcesWithCrud = [
   "challonge",
   "asset",
   "tournament_link",
+  "announcement",
 ] as const;
 
 type CrudResource = (typeof resourcesWithCrud)[number];

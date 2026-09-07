@@ -5,6 +5,7 @@ import {
   Gamepad2,
   History,
   LayoutDashboard,
+  Megaphone,
   type LucideIcon,
   Settings2,
   Shield,
@@ -283,6 +284,16 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         workspaceAdminVisible: true,
       },
       {
+        title: "Announcements",
+        href: "/admin/announcements",
+        icon: Megaphone,
+        description:
+          "Notices for this workspace, and the platform-wide banner every visitor sees.",
+        aliases: ["announcement", "banner", "notice", "broadcast"],
+        permissions: ["announcement.read"],
+        workspaceAdminVisible: true,
+      },
+      {
         title: "Audit log",
         href: "/admin/audit",
         icon: History,
@@ -350,6 +361,9 @@ const adminRoutePermissions: Array<{
   { prefix: "/admin/teams", permissions: ["team.read"] },
   { prefix: "/admin/matches", permissions: ["match.read"] },
   { prefix: "/admin/achievements", permissions: ["achievement.read"] },
+  // Reading the feed is the gate; publishing to it is a second grant the page
+  // asks for separately, and a platform-wide one needs the superuser besides.
+  { prefix: "/admin/announcements", permissions: ["announcement.read"], workspaceAdminVisible: true },
   { prefix: "/admin/audit", permissions: ["audit.read"], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
 

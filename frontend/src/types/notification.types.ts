@@ -40,3 +40,26 @@ export interface NotificationMarkReadResult {
   marked: number;
   unread_count: number;
 }
+
+/**
+ * The operator write body (`POST /api/v1/admin/announcements`).
+ *
+ * Flat, and deliberately so: the RPC schema is `extra="forbid"`, so a nested
+ * `payload` object — the shape the row is *stored* in — is a 422 on the way in.
+ * `audience` has no `"user"` member here for the reason the server schema has
+ * none either: a personal notification is written by the flow that causes it,
+ * from a server-resolved recipient, never from a client-supplied id.
+ */
+export interface AnnouncementCreateBody {
+  audience: Exclude<NotificationAudience, "user">;
+  /** Required for `workspace`, and rejected for `global`. */
+  workspace_id: number | null;
+  /** Only the locales an operator actually wrote in. */
+  locales: Partial<Record<string, AnnouncementLocaleText>>;
+  default_locale: string;
+  href: string | null;
+  /** `null` publishes now, and a future stamp schedules it. */
+  published_at: string | null;
+  /** `null` never expires. */
+  expires_at: string | null;
+}

@@ -5429,6 +5429,69 @@
       "announcement": {
         "published": "New announcement"
       }
+    },
+    "admin": {
+      "title": "Announcements",
+      "description": "Notices you write yourself — shown in the inbox, and platform-wide ones as a banner to every visitor.",
+      "audienceLabel": "Audience",
+      "audience": {
+        "workspace": "This workspace",
+        "global": "Platform-wide"
+      },
+      "pickWorkspace": "Pick a workspace to read and write its announcements. Announcements belong to one workspace at a time — the same scope the permission to publish them is granted in.",
+      "unauthorized": {
+        "title": "Unauthorized",
+        "description": "You do not have permission to read announcements in this workspace."
+      },
+      "readOnly": "You can read this feed but not publish to it. Publishing needs the announcement permission in this workspace.",
+      "published": "Announcement published",
+      "untitled": "Untitled",
+      "empty": "No announcements in this scope yet.",
+      "locales": {
+        "ru": "Russian",
+        "en": "English"
+      },
+      "form": {
+        "title": "New announcement",
+        "workspaceHint": "Shown to members of this workspace. One language is enough — readers without it see the fallback.",
+        "globalHint": "Shown to every visitor of the platform, signed in or not, so it needs both languages.",
+        "titleField": "Title",
+        "bodyField": "Body (optional)",
+        "localeEmpty": "empty",
+        "defaultLocale": "Fallback language",
+        "defaultLocaleEmpty": "Write a title first — the fallback is chosen among the languages you filled in.",
+        "defaultLocaleHint": "Used for readers whose language you did not write in.",
+        "href": "Link (optional)",
+        "publishedAt": "Publish at",
+        "expiresAt": "Stop showing at",
+        "publish": "Publish"
+      },
+      "errors": {
+        "noLocale": "Write a title in at least one language.",
+        "missingLocales": "A platform-wide announcement needs a title in both Russian and English — everyone sees it, whichever language they read the site in.",
+        "defaultLocaleEmpty": "The fallback language has no title.",
+        "noWorkspace": "Pick a workspace before publishing a workspace announcement.",
+        "badDate": "Check the publish and expiry times."
+      },
+      "columns": {
+        "title": "Announcement",
+        "audience": "Audience",
+        "publishedAt": "Published",
+        "expiresAt": "Expires",
+        "state": "State"
+      },
+      "state": {
+        "scheduled": "Scheduled",
+        "active": "Live",
+        "retired": "Unpublished"
+      },
+      "retire": {
+        "action": "Unpublish",
+        "title": "Unpublish this announcement?",
+        "description": "It stops being shown from now on. The record and everyone's read marks stay, so who saw it remains answerable — but it cannot be put back on air from this screen.",
+        "cancel": "Keep it up",
+        "done": "Announcement unpublished"
+      }
     }
   }
 }

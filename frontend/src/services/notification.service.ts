@@ -1,5 +1,6 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type {
+  AnnouncementCreateBody,
   NotificationInbox,
   NotificationItem,
   NotificationMarkReadResult
@@ -42,5 +43,41 @@ export default class notificationService {
     return apiFetch("/api/announcements/active", {
       skipWorkspace: true
     }).then((response) => response.json());
+  }
+
+  /**
+   * One scope's announcements for the operator screen, expired ones included.
+   *
+   * `skipWorkspace` on all three writes and on this read: the scope is the
+   * argument, not the ambient workspace. Without it the platform-wide feed
+   * (`workspaceId: null`) would silently arrive scoped to whatever workspace
+   * the switcher happens to hold, and a superuser would see an empty list
+   * instead of the global announcements.
+   */
+  static async listAnnouncements(params: { workspaceId: number | null }): Promise<NotificationItem[]> {
+    return apiFetch("/api/v1/admin/announcements", {
+      query: params.workspaceId == null ? {} : { workspace_id: params.workspaceId },
+      skipWorkspace: true
+    }).then((response) => response.json());
+  }
+
+  /** Publish (or schedule) one. 422 when the locales do not cover the audience. */
+  static async createAnnouncement(body: AnnouncementCreateBody): Promise<NotificationItem> {
+    return apiFetch("/api/v1/admin/announcements", {
+      method: "POST",
+      body,
+      skipWorkspace: true
+    }).then((response) => response.json());
+  }
+
+  /**
+   * Take it off the air. The row stays and so do its read marks — the server
+   * sets `expires_at` to now rather than deleting, so "who saw this" survives.
+   */
+  static async retireAnnouncement(id: number): Promise<void> {
+    await apiFetch(`/api/v1/admin/announcements/${id}`, {
+      method: "DELETE",
+      skipWorkspace: true
+    });
   }
 }
