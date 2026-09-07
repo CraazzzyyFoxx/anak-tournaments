@@ -5463,7 +5463,12 @@
         "defaultLocaleHint": "Used for readers whose language you did not write in.",
         "href": "Link (optional)",
         "publishedAt": "Publish at",
+        "publishedAtTime": "Publish time",
+        "publishedAtPlaceholder": "Right away",
         "expiresAt": "Stop showing at",
+        "expiresAtTime": "Stop showing time",
+        "expiresAtPlaceholder": "Never",
+        "scheduleClear": "Clear",
         "publish": "Publish"
       },
       "errors": {

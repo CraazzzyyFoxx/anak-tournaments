@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DateTimePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -166,51 +167,46 @@ export function AnnouncementForm({
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="announcement-href">{t("notifications.admin.form.href")}</Label>
-              <Input
-                id="announcement-href"
-                data-field="href"
-                maxLength={512}
-                placeholder="/tournaments"
-                value={form.href}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, href: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="announcement-published-at">
-                {t("notifications.admin.form.publishedAt")}
-              </Label>
-              {/* Native pickers: a scheduled announcement is a wall-clock
-                  decision, and the browser's own control already speaks the
-                  operator's locale and time zone. */}
-              <Input
-                id="announcement-published-at"
-                data-field="published-at"
-                type="datetime-local"
-                value={form.publishedAt}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, publishedAt: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="announcement-expires-at">
-                {t("notifications.admin.form.expiresAt")}
-              </Label>
-              <Input
-                id="announcement-expires-at"
-                data-field="expires-at"
-                type="datetime-local"
-                value={form.expiresAt}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, expiresAt: event.target.value }))
-                }
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="announcement-href">{t("notifications.admin.form.href")}</Label>
+            <Input
+              id="announcement-href"
+              data-field="href"
+              maxLength={512}
+              placeholder="/tournaments"
+              value={form.href}
+              onChange={(event) => setForm((current) => ({ ...current, href: event.target.value }))}
+            />
+          </div>
+
+          {/* Wall-clock decisions, so the value stays a local "YYYY-MM-DDTHH:mm"
+              string exactly as before — `instant()` still parses it. The house
+              picker replaces the native control: it speaks the UI locale (the
+              browser's does not follow next-intl) and its calendar and time
+              field are the same ones every other schedule form uses. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <DateTimePicker
+              id="announcement-published-at"
+              timeId="announcement-published-at-time"
+              dateLabel={t("notifications.admin.form.publishedAt")}
+              timeLabel={t("notifications.admin.form.publishedAtTime")}
+              clearLabel={t("notifications.admin.form.scheduleClear")}
+              placeholder={t("notifications.admin.form.publishedAtPlaceholder")}
+              value={form.publishedAt}
+              onChange={(value) => setForm((current) => ({ ...current, publishedAt: value }))}
+              disabled={isPublishing}
+            />
+            <DateTimePicker
+              id="announcement-expires-at"
+              timeId="announcement-expires-at-time"
+              dateLabel={t("notifications.admin.form.expiresAt")}
+              timeLabel={t("notifications.admin.form.expiresAtTime")}
+              clearLabel={t("notifications.admin.form.scheduleClear")}
+              placeholder={t("notifications.admin.form.expiresAtPlaceholder")}
+              value={form.expiresAt}
+              onChange={(value) => setForm((current) => ({ ...current, expiresAt: value }))}
+              disabled={isPublishing}
+            />
           </div>
 
           {error ? (

@@ -5463,7 +5463,12 @@
         "defaultLocaleHint": "Его увидят читатели, для чьего языка текста нет.",
         "href": "Ссылка (необязательно)",
         "publishedAt": "Опубликовать",
+        "publishedAtTime": "Время публикации",
+        "publishedAtPlaceholder": "Сразу",
         "expiresAt": "Перестать показывать",
+        "expiresAtTime": "Время снятия",
+        "expiresAtPlaceholder": "Никогда",
+        "scheduleClear": "Очистить",
         "publish": "Опубликовать"
       },
       "errors": {
