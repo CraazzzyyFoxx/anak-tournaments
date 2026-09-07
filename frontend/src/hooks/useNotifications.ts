@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { notificationQueryKeys } from "@/lib/notification-query-keys";
@@ -13,6 +13,10 @@ interface UseNotificationsResult {
   isLoading: boolean;
   markAllRead: () => void;
   isMarkingRead: boolean;
+  /** Another page exists behind `next_cursor`. */
+  hasMore: boolean;
+  loadMore: () => void;
+  isLoadingMore: boolean;
 }
 
 /**
@@ -28,9 +32,14 @@ export function useNotifications(authUserId: number | null | undefined): UseNoti
   const queryClient = useQueryClient();
   const enabled = authUserId != null;
 
-  const query = useQuery({
+  // Paged, not a single read: the server answers 20 rows and an opaque
+  // `next_cursor`, so a plain query would make everything older than the 20th
+  // notification unreachable — there is no other surface it exists on.
+  const query = useInfiniteQuery({
     queryKey: notificationQueryKeys.list(),
-    queryFn: () => notificationService.list(),
+    queryFn: ({ pageParam }) => notificationService.list({ cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next_cursor,
     enabled
   });
 
@@ -53,10 +62,17 @@ export function useNotifications(authUserId: number | null | undefined): UseNoti
   });
 
   return {
-    items: query.data?.items ?? [],
-    unreadCount: query.data?.unread_count ?? 0,
+    // Pages arrive newest-first and keyset-paginated, so concatenation is the
+    // order — no re-sort, and no row can appear twice.
+    items: query.data?.pages.flatMap((page) => page.items) ?? [],
+    // The badge counts the whole inbox, not the loaded prefix: every page
+    // carries the same total, so the first one answers it.
+    unreadCount: query.data?.pages[0]?.unread_count ?? 0,
     isLoading: enabled && query.isPending,
     markAllRead: () => markRead.mutate(undefined),
-    isMarkingRead: markRead.isPending
+    isMarkingRead: markRead.isPending,
+    hasMore: query.hasNextPage,
+    loadMore: () => void query.fetchNextPage(),
+    isLoadingMore: query.isFetchingNextPage
   };
 }

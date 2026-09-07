@@ -24,7 +24,8 @@ const NotificationBell = () => {
   const { user } = useAuthProfile();
   const authUserId = user?.id ?? null;
   const [open, setOpen] = useState(false);
-  const { items, unreadCount, isLoading, isMarkingRead, markAllRead } = useNotifications(authUserId);
+  const { items, unreadCount, isLoading, isMarkingRead, markAllRead, hasMore, loadMore, isLoadingMore } =
+    useNotifications(authUserId);
 
   if (authUserId == null) {
     return null;
@@ -62,6 +63,9 @@ const NotificationBell = () => {
           isLoading={isLoading}
           isMarkingRead={isMarkingRead}
           onMarkAllRead={markAllRead}
+          hasMore={hasMore}
+          isLoadingMore={isLoadingMore}
+          onLoadMore={loadMore}
         />
       </PopoverContent>
     </Popover>

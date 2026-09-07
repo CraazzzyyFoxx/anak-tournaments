@@ -5408,7 +5408,9 @@
     "bell": "Notifications, {count, plural, =0 {nothing unread} one {# unread} other {# unread}}",
     "unread": "Unread",
     "empty": "No notifications yet",
+    "emptyHint": "Team invites, registration decisions and disputed reports land here.",
     "markAllRead": "Mark all read",
+    "loadMore": "Show older",
     "banner": {
       "label": "Announcement",
       "dismiss": "Dismiss announcement",

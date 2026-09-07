@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
-import { announcementText } from "@/lib/announcement-text";
+import { PopoverClose } from "@/components/ui/popover";
+import { announcementHref, announcementText } from "@/lib/announcement-text";
 import { cn } from "@/lib/utils";
 import type { NotificationItem } from "@/types/notification.types";
 
@@ -25,6 +27,9 @@ interface NotificationListProps {
   isLoading: boolean;
   isMarkingRead: boolean;
   onMarkAllRead: () => void;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onLoadMore: () => void;
 }
 
 /**
@@ -47,7 +52,10 @@ const NotificationList = ({
   unreadCount,
   isLoading,
   isMarkingRead,
-  onMarkAllRead
+  onMarkAllRead,
+  hasMore,
+  isLoadingMore,
+  onLoadMore
 }: NotificationListProps) => {
   const t = useTranslations<never>();
   const locale = useLocale();
@@ -95,29 +103,81 @@ const NotificationList = ({
       {isLoading ? (
         <p className="px-3 py-6 text-center text-sm text-muted-foreground">{t("common.loading")}</p>
       ) : items.length === 0 ? (
-        <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-          {t("notifications.empty")}
-        </p>
+        // Not a bare "no results": the inbox is empty for most of its life, so
+        // the state has to say what will land here rather than just that
+        // nothing has.
+        <div className="px-3 py-6 text-center">
+          <p className="text-sm font-medium">{t("notifications.empty")}</p>
+          <p className="mt-1 text-pretty text-sm text-muted-foreground">{t("notifications.emptyHint")}</p>
+        </div>
       ) : (
-        <ul className="divide-y overflow-y-auto">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className={cn("flex flex-col gap-1 px-3 py-2 text-sm", !item.is_read && "bg-muted/40")}
-            >
-              <span>
-                {/* Unread is carried by a word, not only by the tint: a
-                    background shade says nothing to a screen reader and little
-                    to a viewer who cannot separate the two greys. */}
-                {!item.is_read && <span className="sr-only">{t("notifications.unread")} </span>}
-                {notificationText(item)}
-              </span>
-              <time dateTime={item.published_at} className="text-xs text-muted-foreground">
-                {format.relativeTime(new Date(item.published_at))}
-              </time>
-            </li>
-          ))}
+        // `tabIndex={0}` because this is the scroll container: rows below the
+        // fold are otherwise unreachable without a pointer whenever the visible
+        // ones hold no link (WCAG 2.1.1).
+        <ul
+          tabIndex={0}
+          aria-label={t("notifications.title")}
+          className="divide-y overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          {items.map((item) => {
+            const href = item.kind === "announcement.published" ? announcementHref(item.payload) : null;
+            const text = notificationText(item);
+
+            return (
+              <li
+                key={item.id}
+                className={cn("flex flex-col gap-1 px-3 py-2 text-sm", !item.is_read && "bg-muted/40")}
+              >
+                <span className="flex items-start gap-2">
+                  {/* Unread is carried by a dot and a word, never by the tint
+                      alone: `bg-muted/40` on `bg-popover` measures 1.15:1, which
+                      is nothing to a viewer who cannot separate two near-blacks
+                      and nothing at all to a screen reader. The read rows keep
+                      the same spacer so every row's text starts on one edge. */}
+                  <span
+                    aria-hidden
+                    className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", !item.is_read && "bg-primary")}
+                  />
+                  {!item.is_read && <span className="sr-only">{t("notifications.unread")} </span>}
+                  {href ? (
+                    // The panel is a popover, so a row that navigates has to
+                    // close it — otherwise it stays open over the page it just
+                    // opened. `PopoverClose` also hands focus back to the bell.
+                    <PopoverClose asChild>
+                      <Link
+                        href={href}
+                        className="min-w-0 flex-1 underline-offset-4 hover:underline focus-visible:underline"
+                      >
+                        {text}
+                      </Link>
+                    </PopoverClose>
+                  ) : (
+                    <span className="min-w-0 flex-1">{text}</span>
+                  )}
+                </span>
+                <time dateTime={item.published_at} className="ps-3.5 text-xs text-muted-foreground">
+                  {format.relativeTime(new Date(item.published_at))}
+                </time>
+              </li>
+            );
+          })}
         </ul>
+      )}
+
+      {/* The server answers 20 rows and a cursor; without this the 21st
+          notification exists on no surface at all. */}
+      {hasMore && (
+        <div className="border-t p-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs"
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+          >
+            {isLoadingMore ? t("common.loading") : t("notifications.loadMore")}
+          </Button>
+        </div>
       )}
     </div>
   );

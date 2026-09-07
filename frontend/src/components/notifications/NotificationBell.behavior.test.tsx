@@ -91,6 +91,18 @@ const DISPUTED_NO_MAP = item({
   payload: { encounter_id: 9, tournament_id: 5, map_id: 0, map_index: 0 }
 });
 
+// The one kind whose text is operator-written, and the one that carries a link.
+const ANNOUNCEMENT = item({
+  id: 14,
+  kind: "announcement.published",
+  audience: "global",
+  payload: {
+    default_locale: "en",
+    href: "/changelog",
+    locales: { en: { title: "Maintenance window" } }
+  }
+});
+
 function inbox(items: NotificationItem[], unreadCount = items.length): NotificationInbox {
   return { items, unread_count: unreadCount, next_cursor: null };
 }
@@ -227,6 +239,60 @@ describe("notification bell", () => {
     // semantic for an omitted list, so the client must not enumerate a page.
     expect(markRead).toHaveBeenCalledWith(undefined);
     expect(container.querySelector("button")?.getAttribute("aria-label")).not.toContain("2");
+  });
+
+  it("reaches the page behind the cursor instead of stopping at the newest 20", async () => {
+    list.mockReset();
+    list.mockResolvedValueOnce({ items: [INVITE], unread_count: 21, next_cursor: "cursor-1" });
+    list.mockResolvedValueOnce({ items: [DISPUTED_NO_MAP], unread_count: 21, next_cursor: null });
+
+    await mount();
+    await openPanel();
+    await flush();
+
+    const older = [...document.body.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === en.notifications.loadMore
+    );
+    expect(older, "no control for the page the cursor points at").not.toBeUndefined();
+
+    await click(older!);
+    await flush();
+
+    expect(list).toHaveBeenLastCalledWith({ cursor: "cursor-1" });
+    // Both pages are on screen, newest first, and neither replaced the other.
+    const panel = document.body.textContent ?? "";
+    expect(panel).toContain("Alpha");
+    expect(panel).toContain("A report in your match is disputed");
+    // Last page: nothing left to ask the server for.
+    expect(
+      [...document.body.querySelectorAll("button")].some(
+        (button) => button.textContent?.trim() === en.notifications.loadMore
+      )
+    ).toBe(false);
+  });
+
+  it("links an announcement row to its href, and drops one that is not a safe target", async () => {
+    list.mockResolvedValue(inbox([ANNOUNCEMENT]));
+    await mount();
+    await openPanel();
+    await flush();
+
+    const link = document.body.querySelector("a");
+    expect(link?.getAttribute("href")).toBe("/changelog");
+    expect(link?.textContent).toContain("Maintenance window");
+
+    // A `javascript:` payload on a row every recipient opens is stored XSS —
+    // the row keeps its text and loses the anchor.
+    document.body.innerHTML = "";
+    list.mockResolvedValue(
+      inbox([item({ ...ANNOUNCEMENT, payload: { ...ANNOUNCEMENT.payload, href: "javascript:alert(1)" } })])
+    );
+    await mount();
+    await openPanel();
+    await flush();
+
+    expect(document.body.querySelector("a")).toBeNull();
+    expect(document.body.textContent).toContain("Maintenance window");
   });
 
   it("renders nothing for an anonymous visitor", async () => {
