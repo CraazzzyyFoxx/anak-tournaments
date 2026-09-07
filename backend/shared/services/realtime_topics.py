@@ -12,7 +12,7 @@ __all__ = (
     "realtime_channel",
     "streams",
     "subscriptions",
-    "workspace_notifications",
+    "user_notifications",
 )
 
 REALTIME_CHANNEL_PREFIX = "realtime:"
@@ -68,8 +68,14 @@ def logs(workspace_id: int) -> str:
     return f"workspace:{int(workspace_id)}:logs"
 
 
-def workspace_notifications(workspace_id: int) -> str:
-    return f"workspace:{int(workspace_id)}:notifications"
+def user_notifications(user_id: int) -> str:
+    """Per-user topic for the notification inbox signal.
+
+    Not workspace-scoped: a user's inbox spans every workspace they belong to
+    plus platform-wide rows, so the only subject that can name it is the user.
+    The gateway ACL grants it to that user alone.
+    """
+    return f"user:{int(user_id)}:notifications"
 
 
 def subscriptions(workspace_id: int) -> str:
