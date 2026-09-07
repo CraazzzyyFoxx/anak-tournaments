@@ -25,8 +25,12 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 /**
  * Self-service, allow-by-default capabilities an admin can revoke per account
  * (negative RBAC). A checked row = denied in the selected scope. Governance
- * permissions are not deniable — the backend rejects them — so the catalogue
- * is this pair and not the whole permission inventory.
+ * permissions are not deniable — the backend rejects them — so the catalogue is
+ * this list and not the whole permission inventory.
+ *
+ * It has to mirror the "self-service capabilities" block of
+ * `shared/rbac/catalog.py`: a capability the backend gates on `can_capability`
+ * but that never appears here is unrevokable in practice.
  */
 const RESTRICTABLE: PermissionCatalogEntry[] = [
   {
@@ -40,6 +44,18 @@ const RESTRICTABLE: PermissionCatalogEntry[] = [
     resource: "account",
     action: "social",
     description: "Manage own linked accounts"
+  },
+  {
+    key: "registration.self_register",
+    resource: "registration",
+    action: "self_register",
+    description: "Sign up for tournaments"
+  },
+  {
+    key: "workspace.self_create",
+    resource: "workspace",
+    action: "self_create",
+    description: "Create own workspaces"
   }
 ];
 
@@ -70,8 +86,11 @@ export function AccountRestrictions({
     queryFn: () => rbacService.getUserDenies(userId)
   });
   const permissionsQuery = useQuery({
-    queryKey: ["access-admin", "permissions", "account"],
-    queryFn: () => rbacService.listPermissionsAll({ search: "account" })
+    // The whole inventory, not a `search` narrowed to one resource: the
+    // restrictable capabilities span three resources now, and a row whose
+    // permission id is missing here is silently dropped from the picker below.
+    queryKey: ["access-admin", "permissions", "inventory"],
+    queryFn: () => rbacService.listPermissionsAll()
   });
 
   const denies = deniesQuery.data ?? [];

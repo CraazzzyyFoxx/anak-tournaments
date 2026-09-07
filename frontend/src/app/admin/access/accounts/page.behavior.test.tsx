@@ -278,6 +278,22 @@ beforeEach(() => {
       action: "social",
       description: "Manage own linked accounts",
       created_at: "2026-01-01"
+    },
+    {
+      id: 73,
+      name: "registration.self_register",
+      resource: "registration",
+      action: "self_register",
+      description: "Self-register for a tournament",
+      created_at: "2026-01-01"
+    },
+    {
+      id: 74,
+      name: "workspace.self_create",
+      resource: "workspace",
+      action: "self_create",
+      description: "Create one's own workspace",
+      created_at: "2026-01-01"
     }
   ]);
   getUserDenies.mockReset().mockResolvedValue([]);
@@ -388,6 +404,21 @@ describe("Access › Accounts · one permission toggle", () => {
     await click(box);
 
     expect(addUserDeny).toHaveBeenCalledWith(90, 71, null);
+  });
+
+  // The whole point of a restrictable capability is that this screen can take
+  // it away; one that the backend gates but the picker never lists is
+  // unrevokable in practice.
+  it("can revoke workspace creation globally", async () => {
+    await mount("?id=90");
+    const box = await waitFor(
+      () => document.querySelector('[aria-label="Toggle workspace.self_create"]'),
+      "the workspace.self_create row"
+    );
+
+    await click(box);
+
+    expect(addUserDeny).toHaveBeenCalledWith(90, 74, null);
   });
 
   it("offers no restriction control without role.update", async () => {
