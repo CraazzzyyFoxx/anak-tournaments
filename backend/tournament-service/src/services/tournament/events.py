@@ -37,20 +37,51 @@ from src.services.tournament.realtime_commit import register_tournament_realtime
 #: uses to invalidate caches for exactly this reason.
 _PENDING_SIGNALS_KEY = "notification_signal_recipients"
 
+#: Tournament names already snapshotted in this transaction, keyed by id.
+#: ``bulk_approve_registrations`` decides a whole batch for ONE tournament in a
+#: loop, so reading the name per registration is an N+1 that grows with the
+#: batch. The session's identity map cannot serve as that cache: it holds clean
+#: instances WEAKLY, so a ``session.get`` result is collected between iterations
+#: and re-queried every time.
+_TOURNAMENT_NAMES_KEY = "notification_tournament_names"
+
 # asyncio keeps only a weak reference to a running task, so an unanchored
 # fire-and-forget publish can be collected mid-flight.
 _signal_tasks: set[asyncio.Task[Any]] = set()
 
 
+def _session_info(session: AsyncSession) -> dict[Any, Any] | None:
+    """The underlying ``Session.info``, the per-transaction scratch space the
+    ``after_commit``/``after_rollback`` listeners below drain."""
+    return getattr(getattr(session, "sync_session", None) or session, "info", None)
+
+
 def _stage_notification_signal(session: AsyncSession, recipient_auth_user_id: int) -> None:
-    info = getattr(getattr(session, "sync_session", None) or session, "info", None)
+    info = _session_info(session)
     if info is None:
         return
     info.setdefault(_PENDING_SIGNALS_KEY, set()).add(int(recipient_auth_user_id))
 
 
+async def _tournament_name(session: AsyncSession, tournament_id: int) -> str:
+    """The tournament's name for a snapshot, read at most once per transaction.
+
+    Single-column scalar projection, memoized on the session -- see
+    ``_TOURNAMENT_NAMES_KEY`` for why the identity map is not the memo.
+    """
+    info = _session_info(session)
+    names: dict[int, str] = info.setdefault(_TOURNAMENT_NAMES_KEY, {}) if info is not None else {}
+    if tournament_id not in names:
+        names[tournament_id] = (
+            await session.scalar(sa.select(models.Tournament.name).where(models.Tournament.id == tournament_id)) or ""
+        )
+    return names[tournament_id]
+
+
 @event.listens_for(Session, "after_commit")
 def _publish_notification_signals_after_commit(session: Session) -> None:
+    # Both scratch keys are per-transaction; a session outlives its transactions.
+    session.info.pop(_TOURNAMENT_NAMES_KEY, None)
     recipients: set[int] = session.info.pop(_PENDING_SIGNALS_KEY, set())
     if not recipients:
         return
@@ -68,6 +99,7 @@ def _publish_notification_signals_after_commit(session: Session) -> None:
 
 @event.listens_for(Session, "after_rollback")
 def _drop_notification_signals_after_rollback(session: Session) -> None:
+    session.info.pop(_TOURNAMENT_NAMES_KEY, None)
     session.info.pop(_PENDING_SIGNALS_KEY, None)
 
 
@@ -166,16 +198,26 @@ async def _notify_registration_decision(
     the same recipient/kind/entity within N minutes), not a unique index, which
     would also block the legitimate repeat.
     """
-    if player_id is None:
-        return
-    recipient = await session.scalar(sa.select(models.User.auth_user_id).where(models.User.id == player_id))
+    # The admin review paths (`approve_registration`, `reject_registration`,
+    # `update_registration_profile`) reach here with a registration loaded by
+    # `get_registration_by_id`, whose options already eager-load
+    # `workspace_member.player` and `tournament` -- the two rows this used to
+    # re-read. Read them off the instance dict rather than the attribute:
+    # touching an unloaded relationship on an async session raises instead of
+    # lazy-loading, which is why `lifecycle._workspace_id_for` does the same.
+    member = registration.__dict__.get("workspace_member")
+    player = member.__dict__.get("player") if member is not None else None
+    if player is not None:
+        recipient = player.auth_user_id
+    elif player_id is not None:
+        recipient = await session.scalar(sa.select(models.User.auth_user_id).where(models.User.id == player_id))
+    else:
+        recipient = None
     if recipient is None:
         return
-    # Single-column scalar projection for the snapshot, not a row fetch: the
-    # tournament is not otherwise loaded here, and bulk approval calls this once
-    # per registration.
-    tournament_name = await session.scalar(
-        sa.select(models.Tournament.name).where(models.Tournament.id == registration.tournament_id)
+    tournament = registration.__dict__.get("tournament")
+    tournament_name = (
+        tournament.name if tournament is not None else await _tournament_name(session, registration.tournament_id)
     )
     await notify(
         session,
@@ -183,7 +225,7 @@ async def _notify_registration_decision(
         recipient_auth_user_id=int(recipient),
         payload={
             "tournament_id": registration.tournament_id,
-            "tournament_name": tournament_name or "",
+            "tournament_name": tournament_name,
             "registration_id": registration.id,
         },
     )

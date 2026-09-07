@@ -33,11 +33,13 @@ import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 import sqlalchemy as sa
-from sqlalchemy.orm import Session
+from sqlalchemy import event
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.pool import StaticPool
 
 backend_root = Path(__file__).resolve().parents[2]
@@ -50,6 +52,7 @@ from shared.testing import install_postgres_type_shims  # noqa: E402
 from src import models  # noqa: E402
 from src.schemas.registration import RegistrationCreate  # noqa: E402
 from src.services.encounter import map_report as map_report_module  # noqa: E402
+from src.services.registration import lifecycle as lifecycle_module  # noqa: E402
 from src.services.registration import teams as teams_module  # noqa: E402
 from src.services.tournament import events as events_module  # noqa: E402
 
@@ -89,6 +92,14 @@ class _AsyncSessionShim:
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        # The shim's OWN scratch space, deliberately not the ``Session.info`` the
+        # global ``before_flush``/``after_commit`` listeners drain. Producer code
+        # that stages per-transaction state (the notification-signal recipients,
+        # the tournament-name memo) works normally against it, while the
+        # realtime-staging factories write their builders into a dict nothing
+        # reads -- so no ``workspace_event`` row and no Redis publish is dragged
+        # into these tests.
+        self.info: dict[Any, Any] = {}
 
     async def execute(self, statement, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
         with warnings.catch_warnings():
@@ -117,12 +128,15 @@ class _AsyncSessionShim:
     async def refresh(self, obj) -> None:  # noqa: ANN001
         self._session.refresh(obj)
 
+    async def get(self, entity, primary_key):  # noqa: ANN001, ANN202
+        return self._session.get(entity, primary_key)
+
     def add(self, obj) -> None:  # noqa: ANN001
         self._session.add(obj)
 
     def __getattr__(self, name):  # noqa: ANN001, ANN204
-        if name in ("info", "sync_session"):
-            # Hidden on purpose: the realtime-staging factories key off these.
+        if name == "sync_session":
+            # Hidden so ``info`` above is the one every producer reaches.
             raise AttributeError(name)
         return getattr(self._session, name)
 
@@ -543,3 +557,98 @@ class DisputedMapReportTests(_ProducerTestCase):
             },
             rows[0].payload_json,
         )
+
+
+class RegistrationDecisionQueryBudgetTests(_ProducerTestCase):
+    """The two snapshot reads must not be re-issued when the flow already holds
+    the rows, and must not scale with the size of a batch.
+
+    Both claims are invisible to a "the notification was created" assertion --
+    the rows come out identical either way -- so this counts the statements the
+    engine actually sees, matching selected columns by lineage rather than by SQL
+    text.
+
+    The admin review paths reach the producer with a registration loaded by
+    ``get_registration_by_id``, whose options already eager-load ``tournament``
+    and ``workspace_member.player``: re-reading either is pure waste.
+    ``bulk_approve_registrations`` reaches it with a bare registration, N times
+    for ONE tournament: re-reading the name there is an N+1 that grows with the
+    batch. Five registrations rather than two, so a per-row read is unmistakable
+    -- this reads 1 where the N+1 reads 5.
+
+    The fixture's own tournament is expunged first; production callers of the
+    bulk path do not hold it, and leaving it in the identity map would make the
+    count zero for reasons the code under test does not own.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.fx.session.expunge(self.fx.tournament)
+        self.statements: list[object] = []
+        event.listen(self.fx.engine, "before_execute", self._record)
+        self.addCleanup(event.remove, self.fx.engine, "before_execute", self._record)
+
+    def _record(self, _conn, clauseelement, _multiparams, _params, _execution_options) -> None:  # noqa: ANN001
+        self.statements.append(clauseelement)
+
+    def _reads_of(self, column) -> int:  # noqa: ANN001
+        """Statements projecting ``column``, matched on the column object's
+        lineage rather than on SQL text (an ORM-annotated column is not the same
+        object as the table's)."""
+        return sum(
+            1
+            for statement in self.statements
+            if isinstance(statement, sa.Select)
+            and any(selected.shares_lineage(column) for selected in statement.selected_columns)
+        )
+
+    def _tournament_name_reads(self) -> int:
+        return self._reads_of(models.Tournament.__table__.c.name)
+
+    async def _approve_batch(self, size: int) -> int:
+        registration_ids = []
+        for index in range(size):
+            member = self.fx.player(f"Player{index}", auth_user_id=700 + index)
+            registration_ids.append(
+                self.fx.registration(member, battle_tag=f"Player{index}#1000", status="pending").id
+            )
+        self.fx.session.flush()
+        self.statements.clear()
+        approved, _skipped = await lifecycle_module.lifecycle_service.bulk_approve_registrations(
+            self.fx.shim, TOURNAMENT_ID, registration_ids, reviewed_by=None
+        )
+        self.assertEqual(size, approved)
+        return self._tournament_name_reads()
+
+    async def test_bulk_approval_reads_the_tournament_name_once_per_batch(self) -> None:
+        self.assertEqual(1, await self._approve_batch(5))
+
+    async def test_every_registration_in_the_batch_is_still_notified(self) -> None:
+        """The budget above must not be bought by dropping notifications."""
+        await self._approve_batch(5)
+        self.assertEqual(5, len(self.fx.notifications("registration.approved")))
+
+    async def test_an_eager_loaded_registration_re_reads_neither_snapshot(self) -> None:
+        member = self.fx.player("Loaded", auth_user_id=800)
+        registration_id = self.fx.registration(member, battle_tag="Loaded#4000", status="pending").id
+        self.fx.session.flush()
+        self.fx.session.expire_all()
+        registration = self.fx.session.scalar(
+            sa.select(models.BalancerRegistration)
+            .where(models.BalancerRegistration.id == registration_id)
+            .options(
+                selectinload(models.BalancerRegistration.tournament),
+                selectinload(models.BalancerRegistration.workspace_member).selectinload(models.WorkspaceMember.player),
+            )
+        )
+        registration.status = "approved"
+        self.statements.clear()
+
+        await events_module.enqueue_registration_approved(self.fx.shim, registration)
+        await self.fx.shim.commit()
+
+        self.assertEqual(0, self._tournament_name_reads())
+        self.assertEqual(0, self._reads_of(models.User.__table__.c.auth_user_id))
+        row = self.fx.notifications("registration.approved")[0]
+        self.assertEqual(800, row.recipient_auth_user_id)
+        self.assertEqual(TOURNAMENT_NAME, row.payload_json["tournament_name"])
