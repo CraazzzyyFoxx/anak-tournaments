@@ -5406,6 +5406,7 @@
   "notifications": {
     "title": "Notifications",
     "bell": "Notifications, {count, plural, =0 {nothing unread} one {# unread} other {# unread}}",
+    "newCount": "{count, plural, one {# new} other {# new}}",
     "unread": "Unread",
     "read": "Read",
     "readFor": "Read: {notification}",
@@ -5431,6 +5432,7 @@
     "loadMore": "Show older",
     "banner": {
       "label": "Announcement",
+      "eyebrow": "Announcement",
       "dismiss": "Dismiss announcement",
       "more": "Learn more"
     },

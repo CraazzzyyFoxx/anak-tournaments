@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, X } from "lucide-react";
+import { Megaphone, X } from "lucide-react";
 import Link from "next/link";
-import { useLocale, useTranslations } from "next-intl";
+import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -15,7 +15,6 @@ import {
 } from "@/lib/announcement-dismissed";
 import { announcementHref, announcementText } from "@/lib/announcement-text";
 import { notificationQueryKeys } from "@/lib/notification-query-keys";
-import { cn } from "@/lib/utils";
 import notificationService from "@/services/notification.service";
 import type { NotificationItem } from "@/types/notification.types";
 
@@ -76,6 +75,7 @@ function announcementContent(
 const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
   const t = useTranslations<never>();
   const locale = useLocale();
+  const format = useFormatter();
   const queryClient = useQueryClient();
   const { user } = useAuthProfile();
   const authUserId = user?.id ?? null;
@@ -139,63 +139,64 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
     contentRoot?.focus({ preventScroll: true });
   };
 
-  // A one-line notice and a three-line one are different shapes: the short one
-  // is a pill that hugs its text, the long one a card. One fixed width would
-  // make "I was born" a 416px box of air.
-  const compact = !content.body && !content.href;
   return (
     // Centre the notice in the same content column as both page shells.
     // `pointer-events-none` on the rail so the strip across the top of every
     // page does not eat clicks the card itself is not under.
-    <div className="pointer-events-none fixed inset-x-0 top-[var(--aqt-banner-top,var(--aqt-sticky-top))] z-[45] mx-auto flex w-full max-w-screen-3xl justify-center px-4 md:px-6 xl:px-10">
+    <div className="pointer-events-none fixed inset-x-0 top-[var(--aqt-banner-top,calc(var(--aqt-sticky-top)+0.75rem))] z-[45] mx-auto flex w-full max-w-screen-3xl justify-center px-4 md:px-6 xl:px-10">
       <Alert
         role="status"
         aria-label={t("notifications.banner.label")}
-        className={cn(
-          // `[&>svg]` overrides: the primitive's own icon slot is absolutely
-          // positioned with a padded sibling, which is a layout this card
-          // cannot use — it also carries a close button on the trailing edge.
-          "pointer-events-auto flex w-max max-w-full max-h-[calc(100dvh-var(--aqt-banner-top,var(--aqt-sticky-top))-1rem)] gap-3 overflow-y-auto overscroll-contain rounded-xl bg-card/95 p-3 shadow-xl backdrop-blur animate-in fade-in slide-in-from-top-2 duration-200 ease-out motion-reduce:animate-none [&>svg]:static [&>svg+div]:translate-y-0 [&>svg~*]:pl-0 sm:max-w-md",
-          // Single line: the row centres on itself. Multi-line: everything
-          // hangs off the first line, where the eye starts.
-          compact ? "items-center" : "items-start"
-        )}
+        className="pointer-events-auto relative flex w-full flex-col overflow-hidden rounded-xl border border-border/80 bg-card/95 p-4 shadow-2xl backdrop-blur-xl ring-1 ring-white/5 animate-in fade-in slide-in-from-top-2 duration-200 ease-out motion-reduce:animate-none before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-primary sm:w-auto sm:min-w-[360px] sm:max-w-lg"
       >
-        <Info className={cn("size-4 shrink-0 text-foreground", !compact && "mt-0.5")} aria-hidden />
-        <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-          <AlertTitle
-            className={cn("text-sm font-semibold leading-snug text-pretty", compact && "mb-0")}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 text-primary">
+            <Megaphone className="size-3.5 shrink-0" aria-hidden />
+            <span className="text-[10px] font-bold uppercase tracking-wider">
+              {t("notifications.banner.eyebrow")}
+            </span>
+            <span className="text-xs text-muted-foreground/60">·</span>
+            <time dateTime={announcement.published_at} className="text-xs font-normal text-muted-foreground">
+              {format.relativeTime(new Date(announcement.published_at))}
+            </time>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            static={false}
+            className="-mr-1 -mt-1 size-7 shrink-0 text-muted-foreground hover:bg-accent/60 hover:text-foreground [&_svg]:size-3.5"
+            aria-label={t("notifications.banner.dismiss")}
+            onClick={onDismiss}
           >
+            <X aria-hidden />
+          </Button>
+        </div>
+
+        <div className="mt-1.5 min-w-0 [overflow-wrap:anywhere]">
+          <AlertTitle className="mb-0 text-sm font-semibold leading-snug text-foreground text-pretty">
             {content.title}
           </AlertTitle>
           {content.body && (
-            <AlertDescription className="text-muted-foreground text-pretty">
+            <AlertDescription className="mt-1 text-xs leading-relaxed text-muted-foreground text-pretty">
               {content.body}
             </AlertDescription>
           )}
           {content.href && (
-            <Link
-              href={content.href}
-              // The visible label stays short; the accessible name carries the
-              // destination, so the link still makes sense in a screen reader's
-              // link list (and contains its visible text, per label-in-name).
-              aria-label={`${t("notifications.banner.more")}: ${content.title}`}
-              className="mt-1 inline-block rounded-sm text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
-            >
-              {t("notifications.banner.more")}
-            </Link>
+            <div className="mt-2.5">
+              <Link
+                href={content.href}
+                // The visible label stays short; the accessible name carries the
+                // destination, so the link still makes sense in a screen reader's
+                // link list (and contains its visible text, per label-in-name).
+                aria-label={`${t("notifications.banner.more")}: ${content.title}`}
+                className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                <span>{t("notifications.banner.more")}</span>
+                <span aria-hidden>→</span>
+              </Link>
+            </div>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          static={false}
-          className="size-11 shrink-0 text-muted-foreground hover:text-foreground sm:size-9 [&_svg]:size-4"
-          aria-label={t("notifications.banner.dismiss")}
-          onClick={onDismiss}
-        >
-          <X aria-hidden />
-        </Button>
       </Alert>
     </div>
   );

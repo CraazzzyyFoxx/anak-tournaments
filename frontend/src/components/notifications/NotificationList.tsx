@@ -1,5 +1,15 @@
 "use client";
 
+import {
+  AlertTriangle,
+  Bell,
+  Check,
+  CheckCheck,
+  CheckCircle2,
+  Megaphone,
+  UserPlus,
+  XCircle
+} from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 
@@ -51,6 +61,43 @@ function messageValues(payload: Record<string, unknown>): Record<string, string 
   return values;
 }
 
+/** Visual iconography and status colors per notification kind. */
+function getKindConfig(kind: string) {
+  switch (kind) {
+    case "team_invite.received":
+    case "team_invite.answered":
+      return {
+        icon: UserPlus,
+        className: "bg-blue-500/10 text-blue-400 border-blue-500/20"
+      };
+    case "registration.approved":
+      return {
+        icon: CheckCircle2,
+        className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+      };
+    case "registration.rejected":
+      return {
+        icon: XCircle,
+        className: "bg-rose-500/10 text-rose-400 border-rose-500/20"
+      };
+    case "encounter.report_disputed":
+      return {
+        icon: AlertTriangle,
+        className: "bg-amber-500/10 text-amber-400 border-amber-500/20"
+      };
+    case "announcement.published":
+      return {
+        icon: Megaphone,
+        className: "bg-primary/10 text-primary border-primary/20"
+      };
+    default:
+      return {
+        icon: Bell,
+        className: "bg-muted text-muted-foreground border-border"
+      };
+  }
+}
+
 const NotificationList = ({
   headingId,
   items,
@@ -95,26 +142,37 @@ const NotificationList = ({
 
   return (
     <div className="flex min-h-0 max-h-[min(70dvh,var(--radix-popover-content-available-height))] flex-col">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
-        <h2 id={headingId} className="text-sm font-semibold">
-          {t("notifications.title")}
-        </h2>
+      <div className="flex shrink-0 items-center justify-between gap-2 px-4 pb-2.5 pt-3.5">
+        <div className="flex items-center gap-2">
+          <h2 id={headingId} className="text-sm font-semibold tracking-tight text-foreground">
+            {t("notifications.title")}
+          </h2>
+          {unreadCount != null && unreadCount > 0 && (
+            <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-primary">
+              {t("notifications.newCount", { count: unreadCount })}
+            </span>
+          )}
+        </div>
         <Button
           static={false}
           variant="ghost"
           size="sm"
-          className="h-auto min-h-10 whitespace-normal px-2 text-xs aria-disabled:pointer-events-none aria-disabled:opacity-50 sm:min-h-8"
+          className="h-auto min-h-8 gap-1.5 px-2 text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground aria-disabled:pointer-events-none aria-disabled:opacity-50"
           onClick={() => {
             if (!markAllUnavailable) markAllRead();
           }}
+          aria-label={t("notifications.markAllRead")}
           aria-disabled={markAllUnavailable}
           aria-busy={isMarkingRead && markingId == null}
         >
-          {t(
-            isMarkingRead && markingId == null
-              ? "notifications.markingAllRead"
-              : "notifications.markAllRead"
-          )}
+          <CheckCheck className="size-3.5 shrink-0" aria-hidden />
+          <span>
+            {t(
+              isMarkingRead && markingId == null
+                ? "notifications.markingAllRead"
+                : "notifications.markAllRead"
+            )}
+          </span>
         </Button>
       </div>
 
@@ -164,61 +222,88 @@ const NotificationList = ({
             </p>
           </div>
         ) : items.length > 0 ? (
-          <ul className="divide-y">
+          <ul className="divide-y divide-border/40">
             {items.map((item) => {
               const href = notificationHref(item);
               const text = notificationText(item);
               const isPending = isMarkingRead && (markingId == null || markingId === item.id);
               const unavailable = item.is_read || isMarkingRead;
+              const kindConfig = getKindConfig(item.kind);
+              const KindIcon = kindConfig.icon;
+
               return (
                 <li
                   key={item.id}
                   className={cn(
-                    "flex flex-col gap-2 px-3 py-3 text-sm",
-                    !item.is_read && "bg-muted/40"
+                    "group relative flex items-start gap-3 px-4 py-3 text-sm transition-colors hover:bg-muted/30",
+                    !item.is_read && "bg-muted/20"
                   )}
                 >
-                  <span className="flex items-start gap-2">
-                    <span
-                      aria-hidden="true"
+                  <div className="relative mt-0.5 shrink-0">
+                    <div
                       className={cn(
-                        "mt-1.5 size-1.5 shrink-0 rounded-full",
-                        !item.is_read && "bg-primary"
+                        "flex size-8 items-center justify-center rounded-full border",
+                        kindConfig.className
                       )}
-                    />
-                    {!item.is_read && <span className="sr-only">{t("notifications.unread")} </span>}
+                    >
+                      <KindIcon className="size-4" aria-hidden />
+                    </div>
+                    {!item.is_read && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-primary ring-2 ring-card"
+                      />
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                    {!item.is_read && (
+                      <span className="sr-only">{t("notifications.unread")} </span>
+                    )}
                     {href ? (
                       <PopoverClose asChild>
                         <Link
                           href={href}
-                          className="min-w-0 flex-1 [overflow-wrap:anywhere] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                          className="line-clamp-2 text-sm font-medium leading-snug text-foreground hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
                         >
                           {text}
                         </Link>
                       </PopoverClose>
                     ) : (
-                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{text}</span>
+                      <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
+                        {text}
+                      </p>
                     )}
-                  </span>
-                  <div className="flex flex-wrap items-center justify-between gap-2 ps-3.5">
-                    <time dateTime={item.published_at} className="text-xs text-muted-foreground">
-                      {format.relativeTime(new Date(item.published_at))}
-                    </time>
-                    <Button
-                      static={false}
-                      variant="ghost"
-                      size="sm"
-                      className="h-auto min-h-10 whitespace-normal px-2 text-xs aria-disabled:pointer-events-none aria-disabled:opacity-50 sm:min-h-8"
-                      aria-label={t(
-                        item.is_read ? "notifications.readFor" : "notifications.markReadFor",
-                        { notification: text }
-                      )}
-                      aria-disabled={unavailable}
-                      aria-busy={isPending}
-                      onClick={() => {
-                        if (!unavailable) markOneRead(item.id);
-                      }}
-                    >
+                    <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                      <time dateTime={item.published_at}>
+                        {format.relativeTime(new Date(item.published_at))}
+                      </time>
+                    </div>
+                  </div>
+
+                  <Button
+                    static={false}
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      "size-7 shrink-0 rounded-md text-muted-foreground transition-opacity hover:bg-accent hover:text-foreground",
+                      item.is_read
+                        ? "pointer-events-none opacity-0"
+                        : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                    )}
+                    aria-label={t(
+                      item.is_read ? "notifications.readFor" : "notifications.markReadFor",
+                      { notification: text }
+                    )}
+                    aria-disabled={unavailable}
+                    aria-busy={isPending}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!unavailable) markOneRead(item.id);
+                    }}
+                  >
+                    <Check className="size-3.5" aria-hidden />
+                    <span className="sr-only">
                       {t(
                         isPending
                           ? "notifications.markingRead"
@@ -226,8 +311,8 @@ const NotificationList = ({
                             ? "notifications.read"
                             : "notifications.markRead"
                       )}
-                    </Button>
-                  </div>
+                    </span>
+                  </Button>
                 </li>
               );
             })}

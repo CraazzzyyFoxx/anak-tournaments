@@ -29,18 +29,18 @@ const NotificationBell = () => {
           static={false}
           variant="ghost"
           size="icon"
-          className="relative data-[state=open]:bg-accent data-[state=open]:text-accent-foreground [&_svg]:size-5"
+          className="relative size-9 rounded-lg text-muted-foreground transition-colors hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground [&_svg]:size-5"
           aria-label={
             unreadCount == null
               ? t("notifications.title")
               : t("notifications.bell", { count: unreadCount })
           }
         >
-          <Bell aria-hidden />
+          <Bell aria-hidden strokeWidth={1.75} />
           {unreadCount != null && unreadCount > 0 && (
             <span
               aria-hidden
-              className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-destructive px-1 text-[11px] font-semibold tabular-nums leading-4 text-destructive-foreground"
+              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold tabular-nums leading-none text-destructive-foreground ring-2 ring-background"
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
@@ -49,10 +49,11 @@ const NotificationBell = () => {
       </PopoverTrigger>
       <PopoverContent
         align="end"
+        sideOffset={8}
         collisionPadding={12}
         aria-labelledby={headingId}
         animate={false}
-        className="w-80 max-w-[calc(100vw-1.5rem)] p-0 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=closed]:fade-out-0 motion-safe:duration-150 motion-safe:ease-out"
+        className="w-[380px] max-w-[calc(100vw-1.5rem)] rounded-xl border border-border/80 bg-card/95 p-0 shadow-2xl backdrop-blur-xl ring-1 ring-white/5 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=closed]:fade-out-0 motion-safe:duration-150 motion-safe:ease-out"
       >
         <NotificationList headingId={headingId} {...notifications} />
       </PopoverContent>
