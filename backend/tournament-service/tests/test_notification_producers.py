@@ -23,11 +23,16 @@ of them the behaviour under test:
 The shim deliberately hides ``info``/``sync_session``: that is the handle the
 realtime-staging factories look for, and without it they no-op, so these tests
 exercise the notification write without dragging a ``workspace_event`` row and a
-Redis publish into every assertion.
+Redis publish into every assertion. The one exception is
+``NotificationSignalListenerTests`` at the bottom, whose subject *is* the pair of
+global ``Session`` listeners that drain ``Session.info`` after a commit or a
+rollback -- it hands the real dict over and commits a real ``Session``.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import sys
 import warnings
 from datetime import UTC, datetime
@@ -48,6 +53,8 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.models.platform.notification import Notification  # noqa: E402
+from shared.services.notifications import NOTIFICATION_CREATED_EVENT  # noqa: E402
+from shared.services.realtime_topics import realtime_channel, user_notifications  # noqa: E402
 from shared.testing import install_postgres_type_shims  # noqa: E402
 from src import models  # noqa: E402
 from src.schemas.registration import RegistrationCreate  # noqa: E402
@@ -652,3 +659,99 @@ class RegistrationDecisionQueryBudgetTests(_ProducerTestCase):
         row = self.fx.notifications("registration.approved")[0]
         self.assertEqual(800, row.recipient_auth_user_id)
         self.assertEqual(TOURNAMENT_NAME, row.payload_json["tournament_name"])
+
+
+class _RecordingRedis:
+    """The realtime Redis, minus the socket: records what was published."""
+
+    def __init__(self) -> None:
+        self.published: list[tuple[str, str]] = []
+
+    async def publish(self, channel: str, payload: str) -> None:
+        self.published.append((channel, payload))
+
+
+class _CommittingSessionShim(_AsyncSessionShim):
+    """The same async facade, sharing the real ``Session.info``.
+
+    The base shim hides ``info`` on purpose (see the module docstring). The two
+    listeners under test below are registered on ``Session`` and drain exactly
+    that dict, so this is the one place that has to hand it over.
+    """
+
+    def __init__(self, session: Session) -> None:
+        super().__init__(session)
+        self.info = session.info
+
+
+class NotificationSignalListenerTests(_ProducerTestCase):
+    """``events.py``'s two global ``Session`` listeners, on a real ``Session``.
+
+    The nudge is deliberately not sent inline: a decision function does not own
+    the commit, so a signal sent at decision time announces a registration
+    approval that a later rollback un-approves. What is asserted here is the
+    consequence -- a committed decision reaches the registrant's realtime topic,
+    a rolled-back one reaches nobody, and the session that rolled back does not
+    carry the dropped recipient into its next commit.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.session = self.fx.session
+        self.shim = _CommittingSessionShim(self.session)
+        self.member = self.fx.player("Rook", auth_user_id=INVITEE_AUTH)
+        self.registration = self.fx.registration(self.member, battle_tag="Rook#2222", status="pending")
+        self.session.flush()
+        self.redis = _RecordingRedis()
+        redis_patch = patch.object(events_module, "get_realtime_redis", return_value=self.redis)
+        redis_patch.start()
+        self.addCleanup(redis_patch.stop)
+        # A rolled-back or closed session keeps its ``info``; leaving a staged
+        # recipient there would follow the dict into the next test's assertions.
+        self.addCleanup(self.session.info.clear)
+
+    async def _decide(self) -> None:
+        self.registration.status = "approved"
+        await events_module._notify_registration_decision(
+            self.shim, self.registration, self.member.player_id, kind="registration.approved"
+        )
+
+    async def _drain_signal_tasks(self) -> None:
+        """Await exactly the publishes the listener spawned -- no sleep, no poll.
+
+        ``after_commit`` runs synchronously inside ``commit()`` and anchors every
+        task it creates in ``events._signal_tasks`` before returning, so the set
+        is complete the moment control comes back here. A timed wait would be
+        both slower and a CI flake.
+        """
+        await asyncio.gather(*list(events_module._signal_tasks))
+
+    def _signalled_recipients(self) -> list[str]:
+        return [channel for channel, _payload in self.redis.published]
+
+    async def test_commit_signals_the_registrant(self) -> None:
+        await self._decide()
+        self.assertEqual([], self.redis.published, "the nudge must wait for the commit")
+
+        self.session.commit()
+        await self._drain_signal_tasks()
+
+        self.assertEqual(
+            [realtime_channel(user_notifications(INVITEE_AUTH))],
+            self._signalled_recipients(),
+        )
+        frame = json.loads(self.redis.published[0][1])
+        self.assertEqual(NOTIFICATION_CREATED_EVENT, frame["event"]["event_type"])
+
+    async def test_rollback_signals_nobody_and_leaves_nothing_behind(self) -> None:
+        await self._decide()
+
+        self.session.rollback()
+        await self._drain_signal_tasks()
+        self.assertEqual([], self._signalled_recipients())
+
+        # The same session, one transaction later: an un-dropped recipient would
+        # surface here as a ping for a registration that was never approved.
+        self.session.commit()
+        await self._drain_signal_tasks()
+        self.assertEqual([], self._signalled_recipients())

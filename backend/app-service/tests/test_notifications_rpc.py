@@ -20,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import sqlalchemy as sa
 from cashews import cache
@@ -91,6 +91,17 @@ class _SessionMaker:
 
     async def __aexit__(self, *exc: object) -> bool:
         return False
+
+
+class _DeadCache:
+    """Stands in for ``cashews.cache`` while Redis is unreachable: every
+    operation raises, which is what the client does on a connection error."""
+
+    async def get(self, key: str) -> Any:
+        raise ConnectionError("redis is down")
+
+    async def set(self, key: str, value: Any, *, expire: int | None = None) -> None:
+        raise ConnectionError("redis is down")
 
 
 class NotificationsRpcTests(IsolatedAsyncioTestCase):
@@ -280,6 +291,35 @@ class NotificationsRpcTests(IsolatedAsyncioTestCase):
             sorted(item["id"] for item in result["data"]["items"]),
             sorted([roster_row, rbac_row]),
         )
+
+    async def test_workspace_rows_still_arrive_when_the_cache_is_down(self) -> None:
+        """A Redis outage costs two queries, never a workspace.
+
+        The membership set is cached, and the failure mode of a cache that
+        cannot answer is an *empty* set -- which is not "a bit stale", it is
+        every workspace announcement silently gone for everybody. Asserted on
+        the inbox payload, not on the cache calls: the point is what the client
+        receives while Redis is unreachable.
+        """
+        roster_row = self.add(audience="workspace", workspace_id=ROSTER_WORKSPACE)
+        rbac_row = self.add(audience="workspace", workspace_id=RBAC_WORKSPACE)
+        self.add(audience="workspace", workspace_id=OTHER_WORKSPACE)
+        self.roster_membership(ALICE, ROSTER_WORKSPACE)
+        self.rbac_membership(ALICE, RBAC_WORKSPACE)
+
+        with patch.object(notification_service, "cache", _DeadCache()):
+            workspace_ids = await notification_service.workspace_ids_for(
+                _AsyncSessionShim(self.session), auth_user_id=ALICE
+            )
+            result = await self.call("rpc.app.notifications_list", {"identity": _IDENTITY, "query": {}})
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(
+            sorted(item["id"] for item in result["data"]["items"]),
+            sorted([roster_row, rbac_row]),
+            "workspace announcements vanished while Redis was down",
+        )
+        self.assertEqual((ROSTER_WORKSPACE, RBAC_WORKSPACE), workspace_ids)
 
     # -- the announcement banner ------------------------------------------
 
