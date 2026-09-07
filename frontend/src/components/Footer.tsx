@@ -87,6 +87,9 @@ export function Footer() {
         <div>
           <p className={COLUMN_HEADING_CLASS}>{t("common.footer.resourcesHeading")}</p>
           <div className="flex flex-col gap-2.5">
+            <FooterLink href="/docs" className={FOOTER_LINK_CLASS}>
+              {t("common.footer.docs")}
+            </FooterLink>
             {/* Same host, any tenant: the gateway registers /api/docs
                 unconditionally regardless of which workspace domain served
                 the request, so a relative link needs no per-host origin. */}

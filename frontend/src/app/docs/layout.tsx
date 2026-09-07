@@ -1,18 +1,14 @@
 import type { Metadata } from "next";
-import React from "react";
+import type { ReactNode } from "react";
 
-// Self-contained developer-docs section: intentionally NOT wrapped in the public
-// (site) chrome (Header/Footer). It inherits only the root <html>/<body> shell.
+import { DocsShell } from "./DocsShell";
+
 export const metadata: Metadata = {
-  title: "Схема БД · anak-tournaments",
-  description: "In-app ERD explorer for the anak-tournaments PostgreSQL schema.",
-  robots: { index: false, follow: false }
+  title: "Документация · OWT",
+  description:
+    "Платформа турниров Overwatch: воркспейсы, сетка, регистрация, API v1/v2, схема данных.",
 };
 
-export default function DocsLayout({
-  children
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return <>{children}</>;
+export default function DocsLayout({ children }: Readonly<{ children: ReactNode }>) {
+  return <DocsShell>{children}</DocsShell>;
 }

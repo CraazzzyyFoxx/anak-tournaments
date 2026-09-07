@@ -116,37 +116,23 @@ export function DocsExplorer() {
   const activeDomain = domains.find((d) => d.key === selected);
 
   return (
-    <div className={styles.root}>
-      <header className={styles.topbar}>
-        <div className={styles.brand}>
-          <span className={styles.title}>
-            anak-tournaments <span className={styles.accent}>· схема БД</span>
-          </span>
-          <span className={styles.subtitle}>
-            PostgreSQL · {TOTAL_TABLES} таблиц · {schemaOverview.length} схем · alembic head{" "}
-            {ALEMBIC_HEAD}
-          </span>
-        </div>
-        <a
-          className={styles.topLink}
-          href="/docs/design-book.html"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Design book →
-        </a>
+    <div className={styles.body}>
+      <nav className={styles.sidebar} aria-label="Домены схемы">
         <div className={styles.search}>
-          <span className={styles.searchIcon}>⌕</span>
+          <span className={styles.searchIcon} aria-hidden>
+            ⌕
+          </span>
           <input
             className={styles.searchInput}
-            type="text"
+            type="search"
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
-            placeholder="Поиск таблицы или домена…"
+            placeholder="Таблица или домен…"
             spellCheck={false}
             autoComplete="off"
+            aria-label="Поиск таблицы"
           />
-          {query && (
+          {query ? (
             <button
               type="button"
               className={styles.searchClear}
@@ -155,12 +141,11 @@ export function DocsExplorer() {
             >
               ✕
             </button>
-          )}
+          ) : null}
         </div>
-      </header>
-
-      <div className={styles.body}>
-        <nav className={styles.sidebar}>
+        <div className={styles.sidebarHint}>
+          PostgreSQL · {TOTAL_TABLES} таблиц · alembic {ALEMBIC_HEAD}
+        </div>
           {!normalizedQuery && (
             <>
               <div className={styles.sidebarHint}>Обзор</div>
@@ -240,7 +225,6 @@ export function DocsExplorer() {
             </>
           )}
         </main>
-      </div>
     </div>
   );
 }

@@ -88,6 +88,17 @@ func TestBuild_ErrorSchemaIncludesCode(t *testing.T) {
 	if _, ok := props["code"]; !ok {
 		t.Fatal("Error.properties missing code")
 	}
+	examples, _ := errSchema["examples"].([]any)
+	if len(examples) == 0 {
+		t.Fatal("Error schema missing examples")
+	}
+	info := asMap(t, doc["info"], "info")
+	desc, _ := info["description"].(string)
+	for _, want := range []string{"rate_limited", "not_found", "`detail`", "/api/v2"} {
+		if !strings.Contains(desc, want) {
+			t.Errorf("info.description missing %q", want)
+		}
+	}
 }
 
 func TestBuild_PathsAndMethods(t *testing.T) {
@@ -139,6 +150,14 @@ func TestBuildV2_RewritesAndWraps(t *testing.T) {
 	if _, ok := errProps["ok"]; !ok {
 		t.Fatalf("v2 Error missing ok: %#v", schemas["Error"])
 	}
+	desc, _ := asMap(t, doc["info"], "info")["description"].(string)
+	if !strings.Contains(desc, "error.code") || strings.Contains(desc, "`detail` is always present") {
+		t.Errorf("v2 info.description still documents the v1 envelope: %q", desc)
+	}
+	resp := asMap(t, get["responses"], "get.responses")
+	if _, ok := resp["429"]; !ok {
+		t.Error("v2 GET missing 429")
+	}
 }
 
 func TestBuild_Operations(t *testing.T) {
@@ -172,6 +191,12 @@ func TestBuild_Operations(t *testing.T) {
 	}
 	if _, ok := resp["401"]; !ok {
 		t.Error("AuthRequired route missing 401 response")
+	}
+	if _, ok := resp["403"]; !ok {
+		t.Error("AuthRequired route missing 403 response")
+	}
+	if _, ok := resp["429"]; !ok {
+		t.Error("missing 429 response")
 	}
 
 	// 204 success → no response content.

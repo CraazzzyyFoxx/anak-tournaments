@@ -232,6 +232,7 @@
       "getWorkspace": "Получить свой воркспейс",
       "sectionsHeading": "Разделы",
       "resourcesHeading": "Ресурсы",
+      "docs": "Документация",
       "apiDocs": "API документация",
       "copyright": "© {year} {siteName}. Все права защищены."
     },

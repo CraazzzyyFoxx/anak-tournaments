@@ -232,6 +232,7 @@
       "getWorkspace": "Get your own workspace",
       "sectionsHeading": "Sections",
       "resourcesHeading": "Resources",
+      "docs": "Docs",
       "apiDocs": "API Docs",
       "copyright": "© {year} {siteName}. All rights reserved."
     },
