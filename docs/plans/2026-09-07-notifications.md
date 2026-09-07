@@ -364,19 +364,19 @@ route-parity test mechanics, and the `acl_test.go` table shape.
 
 ```go
 var NotificationRoutes = []edge.RouteSpec{
-    {Method: "GET",  Pattern: "/api/notifications",      Queue: "rpc.app.notifications_list",      AllQuery: true, Auth: edge.AuthRequired},
-    {Method: "POST", Pattern: "/api/notifications/read", Queue: "rpc.app.notifications_mark_read",                 Auth: edge.AuthRequired},
+	{Method: "GET",  Pattern: "/api/notifications",      Queue: "rpc.app.notifications_list",      AllQuery: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/notifications/read", Queue: "rpc.app.notifications_mark_read", Body: true,     Auth: edge.AuthRequired},
 }
 
 var AnnouncementPublicRoutes = []edge.RouteSpec{
-    {Method: "GET", Pattern: "/api/announcements/active", Queue: "rpc.app.active_announcements", Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/announcements/active", Queue: "rpc.app.active_announcements", Auth: edge.AuthOptional},
 }
 
 var AnnouncementAdminRoutes = []edge.RouteSpec{
-	{Method: "GET",    Pattern: "/api/v1/admin/announcements",      Queue: "rpc.app.announcement_list",   AllQuery: true,           Auth: edge.AuthRequired},
-	{Method: "POST",   Pattern: "/api/v1/admin/announcements",      Queue: "rpc.app.announcement_create",                           Auth: edge.AuthRequired, Success: 201},
-	{Method: "PATCH",  Pattern: "/api/v1/admin/announcements/{id}", Queue: "rpc.app.announcement_update", Path: []string{"id"},     Auth: edge.AuthRequired},
-	{Method: "DELETE", Pattern: "/api/v1/admin/announcements/{id}", Queue: "rpc.app.announcement_delete", Path: []string{"id"},     Auth: edge.AuthRequired, Success: 204},
+	{Method: "GET",    Pattern: "/api/v1/admin/announcements",      Queue: "rpc.app.announcement_list",   AllQuery: true,        Auth: edge.AuthRequired},
+	{Method: "POST",   Pattern: "/api/v1/admin/announcements",      Queue: "rpc.app.announcement_create", Body: true,            Auth: edge.AuthRequired, Success: 201},
+	{Method: "PATCH",  Pattern: "/api/v1/admin/announcements/{id}", Queue: "rpc.app.announcement_update", IDParam: "id", Body: true, Auth: edge.AuthRequired},
+	{Method: "DELETE", Pattern: "/api/v1/admin/announcements/{id}", Queue: "rpc.app.announcement_delete", IDParam: "id",         Auth: edge.AuthRequired, Success: 204},
 }
 ```
 
