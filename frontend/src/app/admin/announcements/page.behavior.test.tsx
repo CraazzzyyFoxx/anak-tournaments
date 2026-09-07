@@ -151,6 +151,18 @@ async function click(element: Element | null | undefined) {
   await settle(2);
 }
 
+/**
+ * The composer is an `EntityFormDialog`, so its fields live in a portal on
+ * `document.body` rather than inside the page's container — every helper below
+ * takes the scope it works in rather than assuming the page's own subtree.
+ */
+async function openComposer(container: HTMLElement): Promise<HTMLElement> {
+  await click(field(container, "compose"));
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+  if (!dialog) throw new Error("the composer did not open");
+  return dialog;
+}
+
 async function fillTitle(scope: HTMLElement, locale: "ru" | "en", title: string) {
   const tab = field(scope, `locale-tab-${locale}`);
   await click(tab);
@@ -164,7 +176,7 @@ async function fillTitle(scope: HTMLElement, locale: "ru" | "en", title: string)
 // which every later render in the FILE is queued and never flushed, so the next
 // test's screen comes up blank with no error anywhere.
 async function submit(scope: HTMLElement): Promise<void> {
-  const button = scope.querySelector<HTMLButtonElement>('[data-field="publish"]');
+  const button = [...scope.querySelectorAll<HTMLButtonElement>('button[type="submit"]')].at(0);
   if (!button) throw new Error("no publish button on screen");
   await act(async () => {
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -212,17 +224,19 @@ describe("/admin/announcements", () => {
     );
     await click(global);
 
-    await fillTitle(container, "ru", "Технические работы");
-    await submit(container);
+    const dialog = await openComposer(container);
+    await fillTitle(dialog, "ru", "Технические работы");
+    await submit(dialog);
 
     expect(createAnnouncement).not.toHaveBeenCalled();
-    expect(container.querySelector('[role="alert"]')?.textContent ?? "").toContain("English");
+    expect(dialog.querySelector('[role="alert"]')?.textContent ?? "").toContain("English");
   });
 
   it("publishes a workspace announcement written in one language", async () => {
     const container = await mount();
-    await fillTitle(container, "ru", "Турнир перенесён");
-    await submit(container);
+    const dialog = await openComposer(container);
+    await fillTitle(dialog, "ru", "Турнир перенесён");
+    await submit(dialog);
 
     expect(createAnnouncement).toHaveBeenCalledTimes(1);
     expect(createAnnouncement.mock.calls[0][0]).toMatchObject({
@@ -234,17 +248,21 @@ describe("/admin/announcements", () => {
     // `en` was never typed into, so it must not ride along as an empty title —
     // the payload schema rejects one, and an empty locale is not a translation.
     expect(createAnnouncement.mock.calls[0][0].locales.en).toBeUndefined();
+    // A published announcement closes its composer: the next one starts blank
+    // rather than in the last one's leftovers.
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("offers a fallback locale only among the ones that have a title", async () => {
     const container = await mount();
-    expect(options(container, "default-locale")).toEqual([]);
+    const dialog = await openComposer(container);
+    expect(options(dialog, "default-locale")).toEqual([]);
 
-    await fillTitle(container, "ru", "Только по-русски");
-    expect(options(container, "default-locale")).toEqual([LABEL.locales.ru]);
+    await fillTitle(dialog, "ru", "Только по-русски");
+    expect(options(dialog, "default-locale")).toEqual([LABEL.locales.ru]);
 
-    await fillTitle(container, "en", "In English too");
-    expect(options(container, "default-locale")).toEqual([LABEL.locales.ru, LABEL.locales.en]);
+    await fillTitle(dialog, "en", "In English too");
+    expect(options(dialog, "default-locale")).toEqual([LABEL.locales.ru, LABEL.locales.en]);
   });
 
   it("dates the state and falls back to the locale it was written in", async () => {

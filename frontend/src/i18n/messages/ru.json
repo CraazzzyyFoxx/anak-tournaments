@@ -5469,7 +5469,9 @@
         "expiresAtTime": "Время снятия",
         "expiresAtPlaceholder": "Никогда",
         "scheduleClear": "Очистить",
-        "publish": "Опубликовать"
+        "publish": "Опубликовать",
+        "publishing": "Публикуем…",
+        "cancel": "Отмена"
       },
       "errors": {
         "noLocale": "Напишите заголовок хотя бы на одном языке.",

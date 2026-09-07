@@ -5469,7 +5469,9 @@
         "expiresAtTime": "Stop showing time",
         "expiresAtPlaceholder": "Never",
         "scheduleClear": "Clear",
-        "publish": "Publish"
+        "publish": "Publish",
+        "publishing": "Publishing…",
+        "cancel": "Cancel"
       },
       "errors": {
         "noLocale": "Write a title in at least one language.",

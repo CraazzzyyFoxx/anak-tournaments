@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -9,6 +10,7 @@ import { AnnouncementForm } from "@/components/admin/announcements/AnnouncementF
 import { AnnouncementsTable } from "@/components/admin/announcements/AnnouncementsTable";
 import type { AnnouncementAudience } from "@/components/admin/announcements/announcement-draft";
 import { EmptyNote } from "@/components/admin/kit/EmptyNote";
+import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -42,9 +44,9 @@ export default function AdminAnnouncementsPage() {
   const queryClient = useQueryClient();
 
   const [picked, setPicked] = useState<AnnouncementAudience | null>(null);
-  // A fresh form after a successful publish: remounting is the whole reset, and
-  // an announcement is written once rather than edited into the next one.
+  // A fresh form after a successful publish: remounting is the whole reset.
   const [formGeneration, setFormGeneration] = useState(0);
+  const [composerOpen, setComposerOpen] = useState(false);
 
   const canReadWorkspace = workspaceId != null && canAccessPermission("announcement.read", workspaceId);
   const audiences: AnnouncementAudience[] = [
@@ -85,6 +87,9 @@ export default function AdminAnnouncementsPage() {
   const create = useMutation({
     mutationFn: (body: AnnouncementCreateBody) => notificationService.createAnnouncement(body),
     onSuccess: () => {
+      // Closing and remounting IS the reset: an announcement is written once
+      // rather than edited into the next one.
+      setComposerOpen(false);
       setFormGeneration((generation) => generation + 1);
       notify.success(t("notifications.admin.published"));
       invalidate();
@@ -128,39 +133,43 @@ export default function AdminAnnouncementsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <AdminPageHeader
         title={t("notifications.admin.title")}
         description={t("notifications.admin.description")}
         actions={
-          <div data-field="audience">
-            <ToggleGroup
-              type="single"
-              value={audience}
-              onValueChange={(next) => setPicked(next as AnnouncementAudience)}
-              aria-label={t("notifications.admin.audienceLabel")}
-            >
-              {audiences.map((option) => (
-                <ToggleGroupItem key={option} value={option}>
-                  {t(`notifications.admin.audience.${option}`)}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
+          <>
+            <div data-field="audience">
+              <ToggleGroup
+                type="single"
+                value={audience}
+                onValueChange={(next) => setPicked(next as AnnouncementAudience)}
+                aria-label={t("notifications.admin.audienceLabel")}
+              >
+                {audiences.map((option) => (
+                  <ToggleGroupItem key={option} value={option}>
+                    {t(`notifications.admin.audience.${option}`)}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+            {canPublish ? (
+              <Button size="sm" data-field="compose" onClick={() => setComposerOpen(true)}>
+                <Plus aria-hidden className="size-4" />
+                {t("notifications.admin.form.title")}
+              </Button>
+            ) : null}
+          </>
+        }
+        /* Read and write are separate grants: without the second one the
+           toolbar simply has no compose button, and this line is the only
+           place that says why. */
+        footer={
+          canPublish ? undefined : (
+            <p className="text-xs text-muted-foreground">{t("notifications.admin.readOnly")}</p>
+          )
         }
       />
-
-      {canPublish ? (
-        <AnnouncementForm
-          key={`${audience}-${formGeneration}`}
-          audience={audience}
-          workspaceId={workspaceId}
-          isPublishing={create.isPending}
-          onPublish={(body) => create.mutate(body)}
-        />
-      ) : (
-        <EmptyNote>{t("notifications.admin.readOnly")}</EmptyNote>
-      )}
 
       <AnnouncementsTable
         rows={list.data ?? []}
@@ -168,6 +177,18 @@ export default function AdminAnnouncementsPage() {
         onRetire={canRetire ? (row) => retire.mutate(row) : undefined}
         isRetiring={retire.isPending}
       />
+
+      {canPublish ? (
+        <AnnouncementForm
+          key={`${audience}-${formGeneration}`}
+          open={composerOpen}
+          onOpenChange={setComposerOpen}
+          audience={audience}
+          workspaceId={workspaceId}
+          isPublishing={create.isPending}
+          onPublish={(body) => create.mutate(body)}
+        />
+      ) : null}
     </div>
   );
 }
