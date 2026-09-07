@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Megaphone, X } from "lucide-react";
+import { Info, X } from "lucide-react";
 import Link from "next/link";
-import { useFormatter, useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -75,7 +75,6 @@ function announcementContent(
 const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
   const t = useTranslations<never>();
   const locale = useLocale();
-  const format = useFormatter();
   const queryClient = useQueryClient();
   const { user } = useAuthProfile();
   const authUserId = user?.id ?? null;
@@ -139,65 +138,102 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
     contentRoot?.focus({ preventScroll: true });
   };
 
+  const hasBody = Boolean(content.body);
+
   return (
     // Centre the notice in the same content column as both page shells.
     // `pointer-events-none` on the rail so the strip across the top of every
     // page does not eat clicks the card itself is not under.
     <div className="pointer-events-none fixed inset-x-0 top-[var(--aqt-banner-top,calc(var(--aqt-sticky-top)+0.75rem))] z-[45] mx-auto flex w-full max-w-screen-3xl justify-center px-4 md:px-6 xl:px-10">
-      <Alert
-        role="status"
-        aria-label={t("notifications.banner.label")}
-        className="pointer-events-auto relative flex w-full flex-col overflow-hidden rounded-xl border border-border/80 bg-card/95 p-4 shadow-2xl backdrop-blur-xl ring-1 ring-white/5 animate-in fade-in slide-in-from-top-2 duration-200 ease-out motion-reduce:animate-none before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-primary sm:w-auto sm:min-w-[360px] sm:max-w-lg"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 text-primary">
-            <Megaphone className="size-3.5 shrink-0" aria-hidden />
-            <span className="text-[10px] font-bold uppercase tracking-wider">
-              {t("notifications.banner.eyebrow")}
-            </span>
-            <span className="text-xs text-muted-foreground/60">·</span>
-            <time dateTime={announcement.published_at} className="text-xs font-normal text-muted-foreground">
-              {format.relativeTime(new Date(announcement.published_at))}
-            </time>
+      {hasBody ? (
+        <Alert
+          role="status"
+          aria-label={t("notifications.banner.label")}
+          className="pointer-events-auto relative flex w-full flex-col rounded-2xl border border-border/60 bg-background/85 p-3 shadow-sm backdrop-blur-md transition-all duration-150 animate-in fade-in slide-in-from-top-1 motion-reduce:animate-none sm:w-auto sm:min-w-[320px] sm:max-w-md [&>svg]:static [&>svg~*]:pl-0"
+        >
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+              <span className="mt-0.5 inline-flex shrink-0 text-muted-foreground">
+                <Info className="size-4" aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                <AlertTitle className="mb-0 text-xs font-medium leading-snug text-foreground text-pretty sm:text-sm">
+                  {content.title}
+                </AlertTitle>
+                <AlertDescription className="mt-1 text-xs leading-relaxed text-muted-foreground text-pretty">
+                  {content.body}
+                </AlertDescription>
+                {content.href && (
+                  <div className="mt-2">
+                    <Link
+                      href={content.href}
+                      // The visible label stays short; the accessible name carries the
+                      // destination, so the link still makes sense in a screen reader's
+                      // link list (and contains its visible text, per label-in-name).
+                      aria-label={`${t("notifications.banner.more")}: ${content.title}`}
+                      className="inline-flex items-center gap-0.5 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      <span>{t("notifications.banner.more")}</span>
+                      <span aria-hidden>→</span>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              static={false}
+              className="-mr-1 -mt-0.5 size-6 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&_svg]:size-3"
+              aria-label={t("notifications.banner.dismiss")}
+              onClick={onDismiss}
+            >
+              <X aria-hidden />
+            </Button>
           </div>
+        </Alert>
+      ) : (
+        <Alert
+          role="status"
+          aria-label={t("notifications.banner.label")}
+          className="pointer-events-auto relative flex w-auto max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full border border-border/60 bg-background/85 px-3 py-1.5 shadow-sm backdrop-blur-md transition-all duration-150 animate-in fade-in slide-in-from-top-1 motion-reduce:animate-none sm:gap-2.5 [&>svg]:static [&>svg~*]:pl-0"
+        >
+          <span className="inline-flex shrink-0 text-muted-foreground">
+            <Info className="size-3.5" aria-hidden />
+          </span>
+
+          <div className="min-w-0 [overflow-wrap:anywhere]">
+            <AlertTitle className="mb-0 max-w-[280px] truncate text-xs font-medium leading-normal text-foreground sm:max-w-md md:max-w-lg sm:text-sm sm:leading-none">
+              {content.title}
+            </AlertTitle>
+          </div>
+
+          {content.href && (
+            <Link
+              href={content.href}
+              // The visible label stays short; the accessible name carries the
+              // destination, so the link still makes sense in a screen reader's
+              // link list (and contains its visible text, per label-in-name).
+              aria-label={`${t("notifications.banner.more")}: ${content.title}`}
+              className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <span>{t("notifications.banner.more")}</span>
+              <span aria-hidden>→</span>
+            </Link>
+          )}
+
           <Button
             variant="ghost"
             size="icon"
             static={false}
-            className="-mr-1 -mt-1 size-7 shrink-0 text-muted-foreground hover:bg-accent/60 hover:text-foreground [&_svg]:size-3.5"
+            className="-mr-1 size-6 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&_svg]:size-3"
             aria-label={t("notifications.banner.dismiss")}
             onClick={onDismiss}
           >
             <X aria-hidden />
           </Button>
-        </div>
-
-        <div className="mt-1.5 min-w-0 [overflow-wrap:anywhere]">
-          <AlertTitle className="mb-0 text-sm font-semibold leading-snug text-foreground text-pretty">
-            {content.title}
-          </AlertTitle>
-          {content.body && (
-            <AlertDescription className="mt-1 text-xs leading-relaxed text-muted-foreground text-pretty">
-              {content.body}
-            </AlertDescription>
-          )}
-          {content.href && (
-            <div className="mt-2.5">
-              <Link
-                href={content.href}
-                // The visible label stays short; the accessible name carries the
-                // destination, so the link still makes sense in a screen reader's
-                // link list (and contains its visible text, per label-in-name).
-                aria-label={`${t("notifications.banner.more")}: ${content.title}`}
-                className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-2 focus-visible:outline-ring"
-              >
-                <span>{t("notifications.banner.more")}</span>
-                <span aria-hidden>→</span>
-              </Link>
-            </div>
-          )}
-        </div>
-      </Alert>
+        </Alert>
+      )}
     </div>
   );
 };
