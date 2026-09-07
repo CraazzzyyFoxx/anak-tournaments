@@ -91,8 +91,8 @@ async function settle(turns = 6) {
   }
 }
 
-async function mount(): Promise<HTMLElement> {
-  window.history.replaceState(null, "", "/admin/announcements");
+async function mount(search = ""): Promise<HTMLElement> {
+  window.history.replaceState(null, "", `/admin/announcements${search}`);
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -125,6 +125,13 @@ const LABEL = en.notifications.admin;
 
 function options(scope: HTMLElement, name: string): string[] {
   return [...field(scope, name).querySelectorAll("[role='radio']")].map(
+    (item) => (item.textContent ?? "").trim()
+  );
+}
+
+/** The scope tabs are `AdminTabs` links, not segments — read as rendered. */
+function scopeTabs(scope: HTMLElement): string[] {
+  return [...field(scope, "audience").querySelectorAll("a[data-admin-tab]")].map(
     (item) => (item.textContent ?? "").trim()
   );
 }
@@ -206,23 +213,27 @@ afterEach(async () => {
 describe("/admin/announcements", () => {
   it("offers the platform-wide audience only to a superuser", async () => {
     const workspaceOwner = await mount();
-    expect(options(workspaceOwner, "audience")).toEqual([LABEL.audience.workspace]);
+    expect(scopeTabs(workspaceOwner)).toEqual([LABEL.audience.workspace]);
 
     superuser = true;
     const platformAdmin = await mount();
-    expect(options(platformAdmin, "audience")).toEqual([
-      LABEL.audience.workspace,
-      LABEL.audience.global
-    ]);
+    expect(scopeTabs(platformAdmin)).toEqual([LABEL.audience.workspace, LABEL.audience.global]);
+  });
+
+  it("keeps the scope in the URL, so a platform-wide feed is linkable", async () => {
+    superuser = true;
+    const container = await mount("?scope=global");
+
+    const active = field(container, "audience").querySelector('a[aria-current="page"]');
+    expect((active?.textContent ?? "").trim()).toBe(LABEL.audience.global);
+    // The platform feed is not a workspace's: the list must be asked for the
+    // global scope, not for workspace 7's rows.
+    expect(listAnnouncements).toHaveBeenLastCalledWith({ workspaceId: null });
   });
 
   it("blocks a platform-wide announcement whose English title is empty", async () => {
     superuser = true;
-    const container = await mount();
-    const global = [...field(container, "audience").querySelectorAll("[role='radio']")].find(
-      (item) => (item.textContent ?? "").trim() === LABEL.audience.global
-    );
-    await click(global);
+    const container = await mount("?scope=global");
 
     const dialog = await openComposer(container);
     await fillTitle(dialog, "ru", "Технические работы");

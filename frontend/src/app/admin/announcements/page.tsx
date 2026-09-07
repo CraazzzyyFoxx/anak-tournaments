@@ -9,17 +9,21 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AnnouncementForm } from "@/components/admin/announcements/AnnouncementForm";
 import { AnnouncementsTable } from "@/components/admin/announcements/AnnouncementsTable";
 import type { AnnouncementAudience } from "@/components/admin/announcements/announcement-draft";
+import { AdminTabs } from "@/components/admin/kit/AdminTabs";
 import { EmptyNote } from "@/components/admin/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useQueryParams } from "@/hooks/useQueryParams";
 import { notificationQueryKeys } from "@/lib/notification-query-keys";
 import { notify } from "@/lib/notify";
 import notificationService from "@/services/notification.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { AnnouncementCreateBody, NotificationItem } from "@/types/notification.types";
+
+/** Same name the audit feed uses for the same question. */
+const SCOPE_PARAM = "scope";
 
 /**
  * Announcements an operator writes by hand — the only notification rows with
@@ -42,8 +46,8 @@ export default function AdminAnnouncementsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const t = useTranslations<never>();
   const queryClient = useQueryClient();
+  const { searchParams } = useQueryParams({ resetOnChange: [] });
 
-  const [picked, setPicked] = useState<AnnouncementAudience | null>(null);
   // A fresh form after a successful publish: remounting is the whole reset.
   const [formGeneration, setFormGeneration] = useState(0);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -53,7 +57,14 @@ export default function AdminAnnouncementsPage() {
     ...(canReadWorkspace ? (["workspace"] as const) : []),
     ...(isSuperuser ? (["global"] as const) : []),
   ];
-  const audience = picked && audiences.includes(picked) ? picked : (audiences[0] ?? null);
+  // The scope lives in the URL, not in component state: these are the screen's
+  // own tabs, and `AdminTabs` renders real links — which is also what makes a
+  // platform-wide feed linkable and survive a reload.
+  const requested = searchParams?.get(SCOPE_PARAM);
+  const audience =
+    requested && audiences.includes(requested as AnnouncementAudience)
+      ? (requested as AnnouncementAudience)
+      : (audiences[0] ?? null);
 
   const scopeWorkspaceId = audience === "global" ? null : workspaceId;
   // Two grants, two questions: reading the feed, writing to it and taking a row
@@ -138,28 +149,12 @@ export default function AdminAnnouncementsPage() {
         title={t("notifications.admin.title")}
         description={t("notifications.admin.description")}
         actions={
-          <>
-            <div data-field="audience">
-              <ToggleGroup
-                type="single"
-                value={audience}
-                onValueChange={(next) => setPicked(next as AnnouncementAudience)}
-                aria-label={t("notifications.admin.audienceLabel")}
-              >
-                {audiences.map((option) => (
-                  <ToggleGroupItem key={option} value={option}>
-                    {t(`notifications.admin.audience.${option}`)}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-            </div>
-            {canPublish ? (
-              <Button size="sm" data-field="compose" onClick={() => setComposerOpen(true)}>
-                <Plus aria-hidden className="size-4" />
-                {t("notifications.admin.form.title")}
-              </Button>
-            ) : null}
-          </>
+          canPublish ? (
+            <Button size="sm" data-field="compose" onClick={() => setComposerOpen(true)}>
+              <Plus aria-hidden className="size-4" />
+              {t("notifications.admin.form.title")}
+            </Button>
+          ) : undefined
         }
         /* Read and write are separate grants: without the second one the
            toolbar simply has no compose button, and this line is the only
@@ -170,6 +165,21 @@ export default function AdminAnnouncementsPage() {
           )
         }
       />
+
+      {/* One row of tabs, the admin's own — the two feeds are two screens, not
+          a filter over one. Rendered even at a single tab so the platform
+          admin's row does not appear only after they gain the second scope. */}
+      <div data-field="audience">
+        <AdminTabs
+          ariaLabel={t("notifications.admin.audienceLabel")}
+          activeKey={audience}
+          items={audiences.map((option) => ({
+            key: option,
+            label: t(`notifications.admin.audience.${option}`),
+            href: `/admin/announcements?${SCOPE_PARAM}=${option}`,
+          }))}
+        />
+      </div>
 
       <AnnouncementsTable
         rows={list.data ?? []}
