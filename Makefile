@@ -1,5 +1,5 @@
 .PHONY: help dev-build dev-up dev-up-full dev-down dev-restart dev-logs dev-ps dev-health dev-rebuild \
-	prod-build prod-up prod-down prod-logs prod-scale migrate test clean \
+	prod-build prod-up prod-down prod-logs prod-scale prod-small prod-medium prod-large migrate test clean \
 	build up down restart logs ps health build-prod up-prod down-prod logs-prod \
 	app-logs identity-logs parser-logs frontend-logs discord-logs balancer-logs stream-logs \
 	app-restart identity-restart parser-restart frontend-restart \
@@ -20,20 +20,21 @@ BACKUP_COMPOSE = docker compose -f docker-compose.backup.yml --env-file $(BACKUP
 # across replicas automatically, cache lives in shared Redis, DB access goes via
 # pgBouncer. balancer-svc is safe too (its draft clock is guarded by a per-draft
 # Redis lock — shared/services/distributed_lock.py — so only one replica drives
-# each live draft); kept out of the default because each replica reserves ~4 CPU.
+# each live draft); kept out of every size because each replica can eat ~4 CPU.
 # Do NOT scale analytics-worker: it starts an APScheduler on every replica
 # (scheduled jobs would multi-fire) and its jobs aren't idempotent — it needs
 # leader-election first.
-# `prod-up` applies this scale-out itself on every start (auth/identity +
-# tournament run replicated from boot, no separate `prod-scale` call needed).
-# Override on the CLI, e.g.
-#   make prod-up PROD_SCALE='app-svc=2 balancer-svc=2'
-# frontend is deliberately NOT here: it is replicated declaratively via
-# `deploy.replicas` in docker-compose.production.yml, because the production
-# deploy path is a GitHub release running plain `docker compose up -d` with no
-# --scale flag. A count that only exists in this variable would silently not
-# apply there.
-PROD_SCALE ?= app-svc=2 identity-svc=2 tournament-svc=4
+#
+# Sizes: small = quiet 15G box, medium = normal, large = burst / event day.
+# `make prod-up` / `make prod-scale` / GitHub release all honour PROD_SIZE so a
+# plain `docker compose up -d` cannot silently restore leftover replica counts.
+# Override a size on the CLI, e.g. make prod-up PROD_SIZE=medium
+# or poke one service: make prod-up PROD_SCALE='app-svc=2 balancer-svc=2'
+PROD_SIZE ?= small
+PROD_SCALE_small  := app-svc=1 identity-svc=1 tournament-svc=1 frontend=1
+PROD_SCALE_medium := app-svc=2 identity-svc=2 tournament-svc=2 frontend=2
+PROD_SCALE_large  := app-svc=2 identity-svc=2 tournament-svc=4 frontend=3
+PROD_SCALE ?= $(PROD_SCALE_$(PROD_SIZE))
 
 help:
 	@echo "Available commands:"
@@ -47,10 +48,13 @@ help:
 	@echo "  make dev-rebuild    - Rebuild and restart core dev stack"
 	@echo ""
 	@echo "  make prod-build     - Build production images"
-	@echo "  make prod-up        - Start production stack, replicating auth+tournament (PROD_SCALE)"
+	@echo "  make prod-up        - Start production stack (PROD_SIZE=small|medium|large)"
 	@echo "  make prod-down      - Stop production stack"
 	@echo "  make prod-logs      - Follow production logs"
-	@echo "  make prod-scale     - Re-apply replica counts (PROD_SCALE='app-svc=3 ...')"
+	@echo "  make prod-scale     - Re-apply replica counts for PROD_SIZE"
+	@echo "  make prod-small     - Scale production to small (1 tournament/app/identity/frontend)"
+	@echo "  make prod-medium    - Scale production to medium (2 of each)"
+	@echo "  make prod-large     - Scale production to large (4 tournament, 3 frontend)"
 	@echo ""
 	@echo "  make monitoring-up  - Start monitoring stack (requires prod-up first)"
 	@echo "  make monitoring-down- Stop monitoring stack"
@@ -98,14 +102,14 @@ prod-build:
 	$(PROD_COMPOSE) build
 
 # Starts the production stack with the workers in $(PROD_SCALE) replicated
-# from the first boot (auth/identity + tournament by default) — no separate
-# `prod-scale` call needed. RabbitMQ competing-consumers distribute RPC calls
-# across replicas with no extra config.
+# from the first boot — no separate `prod-scale` call needed. RabbitMQ
+# competing-consumers distribute RPC calls across replicas with no extra config.
 # PREREQUISITE: enable pgBouncer first (DB_PGBOUNCER=true, see
 # backend/env/common.env.example) or the replicas will exhaust Postgres
 # connections.
 prod-up:
-	$(PROD_COMPOSE) up -d --wait $(foreach s,$(PROD_SCALE),--scale $(s))
+	@test -n "$(PROD_SCALE)" || (echo "unknown PROD_SIZE=$(PROD_SIZE) (want small|medium|large)"; exit 1)
+	$(PROD_COMPOSE) up -d --remove-orphans --wait $(foreach s,$(PROD_SCALE),--scale $(s))
 
 prod-down:
 	$(PROD_COMPOSE) down --remove-orphans
@@ -113,9 +117,17 @@ prod-down:
 prod-logs:
 	$(PROD_COMPOSE) logs -f
 
-# Re-apply/adjust replica counts on an already-running stack (same knob as
-# `prod-up`). Scale back down by passing =1, e.g. PROD_SCALE='app-svc=1'.
+# Re-apply replica counts on an already-running stack (same knob as `prod-up`).
 prod-scale: prod-up
+
+prod-small:
+	$(MAKE) prod-scale PROD_SIZE=small
+
+prod-medium:
+	$(MAKE) prod-scale PROD_SIZE=medium
+
+prod-large:
+	$(MAKE) prod-scale PROD_SIZE=large
 
 migrate:
 	$(COMPOSE) exec app-svc alembic upgrade head

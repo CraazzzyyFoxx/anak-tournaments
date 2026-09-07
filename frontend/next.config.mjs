@@ -23,6 +23,14 @@ const nextConfig = {
     staleTimes: {
       dynamic: 30,
     },
+    // 16.3 defaults this on; 16.2 does not. prod.Dockerfile cache-mounts
+    // .next/cache so subsequent compose builds reuse Turbopack artifacts.
+    turbopackFileSystemCacheForBuild: true,
+  },
+  // `bun run typecheck` / CI already gate this. next build on the 8-core
+  // prod box should not pay for a second tsc of the same tree.
+  typescript: {
+    ignoreBuildErrors: true,
   },
   // Only use standalone output in production builds
   ...(process.env.NODE_ENV === 'production' && { output: "standalone" }),

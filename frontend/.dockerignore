@@ -22,3 +22,16 @@ yarn-error.log*
 
 .DS_Store
 Thumbs.db
+
+# Prod image never runs tests or linters
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+vitest.config.ts
+eslint.config.mjs
+DESIGN.md
+*.md
+scripts/
+.prettierrc
+tsconfig.tsbuildinfo

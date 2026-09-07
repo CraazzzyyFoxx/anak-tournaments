@@ -233,7 +233,7 @@ Gateway configuration is documented in `backend/env/gateway.env.example` and [`g
 | `make loadtest`      | Run headless Locust load tests                              |
 | `make monitoring-up` | Start the separate monitoring stack                         |
 | `make backup-run`    | Create and verify a database backup                         |
-| `make prod-up`       | Start the production Compose stack with configured replicas |
+| `make prod-up`       | Start production (`PROD_SIZE=small\|medium\|large`)         |
 
 Run `make help` for the complete command list. Component-specific log and restart targets are defined in the root [`Makefile`](./Makefile).
 
