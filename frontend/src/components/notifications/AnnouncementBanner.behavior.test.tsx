@@ -177,7 +177,9 @@ describe("announcement banner", () => {
     ]);
 
     const container = await mount();
-    const region = container.querySelector('[role="region"]');
+    // A polite live region, not `role="alert"`: the notice is announced at the
+    // next pause instead of interrupting, and it is named.
+    const region = container.querySelector('[role="status"]');
 
     expect(region?.getAttribute("aria-label")).toBeTruthy();
     expect(container.textContent).toContain("Newest notice");

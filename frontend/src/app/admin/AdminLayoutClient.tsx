@@ -122,7 +122,11 @@ function AdminBreadcrumb() {
 
 const sidebarShellStyle = {
   "--sidebar-width": "15.5rem",
-  "--sidebar-width-icon": "3.75rem"
+  "--sidebar-width-icon": "3.75rem",
+  // The floating announcement anchors to `--aqt-banner-top`; the admin header
+  // is `h-12`, shorter than the site's, so it gets its own clearance instead of
+  // the site default (`--aqt-sticky-top`).
+  "--aqt-banner-top": "3.75rem"
 } as CSSProperties;
 
 type AdminLayoutClientProps = {
@@ -174,11 +178,9 @@ export function AdminLayoutClient({
             <Separator orientation="vertical" className="h-5" />
             <AdminBreadcrumb />
           </header>
-          {/* Same gutters as the content below: the inset is full-bleed, so an
-              unpadded banner would run edge to edge under the header. */}
-          <div className="px-4 md:px-5">
-            <AnnouncementBanner initial={announcements} />
-          </div>
+          {/* Overlay chrome, not a row: it floats over the content below rather
+              than displacing every admin screen by its own height. */}
+          <AnnouncementBanner initial={announcements} />
 
           {/* Full-bleed on purpose: a centered 1720px cap left ~300px of dead
               gutter each side on a 2560 display. Wide tables scroll inside

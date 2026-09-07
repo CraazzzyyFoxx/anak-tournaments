@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { readDismissedAnnouncements, rememberDismissedAnnouncement } from "@/lib/announcement-dismissed";
@@ -15,8 +16,8 @@ import notificationService from "@/services/notification.service";
 import type { NotificationItem } from "@/types/notification.types";
 
 interface AnnouncementBannerProps {
-  /** The layout's server-side read, so the banner is in the first paint instead
-   *  of dropping in after hydration and shoving the page down. */
+  /** The layout's server-side read, so the banner is painted with the first
+   *  frame instead of popping in after hydration. */
   initial?: NotificationItem[];
 }
 
@@ -45,14 +46,31 @@ function announcementContent(payload: Record<string, unknown>, locale: string): 
 }
 
 /**
- * The platform-wide announcement strip under the header, on every page and for
- * every visitor — it is the only notification surface an anonymous one has.
+ * The platform-wide announcement, floating over the page under the sticky
+ * header — on every page and for every visitor, since it is the only
+ * notification surface an anonymous one has.
  *
- * In the document flow on purpose: `position: fixed` would either cover the
- * first rows of content or force every page to reserve a gap for a banner that
- * usually is not there. It is a region, not a dialog: nothing is focused on
- * mount and nothing is trapped, because an operator notice must not interrupt
- * whatever the visitor came to do.
+ * Out of the document flow on purpose: in flow it displaced every page by its
+ * own height, and the height depends on text an operator types, so the whole
+ * site jumped by an unpredictable amount whenever a notice went up. As overlay
+ * chrome it costs the layout nothing and matches the two surfaces that already
+ * float here — `CookieConsent` and `TournamentBroadcastDock`.
+ *
+ * `z-[45]` is the slot between the page's own sticky rails (`z-40`: profile tab
+ * strips, sidebars) and the header, dialogs and cookie notice (`z-50`): it must
+ * cover in-page chrome, and must never cover the header or a modal.
+ *
+ * Vertical anchor is `--aqt-banner-top`, defaulting to the same
+ * `--aqt-sticky-top` every in-page sticky rail uses, so it clears the site
+ * header at both scroll positions (the header sits 24px down at scroll top and
+ * pins to 0 after). The admin shell has a shorter header and sets its own.
+ *
+ * `role="status"`, not the `Alert` primitive's default `role="alert"`: an
+ * operator notice is not urgent, so it is announced politely at the next pause
+ * rather than interrupting a screen reader mid-sentence. Nothing is focused on
+ * mount and nothing is trapped — and Escape deliberately does *not* close it,
+ * because dismissal here is permanent and an accidental Escape would retire a
+ * notice the visitor never read.
  */
 const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
   const t = useTranslations<never>();
@@ -109,36 +127,50 @@ const AnnouncementBanner = ({ initial }: AnnouncementBannerProps) => {
     } else {
       rememberDismissedAnnouncement(announcement.id);
     }
+    // This click unmounts the button that owns focus, and focus would land on
+    // <body> — the next Tab would then restart at the top of the document
+    // instead of continuing where the visitor was. Both shells expose a
+    // `tabIndex={-1}` content root, which is where reading resumes.
+    const contentRoot = document.getElementById("main-content") ?? document.getElementById("admin-content");
+    contentRoot?.focus({ preventScroll: true });
   };
 
   return (
-    <section
-      role="region"
-      aria-label={t("notifications.banner.label")}
-      className="mt-4 flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3"
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-foreground">{content.title}</p>
-        {content.body && <p className="mt-1 text-sm text-muted-foreground">{content.body}</p>}
-        {content.href && (
-          <Link
-            href={content.href}
-            className="mt-1 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            {t("notifications.banner.more")}
-          </Link>
-        )}
-      </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="-mr-1 -mt-1 shrink-0"
-        aria-label={t("notifications.banner.dismiss")}
-        onClick={onDismiss}
+    <div className="fixed start-4 end-4 top-[var(--aqt-banner-top,var(--aqt-sticky-top))] z-[45] max-w-md sm:start-auto sm:w-[26rem]">
+      <Alert
+        role="status"
+        aria-label={t("notifications.banner.label")}
+        className="flex items-start gap-3 rounded-xl border-primary/30 bg-card/95 shadow-xl backdrop-blur animate-in fade-in slide-in-from-top-2 duration-200 motion-reduce:animate-none"
       >
-        <X className="h-4 w-4" aria-hidden />
-      </Button>
-    </section>
+        <div className="min-w-0 flex-1">
+          <AlertTitle className="text-sm font-semibold leading-snug text-pretty">{content.title}</AlertTitle>
+          {content.body && (
+            <AlertDescription className="text-muted-foreground text-pretty">{content.body}</AlertDescription>
+          )}
+          {content.href && (
+            <Link
+              href={content.href}
+              // The visible label stays short; the accessible name carries the
+              // destination, so the link still makes sense in a screen reader's
+              // link list (and contains its visible text, per label-in-name).
+              aria-label={`${t("notifications.banner.more")}: ${content.title}`}
+              className="mt-1 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              {t("notifications.banner.more")}
+            </Link>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="-me-1.5 -mt-1.5 shrink-0"
+          aria-label={t("notifications.banner.dismiss")}
+          onClick={onDismiss}
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </Button>
+      </Alert>
+    </div>
   );
 };
 
