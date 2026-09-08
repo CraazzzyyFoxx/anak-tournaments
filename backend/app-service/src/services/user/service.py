@@ -528,21 +528,9 @@ class UserService:
             sample_size = 1
             baseline_target = schemas.UserCompareUser(id=target_id, name=str(baseline_row["name"]))
         else:
-            subject_rows = await self.compare.get_compare_population(
-                session,
-                user_ids=[id],
-                role=compare_role,
-                div_min=compare_div_min,
-                div_max=compare_div_max,
-                tournament_id=params.tournament_id,
-                grid=grid,
-            )
-            if not subject_rows:
-                raise errors.ApiHTTPException(
-                    status_code=400,
-                    detail=[errors.ApiExc(code="not_found", msg=f"User with id {id} not found.")],
-                )
-            subject_row = subject_rows[0]
+            # Population already contains the subject on the common path (global, or
+            # a cohort the subject belongs to). The 1-user query is only the fallback
+            # when the subject sits outside the cohort filter.
             population_rows = await self.compare.get_compare_population(
                 session,
                 role=compare_role,
@@ -556,6 +544,23 @@ class UserService:
                     status_code=404,
                     detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
                 )
+            subject_row = next((row for row in population_rows if int(row["id"]) == id), None)
+            if subject_row is None:
+                subject_rows = await self.compare.get_compare_population(
+                    session,
+                    user_ids=[id],
+                    role=compare_role,
+                    div_min=compare_div_min,
+                    div_max=compare_div_max,
+                    tournament_id=params.tournament_id,
+                    grid=grid,
+                )
+                if not subject_rows:
+                    raise errors.ApiHTTPException(
+                        status_code=400,
+                        detail=[errors.ApiExc(code="not_found", msg=f"User with id {id} not found.")],
+                    )
+                subject_row = subject_rows[0]
             baseline_row = _build_baseline_average_row(population_rows)
             sample_size = len(population_rows)
 
@@ -742,24 +747,9 @@ class UserService:
             baseline_target = target
             sample_size = 1
         else:
-            # Only "is the cohort empty?" is needed here, to tell the two 404s apart.
-            # This used to materialize the whole population -- ~560 (id, name) rows --
-            # and hand the ids straight back as an ``IN`` list, so the statistics query
-            # arrived with 584 bind parameters and timed out. The population is now
-            # resolved inside that query; the names were never read.
-            if not await self.compare.compare_population_exists(
-                session,
-                role=compare_role,
-                div_min=compare_div_min,
-                div_max=compare_div_max,
-                tournament_id=params.tournament_id,
-                grid=grid,
-            ):
-                raise errors.ApiHTTPException(
-                    status_code=404,
-                    detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
-                )
-
+            # Population is resolved inside the stats query. The exists probe only
+            # tells the two 404s apart, so run it after an empty sample — not on
+            # every cache miss.
             baseline_playtime_by_user, baseline_stats_by_user = await self.compare.get_users_hero_compare_stats(
                 session,
                 user_ids=None,
@@ -775,6 +765,18 @@ class UserService:
 
             sample_user_ids = [user_id for user_id, playtime in baseline_playtime_by_user.items() if playtime >= 600]
             if not sample_user_ids:
+                if not await self.compare.compare_population_exists(
+                    session,
+                    role=compare_role,
+                    div_min=compare_div_min,
+                    div_max=compare_div_max,
+                    tournament_id=params.tournament_id,
+                    grid=grid,
+                ):
+                    raise errors.ApiHTTPException(
+                        status_code=404,
+                        detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
+                    )
                 raise errors.ApiHTTPException(
                     status_code=404,
                     detail=[errors.ApiExc(code="not_found", msg="No users found for selected hero/map filters.")],

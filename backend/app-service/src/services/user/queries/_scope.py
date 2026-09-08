@@ -26,6 +26,33 @@ away_score_case = sa.case(
 )
 
 
+# Equality-join sides. `home_team_id = team.id OR away_team_id = team.id` cannot
+# use either FK index and is what timed compare out (OWT-TOURNAMENTS-21T).
+ENCOUNTER_TEAM_SIDES: tuple[
+    tuple[sa.ColumnElement[typing.Any], sa.ColumnElement[typing.Any], sa.ColumnElement[typing.Any]],
+    tuple[sa.ColumnElement[typing.Any], sa.ColumnElement[typing.Any], sa.ColumnElement[typing.Any]],
+] = (
+    (models.Encounter.home_team_id, models.Encounter.home_score, models.Encounter.away_score),
+    (models.Encounter.away_team_id, models.Encounter.away_score, models.Encounter.home_score),
+)
+
+
+def union_encounter_team_sides(
+    build_side: typing.Callable[[typing.Any, typing.Any, typing.Any], sa.Select],
+) -> sa.CompoundSelect:
+    """``UNION ALL`` of ``build_side(team_fk, maps_won, maps_lost)`` per side."""
+    home, away = ENCOUNTER_TEAM_SIDES
+    return build_side(*home).union_all(build_side(*away))
+
+
+def team_has_played_encounter(team_id_column: typing.Any = models.Team.id) -> sa.ColumnElement[bool]:
+    """Indexable EXISTS: the team appeared as home or as away."""
+    return sa.or_(
+        sa.exists(sa.select(1).select_from(models.Encounter).where(models.Encounter.home_team_id == team_id_column)),
+        sa.exists(sa.select(1).select_from(models.Encounter).where(models.Encounter.away_team_id == team_id_column)),
+    )
+
+
 def _team_load_options(entities: list[str]) -> list[_AbstractLoad]:
     """Load options for selecting Team with optional related entities.
 
@@ -296,6 +323,7 @@ def _compare_user_scope_exists(
         ]
     )
     return sa.exists(sa.select(1).select_from(scoped_player).select_from(scoped_tournament).where(*filters))
+
 
 
 def _hero_compare_stat_visibility_condition(
