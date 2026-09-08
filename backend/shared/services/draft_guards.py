@@ -6,6 +6,7 @@ parser-service (mid-extraction write-path, CG-O6).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
@@ -24,6 +25,7 @@ __all__ = (
     "has_unfinished_draft_session",
     "unfinished_draft_clause",
     "unfinished_draft_session_status",
+    "unfinished_draft_tournament_ids",
 )
 
 _TERMINAL_DRAFT_STATUSES = (DraftStatus.CANCELLED, DraftStatus.COMPLETED)
@@ -57,6 +59,22 @@ def unfinished_draft_clause() -> ColumnElement[bool]:
 async def has_unfinished_draft_session(session: AsyncSession, tournament_id: int) -> bool:
     """Whether a draft session is in flight, i.e. whether the roster shape is locked."""
     return await unfinished_draft_session_status(session, tournament_id) is not None
+
+
+async def unfinished_draft_tournament_ids(session: AsyncSession, tournament_ids: Sequence[int]) -> set[int]:
+    """Tournament ids in ``tournament_ids`` that currently have an in-flight draft.
+
+    One statement for a page of tournaments so list serialization does not pay
+    one ``has_unfinished_draft_session`` round-trip per row.
+    """
+    if not tournament_ids:
+        return set()
+    result = await session.scalars(
+        select(DraftSession.tournament_id)
+        .where(DraftSession.tournament_id.in_(tournament_ids), unfinished_draft_clause())
+        .distinct()
+    )
+    return set(result.all())
 
 
 async def assert_no_active_draft_session(

@@ -215,3 +215,21 @@ class BuildTournamentHistoryTests(IsolatedAsyncioTestCase):
 
         self.assertEqual([50], [e.tournament_id for e in history_map[1]])
         self.assertEqual(1, count_map[1])
+
+    async def test_uses_sql_history_count_when_present(self) -> None:
+        reg = _registration(1, user_id=100)
+        # SQL already capped to HISTORY_LIMIT rows but reported the true total.
+        rows = [_row(tid, 100, rank=None) + (12,) for tid in range(12, 2, -1)]
+
+        ver_patch, snap_patch, read_patch = _patches(version_map={})
+        with ver_patch, snap_patch, read_patch:
+            history_map, count_map, _division_grids = await registration._build_tournament_history(
+                _fake_session(rows),
+                [reg],
+                current_tournament_id=999,
+                workspace_id=1,
+            )
+
+        self.assertEqual(registration.HISTORY_LIMIT, len(history_map[1]))
+        self.assertEqual(12, count_map[1])
+        self.assertEqual(list(range(12, 2, -1)), [e.tournament_id for e in history_map[1]])

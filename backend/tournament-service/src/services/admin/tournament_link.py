@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
@@ -25,6 +27,17 @@ class TournamentLinkService:
     ) -> list[models.TournamentLink]:
         return list(
             await self.link_repo.list_for_tournament(session, tournament_id, active_only=active_only)
+        )
+
+    async def list_links_bulk(
+        self,
+        session: AsyncSession,
+        tournament_ids: Sequence[int],
+        *,
+        active_only: bool = False,
+    ) -> dict[int, list[models.TournamentLink]]:
+        return await self.link_repo.list_for_tournaments(
+            session, tournament_ids, active_only=active_only
         )
 
     async def get_link(self, session: AsyncSession, link_id: int) -> models.TournamentLink:

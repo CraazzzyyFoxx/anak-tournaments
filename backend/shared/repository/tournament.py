@@ -643,6 +643,38 @@ class TournamentLinkRepository(BaseRepository[models.TournamentLink]):
             by_tournament.setdefault(link.tournament_id, []).append(link)
         return by_tournament
 
+    async def list_for_tournaments(
+        self,
+        session: AsyncSession,
+        tournament_ids: Sequence[int],
+        *,
+        active_only: bool = False,
+    ) -> dict[int, list[models.TournamentLink]]:
+        """``list_for_tournament`` for every id in ``tournament_ids`` in ONE query.
+
+        The public tournament list serializes ``links`` per row; without this
+        that is one round-trip per tournament on the page.
+        """
+        by_tournament: dict[int, list[models.TournamentLink]] = {tid: [] for tid in tournament_ids}
+        if not tournament_ids:
+            return by_tournament
+        filters: list[sa.ColumnElement[bool]] = [
+            models.TournamentLink.tournament_id.in_(tournament_ids)
+        ]
+        if active_only:
+            filters.append(models.TournamentLink.is_active.is_(True))
+        result = await session.execute(
+            self.select()
+            .where(*filters)
+            .order_by(
+                models.TournamentLink.tournament_id.asc(),
+                models.TournamentLink.sort_order.asc(),
+                models.TournamentLink.id.asc(),
+            )
+        )
+        for link in result.scalars().all():
+            by_tournament.setdefault(link.tournament_id, []).append(link)
+        return by_tournament
 
 
 class StageItemInputRepository(BaseRepository[models.StageItemInput]):

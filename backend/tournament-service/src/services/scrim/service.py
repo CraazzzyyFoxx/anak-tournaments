@@ -449,12 +449,13 @@ class ScrimService:
             # right now", with history underneath it.
             .order_by(ScrimRoom.closed_at.is_(None).desc(), ScrimRoom.id.desc())
         )
-        return [await self.serialize_room(session, room, user) for room in rows.scalars().all()]
+        rooms = list(rows.scalars().all())
+        player_id = (
+            await self.user_repo.get_id_by_auth_user_id(session, user.id) if user is not None else None
+        )
+        return [self._serialize_room(room, user, player_id) for room in rooms]
 
-    async def _viewer_side(self, session: AsyncSession, room: ScrimRoom, user: models.AuthUser | None) -> Side | None:
-        if user is None:
-            return None
-        player_id = await self.user_repo.get_id_by_auth_user_id(session, user.id)
+    def _viewer_side_for_player(self, room: ScrimRoom, player_id: int | None) -> Side | None:
         if player_id is None:
             return None
         encounter = room.encounter
@@ -464,9 +465,17 @@ class ScrimService:
             return "away"
         return None
 
-    async def serialize_room(self, session: AsyncSession, room: ScrimRoom, user: models.AuthUser | None) -> dict:
+    async def _viewer_side(self, session: AsyncSession, room: ScrimRoom, user: models.AuthUser | None) -> Side | None:
+        if user is None:
+            return None
+        player_id = await self.user_repo.get_id_by_auth_user_id(session, user.id)
+        return self._viewer_side_for_player(room, player_id)
+
+    def _serialize_room(
+        self, room: ScrimRoom, user: models.AuthUser | None, player_id: int | None
+    ) -> dict:
         encounter = room.encounter
-        side = await self._viewer_side(session, room, user)
+        side = self._viewer_side_for_player(room, player_id)
         free_side = _free_side(encounter)
         can_claim = (
             side is None
@@ -491,6 +500,12 @@ class ScrimService:
             "created_at": room.created_at,
             "closed_at": room.closed_at,
         }
+
+    async def serialize_room(self, session: AsyncSession, room: ScrimRoom, user: models.AuthUser | None) -> dict:
+        player_id = (
+            await self.user_repo.get_id_by_auth_user_id(session, user.id) if user is not None else None
+        )
+        return self._serialize_room(room, user, player_id)
 
     # ── writes ──────────────────────────────────────────────────────────────
 

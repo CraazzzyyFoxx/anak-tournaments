@@ -348,6 +348,11 @@ async def _build_tournament_history(
     resolution to see anything (a lazy load here would run outside the
     request's greenlet).
 
+    History is capped in SQL (``ROW_NUMBER`` after deduping substitutions)
+    and the pre-cap count is returned as a window column. Python still
+    deduplicates and caps as a safety net; tests that mock 5-column rows keep
+    the Python count.
+
     Returns a tuple of:
     - ``history_map``: registration_id -> most-recent-first history entries,
       capped at ``HISTORY_LIMIT`` and deduplicated by tournament.
@@ -369,14 +374,27 @@ async def _build_tournament_history(
     # --- Step 2: query tournament.player for participation history (columns only) ---
     # Select scalar columns rather than full ``Player`` ORM objects: avoids hydrating
     # thousands of rows and sidesteps any lazy-attribute access outside the greenlet.
-    # Ordered most-recent-first so the per-registration cap keeps the latest entries.
-    result = await session.execute(
+    # Duplicate (player, tournament) rows (substitutions) are collapsed first; then
+    # each player keeps the most recent ``HISTORY_LIMIT`` tournaments and a window
+    # count of the true unique total.
+    history_ranked = (
         sa.select(
-            models.Player.tournament_id,
-            models.WorkspaceMember.player_id,
+            models.Player.tournament_id.label("tournament_id"),
+            models.WorkspaceMember.player_id.label("player_id"),
             models.Player.role,
             models.Player.rank,
             models.Tournament.name.label("tournament_name"),
+            models.Tournament.start_date.label("start_date"),
+            sa.func.row_number()
+            .over(
+                partition_by=(models.WorkspaceMember.player_id, models.Player.tournament_id),
+                order_by=(
+                    models.Tournament.start_date.desc().nullslast(),
+                    models.Tournament.id.desc(),
+                    models.Player.id.desc(),
+                ),
+            )
+            .label("dup_rn"),
         )
         .join(
             models.Tournament,
@@ -391,10 +409,37 @@ async def _build_tournament_history(
             models.Player.tournament_id != current_tournament_id,
             models.Tournament.workspace_id == workspace_id,
         )
-        .order_by(
-            models.Tournament.start_date.desc().nullslast(),
-            models.Tournament.id.desc(),
+    ).subquery("history_ranked")
+    history_deduped = (
+        sa.select(
+            history_ranked.c.tournament_id,
+            history_ranked.c.player_id,
+            history_ranked.c.role,
+            history_ranked.c.rank,
+            history_ranked.c.tournament_name,
+            sa.func.row_number()
+            .over(
+                partition_by=history_ranked.c.player_id,
+                order_by=(
+                    history_ranked.c.start_date.desc().nullslast(),
+                    history_ranked.c.tournament_id.desc(),
+                ),
+            )
+            .label("hist_rn"),
+            sa.func.count().over(partition_by=history_ranked.c.player_id).label("history_count"),
+        ).where(history_ranked.c.dup_rn == 1)
+    ).subquery("history_deduped")
+    result = await session.execute(
+        sa.select(
+            history_deduped.c.tournament_id,
+            history_deduped.c.player_id,
+            history_deduped.c.role,
+            history_deduped.c.rank,
+            history_deduped.c.tournament_name,
+            history_deduped.c.history_count,
         )
+        .where(history_deduped.c.hist_rn <= HISTORY_LIMIT)
+        .order_by(history_deduped.c.player_id, history_deduped.c.hist_rn)
     )
     rows = result.all()
 
@@ -403,7 +448,7 @@ async def _build_tournament_history(
     # matter how many distinct tournaments this player's history spans (was a
     # sequential per-tournament await; see get_effective_division_grid_version_ids's
     # docstring for why that can't just be asyncio.gather'd instead).
-    tournament_ids_with_rank = {tournament_id for tournament_id, _uid, _role, rank, _name in rows if rank is not None}
+    tournament_ids_with_rank = {row[0] for row in rows if row[3] is not None}
     tournament_to_version = await get_effective_division_grid_version_ids(
         session, workspace_id, tournament_ids_with_rank
     )
@@ -431,7 +476,13 @@ async def _build_tournament_history(
     count_map: dict[int, int] = {}
     seen_per_reg: dict[int, set[int]] = {}
 
-    for tournament_id, user_id, role, rank, tournament_name in rows:
+    for row in rows:
+        tournament_id = row[0]
+        user_id = row[1]
+        role = row[2]
+        rank = row[3]
+        tournament_name = row[4]
+        sql_history_count = int(row[5]) if len(row) > 5 and row[5] is not None else None
         reg_ids = player_to_reg_ids.get(user_id)
         if not reg_ids:
             continue
@@ -463,7 +514,10 @@ async def _build_tournament_history(
             if tournament_id in seen:
                 continue
             seen.add(tournament_id)
-            count_map[reg_id] = count_map.get(reg_id, 0) + 1
+            if sql_history_count is None:
+                count_map[reg_id] = count_map.get(reg_id, 0) + 1
+            else:
+                count_map[reg_id] = sql_history_count
             entries = history_map.setdefault(reg_id, [])
             if len(entries) < HISTORY_LIMIT:
                 entries.append(entry)

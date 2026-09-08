@@ -920,13 +920,15 @@ class RegistrationService:
     ) -> RegistrationListResponse:
         """Anonymous participants-list read model.
 
-        The registration list must always reflect live data. Every read below is a
-        plain ``session.execute`` or a helper that only runs raw ORM reads, with one
-        exception: ``get_status_metas_map`` is cashews-backed per workspace. That is
-        safe because it caches the status *catalog*, not registrations, and all five
+        The public RPC caches this payload (``registration_list:{id}:``, same
+        TTL as other tournament reads). ``registration_changed`` invalidates it;
+        TTL still bounds admin writes that only hit the balancer WS topic.
+        In-process coalescing on the RPC builder still collapses miss herds.
+
+        ``get_status_metas_map`` is cashews-backed per workspace. That is safe
+        because it caches the status *catalog*, not registrations, and all five
         catalog writes invalidate it after commit (see
-        ``shared.balancer_registration_statuses``) — but it does mean this function
-        is no longer cache-free, so re-check that helper before assuming freshness.
+        ``shared.balancer_registration_statuses``).
         NB: do NOT reintroduce ``cache.disabling(...)`` — it flips a *process-global*
         flag on the shared cashews backend and races with every concurrent request
         on this worker (see lesson_cashews_disabling_shared_cache).

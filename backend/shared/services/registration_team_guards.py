@@ -15,6 +15,7 @@ this is the missing half for teams.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from sqlalchemy import and_, select
@@ -31,6 +32,7 @@ __all__ = (
     "assert_no_registered_teams",
     "has_registered_teams",
     "registered_team_status",
+    "registered_team_tournament_ids",
     "teams_holding_slots_clause",
 )
 
@@ -71,6 +73,25 @@ def teams_holding_slots_clause() -> ColumnElement[bool]:
 async def has_registered_teams(session: AsyncSession, tournament_id: int) -> bool:
     """Whether any team still holds roster slots, i.e. whether the shape is locked."""
     return await registered_team_status(session, tournament_id) is not None
+
+
+async def registered_team_tournament_ids(session: AsyncSession, tournament_ids: Sequence[int]) -> set[int]:
+    """Tournament ids in ``tournament_ids`` whose registering teams still hold slots.
+
+    One statement for a page of tournaments so list serialization does not pay
+    one ``has_registered_teams`` round-trip per row.
+    """
+    if not tournament_ids:
+        return set()
+    result = await session.scalars(
+        select(BalancerRegistrationTeam.tournament_id)
+        .where(
+            BalancerRegistrationTeam.tournament_id.in_(tournament_ids),
+            teams_holding_slots_clause(),
+        )
+        .distinct()
+    )
+    return set(result.all())
 
 
 async def assert_no_registered_teams(

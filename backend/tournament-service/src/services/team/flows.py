@@ -8,6 +8,7 @@ from src.core import config, enums, errors, pagination, utils
 from src.core.workspace import get_division_grid
 from src.services.tournament.flows import flows_service as tournament_flows_service
 from src.services.user.flows import flows_service as user_flows_service
+from src.services.user.flows import user_to_read
 
 from .service import TeamService, team_service
 
@@ -57,9 +58,15 @@ class TeamFlowsService:
             if grid is None:
                 grid = await get_division_grid(session, None, tournament_id=team.tournament_id)
             players_entities = utils.prepare_entities(entities, "players")
-            players_read = [
-                await self.to_pydantic_player(session, player, players_entities, grid=grid) for player in team.players
-            ]
+            if "tournament" in players_entities or "team" in players_entities:
+                players_read = [
+                    await self.to_pydantic_player(session, player, players_entities, grid=grid)
+                    for player in team.players
+                ]
+            else:
+                players_read = [
+                    self.player_to_read(player, players_entities, grid=grid) for player in team.players
+                ]
         # ``Team.captain_id`` is nullable, and NOT only in theory: it is ``SET NULL``
         # on the captain's player row, and a scrim room's away side has no captain at
         # all until someone claims it (docs/plans/2026-08-12-scrim-rooms.md §4.2). The
@@ -95,35 +102,23 @@ class TeamFlowsService:
             group=group,
         )
 
-    async def to_pydantic_player(
-        self, session: AsyncSession, player: models.Player, entities: list[str], *, grid: DivisionGrid
+    def player_to_read(
+        self,
+        player: models.Player,
+        entities: list[str],
+        *,
+        grid: DivisionGrid,
+        tournament: schemas.TournamentRead | None = None,
+        team: schemas.TeamRead | None = None,
     ) -> schemas.PlayerRead:
-        """
-        Converts a Player model instance to a Pydantic schema (PlayerRead), including related entities.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            player (models.Player): The Player model instance to convert.
-            entities (list[str]): A list of related entities to include (e.g., ["user", "tournament", "team"]).
-
-        Returns:
-            schemas.PlayerRead: The Pydantic schema representing the player.
-        """
         user: schemas.UserRead | None = None
-        tournament: schemas.TournamentRead | None = None
-        team: schemas.TeamRead | None = None
-
         if "user" in entities:
             # workspace_member_id is NOT NULL (contract step, iwrefac07) and is always
             # eager-loaded regardless of the "user" entity flag (see workspace_member_id
             # dereference below), so the old "workspace_member is not None" guard here
             # was dead — dropped to match app-service's _mappers.py.
             user_entities = [e.replace("user.", "") for e in entities if e.startswith("user.")]
-            user = await user_flows_service.to_pydantic(session, player.workspace_member.player, user_entities)
-        if "tournament" in entities:
-            tournament = await tournament_flows_service.to_pydantic(session, player.tournament, entities=[])
-        if "team" in entities:
-            team = await self.to_pydantic(session, player.team, entities=[])
+            user = user_to_read(player.workspace_member.player, user_entities)
 
         player_dict = player.to_dict()
         # Player.user_id was dropped in the contract step (iwrefac07); PlayerRead.user_id
@@ -141,6 +136,18 @@ class TeamFlowsService:
             tournament=tournament,
             team=team,
         )
+
+    async def to_pydantic_player(
+        self, session: AsyncSession, player: models.Player, entities: list[str], *, grid: DivisionGrid
+    ) -> schemas.PlayerRead:
+        """Converts a Player model instance to PlayerRead, including related entities."""
+        tournament: schemas.TournamentRead | None = None
+        team: schemas.TeamRead | None = None
+        if "tournament" in entities:
+            tournament = await tournament_flows_service.to_pydantic(session, player.tournament, entities=[])
+        if "team" in entities:
+            team = await self.to_pydantic(session, player.team, entities=[])
+        return self.player_to_read(player, entities, grid=grid, tournament=tournament, team=team)
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> models.Team:
         """

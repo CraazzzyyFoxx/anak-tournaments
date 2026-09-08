@@ -7,6 +7,7 @@ from shared.repository import PlayerRepository, TeamRepository
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
 from src import models, schemas
 from src.core import enums
+from src.core.query_page import execute_page_with_total
 
 
 class TeamService:
@@ -173,6 +174,14 @@ class TeamService:
             )
         else:
             query = params.apply_pagination_sort(query, models.Team)
+            return await execute_page_with_total(
+                session,
+                query,
+                total_query,
+                pk=models.Team.id,
+                page=params.page,
+                only_count=params.only_count,
+            )
         result = await session.execute(query)
         total_result = await session.execute(total_query)
         return result.unique().scalars().all(), total_result.scalar_one()

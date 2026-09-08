@@ -34,6 +34,7 @@ import asyncio
 from datetime import timedelta
 from typing import Any
 
+from cashews import cache
 from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
 
@@ -163,6 +164,11 @@ def _optional_identity(data: dict[str, Any]) -> models.AuthUser | None:
 _reg_pub_list_inflight: dict[int, asyncio.Task[Any]] = {}
 
 
+@cache(
+    ttl=settings.tournaments_cache_ttl,
+    key="registration_list:{tournament_id}:",
+    prefix="fastapi:",
+)
 async def _build_registration_list(tournament_id: int) -> Any:
     async with db.async_session_maker() as session:
         return await reg_service.registration_service.build_public_registration_list(session, tournament_id=tournament_id)
