@@ -42,7 +42,7 @@ const ProviderButton = ({ href, title, icon }: ProviderButtonProps) => {
         <div className="flex h-4 w-4 shrink-0 items-center justify-center">
           {icon}
         </div>
-        <span className="text-[13px] font-medium">{title}</span>
+        <span className="text-caption font-medium">{title}</span>
       </a>
     </Button>
   );
@@ -84,7 +84,7 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
               <WorkspaceBrandIcon
                 name={tenantWorkspace.name}
                 iconUrl={tenantWorkspace.iconUrl}
-                className="size-[22px] rounded-sm text-[11px]"
+                className="size-[22px] rounded-sm text-label"
               />
             ) : (
               <Image
@@ -98,10 +98,10 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
             )}
           </div>
 
-          <DialogTitle className="text-[15px] font-semibold tracking-[-0.01em] text-[color:var(--aqt-fg)]">
+          <DialogTitle className="text-ui font-semibold tracking-[-0.01em] text-[color:var(--aqt-fg)]">
             {t("auth.signIn")}
           </DialogTitle>
-          <DialogDescription className="mt-1 text-[12px] font-normal text-[color:var(--aqt-fg-dim)]">
+          <DialogDescription className="mt-1 text-label font-normal text-[color:var(--aqt-fg-dim)]">
             {t("auth.continueTo", { siteName: brandName })}
           </DialogDescription>
         </div>
@@ -138,7 +138,7 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
               })}
 
           {!isLoading && providers.length === 0 && (
-            <p className="py-1 text-center text-[12px] text-[color:var(--aqt-fg-dim)]">
+            <p className="py-1 text-center text-label text-[color:var(--aqt-fg-dim)]">
               {t("auth.unavailable")}
             </p>
           )}
@@ -147,7 +147,7 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
         {/* Footer */}
         <div className="h-px bg-border/70" />
         <div className="flex justify-center px-8 py-4">
-          <p className="text-center text-[11px] leading-relaxed text-[color:var(--aqt-fg-faint)]">
+          <p className="text-center text-label leading-relaxed text-[color:var(--aqt-fg-faint)]">
             {t.rich("auth.agreement", {
               terms: (chunks) => (
                 <Link

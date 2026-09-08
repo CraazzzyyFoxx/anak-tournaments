@@ -301,10 +301,8 @@ export function PageHero({
           ) : null}
           <h1
             className={cn(
-              "aqt-hero-title font-onest font-semibold leading-[1.03] tracking-[-0.01em] text-[color:var(--aqt-fg)]",
-              compact
-                ? "mt-2 text-[clamp(1.75rem,2.6vw,2.25rem)]"
-                : "mt-4 text-[clamp(2rem,4.6vw,3.5rem)]",
+              "aqt-hero-title font-onest font-semibold text-[color:var(--aqt-fg)]",
+              compact ? "mt-2 text-headline" : "mt-4 text-display",
               titleClassName
             )}
           >
@@ -318,8 +316,8 @@ export function PageHero({
           {lede ? (
             <p
               className={cn(
-                "max-w-[34rem] text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]",
-                compact ? "mt-2.5 max-w-[48rem]" : "mt-5"
+                "max-w-[30rem] text-body text-[color:var(--aqt-fg-muted)]",
+                compact ? "mt-2.5 max-w-[42rem]" : "mt-5"
               )}
             >
               {lede}
@@ -378,7 +376,7 @@ export function HeroCoord({
   return (
     <span
       className={cn(
-        "font-mono text-[12px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]",
+        "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]",
         className
       )}
     >
@@ -398,11 +396,11 @@ export function HeroStamp({
   valueClassName?: string;
 }>) {
   return (
-    <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+    <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
       {label}
       <b
         className={cn(
-          "mt-1 block text-[15px] font-semibold normal-case tracking-normal tabular-nums text-[color:var(--aqt-fg)]",
+          "mt-1 block text-ui font-semibold normal-case tracking-normal tabular-nums text-[color:var(--aqt-fg)]",
           valueClassName
         )}
       >
@@ -426,13 +424,13 @@ export function HeroStat({
 }>) {
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+      <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
         {label}
       </span>
       <span className="font-onest text-[clamp(1.7rem,2.2vw,2.15rem)] font-bold leading-none tabular-nums text-[color:var(--aqt-fg)]">
         {value}
       </span>
-      {sub ? <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">{sub}</span> : null}
+      {sub ? <span className="text-label text-[color:var(--aqt-fg-dim)]">{sub}</span> : null}
     </div>
   );
 }

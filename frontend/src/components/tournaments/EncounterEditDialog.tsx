@@ -215,7 +215,7 @@ function EncounterEditDialogBody({
         />
 
         <div className="space-y-1.5">
-          <Label className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.bestOf")}</Label>
+          <Label className="text-caption font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.bestOf")}</Label>
           <Select value={String(bestOf)} onValueChange={(value) => setBestOf(Number(value))}>
             <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-semibold text-[color:var(--aqt-fg)]">
               <SelectValue />
@@ -245,13 +245,13 @@ function EncounterEditDialogBody({
             value={scheduledAt}
             onChange={setScheduledAt}
           />
-          <p className="mt-1 text-[11px] font-medium leading-normal text-[color:var(--aqt-fg-dim)]">
+          <p className="mt-1 text-label font-medium leading-normal text-[color:var(--aqt-fg-dim)]">
             {t("matchEdit.scheduledAtHint")}
           </p>
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.status")}</Label>
+          <Label className="text-caption font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.status")}</Label>
           <Select value={status} onValueChange={(value) => setStatus(normalizeStatus(value))} disabled={isCompleted}>
             <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-semibold text-[color:var(--aqt-fg)]">
               <SelectValue />
@@ -269,14 +269,14 @@ function EncounterEditDialogBody({
             </SelectContent>
           </Select>
           {isCompleted && (
-            <p className="text-[11px] text-[color:var(--aqt-fg-dim)] font-medium leading-normal mt-1">
+            <p className="text-label text-[color:var(--aqt-fg-dim)] font-medium leading-normal mt-1">
               {t("matchEdit.statusLockedHint")}
             </p>
           )}
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]">
+          <Label className="text-caption font-bold text-[color:var(--aqt-fg-muted)]">
             {t("matchEdit.matchCloseness")}
           </Label>
           <div className="flex items-center gap-1.5">
@@ -304,7 +304,7 @@ function EncounterEditDialogBody({
               {stars > 0 ? `${stars}/10` : t("matchEdit.notSet")}
             </span>
           </div>
-          <p className="text-[11px] text-[color:var(--aqt-fg-dim)] font-medium leading-normal mt-1">
+          <p className="text-label text-[color:var(--aqt-fg-dim)] font-medium leading-normal mt-1">
             {t("matchEdit.closenessHint")}
           </p>
         </div>

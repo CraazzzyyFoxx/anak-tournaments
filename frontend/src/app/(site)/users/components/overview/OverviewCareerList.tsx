@@ -30,7 +30,7 @@ const StatCell = ({
 }) => (
   <div className="flex min-w-[140px] flex-1 flex-col gap-1 rounded-[8px] border border-[color:var(--aqt-border)] px-3 py-2.5">
     <span
-      className="aqt-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]"
+      className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
       title={title}
     >
       {label}
@@ -125,10 +125,10 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
       {totalPlaced > 0 ? (
         <div className="flex flex-col gap-2.5 px-[18px] pb-3 pt-3.5">
           <div className="flex items-center justify-between gap-2">
-            <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+            <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
               {t("users.overview.career.finishes")}
             </span>
-            <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-dim)]">
+            <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
               {t("users.overview.career.placements", { count: totalPlaced })}
             </span>
           </div>
@@ -143,7 +143,7 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {visibleSegments.map((s) => (
-              <span key={s.key} className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--aqt-fg-muted)]">
+              <span key={s.key} className="inline-flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-muted)]">
                 <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: s.color }} aria-hidden />
                 {t(s.labelKey as Parameters<typeof t>[0])}
                 <span className="aqt-tnum font-bold text-[color:var(--aqt-fg)]">{s.count}</span>
@@ -173,7 +173,7 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
 
       {showVerdict ? (
         <div
-          className="m-[18px] mt-3 rounded-[8px] bg-[color:var(--aqt-card-2)] px-3 py-2.5 text-[12.5px] text-[color:var(--aqt-fg-muted)]"
+          className="m-[18px] mt-3 rounded-[8px] bg-[color:var(--aqt-card-2)] px-3 py-2.5 text-caption text-[color:var(--aqt-fg-muted)]"
           style={{ borderLeft: "2px solid var(--aqt-teal)" }}
         >
           {t("users.overview.career.verdictPodium", { pct: podiumPct, count: totalPlaced })}

@@ -120,7 +120,7 @@ export default function VerifiedAccountSelect({
           ))}
         </SelectContent>
       </Select>
-      <p id={hintId} className="text-[11px] text-[color:var(--aqt-fg-dim)]">
+      <p id={hintId} className="text-label text-[color:var(--aqt-fg-dim)]">
         {t("registration.accounts.verifiedHint")}
       </p>
       {error && <p id={errorId} className="text-xs text-destructive">{error}</p>}

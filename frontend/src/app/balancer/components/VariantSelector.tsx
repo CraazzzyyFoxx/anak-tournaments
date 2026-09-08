@@ -77,7 +77,7 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
             <span
               title={offRoleTooltip}
               className={cn(
-                "flex items-center gap-1 text-[11px] font-semibold tabular-nums",
+                "flex items-center gap-1 text-label font-semibold tabular-nums",
                 offRoles === 0
                   ? "text-[color:var(--aqt-fg-dim)]"
                   : offRoleOptimal
@@ -95,7 +95,7 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
             <span
               title="Sub-role collisions"
               className={cn(
-                "flex items-center gap-1 text-[11px] font-semibold tabular-nums",
+                "flex items-center gap-1 text-label font-semibold tabular-nums",
                 collisions > 0 ? "text-primary/90" : "text-[color:var(--aqt-fg-dim)]"
               )}
             >
@@ -105,7 +105,7 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
             <span
               title="Benched"
               className={cn(
-                "flex items-center gap-1 text-[11px] font-semibold tabular-nums",
+                "flex items-center gap-1 text-label font-semibold tabular-nums",
                 benched > 0 ? "text-rose-300/90" : "text-[color:var(--aqt-fg-dim)]"
               )}
             >
@@ -115,7 +115,7 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
             {stddev != null ? (
               <span
                 title="StdDev"
-                className="flex items-center gap-1 text-[11px] font-semibold tabular-nums text-blue-300/70"
+                className="flex items-center gap-1 text-label font-semibold tabular-nums text-blue-300/70"
               >
                 <BarChart2 className="h-3 w-3" />
                 {stddev.toFixed(1)}
@@ -124,7 +124,7 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
             {quality != null ? (
               <span
                 title="Composite quality score (lower = better)"
-                className="flex items-center gap-1 text-[11px] font-semibold tabular-nums text-emerald-300/80"
+                className="flex items-center gap-1 text-label font-semibold tabular-nums text-emerald-300/80"
               >
                 <Sparkles className="h-3 w-3" />
                 {quality.toFixed(2)}

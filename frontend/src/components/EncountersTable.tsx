@@ -366,7 +366,7 @@ export function EncountersDataTable({
         return (
           <td
             key={column}
-            className="c aqt-mono text-[13px] tabular-nums text-[color:var(--aqt-fg-dim)]"
+            className="c aqt-tnum text-caption tabular-nums text-[color:var(--aqt-fg-dim)]"
           >
             {t("encounters.bestOfShort", { count: encounter.best_of })}
           </td>

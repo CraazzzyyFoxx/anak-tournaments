@@ -223,7 +223,7 @@ export function PickupLobbyPanel({
               onClick={onOpenPool}
               className={cn(
                 EYEBROW_CLASS,
-                "rounded px-1 tracking-[0.14em] text-[color:var(--aqt-teal)] transition-colors hover:text-[color:color-mix(in_srgb,var(--aqt-teal)_80%,white)]",
+                "rounded px-1 tracking-label text-[color:var(--aqt-teal)] transition-colors hover:text-[color:color-mix(in_srgb,var(--aqt-teal)_80%,white)]",
               )}
             >
               Add players &rarr;
@@ -296,12 +296,12 @@ export function PickupLobbyPanel({
               >
                 <div className="flex items-center gap-1.5">
                   <PlayerRoleIcon role={icon} size={16} decorative />
-                  <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
+                  <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                     {ROLE_LABELS[entry.role]}
                   </span>
                   <span
                     className={cn(
-                      "ml-auto font-mono text-[13px] font-semibold tabular-nums",
+                      "ml-auto text-caption font-semibold tabular-nums",
                       entry.short > 0
                         ? "text-[color:var(--aqt-amber)]"
                         : "text-[color:var(--aqt-emerald)]",
@@ -332,7 +332,7 @@ export function PickupLobbyPanel({
       ) : null}
 
       {summary.blocking > 0 ? (
-        <p className="flex items-start gap-2 border-b border-[color:var(--aqt-border)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_6%,transparent)] px-4 py-2.5 text-[13px] text-[color:var(--aqt-amber)]">
+        <p className="flex items-start gap-2 border-b border-[color:var(--aqt-border)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_6%,transparent)] px-4 py-2.5 text-caption text-[color:var(--aqt-amber)]">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           <span>
             {summary.blocking === 1
@@ -451,21 +451,21 @@ function LineupColumn({
         <span
           className={cn(
             EYEBROW_CLASS,
-            "tracking-[0.14em]",
+            "tracking-label",
             bucket === "must_play" && "text-[color:var(--aqt-amber)]",
           )}
         >
           {title}
         </span>
-        <span className="font-mono text-[11px] text-[color:var(--aqt-fg-dim)]">{rows.length}</span>
-        <span className="ml-auto hidden truncate text-[11px] text-[color:var(--aqt-fg-faint)] sm:block">
+        <span className="text-label text-[color:var(--aqt-fg-dim)]">{rows.length}</span>
+        <span className="ml-auto hidden truncate text-label text-[color:var(--aqt-fg-faint)] sm:block">
           {hint}
         </span>
       </div>
       {rows.length === 0 ? (
         <p
           className={cn(
-            "rounded-lg border border-dashed px-2.5 py-3 text-center text-[12px] transition-colors",
+            "rounded-lg border border-dashed px-2.5 py-3 text-center text-label transition-colors",
             droppable.isOver
               ? "border-[color:var(--aqt-teal)] text-[color:var(--aqt-teal)]"
               : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-faint)]",
@@ -685,11 +685,11 @@ function LineupRow({
       />
 
       <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-        <span className="truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]">
+        <span className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]">
           {name}
         </span>
         {suffix ? (
-          <span className="shrink-0 font-mono text-xs text-[color:var(--aqt-fg-faint)]">
+          <span className="shrink-0 text-xs text-[color:var(--aqt-fg-faint)]">
             {suffix}
           </span>
         ) : null}
@@ -716,7 +716,7 @@ function LineupRow({
             itself — which layer each role resolved from is named in the sheet. */}
         <span
           title="Mean effective rank across this player's roles"
-          className="font-mono text-[13.5px] font-semibold tabular-nums text-[color:var(--aqt-fg)]"
+          className="text-caption font-semibold tabular-nums text-[color:var(--aqt-fg)]"
         >
           {rank ?? "\u2014"}
         </span>
@@ -763,13 +763,13 @@ function LineupDragPreview({ row }: Readonly<{ row: CustomGamePlayer }>) {
       )}
     >
       <GripVertical className="size-3.5 shrink-0 text-[color:var(--aqt-fg-faint)]" aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]">
+      <span className="min-w-0 flex-1 truncate text-caption font-semibold text-[color:var(--aqt-fg)]">
         {name}
         {suffix ? (
-          <span className="ml-1 font-mono text-xs text-[color:var(--aqt-fg-faint)]">{suffix}</span>
+          <span className="ml-1 text-xs text-[color:var(--aqt-fg-faint)]">{suffix}</span>
         ) : null}
       </span>
-      <span className="shrink-0 font-mono text-[13.5px] font-semibold tabular-nums text-[color:var(--aqt-fg)]">
+      <span className="shrink-0 text-caption font-semibold tabular-nums text-[color:var(--aqt-fg)]">
         {rank ?? "\u2014"}
       </span>
     </div>

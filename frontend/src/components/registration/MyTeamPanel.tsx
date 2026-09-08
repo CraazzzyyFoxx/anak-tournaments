@@ -342,7 +342,7 @@ export default function MyTeamPanel({
 
       {isCaptain && (
         <div className="grid gap-2">
-          <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+          <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
             {t("invite.title")}
           </span>
           {pendingInvites.length === 0 ? (
@@ -581,7 +581,7 @@ export default function MyTeamPanel({
                                 {agent.roles.map((role) => (
                                   <span
                                     key={role}
-                                    className="rounded-full border border-[color:var(--aqt-border-2)] px-2 py-0.5 text-[11px] text-[color:var(--aqt-fg-muted)]"
+                                    className="rounded-full border border-[color:var(--aqt-border-2)] px-2 py-0.5 text-label text-[color:var(--aqt-fg-muted)]"
                                   >
                                     {slotLabel(role)}
                                   </span>

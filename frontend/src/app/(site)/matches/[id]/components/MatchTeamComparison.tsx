@@ -58,7 +58,7 @@ const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) =>
           size="xs"
           nameClassName="aqt-tnum text-sm font-semibold text-[color:var(--aqt-teal)]"
         />
-        <span className="aqt-mono px-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-tnum px-2 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
           {t("matches.comparison.title")}
         </span>
         <TeamName
@@ -73,7 +73,7 @@ const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) =>
         {rows.map((row) => (
           <div key={row.name} className="grid grid-cols-[minmax(56px,auto)_1fr_minmax(56px,auto)] items-center gap-3">
             <span
-              className="aqt-tnum text-right text-[13px]"
+              className="aqt-tnum text-right text-caption"
               style={{
                 color: row.winner === "home" ? "var(--aqt-teal)" : "var(--aqt-fg-muted)",
                 fontWeight: row.winner === "home" ? 700 : 500
@@ -82,7 +82,7 @@ const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) =>
               {formatStat(row.name, row.home, format)}
             </span>
             <div className="flex flex-col gap-1">
-              <span className="text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
+              <span className="text-center text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                 {row.label}
               </span>
               <div className="flex items-center">
@@ -110,7 +110,7 @@ const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) =>
               </div>
             </div>
             <span
-              className="aqt-tnum text-left text-[13px]"
+              className="aqt-tnum text-left text-caption"
               style={{
                 color: row.winner === "away" ? "var(--aqt-rose)" : "var(--aqt-fg-muted)",
                 fontWeight: row.winner === "away" ? 700 : 500

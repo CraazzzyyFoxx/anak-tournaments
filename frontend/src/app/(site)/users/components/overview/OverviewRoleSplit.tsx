@@ -168,11 +168,11 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
           </div>
           <div className="flex flex-wrap gap-x-3.5 gap-y-1">
             {buckets.map((b) => (
-              <span key={b.key} className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--aqt-fg-muted)]">
+              <span key={b.key} className="inline-flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-muted)]">
                 <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: ROLE_COLOR[b.key] }} aria-hidden />
                 {t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])}
                 <span className="aqt-tnum font-bold text-[color:var(--aqt-fg)]">{b.maps}</span>
-                <span className="aqt-mono text-[color:var(--aqt-fg-faint)]">{Math.round(b.share * 100)}%</span>
+                <span className="aqt-tnum text-[color:var(--aqt-fg-faint)]">{Math.round(b.share * 100)}%</span>
               </span>
             ))}
           </div>
@@ -192,22 +192,22 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
               />
               <div>
                 <div
-                  className="aqt-display flex items-center gap-1.5 text-[16px] font-bold uppercase leading-none tracking-[0.04em]"
+                  className="aqt-display flex items-center gap-1.5 text-base font-bold uppercase leading-none tracking-[0.04em]"
                   style={{ color: ROLE_COLOR[b.key] }}
                 >
                   <PlayerRoleIcon role={ROLE_ICON[b.key]} size={14} color={ROLE_COLOR[b.key]} decorative />
                   {t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])}
                   {primary && b.key === primary.key ? (
-                    <span className="ml-1 text-[11px] font-semibold tracking-[0.1em] text-[color:var(--aqt-fg-muted)]"> · {t("users.overview.roleSplit.main")}</span>
+                    <span className="ml-1 text-label font-semibold tracking-label text-[color:var(--aqt-fg-muted)]"> · {t("users.overview.roleSplit.main")}</span>
                   ) : null}
                 </div>
-                <div className="aqt-mono mt-1 text-[12px] text-[color:var(--aqt-fg-muted)]">
+                <div className="aqt-tnum mt-1 text-label text-[color:var(--aqt-fg-muted)]">
                   {b.won}W · {b.lost}L · {t("users.overview.mapsCount", { count: b.maps })}
                 </div>
               </div>
               <div className="text-right">
                 <div
-                  className="aqt-display aqt-tnum text-[22px] font-bold leading-none"
+                  className="aqt-display aqt-tnum text-title font-bold leading-none"
                   style={{
                     color: b.winrate > 0.55
                       ? "var(--aqt-emerald)"
@@ -218,7 +218,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
                 >
                   {formatPercent(b.winrate)}
                 </div>
-                <div className="aqt-mono mt-0.5 text-[11.5px] text-[color:var(--aqt-fg-dim)]">
+                <div className="aqt-tnum mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">
                   {formatPercent(b.share)} {t("users.overview.roleSplit.ofPool")}
                 </div>
               </div>
@@ -227,7 +227,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
         </div>
         {signatures.length > 0 ? (
           <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3.5">
-            <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+            <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
               {t("users.overview.roleSplit.signatureTitle")}
             </span>
             {signatures.map((sig) => {
@@ -244,8 +244,8 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
                     popover={<HeroUserStatsPopover hero={sig.hero} stats={sig.stats} />}
                   />
                   <div className="min-w-0">
-                    <div className="truncate text-[13px] font-bold text-[color:var(--aqt-fg)]">{sig.hero.name}</div>
-                    <div className="aqt-mono text-[11px] text-[color:var(--aqt-fg-dim)]">
+                    <div className="truncate text-caption font-bold text-[color:var(--aqt-fg)]">{sig.hero.name}</div>
+                    <div className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                       {hasGamesData && sig.games > 0 ? <>{t("users.overview.roleSplit.games", { count: sig.games })} · </> : null}
                       {sig.kda != null ? t("users.overview.roleSplit.kda", { value: sig.kda.toFixed(2) }) : "—"}
                     </div>
@@ -255,7 +255,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
                       column of three bare em dashes down the card. */}
                   {sig.winPct != null ? (
                     <div
-                      className="aqt-display aqt-tnum text-[15px] font-bold"
+                      className="aqt-display aqt-tnum text-ui font-bold"
                       style={{ color: winrateColor(sig.winPct) }}
                     >
                       {sig.winPct.toFixed(0)}%

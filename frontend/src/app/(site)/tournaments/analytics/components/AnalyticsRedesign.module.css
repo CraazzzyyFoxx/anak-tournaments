@@ -72,7 +72,7 @@
 .eyebrow {
   margin-bottom: 8px;
   color: var(--c-muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -90,7 +90,7 @@
   margin-top: 12px;
   max-width: 760px;
   color: var(--c-muted);
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.7;
 }
 
@@ -104,7 +104,7 @@
   background: hsl(var(--muted) / 0.36);
   padding: 6px 10px;
   color: var(--c-text);
-  font-size: 12px;
+  font-size: var(--text-label);
   font-weight: 600;
 }
 
@@ -131,7 +131,7 @@
 
 .label {
   color: var(--c-muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -166,7 +166,7 @@
 
 .kpiLabel {
   color: var(--c-muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 650;
 }
 
@@ -184,7 +184,7 @@
 .kpiFoot {
   margin-top: 8px;
   color: var(--c-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.35;
 }
 
@@ -212,7 +212,7 @@
 .sectionSub {
   margin-top: 3px;
   color: var(--c-muted);
-  font-size: 13px;
+  font-size: var(--text-caption);
 }
 
 .sectionHeadEnd {
@@ -237,7 +237,7 @@
   border-radius: 6px;
   padding: 0 12px;
   color: var(--c-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
   font-weight: 650;
 }
 
@@ -323,7 +323,7 @@
   align-items: center;
   gap: 4px;
   color: var(--c-muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-variant-numeric: tabular-nums;
 }
 
@@ -343,7 +343,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 15px;
+  font-size: var(--text-ui);
   font-weight: 720;
 }
 
@@ -353,7 +353,7 @@
   flex-wrap: wrap;
   gap: 8px;
   color: var(--c-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 
 .roleLane {
@@ -389,7 +389,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--text-label);
   font-weight: 650;
 }
 
@@ -400,13 +400,13 @@
 
 .wins {
   color: hsl(146 60% 58%);
-  font-size: 22px;
+  font-size: var(--text-title);
   font-weight: 760;
 }
 
 .losses {
   color: var(--c-muted);
-  font-size: 18px;
+  font-size: var(--text-heading);
   font-weight: 700;
 }
 
@@ -432,14 +432,14 @@
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 760;
   font-variant-numeric: tabular-nums;
 }
 
 .confidenceText {
   color: var(--c-muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   line-height: 1.25;
 }
 
@@ -483,7 +483,7 @@
 .shiftLabel {
   margin-top: 5px;
   color: var(--c-muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -502,7 +502,7 @@
   border-radius: 999px;
   background: var(--c-surface-2);
   padding: 3px 7px;
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 760;
   text-transform: uppercase;
 }
@@ -542,7 +542,7 @@
   border-bottom: 1px solid var(--c-line);
   padding: 8px;
   color: var(--c-muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 720;
   text-align: left;
 }
@@ -550,7 +550,7 @@
 .detailTable td {
   border-bottom: 1px solid var(--c-line);
   padding: 10px 8px;
-  font-size: 13px;
+  font-size: var(--text-caption);
 }
 
 .detailTable tr:last-child td {
@@ -602,7 +602,7 @@
 
 .horizonRank {
   color: var(--c-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
   font-variant-numeric: tabular-nums;
 }
 
@@ -661,7 +661,7 @@
   max-width: 170px;
   overflow: hidden;
   color: var(--c-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -678,7 +678,7 @@
   border-top: 1px dashed var(--c-line);
   padding-top: 10px;
   color: var(--c-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 
 .legendSwatch {
@@ -724,7 +724,7 @@
 }
 
 .insightTitle {
-  font-size: 13px;
+  font-size: var(--text-caption);
   font-weight: 720;
 }
 
@@ -733,7 +733,7 @@
   background: var(--c-surface-3);
   padding: 2px 7px;
   color: var(--c-muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 760;
 }
 
@@ -749,7 +749,7 @@
   align-items: center;
   gap: 8px;
   color: var(--c-text);
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 
 .insightWho {
@@ -762,7 +762,7 @@
 
 .insightMeta {
   color: var(--c-muted);
-  font-size: 11px;
+  font-size: var(--text-label);
 }
 
 @media (max-width: 1280px) {
@@ -900,7 +900,7 @@
   --c-r: 14px;
   --c-r-sm: 8px;
   --c-disp: var(--aqt-display);
-  --c-mono: var(--aqt-mono);
+  --c-mono: var(--aqt-data);
 }
 .cTnum {
   font-variant-numeric: tabular-nums;
@@ -943,9 +943,9 @@
   background: var(--c-surface-2);
   padding: 6px 11px;
   font-family: var(--c-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 .cStatusDot {
@@ -976,13 +976,13 @@
   background: var(--aqt-overlay-2);
   padding: 6px 11px;
   color: var(--c-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 .cMetaPillK {
   color: var(--c-faint);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 .cMetaPillV {
@@ -1002,7 +1002,7 @@
   margin-bottom: 9px;
   color: var(--c-muted);
   font-family: var(--c-disp);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1010,7 +1010,7 @@
 .cVerdictH {
   margin: 0;
   color: var(--c-text);
-  font-size: 22px;
+  font-size: var(--text-title);
   font-weight: 600;
   line-height: 1.18;
   letter-spacing: -0.02em;
@@ -1023,7 +1023,7 @@
 .cVerdictSub {
   margin: 10px 0 0;
   color: var(--c-muted);
-  font-size: 13.5px;
+  font-size: var(--text-caption);
   line-height: 1.5;
 }
 .cVerdictSub strong {
@@ -1085,7 +1085,7 @@
   align-items: center;
   gap: 5px;
   color: var(--c-faint);
-  font-size: 11px;
+  font-size: var(--text-label);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1099,7 +1099,7 @@
 }
 .cKpiSub {
   color: var(--c-muted);
-  font-size: 11.5px;
+  font-size: var(--text-label);
 }
 .cToneUp {
   color: var(--c-up);
@@ -1131,7 +1131,7 @@
   padding: 0;
   font-family: inherit;
   color: var(--c-faint);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
   line-height: 1;
   vertical-align: middle;
@@ -1206,7 +1206,7 @@
   padding: 2px 0;
   color: var(--c-muted);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-caption);
   font-weight: 500;
   cursor: pointer;
 }
@@ -1235,7 +1235,7 @@
   gap: 8px;
   margin-top: 10px;
   color: var(--c-muted);
-  font-size: 12.5px;
+  font-size: var(--text-caption);
 }
 .cPvaDot {
   width: 9px;
@@ -1263,14 +1263,14 @@
 }
 .cMonteProbL {
   color: var(--c-faint);
-  font-size: 11px;
+  font-size: var(--text-label);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 .cMonteProbV {
   margin-top: 3px;
   font-family: var(--c-disp);
-  font-size: 18px;
+  font-size: var(--text-heading);
   font-weight: 700;
 }
 .cMonteHist {
@@ -1302,7 +1302,7 @@
 .cCardTitle {
   color: var(--c-muted);
   font-family: var(--c-disp);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1340,7 +1340,7 @@
 .cStandingsTitle {
   color: var(--c-muted);
   font-family: var(--c-disp);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1348,7 +1348,7 @@
 .cStandingsBy {
   color: var(--c-faint);
   font-family: var(--c-mono);
-  font-size: 11.5px;
+  font-size: var(--text-label);
 }
 .cSeg {
   display: flex;
@@ -1366,7 +1366,7 @@
   padding: 8px 6px;
   color: var(--c-muted);
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -1411,7 +1411,7 @@
   flex-shrink: 0;
   color: var(--c-faint);
   font-family: var(--c-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   white-space: nowrap;
 }
 .cRowHz .cHorizonTrack {
@@ -1459,7 +1459,7 @@
 }
 .cTeamName {
   overflow: hidden;
-  font-size: 14.5px;
+  font-size: var(--text-body);
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1470,7 +1470,7 @@
   margin-top: 3px;
   color: var(--c-faint);
   font-family: var(--c-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   white-space: nowrap;
 }
 .cFlagText {
@@ -1484,7 +1484,7 @@
 .cStandingsEmpty {
   padding: 24px;
   color: var(--c-muted);
-  font-size: 13.5px;
+  font-size: var(--text-caption);
   text-align: center;
 }
 
@@ -1497,7 +1497,7 @@
   border-radius: 999px;
   padding: 4px 8px;
   font-family: var(--c-disp);
-  font-size: 12px;
+  font-size: var(--text-label);
   font-weight: 600;
   line-height: 1;
 }
@@ -1526,7 +1526,7 @@
   flex-shrink: 0;
   color: var(--c-faint);
   font-family: var(--c-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
 }
 .cHorizonTrack {
   position: relative;
@@ -1572,7 +1572,7 @@
   gap: 16px;
   margin-top: 6px;
   color: var(--c-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 .cHorizonLegend span {
   display: inline-flex;
@@ -1590,7 +1590,7 @@
 .cTeamEyebrow {
   color: var(--c-faint);
   font-family: var(--c-disp);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1611,14 +1611,14 @@
   color: var(--c-up);
 }
 .cTeamNameBig {
-  font-size: 18px;
+  font-size: var(--text-heading);
   font-weight: 600;
 }
 .cRosterTitle {
   padding: 4px 4px 0;
   color: var(--c-muted);
   font-family: var(--c-disp);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1674,7 +1674,7 @@
   align-items: center;
   gap: 7px;
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1692,7 +1692,7 @@
   background: var(--c-info-dim);
   padding: 2px 7px;
   color: var(--c-info);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1719,7 +1719,7 @@
 .cImpactNum {
   width: 26px;
   font-family: var(--c-disp);
-  font-size: 13px;
+  font-size: var(--text-caption);
   font-weight: 700;
   text-align: right;
 }
@@ -1732,7 +1732,7 @@
   gap: 5px;
   border-radius: 999px;
   padding: 5px 9px 5px 7px;
-  font-size: 12px;
+  font-size: var(--text-label);
   font-weight: 600;
 }
 .cMove svg {
@@ -1769,7 +1769,7 @@
   background: var(--c-warn-dim);
   padding: 3px 8px;
   color: var(--c-warn);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 600;
   cursor: help;
 }
@@ -1799,7 +1799,7 @@
   gap: 7px;
   margin-top: 3px;
   color: var(--c-muted);
-  font-size: 13px;
+  font-size: var(--text-caption);
 }
 .cMoveCardUp {
   background: linear-gradient(140deg, var(--c-up-dim), transparent 65%), var(--c-surface);
@@ -1809,14 +1809,14 @@
 }
 .cMoveWord {
   font-family: var(--c-disp);
-  font-size: 22px;
+  font-size: var(--text-title);
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 .cMoveSub {
   margin-top: 3px;
   color: var(--c-muted);
-  font-size: 13px;
+  font-size: var(--text-caption);
 }
 .cMoveBadges {
   display: flex;
@@ -1841,20 +1841,20 @@
   align-items: center;
   gap: 5px;
   color: var(--c-faint);
-  font-size: 11px;
+  font-size: var(--text-label);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 .cMetricV {
   margin-top: 5px;
   font-family: var(--c-disp);
-  font-size: 22px;
+  font-size: var(--text-title);
   font-weight: 700;
 }
 .cMetricS {
   margin-top: 1px;
   color: var(--c-muted);
-  font-size: 11.5px;
+  font-size: var(--text-label);
 }
 .cFlagCard {
   border: 1px solid var(--c-warn);
@@ -1871,7 +1871,7 @@
 .cFlagCardBody {
   margin: 8px 0 0;
   color: var(--c-muted);
-  font-size: 13.5px;
+  font-size: var(--text-caption);
   line-height: 1.5;
 }
 .cWhy {
@@ -1886,7 +1886,7 @@
   display: flex;
   gap: 10px;
   color: var(--c-text);
-  font-size: 13.5px;
+  font-size: var(--text-caption);
   line-height: 1.45;
 }
 .cWhyBullet {
@@ -1911,7 +1911,7 @@
 .cHzCount {
   color: var(--c-faint);
   font-family: var(--c-mono);
-  font-size: 11.5px;
+  font-size: var(--text-label);
 }
 .cHzAxis {
   display: grid;
@@ -1921,7 +1921,7 @@
   padding: 2px 0 8px;
   color: var(--c-faint);
   font-family: var(--c-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
 }
 .cHzScale {
   display: flex;
@@ -1947,12 +1947,12 @@
 .cHzRank {
   color: var(--c-faint);
   font-family: var(--c-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   text-align: right;
 }
 .cHzName {
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--text-caption);
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1969,7 +1969,7 @@
   padding-top: 11px;
   border-top: 1px dashed var(--c-line-2);
   color: var(--c-muted);
-  font-size: 11.5px;
+  font-size: var(--text-label);
 }
 .cLg {
   display: inline-flex;
@@ -1988,7 +1988,7 @@
     gap: 7px;
   }
   .cHzName {
-    font-size: 12px;
+    font-size: var(--text-label);
   }
 }
 
@@ -2023,14 +2023,14 @@
 }
 .cHowTitle {
   display: block;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 600;
 }
 .cHowSub {
   display: block;
   margin-top: 2px;
   color: var(--c-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 /* The glossary / how-it-works overlay now uses the shadcn Sheet component
    (BottomSheet.tsx) — no bespoke sheet container styles needed here. */

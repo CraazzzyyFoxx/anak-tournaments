@@ -167,7 +167,7 @@ ym(${ymId}, 'init', {clickmap:true, trackLinks:true, accurateTrackBounce:true});
             )}
           </div>
 
-          <p className="mt-1.5 text-pretty text-[13px] leading-relaxed text-[color:var(--aqt-fg-dim)]">
+          <p className="mt-1.5 text-pretty text-caption leading-relaxed text-[color:var(--aqt-fg-dim)]">
             {t.rich("legal.cookieConsent.body", {
               siteName: SITE_NAME,
               privacy: (chunks) => (
@@ -182,7 +182,7 @@ ym(${ymId}, 'init', {clickmap:true, trackLinks:true, accurateTrackBounce:true});
           </p>
 
           {consent !== null && (
-            <p className="mt-2 text-[13px] font-medium text-[color:var(--aqt-fg-muted)]">
+            <p className="mt-2 text-caption font-medium text-[color:var(--aqt-fg-muted)]">
               {consent === "accepted"
                 ? t("legal.cookieConsent.statusOn")
                 : t("legal.cookieConsent.statusOff")}

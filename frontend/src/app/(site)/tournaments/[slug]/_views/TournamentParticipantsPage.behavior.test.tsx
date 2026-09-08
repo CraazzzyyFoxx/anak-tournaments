@@ -316,7 +316,7 @@ describe("tournament participants check-in", () => {
  */
 function stepLabels(): { text: string; className: string }[] {
   return Array.from(container.querySelectorAll("span"))
-    .filter((node) => node.className.includes("text-[11px] leading-tight"))
+    .filter((node) => node.className.includes("text-label leading-tight"))
     .map((node) => ({ text: node.textContent ?? "", className: node.className }));
 }
 

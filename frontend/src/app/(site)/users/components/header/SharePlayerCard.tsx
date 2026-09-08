@@ -33,7 +33,7 @@ export interface ShareCardData {
 }
 
 const BTN =
-  "inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.03)] px-2.5 py-1.5 text-[12.5px] font-semibold text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.03)] px-2.5 py-1.5 text-caption font-semibold text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] disabled:opacity-50";
 
 const CARD_W = 1200;
 const CARD_H = 630;
@@ -359,7 +359,7 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
       }
       if (cancelled) return;
       const onest = resolveFamily("var(--aqt-display)");
-      const mono = resolveFamily("var(--aqt-mono)");
+      const mono = resolveFamily("var(--aqt-data)");
       const palette: Palette = {
         bg: token("--aqt-bg"),
         border: token("--aqt-border"),

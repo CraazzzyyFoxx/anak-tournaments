@@ -134,7 +134,7 @@ function BlockHeading({
 }>) {
   const t = useTranslations();
   const headingClass =
-    "text-[11px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]";
+    "text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]";
 
   return (
     <div className="space-y-0.5">
@@ -150,7 +150,7 @@ function BlockHeading({
         )}
         <span
           className={cn(
-            "shrink-0 text-[11px] font-bold uppercase tracking-[0.12em]",
+            "shrink-0 text-label font-bold uppercase tracking-label",
             required ? "text-[color:var(--aqt-gold)]" : "text-[color:var(--aqt-fg-faint)]"
           )}
         >
@@ -158,7 +158,7 @@ function BlockHeading({
         </span>
       </div>
       {hint ? (
-        <p className="text-[11px] font-medium text-[color:var(--aqt-fg-dim)]">{hint}</p>
+        <p className="text-label font-medium text-[color:var(--aqt-fg-dim)]">{hint}</p>
       ) : null}
     </div>
   );
@@ -484,7 +484,7 @@ export function MatchReportForm({
                           : "text-[color:var(--aqt-fg-faint)]"
                       )}
                     />
-                    <span className="text-[11px] font-bold font-mono">{val}/10</span>
+                    <span className="text-label font-bold">{val}/10</span>
                   </button>
                 );
               })}
@@ -500,7 +500,7 @@ export function MatchReportForm({
                   aria-label={t("matchEdit.notSet")}
                   onClick={() => setDraft((prev) => ({ ...prev, closeness: null }))}
                   className={cn(
-                    "col-span-5 min-h-9 rounded-lg border px-2 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    "col-span-5 min-h-9 rounded-lg border px-2 py-1.5 text-label font-bold uppercase tracking-label transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                     closeness == null
                       ? "border-[color:var(--aqt-border-1)] bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg)]"
                       : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg)]"
@@ -517,7 +517,7 @@ export function MatchReportForm({
               </p>
             ) : null}
 
-            <div className="flex items-center justify-between gap-3 text-[11px] text-[color:var(--aqt-fg-dim)] font-medium pt-1">
+            <div className="flex items-center justify-between gap-3 text-label text-[color:var(--aqt-fg-dim)] font-medium pt-1">
               <span>{t("matchReport.qualityLegend.oneSided")}</span>
               <span>{t("matchReport.qualityLegend.toTheEnd")}</span>
             </div>
@@ -564,7 +564,7 @@ export function MatchReportForm({
                           codes: { ...codes, [slot.mapIndex]: e.target.value }
                         }))
                       }
-                      className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-mono text-sm text-[color:var(--aqt-fg)]"
+                      className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
                     />
                   </div>
                 );
@@ -600,7 +600,7 @@ export function MatchReportForm({
             />
             <p
               id={commentCounterId}
-              className="text-right text-[11px] font-medium tabular-nums text-[color:var(--aqt-fg-dim)]"
+              className="text-right text-label font-medium tabular-nums text-[color:var(--aqt-fg-dim)]"
             >
               {comment.length}/{COMMENT_MAX_LENGTH}
             </p>
@@ -614,7 +614,7 @@ export function MatchReportForm({
 
         {customDefs.length > 0 && (
           <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
-            <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
+            <p className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
               {t("matchReport.customFields")}
             </p>
             {customDefs.map((definition) => {

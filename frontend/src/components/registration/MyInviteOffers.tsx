@@ -100,7 +100,7 @@ export default function MyInviteOffers({ tournament }: Readonly<{ tournament: To
 
   return (
     <section className="relative grid gap-3 overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4 shadow-md backdrop-blur-md sm:p-5">
-      <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+      <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
         {t("offers.title")}
       </span>
       <ul className="grid gap-1.5">

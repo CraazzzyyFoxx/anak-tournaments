@@ -90,7 +90,7 @@ const LobbyLeaderboardModal = ({ userId, tournamentId, stat, statLabel, onClose 
       <DialogContent className="max-w-[620px] border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]">
         <DialogHeader>
           <DialogTitle className="font-onest text-[color:var(--aqt-fg)]">{statLabel}</DialogTitle>
-          <DialogDescription className="aqt-mono text-[color:var(--aqt-fg-muted)]">
+          <DialogDescription className="aqt-tnum text-[color:var(--aqt-fg-muted)]">
             {data ? t("users.overview.lastTournament.players", { count: data.total_players }) : null}
             {data ? ` · ${t("users.overview.leaderboard.vsLeader")}` : null}
             {isInverse ? ` · ${t("users.overview.leaderboard.lowerIsBetter")}` : null}
@@ -98,7 +98,7 @@ const LobbyLeaderboardModal = ({ userId, tournamentId, stat, statLabel, onClose 
         </DialogHeader>
 
         {viewer ? (
-          <div className="aqt-mono rounded-[8px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2 text-[12px] text-[color:var(--aqt-fg-muted)]">
+          <div className="aqt-tnum rounded-[8px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2 text-label text-[color:var(--aqt-fg-muted)]">
             {t("users.overview.leaderboard.yourRank", {
               rank: viewer.rank,
               total: data?.total_players ?? entries.length,
@@ -114,12 +114,12 @@ const LobbyLeaderboardModal = ({ userId, tournamentId, stat, statLabel, onClose 
             ))}
           </div>
         ) : state === "error" ? (
-          <p className="py-6 text-center text-[13px] text-[color:var(--aqt-fg-dim)]">{t("common.loadError")}</p>
+          <p className="py-6 text-center text-caption text-[color:var(--aqt-fg-dim)]">{t("common.loadError")}</p>
         ) : entries.length === 0 ? (
-          <p className="py-6 text-center text-[13px] text-[color:var(--aqt-fg-dim)]">{t("common.noData")}</p>
+          <p className="py-6 text-center text-caption text-[color:var(--aqt-fg-dim)]">{t("common.noData")}</p>
         ) : (
           <div className="max-h-[60vh] overflow-y-auto">
-            <table className="w-full border-collapse text-[13px]">
+            <table className="w-full border-collapse text-caption">
               <tbody>
                 {entries.map((e) => {
                   const isYou = e.player_id === userId;
@@ -129,7 +129,7 @@ const LobbyLeaderboardModal = ({ userId, tournamentId, stat, statLabel, onClose 
                       className="border-b border-[color:var(--aqt-border)] last:border-b-0"
                       style={isYou ? { background: "color-mix(in srgb, var(--aqt-teal) 12%, transparent)" } : undefined}
                     >
-                      <td className="aqt-mono px-3 py-2 text-right align-middle" style={{ width: 40 }}>
+                      <td className="aqt-tnum px-3 py-2 text-right align-middle" style={{ width: 40 }}>
                         <span className="font-bold" style={{ color: medalColor(e.rank) ?? "var(--aqt-fg-faint)" }}>
                           {e.rank}
                         </span>
@@ -142,7 +142,7 @@ const LobbyLeaderboardModal = ({ userId, tournamentId, stat, statLabel, onClose 
                           {e.name}
                         </Link>
                         {isYou ? (
-                          <span className="aqt-mono ml-2 text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-teal)]">
+                          <span className="aqt-tnum ml-2 text-label font-bold uppercase tracking-label text-[color:var(--aqt-teal)]">
                             {t("users.overview.leaderboard.you")}
                           </span>
                         ) : null}
@@ -158,7 +158,7 @@ const LobbyLeaderboardModal = ({ userId, tournamentId, stat, statLabel, onClose 
                               }}
                             />
                           </span>
-                          <span className="aqt-mono w-14 text-right font-bold text-[color:var(--aqt-fg)]">
+                          <span className="aqt-tnum w-14 text-right font-bold text-[color:var(--aqt-fg)]">
                             {fmtValue(e.value)}
                           </span>
                         </div>

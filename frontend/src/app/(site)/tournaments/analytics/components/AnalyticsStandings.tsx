@@ -499,7 +499,7 @@ const TeamRow = ({
           <span className={styles.wins}>{team.wins}</span>
           <span className="mx-1 text-muted-foreground">/</span>
           <span className={styles.losses}>{team.losses}</span>
-          <div className="text-[11px] text-muted-foreground">{t("analytics.standings.record")}</div>
+          <div className="text-label text-muted-foreground">{t("analytics.standings.record")}</div>
         </div>
         <div className={styles.confidence}>
           <div className={styles.confidenceText}>

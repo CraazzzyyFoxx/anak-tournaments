@@ -21,7 +21,7 @@ const TrendDelta = ({ delta, deltaPercent, betterWorse }: TrendDeltaProps) => {
 
   if (betterWorse === "equal") {
     return (
-      <span className="aqt-mono inline-flex items-center gap-1 text-[13px] text-[color:var(--aqt-fg-dim)]">
+      <span className="aqt-tnum inline-flex items-center gap-1 text-caption text-[color:var(--aqt-fg-dim)]">
         <Minus className="h-3.5 w-3.5" aria-hidden />
         <span className="tabular-nums">
           {formatMetricValue(delta)}
@@ -36,7 +36,7 @@ const TrendDelta = ({ delta, deltaPercent, betterWorse }: TrendDeltaProps) => {
 
   return (
     <span
-      className="aqt-mono inline-flex items-center gap-1 text-[13px] font-semibold tabular-nums"
+      className="aqt-tnum inline-flex items-center gap-1 text-caption font-semibold tabular-nums"
       style={{ color: isBetter ? "var(--aqt-emerald)" : "var(--aqt-rose)" }}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden />

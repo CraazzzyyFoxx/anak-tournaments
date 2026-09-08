@@ -46,7 +46,7 @@ export const SearchField = React.forwardRef<HTMLInputElement, SearchFieldProps>(
           htmlFor={inputId}
           className={cn(
             showLabel
-              ? "mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[color:var(--aqt-fg-dim)]"
+              ? "mb-1.5 block text-label font-medium uppercase tracking-wide text-[color:var(--aqt-fg-dim)]"
               : "sr-only"
           )}
         >

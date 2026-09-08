@@ -51,7 +51,7 @@ const StatColumnHeader = ({
           <button
             type="button"
             onClick={onSort}
-            className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg)] outline-none transition-colors hover:bg-[hsl(0_0%_100%/0.05)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+            className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg)] outline-none transition-colors hover:bg-[hsl(0_0%_100%/0.05)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
           >
             {label}
             <SortIcon

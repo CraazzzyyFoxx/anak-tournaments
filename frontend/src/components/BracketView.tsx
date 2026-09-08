@@ -658,7 +658,7 @@ function MatchCard({
             fallback={getDisplayName(side)}
             size="xs"
             nameClassName={
-              isTbd ? "text-[11px] italic text-[color:var(--aqt-fg-faint)]" : "text-[12.5px]"
+              isTbd ? "text-label italic text-[color:var(--aqt-fg-faint)]" : "text-caption"
             }
           />
           {liveStream !== undefined && liveLabel !== null ? (
@@ -688,7 +688,7 @@ function MatchCard({
         </span>
         <span
           className={cn(
-            "shrink-0 text-[13px] font-semibold tabular-nums",
+            "shrink-0 text-caption font-semibold tabular-nums",
             won ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]"
           )}
         >
@@ -759,7 +759,7 @@ function MatchCard({
         {meta.timeLabel && (
           <span
             className={cn(
-              "flex items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-wide",
+              "flex items-center gap-1 text-label font-semibold uppercase tracking-wide",
               meta.isLive ? "text-[color:var(--aqt-rose)]" : "text-[color:var(--aqt-fg-muted)]"
             )}
           >
@@ -795,7 +795,7 @@ function resultStatusBadge(encounter: BracketMatch, t: Translate) {
         : "var(--aqt-fg-faint)";
   return (
     <span
-      className="absolute left-1 top-1 rounded px-1 text-[11px] font-semibold uppercase"
+      className="absolute left-1 top-1 rounded px-1 text-label font-semibold uppercase"
       style={{ background: color, color: "var(--aqt-bg)" }}
     >
       {label}
@@ -973,7 +973,7 @@ export function BracketView<M extends BracketMatch>({
             className="absolute"
             style={{ left: header.x, top: header.y, width: CARD_WIDTH }}
           >
-            <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_0%/0.45)] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-muted)]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_0%/0.45)] px-2.5 py-0.5 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
               <span
                 aria-hidden
                 className="h-2 w-2 rounded-full"
@@ -1015,7 +1015,7 @@ export function BracketView<M extends BracketMatch>({
                 className="pointer-events-none absolute top-1/2 -translate-y-1/2"
                 style={{ left: CARD_WIDTH + 6 }}
               >
-                <span className="font-mono text-[12px] font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
+                <span className="text-label font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
                   {node.data.matchLabel}
                 </span>
               </div>

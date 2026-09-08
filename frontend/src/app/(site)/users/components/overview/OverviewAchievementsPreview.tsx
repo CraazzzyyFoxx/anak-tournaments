@@ -72,23 +72,23 @@ const OverviewAchievementsPreview = async ({ achievements, userSlug, limit = DEF
                 <Image src={imgSrc} alt={ach.name} fill sizes="40px" className="object-cover" />
               </div>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <div className="truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]" title={ach.name}>
+                <div className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]" title={ach.name}>
                   {ach.name}
                 </div>
                 <div className="flex items-center gap-2">
                   <span
-                    className="aqt-mono text-[11px] font-bold uppercase tracking-[0.1em]"
+                    className="aqt-tnum text-label font-bold uppercase tracking-label"
                     style={{ color: "hsl(var(--rar))" }}
                   >
                     <span aria-hidden>◆</span> {rarityLabel}
                   </span>
-                  <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-dim)]">
+                  <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                     {(ach.rarity * 100).toFixed(2)}%
                   </span>
                 </div>
               </div>
               {ach.count > 1 ? (
-                <span className="aqt-mono text-[11px] font-bold text-[color:var(--aqt-fg-muted)]">×{ach.count}</span>
+                <span className="aqt-tnum text-label font-bold text-[color:var(--aqt-fg-muted)]">×{ach.count}</span>
               ) : null}
             </div>
           );

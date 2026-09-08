@@ -63,7 +63,7 @@ function StageRow({ name, stage }: Readonly<{ name: string; stage: AnalyticsJobP
 
   return (
     <li className="flex items-center justify-between gap-3 text-xs">
-      <span className="font-mono text-muted-foreground">{name}</span>
+      <span className="text-muted-foreground">{name}</span>
       <span className={cn("uppercase tabular-nums", tone)}>{stage.state}</span>
     </li>
   );
@@ -405,7 +405,7 @@ export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<M
           ) : null}
 
           {liveJob.error ? (
-            <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-background/40 p-2 font-mono text-[11px] text-red-100">
+            <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-background/40 p-2 text-label text-red-100">
               {liveJob.error}
             </pre>
           ) : null}

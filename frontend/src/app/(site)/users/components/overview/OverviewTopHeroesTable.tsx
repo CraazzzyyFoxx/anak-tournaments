@@ -65,9 +65,9 @@ interface Row {
  *  mix an em dash (winrate) with an en dash (vs-avg) in the same row. */
 const EMPTY = "—";
 
-const numHeader = "aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]";
-const textHeader = "aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]";
-const numCell = "aqt-mono px-3 py-2.5 text-right text-[13px] text-[color:var(--aqt-fg-muted)]";
+const numHeader = "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const textHeader = "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const numCell = "aqt-tnum px-3 py-2.5 text-right text-caption text-[color:var(--aqt-fg-muted)]";
 
 const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_LIMIT }: Props) => {
   if (heroes.length === 0) return null;
@@ -139,7 +139,7 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
       }
     >
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-[13px]">
+        <table className="w-full border-collapse text-caption">
           <thead>
             <tr>
               <th className={textHeader}>{t("users.overview.topHeroes.col.hero")}</th>
@@ -171,12 +171,12 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
                         popover={<HeroUserStatsPopover hero={r.hero} stats={r.stats} />}
                       />
                       <div className="min-w-0">
-                        <div className="truncate text-[13.5px] font-bold text-[color:var(--aqt-fg)]">
+                        <div className="truncate text-caption font-bold text-[color:var(--aqt-fg)]">
                           {r.hero.name}
                         </div>
                         {r.lowSample ? (
                           <span
-                            className="aqt-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]"
+                            className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
                             title={lowSampleTitle}
                           >
                             {t("users.overview.topHeroes.lowSample")}

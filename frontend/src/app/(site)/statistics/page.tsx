@@ -32,7 +32,7 @@ export default async function StatisticsPage() {
   return (
     <div className="space-y-8">
       <header>
-        <p className="mb-2 text-[11px] font-semibold tracking-[0.14em] uppercase text-muted-foreground/50">
+        <p className="mb-2 text-label font-semibold tracking-label uppercase text-muted-foreground/50">
           {t("statistics.eyebrow")}
         </p>
         <h1 className="font-display text-3xl font-bold uppercase tracking-wide text-foreground">
@@ -83,7 +83,7 @@ export default async function StatisticsPage() {
 
 function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-muted-foreground/50">
+    <p className="text-label font-semibold tracking-label uppercase text-muted-foreground/50">
       {children}
     </p>
   );
@@ -103,7 +103,7 @@ function DashCard({ children }: Readonly<{ children: React.ReactNode }>) {
 function DashCardHeader({ icon, children }: Readonly<{ icon?: React.ReactNode; children: React.ReactNode }>) {
   return (
     <div
-      className="flex items-center gap-2 px-5 py-4 border-b font-display font-bold text-[15px] uppercase tracking-[0.04em]"
+      className="flex items-center gap-2 px-5 py-4 border-b font-display font-bold text-ui uppercase tracking-[0.04em]"
       style={{ borderColor: "var(--aqt-border)", color: "var(--aqt-fg)" }}
     >
       {icon}

@@ -39,12 +39,12 @@ export function DraftOrder({
     <section aria-labelledby={headingId}>
       <div className="flex items-end justify-between gap-3 border-b border-[color:var(--aqt-border)] pb-3">
         <h2 id={headingId} className="text-sm font-medium text-[color:var(--aqt-fg-muted)]">{t("draftOrder")}</h2>
-        <span className="font-mono text-xs text-[color:var(--aqt-fg-muted)]">{picks.length}</span>
+        <span className="text-xs text-[color:var(--aqt-fg-muted)]">{picks.length}</span>
       </div>
       <div className={cn("mt-2 space-y-4", compact && "max-h-[520px] overflow-y-auto pr-1")}>
         {groups.map((group) => (
           <div key={group.round}>
-            <p className="font-mono text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-faint)]">
+            <p className="text-label uppercase tracking-wide text-[color:var(--aqt-fg-faint)]">
               {t("round", { n: group.round })}
             </p>
             <ol className="mt-1 divide-y divide-[color:var(--aqt-border)]">
@@ -65,7 +65,7 @@ export function DraftOrder({
                       pick.status === "on_clock" && "text-[color:var(--aqt-teal)]"
                     )}
                   >
-                    <span className="font-mono text-xs tabular-nums text-[color:var(--aqt-fg-faint)]">{pick.overall_no}</span>
+                    <span className="text-xs tabular-nums text-[color:var(--aqt-fg-faint)]">{pick.overall_no}</span>
                     <span className="min-w-0">
                       <span className="flex items-center gap-1.5">
                         <span className="truncate text-sm font-medium">{player?.battle_tag ?? team?.name ?? t("pending")}</span>

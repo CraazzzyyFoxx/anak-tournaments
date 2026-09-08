@@ -21,7 +21,7 @@ interface BottomSheetProps {
 
 function Kicker({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-primary">
+    <span className="text-label font-bold uppercase tracking-[0.06em] text-primary">
       {children}
     </span>
   );
@@ -59,7 +59,7 @@ function HowBody() {
               {step}
             </span>
             <span>
-              <span className="block text-[15px] font-semibold text-foreground">
+              <span className="block text-ui font-semibold text-foreground">
                 {t(`analytics.howItWorks.step${step}Title`)}
               </span>
               <span className="mt-0.5 block text-sm leading-relaxed text-muted-foreground">
@@ -69,7 +69,7 @@ function HowBody() {
           </div>
         ))}
       </div>
-      <p className="mt-4 text-[13px] italic text-muted-foreground">
+      <p className="mt-4 text-caption italic text-muted-foreground">
         {t("analytics.howItWorks.foot")}
       </p>
     </>

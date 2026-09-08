@@ -82,7 +82,7 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
   return (
     <HeroFrame className="aqt-player" variant="profile" roleTint={roleTint ?? undefined}>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 pt-4 md:px-9 md:pt-5">
-        <p className="aqt-mono m-0 text-[12px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-faint)]">
+        <p className="aqt-tnum m-0 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
           <span aria-hidden className="mr-1.5 text-[color:var(--aqt-fg-dim)]">{"//"}</span>
           <Link href="/users" className="hover:text-[color:var(--aqt-fg-muted)]">{t("users.profile.breadcrumb")}</Link>
           <span aria-hidden className="mx-1">·</span>
@@ -160,7 +160,7 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
             ) : null}
           </h1>
           {primaryRole ? (
-            <div className="aqt-mono flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-muted)]">
+            <div className="aqt-tnum flex flex-wrap items-center gap-x-1.5 gap-y-1 text-label uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
               <span className="inline-flex h-4 w-4 items-center justify-center">
                 <PlayerRoleIcon role={primaryRole.role} size={14} color={roleSwatchColor} decorative />
               </span>
@@ -209,13 +209,13 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
           />
 
           <div className="col-span-full mt-2 flex flex-wrap items-center gap-3 border-t border-[color:var(--aqt-border)] pt-3">
-            <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+            <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
               {t("users.profile.header.formLast", { count: String(formStreak.length) })}
             </span>
             {formStreak.length > 0 ? (
               <FormStreak results={formStreak} />
             ) : (
-              <span className="aqt-mono text-[12px] text-[color:var(--aqt-fg-dim)]">{t("users.profile.header.noRecentMatches")}</span>
+              <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">{t("users.profile.header.noRecentMatches")}</span>
             )}
           </div>
         </div>
@@ -238,17 +238,17 @@ const PfStat = ({ label, value, unit, valueSuffix, sub, delta }: PfStatProps) =>
   const t = useTranslations();
   return (
   <div className="flex flex-col gap-1">
-    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">{label}</span>
-    <span className="font-onest aqt-tnum text-[30px] font-bold leading-none text-[color:var(--aqt-fg)]">
+    <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{label}</span>
+    <span className="font-onest aqt-tnum text-headline font-bold leading-none text-[color:var(--aqt-fg)]">
       {value}
       {unit ? <em className="ml-0.5 not-italic text-[color:var(--aqt-teal)]">{unit}</em> : null}
       {valueSuffix ? (
-        <span className="text-[22px] text-[color:var(--aqt-fg-faint)]">{valueSuffix}</span>
+        <span className="text-title text-[color:var(--aqt-fg-faint)]">{valueSuffix}</span>
       ) : null}
     </span>
     {delta ? (
       <span
-        className="aqt-mono inline-flex items-center gap-0.5 text-[12px] font-bold"
+        className="aqt-tnum inline-flex items-center gap-0.5 text-label font-bold"
         style={{ color: delta.good ? "var(--aqt-emerald)" : "var(--aqt-rose)" }}
         title={t("users.profile.stats.deltaTitle")}
       >
@@ -259,7 +259,7 @@ const PfStat = ({ label, value, unit, valueSuffix, sub, delta }: PfStatProps) =>
         {Math.abs(delta.value).toFixed(1)}
       </span>
     ) : null}
-    {sub ? <span className="text-[12px] text-[color:var(--aqt-fg-dim)]">{sub}</span> : null}
+    {sub ? <span className="text-label text-[color:var(--aqt-fg-dim)]">{sub}</span> : null}
   </div>
   );
 };

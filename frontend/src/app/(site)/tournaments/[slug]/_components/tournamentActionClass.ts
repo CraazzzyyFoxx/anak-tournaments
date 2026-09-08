@@ -27,7 +27,7 @@ export const TOURNAMENT_PRIMARY_ACTION_CLASS =
 
 /** Header text action: same sentence as a stamp, not a 36px box beside one. */
 export const TOURNAMENT_TEXT_ACTION_CLASS =
-  "inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] font-semibold " +
+  "inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-caption font-semibold " +
   "text-[color:var(--aqt-teal)] no-underline outline-none transition-opacity " +
   "hover:opacity-80 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] " +
   "focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]";

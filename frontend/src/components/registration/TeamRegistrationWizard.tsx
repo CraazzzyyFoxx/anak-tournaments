@@ -170,7 +170,7 @@ export default function TeamRegistrationWizard({
       >
         <h3
           id="regteam-identity-heading"
-          className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]"
+          className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]"
         >
           {t("create.identityHeading")}
         </h3>
@@ -202,7 +202,7 @@ export default function TeamRegistrationWizard({
               onError={(message) => notify.error(message)}
               labels={avatarLabels}
             />
-            <span className="text-[11px] uppercase tracking-[0.1em] text-[color:var(--aqt-fg-dim)]">
+            <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               {t("create.logoLabel")}
             </span>
           </div>

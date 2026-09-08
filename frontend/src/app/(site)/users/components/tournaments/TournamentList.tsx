@@ -51,14 +51,14 @@ const ChipButton = ({
     type="button"
     onClick={onClick}
     className={cn(
-      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]",
+      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-label font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]",
       active
         ? "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]"
         : "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
     )}
   >
     {children}
-    <span className="aqt-mono aqt-tnum text-[11px] opacity-80">{count}</span>
+    <span className="aqt-tnum aqt-tnum text-label opacity-80">{count}</span>
   </button>
 );
 
@@ -93,10 +93,10 @@ const TournamentRow = ({
       <PlaceBadge placement={best} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-[14px] font-semibold text-[color:var(--aqt-fg)]">{groupDisplayName(group)}</span>
+          <span className="truncate text-body font-semibold text-[color:var(--aqt-fg)]">{groupDisplayName(group)}</span>
           {league ? <LeagueBadge>{t("users.tournaments.leagueBadge")}</LeagueBadge> : null}
         </div>
-        <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[color:var(--aqt-fg-dim)]">
+        <div className="mt-0.5 flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-dim)]">
           {league ? (
             <span className="truncate">{t("users.tournaments.divisionsCount", { count: String(entries.length) })}</span>
           ) : (
@@ -108,14 +108,14 @@ const TournamentRow = ({
             </>
           )}
           {wr != null ? (
-            <span className="aqt-mono ml-auto shrink-0 pl-2 text-[color:var(--aqt-fg-faint)]">
+            <span className="aqt-tnum ml-auto shrink-0 pl-2 text-[color:var(--aqt-fg-faint)]">
               {t("users.tournaments.list.mapsWr", { maps: String(agg.mapsWon + agg.mapsLost), wr: String(Math.round(wr)) })}
             </span>
           ) : null}
         </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <WdlText won={agg.won} lost={agg.lost} draw={agg.draw} className="text-[12px]" />
+        <WdlText won={agg.won} lost={agg.lost} draw={agg.draw} className="text-label" />
         <WdlBar won={agg.won} lost={agg.lost} draw={agg.draw} />
       </div>
     </button>
@@ -156,7 +156,7 @@ const TournamentList = ({ groups, selectedKey, onSelect }: Props) => {
         <span className="aqt-card-title">
           <span className="truncate">{t("users.tournaments.list.title")}</span>
         </span>
-        <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-dim)]">
+        <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
           {t("users.tournaments.list.eventsCount", { count: String(groups.length) })}
         </span>
       </div>
@@ -187,7 +187,7 @@ const TournamentList = ({ groups, selectedKey, onSelect }: Props) => {
             onChange={(event) => setSearch(event.target.value)}
             placeholder={t("users.tournaments.list.searchPlaceholder")}
             aria-label={t("users.tournaments.list.searchPlaceholder")}
-            className="w-full rounded-[8px] border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] py-1.5 pl-8 pr-2.5 text-[13px] text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)] focus-visible:border-[color:var(--aqt-teal)] focus-visible:outline-none"
+            className="w-full rounded-[8px] border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] py-1.5 pl-8 pr-2.5 text-caption text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)] focus-visible:border-[color:var(--aqt-teal)] focus-visible:outline-none"
           />
         </div>
       </div>
@@ -208,11 +208,11 @@ const TournamentList = ({ groups, selectedKey, onSelect }: Props) => {
         </div>
       ) : (
         <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-          <span className="text-[13px] text-[color:var(--aqt-fg-muted)]">{t("users.tournaments.list.empty")}</span>
+          <span className="text-caption text-[color:var(--aqt-fg-muted)]">{t("users.tournaments.list.empty")}</span>
           <button
             type="button"
             onClick={resetFilters}
-            className="aqt-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-teal)] hover:underline"
+            className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-teal)] hover:underline"
           >
             {t("users.tournaments.list.resetFilters")}
           </button>

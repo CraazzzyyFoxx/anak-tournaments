@@ -93,7 +93,7 @@ export function PhaseTimeline({
     <>
       {t(`common.statusBadge.${segment.status}`)}
       {segment.windowClosed ? (
-        <span className="ml-1.5 font-mono text-[10px] font-normal uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+        <span className="ml-1.5 text-label font-normal uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
           {t("tournamentDetail.publicPages.schedule.closed")}
         </span>
       ) : null}
@@ -104,10 +104,10 @@ export function PhaseTimeline({
     return (
       <div id={id} className={cn("scroll-mt-28", className)}>
         <div className="mb-2 flex items-baseline justify-between gap-3">
-          <h2 className="aqt-mono text-[12px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]">
+          <h2 className="aqt-tnum text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]">
             {t("tournamentDetail.publicPages.schedule.title")}
           </h2>
-          <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+          <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
             {zoneLabel}
           </span>
         </div>
@@ -165,15 +165,15 @@ export function PhaseTimeline({
                     style={pct === null ? undefined : { left: `clamp(6px, ${pct}, calc(100% - 6px))` }}
                   />
                 ) : null}
-                <div className={cn("text-[15px] font-semibold", now && "text-[color:var(--aqt-teal)]")}>
+                <div className={cn("text-ui font-semibold", now && "text-[color:var(--aqt-teal)]")}>
                   {label(segment)}
                 </div>
-                <div className="aqt-tnum mt-0.5 font-mono text-[12px] text-[color:var(--aqt-fg-muted)]">
+                <div className="aqt-tnum mt-0.5 text-label text-[color:var(--aqt-fg-muted)]">
                   {startText ? <time dateTime={segment.startsAt}>{startText}</time> : null}
                   {endText ? <> – <time dateTime={segment.endsAt ?? undefined}>{endText}</time></> : null}
                 </div>
                 {countdownText ? (
-                  <div className="aqt-tnum mt-1 text-[13px] text-[color:var(--aqt-teal)]">{countdownText}</div>
+                  <div className="aqt-tnum mt-1 text-caption text-[color:var(--aqt-teal)]">{countdownText}</div>
                 ) : null}
               </li>
             );
@@ -226,7 +226,7 @@ export function PhaseTimeline({
                 >
                   {label(segment)}
                 </span>
-                <span className="aqt-tnum font-mono text-[12px] text-[color:var(--aqt-fg-faint)]">
+                <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">
                   {countdownText ?? (startText ? <time dateTime={segment.startsAt}>{startText}</time> : null)}
                 </span>
               </div>

@@ -17,13 +17,13 @@ const TabButton = ({ value, label, badge }: { value: string; label: string; badg
   <TabsTrigger
     value={value}
     className={cn(
-      "h-9 rounded-lg px-4 text-[14px] font-semibold gap-2 data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
+      "h-9 rounded-lg px-4 text-body font-semibold gap-2 data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
     )}
   >
     <span>{label}</span>
     {badge !== undefined && badge !== null ? (
       <span
-        className="aqt-mono rounded-[4px] px-1.5 py-px text-[11px] font-semibold"
+        className="aqt-tnum rounded-[4px] px-1.5 py-px text-label font-semibold"
         style={{
           color: "var(--aqt-fg-faint)",
           background: "hsl(0 0% 100% / 0.04)"

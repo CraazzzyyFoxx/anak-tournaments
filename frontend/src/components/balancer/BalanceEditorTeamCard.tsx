@@ -57,7 +57,7 @@ export function BalanceEditorTeamCard({
         <div className="flex min-w-0 gap-2 items-center">
           <Badge
             className={cn(
-              "rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.18em]",
+              "rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-label",
               teamAccent,
             )}
           >
@@ -111,16 +111,16 @@ export function BalanceEditorTeamCard({
       <Table wrapperClassName="overflow-x-auto overflow-y-visible" className="min-w-90">
         <TableHeader>
           <TableRow className="border-[color:var(--aqt-border)] hover:bg-transparent">
-            <TableHead className="h-8 w-13 px-4 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <TableHead className="h-8 w-13 px-4 text-xs font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               Role
             </TableHead>
-            <TableHead className="h-8 min-w-45 px-0 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <TableHead className="h-8 min-w-45 px-0 text-xs font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               Player
             </TableHead>
-            <TableHead className="h-8 w-18 px-2 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <TableHead className="h-8 w-18 px-2 text-center text-xs font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               Rank
             </TableHead>
-            <TableHead className="h-8 w-22 px-3 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <TableHead className="h-8 w-22 px-3 text-center text-xs font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               Prefs
             </TableHead>
           </TableRow>

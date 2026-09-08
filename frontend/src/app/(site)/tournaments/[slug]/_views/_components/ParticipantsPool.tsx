@@ -185,7 +185,7 @@ function PoolRow({
       <span
         aria-hidden
         className={cn(
-          "aqt-mono text-right text-[10px] tabular-nums",
+          "aqt-tnum text-right text-label tabular-nums",
           position <= HIGHLIGHTED_POSITIONS
             ? "text-[color:var(--pool-role)]"
             : "text-[color:var(--aqt-fg-faint)]"
@@ -193,7 +193,7 @@ function PoolRow({
       >
         {position}
       </span>
-      <span className="flex min-w-0 items-baseline text-[13px]">
+      <span className="flex min-w-0 items-baseline text-caption">
         {registration.battle_tag ? (
           <a
             href={`/users/${getPlayerSlug(registration.battle_tag)}`}
@@ -235,7 +235,7 @@ function PoolRow({
               height={20}
             />
           ) : (
-            <span className="text-[11px] text-[color:var(--aqt-fg-faint)]">{"\u2014"}</span>
+            <span className="text-label text-[color:var(--aqt-fg-faint)]">{"\u2014"}</span>
           )}
         </span>
       ) : null}
@@ -297,10 +297,10 @@ function RoleColumn({
         <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--pool-role)_26%,transparent)] bg-[color:color-mix(in_srgb,var(--pool-role)_12%,transparent)] text-[color:var(--pool-role)]">
           <PlayerRoleIcon role={ROLE_TO_ICON[role] ?? role} size={13} decorative />
         </span>
-        <span className="aqt-display text-[12px] font-bold uppercase tracking-[.08em] text-[color:var(--aqt-fg)]">
+        <span className="aqt-display text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg)]">
           {getRoleLabel(role, t)}
         </span>
-        <span className="aqt-mono ml-auto rounded-md bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-[11px] tabular-nums text-[color:var(--aqt-fg-muted)]">
+        <span className="aqt-tnum ml-auto rounded-md bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
           {entries.length}
         </span>
       </h3>
@@ -313,7 +313,7 @@ function RoleColumn({
       )}
       {rest.length > 0 ? (
         <details className="group mt-1 border-t border-[color:var(--aqt-border)] pt-1">
-          <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]">
+          <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1.5 py-1 text-label text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]">
             <ChevronDown
               size={12}
               aria-hidden

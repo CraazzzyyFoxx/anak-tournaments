@@ -295,7 +295,7 @@ export function PickupAddPlayersDialog({
           className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[color:var(--aqt-teal)]"
         />
         <header className="flex shrink-0 items-baseline gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-5 py-3.5 pr-12">
-          <DialogTitle className={cn(CARD_TITLE_CLASS, "tracking-[0.08em]")}>
+          <DialogTitle className={cn(CARD_TITLE_CLASS, "tracking-label")}>
             Add players
           </DialogTitle>
           <DialogDescription className={cn(CAPTION_CLASS, "min-w-0 truncate")}>
@@ -377,7 +377,7 @@ export function PickupAddPlayersDialog({
                         type="button"
                         aria-pressed={overflowActiveAuthor != null}
                         className={cn(
-                          "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] transition-colors",
+                          "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-label transition-colors",
                           overflowActiveAuthor != null
                             ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_38%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]"
                             : "border-[color:var(--aqt-border)] bg-white/[0.02] text-[color:var(--aqt-fg-muted)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg)]",
@@ -403,7 +403,7 @@ export function PickupAddPlayersDialog({
                                 setIsAuthorMenuOpen(false);
                               }}
                               className={cn(
-                                "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-colors",
+                                "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-caption transition-colors",
                                 filter === author.user_id
                                   ? "bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] text-[color:var(--aqt-teal)]"
                                   : "text-[color:var(--aqt-fg-muted)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg)]",
@@ -412,7 +412,7 @@ export function PickupAddPlayersDialog({
                               <span className="truncate">
                                 {author.display_name ?? `#${author.user_id}`}
                               </span>
-                              <span className="shrink-0 font-mono text-[11px] tabular-nums text-[color:var(--aqt-fg-faint)]">
+                              <span className="shrink-0 text-label tabular-nums text-[color:var(--aqt-fg-faint)]">
                                 {author.count}
                               </span>
                             </button>
@@ -435,7 +435,7 @@ export function PickupAddPlayersDialog({
                         type="button"
                         className={cn(
                           "ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed px-3",
-                          "border-[color:var(--aqt-border-2)] text-[12px] text-[color:var(--aqt-fg-dim)]",
+                          "border-[color:var(--aqt-border-2)] text-label text-[color:var(--aqt-fg-dim)]",
                           "transition-colors hover:border-[color:var(--aqt-border-3)] hover:text-[color:var(--aqt-fg)]",
                         )}
                       >
@@ -482,7 +482,7 @@ export function PickupAddPlayersDialog({
                         </div>
                         <p
                           className={cn(
-                            "text-[11px]",
+                            "text-label",
                             addError ? "text-rose-200" : "text-[color:var(--aqt-fg-dim)]",
                           )}
                         >
@@ -590,7 +590,7 @@ export function PickupAddPlayersDialog({
           <aside className="flex min-h-0 flex-col border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] lg:border-l lg:border-t-0">
             <div className="flex shrink-0 items-baseline gap-2 px-4 pb-2.5 pt-3.5">
               <h3 className={EYEBROW_CLASS}>In this mix</h3>
-              <span className="ml-auto flex items-baseline gap-1 font-mono tabular-nums">
+              <span className="ml-auto flex items-baseline gap-1 tabular-nums">
                 <span
                   className={cn(
                     "text-xl font-bold leading-none",
@@ -603,7 +603,7 @@ export function PickupAddPlayersDialog({
                 >
                   {summary.active}
                 </span>
-                <span className="text-[13px] text-[color:var(--aqt-fg-faint)]">{`/ ${LOBBY_SIZE}`}</span>
+                <span className="text-caption text-[color:var(--aqt-fg-faint)]">{`/ ${LOBBY_SIZE}`}</span>
               </span>
             </div>
 
@@ -628,7 +628,7 @@ export function PickupAddPlayersDialog({
                       <PlayerRoleIcon role={icon} size={13} decorative />
                       <span
                         className={cn(
-                          "ml-auto font-mono text-[12px] font-semibold tabular-nums",
+                          "ml-auto text-label font-semibold tabular-nums",
                           short
                             ? "text-[color:var(--aqt-amber)]"
                             : "text-[color:var(--aqt-emerald)]",
@@ -655,7 +655,7 @@ export function PickupAddPlayersDialog({
 
             <div className="min-h-0 flex-1 overflow-y-auto border-t border-[color:var(--aqt-border)] px-2 py-1.5">
               {rows.length === 0 ? (
-                <p className="px-2 py-8 text-center text-[12.5px] text-[color:var(--aqt-fg-dim)]">
+                <p className="px-2 py-8 text-center text-caption text-[color:var(--aqt-fg-dim)]">
                   Nobody yet. Pick from the left, or press Enter on the highlighted row.
                 </p>
               ) : (
@@ -673,7 +673,7 @@ export function PickupAddPlayersDialog({
             </div>
 
             <div className="flex h-14 shrink-0 items-center gap-3 border-t border-[color:var(--aqt-border)] px-4">
-              <p className="min-w-0 flex-1 text-[12px] leading-tight text-[color:var(--aqt-fg-dim)]">
+              <p className="min-w-0 flex-1 text-label leading-tight text-[color:var(--aqt-fg-dim)]">
                 {overflow > 0
                   ? `${overflow} over a full lobby \u2014 bench the rest in the lineup.`
                   : overflow === 0
@@ -703,7 +703,7 @@ function FilterChip({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 shrink-0 items-center gap-2 rounded-full border px-3 text-[12px] transition-colors",
+        "inline-flex h-8 shrink-0 items-center gap-2 rounded-full border px-3 text-label transition-colors",
         active
           ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_38%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]"
           : "border-[color:var(--aqt-border)] bg-white/[0.02] text-[color:var(--aqt-fg-muted)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg)]",
@@ -712,7 +712,7 @@ function FilterChip({
       <span className="truncate">{label}</span>
       <span
         className={cn(
-          "rounded px-1 font-mono text-[11px] tabular-nums",
+          "rounded px-1 text-label tabular-nums",
           active
             ? "bg-[color:color-mix(in_srgb,var(--aqt-teal)_18%,transparent)]"
             : "bg-white/[0.05] text-[color:var(--aqt-fg-faint)]",
@@ -784,13 +784,13 @@ function RosterRowItem({
 
         <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
           <span
-            className="truncate text-[13.5px] font-semibold text-[color:var(--aqt-fg)]"
+            className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]"
             title={label}
           >
             {name}
           </span>
           {suffix ? (
-            <span className="shrink-0 font-mono text-[11.5px] text-[color:var(--aqt-fg-faint)]">
+            <span className="shrink-0 text-label text-[color:var(--aqt-fg-faint)]">
               {suffix}
             </span>
           ) : null}
@@ -830,7 +830,7 @@ function RosterRowItem({
                 )}
               >
                 {division == null ? (
-                  <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">{"\u2014"}</span>
+                  <span className="text-label text-[color:var(--aqt-fg-dim)]">{"\u2014"}</span>
                 ) : (
                   <DivisionIcon
                     division={division}
@@ -876,13 +876,13 @@ function LineupChip({
     >
       <span className="flex min-w-0 flex-1 items-baseline gap-1">
         <span
-          className="truncate text-[13px] font-semibold text-[color:var(--aqt-fg)]"
+          className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]"
           title={label}
         >
           {name}
         </span>
         {suffix ? (
-          <span className="shrink-0 font-mono text-[11px] text-[color:var(--aqt-fg-faint)]">
+          <span className="shrink-0 text-label text-[color:var(--aqt-fg-faint)]">
             {suffix}
           </span>
         ) : null}
@@ -911,7 +911,7 @@ function LineupChip({
         })}
       </span>
 
-      <span className="w-11 shrink-0 text-right font-mono text-[12.5px] font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
+      <span className="w-11 shrink-0 text-right text-caption font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
         {rank ?? "\u2014"}
       </span>
 

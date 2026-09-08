@@ -246,7 +246,7 @@ export function PickupTeamsPanel({
               <span
                 role="status"
                 aria-live="polite"
-                className="min-w-14 px-1 text-center font-mono text-[12.5px] font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]"
+                className="min-w-14 px-1 text-center text-caption font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]"
               >
                 {`${index + 1} / ${variants.length}`}
               </span>
@@ -323,7 +323,7 @@ export function PickupTeamsPanel({
 
         {variant ? (
           <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 border-t border-[color:var(--aqt-border)] pt-3">
-            <span className={cn(EYEBROW_CLASS, "tracking-[0.14em]")}>Record result</span>
+            <span className={cn(EYEBROW_CLASS, "tracking-label")}>Record result</span>
             {canWrite ? (
               <MapCombobox maps={maps} mapId={mapId} onMapIdChange={onMapIdChange} />
             ) : null}
@@ -337,7 +337,7 @@ export function PickupTeamsPanel({
                 onRecordOutcome({ outcome: recordedOutcome, variantIndex: index, mapId })
               }
             />
-            <span className="text-[12.5px] text-[color:var(--aqt-fg-faint)]">
+            <span className="text-caption text-[color:var(--aqt-fg-faint)]">
               Record who won — every match logs below and the map picker resets for the next one.
             </span>
           </div>
@@ -353,7 +353,7 @@ export function PickupTeamsPanel({
 function MatchHistoryList({ matches }: Readonly<{ matches: CustomGameMatch[] }>) {
   return (
     <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
-      <span className={cn(EYEBROW_CLASS, "flex items-center gap-1.5 tracking-[0.14em]")}>
+      <span className={cn(EYEBROW_CLASS, "flex items-center gap-1.5 tracking-label")}>
         <History className="size-3.5" aria-hidden="true" />
         Match history
       </span>
@@ -386,13 +386,13 @@ function MatchHistoryRow({ match }: Readonly<{ match: CustomGameMatch }>) {
         {match.map_image_path ? (
           <Image src={match.map_image_path} alt="" fill sizes="56px" className="object-cover" />
         ) : (
-          <span className="flex h-full w-full items-center justify-center font-display text-[10px] font-extrabold text-[color:var(--aqt-fg-faint)]">
+          <span className="flex h-full w-full items-center justify-center font-display text-label font-extrabold text-[color:var(--aqt-fg-faint)]">
             {match.map_name ? mapInitials(match.map_name) : "?"}
           </span>
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-1.5 text-[13px] font-semibold leading-tight">
+        <div className="flex flex-wrap items-baseline gap-x-1.5 text-caption font-semibold leading-tight">
           <span
             aria-hidden="true"
             className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", homeAccent.bar)}
@@ -405,7 +405,7 @@ function MatchHistoryRow({ match }: Readonly<{ match: CustomGameMatch }>) {
           >
             {match.home_team_name}
           </span>
-          <span className="font-mono tabular-nums text-[color:var(--aqt-fg-muted)]">
+          <span className="tabular-nums text-[color:var(--aqt-fg-muted)]">
             {match.home_score} : {match.away_score}
           </span>
           <span
@@ -418,10 +418,10 @@ function MatchHistoryRow({ match }: Readonly<{ match: CustomGameMatch }>) {
           </span>
           <span aria-hidden="true" className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", awayAccent.bar)} />
         </div>
-        <div className="mt-0.5 flex items-center gap-1.5 truncate text-[11.5px] text-[color:var(--aqt-fg-dim)]">
+        <div className="mt-0.5 flex items-center gap-1.5 truncate text-label text-[color:var(--aqt-fg-dim)]">
           <span className="truncate">{match.map_name ?? "No map"}</span>
           <span aria-hidden="true">&middot;</span>
-          <span className="shrink-0 font-mono">{formatRelative(match.recorded_at)}</span>
+          <span className="shrink-0">{formatRelative(match.recorded_at)}</span>
         </div>
       </div>
     </li>
@@ -598,7 +598,7 @@ function TeamColumnAndDivider({
           aria-hidden="true"
           className="flex shrink-0 items-center justify-center border-y border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] py-2 lg:w-16 lg:border-x lg:border-y-0 lg:py-0"
         >
-          <span className="font-display text-[15px] font-bold tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">
+          <span className="font-display text-ui font-bold tracking-label text-[color:var(--aqt-fg-faint)]">
             VS
           </span>
         </div>
@@ -637,13 +637,13 @@ function TeamColumn({
         />
         <span
           className={cn(
-            "ml-auto shrink-0 font-mono text-[11px] uppercase tracking-[0.12em]",
+            "ml-auto shrink-0 text-label uppercase tracking-label",
             "text-[color:var(--aqt-fg-faint)]",
           )}
         >
           avg
         </span>
-        <span className="shrink-0 font-mono text-xl font-bold tabular-nums text-[color:var(--aqt-fg)]">
+        <span className="shrink-0 text-xl font-bold tabular-nums text-[color:var(--aqt-fg)]">
           {team.averageRank == null ? "\u2014" : Math.round(team.averageRank)}
         </span>
       </header>
@@ -723,7 +723,7 @@ function SeatRow({
       {division == null ? null : (
         <DivisionIcon division={division} tournamentGrid={grid} width={32} height={32} className="shrink-0" />
       )}
-      <span className="min-w-0 flex-1 truncate text-[17px] font-semibold text-[color:var(--aqt-fg)]" title={seat.name}>
+      <span className="min-w-0 flex-1 truncate text-base font-semibold text-[color:var(--aqt-fg)]" title={seat.name}>
         {seat.name}
       </span>
       {seat.offRole ? (
@@ -735,7 +735,7 @@ function SeatRow({
           <span className="sr-only">Off-role</span>
         </span>
       ) : null}
-      <span className="shrink-0 font-mono text-lg font-bold tabular-nums text-[color:var(--aqt-fg)]">
+      <span className="shrink-0 text-lg font-bold tabular-nums text-[color:var(--aqt-fg)]">
         {seat.rating == null ? "\u2014" : Math.round(seat.rating)}
       </span>
     </li>
@@ -755,10 +755,10 @@ function SeatDragPreview({ seat }: Readonly<{ seat: PickupSeat }>) {
       <span className="flex size-6 shrink-0 items-center justify-center opacity-90">
         <PlayerRoleIcon role={icon} size={24} label={ROLE_LABELS[seat.role]} decorative />
       </span>
-      <span className="min-w-0 flex-1 truncate text-[17px] font-semibold text-[color:var(--aqt-fg)]">
+      <span className="min-w-0 flex-1 truncate text-base font-semibold text-[color:var(--aqt-fg)]">
         {seat.name}
       </span>
-      <span className="shrink-0 font-mono text-lg font-bold tabular-nums text-[color:var(--aqt-fg)]">
+      <span className="shrink-0 text-lg font-bold tabular-nums text-[color:var(--aqt-fg)]">
         {seat.rating == null ? "\u2014" : Math.round(seat.rating)}
       </span>
     </div>

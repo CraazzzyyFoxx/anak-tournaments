@@ -32,7 +32,7 @@ export default function OrganizerTools({ tournamentId, workspaceId }: Readonly<O
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger className="flex w-full items-center gap-2 px-5 py-3 text-left transition-colors hover:bg-[color:var(--aqt-overlay-2)]">
           <Wrench className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          <span className="font-display text-[15px] font-bold uppercase tracking-[0.04em] text-foreground">
+          <span className="font-display text-ui font-bold uppercase tracking-[0.04em] text-foreground">
             {t("analytics.organizer.title")}
           </span>
           <span className="hidden text-xs text-muted-foreground sm:inline">

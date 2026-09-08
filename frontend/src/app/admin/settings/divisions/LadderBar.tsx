@@ -80,7 +80,7 @@ export function LadderBar({
       {large ? (
         <div
           aria-hidden
-          className="flex justify-between font-mono text-[11px] uppercase tracking-wider text-muted-foreground"
+          className="flex justify-between font-mono text-label uppercase tracking-wider text-muted-foreground"
         >
           <span>{rankLabel(0)}</span>
           <span>{rankLabel(RANK_COUNT - 1)}</span>

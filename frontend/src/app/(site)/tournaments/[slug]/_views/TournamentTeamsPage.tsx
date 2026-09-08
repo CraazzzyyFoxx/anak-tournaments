@@ -206,7 +206,7 @@ function rosterSlots(tournament: Tournament, team: Team): { role: string; player
  */
 function listGrid(withRoles: boolean): string {
   return cn(
-    "grid items-center gap-2 text-[15px] sm:gap-3",
+    "grid items-center gap-2 text-ui sm:gap-3",
     "grid-cols-[2rem_1.25rem_minmax(0,1fr)_3.5rem_2.75rem_1.25rem]",
     withRoles
       ? "sm:grid-cols-[2.5rem_1.25rem_minmax(0,1fr)_4rem_auto_3.5rem_1.25rem]"
@@ -277,7 +277,7 @@ const TeamRosterRow = ({
 
   return (
     <div className={cn(rosterGrid(withHeroes), "py-1")}>
-      <span className="aqt-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+      <span className="aqt-tnum text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
         {role}
       </span>
       <Link
@@ -303,7 +303,7 @@ const TeamRosterRow = ({
           height={18}
           tournamentGrid={tournament.division_grid_version}
         />
-        <span className="aqt-tnum text-[12px] text-[color:var(--aqt-fg-muted)]">{player.rank}</span>
+        <span className="aqt-tnum text-label text-[color:var(--aqt-fg-muted)]">{player.rank}</span>
       </span>
       {withHeroes ? (
         heroes.length > 0 ? (
@@ -317,7 +317,7 @@ const TeamRosterRow = ({
           <span className="text-[color:var(--aqt-fg-dim)]">—</span>
         )
       ) : null}
-      <span className="truncate text-[12px] text-[color:var(--aqt-fg-dim)]">
+      <span className="truncate text-label text-[color:var(--aqt-fg-dim)]">
         {notes.join(" · ")}
       </span>
     </div>
@@ -364,7 +364,7 @@ const TeamListRow = ({
     <details className="group border-b border-[color:var(--aqt-border)]/60">
       <summary className="cursor-pointer list-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)] [&::-webkit-details-marker]:hidden">
         <div className={cn(listGrid(withRoles), "px-2 py-2.5")}>
-          <span className="aqt-mono tabular-nums text-[12px] text-[color:var(--aqt-fg-faint)]">
+          <span className="aqt-tnum tabular-nums text-label text-[color:var(--aqt-fg-faint)]">
             {team.placement != null ? `#${team.placement}` : ""}
           </span>
           <span className="inline-flex size-5 items-center justify-center">
@@ -375,7 +375,7 @@ const TeamListRow = ({
               {team.name}
             </span>
             {subtitle.length > 0 ? (
-              <span className="truncate text-[12px] text-[color:var(--aqt-fg-dim)]">
+              <span className="truncate text-label text-[color:var(--aqt-fg-dim)]">
                 {subtitle.join(" · ")}
               </span>
             ) : null}
@@ -405,8 +405,8 @@ const TeamListRow = ({
           </span>
         </div>
       </summary>
-      <div className="mb-2 ml-2 mr-2 border-l-2 border-[color:var(--aqt-border)] py-1 pl-3 text-[13px] sm:ml-[4.75rem]">
-        <div className={cn(rosterGrid(withHeroes), "py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]")}>
+      <div className="mb-2 ml-2 mr-2 border-l-2 border-[color:var(--aqt-border)] py-1 pl-3 text-caption sm:ml-[4.75rem]">
+        <div className={cn(rosterGrid(withHeroes), "py-0.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]")}>
           <span>{t("teams.roster.role")}</span>
           <span>{t("teams.roster.battleTag")}</span>
           <span>
@@ -425,7 +425,7 @@ const TeamListRow = ({
             withHeroes={withHeroes}
           />
         ))}
-        <div className="mt-1.5 flex flex-wrap gap-3 border-t border-[color:var(--aqt-border)]/60 pt-1.5 font-mono text-[11px]">
+        <div className="mt-1.5 flex flex-wrap gap-3 border-t border-[color:var(--aqt-border)]/60 pt-1.5 text-label">
           <Link
             href={`/tournaments/${slug}/matches?team=${team.id}`}
             className="text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]"
@@ -646,7 +646,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                         own. Nothing renders when nothing was searched, so the
                         card's surroundings are unchanged by default. */}
                     {matched.length > 0 ? (
-                      <p className="truncate text-[12px] text-[color:var(--aqt-fg-dim)]">
+                      <p className="truncate text-label text-[color:var(--aqt-fg-dim)]">
                         {t("tournamentDetail.teams.matchedPlayers")}{" "}
                         {matched.map((player, index) => (
                           <span key={player.id}>
@@ -666,7 +666,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
               <div
                 className={cn(
                   listGrid(withRoles),
-                  "border-b border-[color:var(--aqt-border)] px-2 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]"
+                  "border-b border-[color:var(--aqt-border)] px-2 py-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
                 )}
               >
                 <span>#</span>

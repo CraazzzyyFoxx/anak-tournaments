@@ -458,7 +458,7 @@ export function TiebreakersSection({
                   <span className="tabular-nums">{index + 1}.</span>
                   <span className="text-foreground">{metricLabel}</span>
                   {isRankingMetric ? (
-                    <span className="text-[10px] uppercase tracking-wide">ranking metric</span>
+                    <span className="text-label uppercase tracking-wide">ranking metric</span>
                   ) : null}
                 </span>
                 <span className="flex items-center gap-0.5">
@@ -500,7 +500,7 @@ export function TiebreakersSection({
               <Checkbox checked disabled aria-label="Use Manual Override" />
               <span className="text-foreground">Manual Override</span>
             </span>
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span className="text-label uppercase tracking-wide text-muted-foreground">
               system step, always last
             </span>
           </li>

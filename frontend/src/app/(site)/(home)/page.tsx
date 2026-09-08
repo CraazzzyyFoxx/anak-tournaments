@@ -84,7 +84,7 @@ export default async function Home() {
 
       {/* Platform stats */}
       <section>
-        <p className="mb-4 text-[11px] font-semibold tracking-[0.14em] uppercase text-muted-foreground/50">
+        <p className="mb-4 text-label font-semibold tracking-label uppercase text-muted-foreground/50">
           {t("home.byTheNumbers")}
         </p>
         <Suspense fallback={<StatsGridSkeleton />}>
@@ -95,10 +95,10 @@ export default async function Home() {
       {/* Workspace / community cards */}
       {!tenantMode && (
         <section>
-          <p className="mb-1.5 text-[11px] font-semibold tracking-[0.14em] uppercase text-muted-foreground/50">
+          <p className="mb-1.5 text-label font-semibold tracking-label uppercase text-muted-foreground/50">
             {t("home.workspaces")}
           </p>
-          <h2 className="font-display text-3xl font-bold uppercase tracking-wide text-foreground mb-5">
+          <h2 className="font-display text-title font-bold text-foreground mb-5">
             {t("home.communitiesOnPlatform")}
           </h2>
           <Suspense fallback={<CommunitiesSkeleton />}>
@@ -110,10 +110,10 @@ export default async function Home() {
       {/* Season dashboard */}
       <section className="pb-8 space-y-4">
         <div>
-          <p className="mb-1.5 text-[11px] font-semibold tracking-[0.14em] uppercase text-muted-foreground/50">
+          <p className="mb-1.5 text-label font-semibold tracking-label uppercase text-muted-foreground/50">
             {t("home.seasonOverview")}
           </p>
-          <h2 className="font-display text-3xl font-bold uppercase tracking-wide text-foreground">
+          <h2 className="font-display text-title font-bold text-foreground">
             {t("home.communityDashboard")}
           </h2>
         </div>
@@ -304,7 +304,7 @@ async function WorkspaceCard({ workspace }: Readonly<{ workspace: Workspace }>) 
         ) : (
           <div
             aria-hidden
-            className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-display font-extrabold text-[14px] tracking-[0.04em]"
+            className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-display font-extrabold text-body tracking-[0.04em]"
             style={{
               background: accentTint(accent, 15),
               border: `1px solid ${accentTint(accent, 30)}`,
@@ -328,7 +328,7 @@ async function WorkspaceCard({ workspace }: Readonly<{ workspace: Workspace }>) 
             )}
           </div>
           {workspace.description && (
-            <div className="text-[11px] text-muted-foreground/60 mt-0.5 line-clamp-1">
+            <div className="text-label text-muted-foreground/60 mt-0.5 line-clamp-1">
               {workspace.description}
             </div>
           )}
@@ -357,7 +357,7 @@ async function GetWorkspaceCard() {
           <div className="font-semibold text-sm text-foreground truncate">
             {t("home.getWorkspaceCard.title")}
           </div>
-          <div className="text-[11px] text-muted-foreground/60 mt-0.5 line-clamp-1">
+          <div className="text-label text-muted-foreground/60 mt-0.5 line-clamp-1">
             {t("home.getWorkspaceCard.description")}
           </div>
         </div>
@@ -405,7 +405,7 @@ async function StatsGrid() {
 
 function DashHeader({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <CardHeader className="border-b border-border px-5 py-4 font-display text-[15px] font-bold uppercase tracking-[0.04em] text-foreground">
+    <CardHeader className="border-b border-border px-5 py-4 font-display text-ui font-bold uppercase tracking-[0.04em] text-foreground">
       {children}
     </CardHeader>
   );
@@ -450,7 +450,7 @@ function LeaderboardRow({
 }>) {
   return (
     <div
-      className="flex items-center justify-between px-5 py-2.5 text-[13px] border-b last:border-b-0 hover:bg-[color:var(--aqt-overlay-2)] transition-colors"
+      className="flex items-center justify-between px-5 py-2.5 text-caption border-b last:border-b-0 hover:bg-[color:var(--aqt-overlay-2)] transition-colors"
       style={{
         borderColor: "var(--aqt-border)",
         color: "var(--aqt-fg-muted)",
@@ -630,7 +630,7 @@ async function DivisionRingsCard() {
               </text>
             </svg>
             <span
-              className="text-[12px] font-medium"
+              className="text-label font-medium"
               style={{ color: "var(--aqt-fg-muted)" }}
             >
               {role.label}
@@ -638,7 +638,7 @@ async function DivisionRingsCard() {
           </div>
         ))}
         <p
-          className="flex-[2] text-[12px] leading-relaxed self-center"
+          className="flex-[2] text-label leading-relaxed self-center"
           style={{ color: "var(--aqt-fg-dim)", minWidth: 90 }}
         >
           {t("home.avgDivisionDesc")}

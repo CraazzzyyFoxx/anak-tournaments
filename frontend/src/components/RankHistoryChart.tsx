@@ -143,7 +143,7 @@ export function ChartEmptyState({
         )}
       />
       <h4 className="mb-1 text-xs font-semibold text-[color:var(--aqt-fg)]">{title}</h4>
-      <p className="max-w-xs text-[11px] leading-normal text-[color:var(--aqt-fg-muted)]">{body}</p>
+      <p className="max-w-xs text-label leading-normal text-[color:var(--aqt-fg-muted)]">{body}</p>
     </div>
   );
 }
@@ -418,7 +418,7 @@ export default function RankHistoryChart({
                           />
                           <div className="flex flex-1 justify-between items-center leading-none text-xs gap-4">
                             <span className="text-[color:var(--aqt-fg-muted)]">{chartConfig[name as string]?.label || name}</span>
-                            <span className="font-mono font-medium tabular-nums text-[color:var(--aqt-fg)] ml-2">{label}</span>
+                            <span className="font-medium tabular-nums text-[color:var(--aqt-fg)] ml-2">{label}</span>
                           </div>
                         </>
                       );

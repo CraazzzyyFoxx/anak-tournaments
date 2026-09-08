@@ -209,7 +209,7 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournamentVa
         <span aria-hidden className="aqt-filter-divider" />
         {uniqueTournaments.length > 0 && (
           <Select value={selectedTournamentValue} onValueChange={onTournamentChange}>
-            <SelectTrigger className="h-8 w-48 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[14px] text-[color:var(--aqt-fg-muted)] shadow-none hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0">
+            <SelectTrigger className="h-8 w-48 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-body text-[color:var(--aqt-fg-muted)] shadow-none hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0">
               <SelectValue placeholder={tr("users.achievements.filter.allTournaments")} />
             </SelectTrigger>
             <SelectContent className="max-h-[min(var(--radix-select-content-available-height),20rem)]">
@@ -226,7 +226,7 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournamentVa
         <Select value={sort} onValueChange={(v) => setSort(v as "rarity" | "name" | "count")}>
           <SelectTrigger
             title={tr("users.achievements.sort.title")}
-            className="aqt-mono h-8 w-[150px] shadow-none border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[13px] text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0"
+            className="aqt-tnum h-8 w-[150px] shadow-none border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-caption text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0"
           >
             <SelectValue />
           </SelectTrigger>
@@ -299,13 +299,13 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournamentVa
                           )}
                         </div>
                         <div className="flex min-w-0 flex-col gap-0.5">
-                          <div className="text-[14.5px] font-semibold leading-tight">{ach.name}</div>
-                          <div className="text-[12px] leading-snug text-[color:var(--aqt-fg-dim)]">
+                          <div className="text-body font-semibold leading-tight">{ach.name}</div>
+                          <div className="text-label leading-snug text-[color:var(--aqt-fg-dim)]">
                             {localizedText(locale, ach.description_ru, ach.description_en)}
                           </div>
                         </div>
                       </div>
-                      <div className="mt-auto flex items-center justify-between border-t border-[color:var(--aqt-border)] pt-2 text-[11.5px] text-[color:var(--aqt-fg-muted)]">
+                      <div className="mt-auto flex items-center justify-between border-t border-[color:var(--aqt-border)] pt-2 text-label text-[color:var(--aqt-fg-muted)]">
                         {locked ? (
                           <span className="aqt-rarity">{tr("users.achievements.locked")}</span>
                         ) : (
@@ -313,7 +313,7 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournamentVa
                             <span aria-hidden>◆</span> <span className="capitalize">{r}</span>
                           </span>
                         )}
-                        <span className="aqt-mono">{(ach.rarity * 100).toFixed(2)}%</span>
+                        <span className="aqt-tnum">{(ach.rarity * 100).toFixed(2)}%</span>
                       </div>
                     </button>
                   );

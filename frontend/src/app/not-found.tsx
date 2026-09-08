@@ -22,14 +22,14 @@ export default async function NotFound() {
       <section className="liquid-glass relative isolate w-full overflow-hidden rounded-[32px] border border-[color:var(--aqt-border)] px-6 py-8 sm:px-8 sm:py-10 lg:px-12 lg:py-12">
         <div
           aria-hidden
-          className="absolute right-5 top-5 font-mono text-[4rem] font-black leading-none tracking-[-0.08em] text-[color:var(--aqt-fg)]/5 sm:text-[5.5rem] lg:text-[7rem]"
+          className="absolute right-5 top-5 text-[4rem] font-black leading-none tracking-[-0.08em] text-[color:var(--aqt-fg)]/5 sm:text-[5.5rem] lg:text-[7rem]"
         >
           404
         </div>
 
         <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1fr),24rem] lg:items-start lg:gap-10 xl:grid-cols-[minmax(0,1fr),27rem]">
           <div className="max-w-2xl pt-2">
-            <p className="aqt-mono text-[11px] font-semibold uppercase tracking-[0.32em] text-[color:var(--aqt-fg-faint)]">
+            <p className="aqt-tnum text-label font-semibold uppercase tracking-[0.32em] text-[color:var(--aqt-fg-faint)]">
               {t("notFound.eyebrow")}
             </p>
 
@@ -74,7 +74,7 @@ export default async function NotFound() {
             </Card>
 
             <Card className="liquid-glass-panel p-4 sm:p-5">
-              <p className="px-1 aqt-mono text-[11px] uppercase tracking-[0.32em] text-[color:var(--aqt-fg-dim)]">
+              <p className="px-1 aqt-tnum text-label uppercase tracking-[0.32em] text-[color:var(--aqt-fg-dim)]">
                 {t("notFound.quickRecovery")}
               </p>
 

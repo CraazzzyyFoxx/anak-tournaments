@@ -77,7 +77,7 @@ export function EncounterScoreControls({
         <div
           role="status"
           aria-live="polite"
-          className="rounded-lg border border-border/60 bg-background px-3.5 py-1.5 text-lg font-bold font-mono tracking-widest text-foreground tabular-nums"
+          className="rounded-lg border border-border/60 bg-background px-3.5 py-1.5 text-lg font-bold tracking-label text-foreground tabular-nums"
         >
           <span aria-hidden>
             {homeScore} – {awayScore}
@@ -121,7 +121,7 @@ export function EncounterScoreControls({
                   type="button"
                   variant="ghost"
                   className={cn(
-                    "h-9 px-2 font-bold font-mono rounded-lg tabular-nums transition-all duration-150",
+                    "h-9 px-2 font-bold rounded-lg tabular-nums transition-all duration-150",
                     isSelected
                       ? "border border-primary bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
                       : "border border-border/60 bg-muted/10 text-foreground hover:border-border hover:bg-accent hover:text-accent-foreground"
@@ -181,7 +181,7 @@ function ScoreStepper({ id, label, value, onChange }: Readonly<ScoreStepperProps
           pattern="[0-9]*"
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="h-full rounded-none border-0 bg-transparent text-center text-base font-bold font-mono tabular-nums text-foreground shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="h-full rounded-none border-0 bg-transparent text-center text-base font-bold tabular-nums text-foreground shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
           aria-label={`Score for ${label}`}
         />
         <Button

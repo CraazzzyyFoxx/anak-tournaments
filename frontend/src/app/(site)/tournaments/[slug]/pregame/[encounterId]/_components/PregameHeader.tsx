@@ -135,7 +135,7 @@ export function PregameHeader({
         <h1 className="font-onest text-xl font-semibold tracking-[-0.01em]">{t("title")}</h1>
         {session != null ? <StatusMark status={session.status} /> : null}
         {round != null ? (
-          <span className="ml-auto font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+          <span className="ml-auto text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
             {t("round.label", { n: round })}
             {bestOf != null ? ` / ${t("board.bestOf", { n: bestOf })}` : ""}
           </span>
@@ -275,12 +275,12 @@ function Scoreboard({
         {toWin != null ? (
           <>
             <SeriesPips homeScore={homeScore} awayScore={awayScore} toWin={toWin} />
-            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+            <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
               {t("board.toWin", { n: toWin })}
             </span>
           </>
         ) : (
-          <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+          <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
             {t("board.score")}
           </span>
         )}
@@ -342,7 +342,7 @@ function TeamSide({
         </span>
         <span
           className={cn(
-            "flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]",
+            "flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]",
             align === "end" ? "flex-row-reverse" : null
           )}
         >
@@ -470,7 +470,7 @@ function PhaseRail({
       {activeEntry != null ? (
         <span
           aria-hidden
-          className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-muted)]"
+          className="text-label uppercase tracking-label text-[color:var(--aqt-fg-muted)]"
         >
           <span className="text-[color:var(--aqt-teal)]">{t(`phase.${activeEntry.phase}`)}</span>
           {` · ${t("phase.current")}`}
@@ -540,7 +540,7 @@ function SeriesStrip({ series }: Readonly<{ series: PregameSeriesMap[] }>) {
               />
               <span
                 aria-hidden
-                className="absolute -left-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[color:var(--aqt-card)] px-1 font-mono text-[11px] font-bold leading-none text-[color:var(--aqt-fg-muted)] ring-1 ring-[color:var(--aqt-border-2)]"
+                className="absolute -left-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[color:var(--aqt-card)] px-1 text-label font-bold leading-none text-[color:var(--aqt-fg-muted)] ring-1 ring-[color:var(--aqt-border-2)]"
               >
                 {map.round}
               </span>
@@ -562,7 +562,7 @@ function SeriesStrip({ series }: Readonly<{ series: PregameSeriesMap[] }>) {
                 nothing. The fixed height keeps every column's score aligned. */}
             <span
               title={map.name}
-              className="line-clamp-2 h-[2.2rem] w-full text-center text-[12px] font-medium leading-tight"
+              className="line-clamp-2 h-[2.2rem] w-full text-center text-label font-medium leading-tight"
             >
               {map.name}
             </span>

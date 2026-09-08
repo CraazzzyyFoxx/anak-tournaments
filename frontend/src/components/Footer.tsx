@@ -13,7 +13,7 @@ const FOOTER_LINK_CLASS =
 // the page background, well under the 4.5:1 text floor. --aqt-fg-faint is the
 // project's own low-emphasis-but-readable role, already verified elsewhere.
 const COLUMN_HEADING_CLASS =
-  "mb-4 text-[11px] font-semibold tracking-[0.14em] uppercase text-[color:var(--aqt-fg-faint)]";
+  "mb-4 text-label font-semibold tracking-label uppercase text-[color:var(--aqt-fg-faint)]";
 
 // The bottom meta bar's own emphasis (xs, faint), distinct from the section
 // links above it — shared so the three items stay pixel-identical.

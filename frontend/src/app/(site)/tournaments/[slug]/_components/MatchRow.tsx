@@ -50,11 +50,11 @@ export function MatchRow({
   const summary = (
     <div
       className={cn(
-        "grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)_5.5rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-2.5 text-[15px] sm:gap-3",
+        "grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)_5.5rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-2.5 text-ui sm:gap-3",
         className
       )}
     >
-      <span className="font-mono text-[12px] text-[color:var(--aqt-fg-faint)]">{leading}</span>
+      <span className="text-label text-[color:var(--aqt-fg-faint)]">{leading}</span>
       <span className={cn("flex min-w-0 justify-end", winner === "home" && "font-semibold", winner === "away" && "text-[color:var(--aqt-fg-dim)]")}>
         <TeamName team={encounter.home_team} fallback={t("common.tbd")} size="sm" reverse />
       </span>
@@ -66,13 +66,13 @@ export function MatchRow({
             <span className={cn(winner === "away" ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]")}>{away}</span>
           </>
         ) : (
-          <span className="font-mono text-[11px] font-normal uppercase text-[color:var(--aqt-fg-faint)]">vs</span>
+          <span className="text-label font-normal uppercase text-[color:var(--aqt-fg-faint)]">vs</span>
         )}
       </span>
       <span className={cn("flex min-w-0", winner === "away" && "font-semibold", winner === "home" && "text-[color:var(--aqt-fg-dim)]")}>
         <TeamName team={encounter.away_team} fallback={t("common.tbd")} size="sm" />
       </span>
-      <span className="flex items-center justify-end gap-2 font-mono text-[12px] text-[color:var(--aqt-fg-faint)]">
+      <span className="flex items-center justify-end gap-2 text-label text-[color:var(--aqt-fg-faint)]">
         {trailing ? <span className="hidden sm:inline">{trailing}</span> : null}
         {bracketHref ? (
           <Link
@@ -102,8 +102,8 @@ export function MatchRow({
       <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)]">
         {summary}
       </summary>
-      <div className="mb-2 ml-2 mr-2 border-l-2 border-[color:var(--aqt-border)] py-1 pl-3 text-[13px] sm:ml-[6rem]">
-        <div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] gap-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+      <div className="mb-2 ml-2 mr-2 border-l-2 border-[color:var(--aqt-border)] py-1 pl-3 text-caption sm:ml-[6rem]">
+        <div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] gap-2 py-0.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
           <span>{t("tournamentDetail.matchRow.map")}</span>
           <span>{t("tournamentDetail.matchRow.mode")}</span>
           <span className="text-right">{t("tournamentDetail.matchRow.score")}</span>
@@ -125,7 +125,7 @@ export function MatchRow({
                 ? `${Math.floor(map.time / 60)}:${String(Math.round(map.time % 60)).padStart(2, "0")}`
                 : "—"}
             </span>
-            <span className="flex justify-end gap-2 font-mono text-[10px]">
+            <span className="flex justify-end gap-2 text-label">
               {map.log_name ? (
                 <Link href={`/matches/${map.id}`} className="text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]">
                   {t("tournamentDetail.matchRow.log")}
@@ -134,7 +134,7 @@ export function MatchRow({
             </span>
           </div>
         ))}
-        <div className="mt-1.5 flex gap-3 border-t border-[color:var(--aqt-border)]/60 pt-1.5 font-mono text-[11px]">
+        <div className="mt-1.5 flex gap-3 border-t border-[color:var(--aqt-border)]/60 pt-1.5 text-label">
           <Link href={`/encounters/${encounter.id}`} className="text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]">
             {t("bracket.viewMatch")}
           </Link>

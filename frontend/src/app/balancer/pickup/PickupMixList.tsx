@@ -56,7 +56,7 @@ export function PickupMixList({
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3 border-b border-[color:var(--aqt-border)] pb-4">
         <div className="min-w-0">
           <div className={EYEBROW_CLASS}>Balancer</div>
-          <h1 className="mt-1.5 font-display text-[30px]/[1.1] font-bold tracking-[-0.01em] text-[color:var(--aqt-fg)]">
+          <h1 className="mt-1.5 font-display text-headline/[1.1] font-bold tracking-[-0.01em] text-[color:var(--aqt-fg)]">
             Mixes
           </h1>
         </div>
@@ -112,7 +112,7 @@ export function PickupMixList({
                       Create
                     </Button>
                   </div>
-                  <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">
+                  <p className="text-label text-[color:var(--aqt-fg-dim)]">
                     Starts empty — fill it from the workspace player pool.
                   </p>
                 </form>
@@ -167,10 +167,10 @@ function PickupMixRow({ game }: Readonly<{ game: CustomGame }>) {
         className="flex items-center gap-3.5 px-4 py-3.5 transition-colors hover:bg-white/[0.025]"
       >
         <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-          <span className="truncate text-[14px] font-semibold text-[color:var(--aqt-fg)]">
+          <span className="truncate text-body font-semibold text-[color:var(--aqt-fg)]">
             {game.name}
           </span>
-          <span className="shrink-0 font-mono text-xs text-[color:var(--aqt-fg-faint)]">
+          <span className="shrink-0 text-xs text-[color:var(--aqt-fg-faint)]">
             {`#${game.id}`}
           </span>
         </span>

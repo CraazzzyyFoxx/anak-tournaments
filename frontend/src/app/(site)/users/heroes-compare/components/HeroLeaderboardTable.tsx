@@ -101,7 +101,7 @@ const HeroLeaderboardTable = ({
             </h2>
             {selectedHero && (
               <span
-                className="rounded-[5px] px-1.5 py-0.5 text-[11px] font-bold uppercase leading-none tracking-[0.08em]"
+                className="rounded-[5px] px-1.5 py-0.5 text-label font-bold uppercase leading-none tracking-label"
                 style={{
                   color: `var(--aqt-${variant})`,
                   background: `color-mix(in srgb, var(--aqt-${variant}) 15%, transparent)`,
@@ -111,13 +111,13 @@ const HeroLeaderboardTable = ({
               </span>
             )}
           </div>
-          <p className="mt-1 font-[family-name:var(--aqt-mono)] text-[11.5px] text-[color:var(--aqt-fg-dim)]">
+          <p className="mt-1 font-[family-name:var(--aqt-data)] text-label text-[color:var(--aqt-fg-dim)]">
             {selectedTournamentName ?? t("users.heroesCompare.allTournaments")}
             {tournamentId ? ` · ${t("users.heroesCompare.table.scope")} #${tournamentId}` : ""}
           </p>
         </div>
         {!isLoading && rows.length > 0 && (
-          <span className="ml-auto rounded-full border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.03)] px-[11px] py-[5px] font-[family-name:var(--aqt-mono)] text-[11px] tabular-nums text-[color:var(--aqt-fg-muted)]">
+          <span className="ml-auto rounded-full border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.03)] px-[11px] py-[5px] font-[family-name:var(--aqt-data)] text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
             {t.rich("users.heroesCompare.table.playersCount", {
               count: rows.length,
               em: (chunks) => (
@@ -149,7 +149,7 @@ const HeroLeaderboardTable = ({
               </th>
               <th
                 scope="col"
-                className={`${HEAD_CELL} text-left text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]`}
+                className={`${HEAD_CELL} text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]`}
               >
                 {t("users.heroesCompare.table.player")}
               </th>
@@ -215,12 +215,12 @@ const HeroLeaderboardTable = ({
 
       {/* Teams legend */}
       {!isLoading && legendTeams.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.008)] px-5 py-3 text-[11px] text-[color:var(--aqt-fg-dim)]">
-          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+        <div className="flex flex-wrap items-center gap-2 border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.008)] px-5 py-3 text-label text-[color:var(--aqt-fg-dim)]">
+          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
             {t("common.teams")}
           </span>
           {legendTeams.slice(0, MAX_LEGEND_TEAMS).map(({ team, teamId }) => (
-            <span key={team} className="inline-flex items-center gap-1.5 font-[family-name:var(--aqt-mono)] text-[color:var(--aqt-fg-muted)]">
+            <span key={team} className="inline-flex items-center gap-1.5 font-[family-name:var(--aqt-data)] text-[color:var(--aqt-fg-muted)]">
               <span
                 aria-hidden
                 className="h-[9px] w-[9px] rounded-[2px]"

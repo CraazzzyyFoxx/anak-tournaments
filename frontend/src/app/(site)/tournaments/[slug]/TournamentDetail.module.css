@@ -40,7 +40,7 @@
   border-inline-end: 1px solid var(--aqt-border);
   margin-inline-end: 0.5rem;
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: var(--text-body);
   color: var(--aqt-fg);
   white-space: nowrap;
   overflow: hidden;
@@ -154,7 +154,7 @@
   background: transparent;
   color: var(--aqt-fg-muted);
   font-family: var(--aqt-onest);
-  font-size: 0.8125rem;
+  font-size: var(--text-caption);
   font-weight: 650;
   line-height: 1;
   text-decoration: none;
@@ -346,8 +346,8 @@
   border-radius: 0.4rem;
   background: color-mix(in srgb, var(--aqt-teal) 8%, transparent);
   color: var(--aqt-teal);
-  font-family: var(--aqt-mono);
-  font-size: 0.6875rem;
+  font-family: var(--aqt-data);
+  font-size: var(--text-label);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -369,13 +369,13 @@
   border-radius: 0.4rem;
   background: color-mix(in srgb, var(--aqt-amber) 5.5%, transparent);
   color: var(--aqt-fg-muted);
-  font-size: 0.75rem;
+  font-size: var(--text-label);
 }
 
 .updating {
   color: var(--aqt-teal);
-  font-family: var(--aqt-mono);
-  font-size: 0.6875rem;
+  font-family: var(--aqt-data);
+  font-size: var(--text-label);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -450,8 +450,8 @@
 
 .blockTitle {
   margin: 0;
-  font-family: var(--aqt-mono);
-  font-size: 12px;
+  font-family: var(--aqt-data);
+  font-size: var(--text-label);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -467,9 +467,9 @@
 }
 
 .figureLabel {
-  font-family: var(--aqt-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  font-family: var(--aqt-data);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--aqt-fg-faint);
 }
@@ -486,8 +486,8 @@
 
 .figureHint {
   margin-inline-start: 0.35rem;
-  font-family: var(--aqt-mono);
-  font-size: 0.75rem;
+  font-family: var(--aqt-data);
+  font-size: var(--text-label);
   font-weight: 400;
   letter-spacing: 0;
   color: var(--aqt-fg-faint);
@@ -551,8 +551,8 @@
 .heroRank {
   flex: 0 0 auto;
   color: var(--aqt-fg-faint);
-  font-family: var(--aqt-mono);
-  font-size: 0.6875rem;
+  font-family: var(--aqt-data);
+  font-size: var(--text-label);
   font-variant-numeric: tabular-nums;
 }
 
@@ -613,10 +613,10 @@
   padding: 0.7rem 0.85rem;
   overflow: hidden;
   color: var(--aqt-fg-faint);
-  font-family: var(--aqt-mono);
-  font-size: 0.6875rem;
+  font-family: var(--aqt-data);
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
@@ -661,7 +661,7 @@
   min-width: 0;
   padding: 0.45rem 0.85rem;
   color: var(--aqt-fg-muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-caption);
   overflow-wrap: anywhere;
 }
 
@@ -752,23 +752,23 @@
   gap: 0.2rem;
   min-width: 0;
   color: var(--aqt-fg);
-  font-size: 0.75rem;
+  font-size: var(--text-label);
   overflow-wrap: anywhere;
 }
 
 .participantDetailLabel {
   color: var(--aqt-fg-dim);
-  font-family: var(--aqt-mono);
-  font-size: 0.6875rem;
+  font-family: var(--aqt-data);
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .participantMutedDetail {
   margin: 0;
   color: var(--aqt-fg-dim);
-  font-size: 0.75rem;
+  font-size: var(--text-label);
   font-style: italic;
 }
 
@@ -896,8 +896,8 @@
     display: inline;
     flex: 0 0 5.5rem;
     color: var(--aqt-fg-dim);
-    font-family: var(--aqt-mono);
-    font-size: 0.6875rem;
+    font-family: var(--aqt-data);
+    font-size: var(--text-label);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -923,8 +923,8 @@
     border-color: var(--aqt-border-2);
     background: var(--aqt-overlay-2);
     color: var(--aqt-fg-muted);
-    font-family: var(--aqt-mono);
-    font-size: 0.6875rem;
+    font-family: var(--aqt-data);
+    font-size: var(--text-label);
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;

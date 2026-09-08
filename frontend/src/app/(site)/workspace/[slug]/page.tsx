@@ -138,7 +138,7 @@ async function WorkspaceHeader({ workspace }: Readonly<{ workspace: Workspace }>
   return (
     <div className="liquid-glass rounded-xl p-6 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
       <div className="flex flex-col gap-1.5">
-        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-label text-muted-foreground">
           {t("workspace.eyebrow")}
         </p>
         <h1 className="text-3xl font-bold tracking-tight text-foreground font-display uppercase">

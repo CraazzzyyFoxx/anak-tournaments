@@ -125,7 +125,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
                 eyebrow, not a standalone outline button above the page. */}
             <Link
               href="/encounters"
-              className="inline-flex items-center gap-1.5 font-mono text-[12px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)] transition-colors hover:text-[color:var(--aqt-teal)]"
+              className="inline-flex items-center gap-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)] transition-colors hover:text-[color:var(--aqt-teal)]"
             >
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
               {t("encounters.detail.back")}

@@ -148,7 +148,7 @@ const NotificationList = ({
             {t("notifications.title")}
           </h2>
           {unreadCount != null && unreadCount > 0 && (
-            <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-primary">
+            <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-label font-semibold tabular-nums text-primary">
               {t("notifications.newCount", { count: unreadCount })}
             </span>
           )}

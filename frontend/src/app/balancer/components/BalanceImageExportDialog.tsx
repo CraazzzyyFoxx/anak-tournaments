@@ -271,7 +271,7 @@ export function BalanceImageExportDialog({
                     className="overflow-hidden rounded-xl border border-border bg-card"
                   >
                     <div className="flex items-center justify-between gap-3 border-b border-[color:var(--aqt-border)] px-3 py-2.5">
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--aqt-fg-muted)]">
+                      <div className="text-xs font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
                         {image.label}
                       </div>
                       <Button
@@ -382,7 +382,7 @@ function BalanceExportTeamCard({
         <div className="flex min-w-0 items-center gap-2">
           <div
             className={cn(
-              "rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
+              "rounded-full border px-2.5 py-1 text-label font-semibold uppercase tracking-label",
               teamAccent
             )}
           >
@@ -394,7 +394,7 @@ function BalanceExportTeamCard({
         </div>
 
         <div className="shrink-0 text-right">
-          <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-[11px] font-medium text-[color:var(--aqt-fg-muted)]">
+          <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-label font-medium text-[color:var(--aqt-fg-muted)]">
             <span>
               Total: <span className="tabular-nums text-[color:var(--aqt-fg)]">{total}</span>
             </span>
@@ -408,16 +408,16 @@ function BalanceExportTeamCard({
       <table className="w-full min-w-90 caption-bottom text-sm">
         <thead>
           <tr className="border-b border-[color:var(--aqt-border)]">
-            <th className="h-8 w-13 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <th className="h-8 w-13 px-4 text-left align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               Role
             </th>
-            <th className="h-8 min-w-45 px-0 text-left align-middle text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <th className="h-8 min-w-45 px-0 text-left align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               Player
             </th>
-            <th className="h-8 w-18 px-2 text-center align-middle text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <th className="h-8 w-18 px-2 text-center align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               Rank
             </th>
-            <th className="h-8 w-22 px-3 text-center align-middle text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <th className="h-8 w-22 px-3 text-center align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               Prefs
             </th>
           </tr>
@@ -442,7 +442,7 @@ function BalanceExportTeamCard({
                       </span>
                     </div>
                     {formatSubRoleLabel(player.sub_role) ? (
-                      <span className="truncate text-[11px] font-medium uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
+                      <span className="truncate text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                         {formatSubRoleLabel(player.sub_role)}
                       </span>
                     ) : null}
@@ -474,7 +474,7 @@ function BalanceExportTeamCard({
               <tr className="border-b border-[color:var(--aqt-border)]">
                 <td
                   colSpan={4}
-                  className="px-3 py-2.5 text-center text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]"
+                  className="px-3 py-2.5 text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
                 >
                   Empty {roleKey.toLowerCase()}
                 </td>

@@ -132,7 +132,7 @@ const MatchesPage = () => {
                       <th
                         key={label}
                         scope="col"
-                        className="h-8 whitespace-nowrap px-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-faint)]"
+                        className="h-8 whitespace-nowrap px-3 text-left text-label font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-faint)]"
                       >
                         {label}
                       </th>
@@ -180,7 +180,7 @@ const MatchesPage = () => {
                           </span>
                         </td>
                         <td className="px-3 py-2.5 align-middle">
-                          <span className="inline-flex items-center rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-2 py-0.5 text-[11px] text-[color:var(--aqt-fg-muted)]">
+                          <span className="inline-flex items-center rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-2 py-0.5 text-label text-[color:var(--aqt-fg-muted)]">
                             {stageLabel}
                           </span>
                         </td>

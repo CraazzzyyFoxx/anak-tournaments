@@ -90,7 +90,7 @@ export function SmurfTagStrip({ smurfTags, className, compact = false }: Readonl
             type="button"
             className={cn(
               "inline-flex items-center gap-1 rounded-full border border-cyan-300/15 bg-cyan-500/8 font-semibold text-cyan-100/62 transition hover:border-cyan-300/30 hover:bg-cyan-500/14 hover:text-cyan-50",
-              compact ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-0.5 text-[11px]"
+              compact ? "px-1.5 py-0.5 text-label" : "px-2 py-0.5 text-label"
             )}
             title="Show smurf BattleTags"
           >

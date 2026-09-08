@@ -45,7 +45,7 @@ export default function SiteError({
           {t("errors.boundary.description")}
         </p>
         {error?.digest ? (
-          <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground/60">
+          <p className="mt-3 text-label uppercase tracking-label text-muted-foreground/60">
             {t("errors.boundary.digest", { digest: error.digest })}
           </p>
         ) : null}

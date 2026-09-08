@@ -34,7 +34,7 @@ export function Podium({ first, second, third, className }: Readonly<PodiumProps
       <>
         <span
           className={cn(
-            "font-mono text-[11px] uppercase tracking-[0.14em]",
+            "text-label uppercase tracking-label",
             champion ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-faint)]"
           )}
         >
@@ -44,14 +44,14 @@ export function Podium({ first, second, third, className }: Readonly<PodiumProps
         <span
           className={cn(
             "mt-2 block truncate font-onest font-bold leading-tight",
-            champion ? "text-[26px]" : "text-[17px]"
+            champion ? "text-[26px]" : "text-base"
           )}
           title={team.name}
         >
           {team.name}
         </span>
         {team.note ? (
-          <span className="mt-1 block text-[12px] leading-snug text-[color:var(--aqt-fg-muted)]">
+          <span className="mt-1 block text-label leading-snug text-[color:var(--aqt-fg-muted)]">
             {team.note}
           </span>
         ) : null}

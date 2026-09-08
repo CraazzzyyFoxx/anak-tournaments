@@ -86,7 +86,7 @@ const CompareMetricRow = ({ row }: { row: CompareRow }) => {
     <tr className="border-b border-[color:var(--aqt-border)] last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]">
       {/* Metric name */}
       <td
-        className="px-3.5 py-2.5 text-[13.5px] font-medium text-[color:var(--aqt-fg)]"
+        className="px-3.5 py-2.5 text-caption font-medium text-[color:var(--aqt-fg)]"
         title={row.label}
       >
         {row.label}
@@ -94,7 +94,7 @@ const CompareMetricRow = ({ row }: { row: CompareRow }) => {
 
       {/* Subject value */}
       <td
-        className={`aqt-mono px-2 py-2.5 text-right text-[13px] tabular-nums whitespace-nowrap ${winner === "left" ? "font-bold" : ""}`}
+        className={`aqt-tnum px-2 py-2.5 text-right text-caption tabular-nums whitespace-nowrap ${winner === "left" ? "font-bold" : ""}`}
         style={leftValueStyle}
       >
         {formatMetricValue(row.subjectValue)}
@@ -121,7 +121,7 @@ const CompareMetricRow = ({ row }: { row: CompareRow }) => {
 
       {/* Baseline value */}
       <td
-        className={`aqt-mono px-2 py-2.5 text-left text-[13px] tabular-nums whitespace-nowrap ${winner === "right" ? "font-bold" : ""}`}
+        className={`aqt-tnum px-2 py-2.5 text-left text-caption tabular-nums whitespace-nowrap ${winner === "right" ? "font-bold" : ""}`}
         style={rightValueStyle}
       >
         {formatMetricValue(row.baselineValue)}
@@ -220,7 +220,7 @@ const HeroBadge = ({
           {hero.name ?? t("users.compare.allHeroes")}
         </span>
         {hero.playtimeSeconds !== undefined ? (
-          <span className="aqt-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
+          <span className="aqt-tnum text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
             {hero.playtimeLabel ?? t("users.compare.playtime")}:{" "}
             {formatDuration(hero.playtimeSeconds, durationUnits)}
           </span>
@@ -235,7 +235,7 @@ const HeroBadge = ({
 /* ------------------------------------------------------------------ */
 
 const headBase =
-  "aqt-mono border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-3.5 py-3 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]";
+  "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-3.5 py-3 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 const CompareUnifiedTable = ({
   subjectName,
@@ -266,7 +266,7 @@ const CompareUnifiedTable = ({
           {isHeroScope ? (
             <div className="flex w-full items-center justify-between gap-3">
               <HeroBadge hero={subjectHero ?? {}} label={subjectName} align="left" />
-              <span className="aqt-mono shrink-0 text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+              <span className="aqt-tnum shrink-0 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                 {t("common.vs")}
               </span>
               <HeroBadge hero={baselineHero ?? {}} label={baselineName} align="right" />
@@ -277,18 +277,18 @@ const CompareUnifiedTable = ({
                 <span className="text-sm font-semibold text-[color:var(--aqt-fg)]">
                   {subjectName}
                 </span>
-                <span className="aqt-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
+                <span className="aqt-tnum text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                   {t("users.compare.selectedUserColumn")}
                 </span>
               </div>
-              <span className="aqt-mono shrink-0 text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+              <span className="aqt-tnum shrink-0 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                 {t("common.vs")}
               </span>
               <div className="flex flex-col items-end gap-0.5 text-right">
                 <span className="text-sm font-semibold text-[color:var(--aqt-fg)]">
                   {baselineName}
                 </span>
-                <span className="aqt-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
+                <span className="aqt-tnum text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                   {isTargetBaseline
                     ? t("users.compare.compareAgainst")
                     : t("users.compare.baseline")}
@@ -299,7 +299,7 @@ const CompareUnifiedTable = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="aqt-tnum w-full border-collapse text-[13px]">
+          <table className="aqt-tnum w-full border-collapse text-caption">
             <thead>
               <tr>
                 <th className={`${headBase} text-left`}>{t("users.compare.colMetric")}</th>

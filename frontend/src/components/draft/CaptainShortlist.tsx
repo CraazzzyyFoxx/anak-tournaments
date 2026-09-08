@@ -22,7 +22,7 @@ export function CaptainShortlist({ players, onSelect, onRemove, divisionGrid }: 
 
   return (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("shortlist")}>
-      <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.13em] text-[color:var(--aqt-fg-muted)]">
+      <span className="flex items-center gap-1.5 text-label uppercase tracking-[0.13em] text-[color:var(--aqt-fg-muted)]">
         <Flag className="h-3 w-3 text-[color:var(--aqt-teal)]" aria-hidden />
         {t("shortlist")}
         <TooltipProvider delayDuration={200}>

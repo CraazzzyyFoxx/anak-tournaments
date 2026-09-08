@@ -65,11 +65,26 @@ with `font-size` in Tailwind v4.
 
 ### Typography
 
-- Base fonts are Inter, Onest and JetBrains Mono, self-hosted via `next/font/local` in `frontend/src/app/layout.tsx` (not `next/font/google` — that fetches from `fonts.gstatic.com` at build time and a production build once died on rotated hashes).
-- Use `tabular-nums` for metrics where stable alignment matters.
+- Two faces, both self-hosted via `next/font/local` in `frontend/src/app/layout.tsx` (not `next/font/google` — that fetches from `fonts.gstatic.com` at build time and a production build once died on rotated hashes): **Inter** for everything textual, including the data/label voice (`--aqt-data`, `.aqt-tnum` = Inter + `tabular-nums`), and **Onest** for display titles (`--aqt-display`, `font-display`). JetBrains Mono was retired: `font-mono` is now Tailwind's system monospace and is reserved for code and identifiers (API keys, usernames, log output), never for UI labels.
+- **Type roles are the only sizes.** Defined once in `globals.css` (`@theme static`); each carries size + line-height (+ tracking where relevant), weight stays explicit:
+
+  | Utility | CSS var | Size / lh | Use |
+  | --- | --- | --- | --- |
+  | `text-label` | `--text-label` | 12 / 1.25 | eyebrows, table heads, chips, counters — pair with `uppercase tracking-label` |
+  | `text-caption` | `--text-caption` | 13 / 1.4 | secondary text, table cells |
+  | `text-body` | `--text-body` | 14 / 1.5 | body copy, ledes |
+  | `text-ui` | `--text-ui` | 15 / 1.5 | list rows, primary values |
+  | `text-heading` | `--text-heading` | 18 / 1.3 | card / section sub-headings |
+  | `text-title` | `--text-title` | 22 / 1.15 / −0.01em | section `h2` — mixed-case, never uppercase |
+  | `text-headline` | `--text-headline` | 30 / 1.1 / −0.02em | compact hero titles |
+  | `text-display` | `--text-display` | clamp(32–56) / 1.03 / −0.01em | page-hero `h1` |
+
+  `tracking-label` (`--tracking-label`, 0.08em) is the single tracking for uppercase labels. Never write `text-[Npx]` or `font-size: 11px` again — if a role is missing, add it to the `@theme` block. `scripts/check-design-compliance.mjs` R6 still enforces the 11px floor.
+- `cn()` (`lib/utils.ts`) extends tailwind-merge with these role names; without that, `text-label` is filed under text-_color_ and a later `text-[color:…]` deletes it. Also note tailwind-merge drops `leading-*` when a font-size utility follows it in a later `cn()` argument — put line-height in the role token, not beside it.
+- Use `tabular-nums` (or `.aqt-tnum`) for metrics where stable alignment matters.
   Examples: `frontend/src/components/StatisticsCard.tsx`, `frontend/src/app/(site)/users/components/header/UserHeader.tsx`.
 
-**The `:root`-vs-`<html>` font trap.** The `.variable` classes from `next/font/local` MUST mount on `<html>`, not `<body>`: `globals.css` aliases them from `:root` (`--aqt-mono`, `--aqt-display`), and a custom property is substituted where it is _declared_ — an alias on `:root` cannot read a variable defined one level down on `<body>`. It silently resolves to nothing (and poisons the whole declaration, so the literal fallback next to it doesn't apply either), so every `--aqt-mono`/`--aqt-display` surface falls back to plain Inter with no error. If you ever re-alias a `next/font` variable in a scoped `:root`, mount its class at or above that scope.
+**The `:root`-vs-`<html>` font trap.** The `.variable` classes from `next/font/local` MUST mount on `<html>`, not `<body>`: `globals.css` aliases them from `:root` (`--aqt-data`, `--aqt-display`), and a custom property is substituted where it is _declared_ — an alias on `:root` cannot read a variable defined one level down on `<body>`. It silently resolves to nothing (and poisons the whole declaration, so the literal fallback next to it doesn't apply either), so every `--aqt-display` surface falls back to plain Inter with no error. If you ever re-alias a `next/font` variable in a scoped `:root`, mount its class at or above that scope.
 
 ## Core building blocks
 

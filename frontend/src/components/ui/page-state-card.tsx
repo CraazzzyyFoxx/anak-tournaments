@@ -91,7 +91,7 @@ export function PageStateCard({
       />
       <div className="space-y-1">
         <p className="text-sm font-semibold text-[color:var(--aqt-fg)]">{resolvedTitle}</p>
-        <p className="mx-auto max-w-prose text-[13px] leading-relaxed text-[color:var(--aqt-fg-muted)]">
+        <p className="mx-auto max-w-prose text-caption leading-relaxed text-[color:var(--aqt-fg-muted)]">
           {resolvedDescription}
         </p>
       </div>
@@ -99,7 +99,7 @@ export function PageStateCard({
         <button
           type="button"
           onClick={onAction}
-          className="mt-1 inline-flex h-9 items-center rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 text-[13px] font-medium text-[color:var(--aqt-fg)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-card)]"
+          className="mt-1 inline-flex h-9 items-center rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 text-caption font-medium text-[color:var(--aqt-fg)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-card)]"
         >
           {resolvedActionLabel}
         </button>

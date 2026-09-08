@@ -68,7 +68,7 @@ export function PickupMixHeader({
     <div className={cn(PANEL_CLASS, "flex flex-wrap items-center gap-3 px-4 py-3")}>
       <Link
         href="/balancer/pickup"
-        className="flex shrink-0 items-center gap-1.5 text-[13px] text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)]"
+        className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)]"
       >
         <ArrowLeft className="size-3.5" aria-hidden="true" />
         Mixes
@@ -82,7 +82,7 @@ export function PickupMixHeader({
           {game?.name ?? (gameLoading ? "\u2026" : "No mix yet")}
         </h1>
         {game ? (
-          <span className="shrink-0 font-mono text-[13px] font-semibold text-[color:var(--aqt-fg-dim)]">
+          <span className="shrink-0 text-caption font-semibold text-[color:var(--aqt-fg-dim)]">
             {`#${game.id}`}
           </span>
         ) : null}

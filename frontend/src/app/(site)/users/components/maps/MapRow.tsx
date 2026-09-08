@@ -22,8 +22,8 @@ const MapRow = ({ row }: { row: UserMapRead }) => {
         )}
       </div>
       <div className="flex flex-col leading-tight">
-        <div className="text-[14.5px] font-semibold text-[color:var(--aqt-fg)]">{row.map.name}</div>
-        <div className="aqt-mono text-[11.5px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
+        <div className="text-body font-semibold text-[color:var(--aqt-fg)]">{row.map.name}</div>
+        <div className="aqt-tnum text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
           {row.map.gamemode?.name ?? "—"}
         </div>
       </div>
@@ -45,12 +45,12 @@ const MapRow = ({ row }: { row: UserMapRead }) => {
           ))}
         </AvatarStack>
       ) : (
-        <span className="aqt-mono text-[12px] text-[color:var(--aqt-fg-faint)]">—</span>
+        <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">—</span>
       )}
-      <span className="aqt-mono text-right text-[13.5px] font-semibold text-[color:var(--aqt-fg-muted)]">
+      <span className="aqt-tnum text-right text-caption font-semibold text-[color:var(--aqt-fg-muted)]">
         {row.win}-{row.loss}-{row.draw}
       </span>
-      <span className="aqt-mono text-right text-[14px] font-semibold">{row.count}</span>
+      <span className="aqt-tnum text-right text-body font-semibold">{row.count}</span>
     </div>
   );
 };

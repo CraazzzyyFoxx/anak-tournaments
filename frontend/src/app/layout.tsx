@@ -16,9 +16,7 @@ import React from "react";
 // The files are the upstream variable TTFs from github.com/google/fonts,
 // subset to `latin` + Latin Extended-A + `cyrillic` and converted to woff2
 // (see `fonts/README.md` for the exact command). One file per family replaces
-// the eight-to-seventeen per-subset files Google served: 185 KB always, where
-// a Cyrillic page used to pull ~130 KB and a name with `ł` or `ş` in it pulled
-// another 85 KB of Inter's latin-ext on top.
+// the eight-to-seventeen per-subset files Google served.
 const inter = localFont({
   src: "./fonts/inter-variable.woff2",
   // The wght axis span, so the browser interpolates instead of synthesizing
@@ -35,19 +33,6 @@ const onest = localFont({
   weight: "100 900",
   variable: "--font-onest",
   display: "swap"
-});
-
-const jetbrainsMono = localFont({
-  src: "./fonts/jetbrains-mono-variable.woff2",
-  weight: "100 800",
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-  // A local font can only borrow Arial's or Times' metrics for its fallback
-  // face, and Arial is proportional. Inserting it ahead of the real fallback
-  // would render every `tabular-nums` column in a proportional face for the
-  // length of the swap. `globals.css` already ends `--aqt-mono` with
-  // `ui-monospace, monospace`, which is the right fallback and is now reached.
-  adjustFontFallback: false
 });
 
 import { Providers } from "@/app/providers";
@@ -107,13 +92,12 @@ export default async function RootLayout({
     rawConsent === "accepted" || rawConsent === "declined" ? rawConsent : null;
   return (
     // The next/font `.variable` classes MUST sit on <html>, not <body>: they
-    // define --font-inter/--font-onest/--font-jetbrains-mono, and globals.css
-    // aliases them from `:root` (--aqt-mono, --aqt-display, --aqt-onest).
-    // Custom properties are substituted where they are *declared*, so a
-    // `:root` alias cannot read a variable defined one level down on <body> —
-    // it resolves to nothing and every .aqt-mono surface silently falls back
-    // to Inter instead of JetBrains Mono.
-    <html lang={locale} className={cn(inter.variable, jetbrainsMono.variable, onest.variable)}>
+    // define --font-inter/--font-onest, and globals.css aliases them from
+    // `:root` (--aqt-data, --aqt-display, --aqt-onest). Custom properties are
+    // substituted where they are *declared*, so a `:root` alias cannot read a
+    // variable defined one level down on <body> — it resolves to nothing and
+    // every display surface silently falls back to Inter.
+    <html lang={locale} className={cn(inter.variable, onest.variable)}>
       <body className={cn(inter.className, "dark")}>
         <NextIntlClientProvider>
           <Providers>

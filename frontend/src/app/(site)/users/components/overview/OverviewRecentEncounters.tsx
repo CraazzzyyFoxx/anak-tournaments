@@ -98,20 +98,20 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
             className="grid cursor-pointer grid-cols-[auto_1fr_auto_auto_auto] items-center gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3 transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)] sm:grid-cols-[auto_1fr_auto_auto_auto_auto]"
           >
             <span
-              className="aqt-mono min-w-[42px] text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]"
+              className="aqt-tnum min-w-[42px] text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
               title={tour?.name}
             >
               {tournamentLabel}
             </span>
             <div className="flex flex-col gap-0.5 leading-tight">
-              <div className="text-[14px] font-semibold text-[color:var(--aqt-fg)]">
+              <div className="text-body font-semibold text-[color:var(--aqt-fg)]">
                 {isUserHome ? <em className="not-italic" style={{ color: "var(--aqt-teal)" }}>{home}</em> : home}
                 {" "}
                 {t("common.vs")}
                 {" "}
                 {!isUserHome ? <em className="not-italic" style={{ color: "var(--aqt-teal)" }}>{away}</em> : away}
               </div>
-              <div className="text-[12px] text-[color:var(--aqt-fg-dim)]">
+              <div className="text-label text-[color:var(--aqt-fg-dim)]">
                 {subLabel} · {t("users.overview.mapsCount", { count: mapCount })}
               </div>
             </div>
@@ -124,7 +124,7 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
               ))}
             </span>
             <span
-              className={cn("aqt-mono min-w-[42px] text-right text-[16px] font-bold", scoreKind === "win" && "text-[color:var(--aqt-emerald)]", scoreKind === "loss" && "text-[color:var(--aqt-rose)]", scoreKind === "draw" && "text-[color:var(--aqt-amber)]")}
+              className={cn("aqt-tnum min-w-[42px] text-right text-base font-bold", scoreKind === "win" && "text-[color:var(--aqt-emerald)]", scoreKind === "loss" && "text-[color:var(--aqt-rose)]", scoreKind === "draw" && "text-[color:var(--aqt-amber)]")}
             >
               {scoreStr}
             </span>

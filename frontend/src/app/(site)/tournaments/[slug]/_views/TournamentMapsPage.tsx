@@ -22,9 +22,9 @@ import {
 import { getPublicPageQueryPresentation } from "./publicPageQueryPresentation";
 
 const EYEBROW =
-  "aqt-mono block text-[12px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]";
+  "aqt-tnum block text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]";
 const LABEL =
-  "font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]";
+  "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 type Gamemode = NonNullable<MapRead["gamemode"]>;
 
@@ -137,7 +137,7 @@ export default function TournamentMapsPage({
             <h2 className={cn(EYEBROW, "mb-1")}>
               {t("tournamentDetail.mapPool.title", { count: pool.total })}
             </h2>
-            <p className="mb-3 text-[13px] text-[color:var(--aqt-fg-faint)]">
+            <p className="mb-3 text-caption text-[color:var(--aqt-fg-faint)]">
               {t("tournamentDetail.mapPool.rounds.lede")}
             </p>
             {/* The pool is only ever shown per round: a merged list of every map
@@ -192,7 +192,7 @@ export default function TournamentMapsPage({
                             className="grid grid-cols-1 gap-x-5 gap-y-2 border-t border-[color:var(--aqt-border)] py-3 sm:grid-cols-[minmax(5rem,7rem)_minmax(0,1fr)]"
                           >
                             <div className="flex items-baseline gap-2 sm:block">
-                              <div className="flex items-center gap-1.5 text-[13px] font-semibold">
+                              <div className="flex items-center gap-1.5 text-caption font-semibold">
                                 <ModeIcon gamemode={roundMode} />
                                 {round.round ?? t("tournamentDetail.mapPool.rounds.wholeStage")}
                               </div>

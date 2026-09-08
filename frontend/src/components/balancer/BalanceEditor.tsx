@@ -183,7 +183,7 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
       <div ref={ref} className="space-y-4">
         {benchedPlayers.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-rose-400/20 bg-rose-500/5 px-4 py-3">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.14em] text-rose-200/80">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-label text-rose-200/80">
               <UserX className="h-3.5 w-3.5" />
               Unassigned
             </span>

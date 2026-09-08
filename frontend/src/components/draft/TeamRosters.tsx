@@ -198,18 +198,18 @@ export function TeamRosters({
                 )}
               >
                 {onClock && (
-                  <p className="px-3 pt-2 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-teal)]">
+                  <p className="px-3 pt-2 text-label font-bold uppercase tracking-label text-[color:var(--aqt-teal)]">
                     {t("onTheClock")}
                   </p>
                 )}
                 <div className="flex items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-3 py-2.5">
                   <span
-                    className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[9px] text-[13px] font-extrabold"
+                    className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[9px] text-caption font-extrabold"
                     style={{ background: `hsl(${crest.hue} 55% 22%)`, color: `hsl(${crest.hue} 70% 72%)` }}
                   >
                     {crest.initial}
                   </span>
-                  <span className="min-w-0 truncate text-[15px] font-semibold tracking-tight">{team.name}</span>
+                  <span className="min-w-0 truncate text-ui font-semibold tracking-tight">{team.name}</span>
                   <span className="inline-flex shrink-0 items-center">
                     <span
                       aria-hidden
@@ -238,13 +238,13 @@ export function TeamRosters({
                         />
                       </span>
                     )}
-                    <span className="font-mono text-xs text-[color:var(--aqt-fg-faint)]">
+                    <span className="text-xs text-[color:var(--aqt-fg-faint)]">
                       #{team.draft_position}
                     </span>
                   </span>
                 </div>
                 {shape.has_role_slots && (
-                  <div className="flex gap-4 border-b border-[color:var(--aqt-border)] px-3 py-2 font-mono text-xs text-[color:var(--aqt-fg-muted)]">
+                  <div className="flex gap-4 border-b border-[color:var(--aqt-border)] px-3 py-2 text-xs text-[color:var(--aqt-fg-muted)]">
                     <SlotCounters counters={view.counters} accented />
                   </div>
                 )}

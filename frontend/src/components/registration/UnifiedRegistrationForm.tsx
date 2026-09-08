@@ -721,7 +721,7 @@ export default function UnifiedRegistrationForm({
       <div ref={stepRef}>
         {stepKey === "accounts" && mode === "admin" && (
           <div className="mb-4 space-y-1.5">
-            <h3 className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+            <h3 className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
               Linked Site Account
             </h3>
             <AuthUserSearchCombobox

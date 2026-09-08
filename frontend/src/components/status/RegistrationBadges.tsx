@@ -316,7 +316,7 @@ export function SubscriptionProviderBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-label font-medium",
         STATUS_TONE_PILL[tone],
         className
       )}

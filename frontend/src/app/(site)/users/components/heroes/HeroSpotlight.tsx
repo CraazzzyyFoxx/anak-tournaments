@@ -30,11 +30,11 @@ interface SpotlightHero {
 
 const QuickStat = ({ label, value, delta }: { label: string; value: string; delta: number | null }) => (
   <div className="flex flex-col items-end gap-0.5">
-    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">{label}</span>
-    <span className="aqt-display text-[28px] font-bold leading-none">{value}</span>
+    <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{label}</span>
+    <span className="aqt-display text-headline font-bold leading-none">{value}</span>
     {delta != null ? (
       <span
-        className="aqt-mono text-[11.5px] font-bold"
+        className="aqt-tnum text-label font-bold"
         style={{ color: delta >= 0 ? "var(--aqt-emerald)" : "var(--aqt-rose)" }}
       >
         {formatDelta(delta)}
@@ -81,16 +81,16 @@ const HeroSpotlight = ({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <span
-          className="aqt-mono inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[12px] uppercase tracking-[0.06em]"
+          className="aqt-tnum inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-label uppercase tracking-[0.06em]"
           style={{ background: `var(--aqt-${heroVariant})`, color: "var(--aqt-bg)" }}
         >
           {selected.hero.hero.type ?? selected.hero.hero.role}
         </span>
-        <span className="aqt-mono text-[13px] text-[color:var(--aqt-fg-muted)]">
+        <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-muted)]">
           {t("users.heroes.played", { time: formatSeconds(selected.playtime, { withSeconds: false }) })}
         </span>
         <span
-          className="aqt-mono inline-flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.06)] px-2 py-0.5 text-[12px]"
+          className="aqt-tnum inline-flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.06)] px-2 py-0.5 text-label"
         >
           <span aria-hidden>▎</span>
           {t("users.heroes.poolShare", { pct: (selected.share * 100).toFixed(0) })}

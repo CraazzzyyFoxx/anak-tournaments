@@ -36,11 +36,11 @@ export default function FieldLabel({
   return (
     <Tag htmlFor={htmlFor} className={cn("inline-flex items-center gap-2", className)}>
       {icon ? <span className="flex shrink-0 items-center justify-center">{icon}</span> : null}
-      <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+      <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
         {label}
       </span>
       {required && (
-        <span className="rounded-full border border-warning/25 bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-warning">
+        <span className="rounded-full border border-warning/25 bg-warning/10 px-1.5 py-0.5 text-label font-medium uppercase tracking-wide text-warning">
           {t("common.required")}
         </span>
       )}

@@ -127,7 +127,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
             aria-label={isBulkSelected ? `Unselect ${player.battle_tag}` : `Select ${player.battle_tag}`}
             onClick={() => onToggleBulkSelection?.(player.id)}
             className={cn(
-              "mt-0.5 flex h-6 w-6 items-center justify-center rounded-md border text-[11px] transition-colors",
+              "mt-0.5 flex h-6 w-6 items-center justify-center rounded-md border text-label transition-colors",
               isBulkSelected
                 ? "border-cyan-300/50 bg-cyan-500/18 text-cyan-100"
                 : "border-[color:var(--aqt-border-2)] bg-black/15 text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg-muted)]",
@@ -148,7 +148,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                     ))}
                   </div>
                 ) : (
-                  <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No roles</span>
+                  <span className="text-label text-[color:var(--aqt-fg-dim)]">No roles</span>
                 )}
                 <button
                   type="button"
@@ -157,8 +157,8 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                   title={`Edit ${primaryBattleTag}`}
                   className="flex min-w-0 items-baseline gap-1 rounded text-left"
                 >
-                  <span className="truncate text-[13px] font-medium text-[color:var(--aqt-fg)]">{name}</span>
-                  {suffix ? <span className="shrink-0 text-[12px] text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
+                  <span className="truncate text-caption font-medium text-[color:var(--aqt-fg)]">{name}</span>
+                  {suffix ? <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
                 </button>
               </div>
 
@@ -172,14 +172,14 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                   {primaryEntry?.rank_value != null ? (
                     <span
                       className={cn(
-                        "min-w-10 text-right text-[13px] font-semibold tabular-nums text-cyan-300",
+                        "min-w-10 text-right text-caption font-semibold tabular-nums text-cyan-300",
                         primaryRole && ROLE_TEXT_ACCENTS[primaryRole],
                       )}
                     >
                       {primaryEntry.rank_value}
                     </span>
                   ) : (
-                    <span className="text-[12px] text-[color:var(--aqt-fg-dim)]">-</span>
+                    <span className="text-label text-[color:var(--aqt-fg-dim)]">-</span>
                   )}
                 </div>
 
@@ -213,12 +213,12 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
             {player.is_flex || isReady || issues.length > 0 || smurfTags.length > 0 ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
                 {player.is_flex ? (
-                  <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-200">
+                  <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-violet-200">
                     Flex
                   </span>
                 ) : null}
                 {isReady ? (
-                  <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+                  <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-emerald-200">
                     Ready
                   </span>
                 ) : null}

@@ -12,7 +12,7 @@
   --text: var(--aqt-fg);
   --docs-muted: var(--aqt-fg-muted);
   --docs-muted-2: var(--aqt-fg-dim);
-  --mono: var(--aqt-mono);
+  --mono: var(--aqt-data);
 
   display: flex;
   min-height: 70vh;
@@ -33,10 +33,10 @@
 
 .sidebarHint {
   padding: 0.4rem 0.6rem;
-  font-size: 0.6875rem; /* 11px — the readability floor */
+  font-size: var(--text-label); /* 11px — the readability floor */
   color: var(--docs-muted-2);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
 }
 .navItem {
   display: block;
@@ -51,7 +51,7 @@
   text-decoration: none;
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-body);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
@@ -77,14 +77,14 @@
 }
 
 .navSection {
-  font-family: var(--aqt-mono);
-  font-size: 0.7rem;
+  font-family: var(--aqt-data);
+  font-size: var(--text-label);
   color: var(--aqt-fg-faint);
   flex: 0 0 auto;
 }
 
 .navTitle {
-  font-size: 0.82rem;
+  font-size: var(--text-caption);
   font-weight: 500;
   line-height: 1.25;
 }
@@ -99,13 +99,13 @@
 
 .navSchema {
   font-family: var(--mono);
-  font-size: 0.6875rem; /* 11px — the readability floor */
+  font-size: var(--text-label); /* 11px — the readability floor */
   color: var(--docs-muted);
 }
 
 .navCount {
   font-family: var(--mono);
-  font-size: 0.6875rem; /* 11px — the readability floor */
+  font-size: var(--text-label); /* 11px — the readability floor */
   color: var(--docs-muted-2);
   background: var(--bg);
   border: 1px solid var(--docs-border);
@@ -123,7 +123,7 @@
 
 .chip {
   font-family: var(--mono);
-  font-size: 0.6875rem; /* 11px — the readability floor */
+  font-size: var(--text-label); /* 11px — the readability floor */
   color: var(--docs-muted);
   background: var(--bg);
   border: 1px solid var(--docs-border-soft);
@@ -140,7 +140,7 @@
 
 .navEmpty {
   padding: 1rem 0.6rem;
-  font-size: 0.8rem;
+  font-size: var(--text-caption);
   color: var(--docs-muted);
 }
 
@@ -175,7 +175,7 @@
 .stageSchema {
   display: inline-block;
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: var(--text-label);
   color: var(--teal);
   background: var(--teal-dim);
   border-radius: 4px;
@@ -186,7 +186,7 @@
 
 .stageDesc {
   margin: 0.5rem 0 0;
-  font-size: 0.82rem;
+  font-size: var(--text-caption);
   color: var(--docs-muted);
   line-height: 1.5;
   max-width: 70ch;
@@ -267,7 +267,7 @@
 
 .zoomLevel {
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: var(--text-label);
   color: var(--docs-muted);
   display: inline-flex;
   align-items: center;
@@ -283,7 +283,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--mono);
-  font-size: 0.8rem;
+  font-size: var(--text-caption);
   color: var(--docs-muted);
   pointer-events: none;
 }
@@ -292,7 +292,7 @@
   color: var(--aqt-rose);
   padding: 1.5rem;
   font-family: var(--mono);
-  font-size: 0.8rem;
+  font-size: var(--text-caption);
   white-space: pre-wrap;
 }
 
@@ -326,7 +326,7 @@
 .schemaTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.78rem;
+  font-size: var(--text-caption);
 }
 
 .schemaTable th {
@@ -335,7 +335,7 @@
   background: var(--panel-2);
   color: var(--docs-muted);
   font-weight: 600;
-  font-size: 0.7rem;
+  font-size: var(--text-label);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-bottom: 1px solid var(--docs-border);
@@ -369,13 +369,13 @@
 
 .schemaKeyTables {
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: var(--text-label);
   color: var(--docs-muted);
 }
 
 .owner {
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: var(--text-label);
   color: var(--docs-muted);
   white-space: nowrap;
 }
@@ -393,14 +393,14 @@
 
 .defTerm {
   font-family: var(--mono);
-  font-size: 0.8rem;
+  font-size: var(--text-caption);
   font-weight: 600;
   color: var(--teal);
   margin-bottom: 2px;
 }
 
 .defBody {
-  font-size: 0.8rem;
+  font-size: var(--text-caption);
   color: var(--text);
   line-height: 1.55;
 }
@@ -415,7 +415,7 @@
 }
 
 .mapNote {
-  font-size: 0.78rem;
+  font-size: var(--text-caption);
   color: var(--docs-muted);
   margin: 0 0 0.85rem;
   line-height: 1.5;
@@ -477,7 +477,7 @@
 
 .lead {
   margin: 0.75rem 0 0;
-  font-size: 0.875rem;
+  font-size: var(--text-body);
   line-height: 1.625;
   text-wrap: pretty;
   color: var(--aqt-fg-muted);
@@ -494,7 +494,7 @@
 .prose p,
 .prose li {
   margin: 0.5rem 0 0;
-  font-size: 0.875rem;
+  font-size: var(--text-body);
   line-height: 1.625;
   color: var(--aqt-fg-muted);
 }
@@ -528,7 +528,7 @@
   border-left: 2px solid var(--aqt-teal);
   border-radius: 0 var(--aqt-radius-sm) var(--aqt-radius-sm) 0;
   background: var(--aqt-card);
-  font-size: 0.875rem;
+  font-size: var(--text-body);
   line-height: 1.625;
   color: var(--aqt-fg-muted);
 }
@@ -537,7 +537,7 @@
   width: 100%;
   margin: 0.75rem 0 0;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: var(--text-body);
 }
 
 .prose th,
@@ -549,7 +549,7 @@
 }
 
 .prose th {
-  font-size: 0.75rem;
+  font-size: var(--text-label);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -561,7 +561,7 @@
 }
 
 .code {
-  font-family: var(--aqt-mono);
+  font-family: var(--aqt-data);
   font-size: 0.9em;
   color: var(--aqt-teal);
   background: color-mix(in srgb, var(--aqt-teal) 14%, transparent);

@@ -93,7 +93,7 @@ export function BalancerPresenceStack({ userIds, workspaceId }: BalancerPresence
             className="h-7 w-7 border-2 border-background bg-muted text-xs"
           >
             {member?.avatar_url ? <AvatarImage src={member.avatar_url} alt={name} /> : null}
-            <AvatarFallback className="text-[11px] font-medium text-foreground">
+            <AvatarFallback className="text-label font-medium text-foreground">
               {initials(name)}
             </AvatarFallback>
           </Avatar>
@@ -101,7 +101,7 @@ export function BalancerPresenceStack({ userIds, workspaceId }: BalancerPresence
       })}
       {overflow > 0 ? (
         <span
-          className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-muted text-[11px] font-medium text-muted-foreground"
+          className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-muted text-label font-medium text-muted-foreground"
           title={`${overflow} more viewer${overflow === 1 ? "" : "s"}`}
         >
           +{overflow}

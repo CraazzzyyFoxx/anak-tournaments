@@ -76,7 +76,7 @@ export function SegmentedRadio<T extends string>({
               }
             }}
             className={cn(
-              "flex-1 whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+              "flex-1 whitespace-nowrap rounded-md px-2 py-1 text-label font-medium transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
               checked
                 ? cn("text-[color:var(--aqt-fg)]", option.selectedClassName ?? "bg-[color:var(--aqt-overlay-3)]")

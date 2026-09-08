@@ -77,7 +77,7 @@ export function CategorizedColumnPicker<
 
             return (
               <div key={category}>
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">
+                <p className="mb-1.5 text-label font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">
                   {categoryLabel(category)}
                 </p>
                 <div className="space-y-1">
@@ -111,7 +111,7 @@ export function CategorizedColumnPicker<
           <button
             type="button"
             onClick={onReset}
-            className="w-full rounded px-2 py-1 text-[11px] text-[color:var(--aqt-fg-dim)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg-muted)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+            className="w-full rounded px-2 py-1 text-label text-[color:var(--aqt-fg-dim)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg-muted)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
           >
             {resetLabel}
           </button>

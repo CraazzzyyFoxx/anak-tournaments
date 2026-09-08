@@ -50,7 +50,7 @@ export async function EventCard({
 
           <div className="flex shrink-0 items-center gap-2">
             {tournament.is_league && (
-              <span className="text-[11px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-full border border-[color:color-mix(in_srgb,var(--aqt-violet)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-violet)_14%,transparent)] text-[color:var(--aqt-violet)]">
+              <span className="text-label font-bold tracking-label uppercase px-1.5 py-0.5 rounded-full border border-[color:color-mix(in_srgb,var(--aqt-violet)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-violet)_14%,transparent)] text-[color:var(--aqt-violet)]">
                 {t("common.league")}
               </span>
             )}
@@ -120,7 +120,7 @@ export async function LiveUpcomingBadge({
         />
         <span className={`relative inline-flex rounded-full h-2 w-2 ${dotClassName}`} />
       </span>
-      <span className={`text-[11px] font-bold tracking-[0.14em] uppercase ${textClassName}`}>
+      <span className={`text-label font-bold tracking-label uppercase ${textClassName}`}>
         {liveCount > 0 && t("statistics.liveCount", { count: liveCount })}
         {liveCount > 0 && upcomingCount > 0 && " · "}
         {upcomingCount > 0 && t("statistics.upcomingCount", { count: upcomingCount })}

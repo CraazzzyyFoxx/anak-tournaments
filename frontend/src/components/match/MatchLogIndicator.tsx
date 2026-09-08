@@ -114,7 +114,7 @@ const MatchLogIndicator = ({ hasLogs, logs, size = 15, className }: MatchLogIndi
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-56 p-1.5" onClick={stop}>
-        <div className="px-2 pb-1.5 pt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+        <div className="px-2 pb-1.5 pt-1 text-label font-bold uppercase tracking-label text-muted-foreground">
           {t("common.matchLogs.title")}
         </div>
         <div className="flex flex-col">
@@ -124,7 +124,7 @@ const MatchLogIndicator = ({ hasLogs, logs, size = 15, className }: MatchLogIndi
               href={matchLogDownloadUrl(log.matchId)}
               download
               onClick={stop}
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-caption transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <FileDown size={13} strokeWidth={1.9} className="text-[color:var(--aqt-emerald)]" aria-hidden />
               <span className="truncate">

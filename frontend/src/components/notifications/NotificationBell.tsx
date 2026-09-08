@@ -40,7 +40,7 @@ const NotificationBell = () => {
           {unreadCount != null && unreadCount > 0 && (
             <span
               aria-hidden
-              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold tabular-nums leading-none text-destructive-foreground ring-2 ring-background"
+              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-label font-bold tabular-nums leading-none text-destructive-foreground ring-2 ring-background"
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>

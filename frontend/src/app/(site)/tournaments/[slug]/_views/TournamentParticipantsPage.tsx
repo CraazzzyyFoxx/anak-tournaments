@@ -300,10 +300,10 @@ function RegistrationRoleChip({
       <PlayerRoleIcon role={ROLE_TO_ICON[role.role] ?? role.role} size={12} decorative />
       <span>{getRoleLabel(role.role, t)}</span>
       {role.subrole && (
-        <span className="text-[11px] opacity-60">({formatSubroleSlug(role.subrole)})</span>
+        <span className="text-label opacity-60">({formatSubroleSlug(role.subrole)})</span>
       )}
       {showPrimaryMark && (
-        <span className="text-[11px] uppercase tracking-wide opacity-70">
+        <span className="text-label uppercase tracking-wide opacity-70">
           · {t("registration.myCard.primaryRole")}
         </span>
       )}
@@ -584,7 +584,7 @@ function MyRegistrationCard({
             {createElement(StatusIcon, { className: "size-5", "aria-hidden": true })}
           </span>
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
+            <p className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               {t("registration.myCard.title")}
             </p>
             <h3 className="mt-0.5 text-lg font-bold leading-tight text-[color:var(--aqt-fg)]">
@@ -621,7 +621,7 @@ function MyRegistrationCard({
               type="button"
               onClick={onWithdraw}
               disabled={isWithdrawing || isCheckingIn}
-              className="inline-flex items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--aqt-rose)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_5%,transparent)] px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--aqt-rose)] transition-all hover:border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--aqt-rose)_10%,transparent)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              className="inline-flex items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--aqt-rose)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_5%,transparent)] px-2.5 py-1.5 text-label font-semibold text-[color:var(--aqt-rose)] transition-all hover:border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--aqt-rose)_10%,transparent)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
               {isWithdrawing && (
                 <Loader2
@@ -672,7 +672,7 @@ function MyRegistrationCard({
               <RegistrationStepMarker tone={step.tone} />
               <span
                 className={cn(
-                  "text-[11px] leading-tight",
+                  "text-label leading-tight",
                   step.tone === "done" && "text-[color:var(--aqt-emerald)]",
                   step.tone === "active" && "font-medium text-[color:var(--aqt-amber)]",
                   step.tone === "failed" && "text-[color:var(--aqt-rose)]",
@@ -697,7 +697,7 @@ function MyRegistrationCard({
         <div className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4 sm:px-5">
           <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2">
-              <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
+              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                 {t("common.rolesList")}
               </h4>
               {primaryRole || secondaryRoles.length > 0 ? (
@@ -721,7 +721,7 @@ function MyRegistrationCard({
 
             {teamBrief && (
               <div className="space-y-2">
-                <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
+                <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                   {t("registrationTeams.myCard.teamLabel")}
                 </h4>
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -736,7 +736,7 @@ function MyRegistrationCard({
                     </span>
                   )}
                   {teamBrief.is_substitute && (
-                    <span className="rounded border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-1.5 py-0.5 text-[11px] font-semibold text-[color:var(--aqt-fg-dim)]">
+                    <span className="rounded border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-1.5 py-0.5 text-label font-semibold text-[color:var(--aqt-fg-dim)]">
                       {t("registrationTeams.member.substitute")}
                     </span>
                   )}
@@ -745,7 +745,7 @@ function MyRegistrationCard({
             )}
 
             <div className="space-y-2">
-              <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
+              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                 {t("registration.myCard.accounts")}
               </h4>
               <div className="flex flex-wrap gap-1.5 text-xs">
@@ -784,7 +784,7 @@ function MyRegistrationCard({
             </div>
 
             <div className="space-y-2">
-              <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
+              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                 {t("registration.details.streamPov")}
               </h4>
               <span
@@ -805,7 +805,7 @@ function MyRegistrationCard({
 
           {registration.notes ? (
             <div className="mt-4 space-y-1.5">
-              <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
+              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                 {t("registration.details.notes")}
               </h4>
               <p className="border-l-2 border-[color:var(--aqt-border-2)] pl-3 text-xs italic leading-relaxed text-[color:var(--aqt-fg-muted)]">

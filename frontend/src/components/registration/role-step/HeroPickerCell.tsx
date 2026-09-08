@@ -61,7 +61,7 @@ export function HeroPickerCell({
           })}
           className={cn(
             "flex h-9 w-full items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)]",
-            "bg-[color:var(--aqt-overlay-2)] px-2 text-[11px] font-medium transition-colors",
+            "bg-[color:var(--aqt-overlay-2)] px-2 text-label font-medium transition-colors",
             "hover:bg-[color:var(--aqt-overlay-3)]",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             selected.length > 0
@@ -99,7 +99,7 @@ export function HeroPickerCell({
         aria-label={t("registration.roles.matrix.heroesPickerLabel", { role: roleLabel })}
         className="w-[min(22rem,calc(100vw-2rem))] space-y-2 p-3"
       >
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+        <p className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
           {roleLabel}
         </p>
         <HeroPickerBlock
@@ -111,7 +111,7 @@ export function HeroPickerCell({
         />
         {/* `block`: <output> is inline, so the popover's `space-y-2` rhythm
             would skip it. */}
-        <output className="block text-[11px] leading-4 text-[color:var(--aqt-fg-muted)]">
+        <output className="block text-label leading-4 text-[color:var(--aqt-fg-muted)]">
           {atMax
             ? t("registration.roles.matrix.heroesAtMax", { max })
             : t("registration.roles.topHeroes.desc", { max })}

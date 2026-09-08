@@ -149,7 +149,7 @@ function BalanceEditorPlayerTableRow({
           </div>
           {subRoleLabel ? (
             <span
-              className="truncate text-xs font-medium uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]"
+              className="truncate text-xs font-medium uppercase tracking-label text-[color:var(--aqt-fg-dim)]"
               title={subRoleLabel}
             >
               {subRoleLabel}
@@ -335,7 +335,7 @@ export function DroppableRoleSection({
         <TableRow className="border-[color:var(--aqt-border)] hover:bg-transparent">
           <TableCell
             colSpan={4}
-            className="px-3 py-2.5 text-center text-xs uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]"
+            className="px-3 py-2.5 text-center text-xs uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
           >
             Drop {roleKey.toLowerCase()} here
           </TableCell>

@@ -11,10 +11,10 @@ import type { CustomGameStatus } from "@/services/custom-game.service";
 
 /** Mono, wide-tracked, uppercase: the "tactical voice" label above a heading. */
 export const EYEBROW_CLASS =
-  "font-mono text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-faint)]";
+  "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 /** Same voice one step tighter, for a caption that sits beside a label. */
-export const CAPTION_CLASS = "font-mono text-xs tabular-nums text-[color:var(--aqt-fg-dim)]";
+export const CAPTION_CLASS = "text-xs tabular-nums text-[color:var(--aqt-fg-dim)]";
 
 /** Section title inside a card head — display face, uppercase, short tracking. */
 export const CARD_TITLE_CLASS =
@@ -22,7 +22,7 @@ export const CARD_TITLE_CLASS =
 
 /** A read-only stat: pill, hairline border, tabular mono. Tone comes from the caller. */
 export const METRIC_PILL_CLASS =
-  "flex h-7 items-center gap-1.5 rounded-full border px-2.5 font-mono text-[11.5px] font-semibold tabular-nums tracking-[0.06em]";
+  "flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-label font-semibold tabular-nums tracking-[0.06em]";
 
 /** Neutral metric tone — the default for a number that carries no verdict. */
 export const METRIC_NEUTRAL_CLASS =

@@ -305,7 +305,7 @@ function CardLink({ href, children }: Readonly<{ href: string; children: React.R
   return (
     <Link
       href={href}
-      className="font-mono text-[12px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-teal)]"
+      className="text-label uppercase tracking-label text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-teal)]"
     >
       {children}
     </Link>
@@ -357,7 +357,7 @@ function OverviewStreamCard({
         <span className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 p-3">
           <span className="text-sm font-semibold text-[color:var(--aqt-fg)]">{official.channel}</span>
           {viewers ? (
-            <span className="aqt-tnum text-[11px] text-[color:var(--aqt-fg-muted)]">{viewers}</span>
+            <span className="aqt-tnum text-label text-[color:var(--aqt-fg-muted)]">{viewers}</span>
           ) : null}
         </span>
       </Link>
@@ -398,10 +398,10 @@ const ROLE_TINT: Record<RosterSlotCode, string> = {
 function KeyValue({ term, children }: Readonly<{ term: string; children: React.ReactNode }>) {
   return (
     <div className="grid gap-0.5 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-3">
-      <dt className="font-mono text-[12px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)] sm:pt-0.5">
+      <dt className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)] sm:pt-0.5">
         {term}
       </dt>
-      <dd className="min-w-0 text-[15px] text-[color:var(--aqt-fg-muted)]">{children}</dd>
+      <dd className="min-w-0 text-ui text-[color:var(--aqt-fg-muted)]">{children}</dd>
     </div>
   );
 }
@@ -718,7 +718,7 @@ export default function TournamentOverviewPage({
         <div className="flex gap-2 overflow-x-auto pb-1">
           {pickRoundWindow(roundGroups, currentRoundOf(roundGroups)).map((group) => (
             <div className="min-w-[13rem] flex-1 space-y-1.5" key={group.round}>
-              <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+              <div className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                 {roundLabel(group.round, finalRounds)}
               </div>
               {group.matches.map((match) => {
@@ -770,7 +770,7 @@ export default function TournamentOverviewPage({
                   "text-left",
                   group.name === null
                     ? "sr-only"
-                    : "pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]"
+                    : "pb-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
                 )}
               >
                 {group.name === null
@@ -778,7 +778,7 @@ export default function TournamentOverviewPage({
                   : `${t("common.group")} ${group.name}`}
               </caption>
               <thead>
-                <tr className="border-b border-[color:var(--aqt-border)] font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+                <tr className="border-b border-[color:var(--aqt-border)] text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                   <th scope="col" className="w-8 py-1.5 pr-2 text-left font-medium">
                     <span aria-hidden>{t("tournamentDetail.overview.groupTable.pos")}</span>
                     <span className="sr-only">
@@ -910,7 +910,7 @@ export default function TournamentOverviewPage({
                     </div>
                   ) : null}
                   {latest.length > 0 ? (
-                    <p className="mt-2 truncate text-[13px] text-[color:var(--aqt-fg-faint)]">
+                    <p className="mt-2 truncate text-caption text-[color:var(--aqt-fg-faint)]">
                       {t("tournamentDetail.overview.registration.latest")}: {latest.join(" · ")}
                       {latestAgo ? ` · ${latestAgo}` : null}
                     </p>
@@ -1258,7 +1258,7 @@ export default function TournamentOverviewPage({
                       key={entry.hero.id}
                     >
                       <span
-                        className="aqt-tnum text-[10px] text-[color:var(--aqt-fg-faint)]"
+                        className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]"
                         aria-hidden
                       >
                         {String(index + 1).padStart(2, "0")}
@@ -1273,7 +1273,7 @@ export default function TournamentOverviewPage({
                         ) : null}
                         <AvatarFallback className="bg-transparent" />
                       </Avatar>
-                      <span className="min-w-0 truncate text-[13px]" title={entry.hero.name}>
+                      <span className="min-w-0 truncate text-caption" title={entry.hero.name}>
                         {entry.hero.name}
                       </span>
                       <span
@@ -1285,7 +1285,7 @@ export default function TournamentOverviewPage({
                           style={{ width: `${widest > 0 ? (share / widest) * 100 : 0}%` }}
                         />
                       </span>
-                      <span className="aqt-tnum text-right text-[12px] text-[color:var(--aqt-fg-muted)]">
+                      <span className="aqt-tnum text-right text-label text-[color:var(--aqt-fg-muted)]">
                         {format.number(entry.playtime, {
                           style: "percent",
                           maximumFractionDigits: 1

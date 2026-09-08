@@ -31,22 +31,22 @@ const MapsForHero = ({ heroName, heroMaps }: { heroName: string; heroMaps: HeroM
             key={m.id}
             className="grid grid-cols-[26px_1fr_auto_auto] items-center gap-3 border-b border-[color:var(--aqt-border)] px-4 py-2.5 last:border-b-0"
           >
-            <span className="aqt-mono text-[12px] text-[color:var(--aqt-fg-faint)]">
+            <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">
               {String(i + 1).padStart(2, "0")}
             </span>
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-[14px] font-medium text-[color:var(--aqt-fg)]">{m.name}</span>
-              <span className="aqt-mono text-[11px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
+              <span className="truncate text-body font-medium text-[color:var(--aqt-fg)]">{m.name}</span>
+              <span className="aqt-tnum text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
                 {m.mode}
               </span>
             </div>
             <span
-              className="aqt-mono text-right text-[13.5px] font-bold"
+              className="aqt-tnum text-right text-caption font-bold"
               style={{ color: wr >= 55 ? "var(--aqt-emerald)" : wr < 45 ? "var(--aqt-rose)" : "var(--aqt-amber)" }}
             >
               {wr.toFixed(0)}%
             </span>
-            <span className="aqt-mono text-right text-[12.5px] text-[color:var(--aqt-fg-muted)]">
+            <span className="aqt-tnum text-right text-caption text-[color:var(--aqt-fg-muted)]">
               {m.win}-{m.loss}
             </span>
           </div>
@@ -54,7 +54,7 @@ const MapsForHero = ({ heroName, heroMaps }: { heroName: string; heroMaps: HeroM
       })}
       </div>
     ) : (
-      <div className="py-6 text-center text-[13px] text-[color:var(--aqt-fg-dim)]">
+      <div className="py-6 text-center text-caption text-[color:var(--aqt-fg-dim)]">
         {t("users.heroes.noMapData")}
       </div>
     )}

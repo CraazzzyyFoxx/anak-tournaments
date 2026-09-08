@@ -19,7 +19,6 @@ each family's licence sits beside its `.woff2` here, as the licence requires.
 | --- | --- |
 | `inter-variable.woff2` | `ofl/inter/Inter[opsz,wght].ttf` |
 | `onest-variable.woff2` | `ofl/onest/Onest[wght].ttf` |
-| `jetbrains-mono-variable.woff2` | `ofl/jetbrainsmono/JetBrainsMono[wght].ttf` |
 
 [gf]: https://github.com/google/fonts
 
@@ -32,10 +31,7 @@ pyftsubset "<Family>[wght].ttf" \
 ```
 
 `fonttools[woff]` provides `pyftsubset`; the `[woff]` extra is what pulls in
-brotli for the woff2 flavour. All three families take the same ranges —
-including `jetbrains-mono`, because `--aqt-mono` sets viewer counts and
-durations ("14 смотрят", "3ч 37м") and a Latin-only mono drops half of every
-one of those strings into a proportional fallback.
+brotli for the woff2 flavour. Both families take the same ranges.
 
 ## Why these ranges
 
@@ -59,8 +55,10 @@ file. The trade was measured rather than assumed:
 | --- | --- | --- |
 | Inter | 218,888 across 7 files | 94,852 |
 | Onest | 64,632 across 4 files | 48,176 |
-| JetBrains Mono | 66,164 across 6 files | 48,396 |
-| **Total shipped** | **349,684** | **191,424** |
+| **Total shipped** | **283,520** | **143,028** |
+
+(JetBrains Mono, 48,396 B vendored, was retired in favour of Inter for the
+data/label voice and the system monospace stack for code.)
 
 A Cyrillic page used to fetch roughly 130 KB of that (the Latin and Cyrillic
 subsets of each family), so the cost is about +55 KB always-loaded, against
@@ -70,6 +68,6 @@ Extended-A included rather than a separate late fetch.
 ## Not `weight: ["500","600","700"]`
 
 The old `Onest(...)` call named three static weights, which made Next ask Google
-for static instances — the exact assets that 404'd. All three families here are
-variable, declared with their `wght` axis span (`"100 900"`, `"100 800"` for
-JetBrains Mono), so every weight the design uses is interpolated from one file.
+for static instances — the exact assets that 404'd. Both families here are
+variable, declared with their `wght` axis span (`"100 900"`), so every weight
+the design uses is interpolated from one file.

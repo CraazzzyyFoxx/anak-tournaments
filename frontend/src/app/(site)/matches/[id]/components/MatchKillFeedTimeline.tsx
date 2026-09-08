@@ -53,7 +53,7 @@ const ScoreSplit = ({ home, away }: { home: number; away: number }) => {
   return (
     <div className="flex items-center gap-2">
       <span
-        className="aqt-tnum text-[12px]"
+        className="aqt-tnum text-label"
         style={{ color: "var(--aqt-teal)", fontWeight: homeWins ? 700 : 500, opacity: homeWins ? 1 : 0.7 }}
       >
         {home}
@@ -62,7 +62,7 @@ const ScoreSplit = ({ home, away }: { home: number; away: number }) => {
         <div style={{ width: `${homePct}%`, background: "var(--aqt-teal)" }} />
       </div>
       <span
-        className="aqt-tnum text-[12px]"
+        className="aqt-tnum text-label"
         style={{ color: "var(--aqt-rose)", fontWeight: awayWins ? 700 : 500, opacity: awayWins ? 1 : 0.7 }}
       >
         {away}
@@ -160,13 +160,13 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
   const totalKills = data?.kills.length ?? 0;
 
   const legend = (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[color:var(--aqt-fg-dim)]">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-label text-[color:var(--aqt-fg-dim)]">
       <span className="inline-flex items-center gap-1">
         <Zap className="h-3 w-3 text-[color:var(--aqt-violet)]" /> {t("matches.timeline.ultStart")}
       </span>
       <span className="inline-flex items-center gap-1">
         <span
-          className="rounded px-1 text-[11px] font-bold uppercase leading-[1.4]"
+          className="rounded px-1 text-label font-bold uppercase leading-[1.4]"
           style={{ color: "var(--aqt-violet)", background: "hsl(270 70% 62% / 0.16)" }}
         >
           ULT
@@ -201,18 +201,18 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
           background: isUltKill ? "hsl(270 70% 62% / 0.07)" : undefined
         }}
       >
-        <span className="aqt-mono w-8 shrink-0 text-[11px] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-tnum w-8 shrink-0 text-label text-[color:var(--aqt-fg-faint)]">
           {formatClock(kill.time)}
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <HeroImage hero={kill.killer_hero} size="sm" />
-          <span className="truncate text-[12.5px] font-semibold" style={{ color: sideColor(killerSide) }}>
+          <span className="truncate text-caption font-semibold" style={{ color: sideColor(killerSide) }}>
             {nameOf(kill.killer_user_id)}
           </span>
         </div>
         <Swords className="h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-fg-dim)]" aria-hidden="true" />
         <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
-          <span className="truncate text-right text-[12px] text-[color:var(--aqt-fg-dim)]">
+          <span className="truncate text-right text-label text-[color:var(--aqt-fg-dim)]">
             {nameOf(kill.victim_user_id)}
           </span>
           <span className="opacity-70">
@@ -222,7 +222,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
         <div className="flex min-w-[52px] shrink-0 items-center justify-end gap-1">
           {isUltKill ? (
             <span
-              className="rounded px-1 py-px text-[11px] font-bold uppercase tracking-wide"
+              className="rounded px-1 py-px text-label font-bold uppercase tracking-wide"
               style={{
                 color: "var(--aqt-violet)",
                 background: "hsl(270 70% 62% / 0.16)",
@@ -262,7 +262,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
         // Ult end is dimmed so the start→end bracket around ult kills reads clearly.
         style={{ borderLeft: "2px solid transparent", opacity: isUltEnd ? 0.6 : 1 }}
       >
-        <span className="aqt-mono w-8 shrink-0 text-[11px] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-tnum w-8 shrink-0 text-label text-[color:var(--aqt-fg-faint)]">
           {formatClock(event.time)}
         </span>
         <Icon className="h-3 w-3 shrink-0" style={{ color }} aria-hidden="true" />
@@ -271,12 +271,12 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
             <HeroImage hero={event.hero} size="sm" />
           </span>
         ) : null}
-        <span className="truncate text-[11.5px] font-medium" style={{ color: sideColor(side) }}>
+        <span className="truncate text-label font-medium" style={{ color: sideColor(side) }}>
           {nameOf(event.user_id)}
         </span>
-        <span className="text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">{label}</span>
+        <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">{label}</span>
         {isRez && event.related_user_id != null ? (
-          <span className="truncate text-[11px] text-[color:var(--aqt-fg-faint)]">
+          <span className="truncate text-label text-[color:var(--aqt-fg-faint)]">
             {/* Relation separator between reviver and target, not an icon — the
                 event type already has its own lucide glyph above. */}
             <span aria-hidden>→</span> {nameOf(event.related_user_id)}
@@ -289,22 +289,22 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
   return (
     <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
           {t("matches.timeline.title")}
         </span>
         {status === "ready" && totalKills > 0 ? legend : null}
       </div>
 
       {status === "loading" ? (
-        <div className="py-8 text-center text-[13px] text-[color:var(--aqt-fg-dim)]">
+        <div className="py-8 text-center text-caption text-[color:var(--aqt-fg-dim)]">
           {t("matches.timeline.loading")}
         </div>
       ) : null}
       {status === "error" ? (
-        <div className="py-8 text-center text-[13px] text-[color:var(--aqt-rose)]">{t("matches.timeline.error")}</div>
+        <div className="py-8 text-center text-caption text-[color:var(--aqt-rose)]">{t("matches.timeline.error")}</div>
       ) : null}
       {status === "ready" && totalKills === 0 ? (
-        <div className="py-8 text-center text-[13px] text-[color:var(--aqt-fg-dim)]">{t("matches.timeline.empty")}</div>
+        <div className="py-8 text-center text-caption text-[color:var(--aqt-fg-dim)]">{t("matches.timeline.empty")}</div>
       ) : null}
 
       {status === "ready" && totalKills > 0 ? (
@@ -314,7 +314,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
                 {/* Header: per-round kill score. Round label only when the match
                     actually has more than one round (else it's a single feed). */}
                 <div className="mb-2 flex items-center justify-between gap-3 border-b border-[color:var(--aqt-border)] pb-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-muted)]">
+                  <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
                     {multiRound ? t("matches.round", { round: block.round }) : ""}
                   </span>
                   <ScoreSplit home={block.home} away={block.away} />
@@ -335,15 +335,15 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
                       <React.Fragment key={`k-${i}`}>
                         {showFight ? (
                           <div className="mb-0.5 mt-2 flex items-center gap-2 first:mt-0">
-                            <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+                            <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                               {t("matches.timeline.fight", { n: block.fightOrder.get(item.fight) ?? item.fight })}
                             </span>
-                            <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">
+                            <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">
                               {formatClock(item.time)}
                             </span>
                             <div className="h-px flex-1 bg-[color:var(--aqt-border)]" />
                             {fightScore ? (
-                              <span className="aqt-tnum text-[11px]">
+                              <span className="aqt-tnum text-label">
                                 <span style={{ color: "var(--aqt-teal)" }}>{fightScore.home}</span>
                                 <span className="text-[color:var(--aqt-fg-faint)]">–</span>
                                 <span style={{ color: "var(--aqt-rose)" }}>{fightScore.away}</span>

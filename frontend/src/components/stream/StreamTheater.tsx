@@ -137,7 +137,7 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
             </span>
           ) : null}
           {entry.viewer_count != null ? (
-            <span className="aqt-mono text-[13px] font-semibold tabular-nums text-[color:var(--aqt-fg)]">
+            <span className="aqt-tnum text-caption font-semibold tabular-nums text-[color:var(--aqt-fg)]">
               {t("stream.card.watching", { count: entry.viewer_count })}
             </span>
           ) : null}
@@ -145,7 +145,7 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
               number with no subject. The screen reader gets the sentence and
               the eye gets the glanceable form. */}
           {uptime ? (
-            <span className="aqt-mono text-[12.5px] tabular-nums text-[color:var(--aqt-fg-muted)]">
+            <span className="aqt-tnum text-caption tabular-nums text-[color:var(--aqt-fg-muted)]">
               <span className="sr-only">{t("stream.card.onAir", { duration: uptime })}</span>
               <span aria-hidden>{uptime}</span>
             </span>
@@ -155,7 +155,7 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
               news when the featured channel has wandered off to something
               else, and that only fits next to the frame. */}
           {entry.game_name ? (
-            <span className="text-[12.5px] text-[color:var(--aqt-fg-muted)]">{entry.game_name}</span>
+            <span className="text-caption text-[color:var(--aqt-fg-muted)]">{entry.game_name}</span>
           ) : null}
         </div>
 
@@ -163,7 +163,7 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
             a tournament page, so it is the heading — and it is the one profile
             link on the page, because the rail rows are buttons and cannot nest
             one. */}
-        <h3 className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-[17px] font-semibold leading-tight">
+        <h3 className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-base font-semibold leading-tight">
           {entry.player ? (
             <Link
               href={`/users/${getPlayerSlug(entry.player.name)}`}
@@ -189,7 +189,7 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
               so it renders nothing at all — an empty caption or a dash would
               claim the roster exists and is blank. */}
           {entry.player?.team ? (
-            <span className="truncate text-[13px] font-normal text-[color:var(--aqt-fg-muted)]">
+            <span className="truncate text-caption font-normal text-[color:var(--aqt-fg-muted)]">
               {t("stream.card.team", { team: entry.player.team.name })}
             </span>
           ) : null}
@@ -201,7 +201,7 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
             reachable, since the rail rows truncate it to one line. */}
         {entry.title ? (
           <p
-            className="m-0 line-clamp-2 max-w-[70ch] text-[13px] leading-snug text-[color:var(--aqt-fg-muted)]"
+            className="m-0 line-clamp-2 max-w-[70ch] text-caption leading-snug text-[color:var(--aqt-fg-muted)]"
             title={entry.title}
           >
             {entry.title}
@@ -212,7 +212,7 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
           href={entry.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex w-fit items-center gap-2 rounded-[9px] border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 py-2 text-[13px] font-semibold text-inherit no-underline outline-none transition-colors hover:border-[color:var(--aqt-border-3)] hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+          className="inline-flex w-fit items-center gap-2 rounded-[9px] border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 py-2 text-caption font-semibold text-inherit no-underline outline-none transition-colors hover:border-[color:var(--aqt-border-3)] hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
         >
           <SocialIcon provider={entry.platform} size={14} />
           <span>{t("stream.broadcast.watchOn", { platform: provider.label })}</span>
