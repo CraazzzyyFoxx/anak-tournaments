@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from shared.division_grid import DEFAULT_GRID
-from src import schemas
+from src import models, schemas
 from src.core import enums, errors, pagination
 from src.services.dashboard.service import dashboard as dashboard_service
 from src.services.statistics.queries import encounter_query
@@ -472,3 +472,80 @@ def test_active_tournament_stats_is_one_statement() -> None:
     assert len(session.statements) == 1
     sql = _postgres_sql(session.statements[0])
     assert "active_tournament AS" in sql
+
+
+def test_overview_encounter_exprs_use_union_all_sides() -> None:
+    for expr in (
+        overview_queries._overview_avg_closeness_expr(models.User.id, grid=DEFAULT_GRID),
+        overview_queries._overview_maps_won_expr(models.User.id, grid=DEFAULT_GRID),
+        overview_queries._overview_maps_lost_expr(models.User.id, grid=DEFAULT_GRID),
+    ):
+        _assert_indexable_encounter_join(_postgres_sql(expr))
+
+
+def _overview_query_stub():
+    overview = MagicMock()
+    overview.get_overview_users = AsyncMock(return_value=([SimpleNamespace(id=7, name="Subject")], 1))
+    overview.get_catalog_users = AsyncMock(return_value=([("S", [SimpleNamespace(id=7, name="Subject")])], 1, ["S"]))
+    overview.get_overview_role_divisions = AsyncMock(return_value={})
+    overview.get_overview_tournaments_count = AsyncMock(return_value={})
+    overview.get_overview_achievements_count = AsyncMock(return_value={})
+    overview.get_overview_averages = AsyncMock(return_value={})
+    overview.get_overview_top_heroes = AsyncMock(return_value={})
+    overview.get_overview_top_hero_metrics = AsyncMock(return_value={})
+    return overview
+
+
+class _SessionCM:
+    def __init__(self, opened: list) -> None:
+        self._opened = opened
+
+    async def __aenter__(self):
+        session = AsyncMock()
+        self._opened.append(session)
+        return session
+
+    async def __aexit__(self, *args):
+        return False
+
+
+def test_overview_enrichment_opens_isolated_sessions() -> None:
+    overview = _overview_query_stub()
+    opened: list = []
+    svc = user_service.UserService(overview=overview)
+    with patch.object(user_service, "async_session_maker", side_effect=lambda: _SessionCM(opened)):
+        result = asyncio.run(svc.get_overview(AsyncMock(), schemas.UserOverviewParams(), grid=DEFAULT_GRID))
+
+    assert len(opened) == 5
+    overview.get_overview_top_hero_metrics.assert_awaited_once()
+    assert overview.get_overview_top_heroes.await_args.kwargs["limit"] == 5
+    assert result.total == 1
+    assert result.results[0].id == 7
+
+
+def test_catalog_enrichment_opens_isolated_sessions_with_hero_limit() -> None:
+    overview = _overview_query_stub()
+    opened: list = []
+    svc = user_service.UserService(overview=overview)
+    with patch.object(user_service, "async_session_maker", side_effect=lambda: _SessionCM(opened)):
+        result = asyncio.run(svc.get_catalog(AsyncMock(), schemas.UserCatalogParams(), grid=DEFAULT_GRID))
+
+    assert len(opened) == 5
+    assert overview.get_overview_top_heroes.await_args.kwargs["limit"] == 3
+    overview.get_overview_top_hero_metrics.assert_awaited_once()
+    assert result.total == 1
+    assert result.letters[0].letter == "S"
+
+
+def test_overview_skips_enrichment_when_page_is_empty() -> None:
+    overview = _overview_query_stub()
+    overview.get_overview_users = AsyncMock(return_value=([], 0))
+    opened: list = []
+    svc = user_service.UserService(overview=overview)
+    with patch.object(user_service, "async_session_maker", side_effect=lambda: _SessionCM(opened)):
+        result = asyncio.run(svc.get_overview(AsyncMock(), schemas.UserOverviewParams(), grid=DEFAULT_GRID))
+
+    assert opened == []
+    overview.get_overview_role_divisions.assert_not_awaited()
+    overview.get_overview_top_hero_metrics.assert_not_awaited()
+    assert result.results == []

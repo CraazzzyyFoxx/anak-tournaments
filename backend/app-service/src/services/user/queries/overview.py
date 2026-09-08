@@ -19,8 +19,6 @@ from ._scope import (
     _compare_player_scope_filters,
     _compare_team_scope_exists,
     _compare_tournament_scope_exists,
-    away_score_case,
-    home_score_case,
     union_encounter_team_sides,
 )
 
@@ -94,22 +92,30 @@ class UserOverviewQueries:
             )
         )
 
-    @staticmethod
-    def _overview_encounter_select(*columns: typing.Any) -> sa.Select:
-        """Player -> Team -> Encounter -> Tournament chain (map/closeness aggregates)."""
-        return (
-            sa.select(*columns)
-            .select_from(models.Player)
-            .join(models.Team, models.Team.id == models.Player.team_id)
-            .join(
-                models.Encounter,
-                sa.or_(
-                    models.Encounter.home_team_id == models.Team.id,
-                    models.Encounter.away_team_id == models.Team.id,
-                ),
+    def _overview_encounter_select(
+        self,
+        build_columns: typing.Callable[[typing.Any, typing.Any, typing.Any], typing.Sequence[typing.Any]],
+        *where_conditions: typing.Any,
+    ) -> sa.CompoundSelect:
+        """Player -> Team -> Encounter -> Tournament via UNION ALL of equality joins.
+
+        `home_team_id = team.id OR away_team_id = team.id` cannot use either FK
+        index (OWT-TOURNAMENTS-21T). Same split as page-level closeness.
+        `build_columns(team_fk, maps_won, maps_lost)` is evaluated per side;
+        wrap the union in AVG/SUM yourself.
+        """
+
+        def _side(team_fk, won, lost):
+            return (
+                sa.select(*build_columns(team_fk, won, lost))
+                .select_from(models.Player)
+                .join(models.Team, models.Team.id == models.Player.team_id)
+                .join(models.Encounter, team_fk == models.Team.id)
+                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+                .where(*where_conditions)
             )
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        )
+
+        return union_encounter_team_sides(_side)
 
     def _overview_tournaments_count_expr(
         self,
@@ -293,11 +299,11 @@ class UserOverviewQueries:
             grid=grid,
             extra=(models.Encounter.closeness.isnot(None),),
         )
-        return (
-            self._overview_encounter_select(sa.func.avg(models.Encounter.closeness))
-            .where(*where_conditions)
-            .scalar_subquery()
-        )
+        sides = self._overview_encounter_select(
+            lambda _fk, _won, _lost: (models.Encounter.closeness.label("value"),),
+            *where_conditions,
+        ).subquery("overview_avg_closeness_sides")
+        return sa.select(sa.func.avg(sides.c.value)).select_from(sides).scalar_subquery()
 
     def _overview_maps_won_expr(
         self,
@@ -317,11 +323,11 @@ class UserOverviewQueries:
             tournament_id=tournament_id,
             grid=grid,
         )
-        return (
-            self._overview_encounter_select(sa.func.coalesce(sa.func.sum(home_score_case), 0))
-            .where(*where_conditions)
-            .scalar_subquery()
-        )
+        sides = self._overview_encounter_select(
+            lambda _fk, won, _lost: (won.label("value"),),
+            *where_conditions,
+        ).subquery("overview_maps_won_sides")
+        return sa.select(sa.func.coalesce(sa.func.sum(sides.c.value), 0)).select_from(sides).scalar_subquery()
 
     def _overview_maps_lost_expr(
         self,
@@ -341,11 +347,11 @@ class UserOverviewQueries:
             tournament_id=tournament_id,
             grid=grid,
         )
-        return (
-            self._overview_encounter_select(sa.func.coalesce(sa.func.sum(away_score_case), 0))
-            .where(*where_conditions)
-            .scalar_subquery()
-        )
+        sides = self._overview_encounter_select(
+            lambda _fk, _won, lost: (lost.label("value"),),
+            *where_conditions,
+        ).subquery("overview_maps_lost_sides")
+        return sa.select(sa.func.coalesce(sa.func.sum(sides.c.value), 0)).select_from(sides).scalar_subquery()
 
     def _overview_match_stat_avg_10_expr(
         self,

@@ -1,3 +1,4 @@
+import asyncio
 import typing
 from statistics import mean
 
@@ -16,6 +17,7 @@ from shared.services.division_grid.resolution import (
 )
 from src import models, schemas
 from src.core import config, enums, errors, pagination
+from src.core.db import async_session_maker
 from src.core.workspace import get_division_grid_version
 from src.services.hero.service import heroes as hero_service
 from src.services.statistics.queries import StatisticsQueries
@@ -219,6 +221,62 @@ class UserService:
             results=[self.to_read(user, params.entities, visible_only=True) for user in users],
         )
 
+    async def _gather_overview_enrichment(
+        self,
+        session: AsyncSession,
+        user_ids: list[int],
+        *,
+        workspace_id: int | None,
+        top_heroes_limit: int = 5,
+    ) -> tuple[
+        dict[int, list[tuple[enums.HeroClass, int, int | None]]],
+        dict[int, int],
+        dict[int, int],
+        dict[int, tuple[float | None, float | None, float | None, float | None]],
+        dict[int, list[tuple[models.Hero, float]]],
+        dict[tuple[int, int], dict[enums.LogStatsName, float]],
+    ]:
+        """Fan out the independent per-page aggregates.
+
+        AsyncSession is not concurrency-safe, so each parallel query gets
+        its own session (same pattern as DashboardService._gather). Hero
+        metrics need the top-heroes map, so they run after the gather on the
+        request session.
+        """
+
+        async def _isolated(fn):
+            async with async_session_maker() as isolated:
+                return await fn(isolated)
+
+        (
+            raw_roles_map,
+            tournaments_count_map,
+            achievements_count_map,
+            averages_map,
+            top_heroes_map,
+        ) = await asyncio.gather(
+            _isolated(lambda s: self.overview.get_overview_role_divisions(s, user_ids, workspace_id=workspace_id)),
+            _isolated(lambda s: self.overview.get_overview_tournaments_count(s, user_ids, workspace_id=workspace_id)),
+            _isolated(lambda s: self.overview.get_overview_achievements_count(s, user_ids, workspace_id=workspace_id)),
+            _isolated(lambda s: self.overview.get_overview_averages(s, user_ids, workspace_id=workspace_id)),
+            _isolated(
+                lambda s: self.overview.get_overview_top_heroes(
+                    s, user_ids, limit=top_heroes_limit, workspace_id=workspace_id
+                )
+            ),
+        )
+        hero_metrics_map = await self.overview.get_overview_top_hero_metrics(
+            session, top_heroes_map, workspace_id=workspace_id
+        )
+        return (
+            raw_roles_map,
+            tournaments_count_map,
+            achievements_count_map,
+            averages_map,
+            top_heroes_map,
+            hero_metrics_map,
+        )
+
     async def get_overview(
         self,
         session: AsyncSession,
@@ -249,12 +307,14 @@ class UserService:
             )
 
         user_ids = [user.id for user in users]
-        raw_roles_map = await self.overview.get_overview_role_divisions(session, user_ids, workspace_id=workspace_id)
-        tournaments_count_map = await self.overview.get_overview_tournaments_count(session, user_ids, workspace_id=workspace_id)
-        achievements_count_map = await self.overview.get_overview_achievements_count(session, user_ids, workspace_id=workspace_id)
-        averages_map = await self.overview.get_overview_averages(session, user_ids, workspace_id=workspace_id)
-        top_heroes_map = await self.overview.get_overview_top_heroes(session, user_ids, workspace_id=workspace_id)
-        hero_metrics_map = await self.overview.get_overview_top_hero_metrics(session, top_heroes_map, workspace_id=workspace_id)
+        (
+            raw_roles_map,
+            tournaments_count_map,
+            achievements_count_map,
+            averages_map,
+            top_heroes_map,
+            hero_metrics_map,
+        ) = await self._gather_overview_enrichment(session, user_ids, workspace_id=workspace_id)
 
         rows: list[schemas.UserOverviewRow] = []
         for user in users:
@@ -397,12 +457,19 @@ class UserService:
             )
 
         user_ids = [user.id for user in flat_users]
-        raw_roles_map = await self.overview.get_overview_role_divisions(session, user_ids, workspace_id=workspace_id)
-        tournaments_count_map = await self.overview.get_overview_tournaments_count(session, user_ids, workspace_id=workspace_id)
-        achievements_count_map = await self.overview.get_overview_achievements_count(session, user_ids, workspace_id=workspace_id)
-        averages_map = await self.overview.get_overview_averages(session, user_ids, workspace_id=workspace_id)
-        top_heroes_map = await self.overview.get_overview_top_heroes(session, user_ids, limit=3, workspace_id=workspace_id)
-        hero_metrics_map = await self.overview.get_overview_top_hero_metrics(session, top_heroes_map, workspace_id=workspace_id)
+        (
+            raw_roles_map,
+            tournaments_count_map,
+            achievements_count_map,
+            averages_map,
+            top_heroes_map,
+            hero_metrics_map,
+        ) = await self._gather_overview_enrichment(
+            session,
+            user_ids,
+            workspace_id=workspace_id,
+            top_heroes_limit=3,
+        )
 
         catalog_letters: list[schemas.UserCatalogLetter] = []
         for letter_label, users in letters_with_users:
