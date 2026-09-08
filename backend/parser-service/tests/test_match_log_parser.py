@@ -34,3 +34,19 @@ class MatchLogParserTests(TestCase):
         rows = processor._get_rows(enums.LogEventType.PlayerStat)
         self.assertEqual(1, len(rows))
         self.assertEqual(stat_payload, rows.iloc[0]["data"])
+
+    def test_quoted_commas_and_type_index_survive_batched_csv_parse(self) -> None:
+        tournament = SimpleNamespace(id=1, name="Test Cup")
+        lines = [
+            "2026-04-19T12:00:00Z,meta,0,ignored",
+            '2026-04-19T12:00:00Z,match_start,0.0,Ilios,"Control","Team, A","Team, B"',
+            "2026-04-19T12:00:00Z,not_a_real_event,1.0,x",
+            "2026-04-19T12:00:00Z,kill,12.5,Team A,Ana,Ana,Team B,Mercy,Mercy,0,100,False,False",
+        ]
+        processor = flows.MatchLogProcessor(tournament, "match.log", lines, SimpleNamespace())
+
+        starts = processor._get_rows(enums.LogEventType.MatchStart)
+        self.assertEqual(1, len(starts))
+        self.assertEqual(["Ilios", "Control", "Team, A", "Team, B"], starts.iloc[0]["data"])
+        self.assertEqual(1, len(processor._get_rows(enums.LogEventType.Kill)))
+        self.assertTrue(processor._get_rows(enums.LogEventType.PlayerStat).empty)

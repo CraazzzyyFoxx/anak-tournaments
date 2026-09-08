@@ -1,6 +1,10 @@
+from __future__ import annotations
+
+import asyncio
 import csv
 
 import pandas as pd
+import sqlalchemy as sa
 from loguru import logger
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +44,70 @@ from src.services.team import service as team_service
 from src.services.tournament import flows as tournament_flows
 
 from . import service
+
+_LOG_DF_COLUMNS = ["event_type", "time", "data", "round_number"]
+_LOG_EVENT_TYPE_BY_VALUE = {member.value: member for member in enums.LogEventType}
+
+
+def _empty_log_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=_LOG_DF_COLUMNS)
+
+
+def _index_rows_by_event_type(df: pd.DataFrame) -> dict[enums.LogEventType, pd.DataFrame]:
+    if df.empty:
+        return {}
+    return {event_type: group for event_type, group in df.groupby("event_type", sort=False)}  # noqa: C416
+
+
+async def _bulk_insert(session: AsyncSession, model: type, rows: list[dict]) -> None:
+    if rows:
+        await session.execute(sa.insert(model), rows)
+
+
+def _kill_feed_row(kill: models.MatchKillFeed) -> dict:
+    return {
+        "match_id": kill.match_id,
+        "time": kill.time,
+        "round": kill.round,
+        "fight": kill.fight,
+        "ability": kill.ability,
+        "killer_id": kill.killer_id,
+        "killer_hero_id": kill.killer_hero_id,
+        "killer_team_id": kill.killer_team_id,
+        "victim_id": kill.victim_id,
+        "victim_hero_id": kill.victim_hero_id,
+        "victim_team_id": kill.victim_team_id,
+        "damage": kill.damage,
+        "is_critical_hit": kill.is_critical_hit,
+        "is_environmental": kill.is_environmental,
+    }
+
+
+def _match_event_row(event: models.MatchEvent) -> dict:
+    return {
+        "match_id": event.match_id,
+        "time": event.time,
+        "round": event.round,
+        "team_id": event.team_id,
+        "user_id": event.user_id,
+        "hero_id": event.hero_id,
+        "related_team_id": event.related_team_id,
+        "related_user_id": event.related_user_id,
+        "related_hero_id": event.related_hero_id,
+        "name": event.name,
+    }
+
+
+def _processor_from_bytes(
+    tournament: models.Tournament,
+    name: str,
+    raw_bytes: bytes,
+    s3: S3Client,
+    log_record_id: int | None,
+) -> MatchLogProcessor:
+    decoded_lines = [line for line in raw_bytes.decode().split("\n") if line]
+    return MatchLogProcessor(tournament, name, decoded_lines, s3, log_record_id)
+
 
 
 def _winner_team_id(encounter: models.Encounter) -> int | None:
@@ -121,6 +189,7 @@ class MatchLogProcessor:
         # across two differently normalised columns.
         self.log_record_id: int | None = log_record_id
         self.df: pd.DataFrame = self._load_and_format_data(data_in)
+        self._rows_by_type = _index_rows_by_event_type(self.df)
         self.heroes_map: dict[str, models.Hero] = {}  # Hero cache: canonical names + aliases
         # Hero names that matched neither a canonical name nor an alias. Batched
         # here rather than written on the spot: `get_hero` is synchronous (no
@@ -146,44 +215,36 @@ class MatchLogProcessor:
         valid_lines = [line for line in data_in if line.strip()]
         if not valid_lines:
             logger.warning(f"Match log {self.filename} has no valid lines.")
-            return pd.DataFrame(columns=["event_type", "time", "data", "round_number"])
+            return _empty_log_df()
 
-        parsed_rows: list[dict[str, object]] = []
-        for line in valid_lines:
-            for row_parts in csv.reader([line]):
-                if len(row_parts) < 3:
-                    logger.warning(f"Skipping malformed row in {self.filename}: {line}")
-                    continue
+        parsed_rows: list[tuple[enums.LogEventType, float, list[str]]] = []
+        for line, row_parts in zip(valid_lines, csv.reader(valid_lines), strict=True):
+            if len(row_parts) < 3:
+                logger.warning(f"Skipping malformed row in {self.filename}: {line}")
+                continue
 
-                raw_event_type = row_parts[1].strip()
-                if raw_event_type.lower() == "meta":
-                    continue
+            raw_event_type = row_parts[1].strip()
+            if raw_event_type.lower() == "meta":
+                continue
 
-                try:
-                    event_type = enums.LogEventType(raw_event_type)
-                except ValueError:
-                    logger.warning(f"Skipping row with unknown event type '{raw_event_type}' in {self.filename}")
-                    continue
+            event_type = _LOG_EVENT_TYPE_BY_VALUE.get(raw_event_type)
+            if event_type is None:
+                logger.warning(f"Skipping row with unknown event type '{raw_event_type}' in {self.filename}")
+                continue
 
-                try:
-                    time = float(row_parts[2])
-                except ValueError:
-                    logger.warning(f"Skipping row with invalid time '{row_parts[2]}' in {self.filename}")
-                    continue
+            try:
+                time = float(row_parts[2])
+            except ValueError:
+                logger.warning(f"Skipping row with invalid time '{row_parts[2]}' in {self.filename}")
+                continue
 
-                parsed_rows.append(
-                    {
-                        "event_type": event_type,
-                        "time": time,
-                        "data": row_parts[3:],
-                    }
-                )
+            parsed_rows.append((event_type, time, row_parts[3:]))
 
         if not parsed_rows:
             logger.warning(f"Match log {self.filename} resulted in an empty DataFrame.")
-            return pd.DataFrame(columns=["event_type", "time", "data", "round_number"])
+            return _empty_log_df()
 
-        return self._assign_round_numbers(pd.DataFrame(parsed_rows))
+        return self._assign_round_numbers(pd.DataFrame(parsed_rows, columns=["event_type", "time", "data"]))
 
     @staticmethod
     def _assign_round_numbers(df: pd.DataFrame) -> pd.DataFrame:
@@ -195,9 +256,12 @@ class MatchLogProcessor:
         event_type: enums.LogEventType | None = None,
         round_number: int | None = None,
     ) -> pd.DataFrame:
-        temp_df = self.df
-        if event_type:
-            temp_df = temp_df[temp_df["event_type"] == event_type]
+        if event_type is None:
+            temp_df = self.df
+        else:
+            temp_df = self._rows_by_type.get(event_type)
+            if temp_df is None:
+                return _empty_log_df()
         if round_number is not None:
             temp_df = temp_df[temp_df["round_number"] == round_number]
         return temp_df
@@ -323,7 +387,7 @@ class MatchLogProcessor:
                 teams[team_name].append((player, user_found))
 
                 if user_found:
-                    logger.info(
+                    logger.debug(
                         f"User [id={user_found.id} name={user_found.name}] "
                         f"found by battle name {player} in team {team_name}"
                     )
@@ -334,22 +398,35 @@ class MatchLogProcessor:
     async def find_team_by_players(
         self, session: AsyncSession, players: list[tuple[str, models.User | None]]
     ) -> models.Team:
+        team_entities = ["players", "players.user", "players.workspace_member"]
+        player_ids = [p.id for _, p in players if p is not None]
+        if len(player_ids) >= 3:
+            team_db = await team_service.get_by_players_by_ids_tournament(
+                session,
+                player_ids,
+                self.tournament,
+                team_entities,
+            )
+            if team_db:
+                return team_db
+
         for reverse in [True, False]:
             team_players_search = players.copy()
             if reverse:
                 team_players_search.reverse()
 
+            resolved_ids = [p.id for _, p in team_players_search if p is not None]
             for i in range(len(team_players_search) - 2):
-                current_player_ids_to_search = [p.id for _, p in team_players_search if p is not None][i:]
+                current_player_ids_to_search = resolved_ids[i:]
 
-                if not current_player_ids_to_search or len(current_player_ids_to_search) < 3:
+                if len(current_player_ids_to_search) < 3:
                     continue
 
                 team_db = await team_service.get_by_players_by_ids_tournament(
                     session,
                     current_player_ids_to_search,
                     self.tournament,
-                    ["players", "players.user", "players.workspace_member"],
+                    team_entities,
                 )
                 if team_db:
                     return team_db
@@ -376,7 +453,7 @@ class MatchLogProcessor:
         logger.info(f"Home team name: {home_team_name}, away team name: {away_team_name}")
 
         players_by_team_log_name = await self.get_players_by_battle_names(session)
-        logger.info(f"Players from log: {players_by_team_log_name}")
+        logger.debug(f"Players from log: {players_by_team_log_name}")
 
         home_players_list = players_by_team_log_name.get(home_team_name, [])
         away_players_list = players_by_team_log_name.get(away_team_name, [])
@@ -411,7 +488,7 @@ class MatchLogProcessor:
             players_out.append((battle_name_log, resolved_player_in_team))
 
             if resolved_player_in_team:
-                logger.info(
+                logger.debug(
                     f"Player [id={resolved_player_in_team.id} name={resolved_player_in_team.name}] "
                     f"found for battle name '{battle_name_log}' in team '{team.name}'"
                 )
@@ -487,17 +564,19 @@ class MatchLogProcessor:
         self,
         match: models.Match,
         players_map: dict[str, models.Player],
-        row: pd.Series,
+        time: float,
+        round_number: int,
+        data: list[str],
         event_name_enum: enums.MatchEvent,
     ) -> models.MatchEvent:
         try:
-            evt = MatchEventRow.from_data(row["data"], event_name_enum)
+            evt = MatchEventRow.from_data(data, event_name_enum)
         except (ValueError, ValidationError) as e:
-            raise ValueError(f"Cannot parse {event_name_enum.value} at t={row['time']}: {e}") from e
+            raise ValueError(f"Cannot parse {event_name_enum.value} at t={time}: {e}") from e
 
         if evt.player not in players_map:
             raise ValueError(
-                f"Player '{evt.player}' for event {event_name_enum.value} at t={row['time']} not in players_map."
+                f"Player '{evt.player}' for event {event_name_enum.value} at t={time} not in players_map."
             )
 
         player = players_map[evt.player]
@@ -508,7 +587,7 @@ class MatchLogProcessor:
                 hero_id = self.get_hero(evt.hero).id
             except errors.ApiHTTPException:
                 logger.warning(
-                    f"Unknown hero '{evt.hero}' for {event_name_enum.value} at t={row['time']}, hero_id set to None."
+                    f"Unknown hero '{evt.hero}' for {event_name_enum.value} at t={time}, hero_id set to None."
                 )
 
         related_player_id: int | None = None
@@ -520,7 +599,7 @@ class MatchLogProcessor:
                 related_hero_id = self.get_hero(evt.related_hero).id
             except errors.ApiHTTPException:
                 logger.warning(
-                    f"Unknown related_hero '{evt.related_hero}' for {event_name_enum.value} at t={row['time']}."
+                    f"Unknown related_hero '{evt.related_hero}' for {event_name_enum.value} at t={time}."
                 )
 
         if evt.related_player:
@@ -533,8 +612,8 @@ class MatchLogProcessor:
 
         return models.MatchEvent(
             match_id=match.id,
-            time=row["time"],
-            round=row["round_number"],
+            time=time,
+            round=round_number,
             team_id=player.team_id,
             user_id=player.workspace_member.player_id,
             hero_id=hero_id,
@@ -564,9 +643,11 @@ class MatchLogProcessor:
         all_match_event_objects: list[models.MatchEvent] = []
         for log_event_type, match_event_enum in event_type_map:
             event_df = self._get_rows(log_event_type)
-            for _, row_series in event_df.iterrows():
+            for row in event_df.itertuples(index=False):
                 try:
-                    match_event_obj = self._format_match_event_generic(match, players_map, row_series, match_event_enum)
+                    match_event_obj = self._format_match_event_generic(
+                        match, players_map, row.time, row.round_number, row.data, match_event_enum
+                    )
                     all_match_event_objects.append(match_event_obj)
                 except ValueError as e:
                     logger.warning(f"Skipping event creation due to error: {e}")
@@ -644,7 +725,7 @@ class MatchLogProcessor:
         match: models.Match,
         df: pd.DataFrame,
         is_mvp_calc: bool = False,
-        impact_ctx: "impact.ImpactContext | None" = None,
+        impact_ctx: impact.ImpactContext | None = None,
     ):
         required_cols = [
             enums.LogStatsName.Eliminations,
@@ -1053,12 +1134,24 @@ class MatchLogProcessor:
             )
 
         try:
-            if kill_feed_db_objects:
-                await _kill_feed_repo.create_many(session, kill_feed_db_objects)
-            if events:
-                await _events_repo.create_many(session, events)
-            if stats:
-                await _stats_repo.create_many(session, stats)
+            await _bulk_insert(session, models.MatchKillFeed, [_kill_feed_row(k) for k in kill_feed_db_objects])
+            await _bulk_insert(session, models.MatchEvent, [_match_event_row(e) for e in events])
+            await _bulk_insert(
+                session,
+                models.MatchStatistics,
+                [
+                    {
+                        "match_id": s.match_id,
+                        "round": s.round,
+                        "team_id": s.team_id,
+                        "user_id": s.user_id,
+                        "hero_id": s.hero_id,
+                        "name": s.name,
+                        "value": s.value,
+                    }
+                    for s in stats
+                ],
+            )
             await _enqueue_match_log_tournament_events(session, encounter)
             await session.commit()
         except Exception:
@@ -1287,7 +1380,6 @@ async def process_match_log(
 ) -> None:
     from src.services.match_logs import log_records as record_service
 
-    tournament = await tournament_flows.get(session, tournament_id, [])
     # LogProcessingRecord.filename is always a bare object name — uploads.py
     # rejects "/" outright — but the bulk path feeds us the full S3 key
     # ("logs/{tournament_id}/{name}") straight from list_objects. Matching
@@ -1295,9 +1387,9 @@ async def process_match_log(
     # row and left the uploaded one on `pending` ("Queued") forever, so key
     # every record lookup on the bare name.
     object_name = filename.rsplit("/", 1)[-1]
-    logger.info(f"Fetching logs from S3 for tournament {tournament.id} and file {filename}")
+    logger.info(f"Fetching logs from S3 for tournament {tournament_id} and file {filename}")
 
-    raw_bytes = await binary_match_logs.get_log_by_filename(s3, tournament.id, filename)
+    raw_bytes = await binary_match_logs.get_log_by_filename(s3, tournament_id, filename)
     if not raw_bytes:
         msg = f"Log file {filename} not found or empty in S3"
         # WARNING, not ERROR: a missing/empty object is a state of the uploaded
@@ -1329,7 +1421,7 @@ async def process_match_log(
             )
         return
 
-    content_hash = record_service.compute_content_hash(raw_bytes)
+    content_hash = await asyncio.to_thread(record_service.compute_content_hash, raw_bytes)
 
     if await record_service.is_already_processed(session, tournament_id, object_name, content_hash):
         logger.info(
@@ -1339,14 +1431,15 @@ async def process_match_log(
         return
 
     record = await record_service.set_processing(session, tournament_id, object_name, content_hash=content_hash)
+    tournament = await tournament_flows.get(session, tournament_id, [])
 
-    decoded_lines = [line.decode() for line in raw_bytes.split(b"\n") if line]
-    processor = MatchLogProcessor(
+    processor = await asyncio.to_thread(
+        _processor_from_bytes,
         tournament,
         object_name,
-        decoded_lines,
+        raw_bytes,
         s3,
-        log_record_id=record.id if record is not None else None,
+        record.id if record is not None else None,
     )
     try:
         await processor.start(session, is_raise=is_raise)

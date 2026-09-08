@@ -209,6 +209,7 @@ class AchievementEvaluationRunnerService:
             total_created = 0
             total_removed = 0
             normalizer: DivisionGridNormalizer | None = None
+            grid = await _resolve_grid(session, workspace_id, tournament)
 
             for rule in rules:
                 if not rule.enabled or not rule.condition_tree:
@@ -258,7 +259,6 @@ class AchievementEvaluationRunnerService:
 
                 try:
                     async with session.begin_nested():
-                        grid = await _resolve_grid(session, workspace_id, tournament)
                         context = EvalContext(
                             workspace_id=workspace_id,
                             tournament=tournament,
