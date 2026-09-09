@@ -11,7 +11,7 @@
 //  4. clicking a row opens the inspector through `?id=`, not a dialog.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
-import { act, forwardRef, useState, type ReactNode } from "react";
+import { act, forwardRef, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -184,7 +184,11 @@ const mounted: Root[] = [];
 
 function Harness() {
   const [, force] = useState(0);
-  rerender = () => force((value) => value + 1);
+  // Published from an effect, not during render: writing a module-scope binding
+  // while rendering is a side effect the react-compiler rules reject.
+  useEffect(() => {
+    rerender = () => force((value) => value + 1);
+  }, []);
   return (
     <RegistrationLayout>
       <RegistrationEntriesPage />

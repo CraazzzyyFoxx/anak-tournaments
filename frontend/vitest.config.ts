@@ -208,6 +208,13 @@ export default defineConfig({
       // safe and covers the next test added without another edit to this list.
       // Unrun, a green suite would coexist with a bell that never refetches.
       "src/components/notifications/**/*.test.tsx",
+      // `src/components/roster-shape` is vitest-only, so a directory glob is
+      // safe here too. Both files were the allow-list trap in its loud form:
+      // unmatched, they fell into bun's complement, where the editor's mount
+      // test has no DOM at all (`document is not defined`) — a red suite for a
+      // reason that has nothing to do with the code under test.
+      "src/components/roster-shape/**/*.test.ts",
+      "src/components/roster-shape/**/*.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/tournament-section-nav.test.ts",
       "src/app/(site)/tournaments/[slug]/_components/tournament-shared-ui.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/PhaseTimeline.behavior.test.tsx",

@@ -40,9 +40,7 @@ _VALID_TRANSITIONS: dict[TournamentStatus, frozenset[TournamentStatus]] = {
 # Terminal statuses: the tournament is over. Public because three services used
 # to carry their own literal pair of them (rank collection, the registration
 # backfill script, the registration gate) — this module owns the fact.
-FINISHED_STATUSES: frozenset[TournamentStatus] = frozenset(
-    {TournamentStatus.COMPLETED, TournamentStatus.ARCHIVED}
-)
+FINISHED_STATUSES: frozenset[TournamentStatus] = frozenset({TournamentStatus.COMPLETED, TournamentStatus.ARCHIVED})
 
 # Matches are being played right now. PLAYOFFS is in and CHECK_IN is not: what
 # a visitor reads as "live" is a ball in play, not a lobby filling up.

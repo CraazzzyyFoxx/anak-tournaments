@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, useState, type ReactNode } from "react";
+import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -91,7 +91,11 @@ async function waitFor<T>(read: () => T | null | undefined | false, what: string
  */
 function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
   const [, force] = useState(0);
-  rerender = () => force((value) => value + 1);
+  // Published from an effect, not during render: writing a module-scope binding
+  // while rendering is a side effect the react-compiler rules reject.
+  useEffect(() => {
+    rerender = () => force((value) => value + 1);
+  }, []);
   return <>{render()}</>;
 }
 

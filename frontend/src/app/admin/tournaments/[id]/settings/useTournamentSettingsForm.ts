@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { notify } from "@/lib/notify";
@@ -90,7 +90,14 @@ export function useTournamentSettingsForm(
 
   // Re-baseline when the tournament changes under us (another admin's write
   // arriving through the shell's realtime invalidation, or the zone loading in).
-  useEffect(() => setForm(initial), [initial]);
+  // Done during render, not in an effect: `initial` is derived from props, so an
+  // effect would first commit a render whose `dirty`/`payload` compare the new
+  // baseline against the old form and briefly report phantom changed fields.
+  const [baseline, setBaseline] = useState(initial);
+  if (baseline !== initial) {
+    setBaseline(initial);
+    setForm(initial);
+  }
 
   const payload = useMemo(() => {
     const diff = getTournamentUpdatePayload(form, initial);

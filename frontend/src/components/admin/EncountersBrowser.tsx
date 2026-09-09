@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -333,10 +333,14 @@ export function EncountersBrowser({
     }
   });
 
+  // `saveMutation` is rebuilt on every state transition; `reset` is not, so the
+  // memoised `openEdit` below hangs on the callback instead of the container.
+  const { reset: resetSaveMutation } = saveMutation;
+
   const openCreate = () => {
     const stage = stages[0] ?? null;
     const blank = emptyEncounterForm(stage?.id ?? null, stage?.items[0]?.id ?? null);
-    saveMutation.reset();
+    resetSaveMutation();
     setSaveError(undefined);
     setEditing(null);
     setForm(blank);
@@ -344,15 +348,21 @@ export function EncountersBrowser({
     setFormMode("create");
   };
 
-  const openEdit = (encounter: Encounter) => {
-    const initial = encounterFormOf(encounter);
-    saveMutation.reset();
-    setSaveError(undefined);
-    setEditing(encounter);
-    setForm(initial);
-    setFormInitial(initial);
-    setFormMode("edit");
-  };
+  // The kebab column closes over this, so the column memo has to depend on it —
+  // which means it needs an identity that only moves when its inputs do. Every
+  // other name it touches is a `useState` setter (stable by contract).
+  const openEdit = useCallback(
+    (encounter: Encounter) => {
+      const initial = encounterFormOf(encounter);
+      resetSaveMutation();
+      setSaveError(undefined);
+      setEditing(encounter);
+      setForm(initial);
+      setFormInitial(initial);
+      setFormMode("edit");
+    },
+    [resetSaveMutation]
+  );
 
   const columns = useMemo<ColumnDef<Encounter>[]>(
     () => [
@@ -455,7 +465,9 @@ export function EncountersBrowser({
         { rowLabel: (row) => row.name }
       )
     ],
-    [canUpdate, canDelete, stages]
+    // `openEdit` was missing here: the kebab's "Edit encounter" called whichever
+    // closure the first render happened to build.
+    [canUpdate, canDelete, openEdit]
   );
 
   if (workspaceId == null) {

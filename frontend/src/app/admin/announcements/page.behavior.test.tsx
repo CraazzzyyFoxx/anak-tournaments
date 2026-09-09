@@ -20,6 +20,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
 import en from "@/i18n/messages/en.json";
 import type { NotificationItem } from "@/types/notification.types";
 
@@ -102,7 +103,11 @@ async function mount(search = ""): Promise<HTMLElement> {
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
-          <AdminAnnouncementsPage />
+          {/* `AdminLayoutClient` mounts one around every admin screen; the
+              table's `StatusIcon` renders a Radix tooltip and throws without it. */}
+          <TooltipProvider>
+            <AdminAnnouncementsPage />
+          </TooltipProvider>
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -291,11 +296,18 @@ describe("/admin/announcements", () => {
     ]);
     const container = await mount();
     const text = container.textContent ?? "";
+    // The state cell is a compact glyph, so its name lives in `aria-label` —
+    // `StatusIcon` carries `role="img"` precisely so that name survives whether
+    // or not the pointer-only tooltip is reachable. Reading `textContent` for it
+    // would only ever pin a text cell this column deliberately is not.
+    const stateNames = [...container.querySelectorAll('[role="img"]')].map((element) =>
+      element.getAttribute("aria-label")
+    );
 
     expect(text).toContain("Maintenance");
     expect(text).toContain("Только по-русски");
-    expect(text).toContain(LABEL.state.retired);
-    expect(text).toContain(LABEL.state.scheduled);
+    expect(stateNames).toContain(LABEL.state.retired);
+    expect(stateNames).toContain(LABEL.state.scheduled);
   });
 
   it("refuses the screen when the workspace grants nothing and the account is not a superuser", async () => {

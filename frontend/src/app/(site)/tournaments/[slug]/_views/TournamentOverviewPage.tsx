@@ -435,7 +435,14 @@ export default function TournamentOverviewPage({
   const variant = tournament ? overviewVariant(tournament.status) : null;
   const workspaceId = tournament?.workspace_id;
 
-  const stage = tournament && variant ? pickOverviewStage(tournament.stages, variant) : null;
+  // Memoised for its identity, not its cost: `stageId`/`stageType` below are
+  // read off this object and feed the `stageEncounters`/`roundGroups`
+  // dependency arrays, and a value re-derived every render is one the compiler
+  // has to treat as free to change underneath those memos.
+  const stage = useMemo(
+    () => (tournament && variant ? pickOverviewStage(tournament.stages, variant) : null),
+    [tournament, variant]
+  );
   const showsGroupTable =
     variant !== "registration" && stage !== null && GROUP_TYPES[stage.stage_type] === true;
   // A group-only tournament has no bracket to read third place off, so the
@@ -954,7 +961,12 @@ export default function TournamentOverviewPage({
       if (isEncounterCompleted(encounter) || isEncounterLive(encounter)) return false;
       if (encounter.scheduled_at === null) return false;
       const at = new Date(encounter.scheduled_at).getTime();
-      return Number.isFinite(at) && at > Date.now();
+      if (!Number.isFinite(at)) return false;
+      // `clockNow` is null until hydration. Reading the wall clock here instead
+      // would be a different instant on the server than in the browser, so the
+      // pre-hydration pass keeps every scheduled match and the first client
+      // render drops the ones that have already come round.
+      return clockNow === null || at > clockNow;
     })
     .sort(
       (left, right) =>

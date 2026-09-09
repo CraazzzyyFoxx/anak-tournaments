@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, LayoutGrid, List } from "lucide-react";
@@ -76,6 +76,16 @@ const SLOT_ROLE: Record<RosterSlotCode, string> = {
 /** A team's settled series record. `null` when encounters are unavailable. */
 type TeamRecord = { won: number; lost: number };
 
+/**
+ * The remembered view is an external store, not React state: it lives in
+ * `localStorage`, which the server cannot read. `useSyncExternalStore` is what
+ * makes that legal — the server and the hydrating client both take
+ * `serverStoredView` (`null`, i.e. "no preference yet"), so the markup agrees,
+ * and the real value arrives on the first post-hydration pass.
+ *
+ * `readStoredView` returns a string or `null`, so repeated calls compare equal
+ * and React never sees a store that refuses to settle.
+ */
 function readStoredView(): TeamsView | null {
   try {
     const saved = window.localStorage.getItem(VIEW_STORAGE_KEY);
@@ -87,12 +97,25 @@ function readStoredView(): TeamsView | null {
   }
 }
 
+const serverStoredView = () => null;
+
+// `localStorage` does not notify anyone, so the writer announces the change.
+// Module scope because `useSyncExternalStore` keys on callback identity.
+const storedViewListeners = new Set<() => void>();
+const subscribeStoredView = (onStoreChange: () => void) => {
+  storedViewListeners.add(onStoreChange);
+  return () => {
+    storedViewListeners.delete(onStoreChange);
+  };
+};
+
 function writeStoredView(view: TeamsView) {
   try {
     window.localStorage.setItem(VIEW_STORAGE_KEY, view);
   } catch {
     // See `readStoredView`.
   }
+  for (const listener of storedViewListeners) listener();
 }
 
 /**
@@ -488,13 +511,9 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
   }, [registrationsQuery.data]);
 
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
-  const [storedView, setStoredView] = useState<TeamsView | null>(null);
+  const storedView = useSyncExternalStore(subscribeStoredView, readStoredView, serverStoredView);
   const narrow = useIsNarrowViewport();
   const withRoles = tournament.roster_shape?.has_role_slots ?? true;
-
-  // Post-hydration: the server has no localStorage, so reading it during
-  // render would make the first client paint disagree with the markup.
-  useEffect(() => setStoredView(readStoredView()), []);
 
   const teams = useMemo(() => teamsQuery.data?.results ?? [], [teamsQuery.data]);
 
@@ -598,10 +617,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                       ariaLabel: t("tournamentDetail.teams.viewCards")
                     }
                   ]}
-                  onChange={(next) => {
-                    writeStoredView(next);
-                    setStoredView(next);
-                  }}
+                  onChange={(next) => writeStoredView(next)}
                   label={t("tournamentDetail.teams.viewLabel")}
                 />
               </>

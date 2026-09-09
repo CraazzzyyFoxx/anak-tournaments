@@ -63,7 +63,11 @@ def _player() -> SimpleNamespace:
         },
         rank=1500,
         tournament_id=78,
-        workspace_member=SimpleNamespace(player_id=42, player=SimpleNamespace(id=42)),
+        # The nested `.player` is the real `User` row `player_to_read` serializes
+        # through `user_to_read`, so it needs every column `UserRead` requires --
+        # `id` alone stopped being enough once that serializer became a plain
+        # sync call this test can no longer intercept.
+        workspace_member=SimpleNamespace(player_id=42, player=SimpleNamespace(id=42, name="Roster Player")),
         tournament=SimpleNamespace(id=78),
         team=None,
     )
@@ -74,12 +78,10 @@ class SerPlayerGridTests(IsolatedAsyncioTestCase):
         session = object()
         player = _player()
 
-        fake_user = team_flows.schemas.UserRead(id=42, name="Roster Player")
         get_grid = AsyncMock(return_value=DEFAULT_GRID)
 
         with (
             patch.object(registry, "get_division_grid", get_grid),
-            patch.object(team_flows.user_flows_service, "to_pydantic", AsyncMock(return_value=fake_user)),
             patch.object(team_flows.tournament_flows_service, "to_pydantic", AsyncMock(return_value=None)),
         ):
             result = await registry.registry_service._ser_player(session, player)
@@ -87,6 +89,7 @@ class SerPlayerGridTests(IsolatedAsyncioTestCase):
         # Grid resolved from the player's own tournament (not global / DEFAULT-by-omission).
         get_grid.assert_awaited_once_with(session, None, tournament_id=78)
         self.assertEqual(42, result["user_id"])
+        self.assertEqual("Roster Player", result["user"]["name"])
         # division resolved against the effective grid rather than crashing.
         self.assertEqual(DEFAULT_GRID.resolve_division_number(1500), result["division"])
 

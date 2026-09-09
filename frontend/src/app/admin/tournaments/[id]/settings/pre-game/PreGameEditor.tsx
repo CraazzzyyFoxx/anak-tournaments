@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { AlertTriangle, ArrowDown, ArrowUp, Copy, Plus, RotateCcw, X } from "lucide-react";
 
@@ -235,8 +235,15 @@ export function PreGameEditor({
 
   const [draft, setDraft] = useState<PickBanDraft>(baseDraft);
   // Re-baseline on a scope or kind switch, and when another admin's write
-  // arrives through the configs query.
-  useEffect(() => setDraft(baseDraft), [baseDraft]);
+  // arrives through the configs query. Done during render, not in an effect:
+  // `edited`/`dirty` below compare `draft` against `baseDraft`, so an effect
+  // would commit one render where the two belong to different scopes and the
+  // unsaved-changes guard fires on a switch the organizer did not make.
+  const [baseline, setBaseline] = useState(baseDraft);
+  if (baseline !== baseDraft) {
+    setBaseline(baseDraft);
+    setDraft(baseDraft);
+  }
   const [resetOpen, setResetOpen] = useState(false);
 
   const catalogueById = useMemo(

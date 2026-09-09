@@ -33,16 +33,25 @@ export interface WizardShellProps {
  * "Conflicts" does not silently renumber the steps after it.
  */
 export function WizardShell({ steps, children, footer, aside }: Readonly<WizardShellProps>) {
+  // Numbering is resolved up front rather than accumulated inside the `map`
+  // callback: a counter mutated from a render callback is a side effect the
+  // compiler cannot reason about (it depends on how many times the callback
+  // happens to run). The rule stays the same — a `skipped` step consumes no
+  // number, so the steps after it keep the sequence the user has been reading.
+  const numbers: number[] = [];
   let visibleNumber = 0;
+  for (const step of steps) {
+    if (step.state !== "skipped") visibleNumber += 1;
+    numbers.push(visibleNumber);
+  }
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row">
       <div className="w-full shrink-0 lg:w-[220px]">
         <ol aria-label="Steps" className="space-y-0.5">
-          {steps.map((step) => {
+          {steps.map((step, index) => {
             const isSkipped = step.state === "skipped";
-            if (!isSkipped) visibleNumber += 1;
-            const number = visibleNumber;
+            const number = numbers[index];
 
             return (
               <li key={step.key}>

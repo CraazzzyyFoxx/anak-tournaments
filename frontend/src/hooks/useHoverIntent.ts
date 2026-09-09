@@ -67,11 +67,19 @@ export function useHoverIntent({
     [exclusive]
   );
 
-  self.current.close = () => {
+  const close = useCallback(() => {
     cancel();
     setOpenState(false);
     if (exclusiveSlot === self.current) exclusiveSlot = null;
-  };
+  }, [cancel]);
+
+  // The module-level registry holds the ref OBJECT, so the closure it calls has
+  // to be swapped in after the render that produced it, not during. `close` is
+  // stable, so this runs once per mount — and the registry only ever calls it
+  // from an event (another instance opening), which is always after commit.
+  useEffect(() => {
+    self.current.close = close;
+  }, [close]);
 
   const schedule = useCallback(
     (next: boolean, delay: number) => {

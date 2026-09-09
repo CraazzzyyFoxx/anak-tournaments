@@ -62,6 +62,8 @@ export interface NotificationAdminItem {
   kind: string;
   payload: Record<string, unknown>;
   recipient_auth_user_id: number | null;
+  /** The recipient's current username; `null` when the account is gone. */
+  recipient_username: string | null;
   source_workspace_id: number | null;
   published_at: string;
   /** Set and in the past means retired: the row reaches no inbox any more. */

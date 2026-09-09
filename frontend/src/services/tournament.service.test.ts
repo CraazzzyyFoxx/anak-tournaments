@@ -71,6 +71,11 @@ describe("tournamentService.getPublicOverview", () => {
               "teams_count",
               "links",
               "division_grid_version",
+              // Deliberate, not drift: the teams list draws role glyphs only for
+              // a shape with role slots and the overview's format card reads the
+              // slot line off it, so without the entity both fall back to
+              // per-player roles — meaningless in a flex event.
+              "roster_shape",
             ],
           },
         },

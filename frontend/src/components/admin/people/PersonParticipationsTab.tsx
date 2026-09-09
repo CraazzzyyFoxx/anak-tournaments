@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -166,10 +166,14 @@ export function PersonParticipationsTab({
     }
   });
 
+  // `saveMutation` is rebuilt on every state transition; `reset` is not, so the
+  // memoised `openEdit` below hangs on the callback instead of the container.
+  const { reset: resetSaveMutation } = saveMutation;
+
   const openCreate = () => {
     const blank = emptyPlayerForm(personId, null);
     blank.name = personName;
-    saveMutation.reset();
+    resetSaveMutation();
     setSaveError(undefined);
     setEditing(null);
     setForm(blank);
@@ -177,15 +181,21 @@ export function PersonParticipationsTab({
     setFormMode("create");
   };
 
-  const openEdit = (row: ParticipationRow) => {
-    const initial = playerFormOf(row, personId);
-    saveMutation.reset();
-    setSaveError(undefined);
-    setEditing(row);
-    setForm(initial);
-    setFormInitial(initial);
-    setFormMode("edit");
-  };
+  // The kebab column closes over this, so the column memo has to depend on it —
+  // which means it needs an identity that only moves when its inputs do. Every
+  // other name it touches is a `useState` setter (stable by contract).
+  const openEdit = useCallback(
+    (row: ParticipationRow) => {
+      const initial = playerFormOf(row, personId);
+      resetSaveMutation();
+      setSaveError(undefined);
+      setEditing(row);
+      setForm(initial);
+      setFormInitial(initial);
+      setFormMode("edit");
+    },
+    [personId, resetSaveMutation]
+  );
 
   const columns = useMemo<ColumnDef<ParticipationRow>[]>(
     () => [
@@ -293,7 +303,10 @@ export function PersonParticipationsTab({
         { rowLabel: (row) => `${row.name} in ${row.tournament_name}` }
       )
     ],
-    [canUpdate, canDelete, personId]
+    // `openEdit` was missing here: the kebab's "Edit participation" called
+    // whichever closure the first render happened to build. It carries
+    // `personId` itself, so the column list no longer needs it separately.
+    [canUpdate, canDelete, openEdit]
   );
 
   if (participationsQuery.isError) {

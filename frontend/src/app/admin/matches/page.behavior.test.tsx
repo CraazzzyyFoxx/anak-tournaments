@@ -11,7 +11,7 @@
 //  5. below `md` the rows become cards: these tables carry more than four
 //     columns, so a phone gets the card layout instead of a sideways scroll.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, useState, type ReactNode } from "react";
+import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -166,7 +166,11 @@ async function waitFor<T>(read: () => T | null | undefined | false, what: string
 
 function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
   const [, force] = useState(0);
-  rerender = () => force((value) => value + 1);
+  // Published from an effect, not during render: writing a module-scope binding
+  // while rendering is a side effect the react-compiler rules reject.
+  useEffect(() => {
+    rerender = () => force((value) => value + 1);
+  }, []);
   return <>{render()}</>;
 }
 

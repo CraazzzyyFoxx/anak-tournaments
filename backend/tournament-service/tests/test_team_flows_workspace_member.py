@@ -13,7 +13,6 @@ import importlib
 import os
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("DEBUG", "true")
 
@@ -61,11 +60,13 @@ class ToPydanticPlayerWorkspaceMemberTests(IsolatedAsyncioTestCase):
     async def test_user_id_resolved_from_workspace_member_with_user_entity(self) -> None:
         session = object()
         player = _player(workspace_member_player_id=77)
-        player.workspace_member.player = SimpleNamespace(id=77)
+        # `player_to_read` serializes this through the plain sync `user_to_read`,
+        # so the stand-in must carry every column `UserRead` requires -- there is
+        # no longer an awaited service method to intercept with a canned read.
+        player.workspace_member.player = SimpleNamespace(id=77, name="Roster Player")
 
-        fake_user_read = team_flows.schemas.UserRead(id=77, name="Roster Player")
-        with patch.object(team_flows.user_flows_service, "to_pydantic", AsyncMock(return_value=fake_user_read)):
-            result = await team_flows.flows_service.to_pydantic_player(session, player, ["user"], grid=None)
+        expected_user_read = team_flows.schemas.UserRead(id=77, name="Roster Player")
+        result = await team_flows.flows_service.to_pydantic_player(session, player, ["user"], grid=None)
 
         self.assertEqual(77, result.user_id)
-        self.assertEqual(fake_user_read, result.user)
+        self.assertEqual(expected_user_read, result.user)
