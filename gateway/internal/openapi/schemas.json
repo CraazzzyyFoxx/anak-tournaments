@@ -13499,6 +13499,18 @@
           "default": null,
           "title": "Recipient Auth User Id"
         },
+        "recipient_username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipient Username"
+        },
         "source_workspace_id": {
           "anyOf": [
             {
