@@ -1,5 +1,5 @@
 .PHONY: help dev-build dev-up dev-up-full dev-down dev-restart dev-logs dev-ps dev-health dev-rebuild \
-	prod-build prod-up prod-down prod-logs prod-scale prod-small prod-medium prod-large migrate test clean \
+	prod-build prod-pull prod-migrate prod-up prod-down prod-logs prod-scale prod-small prod-medium prod-large migrate test clean \
 	build up down restart logs ps health build-prod up-prod down-prod logs-prod \
 	app-logs identity-logs parser-logs frontend-logs discord-logs balancer-logs stream-logs \
 	app-restart identity-restart parser-restart frontend-restart \
@@ -47,7 +47,9 @@ help:
 	@echo "  make dev-health     - Show dev health status"
 	@echo "  make dev-rebuild    - Rebuild and restart core dev stack"
 	@echo ""
-	@echo "  make prod-build     - Build production images"
+	@echo "  make prod-build     - Build production images locally (CI normally builds them)"
+	@echo "  make prod-pull      - Pull the images CI built (IMAGE_TAG=<release> to pin)"
+	@echo "  make prod-migrate   - alembic upgrade head from the pulled image"
 	@echo "  make prod-up        - Start production stack (PROD_SIZE=small|medium|large)"
 	@echo "  make prod-down      - Stop production stack"
 	@echo "  make prod-logs      - Follow production logs"
@@ -98,8 +100,16 @@ dev-health:
 dev-rebuild:
 	$(COMPOSE) up -d --build --wait
 
+# Local build. Production images normally come from CI (GitHub Actions builds
+# and pushes them to GHCR; see .github/workflows/deploy-production.yml), so this
+# is for a box that has to build for itself — a hotfix with no release, or a
+# host CI cannot reach.
 prod-build:
 	$(PROD_COMPOSE) build
+
+# Fetch what CI built. IMAGE_TAG selects a release (defaults to :latest).
+prod-pull:
+	$(PROD_COMPOSE) pull
 
 # Starts the production stack with the workers in $(PROD_SCALE) replicated
 # from the first boot — no separate `prod-scale` call needed. RabbitMQ
@@ -129,8 +139,14 @@ prod-medium:
 prod-large:
 	$(MAKE) prod-scale PROD_SIZE=large
 
+# Dev stack. The production one is `prod-migrate`: it runs alembic in a one-off
+# container off the NEW image, which is what makes the schema land before the
+# code that reads it.
 migrate:
 	$(COMPOSE) exec app-svc alembic upgrade head
+
+prod-migrate:
+	$(PROD_COMPOSE) run --rm --no-deps app-svc alembic upgrade head
 
 test:
 	$(COMPOSE) exec app-svc pytest

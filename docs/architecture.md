@@ -175,8 +175,10 @@ All services share **one PostgreSQL database** with **one SQLAlchemy metadata** 
   player can exist without a login ("shadow player"). Full reference: [`docs/users-identity.md`](./users-identity.md).
 - **RBAC.** Grant-only permission catalog + workspace system roles, with a
   `user_permission_deny` overlay. Bootstrapped from `backend/shared/rbac/`.
-- **Migrations.** A single Alembic project under `backend/migrations/`. Run `make migrate`
-  (alembic `upgrade head` inside `app-svc`).
+- **Migrations.** A single Alembic project under `backend/migrations/`. `make migrate` runs
+  `alembic upgrade head` inside a running dev `app-svc`; in production the release workflow
+  (and `make prod-migrate`) runs it in a one-off container off the image being deployed, so
+  the schema lands before the code that reads it.
 
 ## 6. Deployment topology
 
@@ -185,8 +187,9 @@ and [`monitoring/README.md`](../monitoring/README.md)):
 
 - `docker-compose.yml` — dev/base (hot reload, local Postgres via the `db` profile, gateway
   published for direct testing). Profiles: `db`, `workers`, `monitoring`.
-- `docker-compose.production.yml` — `:latest` images, external Postgres, `restart: always`,
-  resource limits, gateway reachable only through nginx.
+- `docker-compose.production.yml` — GHCR images (`ghcr.io/craazzzyyfoxx/aqt-*`, tag
+  `${IMAGE_TAG:-latest}`), external Postgres, `restart: always`, resource limits, gateway
+  reachable only through nginx.
 - `docker-compose.monitoring.yml` — a separate `owt-monitoring` project (Prometheus,
   Alertmanager, Grafana, Loki, Promtail, Tempo, OTel Collector, exporters).
 - `docker-compose.gpu.yml` — NVIDIA override for `analytics-worker`.
@@ -195,6 +198,16 @@ Shared substrate: **PostgreSQL** (optionally behind pgBouncer), **Redis** (cache
 bus + active-user counters), **RabbitMQ** (all RPC/events/jobs), **S3/MinIO** (avatars,
 icons, match-log files). Workers that call external APIs (Discord, OverFast, Challonge, S3)
 egress through the outbound `proxy` container (xray/shadowsocks).
+
+**Releases.** `.github/workflows/deploy-production.yml` builds all ten images on
+GitHub-hosted runners, pushes them to GHCR (one runner per image, registry-backed build
+cache), then opens one ssh session to the production host that pulls the tag, runs
+`alembic upgrade head` from the *new* image while the *old* containers still serve, and
+finally recreates the stack (`make prod-up`). Nothing builds on the server and no
+self-hosted runner takes part. Publishing a GitHub release runs the four CI gates first;
+`workflow_dispatch` deploys a tag without them, and with `skip_build` it redeploys images
+that already exist — which is the rollback. The remote half is
+[`ops/deploy/remote-deploy.sh`](../ops/deploy/remote-deploy.sh), runnable by hand.
 
 ## 7. Observability
 
