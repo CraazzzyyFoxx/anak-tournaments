@@ -184,11 +184,19 @@ class _RecordingSession:
     """
 
     def __init__(self) -> None:
-        self.statements: list[sa.Select] = []
+        # Two lists, not one: the page and the total are separate statements
+        # issued through separate session methods, and asserting on their SQL
+        # must not depend on which of the two the service happens to run first.
+        self.page_statements: list[sa.Select] = []
+        self.count_statements: list[sa.Select] = []
 
     async def execute(self, statement):
-        self.statements.append(statement)
+        self.page_statements.append(statement)
         return self
+
+    async def scalar(self, statement):
+        self.count_statements.append(statement)
+        return 0
 
     def unique(self):
         return self
@@ -209,7 +217,8 @@ async def _compiled(**overrides) -> tuple[str, str]:
 
     session = _RecordingSession()
     await tournament_service.get_all(session, _params(**overrides))
-    page, count = session.statements
+    (page,) = session.page_statements
+    (count,) = session.count_statements
     return (
         str(page.compile(dialect=postgresql.dialect())),
         str(count.compile(dialect=postgresql.dialect())),
