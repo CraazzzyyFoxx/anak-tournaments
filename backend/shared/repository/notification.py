@@ -102,6 +102,12 @@ class NotificationRepository(BaseRepository[models.Notification]):
         now() ...``, where SQL precedence binds the window to the ``global``
         branch alone and lets an unpublished personal row through. Both halves
         are conjoined here for every branch.
+
+        A row this identity deleted is likewise not a row it may see, so the
+        dismissal filter lives here too: the page, the badge count and the
+        mark-read write all drop it by composing this one predicate instead of
+        remembering to exclude it. ``auth_user_id=None`` is the anonymous
+        banner read -- no identity, hence no marks to consult.
         """
         model = self.model
         now = sa.func.now()
@@ -116,11 +122,14 @@ class NotificationRepository(BaseRepository[models.Notification]):
                 sa.and_(model.audience == "workspace", model.workspace_id.in_(tuple(workspace_ids))),
             )
 
-        return sa.and_(
+        clause = sa.and_(
             sa.or_(*visible),
             model.published_at <= now,
             sa.or_(model.expires_at.is_(None), model.expires_at > now),
         )
+        if auth_user_id is None:
+            return clause
+        return sa.and_(clause, ~self._deleted_mark(auth_user_id))
 
     def _read_mark(self, auth_user_id: int) -> sa.ColumnElement[bool]:
         """"this identity has a read mark on this row" -- the only definition.
@@ -133,6 +142,20 @@ class NotificationRepository(BaseRepository[models.Notification]):
         return sa.exists().where(
             mark.auth_user_id == auth_user_id,
             mark.notification_id == self.model.id,
+        )
+
+    def _deleted_mark(self, auth_user_id: int) -> sa.ColumnElement[bool]:
+        """"this identity deleted this row" -- scoped to the pair, like the read mark.
+
+        A deletion always writes ``read_at`` too (the upsert in :meth:`delete`),
+        so a deleted row can never be counted as unread by :meth:`unread_count`
+        even before this filter reaches it.
+        """
+        mark = models.NotificationRead
+        return sa.exists().where(
+            mark.auth_user_id == auth_user_id,
+            mark.notification_id == self.model.id,
+            mark.deleted_at.is_not(None),
         )
 
     def _unread(self, auth_user_id: int) -> sa.ColumnElement[bool]:
@@ -250,6 +273,55 @@ class NotificationRepository(BaseRepository[models.Notification]):
             pg_insert(models.NotificationRead.__table__)
             .from_select(["auth_user_id", "notification_id"], selected)
             .on_conflict_do_nothing()
+        )
+        result = await session.execute(statement)
+        return max(result.rowcount, 0)
+
+    async def delete(
+        self,
+        session: AsyncSession,
+        *,
+        auth_user_id: int,
+        workspace_ids: Sequence[int] = (),
+        notification_ids: Sequence[int] | None = None,
+        only_read: bool = False,
+    ) -> int:
+        """Hide rows from this identity's inbox. Returns how many were hidden.
+
+        ``notification_ids=None`` means "the whole visible inbox", and
+        ``only_read=True`` narrows that to the rows already marked read (the
+        "clear read" button) so a bulk delete cannot swallow something the user
+        has not seen yet.
+
+        Same shape as :meth:`mark_read`, for the same security reason: the ids
+        narrow a SELECT that already carries :meth:`audience_clause`, so a
+        foreign id contributes no row rather than a distinguishable error.
+        Because that predicate already excludes rows this identity deleted, a
+        repeat call selects nothing and answers 0 -- idempotent, with the
+        original ``deleted_at`` intact.
+
+        The write also sets ``read_at`` (via the column default on insert):
+        deleting something is a stronger statement than reading it, and leaving
+        it unread would keep it in the badge count it just left the list of.
+        """
+        selected = sa.select(sa.literal(auth_user_id), self.model.id, sa.func.now()).where(
+            self.audience_clause(auth_user_id=auth_user_id, workspace_ids=workspace_ids),
+        )
+        if notification_ids is not None:
+            ids = {int(value) for value in notification_ids}
+            if not ids:
+                return 0
+            selected = selected.where(self.model.id.in_(ids))
+        if only_read:
+            selected = selected.where(self._read_mark(auth_user_id))
+
+        statement = (
+            pg_insert(models.NotificationRead.__table__)
+            .from_select(["auth_user_id", "notification_id", "deleted_at"], selected)
+            .on_conflict_do_update(
+                index_elements=["auth_user_id", "notification_id"],
+                set_={"deleted_at": sa.func.now()},
+            )
         )
         result = await session.execute(statement)
         return max(result.rowcount, 0)

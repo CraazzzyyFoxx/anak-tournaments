@@ -1,9 +1,12 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type {
   AnnouncementCreateBody,
+  NotificationAdminPage,
+  NotificationDeleteResult,
   NotificationInbox,
   NotificationItem,
-  NotificationMarkReadResult
+  NotificationMarkReadResult,
+  NotificationRetireResult
 } from "@/types/notification.types";
 
 export default class notificationService {
@@ -30,6 +33,32 @@ export default class notificationService {
     return apiFetch("/api/notifications/read", {
       method: "POST",
       body: ids ? { ids } : {},
+      skipWorkspace: true
+    }).then((response) => response.json());
+  }
+
+  /**
+   * Remove notifications from *this* caller's inbox.
+   *
+   * Per viewer, not global: the row survives server-side, so throwing away a
+   * platform-wide announcement does not take it out of anyone else's inbox.
+   * `ids` omitted clears the whole visible inbox, and `onlyRead` narrows that
+   * to the rows already marked read — the "clear read" button, which must not
+   * be able to swallow something unopened.
+   *
+   * POST to a verb path rather than `DELETE /api/notifications`: the id list
+   * travels in the body, and a body on DELETE is the corner of HTTP that
+   * caches and proxies disagree about.
+   */
+  static async remove(
+    params: { ids?: number[]; onlyRead?: boolean } = {}
+  ): Promise<NotificationDeleteResult> {
+    return apiFetch("/api/notifications/delete", {
+      method: "POST",
+      body: {
+        ...(params.ids ? { ids: params.ids } : {}),
+        ...(params.onlyRead ? { only_read: true } : {})
+      },
       skipWorkspace: true
     }).then((response) => response.json());
   }
@@ -79,5 +108,52 @@ export default class notificationService {
       method: "DELETE",
       skipWorkspace: true
     });
+  }
+
+  /**
+   * The notifications one workspace's own activity produced, newest first and
+   * including already-retired rows — the operator screen exists to show them.
+   *
+   * `skipWorkspace` and an explicit `workspace_id` for the reason the
+   * announcement reads give: the scope is the argument, not whatever the
+   * switcher happens to hold, and the server authorizes exactly the id sent.
+   */
+  static async listWorkspaceNotifications(params: {
+    workspaceId: number;
+    kind?: string | null;
+    cursor?: string | null;
+    limit?: number;
+  }): Promise<NotificationAdminPage> {
+    return apiFetch("/api/v1/admin/notifications", {
+      query: {
+        workspace_id: params.workspaceId,
+        kind: params.kind ?? undefined,
+        cursor: params.cursor ?? undefined,
+        limit: params.limit
+      },
+      skipWorkspace: true
+    }).then((response) => response.json());
+  }
+
+  /**
+   * Take produced notifications out of circulation: `ids`, a whole `kind`, or
+   * both. Like the announcement retire this expires the rows rather than
+   * deleting them, so the read marks that record who saw them survive.
+   * Naming neither filter is a 422 — there is no "retire everything" call.
+   */
+  static async retireWorkspaceNotifications(params: {
+    workspaceId: number;
+    ids?: number[];
+    kind?: string | null;
+  }): Promise<NotificationRetireResult> {
+    return apiFetch("/api/v1/admin/notifications/retire", {
+      method: "POST",
+      body: {
+        workspace_id: params.workspaceId,
+        ...(params.ids ? { ids: params.ids } : {}),
+        ...(params.kind ? { kind: params.kind } : {})
+      },
+      skipWorkspace: true
+    }).then((response) => response.json());
   }
 }

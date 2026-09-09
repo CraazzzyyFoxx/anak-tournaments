@@ -64,6 +64,7 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	d.Register(mux, app.NotificationRoutes)
 	d.Register(mux, app.AnnouncementPublicRoutes)
 	d.Register(mux, app.AnnouncementAdminRoutes)
+	d.Register(mux, app.NotificationAdminRoutes)
 	mux.Handle("/api/v1/achievements/", d.Subtree(app.AchievementsSubtreeRoutes))
 	// parser domains folded into /api/v1. The achievement-rule admin subtree mounts
 	// at the shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes
@@ -183,12 +184,15 @@ func TestApiV1Guard_NotificationRoutesAreRegistered(t *testing.T) {
 	for _, c := range []struct{ method, path string }{
 		{"GET", "/api/notifications"},
 		{"POST", "/api/notifications/read"},
+		{"POST", "/api/notifications/delete"},
 		{"GET", "/api/announcements/active"},
 		{"GET", "/api/v1/admin/announcements?workspace_id=1"},
 		// The {id} routes are PATCH/DELETE only: a GET here belongs to the
 		// guard, which is why the method travels with the path.
 		{"PATCH", "/api/v1/admin/announcements/42"},
 		{"DELETE", "/api/v1/admin/announcements/42"},
+		{"GET", "/api/v1/admin/notifications?workspace_id=1"},
+		{"POST", "/api/v1/admin/notifications/retire"},
 	} {
 		t.Run(c.method+" "+c.path, func(t *testing.T) {
 			req, _ := http.NewRequest(c.method, srv.URL+c.path, nil)

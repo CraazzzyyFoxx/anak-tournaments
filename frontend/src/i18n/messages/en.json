@@ -5418,6 +5418,15 @@
     "markedAllRead": "All notifications marked read.",
     "markReadError": "Could not update read status. Try again.",
     "retryMarkRead": "Retry marking read",
+    "delete": "Delete",
+    "deleteFor": "Delete notification: {notification}",
+    "deleting": "Deleting notification…",
+    "deleted": "Notification deleted.",
+    "clearRead": "Clear read",
+    "clearingRead": "Clearing read notifications…",
+    "clearedRead": "Read notifications deleted.",
+    "deleteError": "Could not delete notifications. Try again.",
+    "retryDelete": "Retry deleting",
     "loading": "Loading notifications…",
     "loadError": "Could not load notifications. Try again.",
     "refreshError": "Could not refresh notifications. Showing the last loaded notifications.",
@@ -5520,6 +5529,51 @@
         "description": "It stops being shown from now on. The record and everyone's read marks stay, so who saw it remains answerable — but it cannot be put back on air from this screen.",
         "cancel": "Keep it up",
         "done": "Announcement unpublished"
+      }
+    },
+    "workspaceAdmin": {
+      "title": "Sent notifications",
+      "description": "System notifications this workspace produced — invites, registration decisions, disputed reports. Retire one to take it out of every recipient's inbox.",
+      "pickWorkspace": "Pick a workspace to review the notifications it produced.",
+      "unauthorized": {
+        "title": "Unauthorized",
+        "description": "You do not have permission to read the notifications this workspace produced."
+      },
+      "readOnly": "You can review this list but not retire from it. Retiring needs the notification permission in this workspace.",
+      "kindLabel": "Kind",
+      "allKinds": "All kinds",
+      "kinds": {
+        "team_invite": {
+          "received": "Team invite",
+          "answered": "Invite answered"
+        },
+        "registration": {
+          "approved": "Registration approved",
+          "rejected": "Registration rejected"
+        },
+        "encounter": {
+          "report_disputed": "Report disputed"
+        }
+      },
+      "columns": {
+        "kind": "Kind",
+        "recipient": "Recipient",
+        "publishedAt": "Sent",
+        "state": "State"
+      },
+      "state": {
+        "live": "In inboxes",
+        "retired": "Retired"
+      },
+      "empty": "This workspace has produced no notifications of this kind.",
+      "loadMore": "Show older",
+      "loadingMore": "Loading older…",
+      "retired": "{count, plural, =0 {Nothing to retire} one {# notification retired} other {# notifications retired}}",
+      "retire": {
+        "action": "Retire",
+        "kindAction": "Retire every one of this kind",
+        "title": "Retire these notifications?",
+        "description": "They stop appearing in recipients' inboxes and stop counting toward their badge. The records and the read marks stay, so who saw them remains answerable — but this cannot be undone from here."
       }
     }
   }

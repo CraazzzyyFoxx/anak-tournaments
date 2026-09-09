@@ -542,6 +542,39 @@ DOCS: dict[str, dict] = {
             " notification exists; a repeat call marks nothing and is not an error."
         ),
     },
+    "rpc.app.notifications_delete": {
+        "summary": "Delete notifications from the caller's inbox",
+        "description": (
+            "Removes rows from this caller's inbox and returns how many left it together with the"
+            " refreshed unread count. An omitted or null `ids` targets the whole visible inbox, and"
+            " `only_read: true` narrows that to rows already marked read (the \"clear read\" button)."
+            " The deletion is per viewer: the underlying row survives, so one reader dismissing a"
+            " platform-wide announcement does not take it out of anybody else's inbox. Ids outside the"
+            " caller's audience are dropped silently rather than rejected, and a repeat call deletes"
+            " nothing and is not an error."
+        ),
+    },
+    # ── notifications admin (workspace-scoped operator screen) ──────────────────────────────────────
+    "rpc.app.notification_admin_list": {
+        "summary": "List the notifications a workspace produced",
+        "description": (
+            "Returns one keyset page of the notifications this workspace's own activity produced"
+            " (`source_workspace_id`), newest first, expired ones included — the operator view exists to"
+            " show what has already been retired, which the inbox's time window hides. Requires"
+            " notification.read in the workspace named by `workspace_id`; announcements are not listed"
+            " here, they have their own CRUD. 422 on an unknown `kind` or a malformed cursor."
+        ),
+    },
+    "rpc.app.notification_admin_retire": {
+        "summary": "Retire notifications a workspace produced",
+        "description": (
+            "Expires the selected rows as of now — taking them out of every recipient's inbox and badge"
+            " count — and audits the batch once. `ids` and `kind` are filters over the same scoped"
+            " statement and may be combined; naming neither is a 422 rather than a tenant-wide wipe."
+            " Requires notification.delete in `workspace_id`. The rows and their read marks are kept,"
+            " like an announcement retire; already-expired rows are skipped, so a repeat call answers 0."
+        ),
+    },
     "rpc.app.active_announcements": {
         "summary": "Active announcements for the banner",
         "description": (

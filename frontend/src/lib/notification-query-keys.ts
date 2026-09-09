@@ -20,4 +20,11 @@ export const notificationQueryKeys = {
    * switching audience must not read the previous scope's rows from the cache.
    */
   announcementsAdmin: (workspaceId: number | null) => ["announcements", "admin", workspaceId] as const,
+  /**
+   * The producing-workspace operator feed, keyed by scope *and* kind filter:
+   * the server pages a filtered feed, so a cached "all kinds" page must not be
+   * read as the answer for one kind.
+   */
+  workspaceNotifications: (workspaceId: number | null, kind: string | null) =>
+    ["notifications", "workspace", workspaceId, kind] as const,
 };

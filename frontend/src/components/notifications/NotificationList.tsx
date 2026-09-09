@@ -7,6 +7,7 @@ import {
   CheckCheck,
   CheckCircle2,
   Megaphone,
+  Trash2,
   UserPlus,
   XCircle
 } from "lucide-react";
@@ -48,6 +49,12 @@ interface NotificationListProps {
   isLoadingMore: boolean;
   isLoadMoreError: boolean;
   loadMore: () => void;
+  deleteOne: (id: number) => void;
+  clearRead: () => void;
+  isDeleting: boolean;
+  deletingId: number | null;
+  deleteStatus: "idle" | "pending" | "error" | "success";
+  retryDelete: () => void;
 }
 
 /** Only scalar payload values are valid ICU interpolation arguments. */
@@ -116,7 +123,13 @@ const NotificationList = ({
   hasMore,
   isLoadingMore,
   isLoadMoreError,
-  loadMore
+  loadMore,
+  deleteOne,
+  clearRead,
+  isDeleting,
+  deletingId,
+  deleteStatus,
+  retryDelete
 }: NotificationListProps) => {
   const t = useTranslations<never>();
   const locale = useLocale();
@@ -131,7 +144,14 @@ const NotificationList = ({
     if (!t.has(key)) return t("notifications.unknownKind");
     return t(key, messageValues(item.payload));
   };
-  const markAllUnavailable = unreadCount == null || unreadCount === 0 || isMarkingRead;
+  // One mutation at a time: read-marking and deleting both rewrite the same
+  // rows, and the list is refetched rather than patched, so overlapping them
+  // would race two invalidations against one another.
+  const busy = isMarkingRead || isDeleting;
+  const markAllUnavailable = unreadCount == null || unreadCount === 0 || busy;
+  // Read rows are the only ones "clear read" can take, so with none loaded the
+  // button would be a request that deletes nothing.
+  const clearReadUnavailable = busy || !items.some((item) => item.is_read);
   const readStatus = isMarkingRead
     ? t(markingId == null ? "notifications.markingAllRead" : "notifications.markingRead")
     : markReadStatus === "error"
@@ -139,6 +159,16 @@ const NotificationList = ({
       : markReadStatus === "success"
         ? t(markingId == null ? "notifications.markedAllRead" : "notifications.markedRead")
         : "";
+  const deleteStatusText = isDeleting
+    ? t(deletingId == null ? "notifications.clearingRead" : "notifications.deleting")
+    : deleteStatus === "error"
+      ? t("notifications.deleteError")
+      : deleteStatus === "success"
+        ? t(deletingId == null ? "notifications.clearedRead" : "notifications.deleted")
+        : "";
+  // The delete message wins a tie: it is the newer verb whenever both have run,
+  // and two live regions announcing at once is worse than one stale line.
+  const statusMessage = deleteStatusText || readStatus;
 
   return (
     <div className="flex min-h-0 max-h-[min(70dvh,var(--radix-popover-content-available-height))] flex-col">
@@ -153,27 +183,50 @@ const NotificationList = ({
             </span>
           )}
         </div>
-        <Button
-          static={false}
-          variant="ghost"
-          size="sm"
-          className="h-auto min-h-8 gap-1.5 px-2 text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground aria-disabled:pointer-events-none aria-disabled:opacity-50"
-          onClick={() => {
-            if (!markAllUnavailable) markAllRead();
-          }}
-          aria-label={t("notifications.markAllRead")}
-          aria-disabled={markAllUnavailable}
-          aria-busy={isMarkingRead && markingId == null}
-        >
-          <CheckCheck className="size-3.5 shrink-0" aria-hidden />
-          <span>
-            {t(
-              isMarkingRead && markingId == null
-                ? "notifications.markingAllRead"
-                : "notifications.markAllRead"
-            )}
-          </span>
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button
+            static={false}
+            variant="ghost"
+            size="sm"
+            className="h-auto min-h-8 gap-1.5 px-2 text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            onClick={() => {
+              if (!markAllUnavailable) markAllRead();
+            }}
+            aria-label={t("notifications.markAllRead")}
+            aria-disabled={markAllUnavailable}
+            aria-busy={isMarkingRead && markingId == null}
+          >
+            <CheckCheck className="size-3.5 shrink-0" aria-hidden />
+            <span>
+              {t(
+                isMarkingRead && markingId == null
+                  ? "notifications.markingAllRead"
+                  : "notifications.markAllRead"
+              )}
+            </span>
+          </Button>
+          <Button
+            static={false}
+            variant="ghost"
+            size="sm"
+            className="h-auto min-h-8 gap-1.5 px-2 text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            onClick={() => {
+              if (!clearReadUnavailable) clearRead();
+            }}
+            aria-label={t("notifications.clearRead")}
+            aria-disabled={clearReadUnavailable}
+            aria-busy={isDeleting && deletingId == null}
+          >
+            <Trash2 className="size-3.5 shrink-0" aria-hidden />
+            <span>
+              {t(
+                isDeleting && deletingId == null
+                  ? "notifications.clearingRead"
+                  : "notifications.clearRead"
+              )}
+            </span>
+          </Button>
+        </div>
       </div>
 
       <div
@@ -227,7 +280,8 @@ const NotificationList = ({
               const href = notificationHref(item);
               const text = notificationText(item);
               const isPending = isMarkingRead && (markingId == null || markingId === item.id);
-              const unavailable = item.is_read || isMarkingRead;
+              const isDeletePending = isDeleting && (deletingId == null || deletingId === item.id);
+              const unavailable = item.is_read || busy;
               const kindConfig = getKindConfig(item.kind);
               const KindIcon = kindConfig.icon;
 
@@ -313,6 +367,25 @@ const NotificationList = ({
                       )}
                     </span>
                   </Button>
+
+                  <Button
+                    static={false}
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 shrink-0 rounded-md text-muted-foreground opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                    aria-label={t("notifications.deleteFor", { notification: text })}
+                    aria-disabled={busy}
+                    aria-busy={isDeletePending}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!busy) deleteOne(item.id);
+                    }}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                    <span className="sr-only">
+                      {t(isDeletePending ? "notifications.deleting" : "notifications.delete")}
+                    </span>
+                  </Button>
                 </li>
               );
             })}
@@ -324,14 +397,21 @@ const NotificationList = ({
         <p
           role="status"
           aria-atomic="true"
-          className={cn("text-sm", readStatus ? "border-t px-3 py-2" : "sr-only")}
+          className={cn("text-sm", statusMessage ? "border-t px-3 py-2" : "sr-only")}
         >
-          {readStatus}
+          {statusMessage}
         </p>
         {markReadStatus === "error" && (
           <div className="px-3 pb-2">
             <Button static={false} variant="outline" size="sm" onClick={retryMarkRead}>
               {t("notifications.retryMarkRead")}
+            </Button>
+          </div>
+        )}
+        {deleteStatus === "error" && (
+          <div className="px-3 pb-2">
+            <Button static={false} variant="outline" size="sm" onClick={retryDelete}>
+              {t("notifications.retryDelete")}
             </Button>
           </div>
         )}
@@ -350,7 +430,7 @@ const NotificationList = ({
               size="sm"
               className="h-auto min-h-10 w-full whitespace-normal text-xs sm:min-h-8"
               onClick={loadMore}
-              disabled={isFetching || isMarkingRead}
+              disabled={isFetching || busy}
             >
               {t(
                 isLoadingMore

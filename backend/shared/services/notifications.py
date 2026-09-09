@@ -235,6 +235,7 @@ async def notify(
     audience: Audience = "user",
     recipient_auth_user_id: int | None = None,
     workspace_id: int | None = None,
+    source_workspace_id: int | None = None,
     actor_auth_user_id: int | None = None,
     published_at: datetime | None = None,
     expires_at: datetime | None = None,
@@ -247,6 +248,12 @@ async def notify(
     ``recipient_auth_user_id`` must be resolved server-side from the flow's own
     domain objects, never taken from a client-supplied id: it decides who can
     read the row.
+
+    ``source_workspace_id`` is the tenant whose activity produced the row, and is
+    what lets an operator find (and retire) the notifications their own
+    tournaments emitted -- ``workspace_id`` cannot serve that purpose because a
+    personal row is forbidden to carry one. A workspace announcement is its own
+    source, so it defaults rather than making every caller repeat the id.
     """
     validated = validate_notification_payload(kind, payload, audience=audience)
     _check_audience(audience, recipient_auth_user_id, workspace_id)
@@ -255,6 +262,7 @@ async def notify(
         audience=audience,
         recipient_auth_user_id=recipient_auth_user_id,
         workspace_id=workspace_id,
+        source_workspace_id=source_workspace_id if source_workspace_id is not None else workspace_id,
         kind=kind,
         # ``mode="json"`` so a datetime in a future payload lands as a string
         # JSONB can hold; absent optionals stay out of the snapshot instead of

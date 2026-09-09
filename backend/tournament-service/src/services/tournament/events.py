@@ -185,6 +185,7 @@ async def _notify_registration_decision(
     player_id: int | None,
     *,
     kind: str,
+    workspace_id: int | None,
 ) -> None:
     """Tell the registrant their entry was decided, and stage their nudge.
 
@@ -223,6 +224,11 @@ async def _notify_registration_decision(
         session,
         kind=kind,
         recipient_auth_user_id=int(recipient),
+        # The organizer that owns the tournament, so their operators can find
+        # (and retire) the decision rows their own review produced. Passed in
+        # rather than re-read: both callers already resolved it for the outbox
+        # event above.
+        source_workspace_id=workspace_id,
         payload={
             "tournament_id": registration.tournament_id,
             "tournament_name": tournament_name,
@@ -251,7 +257,9 @@ async def enqueue_registration_approved(
         exchange=TOURNAMENT_EVENTS_EXCHANGE,
         routing_key="tournament.registration.approved",
     )
-    await _notify_registration_decision(session, registration, player_id, kind="registration.approved")
+    await _notify_registration_decision(
+        session, registration, player_id, kind="registration.approved", workspace_id=workspace_id
+    )
     register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
 
 
@@ -274,7 +282,9 @@ async def enqueue_registration_rejected(
         exchange=TOURNAMENT_EVENTS_EXCHANGE,
         routing_key="tournament.registration.rejected",
     )
-    await _notify_registration_decision(session, registration, player_id, kind="registration.rejected")
+    await _notify_registration_decision(
+        session, registration, player_id, kind="registration.rejected", workspace_id=workspace_id
+    )
     register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
 
 

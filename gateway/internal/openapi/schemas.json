@@ -1193,6 +1193,71 @@
       "description": "Returns the raw match-log file bytes for a match (base64 from the worker, decoded by the gateway); 404 if the match or log is missing.",
       "summary": "Download match log"
     },
+    "rpc.app.notification_admin_list": {
+      "description": "Returns one keyset page of the notifications this workspace's own activity produced (`source_workspace_id`), newest first, expired ones included \u2014 the operator view exists to show what has already been retired, which the inbox's time window hides. Requires notification.read in the workspace named by `workspace_id`; announcements are not listed here, they have their own CRUD. 422 on an unknown `kind` or a malformed cursor.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "kind",
+          "required": false,
+          "schema": {
+            "description": "One notification kind; omitted lists every kind.",
+            "type": "string"
+          }
+        },
+        {
+          "name": "cursor",
+          "required": false,
+          "schema": {
+            "description": "Opaque continuation from the previous page's next_cursor.",
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "description": "Page size (default 50, capped at 200).",
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.NotificationAdminPage"
+      },
+      "summary": "List the notifications a workspace produced"
+    },
+    "rpc.app.notification_admin_retire": {
+      "description": "Expires the selected rows as of now \u2014 taking them out of every recipient's inbox and badge count \u2014 and audits the batch once. `ids` and `kind` are filters over the same scoped statement and may be combined; naming neither is a 422 rather than a tenant-wide wipe. Requires notification.delete in `workspace_id`. The rows and their read marks are kept, like an announcement retire; already-expired rows are skipped, so a repeat call answers 0.",
+      "request": {
+        "array": false,
+        "ref": "app.NotificationRetire"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.NotificationRetireResult"
+      },
+      "summary": "Retire notifications a workspace produced"
+    },
+    "rpc.app.notifications_delete": {
+      "description": "Removes rows from this caller's inbox and returns how many left it together with the refreshed unread count. An omitted or null `ids` targets the whole visible inbox, and `only_read: true` narrows that to rows already marked read (the \"clear read\" button). The deletion is per viewer: the underlying row survives, so one reader dismissing a platform-wide announcement does not take it out of anybody else's inbox. Ids outside the caller's audience are dropped silently rather than rejected, and a repeat call deletes nothing and is not an error.",
+      "request": {
+        "array": false,
+        "ref": "app.NotificationDelete"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.NotificationDeleteResult"
+      },
+      "summary": "Delete notifications from the caller's inbox"
+    },
     "rpc.app.notifications_list": {
       "description": "Returns one page of the caller's inbox newest first, plus the unread badge count and an opaque next_cursor (null on the last page). The audience is computed from the authenticated identity alone \u2014 personal rows, rows for the workspaces the caller belongs to, and platform-wide announcements \u2014 so there is no recipient parameter to pass. Expired and not-yet-published rows are excluded. System kinds carry no text: the row is kind + payload snapshot and the client renders it. 422 on a malformed cursor.",
       "query_params": [
@@ -13388,6 +13453,147 @@
       "title": "MatchReadWithUserStats",
       "type": "object"
     },
+    "app.NotificationAdminItem": {
+      "description": "One produced row as an operator sees it.\n\nSeparate from ``NotificationItem`` because it answers a different question:\nthe inbox model is \"what am I being told\", this one is \"what did my\nworkspace send, to whom, and is it still live\". Hence ``recipient`` \u2014 which\nthe inbox has no business carrying, since there it is always the caller \u2014\nand no ``is_read``, which is a fact about a viewer this screen does not have.",
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "published_at": {
+          "format": "date-time",
+          "title": "Published At",
+          "type": "string"
+        },
+        "recipient_auth_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipient Auth User Id"
+        },
+        "source_workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Workspace Id"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "payload",
+        "published_at"
+      ],
+      "title": "NotificationAdminItem",
+      "type": "object"
+    },
+    "app.NotificationAdminPage": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/app.NotificationAdminItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "NotificationAdminPage",
+      "type": "object"
+    },
+    "app.NotificationDelete": {
+      "description": "``ids=None`` deletes the whole visible inbox; ``only_read`` narrows it.\n\nThe two together are the \"clear read\" button, which must not be able to\nswallow a notification the user has not opened yet.",
+      "properties": {
+        "ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ids"
+        },
+        "only_read": {
+          "default": false,
+          "title": "Only Read",
+          "type": "boolean"
+        }
+      },
+      "title": "NotificationDelete",
+      "type": "object"
+    },
+    "app.NotificationDeleteResult": {
+      "properties": {
+        "deleted": {
+          "title": "Deleted",
+          "type": "integer"
+        },
+        "unread_count": {
+          "title": "Unread Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deleted",
+        "unread_count"
+      ],
+      "title": "NotificationDeleteResult",
+      "type": "object"
+    },
     "app.NotificationInboxRead": {
       "description": "One inbox round trip: the page, the badge count and the continuation.\n\nThe bell renders the count and the list together on every open, so serving\nthem from two endpoints would double the requests for a header component\nthat mounts on every page.",
       "properties": {
@@ -13525,6 +13731,61 @@
         "unread_count"
       ],
       "title": "NotificationMarkReadResult",
+      "type": "object"
+    },
+    "app.NotificationRetire": {
+      "additionalProperties": false,
+      "description": "Which of this workspace's notifications to take out of circulation.\n\n``ids`` and ``kind`` are filters over the same scoped statement and may be\ncombined. Naming neither is rejected \u2014 \"retire everything this workspace\never sent\" must be spelled out one kind at a time, not reached by omission.",
+      "properties": {
+        "ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ids"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspace_id"
+      ],
+      "title": "NotificationRetire",
+      "type": "object"
+    },
+    "app.NotificationRetireResult": {
+      "properties": {
+        "retired": {
+          "title": "Retired",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "retired"
+      ],
+      "title": "NotificationRetireResult",
       "type": "object"
     },
     "app.Paginated_AchievementEarned_": {

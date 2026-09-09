@@ -75,6 +75,13 @@ PERMISSION_CATALOG: tuple[PermissionSpec, ...] = (
     # NOT reachable through these: a banner every visitor sees is gated on the
     # superuser flag, not on a grant an owner can hand out inside a tenant.
     *_crud("announcement"),
+    # Workspace-scoped operator access to the notifications this tenant's own
+    # activity produced (``notification.source_workspace_id``). Read and delete
+    # only: nobody writes an inbox row by hand -- the flows that cause one do --
+    # and "delete" is a retire, which takes the row out of every recipient's
+    # inbox, so it is deliberately not part of the member read set.
+    _permission("notification", "read", "Read the notifications this workspace produced"),
+    _permission("notification", "delete", "Retire a notification this workspace produced"),
     _permission("audit", "read", "Read the platform audit log"),
     # Self-service capabilities: allowed by default for every authenticated user;
     # exist only so an admin can DENY them per user (negative RBAC).

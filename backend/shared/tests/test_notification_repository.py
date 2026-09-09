@@ -281,6 +281,115 @@ class NotificationRepositoryTests(IsolatedAsyncioTestCase):
         self.assertNotIn(unpublished, self.read_marks(ALICE))
         self.assertEqual(await self.repo.unread_count(self.shim, auth_user_id=ALICE, workspace_ids=(WORKSPACE,)), 0)
 
+    # -- delete -----------------------------------------------------------
+
+    async def test_delete_hides_the_row_from_this_viewer_only(self) -> None:
+        """A dismissal is a fact about (row, viewer), never about the row.
+
+        One announcement sits in every inbox, so a reader throwing it away must
+        not take it out of anybody else's -- and the journal row itself has to
+        survive, since ``notification_read`` points at it with no foreign key.
+        """
+        announcement = self.add(audience="global")
+        mine = self.personal(ALICE)
+
+        deleted = await self.repo.delete(self.shim, auth_user_id=ALICE, notification_ids=[announcement])
+
+        self.assertEqual(deleted, 1)
+        self.assertEqual(await self.page_ids(ALICE), [mine])
+        self.assertEqual(await self.page_ids(BOB), [announcement])
+        self.assertEqual([r.id for r in await self.repo.active_global(self.shim, auth_user_id=BOB)], [announcement])
+        self.assertIsNotNone(self.session.get(Notification, announcement), "the journal row must survive")
+
+    async def test_deleting_an_unread_row_also_clears_it_from_the_badge(self) -> None:
+        """Deleting is a stronger statement than reading.
+
+        A row that left the list while still counted unread would leave the
+        bell showing a number the user cannot reach anything to clear.
+        """
+        row = self.personal(ALICE)
+        self.assertEqual(await self.repo.unread_count(self.shim, auth_user_id=ALICE), 1)
+
+        await self.repo.delete(self.shim, auth_user_id=ALICE, notification_ids=[row])
+
+        self.assertEqual(await self.repo.unread_count(self.shim, auth_user_id=ALICE), 0)
+
+    async def test_delete_ignores_ids_outside_the_audience(self) -> None:
+        mine = self.personal(ALICE)
+        bobs = self.personal(BOB)
+        other_workspace = self.add(audience="workspace", workspace_id=WORKSPACE)
+
+        # Same contract as mark_read: no raise, no distinguishable outcome, so
+        # the endpoint cannot answer "does id 8231 exist and is it someone's".
+        deleted = await self.repo.delete(
+            self.shim,
+            auth_user_id=ALICE,
+            notification_ids=[bobs, other_workspace, 10_000],
+        )
+        self.assertEqual(deleted, 0)
+        self.assertEqual(await self.page_ids(BOB), [bobs])
+
+        # Control: the same call shape does delete an id Alice may see.
+        self.assertEqual(await self.repo.delete(self.shim, auth_user_id=ALICE, notification_ids=[mine, bobs]), 1)
+        self.assertEqual(await self.page_ids(ALICE), [])
+
+    async def test_delete_is_idempotent(self) -> None:
+        row = self.personal(ALICE)
+
+        self.assertEqual(await self.repo.delete(self.shim, auth_user_id=ALICE, notification_ids=[row]), 1)
+        first_deleted_at = self.session.scalar(
+            sa.select(NotificationRead.deleted_at).where(NotificationRead.notification_id == row)
+        )
+
+        self.assertEqual(await self.repo.delete(self.shim, auth_user_id=ALICE, notification_ids=[row]), 0)
+
+        self.assertEqual(
+            self.session.scalar(
+                sa.select(NotificationRead.deleted_at).where(NotificationRead.notification_id == row)
+            ),
+            first_deleted_at,
+            "a repeat delete must not move deleted_at",
+        )
+
+    async def test_delete_of_a_read_row_keeps_one_mark(self) -> None:
+        """The two verbs share a row: reading then deleting must not collide."""
+        row = self.personal(ALICE)
+        await self.repo.mark_read(self.shim, auth_user_id=ALICE, notification_ids=[row])
+
+        self.assertEqual(await self.repo.delete(self.shim, auth_user_id=ALICE, notification_ids=[row]), 1)
+
+        self.assertEqual(self.read_marks(ALICE), [row])
+        self.assertEqual(await self.page_ids(ALICE), [])
+
+    async def test_only_read_spares_the_unread_rows(self) -> None:
+        """"Clear read" must not swallow something the user has not opened."""
+        seen = self.personal(ALICE)
+        fresh = self.personal(ALICE)
+        await self.repo.mark_read(self.shim, auth_user_id=ALICE, notification_ids=[seen])
+
+        deleted = await self.repo.delete(self.shim, auth_user_id=ALICE, only_read=True)
+
+        self.assertEqual(deleted, 1)
+        self.assertEqual(await self.page_ids(ALICE), [fresh])
+
+    async def test_delete_without_ids_empties_the_visible_inbox(self) -> None:
+        self.personal(ALICE)
+        announcement = self.add(audience="global")
+        self.add(audience="workspace", workspace_id=WORKSPACE)
+        bobs = self.personal(BOB)
+        unpublished = self.personal(ALICE, published_at=datetime.now(UTC) + timedelta(hours=1))
+
+        deleted = await self.repo.delete(self.shim, auth_user_id=ALICE, workspace_ids=(WORKSPACE,))
+
+        self.assertEqual(deleted, 3)
+        self.assertEqual(await self.page_ids(ALICE, workspace_ids=(WORKSPACE,)), [])
+        # Bob keeps his own row *and* the announcement Alice cleared: a bulk
+        # delete is still per viewer.
+        self.assertEqual(await self.page_ids(BOB), [bobs, announcement])
+        # Not yet published: out of the audience, so a bulk delete cannot reach
+        # it -- it must still appear once its time comes.
+        self.assertNotIn(unpublished, self.read_marks(ALICE))
+
     # -- banner -----------------------------------------------------------
 
     async def test_active_global_skips_dismissed_and_scoped_rows(self) -> None:

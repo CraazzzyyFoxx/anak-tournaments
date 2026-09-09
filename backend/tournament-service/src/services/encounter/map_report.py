@@ -34,6 +34,7 @@ from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.encounter_report import EncounterMapReport
 from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
 from shared.models.tournament.team import Team
+from shared.models.tournament.tournament import Tournament
 from shared.repository import EncounterMapReportRepository, PickBanEntryRepository
 from shared.services import pick_ban_engine as engine
 from shared.services.bracket.usability import is_encounter_live
@@ -86,11 +87,18 @@ class MapReportService:
             )
         )
         recipients = [int(value) for value in result.scalars().all()]
+        # The organizer whose bracket this encounter belongs to: it owns the
+        # rows, so its operators can retire them. One scalar, and only on the
+        # dispute branch -- ``Encounter`` carries the tournament, not the tenant.
+        workspace_id = await session.scalar(
+            sa.select(Tournament.workspace_id).where(Tournament.id == encounter.tournament_id)
+        )
         for recipient in recipients:
             await notify(
                 session,
                 kind="encounter.report_disputed",
                 recipient_auth_user_id=recipient,
+                source_workspace_id=int(workspace_id) if workspace_id is not None else None,
                 actor_auth_user_id=reporter_auth_user_id,
                 payload={
                     "encounter_id": encounter.id,

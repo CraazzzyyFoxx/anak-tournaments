@@ -41,6 +41,43 @@ export interface NotificationMarkReadResult {
   unread_count: number;
 }
 
+export interface NotificationDeleteResult {
+  /** How many rows actually left this inbox. */
+  deleted: number;
+  unread_count: number;
+}
+
+/**
+ * One row as the *operator* of the producing workspace sees it
+ * (`GET /api/v1/admin/notifications`).
+ *
+ * A different question from `NotificationItem`: not "what am I being told" but
+ * "what did my workspace send, to whom, and is it still live". Hence the
+ * recipient — which the inbox model has no reason to carry, since there it is
+ * always the caller — and no `is_read`, which is a fact about a viewer this
+ * screen does not have.
+ */
+export interface NotificationAdminItem {
+  id: number;
+  kind: string;
+  payload: Record<string, unknown>;
+  recipient_auth_user_id: number | null;
+  source_workspace_id: number | null;
+  published_at: string;
+  /** Set and in the past means retired: the row reaches no inbox any more. */
+  expires_at: string | null;
+}
+
+export interface NotificationAdminPage {
+  items: NotificationAdminItem[];
+  next_cursor: string | null;
+}
+
+export interface NotificationRetireResult {
+  /** Rows that were live and now are not; a repeat call answers 0. */
+  retired: number;
+}
+
 /**
  * The operator write body (`POST /api/v1/admin/announcements`).
  *

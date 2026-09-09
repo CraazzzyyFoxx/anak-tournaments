@@ -370,3 +370,70 @@ class NotificationsRpcTests(IsolatedAsyncioTestCase):
         self.assertTrue(ok["ok"], ok)
         self.assertEqual(self.read_marks(ALICE), [mine])
         self.assertEqual(ok["data"]["unread_count"], 0)
+
+    # -- delete ------------------------------------------------------------
+
+    async def test_delete_drops_the_row_from_this_inbox_and_refreshes_the_badge(self) -> None:
+        """The endpoint the trash button calls, end to end through the handler.
+
+        Deletion is per viewer: the row keeps existing (an announcement lives in
+        every inbox), it just stops being listed and stops being counted.
+        """
+        gone = self.personal(ALICE, kind="registration.approved")
+        kept = self.personal(ALICE, kind="team_invite.received")
+
+        result = await self.call(
+            "rpc.app.notifications_delete",
+            {"identity": _IDENTITY, "payload": {"ids": [gone]}},
+        )
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["data"], {"deleted": 1, "unread_count": 1})
+        listed = await self.call("rpc.app.notifications_list", {"identity": _IDENTITY, "query": {}})
+        self.assertEqual([item["id"] for item in listed["data"]["items"]], [kept])
+        self.assertIsNotNone(self.session.get(Notification, gone), "the journal row must survive")
+
+    async def test_delete_with_foreign_id_is_a_no_op(self) -> None:
+        """Same non-oracle contract as mark-read -- see that test's docstring."""
+        bobs_row = self.personal(BOB)
+
+        result = await self.call(
+            "rpc.app.notifications_delete",
+            {"identity": _IDENTITY, "payload": {"ids": [bobs_row]}},
+        )
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["data"]["deleted"], 0)
+        self.assertEqual(self.read_marks(BOB), [])
+        bobs_inbox = await self.call(
+            "rpc.app.notifications_list",
+            {"identity": {**_IDENTITY, "user_id": BOB, "username": "bob"}, "query": {}},
+        )
+        self.assertEqual([item["id"] for item in bobs_inbox["data"]["items"]], [bobs_row])
+
+    async def test_delete_only_read_spares_the_unread_rows(self) -> None:
+        """"Clear read" is the bulk button; it must not swallow the unopened."""
+        seen = self.personal(ALICE, kind="registration.approved")
+        fresh = self.personal(ALICE, kind="team_invite.received")
+        await self.call(
+            "rpc.app.notifications_mark_read",
+            {"identity": _IDENTITY, "payload": {"ids": [seen]}},
+        )
+
+        result = await self.call(
+            "rpc.app.notifications_delete",
+            {"identity": _IDENTITY, "payload": {"only_read": True}},
+        )
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["data"], {"deleted": 1, "unread_count": 1})
+        listed = await self.call("rpc.app.notifications_list", {"identity": _IDENTITY, "query": {}})
+        self.assertEqual([item["id"] for item in listed["data"]["items"]], [fresh])
+
+    async def test_delete_requires_identity(self) -> None:
+        row = self.personal(ALICE)
+
+        result = await self.call("rpc.app.notifications_delete", {"payload": {"ids": [row]}})
+
+        self.assertFalse(result["ok"], result)
+        self.assertEqual(self.read_marks(ALICE), [])

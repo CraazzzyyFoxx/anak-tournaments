@@ -12,7 +12,7 @@ schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_proces
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`notif001`** (47 revisions in `backend/migrations/versions/`).
+Alembic head: **`notif003`** (49 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -2562,10 +2562,17 @@ inside the transaction that causes the event, never committed on its own. It sto
 a `payload_json` snapshot rather than rendered text, so the wording lives in the frontend
 dictionary and a deleted team still reads by name; `audience` decides who may see the row
 (`user`, `workspace` or `global`) and the check constraints keep `recipient_auth_user_id` /
-`workspace_id` filled exactly for the audience that needs one. `notification_read` is the
-read mark, primary key `(auth_user_id, notification_id)`: "read" is a fact about one viewer,
-which is what lets a global announcement be dismissed by each reader independently, and the
-mark survives the announcement being unpublished, so who saw it stays answerable.
+`workspace_id` filled exactly for the audience that needs one. `source_workspace_id` answers a
+different question — *which tenant produced* the row — and is therefore set for every audience,
+`user` included: a registration decision is addressed to one competitor and owned by the
+organizer that decided it. It is what the workspace operator screen scopes on
+(`rpc.app.notification_admin_*`), where a "delete" is an `expires_at = now()` retire, so the row
+and its read marks survive. `notification_read` is the per-viewer state, primary key
+`(auth_user_id, notification_id)`: "read" is a fact about one viewer, which is what lets a global
+announcement be dismissed by each reader independently, and the mark survives the announcement
+being unpublished, so who saw it stays answerable. `deleted_at` on the same row is the inbox's
+own delete button — that viewer stops seeing the notification while every other recipient's copy,
+and the journal row itself, are untouched.
 
 <!-- ERD:auto platform -->
 ```mermaid
@@ -2607,6 +2614,7 @@ erDiagram
         varchar(16) audience
         bigint recipient_auth_user_id "nullable"
         bigint workspace_id "nullable"
+        bigint source_workspace_id "nullable"
         varchar(64) kind
         jsonb payload_json
         bigint actor_auth_user_id "nullable"
@@ -2618,6 +2626,7 @@ erDiagram
         bigint auth_user_id PK
         bigint notification_id PK
         timestamptz read_at
+        timestamptz deleted_at "nullable"
     }
     REALTIME_WORKSPACE_EVENT {
         bigint id PK

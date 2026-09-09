@@ -713,7 +713,11 @@ class NotificationSignalListenerTests(_ProducerTestCase):
     async def _decide(self) -> None:
         self.registration.status = "approved"
         await events_module._notify_registration_decision(
-            self.shim, self.registration, self.member.player_id, kind="registration.approved"
+            self.shim,
+            self.registration,
+            self.member.player_id,
+            kind="registration.approved",
+            workspace_id=WORKSPACE_ID,
         )
 
     async def _drain_signal_tasks(self) -> None:

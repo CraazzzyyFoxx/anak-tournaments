@@ -668,6 +668,7 @@ class RegistrationTeamService:
                 session,
                 kind="team_invite.received",
                 recipient_auth_user_id=target_auth_user_id,
+                source_workspace_id=team.workspace_id,
                 actor_auth_user_id=auth_user.id,
                 payload={
                     "team_id": team.id,
@@ -927,6 +928,7 @@ class RegistrationTeamService:
         *,
         team_id: int,
         team_name: str,
+        workspace_id: int,
         captain_registration_id: int | None,
         invite_id: int,
         answer: str,
@@ -961,6 +963,7 @@ class RegistrationTeamService:
             session,
             kind="team_invite.answered",
             recipient_auth_user_id=int(captain_auth_user_id),
+            source_workspace_id=workspace_id,
             actor_auth_user_id=responder.id,
             payload={
                 "team_id": team_id,
@@ -1080,6 +1083,7 @@ class RegistrationTeamService:
             session,
             team_id=team.id,
             team_name=team.name,
+            workspace_id=team.workspace_id,
             captain_registration_id=team.captain_registration_id,
             invite_id=invite.id,
             answer="accepted",
@@ -1107,14 +1111,16 @@ class RegistrationTeamService:
         if invite.state != INVITE_PENDING:
             raise _diagnose_dead_invite(invite)
         invite.state = INVITE_DECLINED
-        # A two-column projection of the team, not a row fetch: the snapshot needs
-        # the name the captain reads and the registration that identifies them.
+        # A narrow projection of the team, not a row fetch: the snapshot needs the
+        # name the captain reads, the registration that identifies them, and the
+        # tenant that owns the resulting notification.
         team_row = (
             await session.execute(
                 sa.select(
                     models.BalancerRegistrationTeam.name,
                     models.BalancerRegistrationTeam.captain_registration_id,
                     models.BalancerRegistrationTeam.tournament_id,
+                    models.BalancerRegistrationTeam.workspace_id,
                 ).where(models.BalancerRegistrationTeam.id == invite.team_id)
             )
         ).one_or_none()
@@ -1131,6 +1137,7 @@ class RegistrationTeamService:
                 session,
                 team_id=invite.team_id,
                 team_name=team_row.name,
+                workspace_id=team_row.workspace_id,
                 captain_registration_id=team_row.captain_registration_id,
                 invite_id=invite.id,
                 answer="declined",

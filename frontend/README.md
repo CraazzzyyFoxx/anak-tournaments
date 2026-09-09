@@ -60,11 +60,23 @@ read, because a read mark is also how the announcement banner is dismissed. A sy
 `src/i18n/messages/*.json`, so a copy fix reaches rows written months ago; row destinations come
 from `src/lib/notification-href.ts`, never from payload URLs.
 
+A row can also be deleted from the inbox (`POST /api/notifications/delete`), one at a time or as
+"clear read" for everything already marked. That deletion is per viewer — the server writes
+`notification_read.deleted_at` and keeps the row — so throwing away a platform-wide announcement
+never takes it out of anybody else's inbox. Deleting counts as reading, so the badge drops with it.
+
 Under the header, centred in the content column, on every page and for anonymous visitors too,
 `AnnouncementBanner.tsx` shows the newest active announcement from `GET /api/announcements/active`
 (read server-side in both
 layouts, so it is in the first paint). Closing it writes a read mark for a signed-in viewer and a
 `localStorage` id for everyone else. Operators publish them at `/admin/announcements`.
+
+`/admin/notifications` is the other side of the same table: the system notifications *this*
+workspace produced (`notification.source_workspace_id`), filtered by kind through the URL, with a
+retire for one row or for a whole kind. Retiring expires the rows rather than deleting them —
+they leave every recipient's inbox while the records and their read marks stay — and it needs
+`notification.delete` in the workspace, a separate grant from the `notification.read` that opens
+the screen.
 
 ## Branding via .env
 

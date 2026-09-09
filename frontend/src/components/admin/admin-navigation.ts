@@ -1,6 +1,7 @@
 import {
   Activity,
   Award,
+  Bell,
   Building2,
   Gamepad2,
   History,
@@ -294,6 +295,16 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         workspaceAdminVisible: true,
       },
       {
+        title: "Notifications",
+        href: "/admin/notifications",
+        icon: Bell,
+        description:
+          "System notifications this workspace produced — invites, decisions, disputes — and the retire that takes one out of every inbox.",
+        aliases: ["notification", "inbox", "retire", "registration approved"],
+        permissions: ["notification.read"],
+        workspaceAdminVisible: true,
+      },
+      {
         title: "Audit log",
         href: "/admin/audit",
         icon: History,
@@ -364,6 +375,9 @@ const adminRoutePermissions: Array<{
   // Reading the feed is the gate; publishing to it is a second grant the page
   // asks for separately, and a platform-wide one needs the superuser besides.
   { prefix: "/admin/announcements", permissions: ["announcement.read"], workspaceAdminVisible: true },
+  // Retiring is a second grant the page asks for separately, exactly like
+  // publishing an announcement.
+  { prefix: "/admin/notifications", permissions: ["notification.read"], workspaceAdminVisible: true },
   { prefix: "/admin/audit", permissions: ["audit.read"], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
 

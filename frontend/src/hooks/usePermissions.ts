@@ -40,6 +40,10 @@ type CrudPermission = `${CrudResource}.${CrudAction}`;
 type SpecialPermission =
   | "admin.*"
   | "audit.read"
+  // Read and delete only, mirroring the catalog: nobody writes an inbox row by
+  // hand, and a "delete" here is the retire on the operator screen.
+  | "notification.read"
+  | "notification.delete"
   | "permission.read"
   | "auth_user.read"
   | "auth_user.update"

@@ -47,6 +47,7 @@ __all__ = (
     "WORKSPACE_IDS_CACHE_KEY",
     "WORKSPACE_IDS_CACHE_TTL",
     "active_announcements",
+    "delete",
     "inbox_page",
     "mark_read",
     "workspace_ids_for",
@@ -162,6 +163,35 @@ async def mark_read(
         session, auth_user_id=auth_user_id, workspace_ids=workspace_ids
     )
     return schemas.NotificationMarkReadResult(marked=marked, unread_count=unread_count)
+
+
+async def delete(
+    session: Any,
+    *,
+    auth_user_id: int,
+    notification_ids: Sequence[int] | None = None,
+    only_read: bool = False,
+) -> schemas.NotificationDeleteResult:
+    """Drop rows from this caller's inbox, then report the refreshed badge.
+
+    A deletion is per viewer -- the ``notification`` row survives, because one
+    announcement sits in every inbox and the journal is append-only. Ids the
+    caller may not see are dropped inside the repository's SELECT, so a foreign
+    id is indistinguishable from one that never existed.
+    """
+    workspace_ids = await workspace_ids_for(session, auth_user_id=auth_user_id)
+    deleted = await repository.delete(
+        session,
+        auth_user_id=auth_user_id,
+        workspace_ids=workspace_ids,
+        notification_ids=notification_ids,
+        only_read=only_read,
+    )
+    await session.commit()
+    unread_count = await repository.unread_count(
+        session, auth_user_id=auth_user_id, workspace_ids=workspace_ids
+    )
+    return schemas.NotificationDeleteResult(deleted=deleted, unread_count=unread_count)
 
 
 async def active_announcements(

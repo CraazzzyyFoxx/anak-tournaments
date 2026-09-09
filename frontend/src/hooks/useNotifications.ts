@@ -26,6 +26,14 @@ interface UseNotificationsResult {
   loadMore: () => void;
   isLoadingMore: boolean;
   isLoadMoreError: boolean;
+  /** Drop one row from this inbox. The server row survives — see the service. */
+  deleteOne: (id: number) => void;
+  /** Drop every row already marked read. Never touches an unread one. */
+  clearRead: () => void;
+  isDeleting: boolean;
+  deletingId: number | null;
+  deleteStatus: "idle" | "pending" | "error" | "success";
+  retryDelete: () => void;
 }
 
 /**
@@ -82,6 +90,31 @@ export function useNotifications(authUserId: number | null | undefined): UseNoti
     }
   });
 
+  // Deleting is per viewer, so the same two surfaces have to be re-read: a
+  // dismissed announcement leaves the banner as well as the list. No optimistic
+  // patch — `markRead` above answers the same question by refetching, and one
+  // invalidation path is easier to keep honest than two cache writers.
+  const remove = useMutation({
+    mutationFn: (variables: { ids?: number[]; onlyRead?: boolean }) =>
+      notificationService.remove(variables),
+    meta: { suppressErrorToast: true },
+    onSuccess: async () => {
+      const results = await Promise.allSettled([
+        queryClient.invalidateQueries(
+          { queryKey: notificationQueryKeys.list() },
+          { throwOnError: true }
+        ),
+        queryClient.invalidateQueries(
+          { queryKey: notificationQueryKeys.activeAnnouncements() },
+          { throwOnError: true }
+        )
+      ]);
+      for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+      }
+    }
+  });
+
   return {
     // Pages arrive newest-first and keyset-paginated, so concatenation is the
     // order — no re-sort, and no row can appear twice.
@@ -110,11 +143,25 @@ export function useNotifications(authUserId: number | null | undefined): UseNoti
     },
     hasMore: query.hasNextPage,
     loadMore: () => {
-      if (query.hasNextPage && !query.isFetching && !markRead.isPending) {
+      if (query.hasNextPage && !query.isFetching && !markRead.isPending && !remove.isPending) {
         void query.fetchNextPage({ cancelRefetch: false });
       }
     },
     isLoadingMore: query.isFetchingNextPage,
-    isLoadMoreError: query.isFetchNextPageError
+    isLoadMoreError: query.isFetchNextPageError,
+    deleteOne: (id) => {
+      if (!remove.isPending) remove.mutate({ ids: [id] });
+    },
+    clearRead: () => {
+      if (!remove.isPending) remove.mutate({ onlyRead: true });
+    },
+    isDeleting: remove.isPending,
+    // `null` while the bulk "clear read" runs — the row-level spinner has no
+    // single row to sit on, exactly like `markingId`.
+    deletingId: remove.variables?.ids?.[0] ?? null,
+    deleteStatus: remove.status,
+    retryDelete: () => {
+      if (!remove.isPending && remove.variables) remove.mutate(remove.variables);
+    }
   };
 }

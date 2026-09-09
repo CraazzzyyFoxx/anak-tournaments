@@ -74,6 +74,15 @@ class Notification(db.Base):
             text("published_at DESC"),
             postgresql_where=text("audience <> 'user'"),
         ),
+        # The operator read: one tenant's produced rows, newest first. Partial,
+        # like the announcement index above -- rows with no source tenant are
+        # never fetched through this prefix.
+        Index(
+            "ix_notification_source_workspace_published",
+            "source_workspace_id",
+            text("published_at DESC"),
+            postgresql_where=text("source_workspace_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=True)
@@ -86,6 +95,16 @@ class Notification(db.Base):
     recipient_auth_user_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     # Set for ``audience='workspace'`` only.
     workspace_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    # The tenant whose activity *produced* the row, set for every audience
+    # including ``user`` -- distinct from ``workspace_id`` above, which is the
+    # audience target and only ever set for ``audience='workspace'``. A
+    # registration decision is addressed to one person and owned by the
+    # organizer whose tournament decided it; without this column a workspace
+    # operator cannot see, let alone retire, the notifications their own
+    # tournaments emitted. ``NULL`` = produced outside any tenant (a
+    # platform-wide announcement) or written before this column existed and not
+    # reachable by the backfill.
+    source_workspace_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     kind: Mapped[str] = mapped_column(String(64), nullable=False)
     # The render snapshot: named domain fields the frontend interpolates into
     # the ``kind``'s i18n message. No text is stored for system kinds, so a
@@ -115,11 +134,18 @@ class Notification(db.Base):
 
 
 class NotificationRead(db.Base):
-    """Read marks: the presence of a row is the whole payload.
+    """Per-viewer state for one notification: read, and/or deleted.
 
     Keyed by ``(auth_user_id, notification_id)`` rather than a surrogate id --
     the pair *is* the identity, and the composite primary key makes
     "mark read" idempotent in the database instead of in every caller.
+
+    ``deleted_at`` is the inbox's delete button. It lives here and not on
+    ``Notification`` because dismissal is a fact about the *pair*: one row can
+    be a platform-wide announcement sitting in thousands of inboxes, and one
+    reader throwing it away must not take it out of the others'. The journal
+    itself stays append-only (``expires_at`` is the operator's "retire it for
+    everyone", a different verb with a different audience).
 
     No foreign keys, for the reason ``Notification`` states, plus one specific
     to this table: a mark must never be able to confirm or deny that a given
@@ -138,3 +164,7 @@ class NotificationRead(db.Base):
         nullable=False,
         server_default=func.now(),
     )
+    # NULL = present in the inbox. Set = this viewer deleted it; every read
+    # funnels through ``NotificationRepository.audience_clause``, which drops
+    # the row for this identity alone.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

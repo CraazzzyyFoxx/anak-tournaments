@@ -19,6 +19,12 @@ __all__ = (
     "NotificationInboxRead",
     "NotificationMarkRead",
     "NotificationMarkReadResult",
+    "NotificationDelete",
+    "NotificationDeleteResult",
+    "NotificationAdminItem",
+    "NotificationAdminPage",
+    "NotificationRetire",
+    "NotificationRetireResult",
 )
 
 
@@ -67,3 +73,69 @@ class NotificationMarkReadResult(BaseModel):
     # audience contribute nothing, and a repeat call marks nothing at all.
     marked: int
     unread_count: int
+
+
+class NotificationDelete(BaseModel):
+    """``ids=None`` deletes the whole visible inbox; ``only_read`` narrows it.
+
+    The two together are the "clear read" button, which must not be able to
+    swallow a notification the user has not opened yet.
+    """
+
+    ids: list[int] | None = None
+    only_read: bool = False
+
+
+class NotificationDeleteResult(BaseModel):
+    # ``deleted`` counts the rows that actually left this inbox: ids outside
+    # the caller's audience contribute nothing, and a repeat call deletes
+    # nothing at all.
+    deleted: int
+    unread_count: int
+
+
+class NotificationAdminItem(BaseRead):
+    """One produced row as an operator sees it.
+
+    Separate from ``NotificationItem`` because it answers a different question:
+    the inbox model is "what am I being told", this one is "what did my
+    workspace send, to whom, and is it still live". Hence ``recipient`` — which
+    the inbox has no business carrying, since there it is always the caller —
+    and no ``is_read``, which is a fact about a viewer this screen does not have.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    kind: str
+    payload: dict[str, Any] = Field(validation_alias="payload_json")
+    recipient_auth_user_id: int | None = None
+    source_workspace_id: int | None = None
+    published_at: datetime
+    #: Set (and in the past) means retired: the row no longer reaches an inbox.
+    expires_at: datetime | None = None
+
+
+class NotificationAdminPage(BaseModel):
+    items: list[NotificationAdminItem]
+    #: ``None`` on the last page; opaque, like the inbox cursor.
+    next_cursor: str | None = None
+
+
+class NotificationRetire(BaseModel):
+    """Which of this workspace's notifications to take out of circulation.
+
+    ``ids`` and ``kind`` are filters over the same scoped statement and may be
+    combined. Naming neither is rejected — "retire everything this workspace
+    ever sent" must be spelled out one kind at a time, not reached by omission.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: int
+    ids: list[int] | None = None
+    kind: str | None = None
+
+
+class NotificationRetireResult(BaseModel):
+    #: Rows that were live and now are not; a repeat call answers 0.
+    retired: int

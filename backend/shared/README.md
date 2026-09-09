@@ -28,7 +28,9 @@ System overview (processes, RabbitMQ, gateway, deployment):
   `notification` row. It validates the payload against the kind's registered schema, calls
   `session.add` and returns the row, so the caller's transaction owns the commit and a
   rolled-back mutation notifies nobody; the realtime signal is published after that commit,
-  best-effort. Same contract as `record_audit` beside it.
+  best-effort. Same contract as `record_audit` beside it. Producers pass `source_workspace_id` —
+  the tenant whose activity caused the row, set for personal notifications too — which is what
+  the workspace operator screen scopes and retires on.
 - Pure algorithms and value types two or more services already call (`domain/`).
 - Wire contracts that cross a service boundary (`schemas/`), above all the event payloads in
   `schemas/events.py`.

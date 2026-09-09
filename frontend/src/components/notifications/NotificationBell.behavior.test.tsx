@@ -27,6 +27,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const list = vi.fn();
 const markRead = vi.fn();
+const remove = vi.fn();
 let authUser: unknown = { id: 1, username: "alice" };
 const mounted: { root: Root; client: QueryClient }[] = [];
 
@@ -45,7 +46,8 @@ vi.mock("@/hooks/useRealtimeTopic", () => ({
 vi.mock("@/services/notification.service", () => ({
   default: {
     list: (...args: unknown[]) => list(...args),
-    markRead: (...args: unknown[]) => markRead(...args)
+    markRead: (...args: unknown[]) => markRead(...args),
+    remove: (...args: unknown[]) => remove(...args)
   }
 }));
 
@@ -174,6 +176,7 @@ beforeEach(() => {
   realtimeHandlers.clear();
   list.mockReset().mockResolvedValue(inbox([INVITE, DISPUTED_WITH_MAP]));
   markRead.mockReset().mockResolvedValue({ marked: 2, unread_count: 0 });
+  remove.mockReset().mockResolvedValue({ deleted: 1, unread_count: 1 });
   document.body.innerHTML = "";
 });
 
@@ -477,6 +480,80 @@ describe("notification bell", () => {
 
     expect(document.body.querySelector("a")).toBeNull();
     expect(document.body.textContent).toContain("Maintenance window");
+  });
+
+  it("deletes the chosen row and shows the inbox without it", async () => {
+    await mount();
+    await openPanel();
+    const deleteOne = [...document.body.querySelectorAll("button")].find(
+      (button) =>
+        button.getAttribute("aria-label")?.includes("Delete notification") &&
+        button.getAttribute("aria-label")?.includes("Alpha")
+    )!;
+    expect(deleteOne, "no per-row delete control").not.toBeUndefined();
+
+    list.mockResolvedValue(inbox([DISPUTED_WITH_MAP], 1));
+    await click(deleteOne);
+    await flush();
+
+    expect(remove).toHaveBeenCalledWith({ ids: [INVITE.id] });
+    // The list is refetched, not patched: what the panel shows is what the
+    // server says is left.
+    expect(document.body.textContent).not.toContain("Alpha");
+    expect(document.body.textContent).toContain(en.notifications.deleted);
+  });
+
+  it("offers 'clear read' only while a read row is on screen, and never sends the unread ones", async () => {
+    await mount();
+    await openPanel();
+    // Everything unread: the button would delete nothing, so it is unavailable
+    // rather than a request that reports "deleted: 0".
+    expect(buttonNamed(en.notifications.clearRead).getAttribute("aria-disabled")).toBe("true");
+
+    list.mockResolvedValue(inbox([{ ...INVITE, is_read: true }, DISPUTED_WITH_MAP], 1));
+    await act(async () =>
+      realtimeHandlers.get("user:1:notifications")?.({
+        event_id: 0,
+        event_type: "notification.created",
+        data: {}
+      })
+    );
+    await flush();
+
+    const clear = buttonNamed(en.notifications.clearRead);
+    expect(clear.getAttribute("aria-disabled")).toBe("false");
+    list.mockResolvedValue(inbox([DISPUTED_WITH_MAP], 1));
+    await click(clear);
+    await flush();
+
+    // `only_read`, never an id list assembled on the client: the server decides
+    // which rows are read, and the page on screen is not the whole inbox.
+    expect(remove).toHaveBeenCalledWith({ onlyRead: true });
+    expect(document.body.textContent).toContain(en.notifications.clearedRead);
+    expect(document.body.textContent).not.toContain("Alpha");
+  });
+
+  it("keeps a failed delete visible and retries the same target", async () => {
+    await mount();
+    await openPanel();
+    remove.mockRejectedValueOnce(new Error("offline"));
+    const deleteOne = [...document.body.querySelectorAll("button")].find(
+      (button) =>
+        button.getAttribute("aria-label")?.includes("Delete notification") &&
+        button.getAttribute("aria-label")?.includes("Alpha")
+    )!;
+
+    await click(deleteOne);
+    await flush();
+    expect(document.body.textContent).toContain(en.notifications.deleteError);
+    expect(document.body.textContent).toContain("Alpha");
+
+    list.mockResolvedValue(inbox([DISPUTED_WITH_MAP], 1));
+    await click(buttonNamed(en.notifications.retryDelete));
+    await flush();
+    expect(remove).toHaveBeenLastCalledWith({ ids: [INVITE.id] });
+    expect(document.body.textContent).not.toContain(en.notifications.deleteError);
+    expect(document.body.textContent).toContain(en.notifications.deleted);
   });
 
   it("renders nothing for an anonymous visitor", async () => {

@@ -227,6 +227,22 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.notifications_mark_read": Op(
         request=schemas.NotificationMarkRead, response=schemas.NotificationMarkReadResult
     ),
+    "rpc.app.notifications_delete": Op(
+        request=schemas.NotificationDelete, response=schemas.NotificationDeleteResult
+    ),
+    # ── notifications admin (workspace-scoped operator screen) ─────────────
+    "rpc.app.notification_admin_list": Op(
+        response=schemas.NotificationAdminPage,
+        query_params=(
+            _WS,
+            QueryParam("kind", description="One notification kind; omitted lists every kind."),
+            QueryParam("cursor", description="Opaque continuation from the previous page's next_cursor."),
+            QueryParam("limit", "integer", description="Page size (default 50, capped at 200)."),
+        ),
+    ),
+    "rpc.app.notification_admin_retire": Op(
+        request=schemas.NotificationRetire, response=schemas.NotificationRetireResult
+    ),
     "rpc.app.active_announcements": Op(response=schemas.NotificationItem, response_array=True),
     # ── announcements admin (operator CRUD) ────────────────────────────────
     "rpc.app.announcement_list": Op(

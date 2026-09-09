@@ -32,6 +32,7 @@ from src.rpc import (
     maps,
     metadata_admin,
     notifications,
+    notifications_admin,
     reads_generic,
     statistics,
     users,
@@ -88,6 +89,10 @@ notifications.register(broker, logger)
 # Operator-facing announcement CRUD (workspace-scoped, plus the superuser-only
 # platform banner).
 announcements.register(broker, logger)
+
+# Operator-facing view of the notifications this workspace produced, and the
+# retire that takes one back out of every recipient's inbox.
+notifications_admin.register(broker, logger)
 
 # Phase 3 — binary/multipart endpoints (icons, assets, match-log) over base64.
 binary.register(broker, logger)

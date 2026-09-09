@@ -54,6 +54,21 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "notifications.mark_read", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.app.notifications_delete")
+    async def _delete(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.actor(data)
+            c.require_active(user)
+            body = schemas.NotificationDelete.model_validate(c.payload(data))
+            return await notification_service.delete(
+                session,
+                auth_user_id=user.id,
+                notification_ids=body.ids,
+                only_read=body.only_read,
+            )
+
+        return await c.envelope(logger, "notifications.delete", op, session_factory=_SF)
+
     @broker.subscriber("rpc.app.active_announcements")
     async def _active_announcements(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
