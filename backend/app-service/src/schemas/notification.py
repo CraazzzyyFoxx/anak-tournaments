@@ -109,6 +109,9 @@ class NotificationAdminItem(BaseRead):
     kind: str
     payload: dict[str, Any] = Field(validation_alias="payload_json")
     recipient_auth_user_id: int | None = None
+    #: The recipient's current username, LEFT-joined at read time -- ``None``
+    #: when the audience is not a single user, or the account is gone.
+    recipient_username: str | None = None
     source_workspace_id: int | None = None
     published_at: datetime
     #: Set (and in the past) means retired: the row no longer reaches an inbox.

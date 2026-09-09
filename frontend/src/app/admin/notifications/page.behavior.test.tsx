@@ -67,6 +67,7 @@ function row(overrides: Partial<NotificationAdminItem> = {}): NotificationAdminI
     kind: "registration.approved",
     payload: { tournament_id: 5, tournament_name: "Autumn Cup", registration_id: 12 },
     recipient_auth_user_id: 500,
+    recipient_username: "told",
     source_workspace_id: 7,
     published_at: "2026-09-01T10:00:00Z",
     expires_at: null,

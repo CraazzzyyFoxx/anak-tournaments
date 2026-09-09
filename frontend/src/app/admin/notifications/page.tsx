@@ -131,14 +131,13 @@ export default function AdminWorkspaceNotificationsPage() {
       {
         id: "recipient",
         header: t("notifications.workspaceAdmin.columns.recipient"),
-        size: 140,
+        size: 200,
         enableSorting: false,
-        // The account id, not a resolved name: this screen exists to clean up
-        // rows, and one join per row to render a handle would be a page of
-        // lookups for a column nobody searches on.
+        // Username joined at read time, id as the fallback: the account can be
+        // gone while the row it was told about still has to be retirable.
         cell: ({ row }) => (
-          <span className="text-sm tabular-nums text-muted-foreground">
-            {row.original.recipient_auth_user_id ?? "—"}
+          <span className="text-sm text-muted-foreground">
+            {row.original.recipient_username ?? row.original.recipient_auth_user_id ?? "—"}
           </span>
         )
       },

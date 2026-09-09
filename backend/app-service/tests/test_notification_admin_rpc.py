@@ -33,6 +33,7 @@ from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.platform.audit import AuditLog  # noqa: E402
 from shared.models.platform.notification import Notification, NotificationRead  # noqa: E402
 from shared.testing import install_postgres_type_shims  # noqa: E402
@@ -40,7 +41,10 @@ from src.rpc import notifications_admin as admin_rpc  # noqa: E402
 
 install_postgres_type_shims()
 
-TABLES = (Notification.__table__, NotificationRead.__table__, AuditLog.__table__)
+# ``auth.user`` is here because the operator list LEFT-joins it for the
+# recipient's name; the join being outer is what the "account is gone" pin below
+# actually exercises.
+TABLES = (Notification.__table__, NotificationRead.__table__, AuditLog.__table__, AuthUser.__table__)
 
 WORKSPACE = 7
 OTHER_WORKSPACE = 9
@@ -149,6 +153,11 @@ class NotificationAdminRpcTests(IsolatedAsyncioTestCase):
         self.session.flush()
         return row.id
 
+    def recipient(self, auth_user_id: int = RECIPIENT, username: str = "recipient") -> int:
+        self.session.add(AuthUser(id=auth_user_id, email=f"{username}@example.test", username=username))
+        self.session.flush()
+        return auth_user_id
+
     async def listed(self, identity: dict, **query: Any) -> dict[str, Any]:
         query.setdefault("workspace_id", WORKSPACE)
         return await self.call("rpc.app.notification_admin_list", {"identity": identity, "query": query})
@@ -174,6 +183,19 @@ class NotificationAdminRpcTests(IsolatedAsyncioTestCase):
 
         self.assertTrue(result["ok"], result)
         self.assertEqual([item["id"] for item in result["data"]["items"]], [mine])
+
+    async def test_the_list_names_the_recipient_and_survives_a_deleted_account(self) -> None:
+        self.recipient(username="told")
+        named = self.produced()
+        orphaned = self.produced(recipient_auth_user_id=999)
+
+        result = await self.listed(OWNER)
+
+        self.assertTrue(result["ok"], result)
+        rows = {item["id"]: item for item in result["data"]["items"]}
+        self.assertEqual(rows[named]["recipient_username"], "told")
+        self.assertIsNone(rows[orphaned]["recipient_username"])
+        self.assertEqual(rows[orphaned]["recipient_auth_user_id"], 999)
 
     async def test_a_foreign_workspace_is_refused_even_for_a_workspace_owner(self) -> None:
         self.produced(source_workspace_id=OTHER_WORKSPACE)

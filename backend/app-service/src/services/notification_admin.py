@@ -82,10 +82,19 @@ async def list_for_workspace(
 
     The cursor is the inbox's own ``(published_at, id)`` encoding -- same order,
     same tie-breaking, so the helper is shared rather than re-derived.
+
+    The recipient join is a strict LEFT OUTER, for the reason the audit feed
+    states: ``recipient_auth_user_id`` carries no foreign key by design, so the
+    account may be gone, and an INNER join would hide exactly the rows an
+    operator still has to retire.
     """
     model = models.Notification
     limit = max(1, min(int(limit), MAX_LIST_LIMIT))
-    query = sa.select(model).where(*_scope(workspace_id))
+    query = (
+        sa.select(model, AuthUser.username)
+        .outerjoin(AuthUser, AuthUser.id == model.recipient_auth_user_id)
+        .where(*_scope(workspace_id))
+    )
     if kind is not None:
         query = query.where(model.kind == _validated_kind(kind))
     if cursor is not None:
@@ -102,13 +111,13 @@ async def list_for_workspace(
         )
 
     # One row past the page, the same "is there more" trick the inbox uses.
-    result = await session.execute(
-        query.order_by(model.published_at.desc(), model.id.desc()).limit(limit + 1),
-    )
-    rows = list(result.scalars().all())
-    next_cursor = encode_cursor(rows[limit - 1]) if len(rows) > limit else None
+    rows = (await session.execute(query.order_by(model.published_at.desc(), model.id.desc()).limit(limit + 1))).all()
+    next_cursor = encode_cursor(rows[limit - 1][0]) if len(rows) > limit else None
     return schemas.NotificationAdminPage(
-        items=[schemas.NotificationAdminItem.model_validate(row) for row in rows[:limit]],
+        items=[
+            schemas.NotificationAdminItem.model_validate(row).model_copy(update={"recipient_username": username})
+            for row, username in rows[:limit]
+        ],
         next_cursor=next_cursor,
     )
 
