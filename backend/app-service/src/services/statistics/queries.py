@@ -439,6 +439,7 @@ class StatisticsQueries:
         """A user's tournament win rate as ``(user id, win rate, rank, ranked user count)``,
         or ``None`` when the user has no encounters in the tournament.
         """
+
         def _side(team_fk, won, lost):
             return (
                 sa.select(

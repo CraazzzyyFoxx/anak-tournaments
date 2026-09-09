@@ -27,7 +27,11 @@ rpc_misc = importlib.import_module("src.rpc.misc")
 
 from tests._fakes import (
     FakeBroker as _FakeBroker,
+)
+from tests._fakes import (
     active_identity as _active_identity,
+)
+from tests._fakes import (
     session_factory as _session_factory,
 )
 

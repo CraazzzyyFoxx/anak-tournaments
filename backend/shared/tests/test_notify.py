@@ -260,7 +260,7 @@ class PublishNotificationCreatedTests(IsolatedAsyncioTestCase):
 
         await publish_notification_created(redis, recipient_auth_user_id=7)
 
-        (channel, raw), = redis.published
+        ((channel, raw),) = redis.published
         self.assertEqual(realtime_topics.realtime_channel("user:7:notifications"), channel)
         frame = json.loads(raw)
         self.assertEqual("user:7:notifications", frame["topic"])

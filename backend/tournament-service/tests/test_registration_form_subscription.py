@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pytest
 
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -80,7 +79,6 @@ class TestFormUpsertSchema:
             pass
         else:
             raise AssertionError("a negative bench must not validate")
-
 
     def test_the_stage_rejects_a_value_outside_the_enum(self):
         """Better a 422 on save than a stored typo that silently reads as check-in."""

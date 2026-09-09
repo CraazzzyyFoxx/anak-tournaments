@@ -32,8 +32,7 @@ class UserProfileQueries:
         return result.unique().scalar_one_or_none()
 
     async def get_all(
-        self,
-        session: AsyncSession, params: pagination.PaginationSortSearchParams
+        self, session: AsyncSession, params: pagination.PaginationSortSearchParams
     ) -> tuple[typing.Sequence[models.User], int]:
         """Paginated users matching ``params``, plus the total match count."""
         query = sa.select(models.User).options(*user_entities(params.entities))
@@ -49,7 +48,9 @@ class UserProfileQueries:
         result_total = await session.execute(total_query)
         return result.unique().scalars().all(), result_total.scalar_one()
 
-    async def search_by_name(self, session: AsyncSession, query: str, fields: list[str]) -> typing.Sequence[models.SocialAccount]:
+    async def search_by_name(
+        self, session: AsyncSession, query: str, fields: list[str]
+    ) -> typing.Sequence[models.SocialAccount]:
         """Search battlenet ``social_account`` rows by handle (autocomplete).
 
         ``fields`` is accepted for API compatibility; search is always on the unified
@@ -97,7 +98,9 @@ class UserProfileQueries:
         result = await session.scalars(stmt)
         return result.unique().all()
 
-    async def find_by_battle_tag(self, session: AsyncSession, battle_tag: str, entities: list[str]) -> models.User | None:
+    async def find_by_battle_tag(
+        self, session: AsyncSession, battle_tag: str, entities: list[str]
+    ) -> models.User | None:
         """A user by battle tag, with ``entities`` eager-loaded.
 
         Matches on the normalized handle (``-`` folded to ``#``) or on the in-game name
@@ -155,12 +158,12 @@ class UserProfileQueries:
         return result.unique().first()
 
     async def get_overall_statistics(
-        self,
-        session: AsyncSession, user_id: int, workspace_id: int | None = None
+        self, session: AsyncSession, user_id: int, workspace_id: int | None = None
     ) -> tuple[int, int, int]:
         """A user's ``(maps won, maps lost, average encounter closeness)`` across all
         tournaments, or the workspace's tournaments when ``workspace_id`` is given.
         """
+
         def _side(team_fk, won, lost):
             q = (
                 sa.select(
@@ -250,8 +253,7 @@ class UserProfileQueries:
         return teams, result_total.scalar_one()
 
     async def get_roles(
-        self,
-        session: AsyncSession, user_id: int, workspace_id: int | None = None, *, grid: DivisionGrid
+        self, session: AsyncSession, user_id: int, workspace_id: int | None = None, *, grid: DivisionGrid
     ) -> typing.Sequence[tuple[enums.HeroClass, int, int, list[dict]]]:
         """Per-role ``(role, maps won, maps lost, tournament entries)`` rows for a user.
 
@@ -259,6 +261,7 @@ class UserProfileQueries:
         ``division_grid_version_id`` — the rank is raw, so the caller resolves the
         division against the grid version that tournament was played on.
         """
+
         def _side(team_fk, won, lost):
             q = (
                 sa.select(
@@ -306,8 +309,7 @@ class UserProfileQueries:
         return result.all()  # type: ignore
 
     async def get_tournament_role(
-        self,
-        session: AsyncSession, tournament: models.Tournament, user_id: int, *, grid: DivisionGrid
+        self, session: AsyncSession, tournament: models.Tournament, user_id: int, *, grid: DivisionGrid
     ) -> tuple[enums.HeroClass, int]:
         """A user's ``(role, division)`` in one tournament — the division already resolved
         against ``grid``, not the raw rank.
@@ -337,6 +339,7 @@ class UserProfileQueries:
         """A user's tournament history as ``(team, maps won, maps lost, average encounter
         closeness)`` rows.
         """
+
         def _side(team_fk, won, lost):
             q = (
                 sa.select(
@@ -395,12 +398,12 @@ class UserProfileQueries:
         return result.unique().all()
 
     async def get_tournament_stats_overall(
-        self,
-        session: AsyncSession, tournament: models.Tournament, user_id: int
+        self, session: AsyncSession, tournament: models.Tournament, user_id: int
     ) -> tuple[int, int, int, float]:
         """A user's totals for one tournament: ``(maps won, maps lost, average encounter
         closeness, total playtime in seconds)``.
         """
+
         def _playtime_side(team_fk, _won, _lost):
             return (
                 sa.select(models.MatchStatistics.value.label("value"))
@@ -755,8 +758,7 @@ class UserProfileQueries:
                 stats_per_match.c.user_id,
                 sa.func.avg(mvp_placement).label("performance"),
                 sa.func.avg(stats_per_match.c.kda).label("kda"),
-            )
-            .group_by(stats_per_match.c.user_id)
+            ).group_by(stats_per_match.c.user_id)
         ).cte("stats_query")
 
         # Distinct maps played together (separate CTE so the encounter→match fan-out

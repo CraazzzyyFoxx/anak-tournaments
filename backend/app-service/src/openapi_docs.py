@@ -537,7 +537,7 @@ DOCS: dict[str, dict] = {
         "description": (
             "Inserts read marks for the given ids and returns how many actually landed together with the"
             " refreshed unread count. An omitted or null `ids` marks the whole visible inbox (the"
-            " \"mark all read\" button). Ids outside the caller's audience are dropped silently rather"
+            ' "mark all read" button). Ids outside the caller\'s audience are dropped silently rather'
             " than rejected, so the endpoint cannot be used to probe whether another user's"
             " notification exists; a repeat call marks nothing and is not an error."
         ),
@@ -547,7 +547,7 @@ DOCS: dict[str, dict] = {
         "description": (
             "Removes rows from this caller's inbox and returns how many left it together with the"
             " refreshed unread count. An omitted or null `ids` targets the whole visible inbox, and"
-            " `only_read: true` narrows that to rows already marked read (the \"clear read\" button)."
+            ' `only_read: true` narrows that to rows already marked read (the "clear read" button).'
             " The deletion is per viewer: the underlying row survives, so one reader dismissing a"
             " platform-wide announcement does not take it out of anybody else's inbox. Ids outside the"
             " caller's audience are dropped silently rather than rejected, and a repeat call deletes"

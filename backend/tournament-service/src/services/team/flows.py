@@ -64,9 +64,7 @@ class TeamFlowsService:
                     for player in team.players
                 ]
             else:
-                players_read = [
-                    self.player_to_read(player, players_entities, grid=grid) for player in team.players
-                ]
+                players_read = [self.player_to_read(player, players_entities, grid=grid) for player in team.players]
         # ``Team.captain_id`` is nullable, and NOT only in theory: it is ``SET NULL``
         # on the captain's player row, and a scrim room's away side has no captain at
         # all until someone claims it (docs/plans/2026-08-12-scrim-rooms.md §4.2). The

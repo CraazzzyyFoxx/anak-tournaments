@@ -936,32 +936,33 @@ _HERO_KD_SLUGS = [
     if meta.category == AchievementCategory.hero and meta.slug not in _HERO_NON_KD_SLUGS
 ]
 # ponytail: one global denylist, per-workspace default packs if a second tenant needs a different seed.
-_DEFAULT_EXCLUDED_SLUGS = frozenset({
-    "anchor-in-my-throat",
-    "backyard-cyber-athlete",
-    "balance-from-anak",
-    "beginners-are-lucky",
-    "critical-failure",
-    "damage-above-5-division",
-    "five-second-day-streak",
-    "i-need-more-power",
-    "im-fine-with-that",
-    "my-drill-will-pierce-the-sky",
-    "my-strength-is-growing",
-    "not-good-enough",
-    "old",
-    "regular-boar",
-    "samurai-has-no-purpose",
-    "support-above-5-division",
-    "tank-above-5-division",
-    "the-best-among-the-best",
-    "to-the-bottom",
-    "welcome",
-    "well-balanced",
-    "well-deserved-anomaly",
-    "young-blood",
-})
-
+_DEFAULT_EXCLUDED_SLUGS = frozenset(
+    {
+        "anchor-in-my-throat",
+        "backyard-cyber-athlete",
+        "balance-from-anak",
+        "beginners-are-lucky",
+        "critical-failure",
+        "damage-above-5-division",
+        "five-second-day-streak",
+        "i-need-more-power",
+        "im-fine-with-that",
+        "my-drill-will-pierce-the-sky",
+        "my-strength-is-growing",
+        "not-good-enough",
+        "old",
+        "regular-boar",
+        "samurai-has-no-purpose",
+        "support-above-5-division",
+        "tank-above-5-division",
+        "the-best-among-the-best",
+        "to-the-bottom",
+        "welcome",
+        "well-balanced",
+        "well-deserved-anomaly",
+        "young-blood",
+    }
+)
 
 
 def _catalog_rule(
@@ -1941,4 +1942,3 @@ def get_default_rule_slugs() -> list[str]:
 
 def get_canonical_rule_catalog() -> list[CanonicalRuleMeta]:
     return list(_CANONICAL_RULES)
-

@@ -1,7 +1,6 @@
 """Admin service layer for stage CRUD and bracket generation."""
 
 from collections.abc import Sequence
-from dataclasses import replace
 
 from loguru import logger
 from sqlalchemy import and_, case, func, or_, select, update
@@ -42,21 +41,27 @@ from src.domain.stage.lifecycle import stage_lifecycle
 from src.domain.stage.seeds import (
     GroupSlice,
     SeedRanking,
-    advance_split as _advance_split,
     apply_seed_ranking,
-    build_seeding as _build_seeding,
-    collect_item_team_ids as _collect_item_team_ids,
     group_advance_counts,
     group_for_index,
-    lower_bracket_item as _lower_bracket_item,
     parse_seed_mode,
     parse_seed_ranking,
     rank_team_ids,
-    resolve_seeds as _resolve_seeds,
 )
-from src.services.tournament.events import (
-    enqueue_tournament_changed,
-    enqueue_tournament_recalculation,
+from src.domain.stage.seeds import (
+    advance_split as _advance_split,
+)
+from src.domain.stage.seeds import (
+    build_seeding as _build_seeding,
+)
+from src.domain.stage.seeds import (
+    collect_item_team_ids as _collect_item_team_ids,
+)
+from src.domain.stage.seeds import (
+    lower_bracket_item as _lower_bracket_item,
+)
+from src.domain.stage.seeds import (
+    resolve_seeds as _resolve_seeds,
 )
 from src.services.admin.stage_common import (
     BRACKET_STAGE_TYPES,
@@ -64,6 +69,10 @@ from src.services.admin.stage_common import (
     _apply_seeding,
     _bracket_seeds,
     _pick_ban_config_signature,
+)
+from src.services.tournament.events import (
+    enqueue_tournament_changed,
+    enqueue_tournament_recalculation,
 )
 
 
@@ -268,9 +277,7 @@ class AdminStageService:
         return upper, 0
 
     async def get_stage_item(self, session: AsyncSession, stage_item_id: int) -> models.StageItem:
-        item = await self.stage_item_repo.get(
-            session, stage_item_id, options=[selectinload(models.StageItem.inputs)]
-        )
+        item = await self.stage_item_repo.get(session, stage_item_id, options=[selectinload(models.StageItem.inputs)])
         if not item:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -293,9 +300,7 @@ class AdminStageService:
         and to warn before activating a playoff with pending group matches.
         """
         stages_list = list(
-            await self.stage_repo.list_by_tournament(
-                session, tournament_id, options=[selectinload(models.Stage.items)]
-            )
+            await self.stage_repo.list_by_tournament(session, tournament_id, options=[selectinload(models.Stage.items)])
         )
         if not stages_list:
             return []
@@ -315,9 +320,7 @@ class AdminStageService:
             .where(models.Encounter.stage_id.in_(stage_ids))
             .group_by(models.Encounter.stage_id, models.Encounter.stage_item_id)
         )
-        agg = {
-            (row.stage_id, row.stage_item_id): (int(row.total), int(row.completed)) for row in counts
-        }
+        agg = {(row.stage_id, row.stage_item_id): (int(row.total), int(row.completed)) for row in counts}
         output: list[dict] = []
         for stage in stages_list:
             stage_total = 0
@@ -357,9 +360,7 @@ class AdminStageService:
             )
         return output
 
-    async def create_stage(
-        self, session: AsyncSession, tournament_id: int, data: schemas.StageCreate
-    ) -> models.Stage:
+    async def create_stage(self, session: AsyncSession, tournament_id: int, data: schemas.StageCreate) -> models.Stage:
         tournament = await self.tournament_repo.get(session, tournament_id)
         if not tournament:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
@@ -412,9 +413,7 @@ class AdminStageService:
         # already sits at that position (two stages sharing one `order` value
         # silently breaks "preceding stage" lookups like auto-wire's, which
         # compare `order` strictly).
-        await self._reindex_tournament_stages(
-            session, tournament_id=tournament_id, removed_stage_ids={stage_id}
-        )
+        await self._reindex_tournament_stages(session, tournament_id=tournament_id, removed_stage_ids={stage_id})
         await self._publish_tournament_changed(session, tournament_id, "structure_changed")
         await session.commit()
 
@@ -561,9 +560,7 @@ class AdminStageService:
                 detail="Target stage cannot be included in source_stage_ids",
             )
 
-        source_by_id = {
-            stage.id: stage for stage in await self.stage_repo.bulk_get(session, unique_source_stage_ids)
-        }
+        source_by_id = {stage.id: stage for stage in await self.stage_repo.bulk_get(session, unique_source_stage_ids)}
         missing = [stage_id for stage_id in unique_source_stage_ids if stage_id not in source_by_id]
         if missing:
             raise HTTPException(
@@ -688,7 +685,6 @@ class AdminStageService:
         )
         return await self.get_stage(session, target_stage.id)
 
-
     async def create_stage_item(
         self, session: AsyncSession, stage_id: int, data: schemas.StageItemCreate
     ) -> models.StageItem:
@@ -791,7 +787,9 @@ class AdminStageService:
                 if inp.team_id is None:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
-                        detail=("Selected team is already assigned in this stage; replace a populated slot to swap teams"),
+                        detail=(
+                            "Selected team is already assigned in this stage; replace a populated slot to swap teams"
+                        ),
                     )
                 existing_input.team_id = inp.team_id
 
@@ -888,9 +886,7 @@ class AdminStageService:
                     inp.team_id = standings[inp.source_position - 1].team_id
                     inp.input_type = enums.StageItemInputType.FINAL
 
-        await self._finish_structure_write(
-            session, stage, notify=notify, commit=commit, schedule_standings=False
-        )
+        await self._finish_structure_write(session, stage, notify=notify, commit=commit, schedule_standings=False)
         return stage
 
     async def deactivate_stage(
@@ -932,9 +928,7 @@ class AdminStageService:
 
         stage.is_active = False
         stage.is_published = False
-        await self._finish_structure_write(
-            session, stage, notify=notify, commit=commit, schedule_standings=False
-        )
+        await self._finish_structure_write(session, stage, notify=notify, commit=commit, schedule_standings=False)
         return stage
 
     async def _finish_structure_write(
@@ -995,7 +989,6 @@ class AdminStageService:
         teams = await self._load_rankable_teams(session, team_ids)
         return apply_seed_ranking(team_ids, teams, ranking, rng_seed=stage.id)
 
-
     async def _get_swiss_generation_context(
         self,
         session: AsyncSession,
@@ -1003,9 +996,7 @@ class AdminStageService:
         stage_item_id: int | None,
     ) -> tuple[list[SwissStanding] | None, set[frozenset[int]] | None, int]:
         existing = list(
-            await self.encounter_repo.list_for_stage_scope(
-                session, stage_id=stage_id, stage_item_id=stage_item_id
-            )
+            await self.encounter_repo.list_for_stage_scope(session, stage_id=stage_id, stage_item_id=stage_item_id)
         )
         if not existing:
             return None, None, 1
@@ -1489,9 +1480,7 @@ class AdminStageService:
         )
         return result.scalars().first()
 
-    async def _auto_wire_from_groups(
-        self, session: AsyncSession, stage: models.Stage, *, strict: bool = False
-    ) -> bool:
+    async def _auto_wire_from_groups(self, session: AsyncSession, stage: models.Stage, *, strict: bool = False) -> bool:
         """Derive playoff seeding from the preceding group stage's ``advance_count``
         and this stage's ``split_lower_bracket`` flag, then wire TENTATIVE inputs
         (cross seeding). Replaces the manual Automation block.
@@ -1520,8 +1509,8 @@ class AdminStageService:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=(
-                        "No earlier round-robin/Swiss stage with \"Teams advancing to "
-                        "playoff\" configured — on the stage or on one of its groups"
+                        'No earlier round-robin/Swiss stage with "Teams advancing to '
+                        'playoff" configured — on the stage or on one of its groups'
                     ),
                 )
             return False
@@ -1609,9 +1598,7 @@ class AdminStageService:
             schedule_standings=schedule_standings,
             stage=stage,
         )
-        await self._finish_structure_write(
-            session, stage, notify=notify, commit=commit, schedule_standings=False
-        )
+        await self._finish_structure_write(session, stage, notify=notify, commit=commit, schedule_standings=False)
         return stage, encounters
 
     async def generate_encounters(

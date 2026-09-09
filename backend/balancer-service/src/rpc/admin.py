@@ -75,7 +75,9 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, ws_id, "team", "create")
             body = schemas.BalancerTournamentConfigUpsert.model_validate(c.payload(data))
-            cfg = await balancer_admin_service.upsert_tournament_config(session, tournament_id, ws_id, body.config_json, user)
+            cfg = await balancer_admin_service.upsert_tournament_config(
+                session, tournament_id, ws_id, body.config_json, user
+            )
             await emit_balancer_data_event(
                 tournament_id,
                 BALANCER_CONFIG_CHANGED,

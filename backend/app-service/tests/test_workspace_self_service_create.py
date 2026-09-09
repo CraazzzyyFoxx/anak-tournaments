@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tests.test_audit_workspace import _RecordingSession, _handler, _workspace  # noqa: E402
+from tests.test_audit_workspace import _handler, _RecordingSession, _workspace  # noqa: E402
 
 workspace_service = importlib.import_module("src.services.workspace.service")
 workspaces_rpc = importlib.import_module("src.rpc.workspaces")

@@ -43,4 +43,3 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
         self.assertFalse(user.is_workspace_admin(7))
         self.assertTrue(user.has_workspace_permission(7, "team", "create"))
         self.assertFalse(user.has_workspace_permission(8, "team", "create"))
-

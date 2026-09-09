@@ -36,7 +36,9 @@ class PickBanConfigRepository(BaseRepository[models.PickBanConfig]):
             self.select().where(
                 models.PickBanConfig.tournament_id == tournament_id,
                 models.PickBanConfig.kind == kind,
-                models.PickBanConfig.stage_id.is_(stage_id) if stage_id is None else models.PickBanConfig.stage_id == stage_id,
+                models.PickBanConfig.stage_id.is_(stage_id)
+                if stage_id is None
+                else models.PickBanConfig.stage_id == stage_id,
                 models.PickBanConfig.round.is_(round) if round is None else models.PickBanConfig.round == round,
             ),
             options,
@@ -95,9 +97,7 @@ class PickBanConfigItemRepository(BaseRepository[models.PickBanConfigItem]):
 
     async def delete_for_config(self, session: AsyncSession, config_id: int) -> None:
         await session.execute(
-            sa.delete(models.PickBanConfigItem).where(
-                models.PickBanConfigItem.pick_ban_config_id == config_id
-            )
+            sa.delete(models.PickBanConfigItem).where(models.PickBanConfigItem.pick_ban_config_id == config_id)
         )
 
 
@@ -107,9 +107,7 @@ class PickBanConfigSlotRepository(BaseRepository[models.PickBanConfigSlot]):
 
     async def delete_for_config(self, session: AsyncSession, config_id: int) -> None:
         await session.execute(
-            sa.delete(models.PickBanConfigSlot).where(
-                models.PickBanConfigSlot.pick_ban_config_id == config_id
-            )
+            sa.delete(models.PickBanConfigSlot).where(models.PickBanConfigSlot.pick_ban_config_id == config_id)
         )
 
 
@@ -163,9 +161,7 @@ class PickBanSessionRepository(BaseRepository[models.PickBanSession]):
         Used where the caller already holds the session row and needs to re-acquire it
         under lock (round advance), rather than resolving it from the encounter.
         """
-        query = self._apply_options(
-            self.select().where(models.PickBanSession.id == session_id), options
-        )
+        query = self._apply_options(self.select().where(models.PickBanSession.id == session_id), options)
         query = query.with_for_update().execution_options(populate_existing=True)
         result = await session.execute(query)
         return result.unique().scalars().first()
@@ -176,9 +172,7 @@ class PickBanSessionRepository(BaseRepository[models.PickBanSession]):
         ``BaseRepository.delete`` would ORM-load every ``PickBanEntry`` of the
         session first; the FK is ``ON DELETE CASCADE``, so one statement is enough.
         """
-        await session.execute(
-            sa.delete(models.PickBanSession).where(models.PickBanSession.id == session_id)
-        )
+        await session.execute(sa.delete(models.PickBanSession).where(models.PickBanSession.id == session_id))
 
 
 class PickBanEntryRepository(BaseRepository[models.PickBanEntry]):
@@ -194,9 +188,7 @@ class PickBanEntryRepository(BaseRepository[models.PickBanEntry]):
         populate_existing: bool = False,
         options: Sequence[_AbstractLoad] | None = None,
     ) -> Sequence[models.PickBanEntry]:
-        query = self._apply_options(
-            self.select().where(models.PickBanEntry.session_id == session_id), options
-        )
+        query = self._apply_options(self.select().where(models.PickBanEntry.session_id == session_id), options)
         if ordered:
             query = query.order_by(models.PickBanEntry.order)
         if populate_existing:
@@ -224,9 +216,7 @@ class PickBanEntryRepository(BaseRepository[models.PickBanEntry]):
 
     async def list_rounds(self, session: AsyncSession, session_id: int) -> Sequence[int | None]:
         result = await session.execute(
-            sa.select(models.PickBanEntry.round).where(
-                models.PickBanEntry.session_id == session_id
-            )
+            sa.select(models.PickBanEntry.round).where(models.PickBanEntry.session_id == session_id)
         )
         return result.scalars().all()
 
@@ -257,8 +247,6 @@ class PickBanEntryRepository(BaseRepository[models.PickBanEntry]):
                 models.PickBanEntry.status.in_(tuple(statuses)),
             )
         )
-
-
 
 
 class EncounterPickBanLedgerRepository(BaseRepository[models.EncounterPickBanLedger]):
@@ -321,9 +309,7 @@ class EncounterReadinessRepository(BaseRepository[models.EncounterReadiness]):
 
     async def list_sides(self, session: AsyncSession, encounter_id: int) -> Sequence[str]:
         result = await session.execute(
-            sa.select(models.EncounterReadiness.side).where(
-                models.EncounterReadiness.encounter_id == encounter_id
-            )
+            sa.select(models.EncounterReadiness.side).where(models.EncounterReadiness.encounter_id == encounter_id)
         )
         return result.scalars().all()
 
@@ -334,9 +320,7 @@ class EncounterReadinessRepository(BaseRepository[models.EncounterReadiness]):
 
     async def delete_for_encounter(self, session: AsyncSession, encounter_id: int) -> None:
         await session.execute(
-            sa.delete(models.EncounterReadiness).where(
-                models.EncounterReadiness.encounter_id == encounter_id
-            )
+            sa.delete(models.EncounterReadiness).where(models.EncounterReadiness.encounter_id == encounter_id)
         )
 
 

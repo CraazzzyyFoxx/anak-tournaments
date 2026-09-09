@@ -91,7 +91,7 @@ class _SessionMaker:
     def __init__(self, shim: _AsyncSessionShim) -> None:
         self._shim = shim
 
-    def __call__(self) -> "_SessionMaker":
+    def __call__(self) -> _SessionMaker:
         return self
 
     async def __aenter__(self) -> _AsyncSessionShim:
@@ -265,7 +265,7 @@ class NotificationAdminRpcTests(IsolatedAsyncioTestCase):
         self.assertEqual(self.expires_at(row), first)
 
     async def test_retiring_nothing_in_particular_is_refused(self) -> None:
-        """"Everything this tenant ever sent" must be spelled out, not omitted."""
+        """ "Everything this tenant ever sent" must be spelled out, not omitted."""
         row = self.produced()
 
         result = await self.retire(OWNER)

@@ -16,7 +16,6 @@ from src.services.encounter import captain as captain_mod
 # ── Schemas ──────────────────────────────────────────────────────────────
 
 
-
 class PickBanActionInput(BaseModel):
     """One ban/pick/protect against a hero- or map-kind pick-ban session."""
 

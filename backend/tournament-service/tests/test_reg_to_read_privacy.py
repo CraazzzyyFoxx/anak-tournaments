@@ -17,8 +17,6 @@ from types import SimpleNamespace
 
 # Importing the read model instantiates the service Settings(); this file used
 # to rely on whichever sibling test module happened to be collected first.
-
-
 from shared.core.enums import HeroClass  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
 from src.schemas.registration_build import _reg_to_read  # noqa: E402

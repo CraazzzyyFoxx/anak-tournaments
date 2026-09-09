@@ -163,4 +163,3 @@ class StageLifecycleTests(TestCase):
         self.assertEqual(lifecycle.stage_lifecycle(live, has_encounters=True), lifecycle.StageLifecycle.LIVE)
         done = SimpleNamespace(is_active=False, is_published=True, is_completed=True)
         self.assertEqual(lifecycle.stage_lifecycle(done, has_encounters=True), lifecycle.StageLifecycle.DONE)
-

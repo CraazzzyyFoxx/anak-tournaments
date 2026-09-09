@@ -344,9 +344,7 @@ class NotificationRepositoryTests(IsolatedAsyncioTestCase):
         self.assertEqual(await self.repo.delete(self.shim, auth_user_id=ALICE, notification_ids=[row]), 0)
 
         self.assertEqual(
-            self.session.scalar(
-                sa.select(NotificationRead.deleted_at).where(NotificationRead.notification_id == row)
-            ),
+            self.session.scalar(sa.select(NotificationRead.deleted_at).where(NotificationRead.notification_id == row)),
             first_deleted_at,
             "a repeat delete must not move deleted_at",
         )
@@ -362,7 +360,7 @@ class NotificationRepositoryTests(IsolatedAsyncioTestCase):
         self.assertEqual(await self.page_ids(ALICE), [])
 
     async def test_only_read_spares_the_unread_rows(self) -> None:
-        """"Clear read" must not swallow something the user has not opened."""
+        """ "Clear read" must not swallow something the user has not opened."""
         seen = self.personal(ALICE)
         fresh = self.personal(ALICE)
         await self.repo.mark_read(self.shim, auth_user_id=ALICE, notification_ids=[seen])

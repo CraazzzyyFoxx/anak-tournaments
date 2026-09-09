@@ -227,9 +227,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.notifications_mark_read": Op(
         request=schemas.NotificationMarkRead, response=schemas.NotificationMarkReadResult
     ),
-    "rpc.app.notifications_delete": Op(
-        request=schemas.NotificationDelete, response=schemas.NotificationDeleteResult
-    ),
+    "rpc.app.notifications_delete": Op(request=schemas.NotificationDelete, response=schemas.NotificationDeleteResult),
     # ── notifications admin (workspace-scoped operator screen) ─────────────
     "rpc.app.notification_admin_list": Op(
         response=schemas.NotificationAdminPage,

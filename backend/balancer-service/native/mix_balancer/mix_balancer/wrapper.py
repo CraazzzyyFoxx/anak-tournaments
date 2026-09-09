@@ -151,8 +151,7 @@ class BalanceEngine:
         # Convert role weights (UUID keys -> int keys)
         if settings.role_weights:
             cpp_settings.role_weights = {
-                self._role_mapper.to_int(uid): weight
-                for uid, weight in settings.role_weights.items()
+                self._role_mapper.to_int(uid): weight for uid, weight in settings.role_weights.items()
             }
 
         return cpp_settings
@@ -168,14 +167,10 @@ class BalanceEngine:
         cpp_settings.priority_imbalance_threshold = settings.priority_imbalance_threshold
         return cpp_settings
 
-    def _convert_constraints(
-        self, constraints: dict[uuid.UUID, RoleConstraint]
-    ) -> dict[int, _core.RoleConstraint]:
+    def _convert_constraints(self, constraints: dict[uuid.UUID, RoleConstraint]) -> dict[int, _core.RoleConstraint]:
         """Convert Python RoleConstraints to C++ format."""
         return {
-            self._role_mapper.to_int(role_uuid): _core.RoleConstraint(
-                constraint.min_in_team, constraint.max_in_team
-            )
+            self._role_mapper.to_int(role_uuid): _core.RoleConstraint(constraint.min_in_team, constraint.max_in_team)
             for role_uuid, constraint in constraints.items()
         }
 
@@ -273,9 +268,7 @@ class BalanceEngine:
         cpp_players = self._convert_players(players, member_mapper)
 
         # Call C++ engine
-        cpp_response = self._cpp_engine.find_balances(
-            cpp_players, team_size, balance_limit, max_results
-        )
+        cpp_response = self._cpp_engine.find_balances(cpp_players, team_size, balance_limit, max_results)
 
         # Convert results back to Python format
         return self._convert_results(cpp_response, member_mapper)
@@ -466,9 +459,8 @@ __all__ = [
     # Main classes
     "BalanceEngine",
     "UUIDMapper",
-    # Async functions
-    "async_find_balances_with_engine",
-    # Thread pool management
+    # Thread pool management (the async API is BalanceEngine.async_find_balances,
+    # a method -- there is no module-level async helper to export)
     "configure_thread_pool",
     "shutdown_thread_pool",
     # Re-export models for convenience

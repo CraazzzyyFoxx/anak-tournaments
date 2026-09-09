@@ -635,7 +635,9 @@ def register(broker: Any, logger: Any) -> None:
             grid_id = _require_id(data)
             grid = await division_grid_service.get_grid_by_id(session, grid_id)
             await require_workspace_permission(grid.workspace_id, session=session, user=user, action="read")
-            return _dump(await division_grid_portable.portable_service.export_portable_document(session, grid_id=grid_id))
+            return _dump(
+                await division_grid_portable.portable_service.export_portable_document(session, grid_id=grid_id)
+            )
 
         return await _run(logger, op)
 
@@ -701,7 +703,9 @@ def register(broker: Any, logger: Any) -> None:
                 user=user,
             )
             return _dump(
-                await division_grid_marketplace.marketplace_service.list_marketplace_grids(session, source_workspace_id=source_workspace.id)
+                await division_grid_marketplace.marketplace_service.list_marketplace_grids(
+                    session, source_workspace_id=source_workspace.id
+                )
             )
 
         return await _run(logger, op)

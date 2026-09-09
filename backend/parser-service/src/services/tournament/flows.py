@@ -15,7 +15,6 @@ from . import service
 
 
 class TournamentFlowsService:
-
     async def to_pydantic(
         self,
         session: AsyncSession,
@@ -105,7 +104,6 @@ class TournamentFlowsService:
             challonge_ref=challonge_ref,
             stage_challonge_refs=stage_challonge_refs,
         )
-
 
 
 tournament_flows_service = TournamentFlowsService()

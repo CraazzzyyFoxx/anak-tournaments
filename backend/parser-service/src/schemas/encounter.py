@@ -27,7 +27,7 @@ class EncounterRead(BaseRead):
     tournament: TournamentRead | None
     home_team: TeamRead | None
     away_team: TeamRead | None
-    matches: list["MatchRead"]
+    matches: list[MatchRead]
 
 
 class MatchRead(BaseRead):

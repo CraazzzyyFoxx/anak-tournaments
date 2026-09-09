@@ -289,5 +289,3 @@ class AchievementEvaluateEvent(BaseEvent):
     run_id: str | None = Field(default=None, description="Existing queued EvaluationRun to resume")
     match_id: int | None = Field(default=None, description="Restrict evaluation to this match")
     rule_ids: list[int] | None = Field(default=None, description="Restrict evaluation to these rule ids")
-
-

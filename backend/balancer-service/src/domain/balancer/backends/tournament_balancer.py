@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.domain.balancer.backends.base import BalanceMetrics, BalanceSolution
-from src.domain.balancer.entities import Player, Team
+from src.domain.balancer.entities import Player
 from src.domain.balancer.moo_backend import run_moo_optimizer
 from src.domain.balancer.progress import ProgressCallback
 from src.services.balancer.config.defaults import AlgorithmConfig

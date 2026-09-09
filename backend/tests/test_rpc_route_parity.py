@@ -71,9 +71,7 @@ def _template_re(subject: str) -> re.Pattern[str] | None:
     if "{" not in subject:
         return None
     pattern = "".join(
-        r"[a-z0-9_]+" if part.startswith("{") else re.escape(part)
-        for part in re.split(r"(\{[^}]*\})", subject)
-        if part
+        r"[a-z0-9_]+" if part.startswith("{") else re.escape(part) for part in re.split(r"(\{[^}]*\})", subject) if part
     )
     return re.compile(pattern)
 

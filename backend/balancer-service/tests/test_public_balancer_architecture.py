@@ -541,7 +541,10 @@ class MooDeterminismTests(TestCase):
 
         with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
             with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
-                runs = [balance_teams_tournament(input_data, config_overrides, None, role_mask)[0]["teams"] for _ in range(3)]
+                runs = [
+                    balance_teams_tournament(input_data, config_overrides, None, role_mask)[0]["teams"]
+                    for _ in range(3)
+                ]
 
         self.assertEqual(runs[0], runs[1])
         self.assertEqual(runs[1], runs[2])
@@ -600,9 +603,9 @@ class MooDeterminismTests(TestCase):
 
         with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
             with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
-                ordered_run = balance_teams_tournament(make_input([1, 2, 3, 4, 5, 6]), config_overrides, None, role_mask)[
-                    0
-                ]["teams"]
+                ordered_run = balance_teams_tournament(
+                    make_input([1, 2, 3, 4, 5, 6]), config_overrides, None, role_mask
+                )[0]["teams"]
                 reversed_run = balance_teams_tournament(
                     make_input([6, 5, 4, 3, 2, 1]), config_overrides, None, role_mask
                 )[0]["teams"]
@@ -661,8 +664,7 @@ class MooDeterminismTests(TestCase):
                     "id": team_index + 1,
                     "roster": {
                         "tank": [
-                            player["uuid"]
-                            for player in players[team_index * team_size : (team_index + 1) * team_size]
+                            player["uuid"] for player in players[team_index * team_size : (team_index + 1) * team_size]
                         ]
                     },
                 }

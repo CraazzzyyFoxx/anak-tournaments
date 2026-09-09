@@ -56,9 +56,7 @@ class _AsyncSessionShim:
 def _team(name: str, *members: tuple[str, int]) -> MaterializationTeam:
     return MaterializationTeam(
         balancer_name=name,
-        members=tuple(
-            MaterializationMember(name=tag, rank=rank, slot_code="tank") for tag, rank in members
-        ),
+        members=tuple(MaterializationMember(name=tag, rank=rank, slot_code="tank") for tag, rank in members),
     )
 
 

@@ -94,6 +94,4 @@ def downgrade() -> None:
             ")"
         )
     )
-    _with_lock_retry(
-        lambda: op.alter_column("encounter", "has_logs", nullable=False, schema="tournament")
-    )
+    _with_lock_retry(lambda: op.alter_column("encounter", "has_logs", nullable=False, schema="tournament"))

@@ -1,5 +1,3 @@
-import typing
-
 from src.schemas import BaseRead
 from src.schemas.tournament import TournamentRead
 from src.schemas.user import UserRead
@@ -8,6 +6,7 @@ __all__ = (
     "TeamRead",
     "PlayerRead",
 )
+
 
 class PlayerRead(BaseRead):
     name: str
@@ -24,7 +23,7 @@ class PlayerRead(BaseRead):
     related_player_id: int | None
 
     tournament: TournamentRead | None
-    team: typing.Optional["TeamRead"]
+    team: TeamRead | None
     user: UserRead | None
 
 

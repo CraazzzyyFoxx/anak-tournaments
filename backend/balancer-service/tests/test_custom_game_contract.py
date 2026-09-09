@@ -69,6 +69,4 @@ def test_record_outcome_takes_the_outcome_the_client_sends() -> None:
 
 def test_record_outcome_rejects_an_impossible_winner() -> None:
     with pytest.raises(ValidationError):
-        _schemas().CustomGameRecordOutcome.model_validate(
-            {"outcome": {"winner": 3}, "variant_index": 0}
-        )
+        _schemas().CustomGameRecordOutcome.model_validate({"outcome": {"winner": 3}, "variant_index": 0})

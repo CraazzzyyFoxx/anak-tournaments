@@ -46,7 +46,9 @@ class AdminTeamWorkspaceMemberTests(IsolatedAsyncioTestCase):
             "resolve_workspace_member_id",
             AsyncMock(return_value=777),
         ) as resolve:
-            member_id = await admin_team_service.team_service._resolve_workspace_member_id(session, tournament_id=88, player_id=7)
+            member_id = await admin_team_service.team_service._resolve_workspace_member_id(
+                session, tournament_id=88, player_id=7
+            )
 
         self.assertEqual(777, member_id)
         resolve.assert_awaited_once_with(session, tournament_id=88, player_id=7)
@@ -58,7 +60,9 @@ class AdminTeamWorkspaceMemberTests(IsolatedAsyncioTestCase):
 
         with patch.object(admin_team_service, "resolve_workspace_member_id", AsyncMock(return_value=None)):
             with self.assertRaises(Exception) as ctx:
-                await admin_team_service.team_service._resolve_workspace_member_id(session, tournament_id=404, player_id=7)
+                await admin_team_service.team_service._resolve_workspace_member_id(
+                    session, tournament_id=404, player_id=7
+                )
 
         self.assertEqual(404, ctx.exception.status_code)
 

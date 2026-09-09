@@ -133,9 +133,7 @@ def register(broker: Any, logger: Any) -> None:
                 entity_id=tournament_id,
                 after={"slot": slot, "image_url": None},
             )
-            tournament = await tournament_service.set_tournament_image(
-                session, tournament_id, slot=slot, url=None
-            )
+            tournament = await tournament_service.set_tournament_image(session, tournament_id, slot=slot, url=None)
             return _dump(
                 await tournament_flows.flows_service.tournament_read(session, tournament, _TOURNAMENT_ENTITIES)
             )

@@ -269,7 +269,9 @@ async def _publish_result(
         )
 
 
-async def _lifecycle_action(session, redis, session_id, action, event_type, user, **action_kwargs) -> schemas.DraftSessionRead:
+async def _lifecycle_action(
+    session, redis, session_id, action, event_type, user, **action_kwargs
+) -> schemas.DraftSessionRead:
     draft = await _load_session(session, session_id)
     await action(session, draft, **action_kwargs)
     extra: dict = {"session_id": draft.id, "status": draft.status}

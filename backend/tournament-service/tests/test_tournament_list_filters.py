@@ -270,15 +270,21 @@ def test_status_filter_applies_to_page_and_count() -> None:
             async with session_maker() as session:
                 ws = await _make_workspace(session)
                 live_a = await _make_tournament(
-                    session, workspace_id=ws.id, name=f"live-a-{uuid.uuid4().hex[:8]}",
+                    session,
+                    workspace_id=ws.id,
+                    name=f"live-a-{uuid.uuid4().hex[:8]}",
                     status=enums.TournamentStatus.LIVE,
                 )
                 live_b = await _make_tournament(
-                    session, workspace_id=ws.id, name=f"live-b-{uuid.uuid4().hex[:8]}",
+                    session,
+                    workspace_id=ws.id,
+                    name=f"live-b-{uuid.uuid4().hex[:8]}",
                     status=enums.TournamentStatus.LIVE,
                 )
                 await _make_tournament(
-                    session, workspace_id=ws.id, name=f"reg-{uuid.uuid4().hex[:8]}",
+                    session,
+                    workspace_id=ws.id,
+                    name=f"reg-{uuid.uuid4().hex[:8]}",
                     status=enums.TournamentStatus.REGISTRATION,
                 )
                 await session.commit()

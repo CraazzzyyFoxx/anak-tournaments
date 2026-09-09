@@ -234,21 +234,15 @@ class TournamentImageSubjects(IsolatedAsyncioTestCase):
             # Same entity set registry._ser_tournament hydrates, so the admin form
             # reads this reply exactly as it reads a PATCH reply.
             self.assertEqual(["stages", "roster_shape", "division_grid_version"], entities)
-            return _tournament_read(
-                cover_image_url=tournament.cover_image_url, logo_url=tournament.logo_url
-            )
+            return _tournament_read(cover_image_url=tournament.cover_image_url, logo_url=tournament.logo_url)
 
         with (
             patch.object(helpers.db, "async_session_maker", FakeSessionMaker(SimpleNamespace(add=self.staged.append))),
             patch.object(tournament_binary, "get_s3", fake_get_s3),
             patch.object(tournament_binary, "upload_avatar", fake_upload_avatar),
             patch.object(tournament_binary.auth, "get_tournament_workspace_id", fake_workspace_id),
-            patch.object(
-                tournament_binary.tournament_service, "set_tournament_image", fake_set_tournament_image
-            ),
-            patch.object(
-                tournament_binary.tournament_flows.flows_service, "tournament_read", fake_tournament_read
-            ),
+            patch.object(tournament_binary.tournament_service, "set_tournament_image", fake_set_tournament_image),
+            patch.object(tournament_binary.tournament_flows.flows_service, "tournament_read", fake_tournament_read),
         ):
             envelope = await broker.handlers[subject](data, None)
         self.upload_kwargs = upload_kwargs
@@ -311,9 +305,7 @@ class TournamentImageSubjects(IsolatedAsyncioTestCase):
         self.assertEqual(WORKSPACE_ID, row.workspace_id)
         self.assertEqual("tournament", row.entity_type)
         self.assertEqual(TOURNAMENT_ID, row.entity_id)
-        self.assertEqual(
-            {"slot": "logo", "image_url": LOGO_URL, "content_type": "image/png"}, row.after_json
-        )
+        self.assertEqual({"slot": "logo", "image_url": LOGO_URL, "content_type": "image/png"}, row.after_json)
 
         self.staged.clear()
         await self._invoke(self.DELETE, {"id": TOURNAMENT_ID, "slot": "cover", "identity": IDENTITY})

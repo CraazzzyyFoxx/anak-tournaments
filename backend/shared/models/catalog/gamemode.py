@@ -27,4 +27,4 @@ class Gamemode(db.TimeStampIntegerMixin):
         JSONB(), nullable=False, server_default=text("'[]'::jsonb"), default=list
     )
 
-    maps: Mapped[list["Map"]] = relationship()
+    maps: Mapped[list[Map]] = relationship()

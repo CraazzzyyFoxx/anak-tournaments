@@ -199,9 +199,7 @@ class TestResolveRegistrationRanks(IsolatedAsyncioTestCase):
         """The other half of the predicate: under ``optional`` an inactive row is
         not a role at all, even carrying a number. Reporting it would advertise a
         rating the balancer and the draft both refuse to pick on."""
-        registration = _registration(
-            1, {"tank": 2500, "dps": 4000}, member_id=9, inactive=frozenset({"dps"})
-        )
+        registration = _registration(1, {"tank": 2500, "dps": 4000}, member_id=9, inactive=frozenset({"dps"}))
         resolve = mock.AsyncMock(return_value={(9, "tank"): ResolvedRank(2500, "registration")})
         with mock.patch.object(roster_engine.ranks, "resolve", resolve):
             roster = await _resolve(_Session([(9, 77)]), registration, workspace_id=1)
@@ -222,16 +220,12 @@ class TestFlexModesAtTheEngineLevel(IsolatedAsyncioTestCase):
     async def _resolve_all_roles(self, mode: str, registration: SimpleNamespace, resolved: dict) -> Any:
         resolve = mock.AsyncMock(return_value=resolved)
         with mock.patch.object(roster_engine.ranks, "resolve", resolve):
-            return await _resolve(
-                _Session([(9, 77)]), registration, workspace_id=1, form=_flex_form(mode)
-            )
+            return await _resolve(_Session([(9, 77)]), registration, workspace_id=1, form=_flex_form(mode))
 
     async def test_every_role_is_playable_and_an_unrated_one_inherits_the_best(self) -> None:
         for mode in ("all_roles", "forced"):
             with self.subTest(mode=mode):
-                registration = _registration(
-                    1, {"tank": 2500, "dps": None}, member_id=9, inactive=frozenset({"dps"})
-                )
+                registration = _registration(1, {"tank": 2500, "dps": None}, member_id=9, inactive=frozenset({"dps"}))
                 roster = await self._resolve_all_roles(
                     mode,
                     registration,
@@ -268,9 +262,7 @@ class TestFlexModesAtTheEngineLevel(IsolatedAsyncioTestCase):
     async def test_a_disabled_flex_field_cannot_force_roles_it_never_showed(self) -> None:
         """``enabled: false`` bans flex outright, so the mode is ignored: no
         backfill, no inheritance, and the inactive row stays out."""
-        registration = _registration(
-            1, {"tank": 2500, "dps": None}, member_id=9, inactive=frozenset({"dps"})
-        )
+        registration = _registration(1, {"tank": 2500, "dps": None}, member_id=9, inactive=frozenset({"dps"}))
         resolve = mock.AsyncMock(return_value={(9, "tank"): ResolvedRank(2500, "registration")})
         with mock.patch.object(roster_engine.ranks, "resolve", resolve):
             roster = await _resolve(

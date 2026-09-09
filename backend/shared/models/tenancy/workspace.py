@@ -103,9 +103,7 @@ class Workspace(db.TimeStampIntegerMixin):
     # compute gates; ``trusted`` additionally makes it publicly listed. Only a
     # superuser moves a workspace between tiers
     # (``rpc.app.workspaces.verification_set``) -- there is no automatic path.
-    verification_status: Mapped[str] = mapped_column(
-        String(16), server_default="unverified", nullable=False
-    )
+    verification_status: Mapped[str] = mapped_column(String(16), server_default="unverified", nullable=False)
     default_division_grid_version_id: Mapped[int | None] = mapped_column(
         ForeignKey("division_grid_version.id", ondelete="SET NULL"),
         nullable=True,
@@ -124,8 +122,8 @@ class Workspace(db.TimeStampIntegerMixin):
     # Admin-editable via the same PATCH /workspaces/{id} path as
     # ``branding_enabled``.
     newcomer_scope: Mapped[str] = mapped_column(String(16), server_default="global", nullable=False)
-    members: Mapped[list["WorkspaceMember"]] = relationship(back_populates="workspace", passive_deletes=True)
-    default_division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(
+    members: Mapped[list[WorkspaceMember]] = relationship(back_populates="workspace", passive_deletes=True)
+    default_division_grid_version: Mapped[DivisionGridVersion | None] = relationship(
         foreign_keys=[default_division_grid_version_id],
         lazy="selectin",
     )
@@ -145,5 +143,5 @@ class WorkspaceMember(db.TimeStampIntegerMixin):
     # other than their global ``players.user.name``. Falls back to that name.
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    workspace: Mapped["Workspace"] = relationship(back_populates="members")
-    player: Mapped["User"] = relationship()
+    workspace: Mapped[Workspace] = relationship(back_populates="members")
+    player: Mapped[User] = relationship()

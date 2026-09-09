@@ -144,5 +144,3 @@ get_by_players_by_ids_tournament = team_service.get_by_players_by_ids_tournament
 get_player_by_team_and_user = team_service.get_player_by_team_and_user
 get_player_by_user_and_role = team_service.get_player_by_user_and_role
 create_player = team_service.create_player
-
-

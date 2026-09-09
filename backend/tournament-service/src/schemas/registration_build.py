@@ -320,9 +320,7 @@ async def _public_rosters(
         return {}
     tournament_id = registrations[0].tournament_id
     workspace_id = await _resolve_tournament_workspace(session, tournament_id)
-    return await roster_engine.resolve(
-        session, registrations, workspace_id=workspace_id, tournament_id=tournament_id
-    )
+    return await roster_engine.resolve(session, registrations, workspace_id=workspace_id, tournament_id=tournament_id)
 
 
 async def _build_tournament_history(

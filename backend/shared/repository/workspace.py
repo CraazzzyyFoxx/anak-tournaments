@@ -79,9 +79,7 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         the lock, not the row.
         """
         return await session.scalar(
-            sa.select(models.Workspace.id)
-            .where(models.Workspace.id == workspace_id)
-            .with_for_update()
+            sa.select(models.Workspace.id).where(models.Workspace.id == workspace_id).with_for_update()
         )
 
     async def clear_default_grid_version(

@@ -36,12 +36,16 @@ class CreateTournamentFromChallongeTests(IsolatedAsyncioTestCase):
             patch.object(
                 admin_tournament.challonge_client, "fetch_tournament", AsyncMock(return_value=challonge_tournament)
             ) as fetch_tournament,
-            patch.object(admin_tournament.tournament_service, "create_tournament", AsyncMock(return_value=created)) as create,
+            patch.object(
+                admin_tournament.tournament_service, "create_tournament", AsyncMock(return_value=created)
+            ) as create,
             patch.object(admin_tournament.tournament_service, "_link_tournament_challonge_source", AsyncMock()) as link,
             patch.object(
                 admin_tournament.sync_service, "import_tournament", AsyncMock(return_value={"created": 3})
             ) as import_,
-            patch.object(admin_tournament.tournament_service, "get_tournament", AsyncMock(return_value=finalized)) as get,
+            patch.object(
+                admin_tournament.tournament_service, "get_tournament", AsyncMock(return_value=finalized)
+            ) as get,
         ):
             result = await admin_tournament.tournament_service.create_tournament_from_challonge(
                 session,

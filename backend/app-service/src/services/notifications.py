@@ -129,9 +129,7 @@ async def inbox_page(
         # one loops a caller that keeps following the cursor it is handed.
         raise HTTPException(status_code=422, detail="Invalid notification page cursor") from exc
 
-    unread_count = await repository.unread_count(
-        session, auth_user_id=auth_user_id, workspace_ids=workspace_ids
-    )
+    unread_count = await repository.unread_count(session, auth_user_id=auth_user_id, workspace_ids=workspace_ids)
     return schemas.NotificationInboxRead(
         items=[schemas.NotificationItem.model_validate(row) for row in page.items],
         unread_count=unread_count,
@@ -159,9 +157,7 @@ async def mark_read(
         notification_ids=notification_ids,
     )
     await session.commit()
-    unread_count = await repository.unread_count(
-        session, auth_user_id=auth_user_id, workspace_ids=workspace_ids
-    )
+    unread_count = await repository.unread_count(session, auth_user_id=auth_user_id, workspace_ids=workspace_ids)
     return schemas.NotificationMarkReadResult(marked=marked, unread_count=unread_count)
 
 
@@ -188,15 +184,11 @@ async def delete(
         only_read=only_read,
     )
     await session.commit()
-    unread_count = await repository.unread_count(
-        session, auth_user_id=auth_user_id, workspace_ids=workspace_ids
-    )
+    unread_count = await repository.unread_count(session, auth_user_id=auth_user_id, workspace_ids=workspace_ids)
     return schemas.NotificationDeleteResult(deleted=deleted, unread_count=unread_count)
 
 
-async def active_announcements(
-    session: Any, *, auth_user_id: int | None = None
-) -> list[schemas.NotificationItem]:
+async def active_announcements(session: Any, *, auth_user_id: int | None = None) -> list[schemas.NotificationItem]:
     """Platform-wide announcements for the banner; dismissed ones drop out.
 
     Anonymous callers reach ``active_global`` with no identity at all: no

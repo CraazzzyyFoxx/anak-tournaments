@@ -30,9 +30,7 @@ class SubscriptionProviderConfigRepository(BaseRepository[models.SubscriptionPro
         self, session: AsyncSession, workspace_id: int
     ) -> Sequence[models.SubscriptionProviderConfig]:
         result = await session.execute(
-            self.select().where(
-                models.SubscriptionProviderConfig.workspace_id == workspace_id
-            )
+            self.select().where(models.SubscriptionProviderConfig.workspace_id == workspace_id)
         )
         return result.scalars().all()
 
@@ -80,15 +78,11 @@ class SubscriptionProviderConfigRepository(BaseRepository[models.SubscriptionPro
         )
 
 
-class WorkspaceSubscriptionRequirementRepository(
-    BaseRepository[models.WorkspaceSubscriptionRequirement]
-):
+class WorkspaceSubscriptionRequirementRepository(BaseRepository[models.WorkspaceSubscriptionRequirement]):
     def __init__(self) -> None:
         super().__init__(models.WorkspaceSubscriptionRequirement)
 
-    async def get_default_blob(
-        self, session: AsyncSession, workspace_id: int
-    ) -> dict[str, Any]:
+    async def get_default_blob(self, session: AsyncSession, workspace_id: int) -> dict[str, Any]:
         """The workspace's default rule as a raw blob, or ``{}`` when it has none."""
         requirement = models.WorkspaceSubscriptionRequirement
         blob = await session.scalar(

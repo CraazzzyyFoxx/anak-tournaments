@@ -209,8 +209,7 @@ class UserService:
         return self.to_read(user, entities, visible_only=True)
 
     async def get_all(
-        self,
-        session: AsyncSession, params: pagination.PaginationSortSearchParams
+        self, session: AsyncSession, params: pagination.PaginationSortSearchParams
     ) -> pagination.Paginated[schemas.UserRead]:
         """Paginated users as ``UserRead`` schemas."""
         users, total = await self.profile.get_all(session, params)
@@ -388,11 +387,11 @@ class UserService:
     async def get_overview_stats(
         self,
         session: AsyncSession,
-        params: "schemas.UserOverviewStatsQueryParams",
+        params: schemas.UserOverviewStatsQueryParams,
         *,
         grid: DivisionGrid,
         workspace_id: int | None = None,
-    ) -> "schemas.UserOverviewStats":
+    ) -> schemas.UserOverviewStats:
         if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
             raise errors.ApiHTTPException(
                 status_code=400,
@@ -418,12 +417,12 @@ class UserService:
     async def get_catalog(
         self,
         session: AsyncSession,
-        params: "schemas.UserCatalogParams",
+        params: schemas.UserCatalogParams,
         *,
         grid: DivisionGrid,
         normalizer: DivisionGridNormalizer | None = None,
         workspace_id: int | None = None,
-    ) -> "schemas.UserCatalogResponse":
+    ) -> schemas.UserCatalogResponse:
         if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
             raise errors.ApiHTTPException(
                 status_code=400,
@@ -563,7 +562,9 @@ class UserService:
         if mode == "target_user" and not params.target_user_id:
             raise errors.ApiHTTPException(
                 status_code=400,
-                detail=[errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")],
+                detail=[
+                    errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")
+                ],
             )
 
         baseline_target: schemas.UserCompareUser | None = None
@@ -770,7 +771,9 @@ class UserService:
         if mode == "target_user" and not params.target_user_id:
             raise errors.ApiHTTPException(
                 status_code=400,
-                detail=[errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")],
+                detail=[
+                    errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")
+                ],
             )
 
         subject = await self.get(session, id, [])
@@ -1170,8 +1173,7 @@ class UserService:
         key="backend:user_tournaments:{id}:{workspace_id}",
     )
     async def get_tournaments(
-        self,
-        session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
+        self, session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
     ) -> list[schemas.UserTournament]:
         """
         Retrieves a user's tournament history with per-event stats (record,
@@ -1236,7 +1238,9 @@ class UserService:
                 draw += standing.draw
 
             division_grid_version = (
-                schemas.DivisionGridVersionRead.model_validate(team.tournament.division_grid_version, from_attributes=True)
+                schemas.DivisionGridVersionRead.model_validate(
+                    team.tournament.division_grid_version, from_attributes=True
+                )
                 if team.tournament.division_grid_version is not None
                 else None
             )
@@ -1288,8 +1292,7 @@ class UserService:
         key="backend:user_tournament_encounters:v2:{id}:{tournament_id}",
     )
     async def get_tournament_encounters(
-        self,
-        session: AsyncSession, id: int, tournament_id: int
+        self, session: AsyncSession, id: int, tournament_id: int
     ) -> list[schemas.EncounterReadWithUserStats]:
         """
         Retrieves one user's encounters (with their per-match stats) within a
@@ -1301,7 +1304,9 @@ class UserService:
         than one — e.g. a mid-tournament substitution.
         """
         user = await self.get(session, id, [])
-        rows = await self.encounters.get_user_encounter_matches_unpaginated(session, user.id, tournament_id=tournament_id)
+        rows = await self.encounters.get_user_encounter_matches_unpaginated(
+            session, user.id, tournament_id=tournament_id
+        )
 
         encounters_cache: dict[int, models.Encounter] = {}
         matches_cache: dict[int, list[schemas.MatchReadWithUserStats]] = {}
@@ -1356,8 +1361,7 @@ class UserService:
         lock=True,
     )
     async def get_tournament_with_stats(
-        self,
-        session: AsyncSession, id: int, tournament_id: int, *, grid: DivisionGrid
+        self, session: AsyncSession, id: int, tournament_id: int, *, grid: DivisionGrid
     ) -> schemas.UserTournamentWithStats | None:
         """Detailed statistics for a user in one tournament; 404 when the user never
         played in it.

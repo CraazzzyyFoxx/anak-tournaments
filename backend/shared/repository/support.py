@@ -180,6 +180,7 @@ def stalled_conditions(
         ),
     )
 
+
 class LogProcessingRepository(BaseRepository[models.LogProcessingRecord]):
     def __init__(self) -> None:
         super().__init__(models.LogProcessingRecord)
@@ -325,5 +326,3 @@ class ChallongeMappingRepository:
     participants = BaseRepository(models.ChallongeParticipantMapping)
     matches = BaseRepository(models.ChallongeMatchMapping)
     logs = BaseRepository(models.ChallongeSyncLog)
-
-

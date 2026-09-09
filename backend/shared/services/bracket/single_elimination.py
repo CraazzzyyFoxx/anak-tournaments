@@ -167,5 +167,3 @@ def generate(team_ids: list[int]) -> BracketSkeleton:
         total_rounds=total_rounds,
         advancement_edges=edges,
     )
-
-

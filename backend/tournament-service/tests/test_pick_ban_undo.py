@@ -119,9 +119,7 @@ async def _run_undo(
         return hero_session
 
     with patch.object(pick_ban_undo.pick_ban_session_service, "get_pick_ban_session", get_pick_ban_session):
-        state = await pick_ban_undo.pick_ban_undo_service.perform_undo(
-            session, 500, kind, side, consent=consent
-        )
+        state = await pick_ban_undo.pick_ban_undo_service.perform_undo(session, 500, kind, side, consent=consent)
     return session, state
 
 
@@ -380,8 +378,6 @@ class UndoLocksTheSessionTests(IsolatedAsyncioTestCase):
 
         with patch.object(pick_ban_undo.pick_ban_session_service, "get_pick_ban_session", spy):
             with self.assertRaises(_Stop):
-                await pick_ban_undo.pick_ban_undo_service.perform_undo(
-                    _FakeSession([]), 500, PickBanKind.HERO, "home"
-                )
+                await pick_ban_undo.pick_ban_undo_service.perform_undo(_FakeSession([]), 500, PickBanKind.HERO, "home")
 
         self.assertEqual([True], seen)

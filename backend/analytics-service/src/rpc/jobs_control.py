@@ -107,9 +107,7 @@ def register(broker: Any, logger: Any) -> None:
             logger.exception("Failed to publish analytics job to RabbitMQ")
             raise HTTPException(status_code=502, detail=failed)
 
-    async def _dispatch(
-        session: Any, body: AnalyticsJobCreate, workspace_id: int | None, user: Any
-    ) -> Any:
+    async def _dispatch(session: Any, body: AnalyticsJobCreate, workspace_id: int | None, user: Any) -> Any:
         """Create + enqueue a job, mirroring routes.v2.create_analytics_job."""
         await _require_actor(body, workspace_id, user)
         if body.kind == JOB_KIND_COMPUTE:

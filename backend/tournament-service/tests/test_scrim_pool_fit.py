@@ -346,7 +346,9 @@ class AMissingConfigIsRefused(_FitCase):
         self.db.slot_config(slots=[[9, 10]], kind=PickBanKind.HERO)
 
         with self.assertRaises(HTTPException) as ctx:
-            await scrim.scrim_service._assert_playable(self.db.shim, encounter, [PickBanKind.MAP, PickBanKind.HERO], best_of=3)
+            await scrim.scrim_service._assert_playable(
+                self.db.shim, encounter, [PickBanKind.MAP, PickBanKind.HERO], best_of=3
+            )
 
         self.assertEqual(422, ctx.exception.status_code)
         self.assertIn("1", str(ctx.exception.detail))

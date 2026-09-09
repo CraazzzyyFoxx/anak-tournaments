@@ -205,7 +205,11 @@ class StandingsRunnerTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock())
         return session, (
             patch.object(runner, "_algorithm_id", AsyncMock(return_value=1)),
-            patch.object(runner.registry_service, "load_active_artifact", AsyncMock(return_value=SimpleNamespace(storage_uri="s"))),
+            patch.object(
+                runner.registry_service,
+                "load_active_artifact",
+                AsyncMock(return_value=SimpleNamespace(storage_uri="s")),
+            ),
             patch.object(runner, "load_artifact", lambda _uri: _StubModel()),
             patch.object(runner, "build_standings_forecast_frame", AsyncMock(return_value=forecast)),
         )

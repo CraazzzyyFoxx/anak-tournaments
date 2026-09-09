@@ -25,7 +25,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-import sqlalchemy as sa
 
 from shared.core.errors import BaseAPIException as HTTPException
 
@@ -46,7 +45,6 @@ from tests._fakes import FakeSocialAccounts as _StubSocials  # noqa: E402
 
 NO_CONNECTION_DETAIL = "Link Discord or Battle.net OAuth account before linking a player"
 NO_MATCH_DETAIL = "Discord or Battle.net account does not match selected player"
-
 
 
 class _StubPlayers:

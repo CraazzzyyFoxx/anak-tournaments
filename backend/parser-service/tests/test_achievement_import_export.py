@@ -14,7 +14,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-
 from shared.models.achievements.achievement import AchievementRule  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from src.services.achievement.import_export import (  # noqa: E402

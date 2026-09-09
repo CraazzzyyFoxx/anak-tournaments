@@ -33,7 +33,6 @@ sys.path.insert(0, str(backend_root))
 
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from shared.testing import install_postgres_type_shims  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament.preview_access import TournamentPreviewAccess  # noqa: E402
@@ -43,7 +42,7 @@ from shared.services.tournament.visibility import (  # noqa: E402
     assert_tournament_viewable,
     visible_tournament_ids_subquery,
 )
-
+from shared.testing import install_postgres_type_shims  # noqa: E402
 
 install_postgres_type_shims()
 
@@ -118,9 +117,7 @@ class ScrimContainerVisibilityTests(IsolatedAsyncioTestCase):
         self.shim = _AsyncSessionShim(self.session)
         self.addCleanup(self._close)
 
-        self.session.execute(
-            sa.insert(Workspace.__table__).values(id=WORKSPACE_ID, slug="ws", name="WS")
-        )
+        self.session.execute(sa.insert(Workspace.__table__).values(id=WORKSPACE_ID, slug="ws", name="WS"))
         for tournament_id, name, hidden in (
             (CONTAINER_ID, "Scrims", True),
             (PREVIEW_ID, "Season 9", True),

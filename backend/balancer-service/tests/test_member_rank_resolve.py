@@ -36,9 +36,7 @@ _HOST = 99
 
 
 def _rank(member_id: int, role: str, value: int, author_user_id: int | None = None) -> SimpleNamespace:
-    return SimpleNamespace(
-        workspace_member_id=member_id, role=role, rank_value=value, author_user_id=author_user_id
-    )
+    return SimpleNamespace(workspace_member_id=member_id, role=role, rank_value=value, author_user_id=author_user_id)
 
 
 class MemberRankResolveTests(IsolatedAsyncioTestCase):
@@ -109,17 +107,13 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
         self.assertEqual(result[(1, "tank")], ResolvedRank(2900, "ow"))
 
     async def test_ow_not_queried_when_cheap_layers_cover_every_role(self) -> None:
-        self.ranks.list_layers.return_value = [
-            _rank(member_id, role, 2000) for member_id in (1, 2) for role in _ROLES
-        ]
+        self.ranks.list_layers.return_value = [_rank(member_id, role, 2000) for member_id in (1, 2) for role in _ROLES]
         _result, fetch = await self._mix({1: 10, 2: 20}, _ROLES)
         fetch.assert_not_awaited()
 
     async def test_ow_queried_only_for_members_with_a_hole(self) -> None:
         self.ranks.list_layers.return_value = [_rank(1, "tank", 2000)]
-        result, fetch = await self._mix(
-            {1: 10, 2: 20}, ["tank"], ow={20: {"Bob#1": {"tank": 1500}}}
-        )
+        result, fetch = await self._mix({1: 10, 2: 20}, ["tank"], ow={20: {"Bob#1": {"tank": 1500}}})
         fetch.assert_awaited_once()
         self.assertEqual(fetch.await_args.args[1], [20])
         self.assertEqual(result[(1, "tank")], ResolvedRank(2000, "workspace"))

@@ -133,7 +133,6 @@ class EncounterFlowsService:
         away_team: schemas.TeamRead | None = None
         matches_read: list[schemas.MatchRead] = []
 
-
         if "stage" in entities and encounter.stage is not None:
             # Nested stage challonge is derived at the top-level tournament read, not
             # here — override to None so the legacy ``stage`` columns are never read.
@@ -144,9 +143,7 @@ class EncounterFlowsService:
             stage_item = schemas.StageItemSummaryRead.model_validate(encounter.stage_item, from_attributes=True)
         if "tournament" in entities:
             nested_tournament = utils.prepare_entities(entities, "tournament")
-            cached_tournament = (
-                tournament_cache.get(encounter.tournament_id) if tournament_cache is not None else None
-            )
+            cached_tournament = tournament_cache.get(encounter.tournament_id) if tournament_cache is not None else None
             if cached_tournament is not None:
                 tournament = cached_tournament
             else:
@@ -169,9 +166,7 @@ class EncounterFlowsService:
                 else utils.prepare_entities(entities, "home_team")
             )
             if encounter.home_team is not None:
-                home_team = await self._cached_team_read(
-                    session, encounter.home_team, teams_entities, team_cache
-                )
+                home_team = await self._cached_team_read(session, encounter.home_team, teams_entities, team_cache)
         if "teams" in entities or "away_team" in entities:
             teams_entities = (
                 utils.prepare_entities(entities, "teams")
@@ -179,9 +174,7 @@ class EncounterFlowsService:
                 else utils.prepare_entities(entities, "away_team")
             )
             if encounter.away_team is not None:
-                away_team = await self._cached_team_read(
-                    session, encounter.away_team, teams_entities, team_cache
-                )
+                away_team = await self._cached_team_read(session, encounter.away_team, teams_entities, team_cache)
         if "matches" in entities:
             matches_read = [
                 await self.to_pydantic_match(
@@ -269,9 +262,7 @@ class EncounterFlowsService:
                 else utils.prepare_entities(entities, "home_team")
             )
             if match.home_team is not None:
-                home_team = await self._cached_team_read(
-                    session, match.home_team, teams_entities, team_cache
-                )
+                home_team = await self._cached_team_read(session, match.home_team, teams_entities, team_cache)
         if "teams" in entities or "away_team" in entities:
             teams_entities = (
                 utils.prepare_entities(entities, "teams")
@@ -279,9 +270,7 @@ class EncounterFlowsService:
                 else utils.prepare_entities(entities, "away_team")
             )
             if match.away_team is not None:
-                away_team = await self._cached_team_read(
-                    session, match.away_team, teams_entities, team_cache
-                )
+                away_team = await self._cached_team_read(session, match.away_team, teams_entities, team_cache)
         if "encounter" in entities:
             encounter = await self.to_pydantic(
                 session,
@@ -551,8 +540,7 @@ class EncounterFlowsService:
                 ],
             ),
             hot_maps=[
-                schemas.EncounterMapMetricRead(name=str(name), count=int(count))
-                for name, count in data["hot_map_rows"]
+                schemas.EncounterMapMetricRead(name=str(name), count=int(count)) for name, count in data["hot_map_rows"]
             ],
             pulse=schemas.EncounterPulseRead(
                 avg_series_seconds=data["avg_series_seconds"],

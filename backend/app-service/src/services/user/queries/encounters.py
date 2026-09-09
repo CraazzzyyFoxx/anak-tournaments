@@ -116,8 +116,7 @@ class UserEncounterQueries:
     """Encounter, opponent and roster aggregate reads for one user."""
 
     async def get_user_encounter_matches_unpaginated(
-        self,
-        session: AsyncSession, user_id: int, *, tournament_id: int | None = None
+        self, session: AsyncSession, user_id: int, *, tournament_id: int | None = None
     ) -> typing.Sequence[
         tuple[
             models.Team,
@@ -292,7 +291,12 @@ class UserEncounterQueries:
                     *([models.Team.tournament_id == tournament_id] if tournament_id is not None else []),
                 )
             )
-            .order_by(_PLAYED_AT.asc(), models.Encounter.id.asc(), models.Match.map_index.asc().nulls_last(), models.Match.id.asc())
+            .order_by(
+                _PLAYED_AT.asc(),
+                models.Encounter.id.asc(),
+                models.Match.map_index.asc().nulls_last(),
+                models.Match.id.asc(),
+            )
         )
 
         result = await session.execute(query)
@@ -367,9 +371,9 @@ class UserEncounterQueries:
         )
 
         if workspace_id is not None:
-            total_query = total_query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id).where(
-                *workspace_filter(workspace_id)
-            )
+            total_query = total_query.join(
+                models.Tournament, models.Encounter.tournament_id == models.Tournament.id
+            ).where(*workspace_filter(workspace_id))
             encounters_query = encounters_query.join(
                 models.Tournament, models.Encounter.tournament_id == models.Tournament.id
             ).where(*workspace_filter(workspace_id))
@@ -464,9 +468,7 @@ class UserEncounterQueries:
                 mvp_subq = (
                     sa.select(models.Match.encounter_id)
                     .join(mvp_placement_cte, mvp_placement_cte.c.match_id == models.Match.id)
-                    .where(
-                        sa.func.coalesce(mvp_placement_cte.c.impact_rank, mvp_placement_cte.c.performance) == 1
-                    )
+                    .where(sa.func.coalesce(mvp_placement_cte.c.impact_rank, mvp_placement_cte.c.performance) == 1)
                 )
                 q = q.where(models.Encounter.id.in_(mvp_subq))
 
@@ -941,8 +943,7 @@ class UserEncounterQueries:
         return heroes_map
 
     async def get_player_by_user_and_tournament(
-        self,
-        session: AsyncSession, user_id: int, tournament_id: int
+        self, session: AsyncSession, user_id: int, tournament_id: int
     ) -> models.Player | None:
         """Look up a user's Player row for a specific tournament.
 

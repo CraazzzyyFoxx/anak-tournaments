@@ -57,5 +57,5 @@ class EncounterLink(db.TimeStampIntegerMixin):
     role: Mapped[enums.EncounterLinkRole] = mapped_column(ENCOUNTER_LINK_ROLE_ENUM)
     target_slot: Mapped[enums.EncounterLinkSlot] = mapped_column(ENCOUNTER_LINK_SLOT_ENUM)
 
-    source_encounter: Mapped["Encounter"] = relationship(foreign_keys=[source_encounter_id])
-    target_encounter: Mapped["Encounter"] = relationship(foreign_keys=[target_encounter_id])
+    source_encounter: Mapped[Encounter] = relationship(foreign_keys=[source_encounter_id])
+    target_encounter: Mapped[Encounter] = relationship(foreign_keys=[target_encounter_id])

@@ -353,9 +353,7 @@ class RankAutofillService:
         division_lookback = next(
             (s.lookback_tournaments for s in resolved_stages if s.source == "division_history"), None
         )
-        analytics_lookback = next(
-            (s.lookback_tournaments for s in resolved_stages if s.source == "analytics"), None
-        )
+        analytics_lookback = next((s.lookback_tournaments for s in resolved_stages if s.source == "analytics"), None)
 
         now = datetime.now(UTC)
         tournament = await self.rank_sources._load_tournament_for_autofill(session, tournament_id)

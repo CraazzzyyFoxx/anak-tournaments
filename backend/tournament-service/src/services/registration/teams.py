@@ -890,8 +890,7 @@ class RegistrationTeamService:
             # See `_normalize_invite_token`'s docstring for why stripping whitespace
             # here is safe: a real token never contains any.
             .where(
-                models.BalancerRegistrationTeamInvite.token_sha256
-                == hash_invite_token(_normalize_invite_token(token))
+                models.BalancerRegistrationTeamInvite.token_sha256 == hash_invite_token(_normalize_invite_token(token))
             )
             .options(
                 selectinload(models.BalancerRegistrationTeamInvite.team).selectinload(

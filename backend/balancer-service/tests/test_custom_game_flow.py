@@ -192,9 +192,7 @@ def _solver_result(lineup: list[Any]) -> dict[str, Any]:
                     {"roster": {"tank": [seats[2]], "dps": [seats[3]]}},
                 ],
                 "statistics": {},
-                "benched_players": [
-                    {"uuid": str(row.workspace_member_id), "name": "spare"} for row in lineup[4:]
-                ],
+                "benched_players": [{"uuid": str(row.workspace_member_id), "name": "spare"} for row in lineup[4:]],
             }
         ]
     }
@@ -231,9 +229,7 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             ("get_effective_division_grid", object()),
             ("get_workspace_roster_slots", None),
         ):
-            patcher = patch(
-                f"src.services.custom_game.{target}", new=AsyncMock(return_value=value)
-            )
+            patcher = patch(f"src.services.custom_game.{target}", new=AsyncMock(return_value=value))
             patcher.start()
             self.addCleanup(patcher.stop)
 
@@ -331,9 +327,7 @@ class MixFlowTests(IsolatedAsyncioTestCase):
         ]
         self.service.run_balance = AsyncMock(return_value=_solver_result(seated))
 
-        balanced = await self.service.balance(
-            self.session, workspace_id=1, custom_game_id=game.id, actor_user_id=9
-        )
+        balanced = await self.service.balance(self.session, workspace_id=1, custom_game_id=game.id, actor_user_id=9)
         self.assertEqual(balanced.status, "balanced")
         # The solver only ever sees the seated lineup, and only the shape and the
         # knobs the host actually set reach it.
@@ -364,28 +358,20 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             [(team.side, team.name, team.score) for team in match.teams],
             [(CasualTeamSide.HOME, "Wolves", 1), (CasualTeamSide.AWAY, "Team 2", 0)],
         )
-        self.assertEqual(
-            sorted(seat.workspace_member_id for seat in self.casual.players), [7, 8, 9, 10]
-        )
+        self.assertEqual(sorted(seat.workspace_member_id for seat in self.casual.players), [7, 8, 9, 10])
         self.assertTrue(all(seat.display_name_snapshot for seat in self.casual.players))
         # The pin was redeemed by the seat it guaranteed; the win moved ranks.
         self.assertEqual(by_member[7].participation, MixParticipation.POOL)
         self.assertEqual(len(self.ranks.set_ranks.await_args_list), 9)
 
         # The recorded map now feeds the rotation hint for the next one.
-        rotation = await self.service.rotation(
-            self.session, workspace_id=1, custom_game_id=game.id
-        )
+        rotation = await self.service.rotation(self.session, workspace_id=1, custom_game_id=game.id)
         owed = {rec.member_id for rec in rotation if rec.status.value == "must_play"}
         self.assertIn(11, owed)
 
-        closed = await self.service.close(
-            self.session, workspace_id=1, custom_game_id=game.id, actor_user_id=9
-        )
+        closed = await self.service.close(self.session, workspace_id=1, custom_game_id=game.id, actor_user_id=9)
         self.assertEqual(closed.status, "completed")
         # Closed is terminal: the next write is refused rather than silently applied.
         with self.assertRaises(Exception) as ctx:
-            await self.service.balance(
-                self.session, workspace_id=1, custom_game_id=game.id, actor_user_id=9
-            )
+            await self.service.balance(self.session, workspace_id=1, custom_game_id=game.id, actor_user_id=9)
         self.assertEqual(getattr(ctx.exception, "status_code", None), 409)

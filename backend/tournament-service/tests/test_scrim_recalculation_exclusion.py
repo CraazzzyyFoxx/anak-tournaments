@@ -293,9 +293,7 @@ class RecalculationEnqueueTests(_DatabaseTestCase):
     async def _enqueue(self, tournament_id: int) -> AsyncMock:
         request = AsyncMock()
         with (
-            patch.object(
-                tournament_events.jobs_service, "request_standings_recalculation", request
-            ),
+            patch.object(tournament_events.jobs_service, "request_standings_recalculation", request),
             patch.object(tournament_events, "register_tournament_realtime_update", lambda *a, **k: None),
         ):
             await tournament_events.enqueue_tournament_recalculation(self.db.shim, tournament_id)

@@ -68,7 +68,6 @@ class RedisMetaStore:
         del ctx, workspace_id, limit, statuses
         return []
 
-
     async def set_fields(self, ctx: Any, job: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
         del ctx
         job_id = self.id_of(job)

@@ -46,7 +46,6 @@ class DashboardService:
 
         return await asyncio.gather(_run_counts(), _run_issues(), _run_active_stats())
 
-
     async def get_counts(
         self,
         session: AsyncSession,

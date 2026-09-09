@@ -1,7 +1,7 @@
 import typing
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Enum, Float, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -99,16 +99,16 @@ class Tournament(db.TimeStampIntegerMixin):
     logo_url: Mapped[str | None] = mapped_column(String(), nullable=True)
 
     workspace: Mapped[Workspace] = relationship()
-    division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(
+    division_grid_version: Mapped[DivisionGridVersion | None] = relationship(
         foreign_keys=[division_grid_version_id],
         lazy="selectin",
     )
-    stages: Mapped[list["Stage"]] = relationship(uselist=True, passive_deletes=True)
-    standings: Mapped[list["Standing"]] = relationship(uselist=True)
+    stages: Mapped[list[Stage]] = relationship(uselist=True, passive_deletes=True)
+    standings: Mapped[list[Standing]] = relationship(uselist=True)
     # Eagerly loaded (selectin): the schedule is tiny (<=4 rows) and gating
     # helpers (registration/check-in windows) need it wherever a tournament is
     # in hand, including async contexts where lazy loads would raise.
-    phase_schedule: Mapped[list["TournamentPhaseSchedule"]] = relationship(
+    phase_schedule: Mapped[list[TournamentPhaseSchedule]] = relationship(
         uselist=True,
         passive_deletes=True,
         order_by="TournamentPhaseSchedule.starts_at",

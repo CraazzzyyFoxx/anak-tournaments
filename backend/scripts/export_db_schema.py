@@ -123,6 +123,7 @@ def table_indexes(table) -> list[str]:
         lines.append(f"    ({col_s}){suffix}")
     return lines
 
+
 def emit_refs(tables) -> list[str]:
     lines: list[str] = []
     for table in tables:
@@ -135,9 +136,6 @@ def emit_refs(tables) -> list[str]:
                 else:
                     lines.append(f"Ref: {src} > {dst}")
     return lines
-
-
-
 
 
 def emit_dbml(tables) -> str:
@@ -158,9 +156,9 @@ def emit_dbml(tables) -> str:
         "// Open in VS Code (DBML extension) or paste into https://dbdiagram.io",
         f"// Tables: {len(tables)}",
         "",
-        'Project anak_tournaments {',
+        "Project anak_tournaments {",
         '  database_type: "PostgreSQL"',
-        '  Note: \'Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py\'',
+        "  Note: 'Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py'",
         "}",
         "",
     ]

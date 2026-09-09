@@ -39,7 +39,6 @@ class Retry:
         return self.max_attempts > 1 and attempts < self.max_attempts
 
 
-
 @dataclass
 class JobSpec:
     kind: str

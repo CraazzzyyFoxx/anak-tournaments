@@ -103,9 +103,7 @@ class AdminTournamentService:
             source.challonge_tournament_id = challonge_id
             source.slug = slug
 
-    async def _unlink_tournament_challonge_source(
-        self, session: AsyncSession, tournament: models.Tournament
-    ) -> None:
+    async def _unlink_tournament_challonge_source(self, session: AsyncSession, tournament: models.Tournament) -> None:
         """Drop the tournament-scoped ``challonge_source`` row(s) when the link is cleared."""
         await self.challonge_source_repo.delete_tournament_source(session, tournament.id)
 
@@ -197,9 +195,7 @@ class AdminTournamentService:
         await session.commit()
         return await self.get_tournament(session, tournament_id)
 
-    async def create_tournament(
-        self, session: AsyncSession, data: schemas.TournamentCreate
-    ) -> models.Tournament:
+    async def create_tournament(self, session: AsyncSession, data: schemas.TournamentCreate) -> models.Tournament:
         """Create a new tournament"""
         existing_tournament = await self.tournament_repo.get_by(
             session,
@@ -443,35 +439,25 @@ class AdminTournamentService:
             )
 
     async def toggle_finished(self, session: AsyncSession, tournament_id: int) -> models.Tournament:
-        """Toggle tournament is_finished flag (legacy — prefer transition_status)"""
-        tournament = await self.tournament_repo.get(
-            session,
-            tournament_id,
-            options=[
-                selectinload(models.Tournament.stages)
-                .selectinload(models.Stage.items)
-                .selectinload(models.StageItem.inputs)
-            ],
-        )
+        """The hub's "mark finished / reopen" button, as a two-way COMPLETED move.
+
+        It used to write ``status``, ``is_finished`` and ``auto_transitions_enabled``
+        by hand, which made it a second writer of the lifecycle beside
+        ``transition_status`` — same three fields, same two events, no matrix
+        validation, and free to drift. It now delegates, so the state machine has
+        exactly one entry point.
+
+        ``force=True`` because reopening walks COMPLETED -> LIVE, an edge the matrix
+        deliberately omits: this button is the only sanctioned way back, and the
+        RPC subject behind it already carries its own permission check.
+        """
+        tournament = await self.tournament_repo.get(session, tournament_id)
 
         if not tournament:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-        tournament.is_finished = not tournament.is_finished
-        old_status = _status_value(tournament.status)
-        tournament.status = TournamentStatus.COMPLETED if tournament.is_finished else TournamentStatus.LIVE
-        # Manual status change — pause time-driven automation (see transition_status).
-        tournament.auto_transitions_enabled = False
-
-        await enqueue_tournament_state_changed(
-            session,
-            tournament,
-            old_status=old_status,
-            new_status=_status_value(tournament.status),
-        )
-        await enqueue_tournament_changed(session, tournament_id, "structure_changed")
-        await session.commit()
-        return await self.get_tournament(session, tournament_id)
+        target = TournamentStatus.LIVE if tournament.is_finished else TournamentStatus.COMPLETED
+        return await self.transition_status(session, tournament_id, target, force=True)
 
     async def transition_status(
         self,

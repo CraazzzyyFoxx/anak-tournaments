@@ -435,9 +435,7 @@ class MarketplaceService:
             .order_by(models.Workspace.name.asc())
         )
         if not user.is_superuser:
-            query = query.where(
-                sa.or_(models.Workspace.is_hidden.is_(False), models.Workspace.id.in_(member_ids))
-            )
+            query = query.where(sa.or_(models.Workspace.is_hidden.is_(False), models.Workspace.id.in_(member_ids)))
 
         result = await session.execute(query)
         return [

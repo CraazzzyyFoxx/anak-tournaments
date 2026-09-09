@@ -326,9 +326,7 @@ class AuthenticationService:
             if not payload.current_password:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is required")
             if not self.hasher.verify(payload.current_password, user.hashed_password):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect"
-                )
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
         user.hashed_password = self.hasher.hash(payload.new_password)
         await session.commit()
 

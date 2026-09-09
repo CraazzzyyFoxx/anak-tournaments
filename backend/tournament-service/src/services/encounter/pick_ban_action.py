@@ -341,9 +341,7 @@ class PickBanActionService:
         self.map_report_repo = map_report_repo
         self.sessions = sessions
 
-    async def _load_pool(
-        self, session: AsyncSession, pick_ban_id: int, *, refresh: bool = False
-    ) -> list[PickBanEntry]:
+    async def _load_pool(self, session: AsyncSession, pick_ban_id: int, *, refresh: bool = False) -> list[PickBanEntry]:
         """The session's entries. ``refresh`` re-reads rows already in the identity
         map, which every load taken AFTER locking the session must do -- the
         pre-lock snapshot is what the lock exists to discard."""
@@ -556,9 +554,7 @@ class PickBanActionService:
         await self.auto_complete_decider(session, encounter_id, kind, pick_ban=pick_ban, pool=pool)
         return entry
 
-    async def _attribute_lookup(
-        self, session: AsyncSession, kind: PickBanKind, item_ids: list[int]
-    ) -> dict[int, Any]:
+    async def _attribute_lookup(self, session: AsyncSession, kind: PickBanKind, item_ids: list[int]) -> dict[int, Any]:
         """``{item_id: attribute_value}`` for the configured
         ``unique_attribute_per_side_per_round`` (only ``"role"`` today, resolved
         against the hero catalog — a ``kind=map`` config never sets this option,

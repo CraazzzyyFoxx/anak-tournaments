@@ -26,9 +26,7 @@ def user_to_read(user: models.User, entities: list[str]) -> schemas.UserRead:
 
 
 class UserFlowsService:
-    async def to_pydantic(
-        self, session: AsyncSession, user: models.User, entities: list[str]
-    ) -> schemas.UserRead:
+    async def to_pydantic(self, session: AsyncSession, user: models.User, entities: list[str]) -> schemas.UserRead:
         """Convert a `User` to ``UserRead``. Identities come from the unified
         ``user.social_accounts`` relationship and are only accessed (and serialized)
         when an identity entity was requested — and therefore eager-loaded — so this

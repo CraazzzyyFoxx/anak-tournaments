@@ -311,8 +311,7 @@ class AchievementEvaluationRunnerService:
             raise
 
         logger.info(
-            f"Evaluation run {run_id} done: {run.rules_evaluated} rules, "
-            f"+{run.results_created} -{run.results_removed}"
+            f"Evaluation run {run_id} done: {run.rules_evaluated} rules, +{run.results_created} -{run.results_removed}"
         )
         return run
 

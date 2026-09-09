@@ -413,9 +413,7 @@ def test_profile_tournaments_with_stats_uses_union_all_sides() -> None:
 
 def test_profile_tournament_stats_overall_uses_union_all_sides() -> None:
     session = _CaptureSession()
-    asyncio.run(
-        profile_queries.get_tournament_stats_overall(session, SimpleNamespace(id=1), user_id=7)
-    )
+    asyncio.run(profile_queries.get_tournament_stats_overall(session, SimpleNamespace(id=1), user_id=7))
     sql = _postgres_sql(session.statements[0])
     _assert_indexable_encounter_join(sql)
     assert sql.count("UNION ALL") >= 2

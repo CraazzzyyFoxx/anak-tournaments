@@ -39,9 +39,7 @@ class ScrimRoomRepository(BaseRepository[models.ScrimRoom]):
             filters.append(models.ScrimRoom.closed_at.is_(None))
         if tournament_id is not None:
             filters.append(models.ScrimRoom.tournament_id == tournament_id)
-        query = self._apply_options(
-            self.select().where(*filters).order_by(models.ScrimRoom.id.desc()), options
-        )
+        query = self._apply_options(self.select().where(*filters).order_by(models.ScrimRoom.id.desc()), options)
         result = await session.execute(query)
         return result.unique().scalars().all()
 

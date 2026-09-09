@@ -86,9 +86,7 @@ def rotation_priority(history: PlayerHistory) -> float:
     return (-sat * 1_000_000) + (played_streak * 1_000) + sum(history.played)
 
 
-def recommend_rotation(
-    histories: Sequence[PlayerHistory], *, usable_count: int
-) -> list[RotationRecommendation]:
+def recommend_rotation(histories: Sequence[PlayerHistory], *, usable_count: int) -> list[RotationRecommendation]:
     """Rank the pool by rotation fairness and split it at ``usable_count``.
 
     Ranking key for who most deserves the next seat (checked in order):

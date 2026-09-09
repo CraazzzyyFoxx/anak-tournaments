@@ -62,7 +62,7 @@ class APIValidationError(BaseModel):
     errors: list[ValidationErrorDetail]
 
     @classmethod
-    def from_pydantic(cls, exc: ValidationError) -> "APIValidationError":
+    def from_pydantic(cls, exc: ValidationError) -> APIValidationError:
         return cls(
             errors=[
                 ValidationErrorDetail(

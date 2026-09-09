@@ -200,9 +200,7 @@ class DraftClockService:
             if not await renew_distributed_lock(redis, token, ttl_seconds=LOCK_TTL_SECONDS):
                 return  # lost ownership
 
-    async def _read_clock_state(
-        self, session_factory: SessionFactory, session_id: int
-    ) -> tuple[str, datetime | None]:
+    async def _read_clock_state(self, session_factory: SessionFactory, session_id: int) -> tuple[str, datetime | None]:
         async with session_factory() as session:
             draft = await self.sessions_repo.get(session, session_id)
             if draft is None:

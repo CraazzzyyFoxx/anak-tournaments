@@ -161,9 +161,7 @@ class MemberRankService:
             include_canon=True,
         )
 
-    async def list_authors(
-        self, session: AsyncSession, *, workspace_id: int
-    ) -> Sequence[tuple[int, int]]:
+    async def list_authors(self, session: AsyncSession, *, workspace_id: int) -> Sequence[tuple[int, int]]:
         """Every account that has personally rank-corrected someone in this
         workspace, busiest first -- see ``MemberRankRepository.list_authors``.
         """
@@ -231,9 +229,7 @@ class MemberRankService:
                 player_id
                 for member_id, player_id in members.items()
                 if player_id is not None
-                and any(
-                    all(stored[scope].get((member_id, role)) is None for scope in cheaper) for role in roles
-                )
+                and any(all(stored[scope].get((member_id, role)) is None for scope in cheaper) for role in roles)
             }
             if need:
                 collapsed = _max_ow_by_user(await fetch_latest_ow_ranks_by_account(session, sorted(need)))
@@ -245,10 +241,7 @@ class MemberRankService:
             for role in roles:
                 key = (member_id, role)
                 out[key] = pick_rank(
-                    [
-                        (scope, ow_roles.get(role) if scope == "ow" else stored[scope].get(key))
-                        for scope in order
-                    ]
+                    [(scope, ow_roles.get(role) if scope == "ow" else stored[scope].get(key)) for scope in order]
                 )
         return out
 

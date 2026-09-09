@@ -49,7 +49,7 @@ class OAuthConnection(db.TimeStampIntegerMixin):
     provider_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # Relations
-    auth_user: Mapped["AuthUser"] = relationship(back_populates="oauth_connections")
+    auth_user: Mapped[AuthUser] = relationship(back_populates="oauth_connections")
 
     def __repr__(self):
         return f"<OAuthConnection id={self.id} provider={self.provider} user_id={self.auth_user_id}>"

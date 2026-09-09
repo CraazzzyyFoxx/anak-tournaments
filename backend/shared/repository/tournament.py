@@ -37,9 +37,7 @@ class TournamentRepository(BaseRepository[models.Tournament]):
         if tournament is not None:
             return tournament
         redirected_id = await session.scalar(
-            sa.select(models.TournamentSlugRedirect.tournament_id).where(
-                models.TournamentSlugRedirect.old_slug == ref
-            )
+            sa.select(models.TournamentSlugRedirect.tournament_id).where(models.TournamentSlugRedirect.old_slug == ref)
         )
         return await self.get(session, redirected_id) if redirected_id is not None else None
 
@@ -127,9 +125,7 @@ class StageRepository(BaseRepository[models.Stage]):
         A projection rather than a full row load — every caller wants the id only,
         to gate a permission check or to scope a sibling lookup.
         """
-        return await session.scalar(
-            sa.select(models.Stage.tournament_id).where(models.Stage.id == stage_id)
-        )
+        return await session.scalar(sa.select(models.Stage.tournament_id).where(models.Stage.id == stage_id))
 
 
 class StageItemRepository(BaseRepository[models.StageItem]):
@@ -308,17 +304,13 @@ class PlayerRepository(BaseRepository[models.Player]):
         )
         return result.scalars().all()
 
-    async def list_by_related_player(
-        self, session: AsyncSession, player_id: int
-    ) -> Sequence[models.Player]:
+    async def list_by_related_player(self, session: AsyncSession, player_id: int) -> Sequence[models.Player]:
         """Roster rows that name ``player_id`` as the player they substitute for.
 
         One level only — the caller walks the chain itself to collect descendants.
         """
         result = await session.execute(
-            self.select()
-            .where(models.Player.related_player_id == player_id)
-            .order_by(models.Player.id.asc())
+            self.select().where(models.Player.related_player_id == player_id).order_by(models.Player.id.asc())
         )
         return result.scalars().all()
 
@@ -376,9 +368,7 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         serialize instead of interleaving a read-modify-write on the score fields.
         Eager-load ``options`` ride along in the same locked statement.
         """
-        query = self._apply_options(
-            self.select().where(models.Encounter.id == encounter_id), options
-        ).with_for_update()
+        query = self._apply_options(self.select().where(models.Encounter.id == encounter_id), options).with_for_update()
         result = await session.execute(query)
         return result.unique().scalars().first()
 
@@ -421,9 +411,7 @@ class EncounterRepository(BaseRepository[models.Encounter]):
             if stage_item_id is None
             else models.Encounter.stage_item_id == stage_item_id
         )
-        query = self._apply_options(
-            self.select().where(models.Encounter.stage_id == stage_id, item_clause), options
-        )
+        query = self._apply_options(self.select().where(models.Encounter.stage_id == stage_id, item_clause), options)
         result = await session.execute(query)
         return result.unique().scalars().all()
 
@@ -454,18 +442,14 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         is the only thing standing between deleting a stage and orphaning its matches.
         One statement rather than an ORM load-then-delete of the whole bracket.
         """
-        await session.execute(
-            sa.delete(models.Encounter).where(models.Encounter.stage_id == stage_id)
-        )
+        await session.execute(sa.delete(models.Encounter).where(models.Encounter.stage_id == stage_id))
 
     async def delete_for_stage_item(self, session: AsyncSession, stage_item_id: int) -> None:
         """Statement delete — see ``delete_for_stage``, scoped to one stage item
         (group/bracket lane) instead of the whole stage. ``Encounter.stage_item_id``
         is also ``ON DELETE SET NULL``.
         """
-        await session.execute(
-            sa.delete(models.Encounter).where(models.Encounter.stage_item_id == stage_item_id)
-        )
+        await session.execute(sa.delete(models.Encounter).where(models.Encounter.stage_item_id == stage_item_id))
 
 
 class MatchRepository(BaseRepository[models.Match]):
@@ -517,25 +501,17 @@ class StandingRepository(BaseRepository[models.Standing]):
 
     async def delete_for_stage(self, session: AsyncSession, stage_id: int) -> None:
         """Statement delete — see ``EncounterRepository.delete_for_stage``."""
-        await session.execute(
-            sa.delete(models.Standing).where(models.Standing.stage_id == stage_id)
-        )
+        await session.execute(sa.delete(models.Standing).where(models.Standing.stage_id == stage_id))
 
     async def delete_for_stage_item(self, session: AsyncSession, stage_item_id: int) -> None:
         """Statement delete — see ``EncounterRepository.delete_for_stage_item``."""
-        await session.execute(
-            sa.delete(models.Standing).where(models.Standing.stage_item_id == stage_item_id)
-        )
+        await session.execute(sa.delete(models.Standing).where(models.Standing.stage_item_id == stage_item_id))
 
     async def delete_for_tournament(self, session: AsyncSession, tournament_id: int) -> None:
-        await session.execute(
-            sa.delete(models.Standing).where(models.Standing.tournament_id == tournament_id)
-        )
+        await session.execute(sa.delete(models.Standing).where(models.Standing.tournament_id == tournament_id))
 
     async def delete_for_team(self, session: AsyncSession, team_id: int) -> None:
-        await session.execute(
-            sa.delete(models.Standing).where(models.Standing.team_id == team_id)
-        )
+        await session.execute(sa.delete(models.Standing).where(models.Standing.team_id == team_id))
 
 
 class TournamentLinkRepository(BaseRepository[models.TournamentLink]):
@@ -560,9 +536,7 @@ class TournamentLinkRepository(BaseRepository[models.TournamentLink]):
         The admin list needs inactive links too, so ``is_active`` is opt-in here —
         unlike :meth:`list_active_by_kind`, which is the public render path.
         """
-        filters: list[sa.ColumnElement[bool]] = [
-            models.TournamentLink.tournament_id == tournament_id
-        ]
+        filters: list[sa.ColumnElement[bool]] = [models.TournamentLink.tournament_id == tournament_id]
         if active_only:
             filters.append(models.TournamentLink.is_active.is_(True))
         result = await session.execute(
@@ -658,9 +632,7 @@ class TournamentLinkRepository(BaseRepository[models.TournamentLink]):
         by_tournament: dict[int, list[models.TournamentLink]] = {tid: [] for tid in tournament_ids}
         if not tournament_ids:
             return by_tournament
-        filters: list[sa.ColumnElement[bool]] = [
-            models.TournamentLink.tournament_id.in_(tournament_ids)
-        ]
+        filters: list[sa.ColumnElement[bool]] = [models.TournamentLink.tournament_id.in_(tournament_ids)]
         if active_only:
             filters.append(models.TournamentLink.is_active.is_(True))
         result = await session.execute(
@@ -696,9 +668,7 @@ class PlayerSubRoleRepository(BaseRepository[models.PlayerSubRole]):
         role: str | None = None,
         only_active: bool = False,
     ) -> Sequence[models.PlayerSubRole]:
-        filters: list[sa.ColumnElement[bool]] = [
-            models.PlayerSubRole.workspace_id == workspace_id
-        ]
+        filters: list[sa.ColumnElement[bool]] = [models.PlayerSubRole.workspace_id == workspace_id]
         if role is not None:
             filters.append(models.PlayerSubRole.role == role)
         if only_active:
@@ -717,9 +687,7 @@ class PlayerSubRoleRepository(BaseRepository[models.PlayerSubRole]):
     async def get_by_slug(
         self, session: AsyncSession, *, workspace_id: int, role: str, slug: str
     ) -> models.PlayerSubRole | None:
-        return await self.get_by(
-            session, workspace_id=workspace_id, role=role, slug=slug
-        )
+        return await self.get_by(session, workspace_id=workspace_id, role=role, slug=slug)
 
 
 class TournamentPreviewAccessRepository(BaseRepository[models.TournamentPreviewAccess]):
@@ -750,13 +718,9 @@ class TournamentPreviewAccessRepository(BaseRepository[models.TournamentPreviewA
     async def get_grant(
         self, session: AsyncSession, *, tournament_id: int, auth_user_id: int
     ) -> models.TournamentPreviewAccess | None:
-        return await self.get_by(
-            session, tournament_id=tournament_id, auth_user_id=auth_user_id
-        )
+        return await self.get_by(session, tournament_id=tournament_id, auth_user_id=auth_user_id)
 
-    async def revoke(
-        self, session: AsyncSession, *, tournament_id: int, auth_user_id: int
-    ) -> None:
+    async def revoke(self, session: AsyncSession, *, tournament_id: int, auth_user_id: int) -> None:
         await session.execute(
             sa.delete(models.TournamentPreviewAccess).where(
                 models.TournamentPreviewAccess.tournament_id == tournament_id,
@@ -827,15 +791,11 @@ class TournamentComputationJobRepository(BaseRepository[models.TournamentComputa
             query = query.where(models.TournamentComputationJob.stage_id == stage_id)
         if statuses is not None:
             query = query.where(models.TournamentComputationJob.status.in_(tuple(statuses)))
-        result = await session.scalars(
-            query.order_by(models.TournamentComputationJob.id.desc()).limit(limit)
-        )
+        result = await session.scalars(query.order_by(models.TournamentComputationJob.id.desc()).limit(limit))
         return result.all()
 
 
-class TournamentRecalculationStateRepository(
-    BaseRepository[models.TournamentRecalculationState]
-):
+class TournamentRecalculationStateRepository(BaseRepository[models.TournamentRecalculationState]):
     """``recalculation_state`` — requested vs completed generation per tournament."""
 
     def __init__(self) -> None:
@@ -874,9 +834,7 @@ class TournamentRecalculationStateRepository(
         else:
             statement = statement.on_conflict_do_nothing(index_elements=[state.tournament_id])
         await session.execute(statement)
-        return await session.scalar(
-            self.select().where(state.tournament_id == tournament_id).with_for_update()
-        )
+        return await session.scalar(self.select().where(state.tournament_id == tournament_id).with_for_update())
 
     async def get_by_tournament(
         self, session: AsyncSession, tournament_id: int

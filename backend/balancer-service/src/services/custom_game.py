@@ -130,9 +130,7 @@ def _normalize_team_names(raw: Mapping[str, Any]) -> dict[str, str | None]:
     out: dict[str, str | None] = {}
     for key, value in raw.items():
         if not isinstance(key, str) or not key.isdigit():
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"invalid team index: {key!r}"
-            )
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"invalid team index: {key!r}")
         index = int(key)
         if index >= _MAX_TEAMS:
             raise HTTPException(
@@ -247,9 +245,7 @@ def _recompute_variant_stats(variant: dict[str, Any]) -> None:
         statistics["mmr_std_dev"] = variance**0.5
     else:
         statistics["mmr_std_dev"] = 0.0
-    statistics["max_total_rating_gap"] = (
-        (max(team_totals) - min(team_totals)) if len(team_totals) >= 2 else 0.0
-    )
+    statistics["max_total_rating_gap"] = (max(team_totals) - min(team_totals)) if len(team_totals) >= 2 else 0.0
     statistics["off_role_count"] = off_role_count
     variant["statistics"] = statistics
 
@@ -415,9 +411,7 @@ class CustomGameService:
             host_user_id=host_user_id,
             name=trimmed,
             status=MixStatus.DRAFT,
-            balancer_config_json=(
-                normalize_config_overrides(balancer_config) if balancer_config else None
-            ),
+            balancer_config_json=(normalize_config_overrides(balancer_config) if balancer_config else None),
         )
         await self.games.create(session, game)
         rows = [_new_roster_row(game.id, item, index) for index, item in enumerate(ids)]
@@ -481,9 +475,7 @@ class CustomGameService:
         """Patch one roster row's participation, role selection and flex mode."""
         unknown = sorted(set(patch) - _PLAYER_PATCH_FIELDS)
         if unknown:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown fields {unknown}"
-            )
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown fields {unknown}")
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
@@ -502,9 +494,7 @@ class CustomGameService:
         if "roles" in patch:
             roles = _normalize_roles(patch["roles"])
             row.role_selection_mode = (
-                MixRoleSelectionMode.ALL_RANKED
-                if roles is None
-                else MixRoleSelectionMode.EXPLICIT
+                MixRoleSelectionMode.ALL_RANKED if roles is None else MixRoleSelectionMode.EXPLICIT
             )
             await self.player_roles.replace_for_player(session, row.id, roles or ())
         if "is_flex" in patch:
@@ -598,11 +588,7 @@ class CustomGameService:
         )
         explicit_roles = await self.player_roles.roles_for_players(
             session,
-            [
-                row.id
-                for row in lineup
-                if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
-            ],
+            [row.id for row in lineup if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT],
         )
         player_nodes: dict[str, Any] = {}
         for row in lineup:
@@ -869,11 +855,7 @@ class CustomGameService:
         game = await self._writable(
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
-        result = (
-            copy.deepcopy(game.balance_result_json)
-            if isinstance(game.balance_result_json, dict)
-            else None
-        )
+        result = copy.deepcopy(game.balance_result_json) if isinstance(game.balance_result_json, dict) else None
         variants = result.get("variants") if isinstance(result, dict) else None
         if not isinstance(variants, list) or not (0 <= variant_index < len(variants)):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance option not found")
@@ -968,9 +950,7 @@ class CustomGameService:
             session, workspace_id=workspace_id, custom_game_id=custom_game_id, actor_user_id=actor_user_id
         )
         if winner not in (1, 2, None):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="winner must be 1, 2 or null"
-            )
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="winner must be 1, 2 or null")
         if map_id is not None and await session.get(models.Map, map_id) is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Map not found")
 
@@ -1037,10 +1017,7 @@ class CustomGameService:
         participant_ids = {member_id for team in team_players for member_id, _, _ in team}
         if participant_ids:
             for row in await self.roster.list_for_game(session, game.id):
-                if (
-                    row.participation == MixParticipation.MUST_PLAY
-                    and row.workspace_member_id in participant_ids
-                ):
+                if row.participation == MixParticipation.MUST_PLAY and row.workspace_member_id in participant_ids:
                     row.participation = MixParticipation.POOL
 
         points_per_win = game.points_per_win or 0
@@ -1086,8 +1063,7 @@ class CustomGameService:
         matches = list(await self.casual_matches.list_for_custom_game(session, game.id))
         matches.reverse()  # newest-first -> chronological, oldest map first
         participants = [
-            {seat.workspace_member_id for team in match.teams for seat in team.players}
-            for match in matches
+            {seat.workspace_member_id for team in match.teams for seat in team.players} for match in matches
         ]
         return [
             PlayerHistory(
@@ -1126,13 +1102,9 @@ class CustomGameService:
 
         histories = await self._rotation_histories(session, game, roster)
 
-        role_mask = (
-            await self.roster_shape(session, workspace_id=workspace_id, custom_game_id=game.id)
-        ).slots
+        role_mask = (await self.roster_shape(session, workspace_id=workspace_id, custom_game_id=game.id)).slots
         players_per_team = sum(role_mask.values())
-        usable_count = (
-            len(roster) if players_per_team <= 0 else (len(roster) // players_per_team) * players_per_team
-        )
+        usable_count = len(roster) if players_per_team <= 0 else (len(roster) // players_per_team) * players_per_team
         return recommend_rotation(histories, usable_count=usable_count)
 
     async def close(

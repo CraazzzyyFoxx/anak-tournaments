@@ -24,8 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.services.oauth import OAuthFlowService  # noqa: E402
-from tests._fakes import FakeOAuthConnections as _FakeConnections, FakeSocialAccounts as _FakeSocials  # noqa: E402
-
+from tests._fakes import FakeOAuthConnections as _FakeConnections  # noqa: E402
+from tests._fakes import FakeSocialAccounts as _FakeSocials
 
 _LINKED_PLAYER = SimpleNamespace(id=7)
 

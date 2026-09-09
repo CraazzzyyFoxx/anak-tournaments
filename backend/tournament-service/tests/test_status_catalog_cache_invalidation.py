@@ -17,7 +17,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
@@ -66,7 +65,11 @@ def test_update_custom_status_invalidates_the_workspace_cache() -> None:
     async def run() -> None:
         session = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
         with (
-            patch.object(status_catalog.status_catalog_service, "get_custom_status_by_id", AsyncMock(return_value=_fake_status_row())),
+            patch.object(
+                status_catalog.status_catalog_service,
+                "get_custom_status_by_id",
+                AsyncMock(return_value=_fake_status_row()),
+            ),
             patch.object(status_catalog, "invalidate_status_metas_cache", AsyncMock()) as invalidate,
         ):
             await status_catalog.status_catalog_service.update_custom_status(
@@ -90,7 +93,11 @@ def test_delete_custom_status_invalidates_the_workspace_cache() -> None:
             scalar=AsyncMock(return_value=0), delete=AsyncMock(), flush=AsyncMock(), commit=AsyncMock()
         )
         with (
-            patch.object(status_catalog.status_catalog_service, "get_custom_status_by_id", AsyncMock(return_value=_fake_status_row())),
+            patch.object(
+                status_catalog.status_catalog_service,
+                "get_custom_status_by_id",
+                AsyncMock(return_value=_fake_status_row()),
+            ),
             patch.object(status_catalog, "invalidate_status_metas_cache", AsyncMock()) as invalidate,
         ):
             await status_catalog.status_catalog_service.delete_custom_status(session, workspace_id=5, status_id=1)
@@ -106,7 +113,11 @@ def test_delete_custom_status_in_use_never_invalidates() -> None:
     async def run() -> None:
         session = SimpleNamespace(scalar=AsyncMock(return_value=3), delete=AsyncMock(), commit=AsyncMock())
         with (
-            patch.object(status_catalog.status_catalog_service, "get_custom_status_by_id", AsyncMock(return_value=_fake_status_row())),
+            patch.object(
+                status_catalog.status_catalog_service,
+                "get_custom_status_by_id",
+                AsyncMock(return_value=_fake_status_row()),
+            ),
             patch.object(status_catalog, "invalidate_status_metas_cache", AsyncMock()) as invalidate,
         ):
             try:
@@ -131,7 +142,9 @@ def test_upsert_builtin_override_invalidates_the_workspace_cache() -> None:
         )
         with (
             patch.object(status_catalog.status_catalog_service, "ensure_workspace_exists", AsyncMock()),
-            patch.object(status_catalog.status_catalog_service, "get_builtin_canonical_status", AsyncMock(return_value=existing)),
+            patch.object(
+                status_catalog.status_catalog_service, "get_builtin_canonical_status", AsyncMock(return_value=existing)
+            ),
             patch.object(status_catalog, "invalidate_status_metas_cache", AsyncMock()) as invalidate,
         ):
             await status_catalog.status_catalog_service.upsert_builtin_override(
@@ -162,7 +175,9 @@ def test_reset_builtin_override_invalidates_the_workspace_cache() -> None:
             commit=AsyncMock(),
         )
         with patch.object(status_catalog, "invalidate_status_metas_cache", AsyncMock()) as invalidate:
-            await status_catalog.status_catalog_service.reset_builtin_override(session, workspace_id=5, scope="registration", slug="pending")
+            await status_catalog.status_catalog_service.reset_builtin_override(
+                session, workspace_id=5, scope="registration", slug="pending"
+            )
         invalidate.assert_awaited_once_with(5)
         session.commit.assert_awaited_once()
 
@@ -178,7 +193,9 @@ def test_reset_builtin_override_no_row_never_invalidates() -> None:
             execute=AsyncMock(return_value=execute_result), delete=AsyncMock(), commit=AsyncMock()
         )
         with patch.object(status_catalog, "invalidate_status_metas_cache", AsyncMock()) as invalidate:
-            await status_catalog.status_catalog_service.reset_builtin_override(session, workspace_id=5, scope="registration", slug="pending")
+            await status_catalog.status_catalog_service.reset_builtin_override(
+                session, workspace_id=5, scope="registration", slug="pending"
+            )
         invalidate.assert_not_awaited()
         session.commit.assert_not_awaited()
 

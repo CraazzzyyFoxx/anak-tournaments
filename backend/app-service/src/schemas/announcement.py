@@ -47,7 +47,7 @@ class AnnouncementCreate(BaseModel):
         return {"locales": self.locales, "default_locale": self.default_locale, "href": self.href}
 
     @model_validator(mode="after")
-    def _workspace_matches_the_audience(self) -> "AnnouncementCreate":
+    def _workspace_matches_the_audience(self) -> AnnouncementCreate:
         if (self.audience == "workspace") != (self.workspace_id is not None):
             raise ValueError("workspace_id is required for a workspace announcement, and only for one")
         return self

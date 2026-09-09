@@ -123,8 +123,8 @@ class AchievementRule(db.TimeStampIntegerMixin):
     min_tournament_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
     hero: Mapped[Hero | None] = relationship()
-    workspace: Mapped["Workspace"] = relationship()
-    evaluation_results: Mapped[list["AchievementEvaluationResult"]] = relationship(
+    workspace: Mapped[Workspace] = relationship()
+    evaluation_results: Mapped[list[AchievementEvaluationResult]] = relationship(
         back_populates="rule", passive_deletes=True
     )
 
@@ -170,9 +170,9 @@ class AchievementEvaluationResult(db.TimeStampIntegerMixin):
     )
 
     rule: Mapped[AchievementRule] = relationship(back_populates="evaluation_results")
-    workspace_member: Mapped["WorkspaceMember"] = relationship()
+    workspace_member: Mapped[WorkspaceMember] = relationship()
     tournament: Mapped[Tournament | None] = relationship()
-    match: Mapped[typing.Optional["Match"]] = relationship()
+    match: Mapped[Match | None] = relationship()
 
 
 class AchievementOverride(db.TimeStampIntegerMixin):
@@ -198,7 +198,7 @@ class AchievementOverride(db.TimeStampIntegerMixin):
     granted_by: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"))
 
     rule: Mapped[AchievementRule] = relationship()
-    workspace_member: Mapped["WorkspaceMember"] = relationship()
+    workspace_member: Mapped[WorkspaceMember] = relationship()
 
 
 class EvaluationRun(db.TimeStampUUIDMixin):

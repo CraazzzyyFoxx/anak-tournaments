@@ -177,7 +177,7 @@ async def retire(
     data: dict[str, Any],
     row: models.Notification,
 ) -> schemas.NotificationItem:
-    """"Delete": expire it now -- see the module docstring for why not a DELETE."""
+    """ "Delete": expire it now -- see the module docstring for why not a DELETE."""
     before = {"expires_at": row.expires_at.isoformat() if row.expires_at else None}
     # ``func.now()`` rather than a Python timestamp: the same transaction clock
     # the rows are stamped with, so the row is never "expired in the future".

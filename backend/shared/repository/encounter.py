@@ -42,18 +42,14 @@ class EncounterCaptainReportRepository(BaseRepository[models.EncounterCaptainRep
         team_id: int,
         options: Sequence[_AbstractLoad] | None = None,
     ) -> models.EncounterCaptainReport | None:
-        return await self.get_by(
-            session, options=options, encounter_id=encounter_id, team_id=team_id
-        )
+        return await self.get_by(session, options=options, encounter_id=encounter_id, team_id=team_id)
 
 
 class EncounterMapCodeRepository(BaseRepository[models.EncounterMapCode]):
     def __init__(self) -> None:
         super().__init__(models.EncounterMapCode)
 
-    async def list_for_report(
-        self, session: AsyncSession, report_id: int
-    ) -> Sequence[models.EncounterMapCode]:
+    async def list_for_report(self, session: AsyncSession, report_id: int) -> Sequence[models.EncounterMapCode]:
         result = await session.execute(
             self.select()
             .where(models.EncounterMapCode.report_id == report_id)
@@ -62,11 +58,7 @@ class EncounterMapCodeRepository(BaseRepository[models.EncounterMapCode]):
         return result.scalars().all()
 
     async def delete_for_report(self, session: AsyncSession, report_id: int) -> None:
-        await session.execute(
-            sa.delete(models.EncounterMapCode).where(
-                models.EncounterMapCode.report_id == report_id
-            )
-        )
+        await session.execute(sa.delete(models.EncounterMapCode).where(models.EncounterMapCode.report_id == report_id))
 
     async def list_for_reports(
         self, session: AsyncSession, report_ids: Sequence[int]
@@ -153,9 +145,7 @@ class EncounterReportFormRepository(BaseRepository[models.EncounterReportForm]):
     def __init__(self) -> None:
         super().__init__(models.EncounterReportForm)
 
-    async def get_by_tournament(
-        self, session: AsyncSession, tournament_id: int
-    ) -> models.EncounterReportForm | None:
+    async def get_by_tournament(self, session: AsyncSession, tournament_id: int) -> models.EncounterReportForm | None:
         return await self.get_by(session, tournament_id=tournament_id)
 
 
@@ -211,9 +201,7 @@ class EncounterLinkRepository(BaseRepository[models.EncounterLink]):
         if not source_encounter_ids:
             return []
         result = await session.execute(
-            self.select().where(
-                models.EncounterLink.source_encounter_id.in_(tuple(source_encounter_ids))
-            )
+            self.select().where(models.EncounterLink.source_encounter_id.in_(tuple(source_encounter_ids)))
         )
         return result.scalars().all()
 

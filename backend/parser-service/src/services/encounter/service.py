@@ -31,15 +31,19 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
         home_team_entity = utils.join_entity(child, models.Encounter.home_team)
         entities.append(home_team_entity)
         entities.extend(
-            TeamRepository.team_entities(utils.prepare_entities(in_entities, "home_team"),
-            home_team_entity,)
+            TeamRepository.team_entities(
+                utils.prepare_entities(in_entities, "home_team"),
+                home_team_entity,
+            )
         )
     if "away_team" in in_entities:
         away_team_entity = utils.join_entity(child, models.Encounter.away_team)
         entities.append(away_team_entity)
         entities.extend(
-            TeamRepository.team_entities(utils.prepare_entities(in_entities, "away_team"),
-            away_team_entity,)
+            TeamRepository.team_entities(
+                utils.prepare_entities(in_entities, "away_team"),
+                away_team_entity,
+            )
         )
     if "stage" in in_entities:
         stage_entity = utils.join_entity(child, models.Encounter.stage)
@@ -73,15 +77,19 @@ def match_entities(in_entities: list[str], child: typing.Any | None = None) -> l
         home_team_entity = utils.join_entity(child, models.Match.home_team)
         entities.append(home_team_entity)
         entities.extend(
-            TeamRepository.team_entities(utils.prepare_entities(in_entities, "home_team"),
-            home_team_entity,)
+            TeamRepository.team_entities(
+                utils.prepare_entities(in_entities, "home_team"),
+                home_team_entity,
+            )
         )
     if "away_team" in in_entities:
         away_team_entity = utils.join_entity(child, models.Match.away_team)
         entities.append(away_team_entity)
         entities.extend(
-            TeamRepository.team_entities(utils.prepare_entities(in_entities, "away_team"),
-            away_team_entity,)
+            TeamRepository.team_entities(
+                utils.prepare_entities(in_entities, "away_team"),
+                away_team_entity,
+            )
         )
     if "encounter" in in_entities:
         entities.append(utils.join_entity(child, models.Match.encounter))

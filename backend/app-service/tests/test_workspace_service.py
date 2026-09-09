@@ -223,9 +223,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
             patch.object(workspace_service, "ensure_workspace_system_roles", AsyncMock()) as ensure,
             patch.object(workspace_service, "get_workspace_system_role", AsyncMock()) as get_role,
         ):
-            result = await workspaces.resolve_member_role_ids(
-                session, 2, role_ids=[9, 8], role_name="admin"
-            )
+            result = await workspaces.resolve_member_role_ids(session, 2, role_ids=[9, 8], role_name="admin")
         ensure.assert_awaited_once_with(session, 2)
         get_role.assert_not_awaited()
         self.assertEqual([9, 8], result)
@@ -235,13 +233,9 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
         role = SimpleNamespace(id=4)
         with (
             patch.object(workspace_service, "ensure_workspace_system_roles", AsyncMock()),
-            patch.object(
-                workspace_service, "get_workspace_system_role", AsyncMock(return_value=role)
-            ) as get_role,
+            patch.object(workspace_service, "get_workspace_system_role", AsyncMock(return_value=role)) as get_role,
         ):
-            result = await workspaces.resolve_member_role_ids(
-                session, 2, role_ids=None, role_name=None
-            )
+            result = await workspaces.resolve_member_role_ids(session, 2, role_ids=None, role_name=None)
         get_role.assert_awaited_once_with(session, 2, "member")
         self.assertEqual([4], result)
 

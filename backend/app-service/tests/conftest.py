@@ -56,7 +56,7 @@ def _create_test_engine():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def db() -> Generator[Session, None, None]:
+def db() -> Generator[Session]:
     test_engine = _create_test_engine()
     test_session_maker = sessionmaker(test_engine, class_=Session, expire_on_commit=False)
     with test_session_maker() as session:
@@ -117,7 +117,7 @@ class RpcHarness:
         self.broker = _CaptureBroker()
         self.logger = logging.getLogger("app-rpc-tests")
 
-    def register(self, *modules: Any) -> "RpcHarness":
+    def register(self, *modules: Any) -> RpcHarness:
         for module in modules:
             module.register(self.broker, self.logger)
         return self

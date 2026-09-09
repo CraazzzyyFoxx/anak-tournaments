@@ -172,9 +172,7 @@ class AnnouncementPayload(_Payload):
         if audience == "global":
             missing = [locale for locale in SUPPORTED_LOCALES if locale not in filled]
             if missing:
-                raise ValueError(
-                    f"a platform-wide announcement needs every locale; missing: {', '.join(missing)}"
-                )
+                raise ValueError(f"a platform-wide announcement needs every locale; missing: {', '.join(missing)}")
         return self
 
 

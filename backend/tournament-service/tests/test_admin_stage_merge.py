@@ -200,15 +200,9 @@ class AdminStageDeleteReindexTests(IsolatedAsyncioTestCase):
         )
 
         with (
-            patch.object(
-                stage_service.stage_service, "get_stage", AsyncMock(return_value=deleted_stage)
-            ),
-            patch.object(
-                stage_service.stage_service.encounter_repo, "delete_for_stage", AsyncMock()
-            ),
-            patch.object(
-                stage_service.stage_service.standing_repo, "delete_for_stage", AsyncMock()
-            ),
+            patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=deleted_stage)),
+            patch.object(stage_service.stage_service.encounter_repo, "delete_for_stage", AsyncMock()),
+            patch.object(stage_service.stage_service.standing_repo, "delete_for_stage", AsyncMock()),
             patch.object(stage_service.stage_service, "_publish_tournament_changed", AsyncMock()),
         ):
             await stage_service.stage_service.delete_stage(session, deleted_stage.id)
@@ -571,4 +565,3 @@ class PickBanConfigMergeDedupTests(IsolatedAsyncioTestCase):
                 f"pick_ban_config.kind = {MAP_KIND.value!r}".replace("'", ""),
                 str(statement.compile(compile_kwargs={"literal_binds": True})).replace("'", ""),
             )
-

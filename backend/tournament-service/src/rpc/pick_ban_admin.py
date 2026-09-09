@@ -109,8 +109,6 @@ class PickBanConfigUpsert(BaseModel):
     slots: list[PickBanConfigSlotUpsert] = Field(default_factory=list)
 
 
-
-
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.tournament.admin_pick_ban_config_list")
     async def _admin_pick_ban_config_list(data: dict, msg: RabbitMessage) -> dict:
@@ -119,9 +117,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _require_id(data)
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            configs = await pick_ban_config.pick_ban_config_service.list_configs(
-                session, tournament_id=tournament_id
-            )
+            configs = await pick_ban_config.pick_ban_config_service.list_configs(session, tournament_id=tournament_id)
             return {"configs": [_serialize_config(config) for config in configs]}
 
         return await _run(logger, op)
@@ -161,9 +157,7 @@ def register(broker: Any, logger: Any) -> None:
                 sequence=body.sequence,
                 item_ids=body.item_ids,
                 slots=[
-                    pick_ban_config.SlotSpec(
-                        candidates=list(slot.candidates), reserve_item_id=slot.reserve_item_id
-                    )
+                    pick_ban_config.SlotSpec(candidates=list(slot.candidates), reserve_item_id=slot.reserve_item_id)
                     for slot in body.slots
                 ],
             )
@@ -263,7 +257,9 @@ def register(broker: Any, logger: Any) -> None:
             # same state shape the room polls (viewer_side stays null for
             # admins).
             await pick_ban_session.pick_ban_session_service.reset_pick_ban_session(session, encounter, body.kind)
-            return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(session, encounter_id, body.kind, viewer_side=None)
+            return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
+                session, encounter_id, body.kind, viewer_side=None
+            )
 
         return await _run(logger, op)
 
@@ -312,7 +308,9 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanAdminElectOpener.model_validate(_payload(data))
-            pick_ban = await pick_ban_session.pick_ban_session_service.get_pick_ban_session(session, encounter_id, body.kind)
+            pick_ban = await pick_ban_session.pick_ban_session_service.get_pick_ban_session(
+                session, encounter_id, body.kind
+            )
             if pick_ban is None:
                 raise HTTPException(status_code=400, detail="No round is awaiting an opener choice")
             await record_admin_audit(
@@ -332,6 +330,8 @@ def register(broker: Any, logger: Any) -> None:
             await pick_ban_session.pick_ban_session_service.elect_round_opener(
                 session, pick_ban, first_side=body.first_side, acting_side=None
             )
-            return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(session, encounter_id, body.kind, viewer_side=None)
+            return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
+                session, encounter_id, body.kind, viewer_side=None
+            )
 
         return await _run(logger, op)

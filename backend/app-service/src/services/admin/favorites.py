@@ -45,9 +45,7 @@ class FavoritePlayerService:
 
         already = await self.bookmarks.get_for_player(session, auth_user_id=auth_user_id, player_id=player_id)
         if already is None:
-            await self.bookmarks.create(
-                session, models.FavoritePlayer(auth_user_id=auth_user_id, player_id=player_id)
-            )
+            await self.bookmarks.create(session, models.FavoritePlayer(auth_user_id=auth_user_id, player_id=player_id))
             await session.commit()
         return {"ok": True}
 

@@ -108,4 +108,3 @@ def find_feasible_role_assignment(
             return None
 
     return {players[index].uuid: role for index, role in assignment.items()}
-

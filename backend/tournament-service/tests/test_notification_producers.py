@@ -296,9 +296,7 @@ class TeamInviteReceivedTests(_ProducerTestCase):
         )
         window.start()
         self.addCleanup(window.stop)
-        shape = patch.object(
-            teams_module.RegistrationTeamService, "_resolve_shape", AsyncMock(return_value=FIVE_STACK)
-        )
+        shape = patch.object(teams_module.RegistrationTeamService, "_resolve_shape", AsyncMock(return_value=FIVE_STACK))
         shape.start()
         self.addCleanup(shape.stop)
         publish = patch.object(teams_module, "publish_notification_created", AsyncMock())
@@ -374,9 +372,7 @@ class TeamInviteAnsweredTests(_ProducerTestCase):
         )
         window.start()
         self.addCleanup(window.stop)
-        shape = patch.object(
-            teams_module.RegistrationTeamService, "_resolve_shape", AsyncMock(return_value=FIVE_STACK)
-        )
+        shape = patch.object(teams_module.RegistrationTeamService, "_resolve_shape", AsyncMock(return_value=FIVE_STACK))
         shape.start()
         self.addCleanup(shape.stop)
         publish = patch.object(teams_module, "publish_notification_created", AsyncMock())
@@ -616,9 +612,7 @@ class RegistrationDecisionQueryBudgetTests(_ProducerTestCase):
         registration_ids = []
         for index in range(size):
             member = self.fx.player(f"Player{index}", auth_user_id=700 + index)
-            registration_ids.append(
-                self.fx.registration(member, battle_tag=f"Player{index}#1000", status="pending").id
-            )
+            registration_ids.append(self.fx.registration(member, battle_tag=f"Player{index}#1000", status="pending").id)
         self.fx.session.flush()
         self.statements.clear()
         approved, _skipped = await lifecycle_module.lifecycle_service.bulk_approve_registrations(

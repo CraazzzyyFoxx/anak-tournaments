@@ -48,9 +48,7 @@ def _entry(role: str, rank: int | None):
 
 
 def test_serialize_role_carries_ow_rank_value() -> None:
-    out = serializers.serialize_registration_role(
-        _role_model("dps", 500), ow_rank_value=3000, entry=_entry("dps", 500)
-    )
+    out = serializers.serialize_registration_role(_role_model("dps", 500), ow_rank_value=3000, entry=_entry("dps", 500))
 
     assert out.rank_value == 500
     assert out.ow_rank_value == 3000

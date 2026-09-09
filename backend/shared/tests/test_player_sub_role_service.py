@@ -78,4 +78,3 @@ class EntityConfigTests(IsolatedAsyncioTestCase):
         listed.assert_awaited_once_with(session, workspace_id=7, role=None, include_inactive=True)
         self.assertEqual("player_sub_role", cfg.entity)
         self.assertEqual("Main Tank", result[0]["label"])
-

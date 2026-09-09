@@ -103,9 +103,7 @@ def _compiled(statement: Any) -> str:
 
 class FavoritePlayerListTests(IsolatedAsyncioTestCase):
     async def test_list_scopes_to_the_caller_and_orders_newest_first(self) -> None:
-        session = _FakeSession(
-            _Result(rows=[SimpleNamespace(id=2, name="Bravo"), SimpleNamespace(id=1, name="Alpha")])
-        )
+        session = _FakeSession(_Result(rows=[SimpleNamespace(id=2, name="Bravo"), SimpleNamespace(id=1, name="Alpha")]))
 
         result = await favorites.list_for(session, 42)
 

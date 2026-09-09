@@ -153,9 +153,7 @@ class CreatingAnAlreadyCompleteMatch(IsolatedAsyncioTestCase):
     async def _upsert(self, *, state: str):
         tournament = SimpleNamespace(id=1)
         source = sync._ImportSource(challonge_id=100, stage=SimpleNamespace())
-        match_lookup = sync._MatchLookup(
-            by_source_key={}, by_challonge_id={}, mapped_keys=set(), unlinked_by_slot={}
-        )
+        match_lookup = sync._MatchLookup(by_source_key={}, by_challonge_id={}, mapped_keys=set(), unlinked_by_slot={})
         team_lookup = sync._TeamLookup(by_source_key={}, by_key={}, teams_by_id={})
 
         created: list = []
@@ -211,7 +209,6 @@ class CreatingAnAlreadyCompleteMatch(IsolatedAsyncioTestCase):
         self.assertEqual(enums.EncounterStatus.OPEN, created[0].status)
         finalize.assert_not_awaited()
         self.assertEqual([], audits)
-
 
 
 class CompletingAnExistingOpenMatch(IsolatedAsyncioTestCase):
@@ -291,9 +288,7 @@ class AdoptingAnUnlinkedLocalEncounter(IsolatedAsyncioTestCase):
     async def test_reuses_the_existing_slot_instead_of_creating_a_duplicate(self) -> None:
         tournament = SimpleNamespace(id=1)
         source = sync._ImportSource(challonge_id=100, stage=SimpleNamespace())
-        local_encounter = _encounter(
-            status=enums.EncounterStatus.OPEN, result_status=enums.EncounterResultStatus.NONE
-        )
+        local_encounter = _encounter(status=enums.EncounterStatus.OPEN, result_status=enums.EncounterResultStatus.NONE)
         match_lookup = sync._MatchLookup(
             by_source_key={},
             by_challonge_id={},

@@ -65,9 +65,7 @@ def _member_id(data: dict[str, Any]) -> int:
     try:
         return int(raw)
     except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_id is required"
-        ) from None
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_id is required") from None
 
 
 def _dump(member: Any, ranks: dict[str, int], author_ranks: dict[str, int]) -> dict[str, Any]:
@@ -165,9 +163,7 @@ def _by_member(layer: dict[tuple[int, str], int]) -> dict[int, dict[str, int]]:
 async def _layers(
     session: Any, workspace_id: int, member_ids: list[int], author_user_id: int
 ) -> tuple[dict[int, dict[str, int]], dict[int, dict[str, int]]]:
-    canon = await member_rank_service.list_layer(
-        session, workspace_id=workspace_id, member_ids=member_ids
-    )
+    canon = await member_rank_service.list_layer(session, workspace_id=workspace_id, member_ids=member_ids)
     author = await member_rank_service.list_layer(
         session, workspace_id=workspace_id, member_ids=member_ids, author_user_id=author_user_id
     )
@@ -192,14 +188,9 @@ def register(broker: Any, logger: Any) -> None:
                 author_user_id=author_user_id,
                 author_only=_author_only(data),
             )
-            canon, author = await _layers(
-                session, workspace_id, [row.member_id for row in rows], author_user_id
-            )
+            canon, author = await _layers(session, workspace_id, [row.member_id for row in rows], author_user_id)
             return pagination.paginated_dict(
-                [
-                    _dump(row, canon.get(row.member_id, {}), author.get(row.member_id, {}))
-                    for row in rows
-                ],
+                [_dump(row, canon.get(row.member_id, {}), author.get(row.member_id, {})) for row in rows],
                 total,
                 params,
             )
@@ -244,9 +235,7 @@ def register(broker: Any, logger: Any) -> None:
             await emit_pickup_mix_updated(workspace_id, reason="member", actor_user_id=user.id)
             # Re-read through the roster query so the answer carries the resolved
             # BattleTag and name, identically shaped to a ``players.list`` row.
-            roster = await workspace_roster.list_roster(
-                session, workspace_id=workspace_id, member_ids=[member.id]
-            )
+            roster = await workspace_roster.list_roster(session, workspace_id=workspace_id, member_ids=[member.id])
             row = roster.get(member.id)
             if row is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")

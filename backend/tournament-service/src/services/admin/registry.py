@@ -121,7 +121,6 @@ class AdminRegistryService:
     async def _ws_via_stage_item_path(self, session: AsyncSession, data: dict[str, Any]) -> int:
         return await auth.get_stage_item_workspace_id(session, _int_or_400(data.get("stage_item_id"), "stage_item_id"))
 
-
     # --- serializers (async (session, model) -> json-able dict) ---
 
     async def _ser_tournament(self, session: AsyncSession, m: Any) -> Any:
@@ -172,7 +171,6 @@ class AdminRegistryService:
     async def _ser_standing(self, session: AsyncSession, m: Any) -> Any:
         return _dump(await self.standings_flows.to_pydantic(session, m, ["team", "stage", "stage_item", "tournament"]))
 
-
     async def _ser_tournament_link(self, session: AsyncSession, m: Any) -> Any:
         return _dump(schemas.TournamentLinkRead.model_validate(m, from_attributes=True))
 
@@ -187,7 +185,6 @@ class AdminRegistryService:
         tournament_id = _int_or_400(data.get("tournament_id"), "tournament_id")
         stages = await self.tournament_flows.get_stages_read(session, tournament_id)
         return [_dump(stage) for stage in stages]
-
 
     async def _list_tournament_links(self, session: AsyncSession, data: dict[str, Any]) -> Any:
         q = _query(data)

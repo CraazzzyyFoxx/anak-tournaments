@@ -66,9 +66,7 @@ class TestAvatarPrefix(IsolatedAsyncioTestCase):
     async def test_upload_without_variant_keeps_the_flat_key(self):
         s3 = _s3()
 
-        result = await upload_avatar(
-            s3, entity_type="teams", entity_id=5, file_data=PNG, content_type="image/png"
-        )
+        result = await upload_avatar(s3, entity_type="teams", entity_id=5, file_data=PNG, content_type="image/png")
 
         self.assertTrue(result.key.startswith("avatars/teams/5/"))
         self.assertNotIn("None", result.key)

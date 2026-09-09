@@ -69,9 +69,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.job_get": Op(response=schemas.TournamentComputationJobRead),
     "rpc.tournament.job_list": Op(response=schemas.TournamentComputationJobRead, response_array=True),
     # ── generic CRUD engine (create/update/get/list by entity) ─────────────
-    "rpc.tournament.admin.create#tournament": Op(
-        request=schemas.TournamentCreate, response=schemas.TournamentRead
-    ),
+    "rpc.tournament.admin.create#tournament": Op(request=schemas.TournamentCreate, response=schemas.TournamentRead),
     "rpc.tournament.admin.create#team": Op(request=schemas.TeamCreate, response=schemas.TeamRead),
     "rpc.tournament.admin.create#player": Op(request=schemas.PlayerCreate, response=schemas.PlayerRead),
     "rpc.tournament.admin.create#stage": Op(request=schemas.StageCreate, response=schemas.StageRead),
@@ -79,18 +77,14 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.admin.create#stage_item_input": Op(
         request=schemas.StageItemInputCreate, response=schemas.StageItemInputRead
     ),
-    "rpc.tournament.admin.create#encounter": Op(
-        request=schemas.EncounterCreate, response=schemas.EncounterRead
-    ),
+    "rpc.tournament.admin.create#encounter": Op(request=schemas.EncounterCreate, response=schemas.EncounterRead),
     "rpc.tournament.admin.create#player_sub_role": Op(
         request=schemas.PlayerSubRoleCreate, response=schemas.PlayerSubRoleRead
     ),
     "rpc.tournament.admin.create#tournament_link": Op(
         request=schemas.TournamentLinkCreate, response=schemas.TournamentLinkRead
     ),
-    "rpc.tournament.admin.update#tournament": Op(
-        request=schemas.TournamentUpdate, response=schemas.TournamentRead
-    ),
+    "rpc.tournament.admin.update#tournament": Op(request=schemas.TournamentUpdate, response=schemas.TournamentRead),
     "rpc.tournament.admin.update#team": Op(request=schemas.TeamUpdate, response=schemas.TeamRead),
     "rpc.tournament.admin.update#player": Op(request=schemas.PlayerUpdate, response=schemas.PlayerRead),
     "rpc.tournament.admin.update#stage": Op(request=schemas.StageUpdate, response=schemas.StageRead),
@@ -98,9 +92,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.admin.update#stage_item_input": Op(
         request=schemas.StageItemInputUpdate, response=schemas.StageItemInputRead
     ),
-    "rpc.tournament.admin.update#encounter": Op(
-        request=schemas.EncounterUpdate, response=schemas.EncounterRead
-    ),
+    "rpc.tournament.admin.update#encounter": Op(request=schemas.EncounterUpdate, response=schemas.EncounterRead),
     "rpc.tournament.admin.update#standing": Op(request=schemas.StandingUpdate, response=schemas.StandingRead),
     "rpc.tournament.admin.update#player_sub_role": Op(
         request=schemas.PlayerSubRoleUpdate, response=schemas.PlayerSubRoleRead
@@ -136,9 +128,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.regteam_image_delete": Op(response=reg_team_schemas.RegistrationTeamRead),
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": Op(response=schemas.TournamentRead),
-    "rpc.tournament.tournament_status": Op(
-        request=schemas.TournamentStatusTransition, response=schemas.TournamentRead
-    ),
+    "rpc.tournament.tournament_status": Op(request=schemas.TournamentStatusTransition, response=schemas.TournamentRead),
     "rpc.tournament.tournament_schedule_set": Op(
         request=schemas.TournamentScheduleSet, response=schemas.TournamentRead
     ),
@@ -261,9 +251,7 @@ OPERATIONS: dict[str, Op] = {
         response=schemas.BalancerRegistrationRankAutofillResponse,
     ),
     "rpc.tournament.reg_export_users": Op(response=schemas.RegistrationUserExportResponse),
-    "rpc.tournament.reg_check_in": Op(
-        request=schemas.CheckInRequest, response=schemas.BalancerRegistrationRead
-    ),
+    "rpc.tournament.reg_check_in": Op(request=schemas.CheckInRequest, response=schemas.BalancerRegistrationRead),
     "rpc.tournament.reg_user_rank_history": Op(response=schemas.BalancerRegistrationRankHistoryResponse),
     # ── registration status catalog ────────────────────────────────────────
     "rpc.tournament.regstatus_catalog": Op(response=schemas.BalancerRegistrationStatusRead, response_array=True),
@@ -317,9 +305,7 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.tournament.regteam_free_agents": Op(response=reg_team_schemas.RegistrationFreeAgentListResponse),
     "rpc.tournament.regteam_my_invites": Op(response=reg_team_schemas.RegistrationTeamInviteOfferListResponse),
-    "rpc.tournament.regteam_invite_history_public": Op(
-        response=reg_team_schemas.RegistrationTeamInviteHistoryResponse
-    ),
+    "rpc.tournament.regteam_invite_history_public": Op(response=reg_team_schemas.RegistrationTeamInviteHistoryResponse),
     # ── team registration: organizer surfaces ──────────────────────────────
     "rpc.tournament.regteam_list": Op(
         response=reg_team_schemas.RegistrationTeamListResponse,

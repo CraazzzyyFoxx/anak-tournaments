@@ -158,13 +158,13 @@ func TestUserFromRequest_Sources(t *testing.T) {
 
 func TestIsAPIKey(t *testing.T) {
 	cases := map[string]bool{
-		"aqt_sk_pub_secret":            true,
-		"aqt_sk_":                      true, // malformed, but identity-svc's problem to reject
-		"eyJhbGciOiJIUzI1NiJ9.a.b":     false,
-		"":                             false,
-		"sk_aqt_pub_secret":            false,
-		"prefix_aqt_sk_pub_secret":     false,
-		"AQT_SK_pub_secret":            false, // the prefix is case-sensitive, like the issuer
+		"aqt_sk_pub_secret":        true,
+		"aqt_sk_":                  true, // malformed, but identity-svc's problem to reject
+		"eyJhbGciOiJIUzI1NiJ9.a.b": false,
+		"":                         false,
+		"sk_aqt_pub_secret":        false,
+		"prefix_aqt_sk_pub_secret": false,
+		"AQT_SK_pub_secret":        false, // the prefix is case-sensitive, like the issuer
 	}
 	for token, want := range cases {
 		if got := IsAPIKey(token); got != want {

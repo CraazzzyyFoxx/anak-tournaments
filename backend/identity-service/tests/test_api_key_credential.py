@@ -40,12 +40,12 @@ from src.services.api_keys import api_keys  # noqa: E402
 from src.services.auth import auth  # noqa: E402
 from src.services.auth_users import auth_users  # noqa: E402
 from src.services.token_validation import token_validation  # noqa: E402
-from tests._fakes import make_auth_user as _owner  # noqa: E402
 from tests._fakes import CapturingBroker as _CapturingBroker  # noqa: E402
 from tests._fakes import FakeSessionMaker as _SessionMaker  # noqa: E402
 from tests._fakes import SilentLogger as _SilentLogger  # noqa: E402
 from tests._fakes import handler as _handler  # noqa: E402
 from tests._fakes import make_api_key_row  # noqa: E402
+from tests._fakes import make_auth_user as _owner  # noqa: E402
 
 _PUBLIC_ID = "publicid"
 _SECRET = "secret-token"

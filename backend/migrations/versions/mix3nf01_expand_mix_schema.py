@@ -74,13 +74,9 @@ def upgrade() -> None:
         sa.Column("role", sa.String(16), nullable=False),
         sa.Column("priority", sa.Integer(), nullable=False),
         sa.CheckConstraint("priority > 0", name="ck_custom_game_player_role_priority"),
-        sa.ForeignKeyConstraint(
-            ["custom_game_player_id"], ["balancer.custom_game_player.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["custom_game_player_id"], ["balancer.custom_game_player.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("custom_game_player_id", "role"),
-        sa.UniqueConstraint(
-            "custom_game_player_id", "priority", name="uq_custom_game_player_role_priority"
-        ),
+        sa.UniqueConstraint("custom_game_player_id", "priority", name="uq_custom_game_player_role_priority"),
         schema="balancer",
     )
     op.create_table(
@@ -160,9 +156,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "fk_casual_player_workspace_member_id", "player", schema="casual", type_="foreignkey"
-    )
+    op.drop_constraint("fk_casual_player_workspace_member_id", "player", schema="casual", type_="foreignkey")
     op.alter_column("player", "workspace_member_id", nullable=False, schema="casual")
     op.create_foreign_key(
         "player_workspace_member_id_fkey",

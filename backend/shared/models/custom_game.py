@@ -88,9 +88,7 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
     )
 
     custom_game_id: Mapped[int] = mapped_column(ForeignKey("balancer.custom_game.id", ondelete="CASCADE"), index=True)
-    workspace_member_id: Mapped[int] = mapped_column(
-        ForeignKey("workspace_member.id", ondelete="CASCADE"), index=True
-    )
+    workspace_member_id: Mapped[int] = mapped_column(ForeignKey("workspace_member.id", ondelete="CASCADE"), index=True)
     sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default="0")
     participation: Mapped[str] = mapped_column(String(16), nullable=False, default="pool", server_default="pool")
     role_selection_mode: Mapped[str] = mapped_column(

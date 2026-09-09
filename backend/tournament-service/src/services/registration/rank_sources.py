@@ -541,9 +541,7 @@ class RankSourcesService:
             )
         )
         return {
-            account.username_normalized: account
-            for account in result.scalars().all()
-            if account.username_normalized
+            account.username_normalized: account for account in result.scalars().all() if account.username_normalized
         }
 
     async def _load_ow_rank_signals_by_social_account_id(
@@ -561,7 +559,8 @@ class RankSourcesService:
         # __init__), and this multi-predicate ordered fetch is a service-level query
         # rather than CRUD anyway (rule 7).
         result = await session.execute(
-            sa.select(models.UserRankSnapshot).where(
+            sa.select(models.UserRankSnapshot)
+            .where(
                 models.UserRankSnapshot.social_account_id.in_(social_account_ids),
                 models.UserRankSnapshot.role.in_(set(RANK_ROLE_BY_REGISTRATION_ROLE.values())),
                 models.UserRankSnapshot.rank_value.is_not(None),

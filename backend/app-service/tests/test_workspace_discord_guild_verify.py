@@ -31,8 +31,8 @@ from sqlalchemy.exc import IntegrityError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tests.factories import make_workspace as _make_workspace  # noqa: E402
 from shared.schemas.rpc import parse_rpc, rpc_ok  # noqa: E402
+from tests.factories import make_workspace as _make_workspace  # noqa: E402
 
 workspace_service = importlib.import_module("src.services.workspace.service")
 workspaces = workspace_service.workspaces

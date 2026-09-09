@@ -18,8 +18,8 @@ from collections.abc import Collection, Mapping
 from typing import Any
 
 from shared.core.enums import HERO_TYPE_CLASSES, DraftPickStatus, DraftPlayerStatus, HeroClass
-from shared.domain.roster_shape import FLEX_SLOT_CODE, ROSTER_SLOT_CODES, RosterShape
 from shared.domain.roster import PlayerRoster
+from shared.domain.roster_shape import FLEX_SLOT_CODE, ROSTER_SLOT_CODES, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
 from src.domain.draft.entities import (
     DraftAssignment,

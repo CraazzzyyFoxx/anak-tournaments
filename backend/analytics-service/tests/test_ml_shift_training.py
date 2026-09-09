@@ -32,7 +32,6 @@ CANONICAL_BOTTOM_DIV = DEFAULT_GRID.max_division
 CANONICAL_MID_DIV = (DEFAULT_GRID.min_division + DEFAULT_GRID.max_division) // 2
 
 
-
 class ShiftRankHistoryTests(IsolatedAsyncioTestCase):
     async def test_explicit_history_horizon_keeps_sparse_future_tournament_labels(self) -> None:
         # rank doubles as the canonical division under the identity stub; the two

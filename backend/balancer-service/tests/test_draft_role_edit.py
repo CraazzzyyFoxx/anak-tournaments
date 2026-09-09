@@ -59,7 +59,6 @@ def _roster():
 
 @pytest.mark.parametrize("status", [DraftStatus.LIVE, DraftStatus.COMPLETED, DraftStatus.CANCELLED])
 def test_role_edit_requires_setup_ready_or_paused(status: DraftStatus) -> None:
-
     with pytest.raises(Exception) as exc_info:
         rules.validate_role_edit_request(
             _draft(status),
@@ -75,7 +74,6 @@ def test_role_edit_requires_setup_ready_or_paused(status: DraftStatus) -> None:
 
 
 def test_role_edit_rejects_a_role_the_player_already_plays() -> None:
-
     with pytest.raises(Exception) as exc_info:
         rules.validate_role_edit_request(
             _draft(),
@@ -309,8 +307,9 @@ def test_apply_role_edit_reactivates_an_existing_inactive_registration_role() ->
     session = _FakeSession(existing=existing)
 
     asyncio.run(
-        _service(rosters=_FakeRosters(roster(120, ranks={"dps": 4000, "support": 2750})), audit_repo=_FakeAuditRepo())
-        .apply_role_edit(
+        _service(
+            rosters=_FakeRosters(roster(120, ranks={"dps": 4000, "support": 2750})), audit_repo=_FakeAuditRepo()
+        ).apply_role_edit(
             session,  # type: ignore[arg-type]
             _draft(),
             _player(),

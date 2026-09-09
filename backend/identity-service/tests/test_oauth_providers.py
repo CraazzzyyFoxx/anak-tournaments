@@ -206,9 +206,7 @@ def test_raise_provider_call_error_maps_timeout() -> None:
 def test_raise_provider_call_error_rethrows_http() -> None:
     err = HTTPException(status_code=400, detail="Failed to exchange Discord code")
     with pytest.raises(HTTPException) as exc_info:
-        _raise_provider_call_error(
-            err, provider_label="Discord", error_detail="Discord authentication failed"
-        )
+        _raise_provider_call_error(err, provider_label="Discord", error_detail="Discord authentication failed")
     assert exc_info.value is err
 
 

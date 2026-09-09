@@ -69,13 +69,9 @@ class DivisionGridTierRepository(BaseRepository[models.DivisionGridTier]):
         result = await session.execute(query)
         return result.unique().scalars().all()
 
-    async def list_ids_by_version(
-        self, session: AsyncSession, version_id: int
-    ) -> Sequence[int]:
+    async def list_ids_by_version(self, session: AsyncSession, version_id: int) -> Sequence[int]:
         result = await session.execute(
-            sa.select(models.DivisionGridTier.id).where(
-                models.DivisionGridTier.version_id == version_id
-            )
+            sa.select(models.DivisionGridTier.id).where(models.DivisionGridTier.version_id == version_id)
         )
         return result.scalars().all()
 
@@ -99,18 +95,14 @@ class DivisionGridMappingRepository(BaseRepository[models.DivisionGridMapping]):
             target_version_id=target_version_id,
         )
 
-    async def set_completeness(
-        self, session: AsyncSession, mapping_id: int, *, is_complete: bool
-    ) -> None:
+    async def set_completeness(self, session: AsyncSession, mapping_id: int, *, is_complete: bool) -> None:
         await session.execute(
             sa.update(models.DivisionGridMapping)
             .where(models.DivisionGridMapping.id == mapping_id)
             .values(is_complete=is_complete)
         )
 
-    async def mark_incomplete_for_version(
-        self, session: AsyncSession, version_id: int
-    ) -> None:
+    async def mark_incomplete_for_version(self, session: AsyncSession, version_id: int) -> None:
         """Invalidate every mapping touching a version, on either side, in one statement.
 
         Editing a version's tiers can only make existing mappings stale, and a version
@@ -137,9 +129,7 @@ class DivisionGridMappingRuleRepository(BaseRepository[models.DivisionGridMappin
 
     async def delete_for_mapping(self, session: AsyncSession, mapping_id: int) -> None:
         await session.execute(
-            sa.delete(models.DivisionGridMappingRule).where(
-                models.DivisionGridMappingRule.mapping_id == mapping_id
-            )
+            sa.delete(models.DivisionGridMappingRule).where(models.DivisionGridMappingRule.mapping_id == mapping_id)
         )
 
 
@@ -167,9 +157,7 @@ class DivisionGridImportJobRepository(BaseRepository[models.DivisionGridImportJo
         statuses: Sequence[str] | None = None,
         limit: int | None = None,
     ) -> Sequence[models.DivisionGridImportJob]:
-        filters: list[sa.ColumnElement[bool]] = [
-            models.DivisionGridImportJob.workspace_id == workspace_id
-        ]
+        filters: list[sa.ColumnElement[bool]] = [models.DivisionGridImportJob.workspace_id == workspace_id]
         if statuses is not None:
             filters.append(models.DivisionGridImportJob.status.in_(tuple(statuses)))
         query = self.select().where(*filters).order_by(models.DivisionGridImportJob.id.desc())

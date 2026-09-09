@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.rpc.workspaces import register
 from shared.schemas.rpc import rpc_ok
+from src.rpc.workspaces import register
 
 _IDENTITY = {"user_id": 1, "is_superuser": True, "is_active": True}
 

@@ -30,8 +30,9 @@ sys.path.insert(0, str(backend_root / "parser-service"))
 os.environ["DEBUG"] = "true"
 
 from shared.models.ingestion.log_processing import LogProcessingSource  # noqa: E402
-
-from tests._fakes import FakeBroker as _FakeBroker, active_identity as _active_identity, session_factory as _session_factory
+from tests._fakes import FakeBroker as _FakeBroker
+from tests._fakes import active_identity as _active_identity
+from tests._fakes import session_factory as _session_factory
 
 rpc_logs = importlib.import_module("src.rpc.logs")
 admin_reads = importlib.import_module("src.services.match_logs.admin_reads")
@@ -51,6 +52,7 @@ class _Result:
 
     def one(self):
         return self._row
+
 
 class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:

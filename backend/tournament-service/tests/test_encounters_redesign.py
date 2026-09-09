@@ -188,7 +188,6 @@ class EncounterRedesignSerializationTests(IsolatedAsyncioTestCase):
         self.assertEqual(read.stage_id, 31)
         self.assertEqual(read.stage_item_id, 77)
 
-
     async def test_overview_maps_service_data_to_public_schema(self) -> None:
         raw = {
             "total": 10,

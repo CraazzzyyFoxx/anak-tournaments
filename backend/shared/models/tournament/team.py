@@ -51,12 +51,12 @@ class Team(db.TimeStampIntegerMixin):
     tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
     tournament: Mapped[Tournament] = relationship()
 
-    players: Mapped[list["Player"]] = relationship(
+    players: Mapped[list[Player]] = relationship(
         back_populates="team",
         passive_deletes=True,
     )
-    captain: Mapped["User | None"] = relationship()
-    standings: Mapped[list["Standing"]] = relationship(passive_deletes=True)
+    captain: Mapped[User | None] = relationship()
+    standings: Mapped[list[Standing]] = relationship(passive_deletes=True)
 
 
 class Player(db.TimeStampIntegerMixin):
@@ -95,9 +95,9 @@ class Player(db.TimeStampIntegerMixin):
     # been dropped and this column is now the sole, NOT NULL anchor for a roster row's
     # identity. ``workspace_member`` lives in the public schema.
     workspace_member_id: Mapped[int] = mapped_column(ForeignKey("workspace_member.id", ondelete="CASCADE"))
-    workspace_member: Mapped["WorkspaceMember"] = relationship()
+    workspace_member: Mapped[WorkspaceMember] = relationship()
     team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"))
-    team: Mapped["Team"] = relationship(back_populates="players")
+    team: Mapped[Team] = relationship(back_populates="players")
 
     def __repr__(self):
         return f"<Player name={self.name} role={self.role}>"

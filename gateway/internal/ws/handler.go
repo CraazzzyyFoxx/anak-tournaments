@@ -15,8 +15,8 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/auth"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/clientip"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/httplog"
-	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/protocol"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/principal"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/protocol"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/ratelimit"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/replay"
 )

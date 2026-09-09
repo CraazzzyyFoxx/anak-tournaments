@@ -109,7 +109,6 @@ def _processor_from_bytes(
     return MatchLogProcessor(tournament, name, decoded_lines, s3, log_record_id)
 
 
-
 def _winner_team_id(encounter: models.Encounter) -> int | None:
     if encounter.home_score > encounter.away_score:
         return encounter.home_team_id
@@ -575,9 +574,7 @@ class MatchLogProcessor:
             raise ValueError(f"Cannot parse {event_name_enum.value} at t={time}: {e}") from e
 
         if evt.player not in players_map:
-            raise ValueError(
-                f"Player '{evt.player}' for event {event_name_enum.value} at t={time} not in players_map."
-            )
+            raise ValueError(f"Player '{evt.player}' for event {event_name_enum.value} at t={time} not in players_map.")
 
         player = players_map[evt.player]
 
@@ -598,9 +595,7 @@ class MatchLogProcessor:
             try:
                 related_hero_id = self.get_hero(evt.related_hero).id
             except errors.ApiHTTPException:
-                logger.warning(
-                    f"Unknown related_hero '{evt.related_hero}' for {event_name_enum.value} at t={time}."
-                )
+                logger.warning(f"Unknown related_hero '{evt.related_hero}' for {event_name_enum.value} at t={time}.")
 
         if evt.related_player:
             if evt.related_player not in players_map:

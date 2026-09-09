@@ -63,12 +63,12 @@ class DivisionGridCreate(BaseModel):
 
 class DivisionGridVersionCreate(BaseModel):
     label: str = Field(..., min_length=1, max_length=255)
-    tiers: list["DivisionGridTierWrite"] = Field(..., min_length=1)
+    tiers: list[DivisionGridTierWrite] = Field(..., min_length=1)
 
 
 class DivisionGridVersionUpdate(BaseModel):
     label: str | None = Field(default=None, min_length=1, max_length=255)
-    tiers: list["DivisionGridTierWrite"] | None = None
+    tiers: list[DivisionGridTierWrite] | None = None
 
 
 class DivisionGridTierWrite(BaseModel):

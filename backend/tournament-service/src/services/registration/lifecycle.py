@@ -170,12 +170,8 @@ class RegistrationLifecycleService:
         result = await session.execute(query)
         return list(result.scalars().all())
 
-    async def get_registration_by_id(
-        self, session: AsyncSession, registration_id: int
-    ) -> models.BalancerRegistration:
-        registration = await self.registration_repo.get(
-            session, registration_id, options=_registration_read_options()
-        )
+    async def get_registration_by_id(self, session: AsyncSession, registration_id: int) -> models.BalancerRegistration:
+        registration = await self.registration_repo.get(session, registration_id, options=_registration_read_options())
         if registration is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registration not found")
         return registration
@@ -317,7 +313,6 @@ class RegistrationLifecycleService:
         await session.commit()
         return await self.get_registration_by_id(session, registration.id)
 
-
     async def update_registration_profile(
         self,
         session: AsyncSession,
@@ -449,7 +444,6 @@ class RegistrationLifecycleService:
         if roles is not None or auth_user_id is not None:
             return await self.get_registration_by_id(session, registration.id)
         return registration
-
 
     async def approve_registration(
         self,

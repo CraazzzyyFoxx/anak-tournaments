@@ -14,15 +14,11 @@ class CasualMatch(db.TimeStampIntegerMixin):
     __tablename__ = "match"
     __table_args__ = ({"schema": "casual"},)
 
-    custom_game_id: Mapped[int] = mapped_column(
-        ForeignKey("balancer.custom_game.id", ondelete="CASCADE"), index=True
-    )
+    custom_game_id: Mapped[int] = mapped_column(ForeignKey("balancer.custom_game.id", ondelete="CASCADE"), index=True)
     map_id: Mapped[int | None] = mapped_column(
         ForeignKey("overwatch.map.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    recorded_by: Mapped[int | None] = mapped_column(
-        ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True
-    )
+    recorded_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
 
     teams: Mapped[list[CasualTeam]] = relationship(
         back_populates="match",

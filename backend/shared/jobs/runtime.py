@@ -23,7 +23,6 @@ class JobService[T]:
         self.concurrency = concurrency
         self.retry = retry or Retry()
 
-
     async def create(self, ctx: Any, spec: JobSpec) -> T:
         await self.concurrency.acquire(ctx, spec, self.store)
         return await self.store.create(ctx, spec)

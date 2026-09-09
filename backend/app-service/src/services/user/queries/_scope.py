@@ -325,7 +325,6 @@ def _compare_user_scope_exists(
     return sa.exists(sa.select(1).select_from(scoped_player).select_from(scoped_tournament).where(*filters))
 
 
-
 def _hero_compare_stat_visibility_condition(
     name_column: sa.ColumnElement[typing.Any],
     hero_id_column: sa.ColumnElement[typing.Any],

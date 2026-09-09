@@ -74,5 +74,5 @@ class EncounterResultAudit(db.TimeStampIntegerMixin):
     source: Mapped[str] = mapped_column(String(16))
 
     encounter: Mapped[Encounter] = relationship(back_populates="result_audit")
-    actor: Mapped["User | None"] = relationship()
-    adopted_team: Mapped["Team | None"] = relationship()
+    actor: Mapped[User | None] = relationship()
+    adopted_team: Mapped[Team | None] = relationship()

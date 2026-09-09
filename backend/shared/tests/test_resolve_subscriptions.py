@@ -13,18 +13,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
 
-from shared.services.subscriptions.entitlements import (
-    SUBSCRIPTION_TTL_SECONDS,
-    ProviderConfigRow,
-    StoredEntitlement,
-    SubscriptionResolver,
-)
 from shared.services.subscriptions import (
     Outcome,
     SubscriptionSource,
     SubscriptionState,
     SubscriptionVerdict,
     parse_requirement,
+)
+from shared.services.subscriptions.entitlements import (
+    SUBSCRIPTION_TTL_SECONDS,
+    ProviderConfigRow,
+    StoredEntitlement,
+    SubscriptionResolver,
 )
 
 WS = 7

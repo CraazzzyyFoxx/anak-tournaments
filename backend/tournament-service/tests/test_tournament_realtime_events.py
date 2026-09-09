@@ -48,9 +48,7 @@ class TournamentRealtimeEventsTests(IsolatedAsyncioTestCase):
         # ``None`` means "an ordinary tournament".
         session = SimpleNamespace(info={}, add=Mock(), flush=AsyncMock(), scalar=AsyncMock(return_value=None))
 
-        with patch.object(
-            tournament_events.jobs_service, "request_standings_recalculation", AsyncMock()
-        ) as request:
+        with patch.object(tournament_events.jobs_service, "request_standings_recalculation", AsyncMock()) as request:
             await tournament_events.enqueue_tournament_recalculation(session, 42)
 
         request.assert_awaited_once_with(session, 42)

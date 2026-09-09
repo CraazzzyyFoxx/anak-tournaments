@@ -82,9 +82,7 @@ def upgrade() -> None:
     op.drop_constraint(
         "fk_balancer_registration_workspace_player_id", "registration", schema="balancer", type_="foreignkey"
     )
-    op.drop_index(
-        op.f("ix_balancer_registration_workspace_player_id"), table_name="registration", schema="balancer"
-    )
+    op.drop_index(op.f("ix_balancer_registration_workspace_player_id"), table_name="registration", schema="balancer")
     op.drop_column("registration", "workspace_player_id", schema="balancer")
 
     op.drop_table("host_player_rank", schema="balancer")

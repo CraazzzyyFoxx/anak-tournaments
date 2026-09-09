@@ -107,12 +107,14 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
         away_team_entity = utils.join_entity(child, models.Encounter.away_team)
         entities.append(away_team_entity)
         entities.extend(
-            TeamRepository.team_entities((
-                utils.prepare_entities(in_entities, "teams")
-                if include_teams
-                else utils.prepare_entities(in_entities, "away_team")
-            ),
-            away_team_entity,)
+            TeamRepository.team_entities(
+                (
+                    utils.prepare_entities(in_entities, "teams")
+                    if include_teams
+                    else utils.prepare_entities(in_entities, "away_team")
+                ),
+                away_team_entity,
+            )
         )
     if "matches" in in_entities:
         matches_entity = utils.join_entity(child, models.Encounter.matches)
@@ -142,23 +144,27 @@ def match_entities(in_entities: list[str], child: typing.Any | None = None) -> l
         home_team_entity = utils.join_entity(child, models.Match.home_team)
         entities.append(home_team_entity)
         entities.extend(
-            TeamRepository.team_entities((
-                utils.prepare_entities(in_entities, "teams")
-                if include_teams
-                else utils.prepare_entities(in_entities, "home_team")
-            ),
-            home_team_entity,)
+            TeamRepository.team_entities(
+                (
+                    utils.prepare_entities(in_entities, "teams")
+                    if include_teams
+                    else utils.prepare_entities(in_entities, "home_team")
+                ),
+                home_team_entity,
+            )
         )
     if include_away_team:
         away_team_entity = utils.join_entity(child, models.Match.away_team)
         entities.append(away_team_entity)
         entities.extend(
-            TeamRepository.team_entities((
-                utils.prepare_entities(in_entities, "teams")
-                if include_teams
-                else utils.prepare_entities(in_entities, "away_team")
-            ),
-            away_team_entity,)
+            TeamRepository.team_entities(
+                (
+                    utils.prepare_entities(in_entities, "teams")
+                    if include_teams
+                    else utils.prepare_entities(in_entities, "away_team")
+                ),
+                away_team_entity,
+            )
         )
     if "encounter" in in_entities:
         encounter_entity = utils.join_entity(child, models.Match.encounter)
@@ -428,9 +434,7 @@ class EncounterService:
         workspace_id: int,
         auth_user_id: int,
     ) -> typing.Sequence[models.EncounterSavedView]:
-        return await self.saved_view_repo.list_for_user(
-            session, workspace_id=workspace_id, auth_user_id=auth_user_id
-        )
+        return await self.saved_view_repo.list_for_user(session, workspace_id=workspace_id, auth_user_id=auth_user_id)
 
     async def upsert_saved_view(
         self,

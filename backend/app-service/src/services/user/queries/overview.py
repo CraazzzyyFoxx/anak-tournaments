@@ -398,7 +398,9 @@ class UserOverviewQueries:
             )
 
         query = (
-            sa.select(sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600)
+            sa.select(
+                sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600
+            )
             .select_from(models.MatchStatistics)
             .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         )
@@ -455,7 +457,7 @@ class UserOverviewQueries:
     async def get_overview_users(
         self,
         session: AsyncSession,
-        params: "app_schemas.UserOverviewParams",
+        params: app_schemas.UserOverviewParams,
         grid: DivisionGrid,
         workspace_id: int | None = None,
     ) -> tuple[typing.Sequence[models.User], int]:
@@ -703,9 +705,9 @@ class UserOverviewQueries:
         placement_stage_query = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
-                sa.func.avg(sa.case((models.Standing.buchholz.isnot(None), models.Standing.position), else_=None)).label(
-                    "avg_group_placement"
-                ),
+                sa.func.avg(
+                    sa.case((models.Standing.buchholz.isnot(None), models.Standing.position), else_=None)
+                ).label("avg_group_placement"),
                 sa.func.avg(sa.case((models.Standing.buchholz.is_(None), models.Standing.position), else_=None)).label(
                     "avg_playoff_placement"
                 ),
@@ -775,7 +777,9 @@ class UserOverviewQueries:
             payload[user_id] = (avg_placement, avg_playoff_placement, avg_group_placement, current_closeness)
 
         for user_id, avg_closeness in closeness_result.all():
-            avg_placement, avg_playoff_placement, avg_group_placement, _ = payload.get(user_id, (None, None, None, None))
+            avg_placement, avg_playoff_placement, avg_group_placement, _ = payload.get(
+                user_id, (None, None, None, None)
+            )
             payload[user_id] = (avg_placement, avg_playoff_placement, avg_group_placement, avg_closeness)
 
         return payload
@@ -1058,9 +1062,9 @@ class UserOverviewQueries:
             .distinct()
         )
         if workspace_id is not None:
-            roles_query = roles_query.join(models.Tournament, models.Tournament.id == models.Player.tournament_id).where(
-                models.Tournament.workspace_id == workspace_id
-            )
+            roles_query = roles_query.join(
+                models.Tournament, models.Tournament.id == models.Player.tournament_id
+            ).where(models.Tournament.workspace_id == workspace_id)
         user_roles: dict[int, set[enums.HeroClass]] = defaultdict(set)
         for user_id, player_role in (await session.execute(roles_query)).all():
             user_roles[user_id].add(player_role)

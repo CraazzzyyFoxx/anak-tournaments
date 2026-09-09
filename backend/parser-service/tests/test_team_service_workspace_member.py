@@ -77,4 +77,3 @@ class TeamServiceWorkspaceMemberTests(IsolatedAsyncioTestCase):
         self.assertEqual(999, player.workspace_member_id)
         session.add.assert_called_once_with(player)
         session.commit.assert_awaited_once()
-

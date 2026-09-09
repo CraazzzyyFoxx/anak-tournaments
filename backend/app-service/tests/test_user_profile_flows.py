@@ -436,9 +436,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 "get_tournaments_with_stats",
                 AsyncMock(return_value=[(team, 4, 2, 0.75)]),
             ),
-            patch.object(
-                user_flows.users.encounters, "count_teams_by_tournament_bulk", AsyncMock(return_value={3: 8})
-            ),
+            patch.object(user_flows.users.encounters, "count_teams_by_tournament_bulk", AsyncMock(return_value={3: 8})),
             patch.object(user_flows.users.encounters, "get_roster_avg_mvp_bulk", AsyncMock(return_value={})),
             patch.object(user_flows.users.encounters, "get_roster_top_heroes_bulk", AsyncMock(return_value={})),
             patch.object(

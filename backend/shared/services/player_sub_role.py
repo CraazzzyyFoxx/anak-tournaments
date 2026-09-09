@@ -103,9 +103,7 @@ class PlayerSubRoleService:
         role = _normalize_role_or_raise(data.role)
         slug = _normalize_slug_or_raise(data.slug, data.label)
 
-        existing = await self.sub_role_repo.get_by_slug(
-            session, workspace_id=data.workspace_id, role=role, slug=slug
-        )
+        existing = await self.sub_role_repo.get_by_slug(session, workspace_id=data.workspace_id, role=role, slug=slug)
         if existing is not None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -241,4 +239,3 @@ def player_sub_role_entity() -> EntityConfig:
         not_found_detail="Player sub-role not found",
         actions=frozenset({"create", "update", "delete", "list"}),
     )
-

@@ -64,7 +64,7 @@ class StageItemInputCreate(BaseModel):
     source_position: int | None = None
 
     @model_validator(mode="after")
-    def _validate_input_shape(self) -> "StageItemInputCreate":
+    def _validate_input_shape(self) -> StageItemInputCreate:
         if self.input_type == StageItemInputType.FINAL and self.team_id is None:
             raise ValueError("FINAL inputs require team_id")
         if self.input_type == StageItemInputType.TENTATIVE:

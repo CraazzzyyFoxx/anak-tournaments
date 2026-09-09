@@ -6,8 +6,8 @@ only the fields the frontend actually renders on user-scoped pages.
 """
 
 from __future__ import annotations
-from datetime import UTC, datetime
 
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 
@@ -118,10 +118,7 @@ def encounter_oriented_score(match: models.Match, encounter: models.Encounter) -
     is the opposite of ``Encounter.home_team_id``. The Run then paints the
     winner's maps as losses.
     """
-    if (
-        match.home_team_id == encounter.away_team_id
-        and match.away_team_id == encounter.home_team_id
-    ):
+    if match.home_team_id == encounter.away_team_id and match.away_team_id == encounter.home_team_id:
         return Score(home=match.away_score, away=match.home_score)
     return Score(home=match.home_score, away=match.away_score)
 
@@ -342,8 +339,6 @@ def sort_user_matches(
 
 def settled_map_ids(rows: list[tuple[object, object, object, object]]) -> list[int]:
     """``(map_id, status, action_index, order)`` → play-order map ids."""
-    settled = [
-        row for row in rows if _pool_status(row[1]) in _SETTLED_POOL_STATUSES
-    ]
+    settled = [row for row in rows if _pool_status(row[1]) in _SETTLED_POOL_STATUSES]
     settled.sort(key=lambda row: row[2] if row[2] is not None else row[3])
     return [int(row[0]) for row in settled]

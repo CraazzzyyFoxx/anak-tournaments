@@ -18,7 +18,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.rpc import workspaces as workspaces_rpc
-from tests.test_audit_workspace import _RecordingSession, _handler, _workspace
+from tests.test_audit_workspace import _handler, _RecordingSession, _workspace
 
 _ID = {"user_id": 42, "username": "kate", "is_active": True, "is_superuser": True}
 _WS = 7
@@ -67,9 +67,7 @@ class NewRowsTests(IsolatedAsyncioTestCase):
             patch.object(workspaces_rpc, "_SF", lambda: session),
             patch.object(workspaces_rpc.workspace_service, "provision", _committing(_workspace())),
         ):
-            envelope = await handler(
-                {"identity": _ID, "payload": {"slug": "acme", "name": "Acme Cup"}}, MagicMock()
-            )
+            envelope = await handler({"identity": _ID, "payload": {"slug": "acme", "name": "Acme Cup"}}, MagicMock())
         self.assertIn("data", envelope)
         # ``create`` is the one flow whose row lands in a SECOND transaction --
         # the id it names does not exist until ``provision`` has committed. The
@@ -118,9 +116,7 @@ class NewRowsTests(IsolatedAsyncioTestCase):
             patch.object(workspaces_rpc.workspace_service, "can_remove_member", AsyncMock(return_value=True)),
             patch.object(workspaces_rpc.workspace_service, "revoke_member", _committing()),
         ):
-            envelope = await handler(
-                {"workspace_id": _WS, "auth_user_id": 22, "identity": _ID}, MagicMock()
-            )
+            envelope = await handler({"workspace_id": _WS, "auth_user_id": 22, "identity": _ID}, MagicMock())
         self.assertIn("data", envelope)
         self._assert(session, "workspace.member_remove", {"auth_user_id": 22})
 

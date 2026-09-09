@@ -555,7 +555,7 @@ class UserCatalogParams:
     max_letters: int = 27
 
     @classmethod
-    def from_query_params(cls, query_params: UserCatalogQueryParams) -> "UserCatalogParams":
+    def from_query_params(cls, query_params: UserCatalogQueryParams) -> UserCatalogParams:
         data = query_params.model_dump()
         if data.get("letter"):
             data["letter"] = data["letter"].upper()

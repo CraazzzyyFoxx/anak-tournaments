@@ -37,7 +37,16 @@ _VALID_TRANSITIONS: dict[TournamentStatus, frozenset[TournamentStatus]] = {
     TournamentStatus.ARCHIVED: frozenset({TournamentStatus.COMPLETED}),
 }
 
-_FINISHED_STATUSES: frozenset[TournamentStatus] = frozenset({TournamentStatus.COMPLETED, TournamentStatus.ARCHIVED})
+# Terminal statuses: the tournament is over. Public because three services used
+# to carry their own literal pair of them (rank collection, the registration
+# backfill script, the registration gate) — this module owns the fact.
+FINISHED_STATUSES: frozenset[TournamentStatus] = frozenset(
+    {TournamentStatus.COMPLETED, TournamentStatus.ARCHIVED}
+)
+
+# Matches are being played right now. PLAYOFFS is in and CHECK_IN is not: what
+# a visitor reads as "live" is a ball in play, not a lobby filling up.
+IN_PLAY_STATUSES: tuple[TournamentStatus, ...] = (TournamentStatus.LIVE, TournamentStatus.PLAYOFFS)
 
 # Canonical ordering of lifecycle phases; automation only ever moves forward
 # along this order.
@@ -109,7 +118,7 @@ def validate_transition(current: TournamentStatus, target: TournamentStatus) -> 
 
 
 def is_finished_for_status(status: TournamentStatus) -> bool:
-    return status in _FINISHED_STATUSES
+    return status in FINISHED_STATUSES
 
 
 def next_due_status(

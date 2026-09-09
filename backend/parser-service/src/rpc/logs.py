@@ -33,7 +33,6 @@ from src.core import auth, db
 from src.core import clients as _clients
 from src.core.config import settings
 from src.services.match_logs import uploads as upload_service
-from src.services.match_logs.limits import match_log_oversize_message
 from src.services.match_logs.admin_reads import (
     _fetch_queue_depths,
     _record_to_dict,
@@ -41,6 +40,7 @@ from src.services.match_logs.admin_reads import (
     history_scope_conditions,
     history_search_condition,
 )
+from src.services.match_logs.limits import match_log_oversize_message
 from src.services.match_logs.log_records import log_records_service
 from src.services.tournament import flows as tournament_flows
 

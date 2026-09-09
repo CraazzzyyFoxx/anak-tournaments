@@ -226,7 +226,16 @@ def composite_uniques(tables) -> list[str]:
     """
     lines: list[str] = []
     for table in tables:
-        for constraint in sorted(table.constraints, key=lambda c: c.name or ""):
+        # ``table.constraints`` is a SET, so iteration order follows object
+        # hashes and changes from process to process. Sorting on the name alone
+        # was not enough: two constraints on the same table can share a name (or
+        # both be unnamed), and the stable sort then preserved that random
+        # order -- which made `--check` fail on an unchanged tree roughly half
+        # the time. The column tuple is what disambiguates them.
+        for constraint in sorted(
+            table.constraints,
+            key=lambda c: (c.name or "", tuple(column.name for column in c.columns)),
+        ):
             if constraint.__class__.__name__ != "UniqueConstraint":
                 continue
             columns = [c.name for c in constraint.columns]

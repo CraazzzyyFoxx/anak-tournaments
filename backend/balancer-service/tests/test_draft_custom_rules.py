@@ -137,9 +137,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         roles = ["tank", "dps", "support"]
         seats = []
         for i, rank in enumerate(self.captain_ranks):
-            registration_id = await self._registration(
-                s, tag=f"Cap{self._suffix}-{i}#1", ranks={roles[i % 3]: rank}
-            )
+            registration_id = await self._registration(s, tag=f"Cap{self._suffix}-{i}#1", ranks={roles[i % 3]: rank})
             seats.append(PoolSeat(registration_id=registration_id, draft_position=i + 1, team_name=f"Cap{i}"))
         return seats
 

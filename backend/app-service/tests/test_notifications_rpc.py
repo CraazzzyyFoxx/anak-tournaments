@@ -83,7 +83,7 @@ class _SessionMaker:
     def __init__(self, shim: _AsyncSessionShim) -> None:
         self._shim = shim
 
-    def __call__(self) -> "_SessionMaker":
+    def __call__(self) -> _SessionMaker:
         return self
 
     async def __aenter__(self) -> _AsyncSessionShim:
@@ -140,9 +140,7 @@ class NotificationsRpcTests(IsolatedAsyncioTestCase):
         # The workspace set is cached per auth_user_id for 60 s in a
         # process-global cashews backend that outlives one test's database.
         for auth_user_id in (ALICE, BOB):
-            await cache.delete(
-                notification_service.WORKSPACE_IDS_CACHE_KEY.format(auth_user_id=auth_user_id)
-            )
+            await cache.delete(notification_service.WORKSPACE_IDS_CACHE_KEY.format(auth_user_id=auth_user_id))
 
     # -- builders ---------------------------------------------------------
 
@@ -170,9 +168,7 @@ class NotificationsRpcTests(IsolatedAsyncioTestCase):
         self.session.flush()
         # ``created_at`` carries a ``now()`` server default, which SQLite has no
         # function for -- supply it rather than teach the engine a shim.
-        self.session.execute(
-            sa.insert(user_roles).values(user_id=auth_user_id, role_id=role.id, created_at=PAST)
-        )
+        self.session.execute(sa.insert(user_roles).values(user_id=auth_user_id, role_id=role.id, created_at=PAST))
         self.session.flush()
 
     def read_marks(self, auth_user_id: int) -> list[int]:
@@ -412,7 +408,7 @@ class NotificationsRpcTests(IsolatedAsyncioTestCase):
         self.assertEqual([item["id"] for item in bobs_inbox["data"]["items"]], [bobs_row])
 
     async def test_delete_only_read_spares_the_unread_rows(self) -> None:
-        """"Clear read" is the bulk button; it must not swallow the unopened."""
+        """ "Clear read" is the bulk button; it must not swallow the unopened."""
         seen = self.personal(ALICE, kind="registration.approved")
         fresh = self.personal(ALICE, kind="team_invite.received")
         await self.call(

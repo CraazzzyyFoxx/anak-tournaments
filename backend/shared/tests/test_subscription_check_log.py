@@ -14,13 +14,13 @@ from datetime import UTC, datetime, timedelta
 from unittest import IsolatedAsyncioTestCase
 
 from shared.core.enums import SubscriptionCheckState, SubscriptionCollectionSource
+from shared.services.subscriptions import SubscriptionSource, SubscriptionState, SubscriptionVerdict
 from shared.services.subscriptions.entitlements import (
     SUBSCRIPTION_TTL_SECONDS,
     ProviderConfigRow,
     StoredEntitlement,
     SubscriptionResolver,
 )
-from shared.services.subscriptions import SubscriptionSource, SubscriptionState, SubscriptionVerdict
 
 WS = 7
 NOW = datetime(2026, 8, 4, 12, 0, tzinfo=UTC)

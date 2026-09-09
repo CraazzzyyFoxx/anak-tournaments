@@ -119,9 +119,7 @@ class UserAdminService:
         await session.commit()
         return await self.get_user_or_404(session, user_id)
 
-    async def update_user(
-        self, session: AsyncSession, user_id: int, data: schemas.UserAdminUpdate
-    ) -> models.User:
+    async def update_user(self, session: AsyncSession, user_id: int, data: schemas.UserAdminUpdate) -> models.User:
         """Update user fields"""
         result = await session.execute(select(models.User).where(models.User.id == user_id))
         user = result.scalar_one_or_none()
@@ -174,9 +172,7 @@ class UserAdminService:
         url: str | None = None,
     ) -> None:
         await self.get_user_or_404(session, user_id)
-        await social_svc.upsert_social_account(
-            session, user_id=user_id, provider=provider, username=username, url=url
-        )
+        await social_svc.upsert_social_account(session, user_id=user_id, provider=provider, username=username, url=url)
         await session.commit()
 
     async def update_social_account(
@@ -228,9 +224,7 @@ class UserAdminService:
         visible: bool,
     ) -> None:
         await self._owned_account_or_404(session, user_id=user_id, account_id=account_id)
-        await social_svc.set_visibility(
-            session, account_id=account_id, workspace_id=workspace_id, visible=visible
-        )
+        await social_svc.set_visibility(session, account_id=account_id, workspace_id=workspace_id, visible=visible)
         await session.commit()
 
     async def set_own_social_primary(self, session: AsyncSession, *, player_id: int, account_id: int) -> None:

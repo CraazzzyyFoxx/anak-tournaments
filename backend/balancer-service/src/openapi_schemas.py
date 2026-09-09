@@ -52,9 +52,7 @@ OPERATIONS: dict[str, Op] = {
         request=schemas.DraftSessionCreateRequest, response=schemas.DraftSessionRead
     ),
     "rpc.balancer.draft.seed": Op(request=schemas.DraftSeedRequest, response=schemas.DraftSeedResponse),
-    "rpc.balancer.draft.session_patch": Op(
-        request=schemas.DraftSessionPatchRequest, response=schemas.DraftSessionRead
-    ),
+    "rpc.balancer.draft.session_patch": Op(request=schemas.DraftSessionPatchRequest, response=schemas.DraftSessionRead),
     "rpc.balancer.draft.start": Op(response=schemas.DraftSessionRead),
     "rpc.balancer.draft.pause": Op(response=schemas.DraftSessionRead),
     "rpc.balancer.draft.resume": Op(response=schemas.DraftSessionRead),
@@ -63,22 +61,14 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.draft.export": Op(response=schemas.DraftSessionRead),
     "rpc.balancer.draft.export_ranks": Op(response=schemas.RanksExportResponse),
     # ── draft: pick actions (all -> DraftSessionRead) ──────────────────────
-    "rpc.balancer.draft.pick_select": Op(
-        request=schemas.DraftPickSelectRequest, response=schemas.DraftSessionRead
-    ),
-    "rpc.balancer.draft.pick_autopick": Op(
-        request=schemas.DraftPickAutopickRequest, response=schemas.DraftSessionRead
-    ),
-    "rpc.balancer.draft.pick_override": Op(
-        request=schemas.DraftPickOverrideRequest, response=schemas.DraftSessionRead
-    ),
+    "rpc.balancer.draft.pick_select": Op(request=schemas.DraftPickSelectRequest, response=schemas.DraftSessionRead),
+    "rpc.balancer.draft.pick_autopick": Op(request=schemas.DraftPickAutopickRequest, response=schemas.DraftSessionRead),
+    "rpc.balancer.draft.pick_override": Op(request=schemas.DraftPickOverrideRequest, response=schemas.DraftSessionRead),
     # ── pickup mixes: writes (responses are hand-built dicts, see DOCS) ─────
     "rpc.balancer.custom.create": Op(request=custom_game.CustomGameCreate),
     "rpc.balancer.custom.update_roster": Op(request=custom_game.CustomGameRosterUpdate),
     "rpc.balancer.custom.update_player": Op(request=custom_game.CustomGamePlayerPatch),
-    "rpc.balancer.custom.set_participation": Op(
-        request=custom_game.CustomGamePlayersParticipationPatch
-    ),
+    "rpc.balancer.custom.set_participation": Op(request=custom_game.CustomGamePlayersParticipationPatch),
     "rpc.balancer.custom.set_team_names": Op(request=custom_game.CustomGameTeamNamesPatch),
     "rpc.balancer.custom.set_role_mask": Op(request=custom_game.CustomGameRoleMaskPatch),
     "rpc.balancer.custom.set_points_per_win": Op(request=custom_game.CustomGamePointsPerWinPatch),

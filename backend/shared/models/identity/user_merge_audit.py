@@ -35,4 +35,4 @@ class UserMergeAudit(db.TimeStampIntegerMixin):
     affected_counts_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     preview_snapshot_json: Mapped[dict] = mapped_column(JSON, nullable=False)
 
-    operator: Mapped["AuthUser | None"] = relationship()
+    operator: Mapped[AuthUser | None] = relationship()

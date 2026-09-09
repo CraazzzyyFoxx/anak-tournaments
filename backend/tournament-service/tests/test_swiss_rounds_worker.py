@@ -137,4 +137,3 @@ class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
         generate.assert_awaited_once()
         self.assertEqual(77, generate.await_args.kwargs["stage_id"])
         self.assertIs(stage, generate.await_args.kwargs["stage"])
-

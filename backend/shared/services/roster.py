@@ -172,8 +172,7 @@ class RosterEngine:
             author_user_id=author_user_id,
         )
         return {
-            reg.id: self._build(reg, declared[reg.id], resolved.get(reg.id, {}), mode=mode)
-            for reg in registrations
+            reg.id: self._build(reg, declared[reg.id], resolved.get(reg.id, {}), mode=mode) for reg in registrations
         }
 
     # -- role set ------------------------------------------------------------
@@ -280,9 +279,7 @@ class RosterEngine:
             out[registration_id] = (
                 fallback
                 if member_id is None
-                else {
-                    role: resolved.get((member_id, role.slot_code), rank) for role, rank in fallback.items()
-                }
+                else {role: resolved.get((member_id, role.slot_code), rank) for role, rank in fallback.items()}
             )
         return out
 
@@ -298,7 +295,7 @@ class RosterEngine:
                 WorkspaceMember.id.in_(sorted(set(member_ids))),
             )
         )
-        return {member_id: player_id for member_id, player_id in rows.all()}
+        return dict(rows.all())
 
     # -- assembly ------------------------------------------------------------
 

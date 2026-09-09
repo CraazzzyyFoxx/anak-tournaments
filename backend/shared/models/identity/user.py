@@ -52,11 +52,11 @@ class User(db.TimeStampIntegerMixin):
         unique=True,
         index=True,
     )
-    auth_user: Mapped["AuthUser | None"] = relationship(back_populates="player")
+    auth_user: Mapped[AuthUser | None] = relationship(back_populates="player")
 
     # Unified player identities (battlenet / discord / twitch / boosty / …).
     # Replaced the former battle_tag / discord / twitch / external_account tables.
-    social_accounts: Mapped[list["SocialAccount"]] = relationship(
+    social_accounts: Mapped[list[SocialAccount]] = relationship(
         back_populates="user", uselist=True, passive_deletes=True
     )
 

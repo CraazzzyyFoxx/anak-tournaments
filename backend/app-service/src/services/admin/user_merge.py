@@ -271,19 +271,15 @@ class UserMergeService:
             # workspace, so — like Player above — the merge must repoint each row
             # at the target's workspace_member in that same workspace rather than
             # a flat user_id reassign.
-            affected_counts[EVALUATION_RESULT_MEMBER_REFERENCE_KEY] = (
-                await self._merge_achievement_evaluation_results(
-                    session,
-                    source_user_id=context.source.id,
-                    target_user_id=context.target.id,
-                )
+            affected_counts[EVALUATION_RESULT_MEMBER_REFERENCE_KEY] = await self._merge_achievement_evaluation_results(
+                session,
+                source_user_id=context.source.id,
+                target_user_id=context.target.id,
             )
-            affected_counts[OVERRIDE_MEMBER_REFERENCE_KEY] = (
-                await self._repoint_achievement_override_workspace_members(
-                    session,
-                    source_user_id=context.source.id,
-                    target_user_id=context.target.id,
-                )
+            affected_counts[OVERRIDE_MEMBER_REFERENCE_KEY] = await self._repoint_achievement_override_workspace_members(
+                session,
+                source_user_id=context.source.id,
+                target_user_id=context.target.id,
             )
             for reference_key, model, column_name in REFERENCE_CONFIG:
                 affected_counts[reference_key] = await self._reassign_reference(
@@ -302,12 +298,10 @@ class UserMergeService:
             # mechanism that moves registrations during a merge (the generic
             # REFERENCE_CONFIG loop no longer touches the table) — same repoint
             # pattern as Player/achievements above.
-            affected_counts[REGISTRATION_MEMBER_REFERENCE_KEY] = (
-                await self._repoint_registration_workspace_members(
-                    session,
-                    source_user_id=context.source.id,
-                    target_user_id=context.target.id,
-                )
+            affected_counts[REGISTRATION_MEMBER_REFERENCE_KEY] = await self._repoint_registration_workspace_members(
+                session,
+                source_user_id=context.source.id,
+                target_user_id=context.target.id,
             )
 
             affected_counts["players.user.auth_user_id"] = await self._merge_auth_user_links(
@@ -607,9 +601,7 @@ class UserMergeService:
         for workspace_id, player_ids in _group_by_workspace(rows).items():
             member = await get_or_create_workspace_member(session, workspace_id=workspace_id, player_id=target_user_id)
             result = await session.execute(
-                update(models.Player)
-                .where(models.Player.id.in_(player_ids))
-                .values(workspace_member_id=member.id)
+                update(models.Player).where(models.Player.id.in_(player_ids)).values(workspace_member_id=member.id)
             )
             moved += int(result.rowcount or 0)
 
@@ -847,9 +839,7 @@ class UserMergeService:
                 continue
 
             result = await session.execute(
-                update(registration)
-                .where(registration.id.in_(to_repoint))
-                .values(workspace_member_id=target_member_id)
+                update(registration).where(registration.id.in_(to_repoint)).values(workspace_member_id=target_member_id)
             )
             moved += int(result.rowcount or 0)
 

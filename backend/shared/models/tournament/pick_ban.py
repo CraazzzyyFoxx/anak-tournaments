@@ -174,14 +174,14 @@ class PickBanConfig(db.TimeStampIntegerMixin):
     allow_protect: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
 
     tournament: Mapped[Tournament] = relationship()
-    stage: Mapped["Stage | None"] = relationship()
-    items: Mapped[list["PickBanConfigItem"]] = relationship(
+    stage: Mapped[Stage | None] = relationship()
+    items: Mapped[list[PickBanConfigItem]] = relationship(
         back_populates="config",
         order_by="PickBanConfigItem.sort_order",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    slots: Mapped[list["PickBanConfigSlot"]] = relationship(
+    slots: Mapped[list[PickBanConfigSlot]] = relationship(
         back_populates="config",
         order_by="PickBanConfigSlot.position",
         cascade="all, delete-orphan",
@@ -226,7 +226,7 @@ class PickBanConfigSlot(db.TimeStampIntegerMixin):
     reserve_item_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
     config: Mapped[PickBanConfig] = relationship(back_populates="slots")
-    items: Mapped[list["PickBanConfigSlotItem"]] = relationship(
+    items: Mapped[list[PickBanConfigSlotItem]] = relationship(
         back_populates="slot",
         order_by="PickBanConfigSlotItem.sort_order",
         cascade="all, delete-orphan",
@@ -367,7 +367,7 @@ class PickBanEntry(db.TimeStampIntegerMixin):
     protected_by: Mapped[enums.MapPickSide | None] = mapped_column(PICK_BAN_SIDE_ENUM, nullable=True)
 
     session: Mapped[PickBanSession] = relationship()
-    team: Mapped["Team | None"] = relationship()
+    team: Mapped[Team | None] = relationship()
 
 
 class EncounterPickBanLedger(db.TimeStampIntegerMixin):
@@ -426,4 +426,4 @@ class EncounterReadiness(db.TimeStampIntegerMixin):
     ready_user_id: Mapped[int | None] = mapped_column(ForeignKey(User.id, ondelete="SET NULL"), nullable=True)
 
     encounter: Mapped[Encounter] = relationship()
-    ready_user: Mapped["User | None"] = relationship()
+    ready_user: Mapped[User | None] = relationship()

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import enums
 from shared.core.social import SocialProvider, normalize_social_handle
+from shared.core.tournament_state import FINISHED_STATUSES
 from shared.repository.ranks import (
     BattleTagRankStateRepository,
     RankFetchLogRepository,
@@ -38,10 +39,7 @@ MAX_BACKOFF_SECONDS = 6 * 60 * 60
 
 # Tournament statuses whose registrations we do NOT backfill — finished events
 # shouldn't keep the collector polling their players forever.
-INACTIVE_TOURNAMENT_STATUSES = (
-    enums.TournamentStatus.COMPLETED.value,
-    enums.TournamentStatus.ARCHIVED.value,
-)
+INACTIVE_TOURNAMENT_STATUSES = tuple(sorted(status.value for status in FINISHED_STATUSES))
 
 
 def _now() -> datetime:
@@ -303,7 +301,9 @@ class RankStateService:
         """
         state = models.BattleTagRankState
         query = (
-            sa.select(sa.func.count()).select_from(state).where(state.status != enums.RankCollectionStatus.disabled.value)
+            sa.select(sa.func.count())
+            .select_from(state)
+            .where(state.status != enums.RankCollectionStatus.disabled.value)
         )
         if scope == "registrations_only":
             query = query.where(state.priority_tier > 0)
@@ -365,9 +365,9 @@ class RankStateService:
         async def _coverage(delta: timedelta) -> int:
             return int(
                 await session.scalar(
-                    _scoped(sa.select(sa.func.count(sa.distinct(snap.social_account_id))), snap.social_account_id).where(
-                        snap.captured_at > now - delta
-                    )
+                    _scoped(
+                        sa.select(sa.func.count(sa.distinct(snap.social_account_id))), snap.social_account_id
+                    ).where(snap.captured_at > now - delta)
                 )
                 or 0
             )

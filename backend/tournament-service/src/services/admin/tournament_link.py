@@ -25,9 +25,7 @@ class TournamentLinkService:
         *,
         active_only: bool = False,
     ) -> list[models.TournamentLink]:
-        return list(
-            await self.link_repo.list_for_tournament(session, tournament_id, active_only=active_only)
-        )
+        return list(await self.link_repo.list_for_tournament(session, tournament_id, active_only=active_only))
 
     async def list_links_bulk(
         self,
@@ -36,9 +34,7 @@ class TournamentLinkService:
         *,
         active_only: bool = False,
     ) -> dict[int, list[models.TournamentLink]]:
-        return await self.link_repo.list_for_tournaments(
-            session, tournament_ids, active_only=active_only
-        )
+        return await self.link_repo.list_for_tournaments(session, tournament_ids, active_only=active_only)
 
     async def get_link(self, session: AsyncSession, link_id: int) -> models.TournamentLink:
         link = await self.link_repo.get(session, link_id)

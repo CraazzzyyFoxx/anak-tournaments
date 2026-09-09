@@ -9,8 +9,8 @@ from loguru import logger
 from src import models
 from src.core import db
 from src.services.admin.stage import stage_service
-from src.services.standings.swiss_auto_round import swiss_rounds_service
 from src.services.computation.jobs import jobs_service
+from src.services.standings.swiss_auto_round import swiss_rounds_service
 from src.services.tournament.events import enqueue_tournament_changed
 
 

@@ -166,9 +166,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.roster.get_by = AsyncMock(return_value=None)
         self.roster.delete = AsyncMock()
         # Every requested member exists in this workspace unless a test says otherwise.
-        self.load_roster = AsyncMock(
-            side_effect=lambda _s, *, workspace_id, member_ids: _members(*member_ids)
-        )
+        self.load_roster = AsyncMock(side_effect=lambda _s, *, workspace_id, member_ids: _members(*member_ids))
         # No workspace member resolves to a host name unless a test says
         # otherwise -- `transfer_host` treats an unresolved id as "not a member".
         self.load_hosts = AsyncMock(return_value={})
@@ -257,9 +255,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual([row.sort_order for row in rows], [0, 1])
 
     async def test_create_without_members_is_an_empty_mix(self) -> None:
-        await self.service.create(
-            self.session, workspace_id=1, host_user_id=9, name="Scrim", actor_user_id=9
-        )
+        await self.service.create(self.session, workspace_id=1, host_user_id=9, name="Scrim", actor_user_id=9)
         self.roster.create_many.assert_not_called()
 
     async def test_member_of_another_workspace_404(self) -> None:
@@ -296,9 +292,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.run_balance.return_value = payload
 
         with patch("shared.models.BalancerBalance") as balance_cls:
-            out = await self.service.balance(
-                self.session, workspace_id=1, custom_game_id=11, actor_user_id=9
-            )
+            out = await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
             balance_cls.assert_not_called()
 
         self.run_balance.assert_awaited_once()
@@ -683,10 +677,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             member_ids=[7, 8],
         )
 
-        seeded = {
-            call.kwargs["workspace_member_id"]: call.kwargs
-            for call in self.ranks.set_ranks.await_args_list
-        }
+        seeded = {call.kwargs["workspace_member_id"]: call.kwargs for call in self.ranks.set_ranks.await_args_list}
         self.assertEqual(sorted(seeded), [7, 8])
         self.assertEqual(seeded[7]["author_user_id"], 9)
         self.assertEqual(seeded[7]["workspace_id"], 1)
@@ -733,9 +724,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # 7 was already in the mix, so its book was seeded when it joined; only
         # the newcomer is resolved and written.
         self.assertEqual(self.ranks.resolve.await_args.kwargs["members"], {8: 80})
-        self.assertEqual(
-            [call.kwargs["workspace_member_id"] for call in self.ranks.set_ranks.await_args_list], [8]
-        )
+        self.assertEqual([call.kwargs["workspace_member_id"] for call in self.ranks.set_ranks.await_args_list], [8])
 
     async def test_record_outcome_terminal_409(self) -> None:
         for status in ("completed", "cancelled"):
@@ -804,8 +793,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         created_players = [call.args[1] for call in self.casual_players.create.await_args_list]
         self.assertEqual(
             sorted(
-                (row.workspace_member_id, row.team_id, row.rank, row.display_name_snapshot)
-                for row in created_players
+                (row.workspace_member_id, row.team_id, row.rank, row.display_name_snapshot) for row in created_players
             ),
             [
                 (7, 101, 3200, "Alpha"),
@@ -1140,9 +1128,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         """End-to-end wiring: what ``set_balancer_config`` persisted is exactly
         what ``balance`` forwards to the solver -- no filtering step in between,
         because the mix's own settings never shared that column."""
-        self.games.get.return_value = _game(
-            points_per_win=10, balancer_config_json={"population_size": 200}
-        )
+        self.games.get.return_value = _game(points_per_win=10, balancer_config_json={"population_size": 200})
         self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
         self.ranks.resolve.return_value = _ranks(7)
 
@@ -1396,9 +1382,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
     async def test_close_marks_the_mix_completed_without_a_result(self) -> None:
         self.games.get.return_value = _game(status="balanced")
 
-        game = await self.service.close(
-            self.session, workspace_id=1, custom_game_id=11, actor_user_id=9
-        )
+        game = await self.service.close(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
 
         self.assertEqual(game.status, "completed")
 
@@ -1606,9 +1590,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         config_overrides = self.run_balance.await_args.args[1]
         self.assertEqual(config_overrides, {"MMR_DIFF_WEIGHT": 5})
 
-    def _seat(
-        self, uuid: str, name: str, rating: float, role: str, **overrides: object
-    ) -> dict[str, object]:
+    def _seat(self, uuid: str, name: str, rating: float, role: str, **overrides: object) -> dict[str, object]:
         seat = {
             "uuid": uuid,
             "name": name,
@@ -1764,9 +1746,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
     async def test_swap_seats_terminal_409(self) -> None:
         for status in ("completed", "cancelled"):
             with self.subTest(status=status):
-                self.games.get.return_value = _game(
-                    status=status, balance_result_json=self._two_team_result()
-                )
+                self.games.get.return_value = _game(status=status, balance_result_json=self._two_team_result())
                 with self.assertRaises(HTTPException) as ctx:
                     await self.service.swap_seats(
                         self.session,
@@ -1841,9 +1821,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             _roster_row(2, 8, 1, created_at=0),
             _roster_row(3, 9, 2, created_at=5),  # joined after the only map recorded so far
         ]
-        self.casual_matches.list_for_custom_game = AsyncMock(
-            return_value=[_match(1, created_at=1, home=[7], away=[])]
-        )
+        self.casual_matches.list_for_custom_game = AsyncMock(return_value=[_match(1, created_at=1, home=[7], away=[])])
 
         recommendations = await self.service.rotation(self.session, workspace_id=1, custom_game_id=11)
         by_id = {rec.member_id: rec for rec in recommendations}

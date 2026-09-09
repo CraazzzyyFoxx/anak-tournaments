@@ -17,7 +17,6 @@ from datetime import UTC, datetime, timedelta
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 from shared.core import draft_state
 from shared.core.enums import (
     DraftCaptainOrder,
@@ -27,9 +26,9 @@ from shared.core.enums import (
     DraftStatus,
     TournamentStatus,
 )
+from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
-from shared.domain.roster import PlayerRoster
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
 from shared.repository.draft import (
@@ -431,9 +430,7 @@ class DraftLifecycleService:
         draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.PAUSED)
         now = datetime.now(UTC)
         current = (
-            await self.picks_repo.get(session, draft_session.current_pick_id)
-            if draft_session.current_pick_id
-            else None
+            await self.picks_repo.get(session, draft_session.current_pick_id) if draft_session.current_pick_id else None
         )
         if current is not None and current.clock_expires_at is not None:
             remaining = (current.clock_expires_at - now).total_seconds() * 1000.0
@@ -451,9 +448,7 @@ class DraftLifecycleService:
             raise rules.role_shortage_error(report)
         now = datetime.now(UTC)
         current = (
-            await self.picks_repo.get(session, draft_session.current_pick_id)
-            if draft_session.current_pick_id
-            else None
+            await self.picks_repo.get(session, draft_session.current_pick_id) if draft_session.current_pick_id else None
         )
         if current is not None:
             remaining_ms = (

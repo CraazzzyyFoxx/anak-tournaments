@@ -160,7 +160,9 @@ class GamemodeRepository(BaseRepository[models.Gamemode]):
 
     async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
         """``(id, name)`` name-ordered — see `HeroRepository.list_lookup`."""
-        result = await session.execute(sa.select(models.Gamemode.id, models.Gamemode.name).order_by(models.Gamemode.name))
+        result = await session.execute(
+            sa.select(models.Gamemode.id, models.Gamemode.name).order_by(models.Gamemode.name)
+        )
         return result.all()
 
     @staticmethod
@@ -199,9 +201,7 @@ class MapRepository(BaseRepository[models.Map]):
         `GamemodeRepository.load_options`."""
         return [selectinload(models.Map.gamemode)] if "gamemode" in entities else []
 
-    async def get_expanded(
-        self, session: AsyncSession, map_id: int, entities: Sequence[str] = ()
-    ) -> models.Map | None:
+    async def get_expanded(self, session: AsyncSession, map_id: int, entities: Sequence[str] = ()) -> models.Map | None:
         return await self.get(session, map_id, options=self.load_options(entities))
 
     async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:

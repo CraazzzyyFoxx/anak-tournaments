@@ -102,7 +102,7 @@ class _SessionMaker:
     def __init__(self, shim: _AsyncSessionShim) -> None:
         self._shim = shim
 
-    def __call__(self) -> "_SessionMaker":
+    def __call__(self) -> _SessionMaker:
         return self
 
     async def __aenter__(self) -> _AsyncSessionShim:
@@ -313,9 +313,7 @@ class AnnouncementRpcTests(IsolatedAsyncioTestCase):
         visible = await self.call("rpc.app.active_announcements", {})
         self.assertEqual([item["id"] for item in visible["data"]], [announcement_id])
 
-        deleted = await self.call(
-            "rpc.app.announcement_delete", {"identity": SUPERUSER, "id": announcement_id}
-        )
+        deleted = await self.call("rpc.app.announcement_delete", {"identity": SUPERUSER, "id": announcement_id})
 
         self.assertTrue(deleted["ok"], deleted)
         banner = await self.call("rpc.app.active_announcements", {})
@@ -332,12 +330,8 @@ class AnnouncementRpcTests(IsolatedAsyncioTestCase):
         Without the scope an owner of one workspace would read the drafts, the
         schedule and the retired announcements of every other tenant.
         """
-        mine = await self.create(
-            OWNER, audience="workspace", workspace_id=WORKSPACE, locales={"ru": {"title": "Сбор"}}
-        )
-        await self.create(
-            SUPERUSER, audience="workspace", workspace_id=99, locales={"ru": {"title": "Чужое"}}
-        )
+        mine = await self.create(OWNER, audience="workspace", workspace_id=WORKSPACE, locales={"ru": {"title": "Сбор"}})
+        await self.create(SUPERUSER, audience="workspace", workspace_id=99, locales={"ru": {"title": "Чужое"}})
         await self.create(SUPERUSER, audience="global")
 
         listed = await self.call(

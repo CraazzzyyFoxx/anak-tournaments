@@ -38,7 +38,6 @@ async def _validate_tournament_workspace(session: Any, tournament_id: int, works
         raise HTTPException(status_code=400, detail="workspace_id does not match tournament workspace")
 
 
-
 def register(broker: Any, logger: Any) -> None:
     sf = db.async_session_maker
 

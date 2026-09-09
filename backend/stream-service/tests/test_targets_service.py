@@ -35,7 +35,9 @@ class _FakeLinks:
     async def list_active_by_kind(self, session: Any, tournament_id: int, kind: str) -> list[Any]:
         return []
 
-    async def list_active_by_kind_bulk(self, session: Any, tournament_ids: list[int], kind: str) -> dict[int, list[Any]]:
+    async def list_active_by_kind_bulk(
+        self, session: Any, tournament_ids: list[int], kind: str
+    ) -> dict[int, list[Any]]:
         return {tid: [] for tid in tournament_ids}
 
 

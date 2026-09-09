@@ -132,7 +132,7 @@ class NotificationRepository(BaseRepository[models.Notification]):
         return sa.and_(clause, ~self._deleted_mark(auth_user_id))
 
     def _read_mark(self, auth_user_id: int) -> sa.ColumnElement[bool]:
-        """"this identity has a read mark on this row" -- the only definition.
+        """ "this identity has a read mark on this row" -- the only definition.
 
         Scoped by ``auth_user_id`` on purpose: a read mark is a fact about the
         *pair*, so somebody else's mark on a shared announcement must never
@@ -145,7 +145,7 @@ class NotificationRepository(BaseRepository[models.Notification]):
         )
 
     def _deleted_mark(self, auth_user_id: int) -> sa.ColumnElement[bool]:
-        """"this identity deleted this row" -- scoped to the pair, like the read mark.
+        """ "this identity deleted this row" -- scoped to the pair, like the read mark.
 
         A deletion always writes ``read_at`` too (the upsert in :meth:`delete`),
         so a deleted row can never be counted as unread by :meth:`unread_count`

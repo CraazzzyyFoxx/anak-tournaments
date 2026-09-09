@@ -70,13 +70,13 @@ class Match(db.TimeStampIntegerMixin):
     # overwrote the first play's row instead of standing beside it.
     map_index: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
-    home_team: Mapped["Team"] = relationship(foreign_keys=[home_team_id])
-    away_team: Mapped["Team"] = relationship(foreign_keys=[away_team_id])
-    encounter: Mapped["Encounter"] = relationship(back_populates="matches")
-    map: Mapped["Map"] = relationship()
+    home_team: Mapped[Team] = relationship(foreign_keys=[home_team_id])
+    away_team: Mapped[Team] = relationship(foreign_keys=[away_team_id])
+    encounter: Mapped[Encounter] = relationship(back_populates="matches")
+    map: Mapped[Map] = relationship()
     # lazy="raise": only the admin surfaces need it, and an implicit load here
     # would fire inside async paths that cannot do IO on attribute access.
-    log_record: Mapped["LogProcessingRecord | None"] = relationship(lazy="raise")
+    log_record: Mapped[LogProcessingRecord | None] = relationship(lazy="raise")
 
 
 # Derived from ``Match`` existence rather than stored: a persisted boolean

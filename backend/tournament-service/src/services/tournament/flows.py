@@ -7,6 +7,7 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared.core.tournament_state import IN_PLAY_STATUSES
 from shared.division_grid import DivisionGrid
 from shared.domain.roster_shape import resolve_roster_shape
 from shared.models.identity.auth_user import AuthUser
@@ -38,12 +39,6 @@ def _loaded_relationship(model: typing.Any, name: str) -> typing.Any | None:
 
 
 _StageReadT = typing.TypeVar("_StageReadT", schemas.StageSummaryRead, schemas.StageRead)
-
-
-#: "Live right now" for the page hero: a tournament in group play or already in
-#: its bracket. Both are matches being played, which is what a visitor reads the
-#: counter as — `check_in` is not.
-_LIVE_STATUSES = (enums.TournamentStatus.LIVE, enums.TournamentStatus.PLAYOFFS)
 
 
 def _apply_stage_challonge(
@@ -386,7 +381,7 @@ class TournamentFlowsService:
         )
         # Every member present, always: an absent key would force each client to
         # re-derive "this status exists but has none" from the enum itself.
-        by_status = {member: 0 for member in enums.TournamentStatus}
+        by_status = dict.fromkeys(enums.TournamentStatus, 0)
         for row_status, count in status_rows.all():
             by_status[enums.TournamentStatus(row_status)] = int(count)
 
@@ -407,9 +402,7 @@ class TournamentFlowsService:
             await session.execute(
                 sa.select(
                     sa.func.count(models.Tournament.id),
-                    sa.func.count(models.Tournament.id).filter(
-                        models.Tournament.status.in_(_LIVE_STATUSES)
-                    ),
+                    sa.func.count(models.Tournament.id).filter(models.Tournament.status.in_(IN_PLAY_STATUSES)),
                 ).where(*scope)
             )
         ).one()
@@ -494,13 +487,9 @@ class TournamentFlowsService:
             teams_locked_ids = await registered_team_tournament_ids(session, tournament_ids)
         links_by_tournament: dict[int, list[schemas.TournamentLinkRead]] | None = None
         if _entity_requested(params.entities, "links"):
-            raw_links = await tournament_link_service.list_links_bulk(
-                session, tournament_ids, active_only=True
-            )
+            raw_links = await tournament_link_service.list_links_bulk(session, tournament_ids, active_only=True)
             links_by_tournament = {
-                tournament_id: [
-                    schemas.TournamentLinkRead.model_validate(row, from_attributes=True) for row in rows
-                ]
+                tournament_id: [schemas.TournamentLinkRead.model_validate(row, from_attributes=True) for row in rows]
                 for tournament_id, rows in raw_links.items()
             }
         return pagination.Paginated(

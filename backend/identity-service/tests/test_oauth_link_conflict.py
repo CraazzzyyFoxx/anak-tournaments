@@ -93,9 +93,7 @@ def test_link_refused_when_another_account_still_owns_the_provider_identity() ->
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            oauth_accounts.link_to_user(
-                session, SimpleNamespace(id=1, username="me"), _oauth_info(), TOKEN_DATA
-            )
+            oauth_accounts.link_to_user(session, SimpleNamespace(id=1, username="me"), _oauth_info(), TOKEN_DATA)
         )
 
     assert exc_info.value.status_code == 409
@@ -113,9 +111,7 @@ def test_relinking_the_same_provider_account_is_idempotent() -> None:
     session.refresh = lambda _instance: asyncio.sleep(0)
 
     result = asyncio.run(
-        oauth_accounts.link_to_user(
-            session, SimpleNamespace(id=1, username="me"), _oauth_info(), TOKEN_DATA
-        )
+        oauth_accounts.link_to_user(session, SimpleNamespace(id=1, username="me"), _oauth_info(), TOKEN_DATA)
     )
 
     assert result is existing

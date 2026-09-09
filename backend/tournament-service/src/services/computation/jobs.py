@@ -60,7 +60,6 @@ class ComputationJobsService:
             retry=Retry(max_attempts=MAX_ATTEMPTS, extra_terminal=frozenset({"superseded"})),
         )
 
-
     async def get_job(
         self,
         session: AsyncSession,
@@ -194,7 +193,6 @@ class ComputationJobsService:
         await dispatch_job(session, job)
         await session.commit()
         return "retry"
-
 
     async def complete_standings_generation(
         self,

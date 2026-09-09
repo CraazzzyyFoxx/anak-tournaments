@@ -47,9 +47,7 @@ class ChallongeSourceRepository(BaseRepository[models.ChallongeSource]):
         source_type: str | None = None,
         options: Sequence[_AbstractLoad] | None = None,
     ) -> Sequence[models.ChallongeSource]:
-        filters: list[sa.ColumnElement[bool]] = [
-            models.ChallongeSource.tournament_id == tournament_id
-        ]
+        filters: list[sa.ColumnElement[bool]] = [models.ChallongeSource.tournament_id == tournament_id]
         if source_type is not None:
             filters.append(models.ChallongeSource.source_type == source_type)
         query = self._apply_options(self.select().where(*filters), options)
@@ -105,9 +103,7 @@ class ChallongeParticipantMappingRepository(BaseRepository[models.ChallongeParti
         if not source_ids:
             return []
         query = self._apply_options(
-            self.select().where(
-                models.ChallongeParticipantMapping.source_id.in_(tuple(source_ids))
-            ),
+            self.select().where(models.ChallongeParticipantMapping.source_id.in_(tuple(source_ids))),
             options,
         )
         result = await session.execute(query)
@@ -147,17 +143,13 @@ class ChallongeMatchMappingRepository(BaseRepository[models.ChallongeMatchMappin
         if not source_ids:
             return []
         query = self._apply_options(
-            self.select().where(
-                models.ChallongeMatchMapping.source_id.in_(tuple(source_ids))
-            ),
+            self.select().where(models.ChallongeMatchMapping.source_id.in_(tuple(source_ids))),
             options,
         )
         result = await session.execute(query)
         return result.unique().scalars().all()
 
-    async def list_encounter_ids(
-        self, session: AsyncSession, source_ids: Sequence[int]
-    ) -> Sequence[int]:
+    async def list_encounter_ids(self, session: AsyncSession, source_ids: Sequence[int]) -> Sequence[int]:
         if not source_ids:
             return []
         result = await session.execute(

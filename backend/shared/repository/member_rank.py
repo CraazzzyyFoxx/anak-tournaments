@@ -70,9 +70,7 @@ class MemberRankRepository(BaseRepository[models.MemberRank]):
         )
         return result.all()
 
-    async def list_authors(
-        self, session: AsyncSession, *, workspace_id: int
-    ) -> Sequence[tuple[int, int]]:
+    async def list_authors(self, session: AsyncSession, *, workspace_id: int) -> Sequence[tuple[int, int]]:
         """Every account that has ever set a rank in this workspace, with how many
         distinct members they have ranked -- busiest author first.
 

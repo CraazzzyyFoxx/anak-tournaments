@@ -58,8 +58,7 @@ def _stamp_rbac(user: models.AuthUser, payload: schemas.TokenPayload) -> None:
         permissions=payload.permissions,
         workspaces=[{"workspace_id": ws.workspace_id, "slug": ws.slug} for ws in payload.workspaces],
         workspace_rbac={
-            ws.workspace_id: {"roles": ws.rbac_roles, "permissions": ws.rbac_permissions}
-            for ws in payload.workspaces
+            ws.workspace_id: {"roles": ws.rbac_roles, "permissions": ws.rbac_permissions} for ws in payload.workspaces
         },
         denies=payload.denies,
     )

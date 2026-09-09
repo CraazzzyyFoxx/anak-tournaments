@@ -25,7 +25,7 @@ class TournamentDiscordChannel(db.TimeStampIntegerMixin):
     is_active: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
 
     # Relations
-    tournament: Mapped["Tournament"] = relationship()
+    tournament: Mapped[Tournament] = relationship()
 
     def __repr__(self):
         return f"<TournamentDiscordChannel tournament_id={self.tournament_id} channel_id={self.channel_id}>"

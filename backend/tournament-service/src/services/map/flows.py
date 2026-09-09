@@ -23,9 +23,7 @@ def map_to_read(map: models.Map, entities: list[str]) -> schemas.MapRead:
 
 
 class MapFlowsService:
-    async def to_pydantic(
-        self, session: AsyncSession, map: models.Map, entities: list[str]
-    ) -> schemas.MapRead:
+    async def to_pydantic(self, session: AsyncSession, map: models.Map, entities: list[str]) -> schemas.MapRead:
         """
         Converts a Map model instance to a Pydantic schema (MapRead), including related entities.
 
