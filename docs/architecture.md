@@ -199,15 +199,26 @@ bus + active-user counters), **RabbitMQ** (all RPC/events/jobs), **S3/MinIO** (a
 icons, match-log files). Workers that call external APIs (Discord, OverFast, Challonge, S3)
 egress through the outbound `proxy` container (xray/shadowsocks).
 
-**Releases.** `.github/workflows/deploy-production.yml` builds all ten images on
-GitHub-hosted runners, pushes them to GHCR (one runner per image, registry-backed build
-cache), then opens one ssh session to the production host that pulls the tag, runs
-`alembic upgrade head` from the *new* image while the *old* containers still serve, and
-finally recreates the stack (`make prod-up`). Nothing builds on the server and no
-self-hosted runner takes part. Publishing a GitHub release runs the four CI gates first;
-`workflow_dispatch` deploys a tag without them, and with `skip_build` it redeploys images
-that already exist — which is the rollback. The remote half is
-[`ops/deploy/remote-deploy.sh`](../ops/deploy/remote-deploy.sh), runnable by hand.
+**Releases.** Pushing a `v*` tag is the whole ritual:
+
+```bash
+git tag -a v1.2.0 -m "…" && git push origin v1.2.0
+```
+
+`.github/workflows/deploy-production.yml` then runs the four CI gates, builds all ten
+images on GitHub-hosted runners and pushes them to GHCR (one runner per image,
+registry-backed build cache), opens one ssh session to the production host that pulls the
+tag, runs `alembic upgrade head` from the *new* image while the *old* containers still
+serve, recreates the stack (`make prod-up`), and finally publishes the GitHub Release —
+notes rendered from the Conventional Commit subjects since the previous tag by
+[`ops/release/changelog.sh`](../ops/release/changelog.sh). The Release is written last on
+purpose: it means "this is what production is running", not "somebody clicked publish".
+
+Nothing builds on the server and no self-hosted runner takes part. `workflow_dispatch`
+deploys a tag without the gates (an operator's call, and the only way out while CI is
+red), and with `skip_build` it redeploys images that already exist — which is the
+rollback. The remote half is [`ops/deploy/remote-deploy.sh`](../ops/deploy/remote-deploy.sh),
+runnable by hand.
 
 ## 7. Observability
 
