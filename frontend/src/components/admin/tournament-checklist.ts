@@ -1,3 +1,4 @@
+import { reachedAtLeast } from "@/lib/tournament-lifecycle";
 import type { TournamentReadiness } from "@/types/admin.types";
 import type { StageSummary, Tournament, TournamentStatus } from "@/types/tournament.types";
 
@@ -52,22 +53,6 @@ export interface ChecklistContext {
   schedule: readonly TournamentStatus[];
   /** Bracket is Challonge-sourced — own registration form does not apply (§3). */
   hasChallongeSource: boolean;
-}
-
-/** Canonical machine order, mirrors backend/shared/core/tournament_state.py. */
-const STATUS_ORDER: readonly string[] = [
-  "registration",
-  "check_in",
-  "draft",
-  "live",
-  "playoffs",
-  "completed",
-  "archived"
-];
-
-function reachedAtLeast(status: string, target: string): boolean {
-  const current = STATUS_ORDER.indexOf(status);
-  return current >= 0 && current >= STATUS_ORDER.indexOf(target);
 }
 
 export function buildChecklist(

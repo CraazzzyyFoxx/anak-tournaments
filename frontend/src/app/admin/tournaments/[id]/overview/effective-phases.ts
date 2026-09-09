@@ -1,21 +1,12 @@
+import { TOURNAMENT_PHASES, phaseRank } from "@/lib/tournament-lifecycle";
 import type { TournamentStatus } from "@/types/tournament.types";
 
 /**
  * Effective lifecycle phase chain for the hub stepper (design D19).
  *
- * Canonical machine order mirrors backend/shared/core/tournament_state.py
- * (PHASE_ORDER): REGISTRATION -> [CHECK_IN] -> [DRAFT] -> LIVE -> PLAYOFFS
- * -> COMPLETED -> [ARCHIVED].
+ * The chain is the machine's own order (`@/lib/tournament-lifecycle`) minus the
+ * phases this tournament will never enter.
  */
-const CANONICAL_ORDER: readonly TournamentStatus[] = [
-  "registration",
-  "check_in",
-  "draft",
-  "live",
-  "playoffs",
-  "completed",
-  "archived",
-];
 
 export interface EffectivePhase {
   key: TournamentStatus;
@@ -41,20 +32,17 @@ export function effectivePhases({
   schedule,
   currentStatus,
 }: EffectivePhasesInput): EffectivePhase[] {
-  const chain = CANONICAL_ORDER.filter(
+  const chain: readonly TournamentStatus[] = TOURNAMENT_PHASES.filter(
     (key) => key !== "draft" || teamFormation === "draft",
   );
 
-  const currentOrder =
-    currentStatus === undefined
-      ? -1
-      : CANONICAL_ORDER.indexOf(currentStatus);
+  const currentOrder = currentStatus === undefined ? -1 : phaseRank(currentStatus);
 
   const phases: EffectivePhase[] = chain.map((key) => ({
     key,
     optional:
       key === "archived" || (key === "check_in" && !schedule.includes(key)),
-    reached: currentOrder >= 0 && CANONICAL_ORDER.indexOf(key) <= currentOrder,
+    reached: currentOrder >= 0 && phaseRank(key) <= currentOrder,
   }));
 
   // Drift: force-transitions can land the tournament on a status outside the

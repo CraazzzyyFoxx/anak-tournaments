@@ -1,24 +1,16 @@
 "use client";
 
-import {
-  SCHEDULABLE_PHASES,
-  type SchedulablePhase
-} from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  SCHEDULABLE_PHASES,
+  TOURNAMENT_STATUS_LABELS,
+  type SchedulablePhase
+} from "@/lib/tournament-lifecycle";
 
 import type { WizardScheduleState } from "../wizard-model";
-
-// Field set mirrors the Schedule & Timeline card of TournamentSettingsTab;
-// that card is inline JSX in a monolithic form, so it is not reusable as-is.
-const PHASE_LABELS: Record<SchedulablePhase, string> = {
-  registration: "Registration",
-  draft: "Draft",
-  check_in: "Check-in",
-  live: "Live"
-};
 
 interface ScheduleStepProps {
   value: WizardScheduleState;
@@ -56,7 +48,7 @@ export function ScheduleStep({ value, onChange, showDraftPhase }: Readonly<Sched
 
       {visiblePhases.map((phase) => (
         <div key={phase} className="space-y-2">
-          <h4 className="text-xs font-medium text-foreground">{PHASE_LABELS[phase]}</h4>
+          <h4 className="text-xs font-medium text-foreground">{TOURNAMENT_STATUS_LABELS[phase]}</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <DateTimePicker
               id={`wizard-phase-${phase}-starts`}

@@ -1,3 +1,4 @@
+import { reachedAtLeast } from "@/lib/tournament-lifecycle";
 import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
 
 export type TournamentSectionId =
@@ -40,13 +41,6 @@ type BuildTournamentSectionNavInput = {
   hasStreams?: boolean;
   pathname: string;
 };
-
-const competitionStatuses = new Set<TournamentStatus>([
-  "live",
-  "playoffs",
-  "completed",
-  "archived"
-]);
 
 const competitionOnlySections = new Set<TournamentSectionId>(["bracket", "matches", "stats"]);
 
@@ -128,7 +122,7 @@ export function buildTournamentSectionNav({
   hasStreams = false,
   pathname
 }: BuildTournamentSectionNavInput): TournamentSectionNavItem[] {
-  const competitionStarted = competitionStatuses.has(status);
+  const competitionStarted = reachedAtLeast(status, "live");
   const currentPath = normalizePathname(pathname);
   // `stream` is present-or-absent rather than open-or-locked, because a locked
   // tab claims the content exists somewhere. It is filtered from its display

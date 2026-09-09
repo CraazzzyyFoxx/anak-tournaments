@@ -344,7 +344,7 @@ export interface TournamentStatusTransitionInput {
  */
 export interface TournamentReadiness {
   tournament_id: number;
-  status: string;
+  status: TournamentStatus;
   team_formation: string;
   // visible with tournament.read:
   schedule_configured: boolean | null;

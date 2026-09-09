@@ -2,13 +2,14 @@ import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 import type { Tone } from "@/components/admin/tone";
 import type { TournamentPhaseScheduleEntryInput, TournamentUpdateInput } from "@/types/admin.types";
 import { utcToZonedInput, zonedInputToUtc } from "@/lib/timezone";
+import {
+  SCHEDULABLE_PHASES,
+  isSchedulablePhase,
+  type SchedulablePhase
+} from "@/lib/tournament-lifecycle";
 import type { RosterSlotMap } from "@/lib/roster-shape";
 import { normalizeSlots } from "@/components/roster-shape/roster-shape-editor.model";
 import { normalizeChallongeSlug } from "@/lib/challonge";
-
-export const SCHEDULABLE_PHASES = ["registration", "check_in", "draft", "live"] as const;
-
-export type SchedulablePhase = (typeof SCHEDULABLE_PHASES)[number];
 
 export type PhaseScheduleFormState = Record<
   SchedulablePhase,
@@ -53,23 +54,19 @@ export function formatDate(value?: Date | string | null) {
  *
  * Statuses are not qualities, so this is not a good/bad scale: `live` is the
  * one that wants attention, a finished tournament is neutral, everything
- * before kickoff is informational.
+ * before kickoff is informational. A `Record` rather than a `switch` with a
+ * default, so a new lifecycle status is a compile error here instead of
+ * silently rendering grey.
  */
-export function tournamentStatusTone(status: TournamentStatus): Tone {
-  switch (status) {
-    case "live":
-    case "playoffs":
-      return "danger";
-    case "registration":
-    case "check_in":
-    case "draft":
-      return "info";
-    case "completed":
-      return "success";
-    default:
-      return "neutral";
-  }
-}
+export const TOURNAMENT_STATUS_TONE: Record<TournamentStatus, Tone> = {
+  registration: "info",
+  check_in: "info",
+  draft: "info",
+  live: "danger",
+  playoffs: "danger",
+  completed: "success",
+  archived: "neutral"
+};
 
 function toDateInput(value?: Date | string | null) {
   if (!value) return "";
@@ -85,8 +82,8 @@ function getPhaseScheduleForm(
   ) as PhaseScheduleFormState;
 
   for (const row of tournament.phase_schedule ?? []) {
-    if ((SCHEDULABLE_PHASES as readonly string[]).includes(row.status)) {
-      schedule[row.status as SchedulablePhase] = {
+    if (isSchedulablePhase(row.status)) {
+      schedule[row.status] = {
         starts_at: utcToZonedInput(row.starts_at, timezone),
         ends_at: utcToZonedInput(row.ends_at, timezone)
       };

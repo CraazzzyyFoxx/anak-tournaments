@@ -13,10 +13,11 @@ import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { useSyncActiveWorkspace } from "@/hooks/useSyncActiveWorkspace";
 import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
+import { TOURNAMENT_STATUS_LABELS } from "@/lib/tournament-lifecycle";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
 import { TournamentHubActions } from "./components/TournamentHubActions";
-import { formatDate, tournamentStatusTone } from "./components/tournamentWorkspace.helpers";
+import { formatDate, TOURNAMENT_STATUS_TONE } from "./components/tournamentWorkspace.helpers";
 import { getTournamentWorkspaceQueryKeys } from "./components/tournamentWorkspace.queryKeys";
 import {
   TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
@@ -288,8 +289,8 @@ export function TournamentHubShell({
       <EntityHubHeader
         title={tournament.name}
         status={{
-          label: tournament.status.replace(/_/g, " "),
-          tone: tournamentStatusTone(tournament.status)
+          label: TOURNAMENT_STATUS_LABELS[tournament.status],
+          tone: TOURNAMENT_STATUS_TONE[tournament.status]
         }}
         meta={[
           <span key="dates" className="tabular-nums">

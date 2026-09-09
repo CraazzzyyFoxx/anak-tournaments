@@ -51,6 +51,7 @@ import {
 import { cn, hexToRgba } from "@/lib/utils";
 import { activeRequirements, formatAdmissionReason, formatRequirementName } from "@/lib/admission";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
+import { reachedAtLeast } from "@/lib/tournament-lifecycle";
 import { isPhaseWindowActive } from "@/lib/tournament-status";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
@@ -222,13 +223,6 @@ interface RegistrationStep {
 /** Statuses that permanently take the registration out of the tournament. */
 const TERMINAL_REGISTRATION_STATUSES = new Set<string>(["rejected", "banned", "withdrawn"]);
 
-const CHECK_IN_OVER_TOURNAMENT_STATUSES = new Set<string>([
-  "live",
-  "playoffs",
-  "completed",
-  "archived"
-]);
-
 /** Team formations whose roster is a player pool rather than a list of teams. */
 const POOL_TEAM_FORMATIONS: Record<string, true> = { balancer: true, draft: true };
 
@@ -383,7 +377,7 @@ function MyRegistrationCard({
   const isApproved = registration.status === "approved";
   const isTerminal = TERMINAL_REGISTRATION_STATUSES.has(registration.status);
   const checkInPhaseOver =
-    !isCheckedIn && !canCheckIn && CHECK_IN_OVER_TOURNAMENT_STATUSES.has(tournament.status);
+    !isCheckedIn && !canCheckIn && reachedAtLeast(tournament.status, "live");
   // Withdrawal closes at check-in: past that point the roster is balanced and
   // drafted against a confirmed attendee list (backend returns 409 too).
   const canWithdraw =
