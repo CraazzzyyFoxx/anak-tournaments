@@ -105,6 +105,12 @@ export default function OAuthConnectionsAdminPage() {
   const columns = useMemo<ColumnDef<OAuthConnectionAdmin>[]>(
     () => [
       {
+        accessorKey: "id",
+        header: "ID",
+        size: 60,
+        cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>
+      },
+      {
         accessorKey: "provider",
         header: "Provider",
         cell: ({ row }) => <ProviderBadge provider={row.original.provider} />

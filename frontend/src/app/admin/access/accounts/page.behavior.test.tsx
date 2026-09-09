@@ -9,9 +9,9 @@
 //     restores it, rather than living in component state;
 //  3. one permission toggle end to end, through the shared `PermissionPicker`:
 //     checking a capability in the inspector's restrictions panel POSTs a deny;
-//  4. five columns do not fit a phone, so rows render as cards below `md`.
+//  4. six columns do not fit a phone, so rows render as cards below `md`.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, useState, type ReactNode } from "react";
+import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -156,7 +156,11 @@ async function settle(turns = 8, delayMs = 0) {
 
 function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
   const [, force] = useState(0);
-  rerender = () => force((value) => value + 1);
+  // Published from an effect, not during render: writing a module-scope binding
+  // while rendering is a side effect the react-compiler rules reject.
+  useEffect(() => {
+    rerender = () => force((value) => value + 1);
+  }, []);
   return <>{render()}</>;
 }
 

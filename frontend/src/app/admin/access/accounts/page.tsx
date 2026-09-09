@@ -104,6 +104,12 @@ export default function AccessAdminAccountsPage() {
   const columns = useMemo<ColumnDef<AuthAdminUser>[]>(
     () => [
       {
+        accessorKey: "id",
+        header: "ID",
+        size: 60,
+        cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>
+      },
+      {
         accessorKey: "email",
         header: "Account",
         cell: ({ row }) => (
