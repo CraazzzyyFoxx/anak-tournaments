@@ -218,9 +218,16 @@ jobs:
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           # The variables ride in on stdin ahead of the script instead of in the
           # remote command line, so the token never shows up in `ps` on the box.
+          #
+          # The remote side writes that stream to a file and THEN runs it, rather
+          # than `bash -s` reading it straight off stdin: `docker compose run`
+          # attaches the container to stdin, and on the first attempt it ate the
+          # rest of the script -- the deploy stopped silently after the migration
+          # step and still exited 0.
           {
             printf 'TAG=%q\nPROD_SIZE=%q\nGHCR_USER=%q\nGHCR_TOKEN=%q\n' \
               "$TAG" "$PROD_SIZE" "$GHCR_USER" "$GHCR_TOKEN"
             printf 'export TAG PROD_SIZE GHCR_USER GHCR_TOKEN\n'
             cat ops/deploy/remote-deploy.sh
-          } | ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s'
+          } | ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            'set -e; f=$(mktemp /tmp/owt-deploy.XXXXXX.sh); trap "rm -f $f" EXIT; cat > "$f"; bash "$f"'

@@ -45,7 +45,11 @@ docker compose -f "${COMPOSE_FILE}" pull --quiet
 # order is what keeps a deploy from 500ing in between: every migration this
 # project ships is additive, so old code tolerates the new schema, while new
 # code cannot tolerate the old one.
-docker compose -f "${COMPOSE_FILE}" run --rm --no-deps app-svc alembic upgrade head
+#
+# `-T` and `</dev/null`: `run` attaches the container to this script's stdin
+# otherwise, and when the script itself arrives on stdin the container swallows
+# the rest of it.
+docker compose -f "${COMPOSE_FILE}" run --rm --no-deps -T app-svc alembic upgrade head </dev/null
 
 make prod-up PROD_SIZE="${PROD_SIZE}"
 
