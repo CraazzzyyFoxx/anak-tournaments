@@ -62,7 +62,7 @@ export default function LanguageSwitcher({ className }: Readonly<{ className?: s
             aria-pressed={isActive}
             aria-label={LANGUAGE_NAME[loc]}
             className={cn(
-              "aqt-mono relative z-10 flex h-full w-9 items-center justify-center rounded-[calc(var(--aqt-radius-sm)-3px)] text-[11px] font-semibold uppercase tracking-wide outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+              "aqt-tnum relative z-10 flex h-full w-9 items-center justify-center rounded-[calc(var(--aqt-radius-sm)-3px)] text-label font-semibold uppercase tracking-wide outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
               isActive
                 ? "text-[color:var(--aqt-teal)]"
                 : "text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"

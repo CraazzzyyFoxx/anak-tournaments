@@ -483,10 +483,7 @@ def test_map_subrole_token_rejects_unknown_when_catalog():
 
 
 def test_map_subrole_token_mapped_value_must_be_in_catalog():
-    assert (
-        sheet_parsing.map_subrole_token("хит", {"subroles": {"хит": "hitscan"}}, _SUBROLE_CATALOG)
-        == "hitscan"
-    )
+    assert sheet_parsing.map_subrole_token("хит", {"subroles": {"хит": "hitscan"}}, _SUBROLE_CATALOG) == "hitscan"
     assert sheet_parsing.map_subrole_token("хит", {"subroles": {"хит": "burst"}}, _SUBROLE_CATALOG) is None
 
 
@@ -528,7 +525,6 @@ def test_catalog_slugs_none_skips_enforcement():
     assert catalog_slugs(None) is None
     assert catalog_slugs(_SUBROLE_CATALOG, "dps") == {"hitscan"}
     assert catalog_slugs(_SUBROLE_CATALOG) == {"hitscan", "main_heal"}
-
 
 
 def test_sr_value_numeric_string():

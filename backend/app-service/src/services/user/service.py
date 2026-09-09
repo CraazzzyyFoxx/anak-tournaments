@@ -1,3 +1,4 @@
+import asyncio
 import typing
 from statistics import mean
 
@@ -16,6 +17,7 @@ from shared.services.division_grid.resolution import (
 )
 from src import models, schemas
 from src.core import config, enums, errors, pagination
+from src.core.db import async_session_maker
 from src.core.workspace import get_division_grid_version
 from src.services.hero.service import heroes as hero_service
 from src.services.statistics.queries import StatisticsQueries
@@ -207,8 +209,7 @@ class UserService:
         return self.to_read(user, entities, visible_only=True)
 
     async def get_all(
-        self,
-        session: AsyncSession, params: pagination.PaginationSortSearchParams
+        self, session: AsyncSession, params: pagination.PaginationSortSearchParams
     ) -> pagination.Paginated[schemas.UserRead]:
         """Paginated users as ``UserRead`` schemas."""
         users, total = await self.profile.get_all(session, params)
@@ -217,6 +218,62 @@ class UserService:
             per_page=params.per_page,
             total=total,
             results=[self.to_read(user, params.entities, visible_only=True) for user in users],
+        )
+
+    async def _gather_overview_enrichment(
+        self,
+        session: AsyncSession,
+        user_ids: list[int],
+        *,
+        workspace_id: int | None,
+        top_heroes_limit: int = 5,
+    ) -> tuple[
+        dict[int, list[tuple[enums.HeroClass, int, int | None]]],
+        dict[int, int],
+        dict[int, int],
+        dict[int, tuple[float | None, float | None, float | None, float | None]],
+        dict[int, list[tuple[models.Hero, float]]],
+        dict[tuple[int, int], dict[enums.LogStatsName, float]],
+    ]:
+        """Fan out the independent per-page aggregates.
+
+        AsyncSession is not concurrency-safe, so each parallel query gets
+        its own session (same pattern as DashboardService._gather). Hero
+        metrics need the top-heroes map, so they run after the gather on the
+        request session.
+        """
+
+        async def _isolated(fn):
+            async with async_session_maker() as isolated:
+                return await fn(isolated)
+
+        (
+            raw_roles_map,
+            tournaments_count_map,
+            achievements_count_map,
+            averages_map,
+            top_heroes_map,
+        ) = await asyncio.gather(
+            _isolated(lambda s: self.overview.get_overview_role_divisions(s, user_ids, workspace_id=workspace_id)),
+            _isolated(lambda s: self.overview.get_overview_tournaments_count(s, user_ids, workspace_id=workspace_id)),
+            _isolated(lambda s: self.overview.get_overview_achievements_count(s, user_ids, workspace_id=workspace_id)),
+            _isolated(lambda s: self.overview.get_overview_averages(s, user_ids, workspace_id=workspace_id)),
+            _isolated(
+                lambda s: self.overview.get_overview_top_heroes(
+                    s, user_ids, limit=top_heroes_limit, workspace_id=workspace_id
+                )
+            ),
+        )
+        hero_metrics_map = await self.overview.get_overview_top_hero_metrics(
+            session, top_heroes_map, workspace_id=workspace_id
+        )
+        return (
+            raw_roles_map,
+            tournaments_count_map,
+            achievements_count_map,
+            averages_map,
+            top_heroes_map,
+            hero_metrics_map,
         )
 
     async def get_overview(
@@ -249,12 +306,14 @@ class UserService:
             )
 
         user_ids = [user.id for user in users]
-        raw_roles_map = await self.overview.get_overview_role_divisions(session, user_ids, workspace_id=workspace_id)
-        tournaments_count_map = await self.overview.get_overview_tournaments_count(session, user_ids, workspace_id=workspace_id)
-        achievements_count_map = await self.overview.get_overview_achievements_count(session, user_ids, workspace_id=workspace_id)
-        averages_map = await self.overview.get_overview_averages(session, user_ids, workspace_id=workspace_id)
-        top_heroes_map = await self.overview.get_overview_top_heroes(session, user_ids, workspace_id=workspace_id)
-        hero_metrics_map = await self.overview.get_overview_top_hero_metrics(session, top_heroes_map, workspace_id=workspace_id)
+        (
+            raw_roles_map,
+            tournaments_count_map,
+            achievements_count_map,
+            averages_map,
+            top_heroes_map,
+            hero_metrics_map,
+        ) = await self._gather_overview_enrichment(session, user_ids, workspace_id=workspace_id)
 
         rows: list[schemas.UserOverviewRow] = []
         for user in users:
@@ -328,11 +387,11 @@ class UserService:
     async def get_overview_stats(
         self,
         session: AsyncSession,
-        params: "schemas.UserOverviewStatsQueryParams",
+        params: schemas.UserOverviewStatsQueryParams,
         *,
         grid: DivisionGrid,
         workspace_id: int | None = None,
-    ) -> "schemas.UserOverviewStats":
+    ) -> schemas.UserOverviewStats:
         if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
             raise errors.ApiHTTPException(
                 status_code=400,
@@ -358,12 +417,12 @@ class UserService:
     async def get_catalog(
         self,
         session: AsyncSession,
-        params: "schemas.UserCatalogParams",
+        params: schemas.UserCatalogParams,
         *,
         grid: DivisionGrid,
         normalizer: DivisionGridNormalizer | None = None,
         workspace_id: int | None = None,
-    ) -> "schemas.UserCatalogResponse":
+    ) -> schemas.UserCatalogResponse:
         if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
             raise errors.ApiHTTPException(
                 status_code=400,
@@ -397,12 +456,19 @@ class UserService:
             )
 
         user_ids = [user.id for user in flat_users]
-        raw_roles_map = await self.overview.get_overview_role_divisions(session, user_ids, workspace_id=workspace_id)
-        tournaments_count_map = await self.overview.get_overview_tournaments_count(session, user_ids, workspace_id=workspace_id)
-        achievements_count_map = await self.overview.get_overview_achievements_count(session, user_ids, workspace_id=workspace_id)
-        averages_map = await self.overview.get_overview_averages(session, user_ids, workspace_id=workspace_id)
-        top_heroes_map = await self.overview.get_overview_top_heroes(session, user_ids, limit=3, workspace_id=workspace_id)
-        hero_metrics_map = await self.overview.get_overview_top_hero_metrics(session, top_heroes_map, workspace_id=workspace_id)
+        (
+            raw_roles_map,
+            tournaments_count_map,
+            achievements_count_map,
+            averages_map,
+            top_heroes_map,
+            hero_metrics_map,
+        ) = await self._gather_overview_enrichment(
+            session,
+            user_ids,
+            workspace_id=workspace_id,
+            top_heroes_limit=3,
+        )
 
         catalog_letters: list[schemas.UserCatalogLetter] = []
         for letter_label, users in letters_with_users:
@@ -496,7 +562,9 @@ class UserService:
         if mode == "target_user" and not params.target_user_id:
             raise errors.ApiHTTPException(
                 status_code=400,
-                detail=[errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")],
+                detail=[
+                    errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")
+                ],
             )
 
         baseline_target: schemas.UserCompareUser | None = None
@@ -528,21 +596,9 @@ class UserService:
             sample_size = 1
             baseline_target = schemas.UserCompareUser(id=target_id, name=str(baseline_row["name"]))
         else:
-            subject_rows = await self.compare.get_compare_population(
-                session,
-                user_ids=[id],
-                role=compare_role,
-                div_min=compare_div_min,
-                div_max=compare_div_max,
-                tournament_id=params.tournament_id,
-                grid=grid,
-            )
-            if not subject_rows:
-                raise errors.ApiHTTPException(
-                    status_code=400,
-                    detail=[errors.ApiExc(code="not_found", msg=f"User with id {id} not found.")],
-                )
-            subject_row = subject_rows[0]
+            # Population already contains the subject on the common path (global, or
+            # a cohort the subject belongs to). The 1-user query is only the fallback
+            # when the subject sits outside the cohort filter.
             population_rows = await self.compare.get_compare_population(
                 session,
                 role=compare_role,
@@ -556,6 +612,23 @@ class UserService:
                     status_code=404,
                     detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
                 )
+            subject_row = next((row for row in population_rows if int(row["id"]) == id), None)
+            if subject_row is None:
+                subject_rows = await self.compare.get_compare_population(
+                    session,
+                    user_ids=[id],
+                    role=compare_role,
+                    div_min=compare_div_min,
+                    div_max=compare_div_max,
+                    tournament_id=params.tournament_id,
+                    grid=grid,
+                )
+                if not subject_rows:
+                    raise errors.ApiHTTPException(
+                        status_code=400,
+                        detail=[errors.ApiExc(code="not_found", msg=f"User with id {id} not found.")],
+                    )
+                subject_row = subject_rows[0]
             baseline_row = _build_baseline_average_row(population_rows)
             sample_size = len(population_rows)
 
@@ -698,7 +771,9 @@ class UserService:
         if mode == "target_user" and not params.target_user_id:
             raise errors.ApiHTTPException(
                 status_code=400,
-                detail=[errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")],
+                detail=[
+                    errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")
+                ],
             )
 
         subject = await self.get(session, id, [])
@@ -742,24 +817,9 @@ class UserService:
             baseline_target = target
             sample_size = 1
         else:
-            # Only "is the cohort empty?" is needed here, to tell the two 404s apart.
-            # This used to materialize the whole population -- ~560 (id, name) rows --
-            # and hand the ids straight back as an ``IN`` list, so the statistics query
-            # arrived with 584 bind parameters and timed out. The population is now
-            # resolved inside that query; the names were never read.
-            if not await self.compare.compare_population_exists(
-                session,
-                role=compare_role,
-                div_min=compare_div_min,
-                div_max=compare_div_max,
-                tournament_id=params.tournament_id,
-                grid=grid,
-            ):
-                raise errors.ApiHTTPException(
-                    status_code=404,
-                    detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
-                )
-
+            # Population is resolved inside the stats query. The exists probe only
+            # tells the two 404s apart, so run it after an empty sample — not on
+            # every cache miss.
             baseline_playtime_by_user, baseline_stats_by_user = await self.compare.get_users_hero_compare_stats(
                 session,
                 user_ids=None,
@@ -775,6 +835,18 @@ class UserService:
 
             sample_user_ids = [user_id for user_id, playtime in baseline_playtime_by_user.items() if playtime >= 600]
             if not sample_user_ids:
+                if not await self.compare.compare_population_exists(
+                    session,
+                    role=compare_role,
+                    div_min=compare_div_min,
+                    div_max=compare_div_max,
+                    tournament_id=params.tournament_id,
+                    grid=grid,
+                ):
+                    raise errors.ApiHTTPException(
+                        status_code=404,
+                        detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
+                    )
                 raise errors.ApiHTTPException(
                     status_code=404,
                     detail=[errors.ApiExc(code="not_found", msg="No users found for selected hero/map filters.")],
@@ -1101,8 +1173,7 @@ class UserService:
         key="backend:user_tournaments:{id}:{workspace_id}",
     )
     async def get_tournaments(
-        self,
-        session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
+        self, session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
     ) -> list[schemas.UserTournament]:
         """
         Retrieves a user's tournament history with per-event stats (record,
@@ -1167,7 +1238,9 @@ class UserService:
                 draw += standing.draw
 
             division_grid_version = (
-                schemas.DivisionGridVersionRead.model_validate(team.tournament.division_grid_version, from_attributes=True)
+                schemas.DivisionGridVersionRead.model_validate(
+                    team.tournament.division_grid_version, from_attributes=True
+                )
                 if team.tournament.division_grid_version is not None
                 else None
             )
@@ -1219,8 +1292,7 @@ class UserService:
         key="backend:user_tournament_encounters:v2:{id}:{tournament_id}",
     )
     async def get_tournament_encounters(
-        self,
-        session: AsyncSession, id: int, tournament_id: int
+        self, session: AsyncSession, id: int, tournament_id: int
     ) -> list[schemas.EncounterReadWithUserStats]:
         """
         Retrieves one user's encounters (with their per-match stats) within a
@@ -1232,7 +1304,9 @@ class UserService:
         than one — e.g. a mid-tournament substitution.
         """
         user = await self.get(session, id, [])
-        rows = await self.encounters.get_user_encounter_matches_unpaginated(session, user.id, tournament_id=tournament_id)
+        rows = await self.encounters.get_user_encounter_matches_unpaginated(
+            session, user.id, tournament_id=tournament_id
+        )
 
         encounters_cache: dict[int, models.Encounter] = {}
         matches_cache: dict[int, list[schemas.MatchReadWithUserStats]] = {}
@@ -1287,8 +1361,7 @@ class UserService:
         lock=True,
     )
     async def get_tournament_with_stats(
-        self,
-        session: AsyncSession, id: int, tournament_id: int, *, grid: DivisionGrid
+        self, session: AsyncSession, id: int, tournament_id: int, *, grid: DivisionGrid
     ) -> schemas.UserTournamentWithStats | None:
         """Detailed statistics for a user in one tournament; 404 when the user never
         played in it.

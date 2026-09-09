@@ -6,10 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, PenLine } from "lucide-react";
 
-import {
-  getPhaseSchedulePayload,
-  SCHEDULABLE_PHASES
-} from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
+import { getPhaseSchedulePayload } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   WizardShell,
@@ -33,6 +30,7 @@ import { useQueryParams } from "@/hooks/useQueryParams";
 import { normalizeChallongeSlug } from "@/lib/challonge";
 import { notify } from "@/lib/notify";
 import { DEFAULT_WORKSPACE_TIMEZONE } from "@/lib/timezone";
+import { SCHEDULABLE_PHASES } from "@/lib/tournament-lifecycle";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import tournamentService from "@/services/tournament.service";

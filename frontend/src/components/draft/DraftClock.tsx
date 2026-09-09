@@ -27,26 +27,26 @@ export function DraftClock({ expiresAt, paused, compact = false }: Readonly<Draf
 
   if (paused) {
     return (
-      <span className="font-mono tabular-nums text-[color:var(--aqt-amber)]">
+      <span className="tabular-nums text-[color:var(--aqt-amber)]">
         {compact ? t("draft.clock.pauseCompact") : t("draft.clock.paused")}
       </span>
     );
   }
   if (!expiresAt || now === null) {
-    return <span className="font-mono tabular-nums text-[color:var(--aqt-fg-muted)]">--</span>;
+    return <span className="tabular-nums text-[color:var(--aqt-fg-muted)]">--</span>;
   }
 
   const ms = remainingMs(expiresAt, now);
   if (ms <= 0) {
     return (
-      <span className="font-mono tabular-nums text-[color:var(--aqt-rose)]">
+      <span className="tabular-nums text-[color:var(--aqt-rose)]">
         {compact ? t("draft.clock.autoCompact") : t("draft.clock.autopicking")}
       </span>
     );
   }
   const seconds = Math.ceil(ms / 1000);
   const className = isUrgent(ms)
-    ? "font-mono tabular-nums text-[color:var(--aqt-rose)] animate-pulse motion-reduce:animate-none"
-    : "font-mono tabular-nums text-[color:var(--aqt-teal)]";
+    ? "tabular-nums text-[color:var(--aqt-rose)] animate-pulse motion-reduce:animate-none"
+    : "tabular-nums text-[color:var(--aqt-teal)]";
   return <span className={className}>{seconds}s</span>;
 }

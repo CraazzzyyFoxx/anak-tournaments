@@ -36,7 +36,7 @@ const AchievementDetailHeader = ({ achievement }: Props) => {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <Link
                 href="/achievements"
-                className="inline-flex items-center gap-1.5 font-mono text-[12px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)] transition-colors hover:text-[color:var(--aqt-teal)]"
+                className="inline-flex items-center gap-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)] transition-colors hover:text-[color:var(--aqt-teal)]"
               >
                 <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
                 {t("achievements.detail.backToCatalog")}

@@ -127,7 +127,6 @@ class BeforeSendTests(TestCase):
     def test_drops_asyncio_invalid_state_from_cancelled_asyncpg_tls(self) -> None:
         self.assertIsNone(_before_send({}, _hint(asyncio.InvalidStateError("invalid state"))))
 
-
     def test_drops_events_from_noisy_loggers(self) -> None:
         # faststream duplicates an exception it re-raises; the OTLP exporter
         # reports a collector it cannot reach and retries on its own.

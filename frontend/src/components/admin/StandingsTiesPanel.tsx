@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 
@@ -94,13 +94,17 @@ export function StandingsTiesPanel({
   // Once a save round-trips, the refetched rows carry the new order; a kept
   // local one would keep the card marked dirty against itself. Keyed on the
   // rows themselves, not the array identity, so a background refetch that
-  // changes nothing does not discard an in-progress reorder.
+  // changes nothing does not discard an in-progress reorder. Cleared during
+  // render rather than in an effect, so the row list and the pending order it
+  // is indexed by are never committed out of step with each other.
   const signature = clusters
     .map((cluster) => `${cluster.key}=${cluster.rows.map((row) => row.team_id).join(",")}`)
     .join("|");
-  useEffect(() => {
+  const [seenSignature, setSeenSignature] = useState(signature);
+  if (seenSignature !== signature) {
+    setSeenSignature(signature);
     setOrder({});
-  }, [signature]);
+  }
 
   const mutation = useMutation({
     meta: { suppressErrorToast: true },

@@ -129,7 +129,7 @@ export default function ForecastChip({
             </span>
           ) : null}
           {rawTooltip ? (
-            <span className="mt-1 block text-[11px] text-muted-foreground/80">{rawTooltip}</span>
+            <span className="mt-1 block text-label text-muted-foreground/80">{rawTooltip}</span>
           ) : null}
         </TooltipContent>
       </Tooltip>

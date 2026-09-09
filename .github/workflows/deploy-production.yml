@@ -4,87 +4,230 @@ on:
   release:
     types:
       - published
+  # Redeploy or roll back to any tag that was ever built, without cutting a new
+  # release. The images are immutable and live in GHCR, so this is a pull, not
+  # a rebuild.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag / image tag to deploy (defaults to the latest release)"
+        required: false
+        type: string
+      skip_build:
+        description: "Deploy an already-built tag without rebuilding it"
+        required: false
+        default: false
+        type: boolean
 
-# Nothing gated this before: publishing a release built and started the whole
-# stack straight from the tag, with no lint, no tests, and no proof the frontend
-# or the gateway even compiled. Each gate below CALLS the workflow a PR already
-# runs (workflow_call), so a release is held to exactly the same bar and there is
-# no second copy of those commands to drift.
+# Images are built on GitHub-hosted runners and pushed to GHCR; the production
+# host only pulls them. It used to `docker compose build` on the box itself,
+# which meant a 4-core server spent nine minutes compiling wheels and the
+# frontend while it was serving traffic -- and one slow download (a 286 MiB CUDA
+# wheel) could fail the whole deploy. Nothing here runs on a self-hosted runner.
 #
-# They run in parallel; `deploy` needs all four, so a single red gate leaves
-# production untouched.
+# Three paths, one workflow:
+#   release published        -> gates, build every image, deploy that tag
+#   dispatch with a tag      -> build and deploy it, no gates (operator's call)
+#   dispatch with skip_build -> deploy a tag whose images already exist (rollback)
+#
+# Each gate CALLS the workflow a PR already runs (workflow_call), so a release
+# is held to exactly the same bar with no second copy of the commands.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
 jobs:
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - id: pick
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$RELEASE_TAG}"
+          if [ -z "$TAG" ]; then
+            echo "::error::no tag: publish a release or pass one to workflow_dispatch"
+            exit 1
+          fi
+          # A tag is a Docker image tag here as well, so it has to be one:
+          # letters, digits and .-_ only, no slashes.
+          case "$TAG" in
+            */*|"") echo "::error::tag '$TAG' is not usable as an image tag"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  # Gates run for a release and only for a release: publishing one is the
+  # automatic path, so it is held to the bar a PR is held to. A manual
+  # workflow_dispatch is an operator saying "ship this tag" -- it skips them on
+  # purpose, which is also the only way to deploy while the repo's CI is red.
   gate-lint-backend:
+    if: ${{ github.event_name == 'release' }}
     uses: ./.github/workflows/lint-backend.yml
 
   gate-test-backend:
+    if: ${{ github.event_name == 'release' }}
     uses: ./.github/workflows/test-backend.yml
     secrets: inherit
 
   gate-ci-frontend:
+    if: ${{ github.event_name == 'release' }}
     uses: ./.github/workflows/ci-frontend.yml
 
   gate-ci-gateway:
+    if: ${{ github.event_name == 'release' }}
     uses: ./.github/workflows/ci-gateway.yml
 
-  deploy:
+  build:
+    # A skipped gate is not a failed gate: `always()` plus the four explicit
+    # comparisons is what lets a dispatch run past them while a release still
+    # cannot.
+    if: >-
+      ${{ always() && !cancelled() && !inputs.skip_build
+          && needs.meta.result == 'success'
+          && needs.gate-lint-backend.result != 'failure'
+          && needs.gate-test-backend.result != 'failure'
+          && needs.gate-ci-frontend.result != 'failure'
+          && needs.gate-ci-gateway.result != 'failure' }}
     needs:
+      - meta
       - gate-lint-backend
       - gate-test-backend
       - gate-ci-frontend
       - gate-ci-gateway
-    runs-on:
-      - self-hosted
-      - production
-    env:
-      ENVIRONMENT: production
-      APP_PORT: ${{ secrets.APP_PORT }}
-      TRAEFIK_PORT: ${{ secrets.TRAEFIK_PORT }}
-      USERNAME: ${{ secrets.USERNAME }}
-      HASHED_PASSWORD: ${{ secrets.HASHED_PASSWORD }}
-
-      NEXT_API_URL: ${{ secrets.NEXT_API_URL }}
-      NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-      NEXT_PUBLIC_CACHE_POLICY: ${{ secrets.NEXT_PUBLIC_CACHE_POLICY }}
-
-      PROJECT_URL: ${{ secrets.PROJECT_URL }}
-
-      REDIS_URL: ${{ secrets.REDIS_URL }}
-      CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
-
-      SUPERUSER_EMAIL: ${{ secrets.SUPERUSER_EMAIL }}
-      SUPERUSER_PASSWORD: ${{ secrets.SUPERUSER_PASSWORD }}
-      ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
-
-      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-      POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
-      POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
-
-      CHALLONGE_API_KEY: ${{ secrets.CHALLONGE_API_KEY }}
-      CHALLONGE_USERNAME: ${{ secrets.CHALLONGE_USERNAME }}
-
-      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
-      S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
-      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-      S3_BUCKET: ${{ secrets.S3_BUCKET }}
-
-
+    runs-on: ubuntu-latest
+    strategy:
+      # One image per runner: a GitHub-hosted runner has ~14 GB of disk and
+      # these images are ~2 GB each, so building all ten in one job runs it out
+      # of space. Parallel runners also make the wall clock the slowest single
+      # image instead of their sum.
+      fail-fast: false
+      matrix:
+        include:
+          - image: owt-app
+            context: ./backend
+            build-args: APP_PATH=app
+          - image: owt-identity
+            context: ./backend
+            build-args: APP_PATH=identity
+          - image: owt-tournament
+            context: ./backend
+            build-args: APP_PATH=tournament
+          - image: owt-parser
+            context: ./backend
+            build-args: APP_PATH=parser
+          - image: owt-balancer
+            context: ./backend
+            build-args: APP_PATH=balancer
+          - image: owt-analytics
+            context: ./backend
+            build-args: APP_PATH=analytics
+          - image: owt-stream
+            context: ./backend
+            build-args: APP_PATH=stream
+          - image: owt-discord
+            context: ./backend
+            build-args: APP_PATH=discord
+          - image: owt-gateway
+            context: ./gateway
+          - image: owt-frontend
+            context: ./frontend
+            dockerfile: prod.Dockerfile
     steps:
-      # checkout v5+ runs on Node 24 and needs a runner >= v2.327.1. This job is
-      # the only one on the self-hosted 'production' runner, so bumping this pin
-      # means checking that runner's version first — GitHub-hosted runners are
-      # always current, a self-hosted one is not.
-      - name: Checkout
+      - name: Checkout ${{ needs.meta.outputs.tag }}
         uses: actions/checkout@v6
-      # Self-hosted runner shares the 15G prod box. Unbounded BuildKit cache
-      # grew to 180G and the box swapped; keep 20G of recent layers.
-      - name: Cap BuildKit cache
-        run: docker builder prune --reserved-space 20GB -f > /tmp/owt-builder-prune.log 2>&1
-      - run: docker compose -f docker-compose.production.yml --project-name owt build
-      # --remove-orphans drops retired containers so nginx can bind APP_PORT.
-      # PROD_SIZE=small: this 15G box is shared; bump to medium/large for events.
-      - run: make prod-up PROD_SIZE=small
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/${{ matrix.dockerfile || 'Dockerfile' }}
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/craazzzyyfoxx/${{ matrix.image }}:${{ needs.meta.outputs.tag }}
+            ghcr.io/craazzzyyfoxx/${{ matrix.image }}:latest
+          # Registry cache, not type=gha: the GitHub cache is 10 GB per repo and
+          # evicts by age, which these ten images would thrash. The cache tag
+          # lives beside the image it belongs to.
+          cache-from: type=registry,ref=ghcr.io/craazzzyyfoxx/${{ matrix.image }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/craazzzyyfoxx/${{ matrix.image }}:buildcache,mode=max
+          build-args: |
+            ${{ matrix.build-args }}
+            NEXT_PUBLIC_SITE_NAME=Overwatch Tournaments
+            NEXT_PUBLIC_SITE_URL=https://owt.craazzzyyfoxx.me
+            NEXT_PUBLIC_SITE_ICON=${{ vars.NEXT_PUBLIC_SITE_ICON }}
+            NEXT_PUBLIC_SITE_FAVICON=${{ vars.NEXT_PUBLIC_SITE_FAVICON }}
+            NEXT_PUBLIC_CACHE_POLICY=${{ vars.NEXT_PUBLIC_CACHE_POLICY }}
+            NEXT_PUBLIC_GA_ID=${{ vars.NEXT_PUBLIC_GA_ID }}
+            NEXT_PUBLIC_YM_ID=${{ vars.NEXT_PUBLIC_YM_ID }}
+
+  deploy:
+    needs:
+      - meta
+      - build
+    # Also ubuntu-latest: the deploy is an ssh session that pulls images and
+    # restarts containers, so it needs no runner on the box and no self-hosted
+    # capacity at all.
+    if: ${{ always() && needs.meta.result == 'success' && (needs.build.result == 'success' || inputs.skip_build) }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout ${{ needs.meta.outputs.tag }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+
+      - name: Deploy ${{ needs.meta.outputs.tag }}
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+          PROD_SIZE: ${{ vars.PROD_SIZE || 'medium' }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          # The job's own token, valid for this run only: the box logs into
+          # GHCR with it, pulls, and logs out. No long-lived registry credential
+          # is stored on the server, and the packages do not have to be public
+          # for the pull to work.
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # The variables ride in on stdin ahead of the script instead of in the
+          # remote command line, so the token never shows up in `ps` on the box.
+          #
+          # The remote side writes that stream to a file and THEN runs it, rather
+          # than `bash -s` reading it straight off stdin: `docker compose run`
+          # attaches the container to stdin, and on the first attempt it ate the
+          # rest of the script -- the deploy stopped silently after the migration
+          # step and still exited 0.
+          {
+            printf 'TAG=%q\nPROD_SIZE=%q\nGHCR_USER=%q\nGHCR_TOKEN=%q\n' \
+              "$TAG" "$PROD_SIZE" "$GHCR_USER" "$GHCR_TOKEN"
+            printf 'export TAG PROD_SIZE GHCR_USER GHCR_TOKEN\n'
+            cat ops/deploy/remote-deploy.sh
+          } | ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            'set -e; f=$(mktemp /tmp/owt-deploy.XXXXXX.sh); trap "rm -f $f" EXIT; cat > "$f"; bash "$f"'

@@ -104,13 +104,13 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
       <div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[1fr_320px]">
         <CardSurface flush>
           <div className="overflow-x-auto">
-            <table className="aqt-tnum w-full border-collapse text-[14px]">
+            <table className="aqt-tnum w-full border-collapse text-body">
               <thead>
                 <tr>
                   {headers.map((h) => (
                     <th
                       key={h}
-                      className="aqt-mono border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3.5 py-3 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]"
+                      className="aqt-tnum border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3.5 py-3 text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
                     >
                       {h}
                     </th>
@@ -137,7 +137,7 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
             onPageChange={handlePageChange}
             className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-[18px] py-3.5"
             summary={
-              <span className="aqt-mono text-[13px] text-[color:var(--aqt-fg-dim)]">
+              <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-dim)]">
                 {t("common.showingRange", {
                   start: String((page - 1) * perPage + 1),
                   end: String((page - 1) * perPage + encounters.length),

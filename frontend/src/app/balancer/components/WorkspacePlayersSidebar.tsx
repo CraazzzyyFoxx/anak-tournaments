@@ -148,7 +148,7 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: Roster
                     ))}
                   </div>
                 ) : (
-                  <span className="shrink-0 text-[11px] text-[color:var(--aqt-fg-dim)]">No roles</span>
+                  <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">No roles</span>
                 )}
                 {/* One truncating line, not a flex pair: with the discriminator as
                     its own `shrink-0` item, a narrow sidebar clipped the whole name
@@ -160,7 +160,7 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: Roster
                   title={`Edit ${label}`}
                   className="flex min-w-0 items-baseline rounded text-left"
                 >
-                  <span className="min-w-0 truncate text-[13px] font-medium text-[color:var(--aqt-fg)]">
+                  <span className="min-w-0 truncate text-caption font-medium text-[color:var(--aqt-fg)]">
                     {name}
                     {suffix ? <span className="text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
                   </span>
@@ -177,14 +177,14 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: Roster
                   <span
                     title={`Highest rank: ${ROLE_LABELS[topRank.role]} ${topRank.rank}`}
                     className={cn(
-                      "min-w-10 text-right text-[13px] font-semibold tabular-nums",
+                      "min-w-10 text-right text-caption font-semibold tabular-nums",
                       ROLE_TEXT_ACCENTS[topRank.role],
                     )}
                   >
                     {topRank.rank}
                   </span>
                 ) : (
-                  <span className="text-[12px] text-[color:var(--aqt-fg-dim)]">No ranks yet</span>
+                  <span className="text-label text-[color:var(--aqt-fg-dim)]">No ranks yet</span>
                 )}
                 {member.battle_tag ? <BattleTagCopyButton battleTag={member.battle_tag} /> : null}
               </div>
@@ -288,7 +288,7 @@ export function WorkspacePlayersSidebar({
           </div>
           <div
             aria-hidden="true"
-            className="text-center text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-dim)] [writing-mode:vertical-rl]"
+            className="text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)] [writing-mode:vertical-rl]"
           >
             Players
           </div>
@@ -300,7 +300,7 @@ export function WorkspacePlayersSidebar({
         ) : (
           <div
             title={`${total} workspace players`}
-            className="rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 py-1 text-[11px] tabular-nums text-[color:var(--aqt-fg-muted)]"
+            className="rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 py-1 text-label tabular-nums text-[color:var(--aqt-fg-muted)]"
           >
             {total}
             <span className="sr-only"> workspace players</span>
@@ -342,7 +342,7 @@ export function WorkspacePlayersSidebar({
         <div className="min-w-0">
           {/* Short enough to hold one line at the narrowest sidebar width; the
               workspace is already the tool's context, and the rail says the same. */}
-          <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-dim)]">
+          <div className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
             Players
           </div>
           <div className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
@@ -376,7 +376,7 @@ export function WorkspacePlayersSidebar({
                 >
                   <label
                     htmlFor={battleTagId}
-                    className="block text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]"
+                    className="block text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]"
                   >
                     Add by BattleTag
                   </label>
@@ -413,7 +413,7 @@ export function WorkspacePlayersSidebar({
                   <p
                     id={battleTagHintId}
                     className={cn(
-                      "text-[11px]",
+                      "text-label",
                       addError ? "text-rose-200" : "text-[color:var(--aqt-fg-dim)]",
                     )}
                   >
@@ -473,7 +473,7 @@ export function WorkspacePlayersSidebar({
         ) : null}
       </div>
 
-      <p className="mt-2 text-[11px] leading-tight text-[color:var(--aqt-fg-dim)]">
+      <p className="mt-2 text-label leading-tight text-[color:var(--aqt-fg-dim)]">
         {SCOPE_CAPTION}
       </p>
 
@@ -487,14 +487,14 @@ export function WorkspacePlayersSidebar({
       {membersQuery.isError && pageData ? (
         <div
           role="alert"
-          className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-100"
+          className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2.5 py-1.5 text-label text-rose-100"
         >
           <span className="min-w-0">Couldn&rsquo;t refresh &mdash; showing the last loaded page.</span>
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-6 shrink-0 rounded border border-rose-300/30 px-1.5 text-[11px] text-rose-100 hover:bg-rose-500/15 hover:text-rose-50"
+            className="h-6 shrink-0 rounded border border-rose-300/30 px-1.5 text-label text-rose-100 hover:bg-rose-500/15 hover:text-rose-50"
             onClick={() => void membersQuery.refetch()}
           >
             Retry

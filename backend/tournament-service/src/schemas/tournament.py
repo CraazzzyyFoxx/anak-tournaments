@@ -119,9 +119,7 @@ class OwalStandings(BaseModel):
 
 class TournamentPaginationSortSearchQueryParams(
     pagination.PaginationSortSearchQueryParams[
-        typing.Literal[
-            "id", "name", "start_date", "end_date", "similarity:name", "participants_count"
-        ]
+        typing.Literal["id", "name", "start_date", "end_date", "similarity:name", "participants_count"]
     ]
 ):
     is_league: bool | None = None

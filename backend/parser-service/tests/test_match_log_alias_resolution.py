@@ -174,9 +174,7 @@ class HeroMissFlushTests(IsolatedAsyncioTestCase):
         processor.create_stats = AsyncMock(side_effect=lambda *a, **kw: calls.append(("create_stats",)) or [])
 
         with (
-            patch.object(
-                flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9))
-            ),
+            patch.object(flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9))),
             patch.object(
                 flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match_model)
             ),
@@ -221,9 +219,7 @@ class HeroMissFlushTests(IsolatedAsyncioTestCase):
         processor.create_stats = AsyncMock(return_value=[])
 
         with (
-            patch.object(
-                flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9))
-            ),
+            patch.object(flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9))),
             patch.object(
                 flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match_model)
             ),

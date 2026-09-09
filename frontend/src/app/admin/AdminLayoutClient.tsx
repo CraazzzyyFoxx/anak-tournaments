@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { skipToken, useQuery } from "@tanstack/react-query";
 
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import AnnouncementBanner from "@/components/notifications/AnnouncementBanner";
 import { AuditTrailProvider } from "@/components/admin/AuditTrailSheet";
 import { adminRouteAccessOptions } from "@/components/admin/admin-navigation";
 import {
@@ -26,6 +27,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePermissions } from "@/hooks/usePermissions";
 import { SIDEBAR_COOKIE_NAMES } from "@/lib/sidebar-cookies";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+import type { NotificationItem } from "@/types/notification.types";
 
 function LoadingState() {
   return (
@@ -120,17 +122,25 @@ function AdminBreadcrumb() {
 
 const sidebarShellStyle = {
   "--sidebar-width": "15.5rem",
-  "--sidebar-width-icon": "3.75rem"
+  "--sidebar-width-icon": "3.75rem",
+  // The floating announcement anchors to `--aqt-banner-top`; the admin header
+  // is `h-12`, shorter than the site's, so it gets its own clearance instead of
+  // the site default (`--aqt-sticky-top`).
+  "--aqt-banner-top": "3.75rem"
 } as CSSProperties;
 
 type AdminLayoutClientProps = {
   children: ReactNode;
   defaultSidebarOpen: boolean;
+  /** Server-rendered active announcements; `undefined` when the server-side
+   *  read failed, which makes the banner fetch them itself. */
+  announcements: NotificationItem[] | undefined;
 };
 
 export function AdminLayoutClient({
   children,
-  defaultSidebarOpen
+  defaultSidebarOpen,
+  announcements
 }: Readonly<AdminLayoutClientProps>) {
   const pathname = usePathname();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -168,6 +178,9 @@ export function AdminLayoutClient({
             <Separator orientation="vertical" className="h-5" />
             <AdminBreadcrumb />
           </header>
+          {/* Overlay chrome, not a row: it floats over the content below rather
+              than displacing every admin screen by its own height. */}
+          <AnnouncementBanner initial={announcements} />
 
           {/* Full-bleed on purpose: a centered 1720px cap left ~300px of dead
               gutter each side on a 2560 display. Wide tables scroll inside

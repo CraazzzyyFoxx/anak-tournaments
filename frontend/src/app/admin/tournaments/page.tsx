@@ -4,9 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Trash2, CheckCircle, CircleDot, Crown, Trophy } from "lucide-react";
+import { Plus, Trash2, CheckCircle, CircleDot, Crown, EyeOff, Trophy } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import {
@@ -19,7 +20,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { notify } from "@/lib/notify";
 import tournamentService from "@/services/tournament.service";
@@ -79,9 +79,7 @@ export default function TournamentsPage() {
         <div className="flex items-center gap-2">
           <span className="font-medium">{row.original.name}</span>
           {row.original.is_hidden ? (
-            <Badge variant="outline" className="text-muted-foreground">
-              Unpublished
-            </Badge>
+            <StatusIcon icon={EyeOff} label="Unpublished" variant="muted" />
           ) : null}
         </div>
       )
@@ -89,6 +87,7 @@ export default function TournamentsPage() {
     {
       accessorKey: "is_league",
       header: "Type",
+      meta: adminColumnMeta<Tournament>({ align: "center" }),
       cell: ({ row }) =>
         row.getValue("is_league") ? (
           <StatusIcon icon={Crown} label="League" variant="info" />
@@ -99,6 +98,7 @@ export default function TournamentsPage() {
     {
       accessorKey: "is_finished",
       header: "Status",
+      meta: adminColumnMeta<Tournament>({ align: "center" }),
       cell: ({ row }) =>
         row.getValue("is_finished") ? (
           <StatusIcon icon={CheckCircle} label="Finished" variant="muted" />

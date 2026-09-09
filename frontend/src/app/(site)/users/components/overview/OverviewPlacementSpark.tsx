@@ -129,7 +129,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
               title={`#${p.placement} · ${p.name}`}
             >
               <div className="relative flex items-center justify-center">
-                <span className="aqt-mono absolute bottom-full left-1/2 mb-[3px] -translate-x-1/2 whitespace-nowrap text-[11px] text-[color:var(--aqt-fg-muted)]">
+                <span className="aqt-tnum absolute bottom-full left-1/2 mb-[3px] -translate-x-1/2 whitespace-nowrap text-label text-[color:var(--aqt-fg-muted)]">
                   #{p.placement}
                 </span>
                 {renderDot(p)}
@@ -142,7 +142,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
             p.label ? (
               <span
                 key={p.id}
-                className="aqt-mono absolute -translate-x-1/2 whitespace-nowrap text-[11px] text-[color:var(--aqt-fg-faint)]"
+                className="aqt-tnum absolute -translate-x-1/2 whitespace-nowrap text-label text-[color:var(--aqt-fg-faint)]"
                 style={{ left: `${(p.xFrac * 100).toFixed(2)}%` }}
                 title={p.name}
               >
@@ -153,7 +153,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 text-[11px] text-[color:var(--aqt-fg-muted)]">
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 text-label text-[color:var(--aqt-fg-muted)]">
         <span className="inline-flex items-center gap-1.5">
           <span
             className="inline-block rounded-full"
@@ -176,15 +176,15 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
         </span>
       </div>
 
-      <div className="mt-2.5 flex justify-between border-t border-[color:var(--aqt-border)] pt-2.5 text-[12px] text-[color:var(--aqt-fg-muted)]">
+      <div className="mt-2.5 flex justify-between border-t border-[color:var(--aqt-border)] pt-2.5 text-label text-[color:var(--aqt-fg-muted)]">
         <span>
-          {t("users.overview.placement.best")} <span className="aqt-mono font-semibold" style={{ color: "var(--aqt-amber)" }}>#{best}</span>
+          {t("users.overview.placement.best")} <span className="aqt-tnum font-semibold" style={{ color: "var(--aqt-amber)" }}>#{best}</span>
         </span>
         <span>
-          {t("users.overview.placement.median")} <span className="aqt-mono font-semibold text-[color:var(--aqt-fg)]">#{median}</span>
+          {t("users.overview.placement.median")} <span className="aqt-tnum font-semibold text-[color:var(--aqt-fg)]">#{median}</span>
         </span>
         <span>
-          {t("users.overview.placement.worst")} <span className="aqt-mono font-semibold" style={{ color: "var(--aqt-rose)" }}>#{worst}</span>
+          {t("users.overview.placement.worst")} <span className="aqt-tnum font-semibold" style={{ color: "var(--aqt-rose)" }}>#{worst}</span>
         </span>
       </div>
     </CardSurface>

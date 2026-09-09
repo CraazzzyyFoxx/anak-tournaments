@@ -37,9 +37,7 @@ class UserRepository(BaseRepository[models.User]):
 
     async def get_id_by_auth_user_id(self, session: AsyncSession, auth_user_id: int) -> int | None:
         """Player id only — avoids hydrating the row when just the id is needed."""
-        return await session.scalar(
-            sa.select(models.User.id).where(models.User.auth_user_id == auth_user_id).limit(1)
-        )
+        return await session.scalar(sa.select(models.User.id).where(models.User.auth_user_id == auth_user_id).limit(1))
 
     async def ensure_for_auth_user(
         self,
@@ -73,9 +71,7 @@ class UserRepository(BaseRepository[models.User]):
     async def set_avatar(self, session: AsyncSession, *, auth_user_id: int, avatar_url: str | None) -> None:
         """Mirror an auth user's avatar onto their linked player, if any."""
         await session.execute(
-            sa.update(models.User)
-            .where(models.User.auth_user_id == auth_user_id)
-            .values(avatar_url=avatar_url)
+            sa.update(models.User).where(models.User.auth_user_id == auth_user_id).values(avatar_url=avatar_url)
         )
 
     # Legacy entity tokens are still accepted for caller/API compatibility; all
@@ -354,12 +350,7 @@ class AuthUserRepository(BaseRepository[models.AuthUser]):
         ) is True
 
     async def email_taken(self, session: AsyncSession, email: str, *, exclude_user_id: int | None = None) -> bool:
-        query = (
-            sa.select(sa.literal(True))
-            .select_from(models.AuthUser)
-            .where(models.AuthUser.email == email)
-            .limit(1)
-        )
+        query = sa.select(sa.literal(True)).select_from(models.AuthUser).where(models.AuthUser.email == email).limit(1)
         if exclude_user_id is not None:
             query = query.where(models.AuthUser.id != exclude_user_id)
         return (await session.scalar(query)) is True
@@ -882,9 +873,7 @@ class UserRoleRepository:
     async def count_for_role(self, session: AsyncSession, role_id: int) -> int:
         return int(
             await session.scalar(
-                sa.select(sa.func.count(models.user_roles.c.user_id)).where(
-                    models.user_roles.c.role_id == role_id
-                )
+                sa.select(sa.func.count(models.user_roles.c.user_id)).where(models.user_roles.c.role_id == role_id)
             )
             or 0
         )

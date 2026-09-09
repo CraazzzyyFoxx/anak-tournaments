@@ -75,9 +75,10 @@ function Field({ label, children }: Readonly<{ label: string; children: React.Re
  * Auth sessions (T2, F15) — the superuser's read-only view of who is signed in
  * where.
  *
- * The status `<Select>` is now a URL chip, and the raw user agent, the session
- * id and the network address moved out of the row into the inspector: they are
- * what an investigation needs and what made every row three lines tall.
+ * The status `<Select>` is now a URL chip, and the raw user agent and the
+ * network address live in the inspector: they are what an investigation needs
+ * and what made every row three lines tall. The session id stays in the row,
+ * truncated, because it is how a session is named in a report.
  */
 export default function AccessAdminSessionsPage() {
   const format = useFormatter();
@@ -108,6 +109,17 @@ export default function AccessAdminSessionsPage() {
 
   const columns = useMemo<ColumnDef<AdminAuthSession>[]>(
     () => [
+      {
+        accessorKey: "session_id",
+        header: "ID",
+        size: 140,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="block truncate font-mono text-xs" title={row.original.session_id}>
+            {row.original.session_id}
+          </span>
+        )
+      },
       {
         id: "user",
         header: "Account",

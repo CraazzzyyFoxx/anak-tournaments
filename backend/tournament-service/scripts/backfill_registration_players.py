@@ -37,15 +37,12 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
     create_async_engine,
 )
 
-from shared.core import enums  # noqa: E402
+from shared.core.tournament_state import FINISHED_STATUSES  # noqa: E402
 from src import models  # noqa: E402
 from src.core import config  # noqa: E402
 from src.services.registration.service import ensure_player_identity  # noqa: E402
 
-_INACTIVE = (
-    enums.TournamentStatus.COMPLETED.value,
-    enums.TournamentStatus.ARCHIVED.value,
-)
+_INACTIVE = tuple(sorted(status.value for status in FINISHED_STATUSES))
 
 
 async def main() -> None:

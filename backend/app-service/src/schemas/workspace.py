@@ -28,6 +28,12 @@ __all__ = (
     "WorkspaceUpdate",
     "WorkspaceCustomDomainSet",
     "WorkspaceDiscordGuildVerify",
+    "WorkspaceDiscordGuildOption",
+    "WorkspaceDiscordGuildsRead",
+    "WorkspaceVerificationSet",
+    "WorkspaceOwnerRead",
+    "WorkspaceOwnerSet",
+    "WorkspaceOwnerTransfer",
     "WorkspaceMemberRoleRead",
     "WorkspaceMemberRead",
     "WorkspaceMemberCreate",
@@ -78,6 +84,11 @@ class WorkspaceRead(BaseRead):
     # guild id or a DNS token, an arbitrary internal auth_user_id is not
     # something this design chooses to publish.
     discord_guild_verified_at: datetime | None = None
+    # Self-service trust tier (design §4.2). Public because the frontend renders
+    # it as a badge and derives the "not listed on the home page yet" notice
+    # from it; ``trusted`` is also exactly what the public directory filters on,
+    # so it is already observable from the outside.
+    verification_status: str = "unverified"
     default_division_grid_version_id: int | None
     default_division_grid_version: DivisionGridVersionRead | None = None
     default_roster_slots_json: dict[str, int] | None = None
@@ -181,6 +192,70 @@ class WorkspaceDiscordGuildVerify(BaseModel):
     override unbinds it."""
 
     guild_id: str = Field(..., pattern=_DISCORD_SNOWFLAKE)
+
+
+class WorkspaceDiscordGuildOption(BaseModel):
+    """One guild the caller administers, as reported by
+    ``rpc.identity.oauth_discord_guilds``. Feeds the settings guild picker, so
+    ``discord_guild_verify`` can be handed a snowflake the caller can actually
+    prove — instead of a free-text field that only fails after the fact."""
+
+    guild_id: str
+    name: str
+    owner: bool
+    can_manage: bool
+
+
+class WorkspaceDiscordGuildsRead(BaseModel):
+    guilds: list[WorkspaceDiscordGuildOption] = Field(default_factory=list)
+
+
+class WorkspaceVerificationSet(BaseModel):
+    """Body for the superuser-only ``verification_set``. The three tiers are a
+    convention, not a DB enum (the column is a plain ``String(16)``) -- this
+    Literal is where the convention is actually enforced."""
+
+    verification_status: Literal["unverified", "verified", "trusted"]
+
+
+class WorkspaceOwnerRead(BaseModel):
+    """The accountable owner of a workspace (``Workspace.owner_id``), resolved to
+    a person.
+
+    Deliberately NOT a field on ``WorkspaceRead``: that model is served
+    anonymously (``GET /api/v1/workspaces/{id}``, and the list is publicly
+    cached at the edge), so an owner's username and email sit behind the same
+    ``workspace.update`` gate as the Discord role/channel reads -- for the same
+    reason ``discord_guild_verified_by_auth_user_id`` was kept off the public
+    model.
+
+    ``username``/``email`` are optional so a workspace whose owner row vanished
+    between the two reads still answers with the id it has, rather than 500.
+    """
+
+    auth_user_id: int
+    username: str | None = None
+    email: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+
+
+class WorkspaceOwnerSet(BaseModel):
+    """Body for the superuser-only ``owner_set``. ``None`` clears the stamp --
+    a workspace with nobody on the hook is a real state (every workspace
+    predating self-service creation is in it), so it has to be reachable, not
+    only escapable."""
+
+    auth_user_id: int | None = None
+
+
+class WorkspaceOwnerTransfer(BaseModel):
+    """Body for ``owner_transfer``. Not nullable, unlike ``WorkspaceOwnerSet``:
+    a hand-off has a recipient by definition, and "leave nobody accountable" is
+    the superuser-only clear on ``owner_set``, not a transfer."""
+
+    auth_user_id: int
 
 
 class WorkspaceMemberRoleRead(BaseModel):

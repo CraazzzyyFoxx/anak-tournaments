@@ -210,7 +210,9 @@ class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
         ]
         session = _FakeAutoCompleteSession(pick_ban, pool)
 
-        entry = await pick_ban_action_service.auto_complete_decider(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+        entry = await pick_ban_action_service.auto_complete_decider(
+            session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool
+        )
 
         self.assertIsNotNone(entry)
         self.assertEqual(3, entry.item_id)
@@ -227,7 +229,9 @@ class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
         )
         session = _FakeAutoCompleteSession(pick_ban)
 
-        entry = await pick_ban_action_service.auto_complete_decider(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=[make_entry(1)])
+        entry = await pick_ban_action_service.auto_complete_decider(
+            session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=[make_entry(1)]
+        )
 
         self.assertIsNone(entry)
         self.assertEqual(0, session.commits)
@@ -235,7 +239,9 @@ class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
     async def test_no_session_is_a_no_op(self) -> None:
         session = _FakeAutoCompleteSession()
 
-        entry = await pick_ban_action_service.auto_complete_decider(session, 500, PickBanKind.MAP, pick_ban=None, pool=[])
+        entry = await pick_ban_action_service.auto_complete_decider(
+            session, 500, PickBanKind.MAP, pick_ban=None, pool=[]
+        )
 
         self.assertIsNone(entry)
         self.assertEqual(0, session.commits)
@@ -279,11 +285,15 @@ class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
         session = _FakeAutoCompleteSession(stored, pool)
         stale_pool = [SimpleNamespace(**vars(candidate)) for candidate in pool]
 
-        awarded = await pick_ban_action_service.auto_complete_decider(session, 500, PickBanKind.MAP, pick_ban=stored, pool=pool)
+        awarded = await pick_ban_action_service.auto_complete_decider(
+            session, 500, PickBanKind.MAP, pick_ban=stored, pool=pool
+        )
         self.assertIsNotNone(awarded)
         commits = session.commits
 
-        second = await pick_ban_action_service.auto_complete_decider(session, 500, PickBanKind.MAP, pick_ban=stored, pool=stale_pool)
+        second = await pick_ban_action_service.auto_complete_decider(
+            session, 500, PickBanKind.MAP, pick_ban=stored, pool=stale_pool
+        )
 
         self.assertIsNone(second)
         self.assertEqual(commits, session.commits)
@@ -419,10 +429,14 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
         session = _FakeAutoCompleteSession(stored, pool)
         stale = SimpleNamespace(**vars(stored))
 
-        self.assertIsNotNone(await pick_ban_action_service.auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=stored))
+        self.assertIsNotNone(
+            await pick_ban_action_service.auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=stored)
+        )
         commits = session.commits
 
-        self.assertIsNone(await pick_ban_action_service.auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=stale))
+        self.assertIsNone(
+            await pick_ban_action_service.auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=stale)
+        )
         self.assertEqual(commits, session.commits)
         self.assertEqual(1, len([e for e in pool if e.status == MapPoolEntryStatus.BANNED.value]))
 

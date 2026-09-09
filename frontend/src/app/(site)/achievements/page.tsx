@@ -263,13 +263,13 @@ const AchievementsPage = () => {
         {/* Wraps at narrow widths: as one no-wrap row the count + sort + search
             reached 400px inside a 375px viewport and scrolled the page. */}
         <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap">
-          <span className="aqt-mono text-[12px] tabular-nums text-[color:var(--aqt-fg-dim)]">
+          <span className="aqt-tnum text-label tabular-nums text-[color:var(--aqt-fg-dim)]">
             {t("achievements.results", { count: visibleCount })}
           </span>
           <Select value={sort} onValueChange={(v) => setParams({ sort: v })}>
             <SelectTrigger
               aria-label={t("users.achievements.sort.title")}
-              className="aqt-mono h-8 w-[150px] border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] text-[13px] text-[color:var(--aqt-fg-muted)] shadow-none hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-3)]"
+              className="aqt-tnum h-8 w-[150px] border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] text-caption text-[color:var(--aqt-fg-muted)] shadow-none hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-3)]"
             >
               <SelectValue />
             </SelectTrigger>

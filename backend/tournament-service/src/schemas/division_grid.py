@@ -91,12 +91,12 @@ class DivisionGridUpdate(BaseModel):
 
 class DivisionGridVersionCreate(BaseModel):
     label: str = Field(..., min_length=1, max_length=255)
-    tiers: list["DivisionGridTierWrite"] = Field(..., min_length=1)
+    tiers: list[DivisionGridTierWrite] = Field(..., min_length=1)
 
 
 class DivisionGridVersionUpdate(BaseModel):
     label: str | None = Field(default=None, min_length=1, max_length=255)
-    tiers: list["DivisionGridTierWrite"] | None = None
+    tiers: list[DivisionGridTierWrite] | None = None
 
 
 class DivisionGridTierWrite(BaseModel):
@@ -197,7 +197,7 @@ class DivisionGridMarketplacePreflightResult(BaseModel):
     assets_to_reuse: int
     external_assets: int
     conflicts: list[str] = Field(default_factory=list)
-    warnings: list["DivisionGridMarketplaceImportWarning"] = Field(default_factory=list)
+    warnings: list[DivisionGridMarketplaceImportWarning] = Field(default_factory=list)
     source_fingerprint: str
 
 

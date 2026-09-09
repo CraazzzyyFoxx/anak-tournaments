@@ -851,7 +851,6 @@ class SerializeNeedsTheSlotChain(_UpsertCase):
     # `list_configs` + `serialize_pick_ban_config` path as the admin list above.
 
 
-
 class RefreshMustNotReachForTheSlotChain(_UpsertCase):
     """The one site in this sweep that must NOT gain ``slots``.
 

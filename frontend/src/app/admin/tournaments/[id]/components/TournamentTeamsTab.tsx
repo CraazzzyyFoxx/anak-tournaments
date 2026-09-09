@@ -625,7 +625,7 @@ export function TournamentTeamsTab({
                       {challongeParticipants.length} participants
                     </Badge>
                     <Badge
-                      variant={activeUnmappedParticipants.length ? "destructive" : "secondary"}
+                      tone={activeUnmappedParticipants.length ? "danger" : "neutral"}
                       className="tabular-nums"
                     >
                       {activeUnmappedParticipants.length} unmapped

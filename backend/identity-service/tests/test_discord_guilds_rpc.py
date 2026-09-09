@@ -24,10 +24,10 @@ import pytest  # noqa: E402
 from src.core import db  # noqa: E402
 from src.rpc import oauth as oauth_rpc  # noqa: E402
 from src.services.oauth import oauth  # noqa: E402
-from tests._fakes import (  # noqa: E402
-    CapturingBroker as _CapturingBroker,
+from tests._fakes import (
     FakeSessionMaker as _FakeSessionMaker,
-    SilentLogger as _SilentLogger,
+)
+from tests._fakes import (
     handler as _handler,
 )
 
@@ -41,7 +41,6 @@ class _FakeConnection:
 class _FakeProvider:
     def __init__(self, raw_guilds: list[dict]) -> None:
         self.get_user_guilds = AsyncMock(return_value=raw_guilds)
-
 
 
 # --- service layer ----------------------------------------------------------

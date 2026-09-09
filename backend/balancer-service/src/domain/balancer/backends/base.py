@@ -36,9 +36,7 @@ class BalanceMetrics:
 
     def to_dict(self) -> dict[str, float]:
         """Non-``None`` fields only, ready to merge into a response payload."""
-        return {
-            key: value for key, value in dataclasses.asdict(self).items() if value is not None
-        }
+        return {key: value for key, value in dataclasses.asdict(self).items() if value is not None}
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

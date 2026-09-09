@@ -411,9 +411,7 @@ class SwissInvariants(TestCase):
                 swiss.SwissStanding(
                     team_id=team_id,
                     points=points[team_id],
-                    buchholz=sum(
-                        points[other] for other in team_ids if frozenset({team_id, other}) in played_pairs
-                    ),
+                    buchholz=sum(points[other] for other in team_ids if frozenset({team_id, other}) in played_pairs),
                 )
                 for team_id in team_ids
             ]

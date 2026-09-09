@@ -62,7 +62,7 @@ const HeroBestGames = ({ hero }: { hero: HeroWithUserStats }) => {
                   href={`/encounters/${best.encounter_id}`}
                   className="flex flex-col gap-1 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.018)] px-3 py-2.5 transition-colors hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)]"
                 >
-                  <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+                  <span className="flex items-center gap-1.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                     {getHumanizedStats(name)}
                     {isGlobalRecord ? (
                       <Crown
@@ -75,7 +75,7 @@ const HeroBestGames = ({ hero }: { hero: HeroWithUserStats }) => {
                   <span className="aqt-display text-[24px] font-bold leading-none text-[color:var(--aqt-fg)]">
                     {formatStatValue(format, name, best.value)}
                   </span>
-                  <span className="aqt-mono truncate text-[11px] text-[color:var(--aqt-fg-dim)]">
+                  <span className="aqt-tnum truncate text-label text-[color:var(--aqt-fg-dim)]">
                     {best.map_name} · {best.tournament_name}
                   </span>
                 </Link>
@@ -87,8 +87,8 @@ const HeroBestGames = ({ hero }: { hero: HeroWithUserStats }) => {
                   </div>
                 ) : null}
                 <div className="flex flex-col gap-0.5 px-3 py-2">
-                  <span className="text-[13px] font-semibold">{best.tournament_name}</span>
-                  <span className="aqt-mono text-[12px] opacity-80">{best.map_name}</span>
+                  <span className="text-caption font-semibold">{best.tournament_name}</span>
+                  <span className="aqt-tnum text-label opacity-80">{best.map_name}</span>
                 </div>
               </TooltipContent>
             </Tooltip>

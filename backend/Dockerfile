@@ -20,6 +20,15 @@ ENV UV_COMPILE_BYTECODE=1
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#caching
 ENV UV_LINK_MODE=copy
 
+# The 30s default is per HTTP request, not per byte, so the two biggest wheels
+# in this workspace time out on an ordinary link and fail the whole build:
+# nvidia-nccl-cu12 (~286 MiB, pulled in by xgboost) for analytics-svc and
+# cmake (~90 MiB, a build-system.requires of mix-balancer) for balancer-svc.
+# Fewer parallel streams so those two get the bandwidth instead of racing a
+# dozen small downloads for it.
+ENV UV_HTTP_TIMEOUT=300
+ENV UV_CONCURRENT_DOWNLOADS=4
+
 # Copy workspace root configuration and lockfile
 COPY pyproject.toml uv.lock /app/
 
@@ -94,8 +103,17 @@ COPY ./balancer-service/native/mix_balancer /app/balancer-service/native/mix_bal
 
 # Install dependencies for the target service only
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
+#
+# ``--no-install-package nvidia-nccl-cu12``: xgboost declares it on Linux, but it
+# is a ~300 MiB multi-GPU collective-communications library, and these images run
+# on GPU-less boxes where XGBoost trains with ``device="cpu"`` and never dlopens
+# it. Skipping the install skips the download, which is what actually failed the
+# build. The lock is untouched, so ``analytics-worker.gpu.Dockerfile`` -- the one
+# image that does get a GPU -- still installs it by simply not passing this flag.
+# The flag is harmless for the services whose tree never contained the package.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-dev --package ${APP_PATH}-service
+    uv sync --frozen --no-install-project --no-dev --package ${APP_PATH}-service \
+        --no-install-package nvidia-nccl-cu12
 
 ENV PYTHONPATH=/app/${APP_PATH}-service:/app
 
@@ -114,8 +132,11 @@ COPY ./${APP_PATH}-service /app/${APP_PATH}-service
 
 # Sync the project (install the package itself)
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
+# Same GPU exclusion as the dependency layer above — without it here, this sync
+# would pull the wheel the previous one skipped.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --package ${APP_PATH}-service
+    uv sync --frozen --no-dev --package ${APP_PATH}-service \
+        --no-install-package nvidia-nccl-cu12
 
 # Build the moo_core Rust extension (native/tournament_balancer). Cargo's
 # crate registry/git caches and the build target dir are persisted across

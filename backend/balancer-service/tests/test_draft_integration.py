@@ -230,9 +230,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         roles = ["dps"] * 6 + ["tank", "support", "support"]
         seats = []
         for i, role in enumerate(roles):
-            registration_id = await self._registration(
-                s, tag=f"P{self._suffix}-{i}#1", ranks={role: 3000 + i * 50}
-            )
+            registration_id = await self._registration(s, tag=f"P{self._suffix}-{i}#1", ranks={role: 3000 + i * 50})
             seats.append(PoolSeat(registration_id=registration_id))
         return seats
 
@@ -875,9 +873,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
 
             with self.assertRaises(ApiHTTPException) as ctx:
-                await lifecycle.lifecycle_service.seed(
-                    s, draft, seats=[*seats, PoolSeat(registration_id=unranked_id)]
-                )
+                await lifecycle.lifecycle_service.seed(s, draft, seats=[*seats, PoolSeat(registration_id=unranked_id)])
 
             self.assertEqual(ctx.exception.status_code, 422)
             self.assertEqual(ctx.exception.detail[0]["code"], "draft_pool_unranked")

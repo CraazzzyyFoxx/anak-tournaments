@@ -18,6 +18,7 @@ from shared.repository import (
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
 from src import models, schemas
 from src.core import enums, utils
+from src.core.query_page import execute_page_with_total
 from src.core.workspace import workspace_filter
 from src.services.map import service as map_service
 from src.services.tournament import service as tournament_service
@@ -106,12 +107,14 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
         away_team_entity = utils.join_entity(child, models.Encounter.away_team)
         entities.append(away_team_entity)
         entities.extend(
-            TeamRepository.team_entities((
-                utils.prepare_entities(in_entities, "teams")
-                if include_teams
-                else utils.prepare_entities(in_entities, "away_team")
-            ),
-            away_team_entity,)
+            TeamRepository.team_entities(
+                (
+                    utils.prepare_entities(in_entities, "teams")
+                    if include_teams
+                    else utils.prepare_entities(in_entities, "away_team")
+                ),
+                away_team_entity,
+            )
         )
     if "matches" in in_entities:
         matches_entity = utils.join_entity(child, models.Encounter.matches)
@@ -141,23 +144,27 @@ def match_entities(in_entities: list[str], child: typing.Any | None = None) -> l
         home_team_entity = utils.join_entity(child, models.Match.home_team)
         entities.append(home_team_entity)
         entities.extend(
-            TeamRepository.team_entities((
-                utils.prepare_entities(in_entities, "teams")
-                if include_teams
-                else utils.prepare_entities(in_entities, "home_team")
-            ),
-            home_team_entity,)
+            TeamRepository.team_entities(
+                (
+                    utils.prepare_entities(in_entities, "teams")
+                    if include_teams
+                    else utils.prepare_entities(in_entities, "home_team")
+                ),
+                home_team_entity,
+            )
         )
     if include_away_team:
         away_team_entity = utils.join_entity(child, models.Match.away_team)
         entities.append(away_team_entity)
         entities.extend(
-            TeamRepository.team_entities((
-                utils.prepare_entities(in_entities, "teams")
-                if include_teams
-                else utils.prepare_entities(in_entities, "away_team")
-            ),
-            away_team_entity,)
+            TeamRepository.team_entities(
+                (
+                    utils.prepare_entities(in_entities, "teams")
+                    if include_teams
+                    else utils.prepare_entities(in_entities, "away_team")
+                ),
+                away_team_entity,
+            )
         )
     if "encounter" in in_entities:
         encounter_entity = utils.join_entity(child, models.Match.encounter)
@@ -411,9 +418,14 @@ class EncounterService:
         # matches.match), not a real column, so a textual ORDER BY would break.
         query = params.apply_pagination_sort(query, models.Encounter)
 
-        result = await session.execute(query)
-        result_total = await session.execute(total_query)
-        return result.unique().scalars().all(), result_total.scalar_one()
+        return await execute_page_with_total(
+            session,
+            query,
+            total_query,
+            pk=models.Encounter.id,
+            page=params.page,
+            only_count=params.only_count,
+        )
 
     async def get_saved_views(
         self,
@@ -422,9 +434,7 @@ class EncounterService:
         workspace_id: int,
         auth_user_id: int,
     ) -> typing.Sequence[models.EncounterSavedView]:
-        return await self.saved_view_repo.list_for_user(
-            session, workspace_id=workspace_id, auth_user_id=auth_user_id
-        )
+        return await self.saved_view_repo.list_for_user(session, workspace_id=workspace_id, auth_user_id=auth_user_id)
 
     async def upsert_saved_view(
         self,
@@ -515,6 +525,53 @@ class EncounterService:
         # otherwise run once per aggregate (this endpoint used to issue 22
         # sequential round trips per cache miss).
         completed = models.Encounter.status == enums.EncounterStatus.COMPLETED
+        duration_by_encounter = (
+            sa.select(models.Match.encounter_id.label("encounter_id"), sa.func.sum(models.Match.time).label("seconds"))
+            .join(base_ids, base_ids.c.id == models.Match.encounter_id)
+            .group_by(models.Match.encounter_id)
+            .subquery()
+        )
+        avg_series_seconds_sq = sa.select(sa.func.avg(duration_by_encounter.c.seconds)).scalar_subquery()
+        enc_upset = aliased(models.Encounter)
+        home_standing = aliased(models.Standing)
+        away_standing = aliased(models.Standing)
+        upset_count_sq = (
+            sa.select(sa.func.count(sa.distinct(enc_upset.id)))
+            .select_from(enc_upset)
+            .join(base_ids, base_ids.c.id == enc_upset.id)
+            .join(
+                home_standing,
+                sa.and_(
+                    home_standing.tournament_id == enc_upset.tournament_id,
+                    home_standing.team_id == enc_upset.home_team_id,
+                    home_standing.stage_id == enc_upset.stage_id,
+                    home_standing.stage_item_id == enc_upset.stage_item_id,
+                ),
+            )
+            .join(
+                away_standing,
+                sa.and_(
+                    away_standing.tournament_id == enc_upset.tournament_id,
+                    away_standing.team_id == enc_upset.away_team_id,
+                    away_standing.stage_id == enc_upset.stage_id,
+                    away_standing.stage_item_id == enc_upset.stage_item_id,
+                ),
+            )
+            .where(
+                enc_upset.status == enums.EncounterStatus.COMPLETED,
+                sa.or_(
+                    sa.and_(
+                        enc_upset.home_score > enc_upset.away_score,
+                        home_standing.position > away_standing.position,
+                    ),
+                    sa.and_(
+                        enc_upset.away_score > enc_upset.home_score,
+                        away_standing.position > home_standing.position,
+                    ),
+                ),
+            )
+            .scalar_subquery()
+        )
         agg = (
             await session.execute(
                 sa.select(
@@ -548,9 +605,16 @@ class EncounterService:
                     sa.func.count()
                     .filter(models.Encounter.best_of >= 5, models.Encounter.closeness >= 0.6)
                     .label("close_bo5"),
+                    sa.func.count()
+                    .filter(sa.or_(models.Stage.name.ilike("%final%"), models.StageItem.name.ilike("%final%")))
+                    .label("finals"),
+                    avg_series_seconds_sq.label("avg_series_seconds"),
+                    upset_count_sq.label("upsets"),
                 )
                 .select_from(models.Encounter)
                 .join(base_ids, base_ids.c.id == models.Encounter.id)
+                .outerjoin(models.Stage, models.Encounter.stage_id == models.Stage.id)
+                .outerjoin(models.StageItem, models.Encounter.stage_item_id == models.StageItem.id)
             )
         ).one()
 
@@ -566,6 +630,9 @@ class EncounterService:
         home_wins = int(agg.home_wins or 0)
         away_wins = int(agg.away_wins or 0)
         close_bo5_count = int(agg.close_bo5 or 0)
+        finals_count = int(agg.finals or 0)
+        avg_series_seconds = agg.avg_series_seconds
+        upset_count = int(agg.upsets or 0)
 
         bucket_expr = sa.case(
             (models.Encounter.closeness >= 1, 9),
@@ -606,14 +673,6 @@ class EncounterService:
             .limit(6)
         )
 
-        duration_by_encounter = (
-            sa.select(models.Match.encounter_id.label("encounter_id"), sa.func.sum(models.Match.time).label("seconds"))
-            .join(base_ids, base_ids.c.id == models.Match.encounter_id)
-            .group_by(models.Match.encounter_id)
-            .subquery()
-        )
-        avg_series_seconds = await session.scalar(sa.select(sa.func.avg(duration_by_encounter.c.seconds)))
-
         closest_rows = await session.execute(
             encounter_base()
             .where(models.Encounter.closeness.isnot(None))
@@ -652,52 +711,6 @@ class EncounterService:
             .limit(4)
         )
 
-        finals_count = await scalar_int(
-            sa.select(sa.func.count(sa.distinct(models.Encounter.id)))
-            .select_from(models.Encounter)
-            .join(base_ids, base_ids.c.id == models.Encounter.id)
-            .outerjoin(models.Stage, models.Encounter.stage_id == models.Stage.id)
-            .outerjoin(models.StageItem, models.Encounter.stage_item_id == models.StageItem.id)
-            .where(sa.or_(models.Stage.name.ilike("%final%"), models.StageItem.name.ilike("%final%")))
-        )
-        home_standing = aliased(models.Standing)
-        away_standing = aliased(models.Standing)
-        upset_count = await scalar_int(
-            sa.select(sa.func.count(sa.distinct(models.Encounter.id)))
-            .select_from(models.Encounter)
-            .join(base_ids, base_ids.c.id == models.Encounter.id)
-            .join(
-                home_standing,
-                sa.and_(
-                    home_standing.tournament_id == models.Encounter.tournament_id,
-                    home_standing.team_id == models.Encounter.home_team_id,
-                    home_standing.stage_id == models.Encounter.stage_id,
-                    home_standing.stage_item_id == models.Encounter.stage_item_id,
-                ),
-            )
-            .join(
-                away_standing,
-                sa.and_(
-                    away_standing.tournament_id == models.Encounter.tournament_id,
-                    away_standing.team_id == models.Encounter.away_team_id,
-                    away_standing.stage_id == models.Encounter.stage_id,
-                    away_standing.stage_item_id == models.Encounter.stage_item_id,
-                ),
-            )
-            .where(
-                models.Encounter.status == enums.EncounterStatus.COMPLETED,
-                sa.or_(
-                    sa.and_(
-                        models.Encounter.home_score > models.Encounter.away_score,
-                        home_standing.position > away_standing.position,
-                    ),
-                    sa.and_(
-                        models.Encounter.away_score > models.Encounter.home_score,
-                        away_standing.position > home_standing.position,
-                    ),
-                ),
-            )
-        )
         my_team_count = 0
         if viewer_auth_user_id is not None:
             my_team_ids = _encounter_ids_query(
@@ -991,9 +1004,14 @@ class EncounterService:
 
         query = params.apply_pagination_sort(query, models.Match)
 
-        result = await session.execute(query)
-        result_total = await session.execute(total_query)
-        return result.unique().scalars().all(), result_total.scalar_one()
+        return await execute_page_with_total(
+            session,
+            query,
+            total_query,
+            pk=models.Match.id,
+            page=params.page,
+            only_count=params.only_count,
+        )
 
     async def get_match_bulk(
         self, session: AsyncSession, matches_id: list[int], entities: list[str]

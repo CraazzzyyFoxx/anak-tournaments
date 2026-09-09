@@ -86,7 +86,7 @@ class TournamentScheduleSet(BaseModel):
     schedule: list[TournamentScheduleEntryInput]
 
     @model_validator(mode="after")
-    def _validate_schedule(self) -> "TournamentScheduleSet":
+    def _validate_schedule(self) -> TournamentScheduleSet:
         seen: set[TournamentStatus] = set()
         previous: TournamentScheduleEntryInput | None = None
         for entry in sorted(self.schedule, key=lambda item: tournament_state.PHASE_ORDER[item.status]):

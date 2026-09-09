@@ -69,9 +69,7 @@ class RepointPlayerWorkspaceMembersTests(IsolatedAsyncioTestCase):
         # Two Player rows in different tournaments but the same workspace: the
         # workspace_member is resolved once and both rows move in a single
         # UPDATE ... WHERE id IN (...), which is what rowcount=2 reports.
-        session = SimpleNamespace(
-            execute=AsyncMock(side_effect=[_rows((201, 30, 5), (202, 31, 5)), Mock(rowcount=2)])
-        )
+        session = SimpleNamespace(execute=AsyncMock(side_effect=[_rows((201, 30, 5), (202, 31, 5)), Mock(rowcount=2)]))
         member = SimpleNamespace(id=555)
 
         with patch.object(
@@ -255,9 +253,7 @@ class RepointRegistrationWorkspaceMembersTests(IsolatedAsyncioTestCase):
         with patch.object(
             user_merge, "get_or_create_workspace_member", AsyncMock(side_effect=fake_get_or_create)
         ) as get_or_create:
-            moved = await merges._repoint_registration_workspace_members(
-                session, source_user_id=5, target_user_id=77
-            )
+            moved = await merges._repoint_registration_workspace_members(session, source_user_id=5, target_user_id=77)
 
         self.assertEqual(2, get_or_create.await_count)
         self.assertEqual(2, moved)
@@ -271,9 +267,7 @@ class RepointRegistrationWorkspaceMembersTests(IsolatedAsyncioTestCase):
         with patch.object(
             user_merge, "get_or_create_workspace_member", AsyncMock(return_value=member)
         ) as get_or_create:
-            moved = await merges._repoint_registration_workspace_members(
-                session, source_user_id=8, target_user_id=88
-            )
+            moved = await merges._repoint_registration_workspace_members(session, source_user_id=8, target_user_id=88)
 
         get_or_create.assert_awaited_once_with(session, workspace_id=5, player_id=88)
         self.assertEqual(3, session.execute.await_count)
@@ -288,9 +282,7 @@ class RepointRegistrationWorkspaceMembersTests(IsolatedAsyncioTestCase):
         member = SimpleNamespace(id=901)
 
         with patch.object(user_merge, "get_or_create_workspace_member", AsyncMock(return_value=member)):
-            moved = await merges._repoint_registration_workspace_members(
-                session, source_user_id=5, target_user_id=77
-            )
+            moved = await merges._repoint_registration_workspace_members(session, source_user_id=5, target_user_id=77)
 
         # Only the initial SELECT + the collision probe ran; no UPDATE.
         self.assertEqual(2, session.execute.await_count)
@@ -300,9 +292,7 @@ class RepointRegistrationWorkspaceMembersTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows()))
 
         with patch.object(user_merge, "get_or_create_workspace_member", AsyncMock()) as get_or_create:
-            moved = await merges._repoint_registration_workspace_members(
-                session, source_user_id=9, target_user_id=99
-            )
+            moved = await merges._repoint_registration_workspace_members(session, source_user_id=9, target_user_id=99)
 
         get_or_create.assert_not_awaited()
         session.execute.assert_awaited_once()

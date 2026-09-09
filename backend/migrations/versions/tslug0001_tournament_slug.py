@@ -77,14 +77,41 @@ def _with_lock_retry(operation: Callable[[], None]) -> None:
 # Cyrillic digraphs must be substituted before the single-character TRANSLATE
 # below (ж/ц/ч/ш/щ/ю/я have no one-character Latin equivalent; ъ/ь drop).
 _DIGRAPHS = (
-    ("ж", "zh"), ("ц", "ts"), ("ч", "ch"), ("ш", "sh"), ("щ", "sch"),
-    ("ю", "yu"), ("я", "ya"), ("ъ", ""), ("ь", ""),
+    ("ж", "zh"),
+    ("ц", "ts"),
+    ("ч", "ch"),
+    ("ш", "sh"),
+    ("щ", "sch"),
+    ("ю", "yu"),
+    ("я", "ya"),
+    ("ъ", ""),
+    ("ь", ""),
 )
 _SINGLE_PAIRS = (
-    ("а", "a"), ("б", "b"), ("в", "v"), ("г", "g"), ("д", "d"), ("е", "e"),
-    ("ё", "e"), ("з", "z"), ("и", "i"), ("й", "y"), ("к", "k"), ("л", "l"),
-    ("м", "m"), ("н", "n"), ("о", "o"), ("п", "p"), ("р", "r"), ("с", "s"),
-    ("т", "t"), ("у", "u"), ("ф", "f"), ("х", "h"), ("ы", "y"), ("э", "e"),
+    ("а", "a"),
+    ("б", "b"),
+    ("в", "v"),
+    ("г", "g"),
+    ("д", "d"),
+    ("е", "e"),
+    ("ё", "e"),
+    ("з", "z"),
+    ("и", "i"),
+    ("й", "y"),
+    ("к", "k"),
+    ("л", "l"),
+    ("м", "m"),
+    ("н", "n"),
+    ("о", "o"),
+    ("п", "p"),
+    ("р", "r"),
+    ("с", "s"),
+    ("т", "t"),
+    ("у", "u"),
+    ("ф", "f"),
+    ("х", "h"),
+    ("ы", "y"),
+    ("э", "e"),
 )
 _SINGLE_SRC = "".join(src for src, _ in _SINGLE_PAIRS)
 _SINGLE_DST = "".join(dst for _, dst in _SINGLE_PAIRS)
@@ -115,21 +142,15 @@ WHERE ranked.id = t.id
 
 def upgrade() -> None:
     _with_lock_retry(
-        lambda: op.add_column(
-            "tournament", sa.Column("slug", sa.String(), nullable=True), schema="tournament"
-        )
+        lambda: op.add_column("tournament", sa.Column("slug", sa.String(), nullable=True), schema="tournament")
     )
 
     name_expr = "lower(name)"
     for src, dst in _DIGRAPHS:
         name_expr = f"replace({name_expr}, '{src}', '{dst}')"
-    op.execute(
-        sa.text(_BACKFILL_SQL.format(name_expr=name_expr)).bindparams(src=_SINGLE_SRC, dst=_SINGLE_DST)
-    )
+    op.execute(sa.text(_BACKFILL_SQL.format(name_expr=name_expr)).bindparams(src=_SINGLE_SRC, dst=_SINGLE_DST))
 
-    _with_lock_retry(
-        lambda: op.alter_column("tournament", "slug", nullable=False, schema="tournament")
-    )
+    _with_lock_retry(lambda: op.alter_column("tournament", "slug", nullable=False, schema="tournament"))
     _with_lock_retry(
         lambda: op.create_index(
             op.f("ix_tournament_tournament_slug"),
@@ -172,8 +193,6 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_tournament_slug_redirect_old_slug"), table_name="slug_redirect", schema="tournament")
     op.drop_table("slug_redirect", schema="tournament")
     _with_lock_retry(
-        lambda: op.drop_index(
-            op.f("ix_tournament_tournament_slug"), table_name="tournament", schema="tournament"
-        )
+        lambda: op.drop_index(op.f("ix_tournament_tournament_slug"), table_name="tournament", schema="tournament")
     )
     _with_lock_retry(lambda: op.drop_column("tournament", "slug", schema="tournament"))

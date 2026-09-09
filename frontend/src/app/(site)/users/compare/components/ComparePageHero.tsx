@@ -123,13 +123,13 @@ const ComparePageHero = ({
         <div className="grid grid-cols-2 gap-x-7 gap-y-5 text-left lg:text-right">
           {stats.map((stat) => (
             <div key={stat.label} className="min-w-0 lg:flex lg:flex-col lg:items-end">
-              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+              <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                 {stat.label}
               </span>
               <span className="mt-1 block max-w-full truncate font-onest text-[clamp(1.35rem,2vw,1.9rem)] font-bold leading-none tabular-nums text-[color:var(--aqt-fg)]">
                 {stat.value}
               </span>
-              <span className="mt-1 flex max-w-full items-center gap-1 truncate text-[11px] text-[color:var(--aqt-fg-dim)]">
+              <span className="mt-1 flex max-w-full items-center gap-1 truncate text-label text-[color:var(--aqt-fg-dim)]">
                 {stat.refreshing ? <RefreshCw className="h-3 w-3 shrink-0 animate-spin" /> : null}
                 <span className="truncate">{stat.sub}</span>
               </span>

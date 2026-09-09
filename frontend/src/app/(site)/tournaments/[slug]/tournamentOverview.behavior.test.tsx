@@ -11,9 +11,19 @@ import TournamentOverviewBoundary from "./TournamentOverviewBoundary";
 mock.module("next-intl/server", () => ({
   getTranslations: async () => (key: string) => key
 }));
+// The factory has to cover every name the graph under `./layout` imports from
+// `next-intl`, not just the ones this file exercises: a `mock.module` replaces
+// the module wholesale, so a missing export is an ESM link error at import time
+// ("Export named 'useFormatter' not found"), which takes the whole FILE down
+// before any test runs. `useFormatter` arrives via the shell's phase strip
+// (`_components/PhaseTimeline.tsx`, `_components/NextPhaseChip.tsx`).
 mock.module("next-intl", () => ({
   useLocale: () => "en",
-  useTranslations: () => (key: string) => key
+  useTranslations: () => (key: string) => key,
+  useFormatter: () => ({
+    dateTime: () => "",
+    relativeTime: () => ""
+  })
 }));
 mock.module("@/lib/site-metadata", () => ({
   resolveSiteMetadata: async () => ({ name: "Test OWT", origin: "https://example.test" })

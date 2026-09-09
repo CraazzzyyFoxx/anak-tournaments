@@ -26,7 +26,7 @@ import { useVisibleNavGroups } from "./useVisibleNavGroups";
 // Redesign nav-link look (flat, teal-active) — overrides the shared
 // navigationMenuTriggerStyle() via twMerge conflict resolution.
 const navTriggerClass =
-  "h-8 rounded-lg bg-transparent px-3 text-[13px] font-medium text-[color:var(--aqt-fg-muted)] " +
+  "h-8 rounded-lg bg-transparent px-3 text-caption font-medium text-[color:var(--aqt-fg-muted)] " +
   "hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] " +
   "focus:bg-[color:var(--aqt-overlay-3)] focus:text-[color:var(--aqt-fg)] " +
   "data-[state=open]:bg-[color:var(--aqt-overlay-3)] data-[state=open]:text-[color:var(--aqt-fg)]";

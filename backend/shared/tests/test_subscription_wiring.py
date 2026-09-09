@@ -20,11 +20,11 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 from shared.core.social import SocialProvider
+from shared.services.subscriptions import SubscriptionState
 from shared.services.subscriptions import strategies as strategies_module
 from shared.services.subscriptions.entitlements import SubscriptionResolver
 from shared.services.subscriptions.strategies import TwitchSubscriptionStrategy
 from shared.services.subscriptions.wiring import build_event_sink, build_resolver, build_strategies
-from shared.services.subscriptions import SubscriptionState
 
 
 class TestBuildStrategies:

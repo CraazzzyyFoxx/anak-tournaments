@@ -65,13 +65,13 @@ const EncounterRow = ({
   return (
     <Link
       href={`/encounters/${enc.id}`}
-      className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[color:var(--aqt-border)] px-4 py-2.5 text-[15px] transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.025)] md:grid-cols-[1fr_auto_auto_auto_auto_auto_auto]"
+      className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[color:var(--aqt-border)] px-4 py-2.5 text-ui transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.025)] md:grid-cols-[1fr_auto_auto_auto_auto_auto_auto]"
       style={{ boxShadow: `inset 3px 0 0 0 ${scoreAccent[scoreKind]}` }}
     >
       {/* Stage + opponent */}
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate font-medium text-[color:var(--aqt-fg)]">{opponent ?? enc.name}</span>
-        <span className="aqt-mono text-[13px] text-[color:var(--aqt-fg-dim)]">{stageLabel}</span>
+        <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-dim)]">{stageLabel}</span>
       </div>
 
       {/* Heroes */}
@@ -90,7 +90,7 @@ const EncounterRow = ({
 
       {/* Closeness */}
       {enc.closeness != null ? (
-        <span className="aqt-mono hidden text-[13px] text-[color:var(--aqt-fg-dim)] md:block">
+        <span className="aqt-tnum hidden text-caption text-[color:var(--aqt-fg-dim)] md:block">
           {(enc.closeness * 100).toFixed(0)}%
         </span>
       ) : (
@@ -119,7 +119,7 @@ const EncounterRow = ({
       {/* Score */}
       <span
         className={cn(
-          "aqt-mono min-w-[52px] text-right text-[16px] font-bold",
+          "aqt-tnum min-w-[52px] text-right text-base font-bold",
           scoreKind === "win" && "text-[color:var(--aqt-emerald)]",
           scoreKind === "loss" && "text-[color:var(--aqt-rose)]",
           scoreKind === "draw" && "text-[color:var(--aqt-amber)]"

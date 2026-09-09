@@ -340,6 +340,4 @@ def balance_teams_tournament(
     role_mask: dict[str, int] | None = None,
 ) -> list[dict[str, typing.Any]]:
     """Return a Pareto front of balance solutions for the same payload format."""
-    return balance_teams(
-        input_data, config_overrides, progress_callback, role_mask, algorithm="tournament_balancer"
-    )
+    return balance_teams(input_data, config_overrides, progress_callback, role_mask, algorithm="tournament_balancer")

@@ -9,10 +9,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import models, schemas
 
 
+def map_to_read(map: models.Map, entities: list[str]) -> schemas.MapRead:
+    """Sync ``Map`` -> ``MapRead``. The session is unused; ``gamemode`` is
+    already loaded when that entity is requested.
+    """
+    gamemode: schemas.GamemodeRead | None = None
+    if "gamemode" in entities:
+        gamemode = schemas.GamemodeRead(**map.gamemode.to_dict())
+    return schemas.MapRead(
+        **map.to_dict(),
+        gamemode=gamemode,
+    )
+
+
 class MapFlowsService:
-    async def to_pydantic(
-        self, session: AsyncSession, map: models.Map, entities: list[str]
-    ) -> schemas.MapRead:
+    async def to_pydantic(self, session: AsyncSession, map: models.Map, entities: list[str]) -> schemas.MapRead:
         """
         Converts a Map model instance to a Pydantic schema (MapRead), including related entities.
 
@@ -24,13 +35,7 @@ class MapFlowsService:
         Returns:
             schemas.MapRead: The Pydantic schema representing the map.
         """
-        gamemode: schemas.GamemodeRead | None = None
-        if "gamemode" in entities:
-            gamemode = schemas.GamemodeRead(**map.gamemode.to_dict())
-        return schemas.MapRead(
-            **map.to_dict(),
-            gamemode=gamemode,
-        )
+        return map_to_read(map, entities)
 
 
 flows_service = MapFlowsService()

@@ -44,8 +44,10 @@ from shared.repository import (
     BalancerRegistrationTeamRepository,
     TournamentRepository,
 )
+from shared.services.notifications import notify, publish_notification_created
 from shared.services.roster_shape_access import get_tournament_roster_slots, get_workspace_roster_slots
 from src import models
+from src.core.redis import get_realtime_redis
 from src.schemas.registration import RegistrationCreate, RegistrationRead
 from src.schemas.registration_team import (
     RegistrationFreeAgentRead,
@@ -658,7 +660,29 @@ class RegistrationTeamService:
                 invited_by=auth_user.id,
             ),
         )
+        if target_auth_user_id is not None:
+            # Only the targeted mode has an addressee. A link invite is a bearer
+            # credential whose recipient is whoever the captain sends it to --
+            # there is no account to write an inbox row for.
+            await notify(
+                session,
+                kind="team_invite.received",
+                recipient_auth_user_id=target_auth_user_id,
+                source_workspace_id=team.workspace_id,
+                actor_auth_user_id=auth_user.id,
+                payload={
+                    "team_id": team.id,
+                    "team_name": team.name,
+                    "tournament_id": team.tournament_id,
+                    "tournament_name": tournament.name,
+                    "slot_code": slot_code,
+                    "is_substitute": is_substitute,
+                    "invite_id": invite.id,
+                },
+            )
         await session.commit()
+        if target_auth_user_id is not None:
+            await publish_notification_created(get_realtime_redis(), recipient_auth_user_id=target_auth_user_id)
         return invite, raw_token
 
     async def count_invites_against_cap(
@@ -866,8 +890,7 @@ class RegistrationTeamService:
             # See `_normalize_invite_token`'s docstring for why stripping whitespace
             # here is safe: a real token never contains any.
             .where(
-                models.BalancerRegistrationTeamInvite.token_sha256
-                == hash_invite_token(_normalize_invite_token(token))
+                models.BalancerRegistrationTeamInvite.token_sha256 == hash_invite_token(_normalize_invite_token(token))
             )
             .options(
                 selectinload(models.BalancerRegistrationTeamInvite.team).selectinload(
@@ -897,6 +920,59 @@ class RegistrationTeamService:
             # regardless of how healthy the invite row looks.
             is_redeemable=live and team.status == TEAM_FORMING and team.exported_team_id is None,
         )
+
+    async def _notify_invite_answered(
+        self,
+        session: AsyncSession,
+        *,
+        team_id: int,
+        team_name: str,
+        workspace_id: int,
+        captain_registration_id: int | None,
+        invite_id: int,
+        answer: str,
+        responder: models.AuthUser,
+        responder_name: str,
+    ) -> int | None:
+        """Tell the captain how their offer was answered.
+
+        Returns the recipient so the caller can send the realtime nudge once its
+        own commit has landed, or ``None`` when there is nobody to tell: a team
+        whose captain registration was hard-deleted, or a captain who is a shadow
+        player (``players.user.auth_user_id IS NULL``). Neither is an error — the
+        roster change itself stands, it just goes unannounced.
+
+        The recipient is derived from the team's own captain row, never from
+        anything the answering account supplied.
+        """
+        if captain_registration_id is None:
+            return None
+        captain_auth_user_id = await session.scalar(
+            sa.select(models.User.auth_user_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.player_id == models.User.id)
+            .join(
+                models.BalancerRegistration,
+                models.BalancerRegistration.workspace_member_id == models.WorkspaceMember.id,
+            )
+            .where(models.BalancerRegistration.id == captain_registration_id)
+        )
+        if captain_auth_user_id is None:
+            return None
+        await notify(
+            session,
+            kind="team_invite.answered",
+            recipient_auth_user_id=int(captain_auth_user_id),
+            source_workspace_id=workspace_id,
+            actor_auth_user_id=responder.id,
+            payload={
+                "team_id": team_id,
+                "team_name": team_name,
+                "invite_id": invite_id,
+                "answer": answer,
+                "responder_name": responder_name,
+            },
+        )
+        return int(captain_auth_user_id)
 
     async def accept_invite(
         self,
@@ -979,6 +1055,7 @@ class RegistrationTeamService:
             existing.is_substitute = bool(invite.is_substitute)
             await session.flush()
             registration_id = existing.id
+            responder_name = existing.battle_tag or auth_user.username
         else:
             read = await self.registrations.submit_public_registration(
                 session,
@@ -993,6 +1070,7 @@ class RegistrationTeamService:
                 commit=False,
             )
             registration_id = read.id
+            responder_name = read.battle_tag or auth_user.username
         invite.accepted_registration_id = registration_id
         # Projected, not re-read: the new member's row is already flushed, but
         # computing the post-write status here keeps it inside the lock.
@@ -1000,10 +1078,23 @@ class RegistrationTeamService:
             await self._occupancy(session, team, shape, max_substitutes=max_substitutes),
         )
         register_tournament_realtime_update(session, team.tournament_id, "registration_changed")
+        recipient = await self._notify_invite_answered(
+            session,
+            team_id=team.id,
+            team_name=team.name,
+            workspace_id=team.workspace_id,
+            captain_registration_id=team.captain_registration_id,
+            invite_id=invite.id,
+            answer="accepted",
+            responder=auth_user,
+            responder_name=responder_name,
+        )
         try:
             await session.commit()
         except IntegrityError as exc:
             raise _fail(409, "already_registered", "You are already registered for this tournament") from exc
+        if recipient is not None:
+            await publish_notification_created(get_realtime_redis(), recipient_auth_user_id=recipient)
         return team, registration_id
 
     async def decline_invite(
@@ -1019,7 +1110,42 @@ class RegistrationTeamService:
         if invite.state != INVITE_PENDING:
             raise _diagnose_dead_invite(invite)
         invite.state = INVITE_DECLINED
+        # A narrow projection of the team, not a row fetch: the snapshot needs the
+        # name the captain reads, the registration that identifies them, and the
+        # tenant that owns the resulting notification.
+        team_row = (
+            await session.execute(
+                sa.select(
+                    models.BalancerRegistrationTeam.name,
+                    models.BalancerRegistrationTeam.captain_registration_id,
+                    models.BalancerRegistrationTeam.tournament_id,
+                    models.BalancerRegistrationTeam.workspace_id,
+                ).where(models.BalancerRegistrationTeam.id == invite.team_id)
+            )
+        ).one_or_none()
+        recipient: int | None = None
+        if team_row is not None:
+            # The battle tag the captain picked them by, not the account handle:
+            # a targeted invite was chosen off the free-agent list, which shows
+            # exactly this. Accepting gets it for free off the registration it
+            # just wrote; declining has to read it.
+            tags = await self._battle_tags_by_account(
+                session, tournament_id=team_row.tournament_id, auth_user_ids={auth_user.id}
+            )
+            recipient = await self._notify_invite_answered(
+                session,
+                team_id=invite.team_id,
+                team_name=team_row.name,
+                workspace_id=team_row.workspace_id,
+                captain_registration_id=team_row.captain_registration_id,
+                invite_id=invite.id,
+                answer="declined",
+                responder=auth_user,
+                responder_name=tags.get(auth_user.id) or auth_user.username,
+            )
         await session.commit()
+        if recipient is not None:
+            await publish_notification_created(get_realtime_redis(), recipient_auth_user_id=recipient)
 
     # ── roster edits ─────────────────────────────────────────────────────────
 

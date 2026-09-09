@@ -199,6 +199,24 @@ export interface DivisionGridPortableDocument {
   mappings: DivisionGridPortableMapping[];
 }
 
+/** Trust tier of a workspace. New self-service workspaces start `unverified`
+ * and stay off the public home-page directory until a superuser reviews them;
+ * the directory lists `verified` and `trusted`, and badges the latter. */
+export type WorkspaceVerificationStatus = "unverified" | "verified" | "trusted";
+
+/** `scope` of `GET /api/v1/workspaces`. `public` is the shared home-page
+ * directory (no hidden, no `unverified` — identical for superusers), `admin`
+ * the management list, `all` the switcher's union of both. */
+export type WorkspaceListScope = "public" | "admin" | "all";
+
+/** A Discord guild the signed-in user administers, from `GET /api/v1/me/discord-guilds`. */
+export interface ManageableDiscordGuild {
+  guild_id: string;
+  name: string;
+  owner: boolean;
+  can_manage: boolean;
+}
+
 export interface Workspace {
   id: number;
   slug: string;
@@ -234,12 +252,35 @@ export interface Workspace {
   custom_domain_verification_token: string | null;
   /** The one Discord guild this workspace runs in — Boosty patron roles and match-log channels alike. */
   discord_guild_id: string | null;
+  /** Set when an administrator of that guild proved it through Discord OAuth. */
+  discord_guild_verified_at: string | null;
+  /** Self-service trust tier: `unverified` workspaces are absent from the
+   * public directory (`scope=public`) for every caller, superusers included. */
+  verification_status: WorkspaceVerificationStatus;
   default_division_grid_version_id: number | null;
   default_division_grid_version: DivisionGridVersion | null;
   /** How "is this player new" is decided when a roster is created: `"global"`
    * counts any workspace's tournaments, `"workspace"` counts only this
    * workspace's. */
   newcomer_scope: "global" | "workspace";
+}
+
+/**
+ * `Workspace.owner_id` resolved to a person — the account accountable for the
+ * workspace (and counted against the per-account create cap).
+ *
+ * Not a field on `Workspace`: that model comes from the anonymous, edge-cached
+ * `/api/v1/workspaces` reads, so the owner lives behind its own
+ * `workspace.update`-gated endpoint. `null` from the API means no owner is
+ * stamped at all (every workspace predating self-service creation).
+ */
+export interface WorkspaceOwner {
+  auth_user_id: number;
+  username: string | null;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
 }
 
 /**

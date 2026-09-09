@@ -82,7 +82,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
       {variantSelector ? <div className="mb-2">{variantSelector}</div> : null}
       <div className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-faint)]">
+          <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
             Team distribution
           </span>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums text-[color:var(--aqt-fg-muted)]">
@@ -161,7 +161,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
                       <span
                         key={point.id}
                         className={cn(
-                          "inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-[11px] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
+                          "inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-label font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
                           point.accent,
                           stackIndex === 0 ? "" : "-ml-1"
                         )}
@@ -174,7 +174,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
                 ) : (
                   <span
                     className={cn(
-                      "inline-flex h-7 min-w-7 items-center justify-center rounded-lg border px-2 text-[11px] font-semibold",
+                      "inline-flex h-7 min-w-7 items-center justify-center rounded-lg border px-2 text-label font-semibold",
                       bucket.points[0].accent
                     )}
                   >
@@ -185,7 +185,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
             );
           })}
         </div>
-        <div className="mt-2 flex items-center justify-between text-[11px] text-[color:var(--aqt-fg-faint)]">
+        <div className="mt-2 flex items-center justify-between text-label text-[color:var(--aqt-fg-faint)]">
           <span>{min ?? "-"}</span>
           <span>{max ?? "-"}</span>
         </div>

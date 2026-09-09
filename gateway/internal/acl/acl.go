@@ -86,6 +86,7 @@ func New(resolver WorkspaceResolver, members MembershipChecker, vis VisibilityCh
 	r.register("tournament:*:balancer", r.allowBalancer)              // admin tool: workspace member
 	r.register("tournament:*:streams", r.allowSpectateTournament)     // public unless hidden
 	r.register("workspace:*:*", r.allowWorkspaceMember)               // workspace member
+	r.register("user:*:notifications", r.allowOwnNotifications)       // the user themself, no bypass
 	return r
 }
 
@@ -217,4 +218,20 @@ func (r *Registry) allowWorkspaceMember(ctx context.Context, user *auth.User, gr
 		return false, nil
 	}
 	return r.members.IsWorkspaceMember(ctx, user.ID, workspaceID)
+}
+
+// allowOwnNotifications gates user:<id>:notifications, the personal inbox
+// signal. Only that user; deliberately no superuser bypass, unlike every rule
+// above — nobody needs to read someone else's inbox, and a rule with no
+// exception cannot be widened by accident. It needs no external lookup: the
+// topic's own id segment is the whole authorization question.
+func (r *Registry) allowOwnNotifications(_ context.Context, user *auth.User, groups []string) (bool, error) {
+	if user == nil || len(groups) == 0 {
+		return false, nil
+	}
+	userID, err := strconv.ParseInt(groups[0], 10, 64)
+	if err != nil {
+		return false, nil
+	}
+	return userID == user.ID, nil
 }

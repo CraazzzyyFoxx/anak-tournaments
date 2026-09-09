@@ -20,8 +20,8 @@ describe("admin navigation structure", () => {
     ]);
   });
 
-  it("is thirteen entries, not twenty-four", () => {
-    expect(allItems).toHaveLength(13);
+  it("is fifteen entries, not twenty-four", () => {
+    expect(allItems).toHaveLength(15);
     expect(allItems.map((item) => item.href)).toEqual([
       "/admin",
       "/admin/tournaments",
@@ -35,6 +35,8 @@ describe("admin navigation structure", () => {
       "/admin/collectors/rank",
       "/admin/access",
       "/admin/workspaces",
+      "/admin/announcements",
+      "/admin/notifications",
       "/admin/audit",
     ]);
   });
@@ -231,6 +233,7 @@ describe("route gates", () => {
       "/admin/access/sessions",
       "/admin/workspaces",
       "/admin/workspaces/8/general",
+      "/admin/announcements",
       "/admin/audit",
     ];
 

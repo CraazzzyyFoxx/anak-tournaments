@@ -12,7 +12,7 @@ from shared.services.challonge_refs import (
 from src import models, schemas
 from src.core import config, enums, errors, pagination, utils
 from src.services.encounter.service import EncounterService, encounter_service
-from src.services.map.flows import MapFlowsService
+from src.services.map.flows import MapFlowsService, map_to_read
 from src.services.map.flows import flows_service as map_flows_service
 from src.services.team.flows import TeamFlowsService
 from src.services.team.flows import flows_service as team_flows_service
@@ -100,6 +100,8 @@ class EncounterFlowsService:
         challonge_match_ids: typing.Mapping[int, int] | None = None,
         tournament_challonge_refs: typing.Mapping[int, ChallongeRef] | None = None,
         slot_sources: typing.Mapping[int, list[SlotSource]] | None = None,
+        tournament_cache: dict[int, schemas.TournamentRead] | None = None,
+        team_cache: dict[int, schemas.TeamRead] | None = None,
     ) -> schemas.EncounterRead:
         """
         Converts an Encounter model instance to a Pydantic schema (EncounterRead), including related entities.
@@ -131,7 +133,6 @@ class EncounterFlowsService:
         away_team: schemas.TeamRead | None = None
         matches_read: list[schemas.MatchRead] = []
 
-
         if "stage" in entities and encounter.stage is not None:
             # Nested stage challonge is derived at the top-level tournament read, not
             # here — override to None so the legacy ``stage`` columns are never read.
@@ -141,16 +142,23 @@ class EncounterFlowsService:
         if "stage_item" in entities and encounter.stage_item is not None:
             stage_item = schemas.StageItemSummaryRead.model_validate(encounter.stage_item, from_attributes=True)
         if "tournament" in entities:
-            tournament = await self.tournaments.to_pydantic(
-                session,
-                encounter.tournament,
-                utils.prepare_entities(entities, "tournament"),
-                challonge_ref=(
-                    tournament_challonge_refs.get(encounter.tournament_id)
-                    if tournament_challonge_refs is not None
-                    else None
-                ),
-            )
+            nested_tournament = utils.prepare_entities(entities, "tournament")
+            cached_tournament = tournament_cache.get(encounter.tournament_id) if tournament_cache is not None else None
+            if cached_tournament is not None:
+                tournament = cached_tournament
+            else:
+                tournament = await self.tournaments.to_pydantic(
+                    session,
+                    encounter.tournament,
+                    nested_tournament,
+                    challonge_ref=(
+                        tournament_challonge_refs.get(encounter.tournament_id)
+                        if tournament_challonge_refs is not None
+                        else None
+                    ),
+                )
+                if tournament_cache is not None:
+                    tournament_cache[encounter.tournament_id] = tournament
         if "teams" in entities or "home_team" in entities:
             teams_entities = (
                 utils.prepare_entities(entities, "teams")
@@ -158,7 +166,7 @@ class EncounterFlowsService:
                 else utils.prepare_entities(entities, "home_team")
             )
             if encounter.home_team is not None:
-                home_team = await self.teams.to_pydantic(session, encounter.home_team, teams_entities)
+                home_team = await self._cached_team_read(session, encounter.home_team, teams_entities, team_cache)
         if "teams" in entities or "away_team" in entities:
             teams_entities = (
                 utils.prepare_entities(entities, "teams")
@@ -166,10 +174,16 @@ class EncounterFlowsService:
                 else utils.prepare_entities(entities, "away_team")
             )
             if encounter.away_team is not None:
-                away_team = await self.teams.to_pydantic(session, encounter.away_team, teams_entities)
+                away_team = await self._cached_team_read(session, encounter.away_team, teams_entities, team_cache)
         if "matches" in entities:
             matches_read = [
-                await self.to_pydantic_match(session, match, utils.prepare_entities(entities, "matches"))
+                await self.to_pydantic_match(
+                    session,
+                    match,
+                    utils.prepare_entities(entities, "matches"),
+                    team_cache=team_cache,
+                    tournament_cache=tournament_cache,
+                )
                 for match in encounter.matches
             ]
 
@@ -202,8 +216,28 @@ class EncounterFlowsService:
             ],
         )
 
+    async def _cached_team_read(
+        self,
+        session: AsyncSession,
+        team: models.Team,
+        entities: list[str],
+        team_cache: dict[int, schemas.TeamRead] | None,
+    ) -> schemas.TeamRead:
+        if team_cache is not None and team.id in team_cache:
+            return team_cache[team.id]
+        read = await self.teams.to_pydantic(session, team, entities)
+        if team_cache is not None:
+            team_cache[team.id] = read
+        return read
+
     async def to_pydantic_match(
-        self, session: AsyncSession, match: models.Match, entities: list[str]
+        self,
+        session: AsyncSession,
+        match: models.Match,
+        entities: list[str],
+        *,
+        team_cache: dict[int, schemas.TeamRead] | None = None,
+        tournament_cache: dict[int, schemas.TournamentRead] | None = None,
     ) -> schemas.MatchRead:
         """
         Converts a Match model instance to a Pydantic schema (MatchRead), including related entities.
@@ -228,7 +262,7 @@ class EncounterFlowsService:
                 else utils.prepare_entities(entities, "home_team")
             )
             if match.home_team is not None:
-                home_team = await self.teams.to_pydantic(session, match.home_team, teams_entities)
+                home_team = await self._cached_team_read(session, match.home_team, teams_entities, team_cache)
         if "teams" in entities or "away_team" in entities:
             teams_entities = (
                 utils.prepare_entities(entities, "teams")
@@ -236,13 +270,17 @@ class EncounterFlowsService:
                 else utils.prepare_entities(entities, "away_team")
             )
             if match.away_team is not None:
-                away_team = await self.teams.to_pydantic(session, match.away_team, teams_entities)
+                away_team = await self._cached_team_read(session, match.away_team, teams_entities, team_cache)
         if "encounter" in entities:
             encounter = await self.to_pydantic(
-                session, match.encounter, utils.prepare_entities(entities, "encounter")
+                session,
+                match.encounter,
+                utils.prepare_entities(entities, "encounter"),
+                tournament_cache=tournament_cache,
+                team_cache=team_cache,
             )
         if "map" in entities:
-            map_read = await self.maps.to_pydantic(session, match.map, utils.prepare_entities(entities, "map"))
+            map_read = map_to_read(match.map, utils.prepare_entities(entities, "map"))
 
         return schemas.MatchRead(
             **match.to_dict(),
@@ -321,6 +359,8 @@ class EncounterFlowsService:
             session, [encounter.tournament_id for encounter in encounters]
         )
         slot_sources = await resolve_slot_sources(session, [encounter.id for encounter in encounters])
+        tournament_cache: dict[int, schemas.TournamentRead] = {}
+        team_cache: dict[int, schemas.TeamRead] = {}
         return pagination.Paginated(
             total=total,
             per_page=params.per_page,
@@ -333,6 +373,8 @@ class EncounterFlowsService:
                     challonge_match_ids=challonge_match_ids,
                     tournament_challonge_refs=tournament_challonge_refs,
                     slot_sources=slot_sources,
+                    tournament_cache=tournament_cache,
+                    team_cache=team_cache,
                 )
                 for encounter in encounters
             ],
@@ -431,6 +473,9 @@ class EncounterFlowsService:
         featured_tournament_challonge_refs = await resolve_tournament_challonge(
             session, [encounter.tournament_id for encounter in featured_encounters]
         )
+        featured_entities = ["tournament", "stage", "stage_item", "home_team", "away_team", "matches", "matches.map"]
+        featured_tournament_cache: dict[int, schemas.TournamentRead] = {}
+        featured_team_cache: dict[int, schemas.TeamRead] = {}
 
         return schemas.EncounterOverviewRead(
             kpis=schemas.EncounterKpiRead(
@@ -461,9 +506,11 @@ class EncounterFlowsService:
                     await self.to_pydantic(
                         session,
                         encounter,
-                        ["tournament", "stage", "stage_item", "home_team", "away_team", "matches", "matches.map"],
+                        featured_entities,
                         challonge_match_ids=featured_challonge_match_ids,
                         tournament_challonge_refs=featured_tournament_challonge_refs,
+                        tournament_cache=featured_tournament_cache,
+                        team_cache=featured_team_cache,
                     )
                     for encounter in data["closest"]
                 ],
@@ -471,9 +518,11 @@ class EncounterFlowsService:
                     await self.to_pydantic(
                         session,
                         encounter,
-                        ["tournament", "stage", "stage_item", "home_team", "away_team", "matches", "matches.map"],
+                        featured_entities,
                         challonge_match_ids=featured_challonge_match_ids,
                         tournament_challonge_refs=featured_tournament_challonge_refs,
+                        tournament_cache=featured_tournament_cache,
+                        team_cache=featured_team_cache,
                     )
                     for encounter in data["upcoming"]
                 ],
@@ -481,16 +530,17 @@ class EncounterFlowsService:
                     await self.to_pydantic(
                         session,
                         encounter,
-                        ["tournament", "stage", "stage_item", "home_team", "away_team", "matches", "matches.map"],
+                        featured_entities,
                         challonge_match_ids=featured_challonge_match_ids,
                         tournament_challonge_refs=featured_tournament_challonge_refs,
+                        tournament_cache=featured_tournament_cache,
+                        team_cache=featured_team_cache,
                     )
                     for encounter in data["live"]
                 ],
             ),
             hot_maps=[
-                schemas.EncounterMapMetricRead(name=str(name), count=int(count))
-                for name, count in data["hot_map_rows"]
+                schemas.EncounterMapMetricRead(name=str(name), count=int(count)) for name, count in data["hot_map_rows"]
             ],
             pulse=schemas.EncounterPulseRead(
                 avg_series_seconds=data["avg_series_seconds"],
@@ -524,11 +574,22 @@ class EncounterFlowsService:
             pagination.Paginated[schemas.MatchRead]: A paginated list of Pydantic schemas representing the matches.
         """
         matches, total = await self.encounters.get_all_matches(session, params, workspace_id=workspace_id)
+        team_cache: dict[int, schemas.TeamRead] = {}
+        tournament_cache: dict[int, schemas.TournamentRead] = {}
         return pagination.Paginated(
             total=total,
             per_page=params.per_page,
             page=params.page,
-            results=[await self.to_pydantic_match(session, match, params.entities) for match in matches],
+            results=[
+                await self.to_pydantic_match(
+                    session,
+                    match,
+                    params.entities,
+                    team_cache=team_cache,
+                    tournament_cache=tournament_cache,
+                )
+                for match in matches
+            ],
         )
 
     async def get_match(

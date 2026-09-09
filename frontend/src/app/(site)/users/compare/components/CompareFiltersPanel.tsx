@@ -168,7 +168,7 @@ const CompareFiltersPanel = ({
     <div className="space-y-0">
       {/* ── Row 1: Players ── */}
       <div className="space-y-2">
-        <div className="aqt-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+        <div className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
           {t("common.playersLabel")}
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -217,7 +217,7 @@ const CompareFiltersPanel = ({
 
       {/* ── Row 2: Filters ── */}
       <div className="space-y-2">
-        <div className="aqt-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+        <div className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
           {t("users.compare.filters.title")}
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -306,7 +306,7 @@ const CompareFiltersPanel = ({
           <div className="border-t border-[color:var(--aqt-border)] mt-4 mb-4" />
 
           <div className="space-y-2 pb-0.5">
-            <div className="aqt-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+            <div className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
               {t("users.compare.filters.heroAndMap")}
             </div>
             <div className="grid gap-3 md:grid-cols-3">

@@ -68,7 +68,7 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
   return (
     <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
           {t("matches.contribution.title")}
         </span>
         <div className="flex flex-wrap gap-1.5">
@@ -79,7 +79,7 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
                 key={name}
                 type="button"
                 onClick={() => setMetric(name)}
-                className="rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors"
+                className="rounded-md border px-2.5 py-1 text-label font-semibold transition-colors"
                 style={{
                   borderColor: active ? "color-mix(in srgb, var(--aqt-teal) 35%, transparent)" : "var(--aqt-border)",
                   background: active ? "color-mix(in srgb, var(--aqt-teal) 12%, transparent)" : "var(--aqt-overlay-2)",

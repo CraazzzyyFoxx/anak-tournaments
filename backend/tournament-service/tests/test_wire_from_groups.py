@@ -602,9 +602,7 @@ class PerGroupAdvanceCountTests(IsolatedAsyncioTestCase):
                 "get_stage",
                 AsyncMock(side_effect=[target, target, source, target]),
             ),
-            patch.object(
-                stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=source)
-            ),
+            patch.object(stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
         ):
             await stage_service.stage_service.auto_wire_stage(session, target.id)
 
@@ -624,18 +622,14 @@ class AutoWireStageTests(IsolatedAsyncioTestCase):
         target = _playoff_stage(stage_id=2, tournament_id=99)
         session = SimpleNamespace(add=Mock(), commit=AsyncMock())
 
-        with patch.object(
-            stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=None)
-        ):
+        with patch.object(stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=None)):
             with self.assertRaises(Exception) as ctx:
                 await stage_service.stage_service._auto_wire_from_groups(session, target, strict=True)
 
         self.assertIn("Teams advancing to playoff", str(ctx.exception))
 
     async def test_strict_raises_for_non_bracket_stage(self) -> None:
-        stage = SimpleNamespace(
-            id=1, tournament_id=99, stage_type=enums.StageType.ROUND_ROBIN, items=[]
-        )
+        stage = SimpleNamespace(id=1, tournament_id=99, stage_type=enums.StageType.ROUND_ROBIN, items=[])
         session = SimpleNamespace(add=Mock(), commit=AsyncMock())
 
         with self.assertRaises(Exception) as ctx:
@@ -662,9 +656,7 @@ class AutoWireStageTests(IsolatedAsyncioTestCase):
                 "get_stage",
                 AsyncMock(side_effect=[target, target, source, target]),
             ),
-            patch.object(
-                stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=source)
-            ),
+            patch.object(stage_service.stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
         ):
             result = await stage_service.stage_service.auto_wire_stage(session, target.id)
 

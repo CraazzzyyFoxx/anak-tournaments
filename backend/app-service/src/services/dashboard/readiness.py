@@ -114,7 +114,6 @@ class ReadinessService:
             **team,  # type: ignore[arg-type]
         )
 
-
     async def setup_row(self, session: AsyncSession, tournament_id: int) -> sa.Row:
         """Schedule/grid/stage/bracket/log counters — the ``tournament.read`` group."""
         schedule_rows = sa.select(sa.func.count(models.TournamentPhaseSchedule.id)).where(
@@ -192,9 +191,7 @@ class ReadinessService:
         # a single scalar subquery could not tell "no balance saved" apart from
         # "saved but never exported".
         balance_id = (
-            sa.select(models.BalancerBalance.id)
-            .where(models.BalancerBalance.tournament_id == tournament_id)
-            .limit(1)
+            sa.select(models.BalancerBalance.id).where(models.BalancerBalance.tournament_id == tournament_id).limit(1)
         )
         balance_exported_at = (
             sa.select(models.BalancerBalance.exported_at)

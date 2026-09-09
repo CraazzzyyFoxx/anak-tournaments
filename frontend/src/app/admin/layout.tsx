@@ -3,14 +3,33 @@ import { cookies } from "next/headers";
 
 import { AdminLayoutClient } from "@/app/admin/AdminLayoutClient";
 import { SIDEBAR_COOKIE_NAMES, parseSidebarOpenCookie } from "@/lib/sidebar-cookies";
+import notificationService from "@/services/notification.service";
+import type { NotificationItem } from "@/types/notification.types";
 
 type AdminLayoutProps = {
   children: ReactNode;
 };
 
+// Same server-side read as the public layout, and the same `undefined`-on-
+// failure rule (see `(site)/layout.tsx`): the panel is a separate tree, and an
+// operator notice that only reaches the site half is a notice half the
+// audience never sees.
+async function resolveActiveAnnouncements(): Promise<NotificationItem[] | undefined> {
+  try {
+    return await notificationService.activeAnnouncements();
+  } catch {
+    return undefined;
+  }
+}
+
 export default async function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
   const cookieStore = await cookies();
   const defaultSidebarOpen = parseSidebarOpenCookie(cookieStore.get(SIDEBAR_COOKIE_NAMES.admin)?.value) ?? true;
+  const announcements = await resolveActiveAnnouncements();
 
-  return <AdminLayoutClient defaultSidebarOpen={defaultSidebarOpen}>{children}</AdminLayoutClient>;
+  return (
+    <AdminLayoutClient defaultSidebarOpen={defaultSidebarOpen} announcements={announcements}>
+      {children}
+    </AdminLayoutClient>
+  );
 }

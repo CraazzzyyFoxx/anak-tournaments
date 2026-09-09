@@ -109,11 +109,11 @@ class Encounter(db.TimeStampIntegerMixin):
     confirmed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
 
     tournament: Mapped[Tournament] = relationship()
-    home_team: Mapped["Team"] = relationship(foreign_keys=[home_team_id])
-    away_team: Mapped["Team"] = relationship(foreign_keys=[away_team_id])
-    stage: Mapped["Stage | None"] = relationship()
-    stage_item: Mapped["StageItem | None"] = relationship()
-    result_audit: Mapped[list["EncounterResultAudit"]] = relationship(
+    home_team: Mapped[Team] = relationship(foreign_keys=[home_team_id])
+    away_team: Mapped[Team] = relationship(foreign_keys=[away_team_id])
+    stage: Mapped[Stage | None] = relationship()
+    stage_item: Mapped[StageItem | None] = relationship()
+    result_audit: Mapped[list[EncounterResultAudit]] = relationship(
         back_populates="encounter",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -126,12 +126,12 @@ class Encounter(db.TimeStampIntegerMixin):
     # ``passive_deletes`` hands the job to the ``ON DELETE CASCADE`` the column
     # already carries (and every ``match_id`` child carries in turn), so deleting
     # an encounter never loads its series just to rewrite it.
-    matches: Mapped[list["Match"]] = relationship(
+    matches: Mapped[list[Match]] = relationship(
         back_populates="encounter",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    captain_reports: Mapped[list["EncounterCaptainReport"]] = relationship(
+    captain_reports: Mapped[list[EncounterCaptainReport]] = relationship(
         back_populates="encounter",
         cascade="all, delete-orphan",
         passive_deletes=True,

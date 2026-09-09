@@ -11,6 +11,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 from shared.repository import TournamentRepository
 from src import models, schemas
 from src.core import enums, pagination, utils
+from src.core.query_page import execute_page_with_total
 
 OWAL_SEASON_PATTERN = re.compile(r"^OWAL Season (\d+)$")
 
@@ -147,9 +148,14 @@ class TournamentService:
         # `per_page=-1` request; guaranteed to bite as soon as it pages.
         query = query.order_by(models.Tournament.id.desc())
 
-        result = await session.execute(query)
-        total_result = await session.execute(total_query)
-        return result.unique().scalars().all(), total_result.scalar_one()
+        return await execute_page_with_total(
+            session,
+            query,
+            total_query,
+            pk=models.Tournament.id,
+            page=params.page,
+            only_count=params.only_count,
+        )
 
     async def get_history_tournaments(
         self,

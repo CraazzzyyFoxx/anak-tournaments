@@ -57,7 +57,9 @@ class MapService:
         (batch counterpart of the per-item probe in ``initial_create``)."""
         return await self.repo.get_many_by(session, models.Map.name, names)
 
-    async def get_by_name_or_alias_and_gamemode(self, session: AsyncSession, name: str, gamemode: str) -> models.Map | None:
+    async def get_by_name_or_alias_and_gamemode(
+        self, session: AsyncSession, name: str, gamemode: str
+    ) -> models.Map | None:
         """Thin wrapper over the repository — it owns the predicate so the SQL
         stays assertable without a database."""
         return await self.repo.get_by_name_or_alias_and_gamemode(session, name=name, gamemode=gamemode)
@@ -72,7 +74,9 @@ class MapService:
             # the log-processing session back. Both names go in — a failed join
             # cannot tell which of the two was the unknown one.
             await catalog_aliases.record_misses(enums.CatalogEntityType.map, [name], log_record_id=log_record_id)
-            await catalog_aliases.record_misses(enums.CatalogEntityType.gamemode, [gamemode], log_record_id=log_record_id)
+            await catalog_aliases.record_misses(
+                enums.CatalogEntityType.gamemode, [gamemode], log_record_id=log_record_id
+            )
             raise errors.ApiHTTPException(
                 status_code=404,
                 detail=[

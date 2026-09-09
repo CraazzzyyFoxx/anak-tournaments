@@ -112,9 +112,7 @@ class TestAverageSeatOrder:
     def _avg(self, averages, *, descending, captain_ranks=CAPTAIN_RANKS) -> list[int]:
         return [
             team.id
-            for team in average_seat_order(
-                SEATS, averages=averages, captain_ranks=captain_ranks, descending=descending
-            )
+            for team in average_seat_order(SEATS, averages=averages, captain_ranks=captain_ranks, descending=descending)
         ]
 
     def test_ascending_puts_the_lowest_average_first(self) -> None:

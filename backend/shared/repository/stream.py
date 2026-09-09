@@ -286,9 +286,7 @@ class StreamTargetRepository:
                 # all", not "does this user have one". ``Player.team_id`` is NOT
                 # NULL, so a roster row always carries a team and the existence
                 # of any row is exactly "the teams are formed".
-                sa.exists()
-                .where(models.Player.tournament_id == tournament_id)
-                .label("rosters_formed"),
+                sa.exists().where(models.Player.tournament_id == tournament_id).label("rosters_formed"),
             )
             .select_from(user)
             .outerjoin(member, member.player_id == user.id)

@@ -232,6 +232,7 @@
       "getWorkspace": "Get your own workspace",
       "sectionsHeading": "Sections",
       "resourcesHeading": "Resources",
+      "docs": "Docs",
       "apiDocs": "API Docs",
       "copyright": "© {year} {siteName}. All rights reserved."
     },
@@ -2196,6 +2197,7 @@
     "byTheNumbers": "By the numbers",
     "workspaces": "Workspaces",
     "communitiesOnPlatform": "Communities on this platform",
+    "trustedWorkspace": "Trusted community — vouched for by the platform team",
     "getWorkspaceCard": {
       "title": "Get your own",
       "description": "Learn how to add your community as a workspace"
@@ -2234,8 +2236,10 @@
       }
     },
     "action": {
-      "title": "No self-service signup",
-      "description": "Workspaces are currently created manually by the platform administrator. Contact them and describe the community you'd like to set up."
+      "title": "Create it yourself",
+      "description": "Set up a workspace in a minute — you become its owner and administrator. New workspaces are not listed on the home page until the platform team reviews them.",
+      "create": "Create workspace",
+      "revoked": "Workspace creation is turned off for your account. Contact the platform team if you think that is a mistake."
     }
   },
   "workspace": {
@@ -4581,7 +4585,7 @@
         },
         "workspaces": {
           "title": "Workspaces",
-          "body": "Some communities run their own branded workspace on {siteName} — a self-contained set of tournaments, teams, and stats with its own administrators. Workspace administrators can see the membership, roles, and tournament activity within their own workspace only. New workspaces are created by the platform administrator on request, not through self-service signup."
+          "body": "Some communities run their own branded workspace on {siteName} — a self-contained set of tournaments, teams, and stats with its own administrators. Workspace administrators can see the membership, roles, and tournament activity within their own workspace only. Any signed-in account can create a workspace and becomes its owner; new workspaces are listed publicly only after the platform team reviews them."
         },
         "conduct": {
           "title": "Tournament conduct",
@@ -5397,6 +5401,180 @@
       "bot_not_configured": "Discord bot is not deployed",
       "cache_not_ready": "Subscription data is still loading",
       "unknown": "Reason unknown"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "bell": "Notifications, {count, plural, =0 {nothing unread} one {# unread} other {# unread}}",
+    "newCount": "{count, plural, one {# new} other {# new}}",
+    "unread": "Unread",
+    "read": "Read",
+    "readFor": "Read: {notification}",
+    "markRead": "Mark read",
+    "markReadFor": "Mark read: {notification}",
+    "markingRead": "Marking read…",
+    "markingAllRead": "Marking all read…",
+    "markedRead": "Notification marked read.",
+    "markedAllRead": "All notifications marked read.",
+    "markReadError": "Could not update read status. Try again.",
+    "retryMarkRead": "Retry marking read",
+    "delete": "Delete",
+    "deleteFor": "Delete notification: {notification}",
+    "deleting": "Deleting notification…",
+    "deleted": "Notification deleted.",
+    "clearRead": "Clear read",
+    "clearingRead": "Clearing read notifications…",
+    "clearedRead": "Read notifications deleted.",
+    "deleteError": "Could not delete notifications. Try again.",
+    "retryDelete": "Retry deleting",
+    "loading": "Loading notifications…",
+    "loadError": "Could not load notifications. Try again.",
+    "refreshError": "Could not refresh notifications. Showing the last loaded notifications.",
+    "retry": "Try again",
+    "loadingMore": "Loading older notifications…",
+    "loadMoreError": "Could not load older notifications. Your loaded notifications are still available.",
+    "retryLoadMore": "Retry loading older",
+    "unknownKind": "New activity notification",
+    "empty": "No notifications yet",
+    "emptyHint": "Team invites, registration decisions and disputed reports land here.",
+    "markAllRead": "Mark all read",
+    "loadMore": "Show older",
+    "banner": {
+      "label": "Announcement",
+      "eyebrow": "Announcement",
+      "dismiss": "Dismiss announcement",
+      "more": "Learn more"
+    },
+    "kinds": {
+      "team_invite": {
+        "received": "{team_name} invited you to their roster for {tournament_name}",
+        "answered": "{responder_name} {answer, select, accepted {accepted} declined {declined} other {answered}} your invite to {team_name}"
+      },
+      "registration": {
+        "approved": "Your registration for {tournament_name} was approved",
+        "rejected": "Your registration for {tournament_name} was rejected"
+      },
+      "encounter": {
+        "report_disputed": "{map_index, plural, =0 {A report in your match is disputed} other {The report for map # of your match is disputed}}"
+      },
+      "announcement": {
+        "published": "New announcement"
+      }
+    },
+    "admin": {
+      "title": "Announcements",
+      "description": "Notices you write yourself — shown in the inbox, and platform-wide ones as a banner to every visitor.",
+      "audienceLabel": "Audience",
+      "audience": {
+        "workspace": "This workspace",
+        "global": "Platform-wide"
+      },
+      "pickWorkspace": "Pick a workspace to read and write its announcements. Announcements belong to one workspace at a time — the same scope the permission to publish them is granted in.",
+      "unauthorized": {
+        "title": "Unauthorized",
+        "description": "You do not have permission to read announcements in this workspace."
+      },
+      "readOnly": "You can read this feed but not publish to it. Publishing needs the announcement permission in this workspace.",
+      "published": "Announcement published",
+      "untitled": "Untitled",
+      "empty": "No announcements in this scope yet.",
+      "locales": {
+        "ru": "Russian",
+        "en": "English"
+      },
+      "form": {
+        "title": "New announcement",
+        "workspaceHint": "Shown to members of this workspace. One language is enough — readers without it see the fallback.",
+        "globalHint": "Shown to every visitor of the platform, signed in or not, so it needs both languages.",
+        "titleField": "Title",
+        "bodyField": "Body (optional)",
+        "localeEmpty": "empty",
+        "defaultLocale": "Fallback language",
+        "defaultLocaleEmpty": "Write a title first — the fallback is chosen among the languages you filled in.",
+        "defaultLocaleHint": "Used for readers whose language you did not write in.",
+        "href": "Link (optional)",
+        "publishedAt": "Publish at",
+        "publishedAtTime": "Publish time",
+        "publishedAtPlaceholder": "Right away",
+        "expiresAt": "Stop showing at",
+        "expiresAtTime": "Stop showing time",
+        "expiresAtPlaceholder": "Never",
+        "scheduleClear": "Clear",
+        "publish": "Publish",
+        "publishing": "Publishing…",
+        "cancel": "Cancel"
+      },
+      "errors": {
+        "noLocale": "Write a title in at least one language.",
+        "missingLocales": "A platform-wide announcement needs a title in both Russian and English — everyone sees it, whichever language they read the site in.",
+        "defaultLocaleEmpty": "The fallback language has no title.",
+        "noWorkspace": "Pick a workspace before publishing a workspace announcement.",
+        "badDate": "Check the publish and expiry times."
+      },
+      "columns": {
+        "title": "Announcement",
+        "audience": "Audience",
+        "publishedAt": "Published",
+        "expiresAt": "Expires",
+        "state": "State"
+      },
+      "state": {
+        "scheduled": "Scheduled",
+        "active": "Live",
+        "retired": "Unpublished"
+      },
+      "retire": {
+        "action": "Unpublish",
+        "title": "Unpublish this announcement?",
+        "description": "It stops being shown from now on. The record and everyone's read marks stay, so who saw it remains answerable — but it cannot be put back on air from this screen.",
+        "cancel": "Keep it up",
+        "done": "Announcement unpublished"
+      }
+    },
+    "workspaceAdmin": {
+      "title": "Sent notifications",
+      "description": "System notifications this workspace produced — invites, registration decisions, disputed reports. Retire one to take it out of every recipient's inbox.",
+      "pickWorkspace": "Pick a workspace to review the notifications it produced.",
+      "unauthorized": {
+        "title": "Unauthorized",
+        "description": "You do not have permission to read the notifications this workspace produced."
+      },
+      "readOnly": "You can review this list but not retire from it. Retiring needs the notification permission in this workspace.",
+      "kindLabel": "Kind",
+      "allKinds": "All kinds",
+      "kinds": {
+        "team_invite": {
+          "received": "Team invite",
+          "answered": "Invite answered"
+        },
+        "registration": {
+          "approved": "Registration approved",
+          "rejected": "Registration rejected"
+        },
+        "encounter": {
+          "report_disputed": "Report disputed"
+        }
+      },
+      "columns": {
+        "kind": "Kind",
+        "recipient": "Recipient",
+        "publishedAt": "Sent",
+        "state": "State"
+      },
+      "state": {
+        "live": "In inboxes",
+        "retired": "Retired"
+      },
+      "empty": "This workspace has produced no notifications of this kind.",
+      "loadMore": "Show older",
+      "loadingMore": "Loading older…",
+      "retired": "{count, plural, =0 {Nothing to retire} one {# notification retired} other {# notifications retired}}",
+      "retire": {
+        "action": "Retire",
+        "kindAction": "Retire every one of this kind",
+        "title": "Retire these notifications?",
+        "description": "They stop appearing in recipients' inboxes and stop counting toward their badge. The records and the read marks stay, so who saw them remains answerable — but this cannot be undone from here."
+      }
     }
   }
 }

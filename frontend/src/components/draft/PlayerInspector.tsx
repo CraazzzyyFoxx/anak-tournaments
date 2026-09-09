@@ -26,7 +26,7 @@ import { formatSubRoleLabel, getHeroIconUrl, getPlayerSlug } from "@/utils/playe
 import { optionForSelection, playerRoles, roleTopHeroes } from "@/lib/draft-workspace-model";
 
 const BADGE_CLASS =
-  "rounded border border-[color:var(--aqt-border-2)] px-1 text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]";
+  "rounded border border-[color:var(--aqt-border-2)] px-1 text-label uppercase tracking-wide text-[color:var(--aqt-fg-muted)]";
 
 interface PlayerInspectorProps {
   player: DraftPlayer | null;
@@ -106,7 +106,7 @@ export function PlayerInspector({
             )}
             {player.is_captain && <Crown className="h-4 w-4 shrink-0 text-[color:var(--aqt-teal)]" role="img" aria-label={t("captain")} />}
           </h2>
-          <p className="font-mono text-xs text-[color:var(--aqt-fg-faint)]">{`#${player.id}`}</p>
+          <p className="text-xs text-[color:var(--aqt-fg-faint)]">{`#${player.id}`}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {headerDivision != null && (
@@ -178,7 +178,7 @@ export function PlayerInspector({
                 <PlayerRoleIcon role={getRoleIconName(entry)} size={18} color={ROLE_ACCENT[entry]} decorative />
                 <span className="sr-only">{t(`roles.${entry}`)}</span>
                 {isPrimary && player.sub_role && (
-                  <span className="min-w-0 truncate text-[11px] font-medium uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
+                  <span className="min-w-0 truncate text-label font-medium uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
                     {formatSubRoleLabel(player.sub_role)}
                   </span>
                 )}
@@ -193,7 +193,7 @@ export function PlayerInspector({
                     </AvatarStack>
                   )}
                   {borrowedSource && (
-                    <span className="font-mono text-[10px] uppercase tracking-wide text-[color:var(--aqt-fg-faint)]">
+                    <span className="text-label uppercase tracking-wide text-[color:var(--aqt-fg-faint)]">
                       {t(`rankSourceShort.${borrowedSource}`)}
                     </span>
                   )}

@@ -25,7 +25,6 @@ class _Job:
         self.attempts = 1
 
 
-
 class _FakeStore:
     def __init__(self) -> None:
         self.rows: dict[int, _Job] = {}
@@ -123,4 +122,3 @@ class JobServiceTests(IsolatedAsyncioTestCase):
         job.status = "superseded"
         ignored = await runtime.mark_failed(None, job.id, error="late")
         self.assertEqual("superseded", ignored.status)
-

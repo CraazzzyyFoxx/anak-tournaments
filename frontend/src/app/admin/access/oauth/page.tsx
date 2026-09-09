@@ -3,20 +3,21 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Trash2, UserCog } from "lucide-react";
+import { CheckCircle, Clock, Trash2, UserCog } from "lucide-react";
 import { useFormatter } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { PROVIDER_META, ProviderBadge } from "@/components/admin/OAuthProviderBadge";
 import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
 import { AdminInspector } from "@/components/admin/kit/AdminInspector";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
 import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { notify } from "@/lib/notify";
@@ -104,6 +105,12 @@ export default function OAuthConnectionsAdminPage() {
   const columns = useMemo<ColumnDef<OAuthConnectionAdmin>[]>(
     () => [
       {
+        accessorKey: "id",
+        header: "ID",
+        size: 60,
+        cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>
+      },
+      {
         accessorKey: "provider",
         header: "Provider",
         cell: ({ row }) => <ProviderBadge provider={row.original.provider} />
@@ -152,16 +159,17 @@ export default function OAuthConnectionsAdminPage() {
         id: "token_status",
         header: "Token",
         enableSorting: false,
+        meta: adminColumnMeta({ align: "center" }),
         cell: ({ row }) => {
           const expiresAt = row.original.token_expires_at;
           if (!expiresAt) {
             return <span className="text-xs text-muted-foreground">No token</span>;
           }
           const expired = isTokenExpired(expiresAt);
-          return (
-            <Badge variant="outline" className={cn(TONE_CLASS[expired ? "danger" : "success"])}>
-              {expired ? "Expired" : "Active"}
-            </Badge>
+          return expired ? (
+            <StatusIcon icon={Clock} label="Expired" variant="destructive" />
+          ) : (
+            <StatusIcon icon={CheckCircle} label="Active" variant="success" />
           );
         }
       },

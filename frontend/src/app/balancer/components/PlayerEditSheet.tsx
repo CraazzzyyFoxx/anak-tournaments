@@ -257,7 +257,7 @@ function SortableRoleEntry({
           handleProps={handleProps}
           label={`Reorder ${ROLE_DISPLAY[entry.role]}`}
         />
-        <span className="text-[11px] font-semibold text-[color:var(--aqt-fg-dim)]">#{index + 1}</span>
+        <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">#{index + 1}</span>
       </div>
 
       <div className="space-y-2">
@@ -273,7 +273,7 @@ function SortableRoleEntry({
               {ROLE_DISPLAY[entry.role]}
             </span>
             {subtypeLabel ? (
-              <Badge className={cn("h-4 border px-1.5 text-[11px]", accent.chip)}>
+              <Badge className={cn("h-4 border px-1.5 text-label", accent.chip)}>
                 {subtypeLabel}
               </Badge>
             ) : null}
@@ -291,7 +291,7 @@ function SortableRoleEntry({
               />
               <span
                 className={cn(
-                  "text-[11px] font-semibold uppercase tracking-wide",
+                  "text-label font-semibold uppercase tracking-wide",
                   declaredActive ? accent.text : "text-[color:var(--aqt-fg-dim)]"
                 )}
               >
@@ -312,7 +312,7 @@ function SortableRoleEntry({
 
         <div className="grid gap-2 lg:grid-cols-[minmax(0,140px)_minmax(0,1fr)_130px]">
           <div className="space-y-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
+            <span className="text-label font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
               Sub-role
             </span>
             <Select
@@ -376,17 +376,17 @@ function SortableRoleEntry({
             className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-black/15 px-2 py-1.5 text-left transition hover:border-[color:var(--aqt-border-2)] hover:bg-white/5"
           >
             <Sparkles className="h-3 w-3 shrink-0 text-amber-300/70" />
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">OW</span>
+            <span className="text-label font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">OW</span>
             {owSuggestionDivision != null ? (
               <DivisionIcon division={owSuggestionDivision} width={16} height={16} />
             ) : null}
-            <span className="truncate text-[11px] font-medium text-[color:var(--aqt-fg-muted)]">
+            <span className="truncate text-label font-medium text-[color:var(--aqt-fg-muted)]">
               {owSuggestionName ?? `Division ${owSuggestionDivision}`}
             </span>
-            <span className="text-[11px] tabular-nums text-[color:var(--aqt-fg-dim)]">({owRankValue})</span>
+            <span className="text-label tabular-nums text-[color:var(--aqt-fg-dim)]">({owRankValue})</span>
             <span
               className={cn(
-                "ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold",
+                "ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-label font-semibold",
                 accent.chip
               )}
             >
@@ -396,8 +396,8 @@ function SortableRoleEntry({
         ) : (
           <div className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-black/10 px-2 py-1.5 text-left">
             <Sparkles className="h-3 w-3 shrink-0 text-[color:var(--aqt-fg-faint)]" />
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">OW</span>
-            <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No live OW rank</span>
+            <span className="text-label font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">OW</span>
+            <span className="text-label text-[color:var(--aqt-fg-dim)]">No live OW rank</span>
           </div>
         )}
       </div>
@@ -451,7 +451,7 @@ function HistoryPreviewCard({
               {ROLE_DISPLAY[entry.role]}
             </span>
           </div>
-          <Badge className={cn("h-5 border px-2 text-[11px]", accent.chip)}>
+          <Badge className={cn("h-5 border px-2 text-label", accent.chip)}>
             {entry.rank_value} SR
           </Badge>
           {/* Original division (source tournament grid) */}
@@ -465,7 +465,7 @@ function HistoryPreviewCard({
                   tournamentGrid={entry.tournament_grid_version}
                 />
               ) : null}
-              <span className="text-[11px] font-medium">{originalDivisionName}</span>
+              <span className="text-label font-medium">{originalDivisionName}</span>
             </div>
           ) : null}
           {/* Normalised division (workspace target grid) — only when different */}
@@ -476,7 +476,7 @@ function HistoryPreviewCard({
                 {entry.division_number != null ? (
                   <DivisionIcon division={entry.division_number} width={16} height={16} />
                 ) : null}
-                <span className="text-[11px] font-medium">{divisionName}</span>
+                <span className="text-label font-medium">{divisionName}</span>
               </div>
             </>
           ) : null}
@@ -487,7 +487,7 @@ function HistoryPreviewCard({
         <div className="flex items-center justify-end gap-1.5">
           <span
             className={cn(
-              "rounded border px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+              "rounded border px-1.5 py-0.5 text-label font-semibold uppercase tracking-wide",
               entry.source === "balancer"
                 ? "border-indigo-400/25 bg-indigo-500/10 text-indigo-200"
                 : "border-[color:var(--aqt-border-2)] bg-white/5 text-[color:var(--aqt-fg-muted)]"
@@ -824,7 +824,7 @@ export function PlayerEditModal({
             </SheetTitle>
             <BattleTagCopyButton battleTag={primaryBattleTag} className="h-6 w-6" />
             {isFlex ? (
-              <Badge className="h-5 border-emerald-400/25 bg-emerald-400/10 px-2 text-[11px] text-emerald-200 hover:bg-emerald-400/10">
+              <Badge className="h-5 border-emerald-400/25 bg-emerald-400/10 px-2 text-label text-emerald-200 hover:bg-emerald-400/10">
                 Flex
               </Badge>
             ) : null}
@@ -841,11 +841,11 @@ export function PlayerEditModal({
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-medium text-[color:var(--aqt-fg)]">Balancer status</span>
                 {registration ? (
-                  <StatusMetaBadge meta={registration.balancer_status_meta} className="h-5 text-[11px]" />
+                  <StatusMetaBadge meta={registration.balancer_status_meta} className="h-5 text-label" />
                 ) : (
                   <Badge
                     className={cn(
-                      "h-5 px-2 text-[11px]",
+                      "h-5 px-2 text-label",
                       isComputedReady
                         ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
                         : "border-orange-400/25 bg-orange-400/10 text-orange-200"
@@ -886,7 +886,7 @@ export function PlayerEditModal({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-black/20 px-2.5 text-[11px] text-[color:var(--aqt-fg)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
+                  className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-black/20 px-2.5 text-label text-[color:var(--aqt-fg)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
                   onClick={addRole}
                   disabled={roleEntries.length >= ROLE_OPTIONS.length}
                 >
@@ -897,7 +897,7 @@ export function PlayerEditModal({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-black/20 px-2.5 text-[11px] text-[color:var(--aqt-fg)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
+                  className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-black/20 px-2.5 text-label text-[color:var(--aqt-fg)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
                   onClick={handleLoadFromHistory}
                   disabled={loadingHistory}
                 >
@@ -917,7 +917,7 @@ export function PlayerEditModal({
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-[color:var(--aqt-fg)]">History preview</span>
                     {historyPreviewAverage != null ? (
-                      <Badge className="h-5 border-primary/20 bg-primary/10 px-2 text-[11px] text-[color:var(--aqt-fg)] hover:bg-primary/10">
+                      <Badge className="h-5 border-primary/20 bg-primary/10 px-2 text-label text-[color:var(--aqt-fg)] hover:bg-primary/10">
                         Avg {historyPreviewAverage}
                       </Badge>
                     ) : null}
@@ -927,7 +927,7 @@ export function PlayerEditModal({
                       <Button
                         type="button"
                         size="sm"
-                        className="h-7 bg-primary px-2.5 text-[11px] text-primary-foreground hover:bg-primary/90"
+                        className="h-7 bg-primary px-2.5 text-label text-primary-foreground hover:bg-primary/90"
                         onClick={handleApplyHistoryPreview}
                       >
                         Apply history values
@@ -971,25 +971,25 @@ export function PlayerEditModal({
                 </div>
 
                 <div className="mt-3 flex items-center justify-between gap-3 border-t border-[color:var(--aqt-border)] pt-2.5">
-                  <Label className="text-[11px] text-[color:var(--aqt-fg-muted)] select-none">
+                  <Label className="text-label text-[color:var(--aqt-fg-muted)] select-none">
                     Load history from:
                   </Label>
                   <Select
                     value={historyWorkspaceValue}
                     onValueChange={handleHistoryWorkspaceChange}
                   >
-                    <SelectTrigger className="h-6 w-[180px] border-[color:var(--aqt-border-2)] bg-black/20 text-[11px] text-[color:var(--aqt-fg)] px-2">
+                    <SelectTrigger className="h-6 w-[180px] border-[color:var(--aqt-border-2)] bg-black/20 text-label text-[color:var(--aqt-fg)] px-2">
                       <SelectValue placeholder="Select workspace" />
                     </SelectTrigger>
-                    <SelectContent className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card)] text-[color:var(--aqt-fg)] text-[11px]">
-                      <SelectItem value="current" className="text-[11px]">
+                    <SelectContent className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card)] text-[color:var(--aqt-fg)] text-label">
+                      <SelectItem value="current" className="text-label">
                         Current Workspace
                       </SelectItem>
-                      <SelectItem value="all" className="text-[11px]">
+                      <SelectItem value="all" className="text-label">
                         All Workspaces
                       </SelectItem>
                       {workspaces.map((ws) => (
-                        <SelectItem key={ws.id} value={String(ws.id)} className="text-[11px]">
+                        <SelectItem key={ws.id} value={String(ws.id)} className="text-label">
                           {ws.name}
                         </SelectItem>
                       ))}
@@ -1009,7 +1009,7 @@ export function PlayerEditModal({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-6 border-[color:var(--aqt-border-2)] bg-black/20 px-2 text-[11px] text-[color:var(--aqt-fg)] hover:bg-white/5"
+                    className="h-6 border-[color:var(--aqt-border-2)] bg-black/20 px-2 text-label text-[color:var(--aqt-fg)] hover:bg-white/5"
                     disabled={saving}
                     onClick={handleClearPin}
                   >
@@ -1119,7 +1119,7 @@ export function PlayerEditModal({
                   </SelectContent>
                 </Select>
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">
+                  <p className="text-label text-[color:var(--aqt-fg-dim)]">
                     Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player from the pool.
                   </p>
                   {registrationBalancerStatus !== "ready" ? (
@@ -1127,7 +1127,7 @@ export function PlayerEditModal({
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-6 shrink-0 gap-1 whitespace-nowrap border-emerald-500/30 bg-emerald-500/10 px-2 text-[11px] text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
+                      className="h-6 shrink-0 gap-1 whitespace-nowrap border-emerald-500/30 bg-emerald-500/10 px-2 text-label text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
                       disabled={saving}
                       onClick={handleMoveToReady}
                       title="Saves your pending edits, then recomputes this player's balancer status from their current role ranks"
@@ -1143,7 +1143,7 @@ export function PlayerEditModal({
         </div>
 
         <SheetFooter className="shrink-0 border-t border-[color:var(--aqt-border)] px-4 py-2.5 sm:justify-between sm:space-x-0 sm:px-5">
-          <div className="text-[11px] text-[color:var(--aqt-fg-dim)]">
+          <div className="text-label text-[color:var(--aqt-fg-dim)]">
             Manual edits always win until you explicitly load and apply new history values.
           </div>
           <div className="flex gap-2">

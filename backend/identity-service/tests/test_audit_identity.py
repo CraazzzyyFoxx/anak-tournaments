@@ -164,9 +164,7 @@ def test_assign_role_records_audit_row_scoped_to_the_role_workspace() -> None:
     session = _EventSession(results=[target, role, True])
 
     asyncio.run(
-        RoleAdminService(cache=_NoopCache()).assign_to_user(
-            session, _actor(), SimpleNamespace(user_id=9, role_id=5)
-        )
+        RoleAdminService(cache=_NoopCache()).assign_to_user(session, _actor(), SimpleNamespace(user_id=9, role_id=5))
     )
 
     row = _one_audit_row(session)

@@ -58,7 +58,7 @@ Today this whole chain is gated by one manual human step (`require_superuser`). 
 | A4 | Achievement full-recompute (`manual`, `rule_version_bump` triggers) is **deferred** (low-priority queue), not blocked, for `unverified` workspaces | Confirmed by user |
 | A5 | No auto-upgrade in this iteration. `verification_status` moves `unverified → verified/trusted` **only** through a superuser RPC. The linked-member-count primitive is written (so a later auto-verify pass is a small follow-up) but **no call site invokes it** | Revised by user — see §4.3 |
 | A6 | Existing production workspaces backfill to `verified` on migration — no retroactive gating of current organizers | New, follows from A5's intent (gate new entrants, not incumbents) — flagged in Risks §6 for explicit sign-off |
-| A7 | The public/anonymous workspace listing (home page) shows **only `trusted`** workspaces for now — `verified` is a compute/achievement gate, not a discoverability gate | New, confirmed by user — see §4.5 |
+| A7 | The public/anonymous workspace listing (home page) shows **only `trusted`** workspaces for now — `verified` is a compute/achievement gate, not a discoverability gate | New, confirmed by user — see §4.5. **Superseded 2026-09-07:** the directory now lists `verified` and `trusted` alike (the widening §4.5 already named as the natural follow-up); `trusted` is surfaced as a badge on the public card instead |
 
 ## 4. Design
 
@@ -192,7 +192,29 @@ async def count_by_owner(self, session, *, owner_id: int) -> int:
 
 **`WorkspaceCreate.discord_guild_id` is removed** — binding only happens through `discord_guild_verify` (§4.1), after the workspace exists and is owned.
 
-### 4.5 Public visibility — trusted-only homepage
+### 4.5 Public visibility — the homepage tier gate
+
+> **Revised 2026-09-07 (shipped).** The predicate below is now
+> `is_verified_or_trusted(w)`, i.e. `verification_status != "unverified"` — exactly
+> the widening the last paragraph of this section named as the natural follow-up.
+> `trusted` did not lose its meaning, it moved: it is a `BadgeCheck` icon on the
+> public workspace card (`(home)/page.tsx::WorkspaceCard`) rather than the price of
+> admission. `shared/services/workspace_tier.py::is_trusted` was deleted with its
+> only call site; `is_verified_or_trusted` is now the single tier gate in the
+> backend.
+>
+> **Revised again 2026-09-07 (shipped): the directory has no bypasses left.**
+> `unverified` (and hidden) workspaces are absent from the public directory for
+> EVERY caller — membership does not lift the gate and neither does
+> `is_superuser`, because an operator browsing the home page was seeing cards no
+> visitor could see, which made the directory unreviewable from the product
+> itself. `GET /api/v1/workspaces` now takes `?scope=public|admin|all`
+> (`public` is the default; anything else is a 422): `admin` is the management
+> list the superuser verifies workspaces from, `all` is `admin` ∪ the directory
+> for the workspace switcher and slug resolution. The three consumers that used
+> to rely on the implicit bypass now ask for the scope they need — home page
+> (default), `stores/workspace.store.ts` and `(site)/workspace/[slug]` (`all`),
+> `admin/workspaces` (`admin`).
 
 `WorkspaceService.get_all` (`service.py:89-106`) already backs the public directory ("home page + anonymous `/api/v1/workspaces` list", per the `is_hidden` column comment) and already special-cases a viewer's own membership: `not w.is_hidden or w.id in member_ids`. Extend the non-member branch with a trust check, same shape:
 

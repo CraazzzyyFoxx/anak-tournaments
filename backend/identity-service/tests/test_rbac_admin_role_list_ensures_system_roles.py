@@ -19,7 +19,6 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import pytest  # noqa: E402
 
 from shared.rbac import WORKSPACE_SYSTEM_ROLE_NAMES  # noqa: E402
 from src import models, schemas  # noqa: E402

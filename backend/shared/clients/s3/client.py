@@ -73,7 +73,7 @@ class S3Client:
         self._session: AioSession | None = None
 
     @classmethod
-    def from_settings(cls, settings: Any) -> "S3Client":
+    def from_settings(cls, settings: Any) -> S3Client:
         """Build an ``S3Client`` from any settings object exposing the five
         ``s3_*`` fields ``BaseServiceSettings`` declares.
 

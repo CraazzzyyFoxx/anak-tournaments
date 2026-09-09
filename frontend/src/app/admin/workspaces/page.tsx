@@ -4,27 +4,24 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { CheckCircle, Pencil, Plus, Trash2, XCircle } from "lucide-react";
+import { CheckCircle, Eye, EyeOff, Pencil, Plus, Trash2, XCircle } from "lucide-react";
 
+import { CreateWorkspaceDialog } from "@/components/CreateWorkspaceDialog";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { AdminInspector } from "@/components/admin/kit/AdminInspector";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
-import { Badge } from "@/components/ui/badge";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { WorkspaceOwnerValue } from "@/components/admin/workspace-owner";
+import { WorkspaceVerificationIcon } from "@/components/admin/workspace-verification";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { EditableAvatar } from "@/components/ui/editable-avatar";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
-import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { cn } from "@/lib/utils";
@@ -32,20 +29,6 @@ import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { Workspace } from "@/types/workspace.types";
 
-interface WorkspaceFormData {
-  slug: string;
-  name: string;
-  description: string;
-}
-
-const emptyForm: WorkspaceFormData = {
-  slug: "",
-  name: "",
-  description: ""
-};
-
-const ACCEPTED_IMAGE_TYPES = "image/webp,image/png,image/jpeg,image/gif";
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 const PAGE_SIZE = 15;
 
 function WorkspaceIcon({ workspace }: Readonly<{ workspace: Workspace }>) {
@@ -90,7 +73,8 @@ function InspectorField({
  * than reproducing a form the sections already own.
  */
 export default function WorkspacesPage() {
-  const { isSuperuser, isWorkspaceAdmin, canManageAnyWorkspace, isLoaded } = usePermissions();
+  const { isSuperuser, isWorkspaceAdmin, canManageAnyWorkspace, canUseCapability, isLoaded } =
+    usePermissions();
   const queryClient = useQueryClient();
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
   // `id` is the inspector, not a filter: opening a row must not drop the page
@@ -101,9 +85,6 @@ export default function WorkspacesPage() {
   const [pageRows, setPageRows] = useState<Workspace[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null);
-  const [formData, setFormData] = useState<WorkspaceFormData>({ ...emptyForm });
-  const [iconFile, setIconFile] = useState<File | null>(null);
-  const [iconPreview, setIconPreview] = useState<string | null>(null);
 
   const invalidate = () => {
     // `["admin-workspaces"]` is the prefix the workspace settings sections
@@ -112,28 +93,6 @@ export default function WorkspacesPage() {
     queryClient.invalidateQueries({ queryKey: ["admin-workspaces"] });
     fetchWorkspaces();
   };
-
-  const createMutation = useMutation({
-    mutationFn: async (data: WorkspaceFormData) => {
-      const ws = await workspaceService.create({
-        slug: data.slug,
-        name: data.name,
-        description: data.description || undefined
-      });
-      if (iconFile) {
-        await workspaceService.uploadIcon(ws.id, iconFile);
-      }
-      return ws;
-    },
-    onSuccess: () => {
-      invalidate();
-      setCreateOpen(false);
-      setFormData({ ...emptyForm });
-      setIconFile(null);
-      setIconPreview(null);
-      notify.success("Workspace created");
-    }
-  });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
@@ -148,20 +107,6 @@ export default function WorkspacesPage() {
       notify.success("Workspace deleted");
     }
   });
-
-  const handleCreate = () => {
-    setFormData({ ...emptyForm });
-    setIconFile(null);
-    setIconPreview(null);
-    setCreateOpen(true);
-  };
-
-  const handleIconSelect = (file: File) => {
-    setIconFile(file);
-    setIconPreview(URL.createObjectURL(file));
-  };
-
-  const isCreateDirty = createOpen && (hasUnsavedChanges(formData, emptyForm) || iconFile !== null);
 
   const columns = useMemo<ColumnDef<Workspace>[]>(
     () => [
@@ -184,6 +129,7 @@ export default function WorkspacesPage() {
             <span className="truncate font-medium" title={row.original.name}>
               {row.original.name}
             </span>
+            <WorkspaceVerificationIcon status={row.original.verification_status} />
           </div>
         )
       },
@@ -198,6 +144,7 @@ export default function WorkspacesPage() {
         accessorKey: "is_active",
         header: "Status",
         size: 120,
+        meta: adminColumnMeta<Workspace>({ align: "center" }),
         cell: ({ row }) =>
           row.original.is_active ? (
             <StatusIcon icon={CheckCircle} label="Active" variant="success" />
@@ -209,13 +156,12 @@ export default function WorkspacesPage() {
         accessorKey: "is_hidden",
         header: "Visibility",
         size: 120,
+        meta: adminColumnMeta<Workspace>({ align: "center" }),
         cell: ({ row }) =>
           row.original.is_hidden ? (
-            <Badge variant="outline" className={cn(TONE_CLASS.warning)}>
-              Hidden
-            </Badge>
+            <StatusIcon icon={EyeOff} label="Hidden" variant="warning" />
           ) : (
-            <span className="text-sm text-muted-foreground">Listed</span>
+            <StatusIcon icon={Eye} label="Listed" variant="muted" />
           )
       },
       createKebabColumn<Workspace>(
@@ -270,8 +216,13 @@ export default function WorkspacesPage() {
         title="Workspaces"
         description="Isolated tournament environments. Open one to edit its settings."
         actions={
-          isSuperuser ? (
-            <Button size="sm" onClick={handleCreate}>
+          /* Creating a workspace is open to any active account now (the backend
+             caps how many one account may own), so this is no longer a
+             superuser button — but the right is revocable per account through
+             negative RBAC, and the backend refuses a denied one, so the button
+             goes away with it rather than offering a guaranteed 403. */
+          canUseCapability("workspace.self_create") ? (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="size-3.5" aria-hidden />
               Create workspace
             </Button>
@@ -289,11 +240,7 @@ export default function WorkspacesPage() {
             searchPlaceholder="Search workspaces…"
             inspectorId={openId}
             getRowId={(row) => String(row.id)}
-            emptyMessage={
-              isSuperuser
-                ? "No workspaces yet. Use “Create workspace” to add the first one."
-                : "No workspaces yet. The ones you administer will show up here."
-            }
+            emptyMessage="No workspaces yet. Use “Create workspace” to add the first one."
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
             renderMobileCard={(row) => (
               <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -320,8 +267,11 @@ export default function WorkspacesPage() {
               sortDir
             ]}
             queryFn={async (page, search, pageSize, sortField, sortDir) => {
-              const all = await workspaceService.getAll();
-              // Non-superusers only see workspaces they administer.
+              // `admin`: every workspace for a superuser (this is where
+              // `unverified` ones get verified), memberships otherwise — then
+              // narrowed to the ones the caller actually administers, which is
+              // a permission question the endpoint does not answer.
+              const all = await workspaceService.getAll("admin");
               const visible = isSuperuser ? all : all.filter((ws) => isWorkspaceAdmin(ws.id));
               const needle = search.trim().toLowerCase();
               const matching = needle
@@ -408,6 +358,9 @@ export default function WorkspacesPage() {
                 <InspectorField label="Newcomers">
                   {openRow.newcomer_scope === "global" ? "Any workspace" : "This workspace"}
                 </InspectorField>
+                <InspectorField label="Owner">
+                  <WorkspaceOwnerValue workspaceId={openRow.id} />
+                </InspectorField>
               </div>
 
               <div>
@@ -421,84 +374,11 @@ export default function WorkspacesPage() {
         </AdminInspector>
       </div>
 
-      <EntityFormDialog
+      <CreateWorkspaceDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        title="Create workspace"
-        description="Create a new isolated workspace for tournaments"
-        onSubmit={(e) => {
-          e.preventDefault();
-          createMutation.mutate(formData);
-        }}
-        isSubmitting={createMutation.isPending}
-        submittingLabel="Creating workspace…"
-        errorMessage={createMutation.isError ? createMutation.error.message : undefined}
-        isDirty={isCreateDirty}
-      >
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="slug">Slug *</Label>
-            <Input
-              id="slug"
-              value={formData.slug}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  slug: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "")
-                })
-              }
-              placeholder="my-workspace"
-              required
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              URL-safe identifier (a-z, 0-9, -, _)
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="name">Name *</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="My Workspace"
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Optional description"
-            />
-          </div>
-          <div>
-            <p className="text-sm font-medium leading-none">Icon</p>
-            <div className="mt-1.5">
-              <EditableAvatar
-                src={iconPreview}
-                name={formData.name}
-                size={64}
-                shape="rounded"
-                onSelectFile={handleIconSelect}
-                onDelete={
-                  iconPreview
-                    ? () => {
-                        setIconFile(null);
-                        setIconPreview(null);
-                      }
-                    : undefined
-                }
-                accept={ACCEPTED_IMAGE_TYPES}
-                maxSizeBytes={MAX_FILE_SIZE}
-                onError={(message) => notify.error(message)}
-              />
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">PNG, JPEG, WebP or GIF, max 2 MB</p>
-          </div>
-        </div>
-      </EntityFormDialog>
+        onCreated={invalidate}
+      />
 
       <ConfirmDialog
         open={pendingDelete != null}

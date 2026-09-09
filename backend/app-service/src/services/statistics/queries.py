@@ -18,22 +18,34 @@ away_score_case = sa.case(
 ).label("away_score_case")
 
 
-encounter_query = (
-    sa.select(
-        models.Player.id,
-        home_score_case.label("home_score"),
-        away_score_case.label("away_score"),
+# Equality-join sides. `home_team_id = team.id OR away_team_id = team.id` cannot
+# use either FK index (OWT-TOURNAMENTS-21T). Kept local: statistics must not
+# import the user-query `_scope` helpers.
+_ENCOUNTER_TEAM_SIDES = (
+    (models.Encounter.home_team_id, models.Encounter.home_score, models.Encounter.away_score),
+    (models.Encounter.away_team_id, models.Encounter.away_score, models.Encounter.home_score),
+)
+
+
+def _union_encounter_team_sides(build_side):
+    home, away = _ENCOUNTER_TEAM_SIDES
+    return build_side(*home).union_all(build_side(*away))
+
+
+def _encounter_side(team_fk, maps_won, maps_lost):
+    return (
+        sa.select(
+            models.Player.id,
+            maps_won.label("home_score"),
+            maps_lost.label("away_score"),
+        )
+        .select_from(models.Player)
+        .join(models.Team, models.Team.id == models.Player.team_id)
+        .join(models.Encounter, team_fk == models.Team.id)
     )
-    .select_from(models.Player)
-    .join(models.Team, models.Team.id == models.Player.team_id)
-    .join(
-        models.Encounter,
-        sa.or_(
-            models.Encounter.home_team_id == models.Team.id,
-            models.Encounter.away_team_id == models.Team.id,
-        ),
-    )
-).subquery("encounters")
+
+
+encounter_query = _union_encounter_team_sides(_encounter_side).subquery("encounters")
 
 
 class StatisticsQueries:
@@ -427,30 +439,36 @@ class StatisticsQueries:
         """A user's tournament win rate as ``(user id, win rate, rank, ranked user count)``,
         or ``None`` when the user has no encounters in the tournament.
         """
+
+        def _side(team_fk, won, lost):
+            return (
+                sa.select(
+                    models.WorkspaceMember.player_id.label("user_id"),
+                    won.label("maps_won"),
+                    lost.label("maps_lost"),
+                )
+                .select_from(models.Encounter)
+                .join(models.Team, team_fk == models.Team.id)
+                .join(models.Player, models.Player.team_id == models.Team.id)
+                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+                .where(models.Encounter.tournament_id == tournament.id)
+            )
+
+        sides = _union_encounter_team_sides(_side).subquery("tournament_winrate_sides")
         winrate = sa.func.coalesce(
-            sa.func.sum(home_score_case)
-            / sa.func.nullif(sa.func.sum(home_score_case) + sa.func.sum(away_score_case), 0),
+            sa.func.sum(sides.c.maps_won)
+            / sa.func.nullif(sa.func.sum(sides.c.maps_won) + sa.func.sum(sides.c.maps_lost), 0),
             0,
         ).label("winrate")
 
         stats_query = (
             sa.select(
-                models.WorkspaceMember.player_id.label("user_id"),
+                sides.c.user_id,
                 winrate.cast(sa.Numeric(10, 2)).label("winrate"),
                 sa.func.dense_rank().over(order_by=(sa.desc(winrate))).label("rank"),
             )
-            .select_from(models.Encounter)
-            .join(
-                models.Team,
-                sa.or_(
-                    models.Encounter.home_team_id == models.Team.id,
-                    models.Encounter.away_team_id == models.Team.id,
-                ),
-            )
-            .join(models.Player, models.Player.team_id == models.Team.id)
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .where(sa.and_(models.Encounter.tournament_id == tournament.id))
-            .group_by(models.WorkspaceMember.player_id)
+            .select_from(sides)
+            .group_by(sides.c.user_id)
         ).subquery()
 
         query = sa.select(stats_query, sa.select(sa.func.max(stats_query.c.rank)).scalar_subquery()).where(

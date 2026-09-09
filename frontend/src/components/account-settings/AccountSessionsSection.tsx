@@ -63,7 +63,7 @@ function StatusText({ status }: Readonly<{ status: AccountSessionStatus }>) {
 function DetailCell({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="min-w-0 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3 py-2">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
+      <p className="text-label font-medium uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
         {label}
       </p>
       <p className="mt-0.5 truncate text-xs text-[color:var(--aqt-fg-muted)]">{value}</p>
@@ -74,7 +74,7 @@ function DetailCell({ label, value }: Readonly<{ label: string; value: string }>
 function SummaryCell({ label, value }: Readonly<{ label: string; value: number }>) {
   return (
     <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-3 py-2">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
+      <p className="text-label font-medium uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
         {label}
       </p>
       <p className="mt-1 text-lg font-semibold tabular-nums text-[color:var(--aqt-fg)]">{value}</p>

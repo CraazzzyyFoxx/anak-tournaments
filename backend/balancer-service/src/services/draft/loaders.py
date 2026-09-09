@@ -24,10 +24,7 @@ def player_options() -> list[Any]:
     """The member (``user_id``) plus the registration the engine reads."""
     return [
         selectinload(DraftPlayer.member),
-        *(
-            selectinload(DraftPlayer.registration).options(option)
-            for option in registration_load_options()
-        ),
+        *(selectinload(DraftPlayer.registration).options(option) for option in registration_load_options()),
     ]
 
 

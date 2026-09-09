@@ -1005,9 +1005,7 @@ def test_marketplace_workspace_list_is_visible_to_any_admin_not_just_members() -
         # Only a member of the target workspace, not of workspace 3.
         user = SimpleNamespace(is_superuser=False, get_workspace_ids=lambda: [9])
 
-        result = await marketplace_service.list_marketplace_workspaces(
-            session, target_workspace_id=9, user=user
-        )
+        result = await marketplace_service.list_marketplace_workspaces(session, target_workspace_id=9, user=user)
 
         assert [w.id for w in result] == [3]
         # Visibility comes from `Workspace.is_hidden`, not source-workspace membership.

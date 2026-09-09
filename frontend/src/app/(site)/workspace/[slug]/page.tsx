@@ -1,11 +1,16 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getLocale, getTranslations } from "next-intl/server";
-import { BarChart3, Calendar, Percent, Trophy, Users as UsersIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
+import { BarChart3, Percent, Trophy } from "lucide-react";
 
 import { PlatformStatsGrid } from "@/components/stats/PlatformStatsGrid";
-import { LiveUpcomingBadge, EventsSkeleton } from "@/components/site/LiveEventsWidgets";
+import {
+  EventCard,
+  LiveUpcomingBadge,
+  EventsSkeleton,
+  type TournamentWithCount,
+} from "@/components/site/LiveEventsWidgets";
 import TournamentsChart from "@/components/TournamentsChart";
 import TournamentsDivisionChart from "@/components/TournamentsDivisionChart";
 import { LeaderboardCard } from "@/components/stats/LeaderboardCard";
@@ -16,19 +21,13 @@ import statisticsService from "@/services/statistics.service";
 import heroService from "@/services/hero.service";
 import workspaceService from "@/services/workspace.service";
 import tournamentService from "@/services/tournament.service";
-import { formatDateRange } from "@/lib/utils";
-import { tournamentHref } from "@/lib/tournament-url";
 import {
   ChartCardSkeleton,
   PopularHeroesCardSkeleton,
   StatsGridSkeleton,
   TableCardSkeleton,
 } from "@/components/skeletons/dashboard-skeletons";
-import {
-  isTournamentStatusActive,
-  getTournamentStatusMeta,
-} from "@/lib/tournament-status";
-import type { Tournament } from "@/types/tournament.types";
+import { isTournamentStatusActive } from "@/lib/tournament-status";
 import type { Workspace } from "@/types/workspace.types";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +46,9 @@ export default async function WorkspaceHome({
 
   let workspace: Workspace;
   try {
-    const workspaces = await workspaceService.getAll();
+    // `all`, not the public directory: a workspace's own page must stay
+    // reachable for its members while it is still `unverified` or hidden.
+    const workspaces = await workspaceService.getAll("all");
     const found = workspaces.find((w) => w.slug === slug);
     if (!found) notFound();
     workspace = found;
@@ -65,7 +66,7 @@ export default async function WorkspaceHome({
       {/* Live / upcoming events for this workspace */}
       <section>
         <Suspense fallback={<EventsSkeleton />}>
-          <WorkspaceEventsSection workspaceId={wsId} />
+          <WorkspaceEventsSection workspace={workspace} />
         </Suspense>
       </section>
 
@@ -137,7 +138,7 @@ async function WorkspaceHeader({ workspace }: Readonly<{ workspace: Workspace }>
   return (
     <div className="liquid-glass rounded-xl p-6 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
       <div className="flex flex-col gap-1.5">
-        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-label text-muted-foreground">
           {t("workspace.eyebrow")}
         </p>
         <h1 className="text-3xl font-bold tracking-tight text-foreground font-display uppercase">
@@ -172,15 +173,13 @@ async function WorkspaceHeader({ workspace }: Readonly<{ workspace: Workspace }>
 // Active events for this workspace
 // ─────────────────────────────────────────────────────────────────────────────
 
-type TournamentWithCount = Tournament & { registrations_count?: number };
-
-async function WorkspaceEventsSection({ workspaceId }: Readonly<{ workspaceId: number }>) {
+async function WorkspaceEventsSection({ workspace }: Readonly<{ workspace: Workspace }>) {
   let activeTournaments: TournamentWithCount[] = [];
 
   try {
     const data = await tournamentService.getActive();
     activeTournaments = (data.results as TournamentWithCount[])
-      .filter((tour) => tour.workspace_id === workspaceId && isTournamentStatusActive(tour.status))
+      .filter((tour) => tour.workspace_id === workspace.id && isTournamentStatusActive(tour.status))
       .slice(0, 6);
   } catch {
     // silently fail
@@ -204,89 +203,10 @@ async function WorkspaceEventsSection({ workspaceId }: Readonly<{ workspaceId: n
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {activeTournaments.map((tour) => (
-          <EventCard key={tour.id} tournament={tour} />
+          <EventCard key={tour.id} tournament={tour} workspace={workspace} />
         ))}
       </div>
     </div>
-  );
-}
-
-async function EventCard({ tournament }: Readonly<{ tournament: TournamentWithCount }>) {
-  const t = await getTranslations();
-  const locale = await getLocale();
-  const isLive = tournament.status === "live" || tournament.status === "playoffs";
-  const statusMeta = getTournamentStatusMeta(tournament.status);
-
-  const dateStr = formatDateRange(
-    tournament.start_date,
-    tournament.end_date,
-    locale
-  );
-
-  return (
-    <Link
-      href={tournamentHref(tournament)}
-      className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
-    >
-      <div className="group h-full rounded-xl border border-border/60 bg-card/50 p-4 flex flex-col gap-3 hover:bg-card hover:border-border transition-all duration-150">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            {isLive ? (
-              <>
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
-                </span>
-                <span className="text-[11px] font-bold tracking-[0.1em] uppercase text-emerald-400">
-                  {t("common.live")}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 inline-block shrink-0" />
-                <span className={`text-[11px] font-bold tracking-[0.1em] uppercase ${statusMeta.textClassName}`}>
-                  {statusMeta.badgeLabel}
-                </span>
-              </>
-            )}
-          </div>
-          {tournament.is_league && (
-            <span
-              className="text-[11px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-full"
-              style={{
-                background: "color-mix(in srgb, var(--aqt-violet) 14%, transparent)",
-                border: "1px solid color-mix(in srgb, var(--aqt-violet) 28%, transparent)",
-                color: "var(--aqt-violet)",
-              }}
-            >
-              {t("common.league")}
-            </span>
-          )}
-        </div>
-
-        <div className="font-display text-[17px] font-bold leading-snug text-foreground flex-1">
-          {tournament.name}
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-            <Calendar className="h-3 w-3 shrink-0" />
-            {dateStr}
-          </div>
-          <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-            <UsersIcon className="h-3 w-3 shrink-0" />
-            {tournament.registrations_count ?? 0}{" "}
-            {isLive ? t("common.participants") : t("common.registered")}
-          </div>
-        </div>
-
-        <div className="pt-2.5 border-t border-border/50 flex justify-end">
-          <span className="text-[12px] font-semibold tracking-[0.02em] text-indigo-400">
-            {t("common.view")} <span aria-hidden>→</span>
-          </span>
-        </div>
-      </div>
-    </Link>
   );
 }
 

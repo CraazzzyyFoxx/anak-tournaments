@@ -302,7 +302,7 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
                 <HeroRadar radarData={radarData} />
                 {radarCandidates.length > 0 ? (
                   <div className="flex flex-col gap-1.5">
-                    <span className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-(--aqt-fg-faint)">
+                    <span className="text-center text-label font-bold uppercase tracking-label text-(--aqt-fg-faint)">
                       {t("users.heroes.radarAxes")}
                     </span>
                     <RadarAxisPicker selected={radarStats} candidates={radarCandidates} onToggle={toggleRadarStat} />
@@ -315,10 +315,10 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
                     key={row.name}
                     className="flex items-center justify-between gap-2 rounded-lg border border-(--aqt-border) bg-[hsl(0_0%_100%/0.018)] px-3 py-2.5"
                   >
-                    <span className="text-[12px] text-(--aqt-fg-muted)">{row.label}</span>
-                    <span className="aqt-mono text-[14px] font-semibold text-(--aqt-fg)">{row.value}</span>
+                    <span className="text-label text-(--aqt-fg-muted)">{row.label}</span>
+                    <span className="aqt-tnum text-body font-semibold text-(--aqt-fg)">{row.value}</span>
                     <span
-                      className="aqt-mono text-[11.5px] font-bold"
+                      className="aqt-tnum text-label font-bold"
                       style={{ color: row.delta >= 0 ? "var(--aqt-emerald)" : "var(--aqt-rose)" }}
                     >
                       {formatDelta(row.delta)}
@@ -326,7 +326,7 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
                   </div>
                 ))}
                 {insightsRows.length === 0 ? (
-                  <div className="col-span-2 py-6 text-center text-[13px] text-(--aqt-fg-dim)">
+                  <div className="col-span-2 py-6 text-center text-caption text-(--aqt-fg-dim)">
                     {t("users.heroes.notEnoughData")}
                   </div>
                 ) : null}

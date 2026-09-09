@@ -105,9 +105,7 @@ def plan_backfill(rows: Sequence[RegistrationBackfillRow]) -> BackfillPlan:
                 pin_ids.add(row.id)
                 continue
             if any(
-                role.rank_value is not None
-                and (canon := ranks.get(role.role)) is not None
-                and role.rank_value != canon
+                role.rank_value is not None and (canon := ranks.get(role.role)) is not None and role.rank_value != canon
                 for role in row.roles
             ):
                 pin_ids.add(row.id)

@@ -9,7 +9,7 @@ import { AccountRestrictions } from "@/components/admin/access/AccountRestrictio
 import { ProviderBadge } from "@/components/admin/OAuthProviderBadge";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -23,7 +23,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSingleLinkedPlayer } from "@/lib/auth-profile-links";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import { rbacService } from "@/services/rbac.service";
 import type { RbacRole } from "@/types/rbac.types";
 import type { MinimizedUser } from "@/types/user.types";
@@ -336,12 +335,11 @@ export function AccountInspector({
                     </span>
                   </span>
                   {connection.token_expires_at ? (
-                    <Badge
-                      variant="outline"
-                      className={cn(TONE_CLASS[expired ? "danger" : "success"])}
-                    >
-                      {expired ? "Expired" : "Active"}
-                    </Badge>
+                    expired ? (
+                      <StatusIcon icon={ShieldAlert} label="Expired" variant="destructive" />
+                    ) : (
+                      <StatusIcon icon={CheckCircle} label="Active" variant="success" />
+                    )
                   ) : null}
                 </li>
               );

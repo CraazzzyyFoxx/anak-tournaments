@@ -213,16 +213,7 @@ const TournamentsPage = () => {
 
       <section className="toolbar">
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <h2
-            style={{
-              margin: 0,
-              fontFamily: "var(--display)",
-              fontWeight: 700,
-              fontSize: 22,
-              textTransform: "uppercase",
-              letterSpacing: ".04em"
-            }}
-          >
+          <h2 className="m-0 font-display text-title font-bold">
             {t("tournamentsList.heading.all")}
           </h2>
           <span

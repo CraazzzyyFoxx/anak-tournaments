@@ -235,7 +235,9 @@ def register(broker: Any, logger: Any) -> None:
                 entity_type="tournament",
                 entity_id=tournament_id,
                 after={
-                    "built_in_fields": {key: config.model_dump(mode="json") for key, config in body.built_in_fields.items()},
+                    "built_in_fields": {
+                        key: config.model_dump(mode="json") for key, config in body.built_in_fields.items()
+                    },
                     "custom_field_keys": [field.key for field in body.custom_fields],
                 },
             )
@@ -500,7 +502,10 @@ def register(broker: Any, logger: Any) -> None:
                 active_only=active_only,
                 limit=limit,
             )
-            return [_dump(schemas.TournamentComputationJobRead.model_validate(job, from_attributes=True)) for job in jobs_list]
+            return [
+                _dump(schemas.TournamentComputationJobRead.model_validate(job, from_attributes=True))
+                for job in jobs_list
+            ]
 
         return await _run(logger, op)
 
@@ -524,7 +529,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             workspace_id, params = _reports_params(data)
             return _dump(
-                await reports_service.encounter_reports_service.list_encounter_reports(session, workspace_id=workspace_id, params=params)
+                await reports_service.encounter_reports_service.list_encounter_reports(
+                    session, workspace_id=workspace_id, params=params
+                )
             )
 
         return await _run(logger, op)
@@ -533,7 +540,11 @@ def register(broker: Any, logger: Any) -> None:
     async def _admin_encounter_reports_stats(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             workspace_id, params = _reports_params(data)
-            return _dump(await reports_service.encounter_reports_service.get_reports_stats(session, workspace_id=workspace_id, params=params))
+            return _dump(
+                await reports_service.encounter_reports_service.get_reports_stats(
+                    session, workspace_id=workspace_id, params=params
+                )
+            )
 
         return await _run(logger, op)
 

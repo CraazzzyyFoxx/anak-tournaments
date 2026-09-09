@@ -61,7 +61,7 @@ const SOURCE_STATUS_LABEL = {
   missing: "no mapping"
 } as const;
 
-const MONO_CAPTION = "font-mono text-[11px] uppercase tracking-wider text-muted-foreground";
+const MONO_CAPTION = "font-mono text-label uppercase tracking-wider text-muted-foreground";
 
 /**
  * The whole OW ladder as a saveable version — what "Load standard OW ladder"

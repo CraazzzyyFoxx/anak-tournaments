@@ -24,7 +24,7 @@ export function ConnectionIndicator({
       aria-live="polite"
       title={label}
       className={cn(
-        "inline-flex items-center gap-1.5 text-[11px]",
+        "inline-flex items-center gap-1.5 text-label",
         connected ? "text-[color:var(--aqt-support)]" : "text-[color:var(--aqt-warm)]",
         className
       )}

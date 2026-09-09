@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core.enums import HeroClass
 from shared.domain.roster import PlayerRoster
 from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftSession
-from shared.models.registration.registration import BalancerRegistration, BalancerRegistrationRole
+from shared.models.registration.registration import BalancerRegistrationRole
 from shared.repository.draft import DraftAuditEventRepository, DraftPlayerRepository
 from src.domain.draft import rules
 from src.domain.draft.entities import DraftFeasibilityReport, RoleEditPreview, RoleEditResult
@@ -141,9 +141,7 @@ class DraftRoleEditService:
 
         before_roles = self._roles_json(roster)
         before_version = player.version
-        await self._write_registration_role(
-            session, player.registration_id, role=role, rank_value=rank_value
-        )
+        await self._write_registration_role(session, player.registration_id, role=role, rank_value=rank_value)
         # The seat's version is the optimistic token the preview was taken
         # against, so it moves even though the roles now live elsewhere.
         player.version += 1

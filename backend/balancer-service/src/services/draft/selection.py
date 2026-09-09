@@ -279,9 +279,7 @@ class DraftSelectionService:
         shape = await self.feasibility.resolve_shape(session, draft_session)
         player = rules.available_player_from(snapshot, player_id)
         roster = snapshot.roster(player.id)
-        counts = rules.team_slot_counts(
-            snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters
-        )
+        counts = rules.team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters)
         decision = rules.resolve_pick_slot(shape, counts, roster, target_role)
 
         feasibility_report = await self.feasibility.analyze_session(
@@ -329,9 +327,7 @@ class DraftSelectionService:
         snapshot = await self.feasibility.load_snapshot(session, draft_session)
         shape = await self.feasibility.resolve_shape(session, draft_session)
         available = [p for p in snapshot.players if p.status == DraftPlayerStatus.AVAILABLE.value]
-        counts = rules.team_slot_counts(
-            snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters
-        )
+        counts = rules.team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters)
         capacity = rules.role_openings(shape, counts)
 
         # Fit is built from the engine's rosters: a player is scored at the rank
@@ -412,9 +408,7 @@ class DraftSelectionService:
         shape = await self.feasibility.resolve_shape(session, draft_session)
         player = rules.available_player_from(snapshot, player_id)
         roster = snapshot.roster(player.id)
-        counts = rules.team_slot_counts(
-            snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters
-        )
+        counts = rules.team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters)
         decision = rules.resolve_pick_slot(shape, counts, roster, target_role)
         feasibility_report = await self.feasibility.analyze_session(
             session,

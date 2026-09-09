@@ -99,7 +99,7 @@ export function VersionHistory({
                 <StatusPill tone={VERSION_STATE_TONE[state]}>{state}</StatusPill>
               </div>
               <LadderBar bands={bands} tone={state === "active" ? "accent" : "neutral"} />
-              <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+              <p className="font-mono text-label uppercase tracking-wider text-muted-foreground">
                 {[`${bands.length} divisions`, usage, when].filter(Boolean).join(" · ")}
               </p>
             </div>

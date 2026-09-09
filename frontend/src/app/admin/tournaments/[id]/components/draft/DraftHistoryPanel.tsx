@@ -16,12 +16,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { TONE_CLASS, type Tone } from "@/components/admin/tone";
+import { type Tone } from "@/components/admin/tone";
 import { notify } from "@/lib/notify";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
-import { cn } from "@/lib/utils";
 import draftService from "@/services/draft.service";
 import type { DraftSession, DraftStatus } from "@/types/draft.types";
 
@@ -133,9 +133,9 @@ export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<D
               <span className="font-mono text-xs tabular-nums text-muted-foreground">
                 {t("sessionNumber", { id: session.id })}
               </span>
-              <Badge variant="outline" className={cn("shrink-0", TONE_CLASS[STATUS_TONE[session.status]])}>
+              <StatusPill tone={STATUS_TONE[session.status]} className="shrink-0">
                 {t(`statuses.${session.status}`)}
-              </Badge>
+              </StatusPill>
               <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground tabular-nums">
                 {session.created_at
                   ? format.dateTime(new Date(session.created_at), {

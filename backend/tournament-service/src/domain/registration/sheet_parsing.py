@@ -108,7 +108,6 @@ def _subrole_for_role(
     return slug
 
 
-
 def _valid_role_subrole_entry(
     entry: Any,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,

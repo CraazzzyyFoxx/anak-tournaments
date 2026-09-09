@@ -40,9 +40,7 @@ class CustomGamePlayerRepository(BaseRepository[models.CustomGamePlayer]):
 class CustomGameCoHostRepository:
     async def user_ids_for_game(self, session: AsyncSession, custom_game_id: int) -> list[int]:
         result = await session.scalars(
-            sa.select(models.CustomGameCoHost.user_id).where(
-                models.CustomGameCoHost.custom_game_id == custom_game_id
-            )
+            sa.select(models.CustomGameCoHost.user_id).where(models.CustomGameCoHost.custom_game_id == custom_game_id)
         )
         return list(result.all())
 
@@ -154,9 +152,7 @@ class CustomGameRoleSlotRepository:
         role_mask: dict[str, int] | None,
     ) -> None:
         await session.execute(
-            sa.delete(models.CustomGameRoleSlot).where(
-                models.CustomGameRoleSlot.custom_game_id == custom_game_id
-            )
+            sa.delete(models.CustomGameRoleSlot).where(models.CustomGameRoleSlot.custom_game_id == custom_game_id)
         )
         if role_mask:
             session.add_all(

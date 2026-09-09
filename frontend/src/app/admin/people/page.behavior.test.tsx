@@ -11,7 +11,7 @@
 //     reload as a deep link;
 //  4. one action end to end: create identity → POST.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, useState, type ReactNode } from "react";
+import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -152,7 +152,11 @@ async function settle(turns = 8, delayMs = 0) {
 
 function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
   const [, force] = useState(0);
-  rerender = () => force((value) => value + 1);
+  // Published from an effect, not during render: writing a module-scope binding
+  // while rendering is a side effect the react-compiler rules reject.
+  useEffect(() => {
+    rerender = () => force((value) => value + 1);
+  }, []);
   return <>{render()}</>;
 }
 

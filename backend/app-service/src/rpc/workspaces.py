@@ -1,6 +1,9 @@
 """Workspace typed-RPC subscribers: public reads + create + member management.
 
-Reads (list/get) are public. create is superuser-global. Member ops are
+Reads (list/get) are public. create is open to any ACTIVE authenticated user,
+capped per account (``ensure_create_limit``) and slug-filtered against the
+platform's reserved slugs; the tier RPC that lifts a new workspace out of
+``unverified`` (``verification_set``) is the superuser-only half. Member ops are
 workspace-scoped (workspace_member.{read,create,update,delete}). workspace
 update/delete go through the shared CRUD engine (see services/workspace/registry.py
 + rpc/admin_crud.py). The custom-domain set/verify/clear trio (white-label Phase
@@ -42,11 +45,14 @@ from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_hos
 from src import models, schemas
 from src.core import config, db
 from src.rpc import _common as c
-from src.services.workspace.service import MEMBERS_SORT_FIELDS
+from src.services.workspace.service import MEMBERS_SORT_FIELDS, reject_reserved_slug
 from src.services.workspace.service import workspaces as workspace_service
 
 _SF = db.async_session_maker
 _auth_user_repo = AuthUserRepository()
+# The three shapes `workspaces.list` serves; anything else is a 422 rather
+# than a silent fallback to the widest one (see `_list`).
+_LIST_SCOPES = ("public", "admin", "all")
 
 
 def _path_int(data: dict[str, Any], key: str) -> int:
@@ -113,6 +119,27 @@ def _member_read(
     )
 
 
+async def _owner_payload(session: AsyncSession, workspace: models.Workspace) -> schemas.WorkspaceOwnerRead | None:
+    """``Workspace.owner_id`` resolved to a person, or ``None`` when unstamped.
+
+    Same transport-level enrichment as ``_member_payload``: one auth-user read
+    keyed by an id the workspace row already carries. ``owner_id`` is nullable
+    by design (workspaces predating self-service, and the FK is ``SET NULL``),
+    and so is the answer -- "nobody is on the hook for this one" is a fact the
+    admin screens have to be able to render.
+    """
+    owner_id = workspace.owner_id
+    if owner_id is None:
+        return None
+    auth_user = await _auth_user_repo.get(session, owner_id)
+    return schemas.WorkspaceOwnerRead(
+        auth_user_id=owner_id,
+        username=auth_user.username if auth_user else None,
+        email=auth_user.email if auth_user else None,
+        first_name=auth_user.first_name if auth_user else None,
+        last_name=auth_user.last_name if auth_user else None,
+        avatar_url=auth_user.avatar_url if auth_user else None,
+    )
 
 
 async def _discord_lookup(
@@ -162,9 +189,22 @@ def register(broker: Any, logger: Any) -> None:
     # --- public reads -------------------------------------------------------
     @broker.subscriber("rpc.app.workspaces.list")
     async def _list(data: dict, msg: RabbitMessage) -> dict:
+        """``?scope=public|admin|all`` (default ``public``).
+
+        ``public`` is the directory the home page renders and is identical for
+        every caller, superusers included: hidden and ``unverified``
+        workspaces are absent, full stop. ``admin`` is the management list
+        (superuser: everything; otherwise the caller's own workspaces at any
+        tier) and ``all`` is that unioned with the public directory, for the
+        workspace switcher.
+        """
+
         async def op(session: Any) -> Any:
+            scope = c.q1(data, "scope", str, "public")
+            if scope not in _LIST_SCOPES:
+                raise HTTPException(status_code=422, detail="scope must be one of public, admin, all")
             viewer = rehydrate_user_optional(data.get("identity"))
-            workspaces = await workspace_service.get_all(session, user=viewer)
+            workspaces = await workspace_service.get_all(session, user=viewer, scope=scope)
             return [schemas.WorkspaceRead.model_validate(w, from_attributes=True) for w in workspaces]
 
         return await c.envelope(logger, "workspaces.list", op, session_factory=_SF)
@@ -210,13 +250,21 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "workspaces.by_host", op, session_factory=_SF)
 
-    # --- create (superuser) -------------------------------------------------
+    # --- create (any active user with the capability, capped) ---------------
     @broker.subscriber("rpc.app.workspaces.create")
     async def _create(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = c.actor(data)
-            c.require_superuser(user)
+            c.require_active(user)
+            # Allow-by-default capability, revocable per account through the
+            # negative-RBAC deny list (same shape as ``account.social`` and
+            # ``registration.self_register``). Checked before the cap because a
+            # revoked account has no business learning how full it is.
+            if not user.can_capability("workspace", "self_create"):
+                raise HTTPException(status_code=403, detail="You are not allowed to create workspaces")
+            await workspace_service.ensure_create_limit(session, user)
             body = schemas.WorkspaceCreate.model_validate(c.payload(data))
+            reject_reserved_slug(body.slug)
             workspace = await workspace_service.provision(
                 session, payload=body.model_dump(), owner_auth_user_id=user.id
             )
@@ -480,6 +528,134 @@ def register(broker: Any, logger: Any) -> None:
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.discord_guild_verify", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.workspaces.my_discord_guilds")
+    async def _my_discord_guilds(data: dict, msg: RabbitMessage) -> dict:
+        """The caller's own administered guilds — actor-scoped, no workspace.
+
+        Thin passthrough to identity-service so the guild picker in front of
+        ``discord_guild_verify`` has something to render. No session work at
+        all, but it still runs inside the standard envelope/session factory:
+        the transport shape is what every other subscriber here shares.
+        """
+
+        async def op(session: Any) -> Any:
+            user = c.actor(data)
+            c.require_active(user)
+            return await workspace_service.list_actor_discord_guilds(auth_user_id=user.id, broker=broker)
+
+        return await c.envelope(logger, "workspaces.my_discord_guilds", op, session_factory=_SF)
+
+    # --- verification tier (superuser) --------------------------------------
+    @broker.subscriber("rpc.app.workspaces.verification_set")
+    async def _verification_set(data: dict, msg: RabbitMessage) -> dict:
+        """Superuser-only, deliberately stricter than ``workspace.update``:
+        being an owner of a workspace must not let you self-certify it."""
+
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_superuser(user)
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            body = schemas.WorkspaceVerificationSet.model_validate(c.payload(data))
+            workspace = await workspace_service.set_verification_status(
+                session, workspace, body.verification_status, actor=user
+            )
+            return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
+
+        return await c.envelope(logger, "workspaces.verification_set", op, session_factory=_SF)
+
+    # --- owner (accountability) ---------------------------------------------
+    @broker.subscriber("rpc.app.workspaces.owner_get")
+    async def _owner_get(data: dict, msg: RabbitMessage) -> dict:
+        """Who is accountable for this workspace.
+
+        ``workspace.update``-gated for the same reason the ``discord_*`` reads
+        are: this resolves an internal ``auth_user_id`` to a name and an email,
+        which the public ``WorkspaceRead`` deliberately refuses to publish.
+        """
+
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_active(user)
+            ensure_workspace_permission(user, workspace_id, "workspace", "update")
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            return await _owner_payload(session, workspace)
+
+        return await c.envelope(logger, "workspaces.owner_get", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.workspaces.owner_set")
+    async def _owner_set(data: dict, msg: RabbitMessage) -> dict:
+        """Assign or clear the accountable owner.
+
+        Superuser-only, deliberately stricter than the ``workspace.update`` gate
+        on the read next to it: ``owner_id`` is what the per-account create cap
+        is counted over, so an organizer who could reassign it could hand their
+        own cap away — or appoint an account that never agreed to answer for
+        anything. The target account is resolved here rather than left to the FK,
+        so an unknown id is a 404 instead of an integrity error.
+        """
+
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_superuser(user)
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            body = schemas.WorkspaceOwnerSet.model_validate(c.payload(data))
+            if body.auth_user_id is not None and not await _auth_user_repo.get(session, body.auth_user_id):
+                raise HTTPException(status_code=404, detail="Auth user not found")
+            workspace = await workspace_service.set_owner(session, workspace, body.auth_user_id, actor=user)
+            return await _owner_payload(session, workspace)
+
+        return await c.envelope(logger, "workspaces.owner_set", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.workspaces.owner_transfer")
+    async def _owner_transfer(data: dict, msg: RabbitMessage) -> dict:
+        """Hand the workspace over — stamp and ``owner`` role together.
+
+        Open to the workspace's own current owner, not just a superuser: this is
+        the self-service half of ownership, and the person on the hook is the one
+        entitled to get off it. Everyone else is refused, ``workspace.update``
+        holders included — a co-administrator must not be able to give away a
+        workspace they do not answer for. An unowned workspace has nobody to hand
+        it off, so only a superuser can seed one (via ``owner_set``).
+
+        The recipient's ownership cap is enforced unless the actor is a
+        superuser: without it, create → transfer → create would mint workspaces
+        forever past ``max_owned_per_user``.
+        """
+
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_active(user)
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            if not user.is_superuser and workspace.owner_id != user.id:
+                raise HTTPException(status_code=403, detail="Only the workspace owner may transfer ownership")
+            body = schemas.WorkspaceOwnerTransfer.model_validate(c.payload(data))
+            recipient = await _auth_user_repo.get(session, body.auth_user_id)
+            if not recipient:
+                raise HTTPException(status_code=404, detail="Auth user not found")
+            if not user.is_superuser:
+                await workspace_service.ensure_create_limit(session, recipient, detail="workspace_owner_limit_reached")
+            previous_owner_id = workspace.owner_id
+            workspace = await workspace_service.transfer_ownership(session, workspace, body.auth_user_id, actor=user)
+            # Both sides' permissions changed, so both cached RBAC payloads are
+            # stale -- same bust the member ops do after a role write.
+            for auth_user_id in {body.auth_user_id, previous_owner_id} - {None}:
+                await _invalidate_auth_rbac_cache(auth_user_id, logger)
+            return await _owner_payload(session, workspace)
+
+        return await c.envelope(logger, "workspaces.owner_transfer", op, session_factory=_SF)
 
     # --- Discord entities (roles, channels, server status) ------------------
     # Reads of an organizer's own server config, so they carry the same

@@ -16,8 +16,8 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import DraftPlayerStatus, DraftStatus
-from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.domain.roster import PlayerRoster
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
 from shared.services.team_export import ExportPlan, sync_player_ranks, team_materialization
@@ -27,8 +27,8 @@ from src.schemas.team import BalancerTeam, BalancerTeamMember
 from src.services.draft import loaders
 from src.services.draft._errors import err as _err
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
-from src.services.team import to_materialization_teams
 from src.services.draft.rosters import DraftRosterService, draft_rosters
+from src.services.team import to_materialization_teams
 
 
 def _draft_to_balancer_payload(

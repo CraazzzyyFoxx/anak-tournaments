@@ -312,14 +312,9 @@ describe("public tournament data page contracts", () => {
   });
 
   it("keeps every route file thin and free from generic loading gates", () => {
-    for (const segment of [
-      "matches",
-      "stats",
-      "standings",
-      "teams",
-      "participants",
-      "bracket"
-    ]) {
+    // No `standings`: it was folded into `bracket?view=standings` when the
+    // standalone route was removed, so the segment has no page file to read.
+    for (const segment of ["matches", "stats", "teams", "participants", "bracket"]) {
       const source = routeSource(segment);
       expect(source).not.toContain("Skeleton");
       expect(source).not.toContain("isLoading");

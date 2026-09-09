@@ -310,7 +310,9 @@ class EnsurePickBanSessionSlotReservesTests(IsolatedAsyncioTestCase):
         )
         session = _FakeSession(config=config)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=2), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=2), PickBanKind.MAP
+        )
 
         assert pick_ban is not None
         self.assertEqual({"2": 99}, pick_ban.slot_reserves_json)
@@ -319,7 +321,9 @@ class EnsurePickBanSessionSlotReservesTests(IsolatedAsyncioTestCase):
         config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13, 14, 15])
         session = _FakeSession(config=config)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         assert pick_ban is not None
         self.assertIsNone(pick_ban.slot_reserves_json)
@@ -328,7 +332,9 @@ class EnsurePickBanSessionSlotReservesTests(IsolatedAsyncioTestCase):
         config = _config(slots=[_slot(1, [11, 12]), _slot(2, [21, 22])])
         session = _FakeSession(config=config)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=2), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=2), PickBanKind.MAP
+        )
 
         assert pick_ban is not None
         self.assertEqual({}, pick_ban.slot_reserves_json)
@@ -344,7 +350,9 @@ class EnsurePickBanSessionSlotCountMismatchTests(IsolatedAsyncioTestCase):
         config = _config(slots=[_slot(1, [11, 12]), _slot(2, [21, 22])])
         session = _FakeSession(config=config)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         self.assertIsNone(pick_ban)
         self.assertEqual([], session.pool_rows)
@@ -353,7 +361,9 @@ class EnsurePickBanSessionSlotCountMismatchTests(IsolatedAsyncioTestCase):
         config = _config(slots=[_slot(1, [11, 12]), _slot(2, [21, 22])])
         session = _FakeSession(config=config)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=2), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=2), PickBanKind.MAP
+        )
 
         self.assertIsNotNone(pick_ban)
 
@@ -361,7 +371,9 @@ class EnsurePickBanSessionSlotCountMismatchTests(IsolatedAsyncioTestCase):
         config = _config(slots=[])
         session = _FakeSession(config=config)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=1), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=1), PickBanKind.MAP
+        )
 
         self.assertIsNone(pick_ban)
 
@@ -375,7 +387,9 @@ class UnavailableReasonTests(IsolatedAsyncioTestCase):
     async def test_unknown_teams_short_circuit_before_any_query(self) -> None:
         session = _FakeSession()
 
-        reason = await pick_ban_session_service.unavailable_reason(session, _encounter(best_of=3, away=None), PickBanKind.MAP)
+        reason = await pick_ban_session_service.unavailable_reason(
+            session, _encounter(best_of=3, away=None), PickBanKind.MAP
+        )
 
         self.assertEqual(REASON_TEAMS_UNKNOWN, reason)
 
@@ -454,7 +468,9 @@ class ResetPickBanSessionTests(IsolatedAsyncioTestCase):
     async def test_no_existing_session_still_clears_the_ledger_and_recreates(self) -> None:
         session = _FakeSession(existing=None, config=_config(mode=MapVetoMode.POOL, items=[11, 12, 13]))
 
-        pick_ban = await pick_ban_session_service.reset_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.reset_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         self.assertIsNotNone(pick_ban)
         # Only the ledger delete fires -- there was no session row to delete.
@@ -463,7 +479,9 @@ class ResetPickBanSessionTests(IsolatedAsyncioTestCase):
     async def test_commit_false_flushes_instead_of_committing(self) -> None:
         session = _FakeSession(existing=None, config=_config(mode=MapVetoMode.POOL, items=[11, 12, 13]))
 
-        await pick_ban_session_service.reset_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP, commit=False)
+        await pick_ban_session_service.reset_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.MAP, commit=False
+        )
 
         self.assertEqual(0, session.commits)
         self.assertGreaterEqual(session.flushes, 1)
@@ -484,7 +502,9 @@ class SyncPickBanSessionAfterTeamChangeTests(IsolatedAsyncioTestCase):
         config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
         session = _FakeSession(existing=None, config=config)
 
-        await pick_ban_session_service.sync_pick_ban_session_after_team_change(session, _encounter(best_of=3), PickBanKind.MAP)
+        await pick_ban_session_service.sync_pick_ban_session_after_team_change(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         self.assertEqual(3, len(session.pool_rows))
         self.assertEqual(0, session.commits)  # ensure_pick_ban_session is called with commit=False here
@@ -492,7 +512,9 @@ class SyncPickBanSessionAfterTeamChangeTests(IsolatedAsyncioTestCase):
     async def test_no_session_and_teams_still_unknown_is_a_no_op(self) -> None:
         session = _FakeSession(existing=None, config=None)
 
-        await pick_ban_session_service.sync_pick_ban_session_after_team_change(session, _encounter(best_of=3, home=None), PickBanKind.MAP)
+        await pick_ban_session_service.sync_pick_ban_session_after_team_change(
+            session, _encounter(best_of=3, home=None), PickBanKind.MAP
+        )
 
         self.assertEqual([], session.pool_rows)
 
@@ -500,7 +522,9 @@ class SyncPickBanSessionAfterTeamChangeTests(IsolatedAsyncioTestCase):
         existing = SimpleNamespace(id=900)
         session = _FakeSession(existing=existing, pool_count=1)
 
-        await pick_ban_session_service.sync_pick_ban_session_after_team_change(session, _encounter(best_of=3), PickBanKind.MAP)
+        await pick_ban_session_service.sync_pick_ban_session_after_team_change(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         self.assertEqual([], session.deleted_tables())
 
@@ -508,7 +532,9 @@ class SyncPickBanSessionAfterTeamChangeTests(IsolatedAsyncioTestCase):
         existing = SimpleNamespace(id=900)
         session = _FakeSession(existing=existing, pool_count=0, config=None)
 
-        await pick_ban_session_service.sync_pick_ban_session_after_team_change(session, _encounter(best_of=3), PickBanKind.MAP)
+        await pick_ban_session_service.sync_pick_ban_session_after_team_change(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         self.assertIn(PickBanSession.__tablename__, session.deleted_tables())
 
@@ -523,7 +549,9 @@ class ReadinessGateTests(IsolatedAsyncioTestCase):
         config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
         session = _FakeSession(config=config, readiness=frozenset({"home"}))
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         self.assertIsNone(pick_ban)
         self.assertEqual([], session.pool_rows)
@@ -532,7 +560,9 @@ class ReadinessGateTests(IsolatedAsyncioTestCase):
         config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
         session = _FakeSession(config=config, readiness=frozenset())
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         self.assertIsNone(pick_ban)
 
@@ -540,7 +570,9 @@ class ReadinessGateTests(IsolatedAsyncioTestCase):
         config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
         session = _FakeSession(config=config, readiness=frozenset({"home", "away"}))
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         self.assertIsNotNone(pick_ban)
         self.assertEqual(3, len(session.pool_rows))
@@ -556,7 +588,9 @@ class ReadinessGateTests(IsolatedAsyncioTestCase):
     async def test_unavailable_reason_prefers_teams_unknown_over_not_ready(self) -> None:
         session = _FakeSession(config=None, readiness=frozenset())
 
-        reason = await pick_ban_session_service.unavailable_reason(session, _encounter(best_of=3, home=None), PickBanKind.MAP)
+        reason = await pick_ban_session_service.unavailable_reason(
+            session, _encounter(best_of=3, home=None), PickBanKind.MAP
+        )
 
         self.assertEqual(REASON_TEAMS_UNKNOWN, reason)
 
@@ -578,7 +612,9 @@ class BracketPreviewGateTests(IsolatedAsyncioTestCase):
         config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
         session = _FakeSession(config=config, stage_published=False)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         self.assertIsNone(pick_ban)
         self.assertEqual([], session.pool_rows)
@@ -594,7 +630,9 @@ class BracketPreviewGateTests(IsolatedAsyncioTestCase):
     async def test_unavailable_reason_prefers_teams_unknown_over_bracket_preview(self) -> None:
         session = _FakeSession(config=None, stage_published=False)
 
-        reason = await pick_ban_session_service.unavailable_reason(session, _encounter(best_of=3, home=None), PickBanKind.MAP)
+        reason = await pick_ban_session_service.unavailable_reason(
+            session, _encounter(best_of=3, home=None), PickBanKind.MAP
+        )
 
         self.assertEqual(REASON_TEAMS_UNKNOWN, reason)
 
@@ -602,7 +640,9 @@ class BracketPreviewGateTests(IsolatedAsyncioTestCase):
         config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
         session = _FakeSession(config=config, stage_published=True)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         self.assertIsNotNone(pick_ban)
 
@@ -619,8 +659,12 @@ class ReadinessHelperTests(IsolatedAsyncioTestCase):
         self.assertEqual({"home": True, "away": False}, readiness)
 
     async def test_both_sides_ready_requires_both(self) -> None:
-        self.assertFalse(await pick_ban_session_service.both_sides_ready(_FakeSession(readiness=frozenset({"home"})), 500))
-        self.assertTrue(await pick_ban_session_service.both_sides_ready(_FakeSession(readiness=frozenset({"home", "away"})), 500))
+        self.assertFalse(
+            await pick_ban_session_service.both_sides_ready(_FakeSession(readiness=frozenset({"home"})), 500)
+        )
+        self.assertTrue(
+            await pick_ban_session_service.both_sides_ready(_FakeSession(readiness=frozenset({"home", "away"})), 500)
+        )
 
     async def test_mark_ready_is_idempotent_and_returns_full_map(self) -> None:
         session = _FakeSession(readiness=frozenset())
@@ -735,7 +779,9 @@ class AdvanceToNextRoundCandidateFloorTests(IsolatedAsyncioTestCase):
         pick_ban = self._pick_ban(config)
         session.existing = pick_ban
 
-        result = await pick_ban_session_service.advance_to_next_round(session, pick_ban, completed_round=1, winner="home")
+        result = await pick_ban_session_service.advance_to_next_round(
+            session, pick_ban, completed_round=1, winner="home"
+        )
 
         self.assertIs(pick_ban, result)
         self.assertEqual(2, len(session.pool_rows))
@@ -752,7 +798,9 @@ class ProgressiveRoundCreationTests(IsolatedAsyncioTestCase):
         config = _config(slots=[_slot(1, [11, 12, 13]), _slot(2, [21, 22, 23])])
         session = _FakeSession(config=config)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=2), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=2), PickBanKind.MAP
+        )
 
         assert pick_ban is not None
         self.assertEqual([1, 1, 1], [row.round for row in session.pool_rows])
@@ -765,7 +813,9 @@ class ProgressiveRoundCreationTests(IsolatedAsyncioTestCase):
         config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13, 14, 15])
         session = _FakeSession(config=config)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.MAP
+        )
 
         assert pick_ban is not None
         self.assertEqual([None] * 5, [row.round for row in session.pool_rows])
@@ -779,7 +829,9 @@ class ProgressiveRoundCreationTests(IsolatedAsyncioTestCase):
         # and its hero bans may open.
         session = _FakeSession(config=config, map_session=SimpleNamespace(id=800), pool_count=1)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.HERO)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.HERO
+        )
 
         assert pick_ban is not None
         self.assertEqual(["ban_home", "ban_away"], pick_ban.resolved_sequence_json)
@@ -795,7 +847,9 @@ class ProgressiveRoundCreationTests(IsolatedAsyncioTestCase):
         config.sequence_json = ["ban_first", "ban_second", "decider"]
         session = _FakeSession(config=config, map_session=SimpleNamespace(id=800), pool_count=1)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=1), PickBanKind.HERO)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=1), PickBanKind.HERO
+        )
 
         assert pick_ban is not None
         self.assertEqual(["ban_home", "ban_away"], pick_ban.resolved_sequence_json)
@@ -807,11 +861,16 @@ class ProgressiveRoundCreationTests(IsolatedAsyncioTestCase):
         config.sequence_json = ["ban_first", "ban_second"]
         session = _FakeSession(config=config, map_session=SimpleNamespace(id=800), pool_count=0)
 
-        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.HERO)
+        pick_ban = await pick_ban_session_service.ensure_pick_ban_session(
+            session, _encounter(best_of=3), PickBanKind.HERO
+        )
 
         self.assertIsNone(pick_ban)
         self.assertEqual([], session.pool_rows)
-        self.assertEqual(REASON_WAITING_MAP, await pick_ban_session_service.unavailable_reason(session, _encounter(best_of=3), PickBanKind.HERO))
+        self.assertEqual(
+            REASON_WAITING_MAP,
+            await pick_ban_session_service.unavailable_reason(session, _encounter(best_of=3), PickBanKind.HERO),
+        )
 
 
 class AdvanceToNextRoundLoopTests(IsolatedAsyncioTestCase):

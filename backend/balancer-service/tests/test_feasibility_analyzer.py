@@ -13,7 +13,8 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from src.domain.balancer.entities import Player  # noqa: E402
 from src.domain.balancer.feasibility_analyzer import analyze_feasibility  # noqa: E402
-from tests.factories import DEFAULT_MASK as MASK, make_player  # noqa: E402
+from tests.factories import DEFAULT_MASK as MASK  # noqa: E402
+from tests.factories import make_player
 
 
 class TestFeasibilityIdealCases:
@@ -63,7 +64,10 @@ class TestFeasibilityWithFlexPlayers:
             [make_player(f"t{i}", preferences=["Tank"]) for i in range(2)]
             + [make_player(f"d{i}", preferences=["Damage"]) for i in range(2)]
             + [make_player(f"s{i}", preferences=["Support"]) for i in range(2)]
-            + [make_player(f"f{i}", preferences=["Damage"], extra_roles=["Tank", "Support"], is_flex=True) for i in range(4)]
+            + [
+                make_player(f"f{i}", preferences=["Damage"], extra_roles=["Tank", "Support"], is_flex=True)
+                for i in range(4)
+            ]
         )
         report = analyze_feasibility(players, MASK, num_teams=2)
         assert report.flex_player_count == 4

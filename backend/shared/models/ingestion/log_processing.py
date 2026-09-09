@@ -78,9 +78,9 @@ class LogProcessingRecord(db.TimeStampIntegerMixin):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     # Relations
-    tournament: Mapped["Tournament"] = relationship(lazy="selectin")
-    uploader: Mapped["User | None"] = relationship(lazy="selectin", foreign_keys=[uploader_id])
-    attached_encounter: Mapped["Encounter | None"] = relationship(lazy="selectin", foreign_keys=[attached_encounter_id])
+    tournament: Mapped[Tournament] = relationship(lazy="selectin")
+    uploader: Mapped[User | None] = relationship(lazy="selectin", foreign_keys=[uploader_id])
+    attached_encounter: Mapped[Encounter | None] = relationship(lazy="selectin", foreign_keys=[attached_encounter_id])
 
     def __repr__(self) -> str:
         return f"<LogProcessingRecord tournament_id={self.tournament_id} filename={self.filename} status={self.status}>"

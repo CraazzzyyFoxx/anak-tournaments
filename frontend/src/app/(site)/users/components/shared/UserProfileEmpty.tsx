@@ -47,13 +47,13 @@ const UserProfileEmpty = async ({ name }: { name: string }) => {
         </span>
 
         <div className="space-y-2.5">
-          <p className="aqt-mono text-[11px] font-semibold tracking-[0.18em] uppercase text-[color:var(--aqt-fg-faint)]">
+          <p className="aqt-tnum text-label font-semibold tracking-label uppercase text-[color:var(--aqt-fg-faint)]">
             {t("users.profile.empty.eyebrow")}
           </p>
-          <h2 className="aqt-hero-title aqt-display text-2xl font-semibold tracking-tight text-[color:var(--aqt-fg)] md:text-[28px]">
+          <h2 className="aqt-hero-title aqt-display text-2xl font-semibold tracking-tight text-[color:var(--aqt-fg)] md:text-headline">
             {t.rich("users.profile.empty.title", { em: (chunks) => <em>{chunks}</em> })}
           </h2>
-          <p className="mx-auto max-w-prose text-[13px] leading-relaxed text-[color:var(--aqt-fg-muted)] md:text-sm">
+          <p className="mx-auto max-w-prose text-caption leading-relaxed text-[color:var(--aqt-fg-muted)] md:text-sm">
             {t("users.profile.empty.description", { name: displayName })}
           </p>
         </div>
@@ -62,7 +62,7 @@ const UserProfileEmpty = async ({ name }: { name: string }) => {
           {UNLOCKS.map(({ key, icon: Icon }) => (
             <li
               key={key}
-              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3 py-1.5 text-[11.5px] font-medium text-[color:var(--aqt-fg-dim)]"
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3 py-1.5 text-label font-medium text-[color:var(--aqt-fg-dim)]"
             >
               <Icon aria-hidden className="size-3.5 text-[color:var(--aqt-fg-faint)]" />
               {t(`users.profile.empty.unlocks.${key}` as never)}
@@ -73,14 +73,14 @@ const UserProfileEmpty = async ({ name }: { name: string }) => {
         <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
           <Link
             href="/tournaments"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[color:var(--aqt-teal)]/35 bg-[color:var(--aqt-teal)]/10 px-4 text-[13px] font-medium text-[color:var(--aqt-teal)] transition-colors hover:bg-[color:var(--aqt-teal)]/16 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)] focus-visible:outline-none"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[color:var(--aqt-teal)]/35 bg-[color:var(--aqt-teal)]/10 px-4 text-caption font-medium text-[color:var(--aqt-teal)] transition-colors hover:bg-[color:var(--aqt-teal)]/16 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)] focus-visible:outline-none"
           >
             <Trophy aria-hidden className="size-4" />
             {t("users.profile.empty.browseTournaments")}
           </Link>
           <Link
             href="/users"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 text-[13px] font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)] focus-visible:outline-none"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 text-caption font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)] focus-visible:outline-none"
           >
             <Users aria-hidden className="size-4" />
             {t("users.profile.empty.browsePlayers")}

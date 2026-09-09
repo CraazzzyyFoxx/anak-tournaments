@@ -141,9 +141,7 @@ def test_team_formation_change_blocked_by_active_draft() -> None:
 
 
 def test_team_formation_change_allowed_when_draft_completed() -> None:
-    error, formation = _run_update(
-        enums.DraftStatus.COMPLETED, schemas.TournamentUpdate(team_formation="balancer")
-    )
+    error, formation = _run_update(enums.DraftStatus.COMPLETED, schemas.TournamentUpdate(team_formation="balancer"))
     assert error is None
     assert formation == "balancer"
 

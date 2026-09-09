@@ -59,14 +59,14 @@ export const MvpMatchPill = ({ match }: { match: MatchWithUserStats }) => {
       >
         {map ? (
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-            <span className="truncate text-[13px] font-semibold text-foreground">{map.name}</span>
-            <span className="aqt-mono shrink-0 text-[12px] text-muted-foreground">
+            <span className="truncate text-caption font-semibold text-foreground">{map.name}</span>
+            <span className="aqt-tnum shrink-0 text-label text-muted-foreground">
               {match.score.home} – {match.score.away}
             </span>
           </div>
         ) : null}
         <div className="flex flex-col gap-2 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="text-label font-semibold uppercase tracking-wide text-muted-foreground">
             {t("users.matches.mvp.title")}
           </p>
           <RankRow label={t("users.matches.mvp.newRank")} rank={match.impact_rank} locale={locale} />

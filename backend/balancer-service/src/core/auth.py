@@ -171,4 +171,3 @@ async def _get_pick_workspace_id(session: AsyncSession, pick_id: int) -> int:
     if workspace_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft pick not found")
     return int(workspace_id)
-

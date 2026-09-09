@@ -151,9 +151,7 @@ class MixBalancerBackend:
                 for role, rating in player.ratings.items()
                 if role in mask and mask[role] > 0
             ]
-            cpp_players.append(
-                engine_lib.PlayerInfo(member_id=member_id, roles=roles, is_flex=player.is_flex)
-            )
+            cpp_players.append(engine_lib.PlayerInfo(member_id=member_id, roles=roles, is_flex=player.is_flex))
 
         logger.info("Running mix_balancer brute-force engine for a 2-team split")
         response = engine_lib.BalanceEngine.quick_find(

@@ -179,7 +179,14 @@ DOCS: dict[str, dict] = {
     # ── workspaces (reads + writes + members) ──────────────────────────────────────
     "rpc.app.workspaces.list": {
         "summary": "List workspaces",
-        "description": "Returns every workspace, minus hidden ones the caller has no business seeing: a hidden workspace is dropped unless the caller is one of its members (any role) or a superuser (public, optional auth, unpaginated).",
+        "description": (
+            "Lists workspaces (public, optional auth, unpaginated). `scope=public` (the default) is the"
+            " home-page directory and is byte-identical for every caller, superusers included: hidden"
+            " and `unverified` workspaces never appear. `scope=admin` is the management list -- every"
+            " workspace for a superuser, otherwise only the caller's own memberships at any tier."
+            " `scope=all` is that unioned with the public directory (the workspace switcher). Any other"
+            " value is a 422."
+        ),
     },
     "rpc.app.workspaces.by_host": {
         "summary": "Resolve workspace by host",
@@ -197,7 +204,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.workspaces.create": {
         "summary": "Create workspace",
-        "description": "Creates a workspace (superuser only), provisions system roles, adds the creator as owner, and busts the RBAC cache; 400 on duplicate slug.",
+        "description": "Creates a workspace, provisions system roles, stamps and adds the creator as owner, and busts the RBAC cache. Open to any ACTIVE authenticated user holding the allow-by-default `workspace.self_create` capability — deny that permission for an account (negative RBAC, global scope) to revoke self-service creation from it (403). Then capped per account by `workspace_creation.max_owned_per_user`, counted over `Workspace.owner_id` (403 `workspace_create_limit_reached`); platform slugs are unclaimable (400 `slug_reserved`), 400 on a duplicate slug, and the new workspace is born `unverified`.",
     },
     "rpc.app.admin.update#workspace": {
         "summary": "Update workspace",
@@ -243,6 +250,26 @@ DOCS: dict[str, dict] = {
     "rpc.app.workspaces.discord_guild_verify": {
         "summary": "Verify and bind a Discord guild",
         "description": "Proves the caller administers the given Discord guild (via identity-service, owner or MANAGE_GUILD) and binds it to the workspace, stamping verified_at/verified_by; requires workspace.update, 404 if workspace missing, 403 if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
+    },
+    "rpc.app.workspaces.my_discord_guilds": {
+        "summary": "List my administered Discord guilds",
+        "description": "Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify; requires an active authenticated user, 503 if identity-service is unreachable.",
+    },
+    "rpc.app.workspaces.verification_set": {
+        "summary": "Set workspace verification status",
+        "description": "Moves a workspace between the `unverified`/`verified`/`trusted` trust tiers — the only way a self-service workspace is unblocked for GPU compute, inline achievement recompute and the public directory; superuser-only (a workspace owner may not self-certify), audited on every call including a no-op set, 404 if workspace missing, 422 on an unknown status.",
+    },
+    "rpc.app.workspaces.owner_get": {
+        "summary": "Get the workspace owner",
+        "description": "Resolves `Workspace.owner_id` — the account accountable for the workspace and counted against the per-account create cap — to its username, email and avatar; requires workspace.update (the public workspace model deliberately publishes no owner), returns null data when no owner is stamped, 404 if workspace missing.",
+    },
+    "rpc.app.workspaces.owner_set": {
+        "summary": "Assign or clear the workspace owner",
+        "description": "Stamps `Workspace.owner_id` with the given auth account, or clears it when `auth_user_id` is null, and returns the resolved owner. Superuser-only — stricter than the `workspace.update` gate on the matching read, because owner_id is what the per-account create cap is counted over. RBAC roles are untouched (the stamp and the `owner` role are decoupled), the per-account cap is not re-checked (a superuser assignment is the override for it), every call is audited including a no-op, 404 if the workspace or the target account is missing.",
+    },
+    "rpc.app.workspaces.owner_transfer": {
+        "summary": "Transfer workspace ownership",
+        "description": "Hands the workspace over: stamps `Workspace.owner_id` with the recipient AND moves the RBAC `owner` role to them, adding them to the workspace if they are not a member yet. Open to the workspace's current owner as well as superusers — `workspace.update` alone is not enough, a co-administrator may not give away a workspace they do not answer for. The outgoing owner keeps their membership and every other role (`member` steps in if `owner` was their only one); the recipient is granted `owner` before the outgoing owner loses it, so the workspace is never ownerless. The recipient's `max_owned_per_user` cap is enforced unless the actor is a superuser (403 `workspace_owner_limit_reached`), because create-then-transfer would otherwise loop past it. Audited, busts both accounts' RBAC cache, 404 if the workspace or the recipient is missing, 403 for anyone but the owner or a superuser.",
     },
     # ── workspace discord entities ──────────────────────────────────────────────────
     "rpc.app.workspaces.discord_roles": {
@@ -492,5 +519,111 @@ DOCS: dict[str, dict] = {
     "rpc.app.users.avatar_delete": {
         "summary": "Delete user avatar",
         "description": "Removes a player's avatar from S3 and clears its URL; requires the global user.update permission.",
+    },
+    # ── notification inbox + announcement banner ────────────────────────────────────────────────────
+    "rpc.app.notifications_list": {
+        "summary": "List the caller's notifications",
+        "description": (
+            "Returns one page of the caller's inbox newest first, plus the unread badge count and an"
+            " opaque next_cursor (null on the last page). The audience is computed from the"
+            " authenticated identity alone — personal rows, rows for the workspaces the caller belongs"
+            " to, and platform-wide announcements — so there is no recipient parameter to pass. Expired"
+            " and not-yet-published rows are excluded. System kinds carry no text: the row is kind +"
+            " payload snapshot and the client renders it. 422 on a malformed cursor."
+        ),
+    },
+    "rpc.app.notifications_mark_read": {
+        "summary": "Mark notifications read",
+        "description": (
+            "Inserts read marks for the given ids and returns how many actually landed together with the"
+            " refreshed unread count. An omitted or null `ids` marks the whole visible inbox (the"
+            ' "mark all read" button). Ids outside the caller\'s audience are dropped silently rather'
+            " than rejected, so the endpoint cannot be used to probe whether another user's"
+            " notification exists; a repeat call marks nothing and is not an error."
+        ),
+    },
+    "rpc.app.notifications_delete": {
+        "summary": "Delete notifications from the caller's inbox",
+        "description": (
+            "Removes rows from this caller's inbox and returns how many left it together with the"
+            " refreshed unread count. An omitted or null `ids` targets the whole visible inbox, and"
+            ' `only_read: true` narrows that to rows already marked read (the "clear read" button).'
+            " The deletion is per viewer: the underlying row survives, so one reader dismissing a"
+            " platform-wide announcement does not take it out of anybody else's inbox. Ids outside the"
+            " caller's audience are dropped silently rather than rejected, and a repeat call deletes"
+            " nothing and is not an error."
+        ),
+    },
+    # ── notifications admin (workspace-scoped operator screen) ──────────────────────────────────────
+    "rpc.app.notification_admin_list": {
+        "summary": "List the notifications a workspace produced",
+        "description": (
+            "Returns one keyset page of the notifications this workspace's own activity produced"
+            " (`source_workspace_id`), newest first, expired ones included — the operator view exists to"
+            " show what has already been retired, which the inbox's time window hides. Requires"
+            " notification.read in the workspace named by `workspace_id`; announcements are not listed"
+            " here, they have their own CRUD. 422 on an unknown `kind` or a malformed cursor."
+        ),
+    },
+    "rpc.app.notification_admin_retire": {
+        "summary": "Retire notifications a workspace produced",
+        "description": (
+            "Expires the selected rows as of now — taking them out of every recipient's inbox and badge"
+            " count — and audits the batch once. `ids` and `kind` are filters over the same scoped"
+            " statement and may be combined; naming neither is a 422 rather than a tenant-wide wipe."
+            " Requires notification.delete in `workspace_id`. The rows and their read marks are kept,"
+            " like an announcement retire; already-expired rows are skipped, so a repeat call answers 0."
+        ),
+    },
+    "rpc.app.active_announcements": {
+        "summary": "Active announcements for the banner",
+        "description": (
+            "Returns the currently-published platform-wide announcements for the site banner, newest"
+            " first. Anonymous callers are welcome and get every global announcement inside its"
+            " publish/expiry window; for an authenticated viewer the ones already dismissed are"
+            " filtered out, which is why the route forwards identity when it is present."
+        ),
+    },
+    # ── announcements admin (operator CRUD) ─────────────────────────────────────────────────────────
+    "rpc.app.announcement_list": {
+        "summary": "List announcements",
+        "description": (
+            "Returns one scope's announcements newest first, expired ones included — the operator view"
+            " exists to show what is scheduled and what has been retired, which the banner's time window"
+            " hides. `workspace_id` selects the workspace feed and requires announcement.read there;"
+            " omitting it selects the platform-wide feed and is superuser-only, so the list can never"
+            " read announcements the caller could not publish."
+        ),
+    },
+    "rpc.app.announcement_create": {
+        "summary": "Publish an announcement",
+        "description": (
+            "Publishes an announcement and audits it. A `workspace` one requires announcement.create in"
+            " that workspace and at least one locale plus a default_locale among the filled ones; a"
+            " `global` one renders to every visitor including anonymous ones and is therefore"
+            " superuser-only and requires every supported locale (ru and en) — a workspace grant cannot"
+            " reach the platform's voice. `user` is not an accepted audience: personal notifications are"
+            " written by the flows that cause them, from server-resolved recipients. 422 on a locale or"
+            " audience/workspace_id mismatch."
+        ),
+    },
+    "rpc.app.announcement_update": {
+        "summary": "Edit an announcement",
+        "description": (
+            "Partially edits the text and expiry of an already-published announcement and audits it."
+            " `locales` replaces the whole map when present; audience and workspace_id are immutable,"
+            " and the required principal is decided from the stored audience, never from the request."
+            " Read marks are deliberately left alone — clearing them would re-show a banner to everyone"
+            " who already dismissed it, for a corrected typo. 404 if the id is not an announcement."
+        ),
+    },
+    "rpc.app.announcement_delete": {
+        "summary": "Retire an announcement",
+        "description": (
+            "Expires the announcement as of now and audits it, answering 204. The row is kept rather"
+            " than deleted: it is a notification row that people already have in their inbox, and the"
+            " read marks pointing at it must stay meaningful. Authorized from the stored audience like"
+            " the edit; 404 if the id is not an announcement."
+        ),
     },
 }

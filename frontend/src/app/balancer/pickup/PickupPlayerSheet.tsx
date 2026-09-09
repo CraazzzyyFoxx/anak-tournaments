@@ -188,7 +188,7 @@ export function PickupPlayerSheet({
           <SheetTitle className="flex items-baseline gap-1.5 pt-1.5 font-display text-xl">
             <span className="truncate">{name}</span>
             {suffix ? (
-              <span className="font-mono text-[13px] font-normal text-[color:var(--aqt-fg-faint)]">
+              <span className="text-caption font-normal text-[color:var(--aqt-fg-faint)]">
                 {suffix}
               </span>
             ) : null}
@@ -196,7 +196,7 @@ export function PickupPlayerSheet({
               <BattleTagCopyButton battleTag={row.battle_tag} className="ml-0.5 shrink-0" />
             ) : null}
           </SheetTitle>
-          <SheetDescription className="pt-1 text-[12.5px] text-[color:var(--aqt-fg-dim)]">
+          <SheetDescription className="pt-1 text-caption text-[color:var(--aqt-fg-dim)]">
             {canEdit
               ? "Nothing here writes until you press Save."
               : "Read-only — only this mix's host can edit it."}
@@ -206,7 +206,7 @@ export function PickupPlayerSheet({
         {row == null ? null : (
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
-              <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">Status</h3>
+              <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">Status</h3>
               <div
                 role="radiogroup"
                 aria-label={`Lineup status for ${label}`}
@@ -243,9 +243,9 @@ export function PickupPlayerSheet({
                             fill={selected ? "currentColor" : "none"}
                           />
                         ) : null}
-                        <span className="text-[12.5px] font-semibold">{option.label}</span>
+                        <span className="text-caption font-semibold">{option.label}</span>
                       </span>
-                      <span className="text-[10.5px] text-[color:var(--aqt-fg-dim)]">
+                      <span className="text-label text-[color:var(--aqt-fg-dim)]">
                         {option.description}
                       </span>
                     </button>
@@ -255,7 +255,7 @@ export function PickupPlayerSheet({
             </section>
 
             <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
-              <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">
+              <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">
                 Roles and ranks
               </h3>
 
@@ -270,11 +270,11 @@ export function PickupPlayerSheet({
                 <div className="min-w-0">
                   <span className="text-xs font-medium text-[color:var(--aqt-fg)]">Full flex</span>
                   {draft.isFlex ? (
-                    <p className="mt-0.5 text-[11px] text-[color:var(--aqt-fg-dim)]">
+                    <p className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">
                       Every role is equally preferred — priority order stops mattering.
                     </p>
                   ) : (
-                    <p className="mt-0.5 text-[11px] text-[color:var(--aqt-fg-dim)]">
+                    <p className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">
                       Drag below to set who the balancer seats first.
                     </p>
                   )}
@@ -504,7 +504,7 @@ function SortableRoleCard({
           label={`Reorder ${ROLE_LABELS[role]} for ${label}`}
           disabled={disabled}
         />
-        <span className="text-[11px] font-semibold text-[color:var(--aqt-fg-dim)]">{`#${priority}`}</span>
+        <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">{`#${priority}`}</span>
       </div>
       <RoleCardBody
         role={role}
@@ -576,7 +576,7 @@ function RoleCardBody({
           {isPrimary ? (
             <span
               className={cn(
-                "shrink-0 rounded px-1.5 py-px font-mono text-[11px] font-bold uppercase tracking-[0.12em]",
+                "shrink-0 rounded px-1.5 py-px text-label font-bold uppercase tracking-label",
                 accent.chip,
               )}
             >
@@ -595,7 +595,7 @@ function RoleCardBody({
           />
           <span
             className={cn(
-              "text-[11px] font-semibold uppercase tracking-wide",
+              "text-label font-semibold uppercase tracking-wide",
               isOn ? accent.text : "text-[color:var(--aqt-fg-dim)]",
             )}
           >

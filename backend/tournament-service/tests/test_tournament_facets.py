@@ -94,10 +94,15 @@ async def _run_facets(*, results=None, **kwargs):
     return facets, sql
 
 
+async def _run_facet_statements(**kwargs) -> list[sa.Select]:
+    """The statements themselves, for assertions that need the bound values."""
+    session = _RecordingSession(_DEFAULT_RESULTS)
+    await tournament_flows.flows_service.get_facets(session, **kwargs)
+    return session.statements
+
+
 def test_by_status_ignores_its_own_axis_but_keeps_the_others() -> None:
-    _, (status_sql, _, _) = asyncio.run(
-        _run_facets(status=STATUS.LIVE, is_league=True, query="cup", workspace_id=4)
-    )
+    _, (status_sql, _, _) = asyncio.run(_run_facets(status=STATUS.LIVE, is_league=True, query="cup", workspace_id=4))
 
     assert "GROUP BY tournament.tournament.status" in status_sql
     # Its own filter must be absent...
@@ -109,9 +114,7 @@ def test_by_status_ignores_its_own_axis_but_keeps_the_others() -> None:
 
 
 def test_league_split_ignores_is_league_but_keeps_status_and_search() -> None:
-    _, (_, league_sql, _) = asyncio.run(
-        _run_facets(status=STATUS.LIVE, is_league=True, query="cup", workspace_id=4)
-    )
+    _, (_, league_sql, _) = asyncio.run(_run_facets(status=STATUS.LIVE, is_league=True, query="cup", workspace_id=4))
 
     assert "GROUP BY tournament.tournament.is_league" in league_sql
     assert "tournament.is_league IS " not in league_sql
@@ -120,9 +123,7 @@ def test_league_split_ignores_is_league_but_keeps_status_and_search() -> None:
 
 
 def test_totals_ignore_every_filter_but_never_visibility() -> None:
-    _, (_, _, totals_sql) = asyncio.run(
-        _run_facets(status=STATUS.LIVE, is_league=True, query="cup", workspace_id=4)
-    )
+    _, (_, _, totals_sql) = asyncio.run(_run_facets(status=STATUS.LIVE, is_league=True, query="cup", workspace_id=4))
 
     assert "tournament.status = " not in totals_sql
     assert "tournament.is_league IS " not in totals_sql
@@ -162,20 +163,19 @@ def test_league_and_standard_come_from_the_boolean_groups() -> None:
 
 
 def test_missing_league_group_reads_as_zero_not_a_key_error() -> None:
-    facets, _ = asyncio.run(
-        _run_facets(results=[[(STATUS.LIVE, 2)], [(False, 2)], [(2, 2)]])
-    )
+    facets, _ = asyncio.run(_run_facets(results=[[(STATUS.LIVE, 2)], [(False, 2)], [(2, 2)]]))
 
     assert facets.league == 0
     assert facets.standard == 2
 
 
 def test_live_counts_playoffs_too() -> None:
-    _, (_, _, totals_sql) = asyncio.run(_run_facets())
+    statements = asyncio.run(_run_facet_statements())
+    totals = statements[2].compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
 
-    compiled = tournament_flows._LIVE_STATUSES
-    assert compiled == (STATUS.LIVE, STATUS.PLAYOFFS)
-    assert "status IN " in totals_sql
+    # Rendered with literals: the hero's "live now" number is the one place a
+    # visitor sees group play and bracket play as a single fact.
+    assert "status IN ('live', 'playoffs')" in str(totals)
 
 
 # ─── DB-backed end-to-end confirmation ────────────────────────────────────────
@@ -264,15 +264,9 @@ def test_facets_over_a_real_workspace() -> None:
                     flows = tournament_flows.flows_service
                     anon = await flows.get_facets(session, workspace_id=workspace_id)
                     # Selecting a chip must not collapse the other axes.
-                    picked = await flows.get_facets(
-                        session, workspace_id=workspace_id, status=STATUS.REGISTRATION
-                    )
-                    leagues_only = await flows.get_facets(
-                        session, workspace_id=workspace_id, is_league=True
-                    )
-                    superuser = await flows.get_facets(
-                        session, workspace_id=workspace_id, viewer=_superuser()
-                    )
+                    picked = await flows.get_facets(session, workspace_id=workspace_id, status=STATUS.REGISTRATION)
+                    leagues_only = await flows.get_facets(session, workspace_id=workspace_id, is_league=True)
+                    superuser = await flows.get_facets(session, workspace_id=workspace_id, viewer=_superuser())
                 return anon, picked, leagues_only, superuser
             finally:
                 async with session_maker() as session:

@@ -62,9 +62,7 @@ def _class(rank: int, priority: int, *, is_active: bool = True, subtype: str = "
     return node
 
 
-def _node(
-    name: str, classes: dict[str, Any], *, is_full_flex: bool = False, must_play: bool = False
-) -> dict[str, Any]:
+def _node(name: str, classes: dict[str, Any], *, is_full_flex: bool = False, must_play: bool = False) -> dict[str, Any]:
     return {
         "identity": {"name": name, "isFullFlex": is_full_flex, "mustPlay": must_play},
         "stats": {"classes": classes},
@@ -381,8 +379,7 @@ def test_too_many_must_play_players_raises_a_clear_error() -> None:
     # 'must play' cannot be honoured.
     payload = {
         "players": {
-            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}, must_play=True)
-            for index in range(1, 6)
+            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}, must_play=True) for index in range(1, 6)
         }
     }
 
@@ -399,11 +396,7 @@ def test_too_many_must_play_players_raises_a_clear_error() -> None:
 def test_max_teams_cap_benches_the_surplus_even_when_pool_divides_evenly() -> None:
     # 6 players, team size 2 -> divides evenly into 3 teams; max_teams=2 caps
     # it to 2, benching the extra pair exactly like an uneven remainder would.
-    payload = {
-        "players": {
-            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}) for index in range(1, 7)
-        }
-    }
+    payload = {"players": {f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}) for index in range(1, 7)}}
 
     context = _prepare_balance_context(payload, None, None, role_mask={"tank": 2}, max_teams=2)
 
@@ -433,11 +426,7 @@ def test_max_teams_cap_still_protects_must_play_players() -> None:
 def test_balance_teams_rejects_too_few_players_for_a_capped_algorithm() -> None:
     # 2 players, team size 2 -> only 1 team's worth; mix_balancer needs
     # exactly 2. Raises before ever touching the (Linux-only) native engine.
-    payload = {
-        "players": {
-            f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}) for index in range(1, 3)
-        }
-    }
+    payload = {"players": {f"u-{index}": _node(f"Player {index}", {"Tank": _class(2500, 0)}) for index in range(1, 3)}}
 
     with pytest.raises(ValueError, match="needs exactly 2 team"):
         balance_teams(payload, None, None, role_mask={"tank": 2}, algorithm="mix_balancer")

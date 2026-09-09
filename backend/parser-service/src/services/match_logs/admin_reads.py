@@ -13,6 +13,8 @@ caught by that ``except`` clause (it is a strict subclass). The rest of the
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 from loguru import logger
 from sqlalchemy import ColumnElement, or_, select
@@ -36,45 +38,35 @@ async def _fetch_queue_depths() -> list[schemas.QueueDepth]:
     cfg = config.settings
     base = cfg.rabbitmq_management_url.rstrip("/")
     auth_tuple = (cfg.rabbitmq_management_user, cfg.rabbitmq_management_password)
-    depths: list[schemas.QueueDepth] = []
+
+    def _error_depth(queue_name: str, depth_status: str = "error") -> schemas.QueueDepth:
+        return schemas.QueueDepth(
+            name=queue_name,
+            messages_ready=-1,
+            messages_unacknowledged=-1,
+            consumers=0,
+            status=depth_status,
+        )
+
+    async def _one(client: httpx.AsyncClient, queue_name: str) -> schemas.QueueDepth:
+        url = f"{base}/api/queues/%2F/{queue_name}"
+        resp = await client.get(url, auth=auth_tuple)
+        if resp.status_code != 200:
+            return _error_depth(queue_name, "not_found" if resp.status_code == 404 else "error")
+        data = resp.json()
+        return schemas.QueueDepth(
+            name=queue_name,
+            messages_ready=data.get("messages_ready", 0),
+            messages_unacknowledged=data.get("messages_unacknowledged", 0),
+            consumers=data.get("consumers", 0),
+        )
+
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            for queue_name in MONITORED_QUEUES:
-                url = f"{base}/api/queues/%2F/{queue_name}"
-                resp = await client.get(url, auth=auth_tuple)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    depths.append(
-                        schemas.QueueDepth(
-                            name=queue_name,
-                            messages_ready=data.get("messages_ready", 0),
-                            messages_unacknowledged=data.get("messages_unacknowledged", 0),
-                            consumers=data.get("consumers", 0),
-                        )
-                    )
-                elif resp.status_code == 404:
-                    depths.append(
-                        schemas.QueueDepth(
-                            name=queue_name,
-                            messages_ready=-1,
-                            messages_unacknowledged=-1,
-                            consumers=0,
-                            status="not_found",
-                        )
-                    )
-                else:
-                    depths.append(
-                        schemas.QueueDepth(
-                            name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0, status="error"
-                        )
-                    )
+            return list(await asyncio.gather(*(_one(client, queue_name) for queue_name in MONITORED_QUEUES)))
     except Exception as exc:
         logger.warning(f"Failed to fetch queue depths from RabbitMQ management API: {exc}")
-        for queue_name in MONITORED_QUEUES:
-            depths.append(
-                schemas.QueueDepth(name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0, status="error")
-            )
-    return depths
+        return [_error_depth(queue_name) for queue_name in MONITORED_QUEUES]
 
 
 def _record_to_dict(record: models.LogProcessingRecord) -> dict:

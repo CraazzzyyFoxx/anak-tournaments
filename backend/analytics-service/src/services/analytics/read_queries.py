@@ -196,11 +196,15 @@ class AnalyticsReadService:
                 )
                 .group_by(models.Player.id)
             )
-            for pid, encounter_id in (await session.execute(home_query)).all() + (await session.execute(away_query)).all():
+            for pid, encounter_id in (await session.execute(home_query)).all() + (
+                await session.execute(away_query)
+            ).all():
                 if pid is None or encounter_id is None:
                     continue
                 previous = encounter_for_player.get(int(pid))
-                encounter_for_player[int(pid)] = int(encounter_id) if previous is None else min(previous, int(encounter_id))
+                encounter_for_player[int(pid)] = (
+                    int(encounter_id) if previous is None else min(previous, int(encounter_id))
+                )
 
         grouped: dict[int, list[dict[str, typing.Any]]] = {}
         for anomaly in anomalies:
@@ -247,7 +251,9 @@ class AnalyticsReadService:
         await session.commit()
         return analytics, calculated_shift
 
-    async def get_streaks(self, session: AsyncSession, tournament_id: int) -> typing.Sequence[tuple[models.User, int, str, int]]:
+    async def get_streaks(
+        self, session: AsyncSession, tournament_id: int
+    ) -> typing.Sequence[tuple[models.User, int, str, int]]:
         subquery = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),

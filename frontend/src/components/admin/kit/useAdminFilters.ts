@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback } from "react";
 
 import type { AdminTableFilters } from "@/components/admin/admin-table-filters";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -80,21 +80,22 @@ export function isFilterActive(value: FilterValue | undefined): boolean {
 export function useAdminFilters(defs: FilterDef[]): AdminFilters {
   const { searchParams, setParams } = useQueryParams({ resetOnChange: ["page", "id"] });
 
-  // `defs` is a fresh array every render (option lists are built inline), so
-  // the callbacks read it through a ref instead of taking it as a dependency.
-  const defsRef = useRef(defs);
-  defsRef.current = defs;
-
-  const defsKey = defs.map((def) => `${def.key}:${def.kind}`).join("|");
   const search = searchParams?.toString() ?? "";
 
-  const values = useMemo(() => {
-    const params = new URLSearchParams(search);
-    return Object.fromEntries(
-      defsRef.current.map((def) => [def.key, readValue(def, params)])
-    ) as Record<string, FilterValue>;
-  }, [defsKey, search]);
+  // Read straight from `defs` every render rather than through a memo. Callers
+  // build their option lists inline, so `defs` is a fresh array on every pass
+  // and any memo keyed on it would miss anyway; parsing a handful of query
+  // params is cheaper than the bookkeeping. Nothing downstream holds these
+  // identities — `filterKey` is a string, and `AdminDataTable` compares the
+  // table filters serialised.
+  const params = new URLSearchParams(search);
+  const values = Object.fromEntries(
+    defs.map((def) => [def.key, readValue(def, params)])
+  ) as Record<string, FilterValue>;
 
+  // The two writers are the exception: `AdminAuditPage` lists them as column
+  // memo dependencies precisely because the `filters` object around them is
+  // rebuilt every render. They close over nothing but `setParams`.
   const set = useCallback(
     (key: string, value: FilterValue | null) => setParams({ [key]: writeValue(value) }),
     [setParams]
@@ -108,33 +109,29 @@ export function useAdminFilters(defs: FilterDef[]): AdminFilters {
     [setParams]
   );
 
-  const clear = useCallback(() => {
-    if (defsRef.current.length === 0) return;
-    setParams(Object.fromEntries(defsRef.current.map((def) => [def.key, null])));
-  }, [setParams]);
+  const clear = () => {
+    if (defs.length === 0) return;
+    setParams(Object.fromEntries(defs.map((def) => [def.key, null])));
+  };
 
-  const toTableFilters = useCallback((): AdminTableFilters => {
+  const toTableFilters = (): AdminTableFilters => {
     const out: AdminTableFilters = {};
-    for (const def of defsRef.current) {
+    for (const def of defs) {
       const value = values[def.key];
       if (!isFilterActive(value)) continue;
       out[def.key] = Array.isArray(value) ? value : [value === true ? "1" : String(value)];
     }
     return out;
-  }, [values]);
+  };
 
-  const filterKey = useMemo(
-    () =>
-      Object.entries(values)
-        .filter(([, value]) => isFilterActive(value))
-        .map(
-          ([key, value]) =>
-            `${key}=${Array.isArray(value) ? value.join(MULTI_SEPARATOR) : String(value)}`
-        )
-        .sort()
-        .join("&"),
-    [values]
-  );
+  const filterKey = Object.entries(values)
+    .filter(([, value]) => isFilterActive(value))
+    .map(
+      ([key, value]) =>
+        `${key}=${Array.isArray(value) ? value.join(MULTI_SEPARATOR) : String(value)}`
+    )
+    .sort()
+    .join("&");
 
   return { values, set, setMany, clear, toTableFilters, filterKey };
 }

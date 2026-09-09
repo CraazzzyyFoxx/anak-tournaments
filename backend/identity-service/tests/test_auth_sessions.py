@@ -88,9 +88,7 @@ class _AddSession:
 def test_revoke_client_family_blacklists_every_returned_session() -> None:
     service, repo, cache = _service(revoke_client_family=(2, {"sid-a", "sid-b"}))
 
-    revoked = asyncio.run(
-        service.revoke_client_family(_AddSession(), 7, "Chrome", "10.0.0.1", commit=False)
-    )
+    revoked = asyncio.run(service.revoke_client_family(_AddSession(), 7, "Chrome", "10.0.0.1", commit=False))
 
     assert revoked == 2
     assert repo.calls == [("revoke_client_family", 7, "Chrome", "10.0.0.1")]

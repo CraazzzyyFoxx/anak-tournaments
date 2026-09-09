@@ -32,12 +32,12 @@ const MatchRow = ({ match, locale }: { match: AchievementMatchLink; locale: stri
   return (
     <Link
       href={`/encounters/${match.encounter_id}`}
-      className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] px-3 py-2 text-[13.5px] transition-colors hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)]"
+      className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] px-3 py-2 text-caption transition-colors hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)]"
     >
       <span className="truncate">
-        {home} <span className="aqt-mono opacity-80">{match.score.home}–{match.score.away}</span> {away}
+        {home} <span className="aqt-tnum opacity-80">{match.score.home}–{match.score.away}</span> {away}
       </span>
-      {date ? <span className="aqt-mono shrink-0 text-[12px] text-[color:var(--aqt-fg-muted)]">{date}</span> : null}
+      {date ? <span className="aqt-tnum shrink-0 text-label text-[color:var(--aqt-fg-muted)]">{date}</span> : null}
     </Link>
   );
 };
@@ -77,16 +77,16 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
                     ) : null}
                   </div>
                   <div className="flex min-w-0 flex-col gap-1">
-                    <DialogTitle className="text-[16px] text-[color:var(--aqt-fg)]">{ach.name}</DialogTitle>
-                    <div className="flex items-center gap-2 text-[12px] text-[color:var(--aqt-fg-muted)]">
+                    <DialogTitle className="text-base text-[color:var(--aqt-fg)]">{ach.name}</DialogTitle>
+                    <div className="flex items-center gap-2 text-label text-[color:var(--aqt-fg-muted)]">
                       {rarity ? (
                         <span className="capitalize">
                           <span aria-hidden>◆</span> {rarity}
                         </span>
                       ) : null}
-                      <span className="aqt-mono">{(ach.rarity * 100).toFixed(2)}%</span>
+                      <span className="aqt-tnum">{(ach.rarity * 100).toFixed(2)}%</span>
                       {ach.count > 0 ? (
-                        <span className="aqt-mono">
+                        <span className="aqt-tnum">
                           {tr("users.achievements.detail.earnedCount", { count: String(ach.count) })}
                         </span>
                       ) : null}
@@ -96,19 +96,19 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
               </DialogHeader>
 
               <div className="flex flex-col gap-4 overflow-y-auto px-5 py-4">
-                <DialogDescription className="text-[14px] leading-snug text-[color:var(--aqt-fg-dim)]">
+                <DialogDescription className="text-body leading-snug text-[color:var(--aqt-fg-dim)]">
                   {description || tr("users.achievements.detail.fallbackDescription")}
                 </DialogDescription>
 
                 {locked ? (
-                  <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] px-3 py-3 text-center text-[13.5px] text-[color:var(--aqt-fg-muted)]">
+                  <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] px-3 py-3 text-center text-caption text-[color:var(--aqt-fg-muted)]">
                     {tr("users.achievements.detail.locked")}
                   </div>
                 ) : (
                   <>
                     {ach.tournaments.length > 0 ? (
                       <section className="flex flex-col gap-1.5">
-                        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+                        <h3 className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                           {tr("users.achievements.detail.earnedIn")}
                         </h3>
                         <div className="flex flex-wrap gap-1.5">
@@ -123,7 +123,7 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
 
                     {ach.matches.length > 0 ? (
                       <section className="flex flex-col gap-1.5">
-                        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+                        <h3 className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                           {tr("common.matches")}
                         </h3>
                         <div className="flex flex-col gap-1">
@@ -135,7 +135,7 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
                     ) : null}
 
                     {ach.tournaments.length === 0 && ach.matches.length === 0 ? (
-                      <div className="text-center text-[13.5px] text-[color:var(--aqt-fg-muted)]">
+                      <div className="text-center text-caption text-[color:var(--aqt-fg-muted)]">
                         {tr("users.achievements.detail.earnedNoDetails", { count: String(ach.count) })}
                       </div>
                     ) : null}

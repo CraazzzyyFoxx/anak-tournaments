@@ -6,6 +6,7 @@ import { BadgeCheck, CheckCircle, ShieldAlert, Trash2, UserRound, XCircle } from
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { AccountInspector } from "@/components/admin/access/AccountInspector";
 import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
@@ -103,6 +104,12 @@ export default function AccessAdminAccountsPage() {
   const columns = useMemo<ColumnDef<AuthAdminUser>[]>(
     () => [
       {
+        accessorKey: "id",
+        header: "ID",
+        size: 60,
+        cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>
+      },
+      {
         accessorKey: "email",
         header: "Account",
         cell: ({ row }) => (
@@ -130,8 +137,9 @@ export default function AccessAdminAccountsPage() {
         id: "status",
         header: "Status",
         enableSorting: false,
+        meta: adminColumnMeta<AuthAdminUser>({ align: "center" }),
         cell: ({ row }) => (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap justify-center gap-2">
             {row.original.is_active ? (
               <StatusIcon icon={CheckCircle} label="Active" variant="success" />
             ) : (

@@ -134,7 +134,7 @@ const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
       ) : (
         <div className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--aqt-border)] px-5 py-3">
-            <h2 className="aqt-mono m-0 text-[12px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+            <h2 className="aqt-tnum m-0 text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
               {t("common.stream")}
             </h2>
             <span className="flex shrink-0 items-center gap-2.5">
@@ -145,7 +145,7 @@ const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
                 </span>
               ) : null}
               {totalViewers > 0 ? (
-                <span className="aqt-mono text-[12px] tabular-nums text-[color:var(--aqt-fg-muted)]">
+                <span className="aqt-tnum text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
                   {t("stream.card.watching", { count: totalViewers })}
                 </span>
               ) : null}

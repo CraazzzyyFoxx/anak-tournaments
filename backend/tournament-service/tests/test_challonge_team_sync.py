@@ -32,9 +32,7 @@ schemas = importlib.import_module("src.schemas")
 def _participant(
     id_: int, name: str, active: bool = True, group_player_ids: list[int] | None = None
 ) -> SimpleNamespace:
-    return SimpleNamespace(
-        id=id_, name=name, active=active, group_player_ids=group_player_ids or []
-    )
+    return SimpleNamespace(id=id_, name=name, active=active, group_player_ids=group_player_ids or [])
 
 
 def _team(id_: int, name: str, balancer_name: str | None = None) -> SimpleNamespace:
@@ -112,9 +110,7 @@ class PreviewTeamMappingTests(IsolatedAsyncioTestCase):
                 "_build_team_name_index",
                 AsyncMock(return_value={"alpha": challonge_sync._AMBIGUOUS}),
             ),
-            patch.object(
-                challonge_sync.mapping_service, "_existing_participant_mappings", AsyncMock(return_value={})
-            ),
+            patch.object(challonge_sync.mapping_service, "_existing_participant_mappings", AsyncMock(return_value={})),
         ):
             result = await challonge_sync.sync_service.preview_team_mapping(_FakeSession(), 1)
 
@@ -143,9 +139,7 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
                 "_fetch_team_sync_context",
                 AsyncMock(return_value=(tournament, [_team(5, "Alpha")], [(_source(), fetch)])),
             ),
-            patch.object(
-                challonge_sync.mapping_service, "_existing_participant_mappings", AsyncMock(return_value={})
-            ),
+            patch.object(challonge_sync.mapping_service, "_existing_participant_mappings", AsyncMock(return_value={})),
         ):
             result = await challonge_sync.sync_service.apply_team_mapping(
                 session, 1, [schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)]
@@ -163,9 +157,7 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
         import still can't resolve a team the admin explicitly picked (see sync.py
         ``apply_team_mapping``)."""
         tournament = SimpleNamespace(id=1)
-        fetch = SimpleNamespace(
-            matches=[], participants=[_participant(10, "Alpha", group_player_ids=[101, 102])]
-        )
+        fetch = SimpleNamespace(matches=[], participants=[_participant(10, "Alpha", group_player_ids=[101, 102])])
         session = _FakeSession()
 
         with (
@@ -174,9 +166,7 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
                 "_fetch_team_sync_context",
                 AsyncMock(return_value=(tournament, [_team(5, "Alpha")], [(_source(), fetch)])),
             ),
-            patch.object(
-                challonge_sync.mapping_service, "_existing_participant_mappings", AsyncMock(return_value={})
-            ),
+            patch.object(challonge_sync.mapping_service, "_existing_participant_mappings", AsyncMock(return_value={})),
         ):
             result = await challonge_sync.sync_service.apply_team_mapping(
                 session, 1, [schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)]

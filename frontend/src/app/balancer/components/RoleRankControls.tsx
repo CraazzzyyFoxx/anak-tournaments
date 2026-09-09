@@ -115,7 +115,7 @@ function gridBounds(grid: DivisionGrid): { min: number; max: number } {
 }
 
 const LABEL_CLASS =
-  "text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]";
+  "text-label font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]";
 
 type RoleRankControlsProps = {
   /** The rank these controls read and write; `null` renders as unset. */
@@ -182,12 +182,12 @@ export function RoleRankControls({
         <div className="flex items-center justify-between gap-2">
           <span className={LABEL_CLASS}>Skill rating</span>
           {rankValue == null ? (
-            <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No rank</span>
+            <span className="text-label text-[color:var(--aqt-fg-dim)]">No rank</span>
           ) : (
             <span className="flex items-center gap-1">
               <span
                 className={cn(
-                  "flex items-center gap-1 text-[11px] font-semibold",
+                  "flex items-center gap-1 text-label font-semibold",
                   active ? accent.text : "text-[color:var(--aqt-fg-dim)]",
                 )}
               >
@@ -195,7 +195,7 @@ export function RoleRankControls({
                 {sourceLabel ? (
                   <span
                     className={cn(
-                      "inline-flex h-4 items-center rounded-md border px-1.5 text-[11px] uppercase",
+                      "inline-flex h-4 items-center rounded-md border px-1.5 text-label uppercase",
                       accent.chip,
                     )}
                   >
@@ -212,7 +212,7 @@ export function RoleRankControls({
                   disabled={disabled}
                   onClick={onClear}
                   title="Clear this role's rank"
-                  className="rounded px-1 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)] transition-colors hover:text-rose-200 disabled:opacity-50"
+                  className="rounded px-1 text-label font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)] transition-colors hover:text-rose-200 disabled:opacity-50"
                 >
                   Clear
                 </button>
@@ -267,13 +267,13 @@ export function RoleRankControls({
             <>
               <DivisionIcon division={divisionNumber} width={20} height={20} />
               <div className="min-w-0">
-                <div className="truncate text-[12px] font-medium text-[color:var(--aqt-fg-muted)]">
+                <div className="truncate text-label font-medium text-[color:var(--aqt-fg-muted)]">
                   {divisionName ?? `Division ${divisionNumber}`}
                 </div>
               </div>
             </>
           ) : (
-            <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No rank yet</span>
+            <span className="text-label text-[color:var(--aqt-fg-dim)]">No rank yet</span>
           )}
         </div>
       </div>

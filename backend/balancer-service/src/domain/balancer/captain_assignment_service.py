@@ -36,4 +36,3 @@ def assign_captains(players: list[Player], count: int, mask: dict[str, int] | No
                 break
 
         player.captain_role = pinned_role
-

@@ -12,9 +12,9 @@ import (
 // the #115 regression.
 func TestVisibilityGatedPublicReadsForwardIdentity(t *testing.T) {
 	gated := map[string]bool{
-		"rpc.tournament.reg_pub_form":          true,
-		"rpc.tournament.reg_pub_list":          true,
-		"rpc.tournament.get_pick_ban_configs":  true,
+		"rpc.tournament.reg_pub_form":         true,
+		"rpc.tournament.reg_pub_list":         true,
+		"rpc.tournament.get_pick_ban_configs": true,
 	}
 	seen := map[string]bool{}
 	for _, r := range PublicWriteRoutes {

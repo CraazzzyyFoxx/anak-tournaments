@@ -551,13 +551,10 @@ def validate_mapping_config(
                     issues.append(
                         MappingValidationIssue(
                             code="unknown_subrole",
-                            message=f"'{slug}' is not a workspace sub-role"
-                            + (f" for {role}" if role else "")
-                            + ".",
+                            message=f"'{slug}' is not a workspace sub-role" + (f" for {role}" if role else "") + ".",
                             target=target_key,
                         )
                     )
-
 
     if not any(_target_is_mapped(targets.get(key)) for key in IDENTITY_TARGETS):
         issues.append(
@@ -619,7 +616,6 @@ def validate_value_mapping_subroles(
                     )
                 )
     return issues
-
 
 
 # ---------------------------------------------------------------------------

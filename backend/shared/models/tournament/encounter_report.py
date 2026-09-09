@@ -75,7 +75,7 @@ class EncounterCaptainReport(db.TimeStampIntegerMixin):
 
     encounter: Mapped[Encounter] = relationship(back_populates="captain_reports")
     team: Mapped[Team] = relationship()
-    reporter: Mapped["User | None"] = relationship()
+    reporter: Mapped[User | None] = relationship()
     # Eager (selectin) so a report loaded by a QUERY carries its codes and no
     # later attribute touch emits IO -- that would be MissingGreenlet under async
     # SQLAlchemy. Reports are only loaded in low-volume captain endpoints, never
@@ -84,7 +84,7 @@ class EncounterCaptainReport(db.TimeStampIntegerMixin):
     # selectin is a query-time strategy, so a first touch there still falls back
     # to a lazy load and the writer must seed the collection itself (see
     # ``captain.submit_captain_report``).
-    map_codes: Mapped[list["EncounterMapCode"]] = relationship(
+    map_codes: Mapped[list[EncounterMapCode]] = relationship(
         back_populates="report",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -116,7 +116,7 @@ class EncounterMapCode(db.TimeStampIntegerMixin):
     code: Mapped[str] = mapped_column(String(32))
 
     report: Mapped[EncounterCaptainReport] = relationship(back_populates="map_codes")
-    map: Mapped["Map | None"] = relationship()
+    map: Mapped[Map | None] = relationship()
 
 
 class EncounterMapReport(db.TimeStampIntegerMixin):
@@ -165,7 +165,7 @@ class EncounterMapReport(db.TimeStampIntegerMixin):
 
     encounter: Mapped[Encounter] = relationship()
     team: Mapped[Team] = relationship()
-    reporter: Mapped["User | None"] = relationship()
+    reporter: Mapped[User | None] = relationship()
 
 
 class EncounterReportForm(db.TimeStampIntegerMixin):

@@ -24,8 +24,8 @@ from shared.core.enums import (
     HeroClass,
 )
 from shared.core.errors import ApiHTTPException
-from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.domain.roster import PlayerRoster
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from src.domain.draft.entities import (
     DraftFeasibilityReport,
@@ -116,8 +116,7 @@ def unranked_pool_error(rosters: Sequence[PlayerRoster]) -> ApiHTTPException:
     more = f" and {len(rosters) - 10} more" if len(rosters) > 10 else ""
     return _err(
         "draft_pool_unranked",
-        f"These pool registrations have no ranked role: {names}{more}. "
-        "Set their ranks in the balancer, then seed.",
+        f"These pool registrations have no ranked role: {names}{more}. Set their ranks in the balancer, then seed.",
         status_code=422,
     )
 
@@ -317,7 +316,10 @@ def role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[HeroCla
     """
     targets = shape.slots
     free_flex = max(0, targets.get(FLEX_SLOT_CODE, 0) - counts.get(FLEX_SLOT_CODE, 0))
-    return {role: max(0, targets.get(role.slot_code, 0) - counts.get(role.slot_code, 0)) + free_flex for role in HERO_TYPE_CLASSES}
+    return {
+        role: max(0, targets.get(role.slot_code, 0) - counts.get(role.slot_code, 0)) + free_flex
+        for role in HERO_TYPE_CLASSES
+    }
 
 
 def validate_current_pick(draft_session: DraftSession, pick: DraftPick) -> None:

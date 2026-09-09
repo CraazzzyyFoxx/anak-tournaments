@@ -5,13 +5,12 @@ import { useMutation } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
-import { TONE_CLASS } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import {
   SortableGrip,
   SortableRows,
   useSortableRow
 } from "@/app/balancer/components/SortableRows";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -322,12 +321,9 @@ function StageCard({
           >
             {stage.name}
           </button>
-          <Badge
-            variant="outline"
-            className={cn("shrink-0", TONE_CLASS[getStageStatusTone(stage, hasEncounters)])}
-          >
+          <StatusPill tone={getStageStatusTone(stage, hasEncounters)} className="shrink-0">
             {getStageStatus(stage, hasEncounters)}
-          </Badge>
+          </StatusPill>
         </div>
 
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">

@@ -113,7 +113,7 @@ export const TournamentTeamTable = ({
                   ) : null}
                   {highlightUserId != null && player.user_id === highlightUserId ? (
                     <span
-                      className="aqt-mono rounded-[4px] px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.1em]"
+                      className="aqt-tnum rounded-[4px] px-1.5 py-0.5 text-label font-bold uppercase tracking-label"
                       style={{
                         background: "color-mix(in srgb, var(--aqt-teal) 12%, transparent)",
                         border: "1px solid color-mix(in srgb, var(--aqt-teal) 30%, transparent)",
@@ -144,7 +144,7 @@ export const TournamentTeamTable = ({
               {showExtra ? (
                 <>
                   <td
-                    className="aqt-mono tabular-nums"
+                    className="aqt-tnum tabular-nums"
                     style={{
                       textAlign: "right",
                       color:

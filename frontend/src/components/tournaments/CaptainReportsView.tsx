@@ -54,12 +54,12 @@ function ReportCard({
   return (
     <div className="rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-3">
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">{title}</p>
+        <p className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">{title}</p>
         <p className="truncate text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{teamName}</p>
       </div>
       {report ? (
         <div className="mt-2 space-y-1.5 text-sm text-[color:var(--aqt-fg-muted)]">
-          <div className="font-mono text-base font-bold text-[color:var(--aqt-fg)]">
+          <div className="text-base font-bold text-[color:var(--aqt-fg)]">
             {report.home_score} - {report.away_score}
           </div>
           <div className="text-xs text-[color:var(--aqt-fg-muted)]">
@@ -76,14 +76,14 @@ function ReportCard({
                     <span className="text-[color:var(--aqt-fg-dim)]">
                       {t("matchReport.mapLabel", { index: String(mapCode.map_index) })}
                     </span>
-                    <span className="font-mono text-[color:var(--aqt-fg-muted)]">{mapCode.code}</span>
+                    <span className="text-[color:var(--aqt-fg-muted)]">{mapCode.code}</span>
                   </li>
                 ))}
             </ul>
           )}
           {comment ? (
             <div className="mt-1">
-              <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
+              <p className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
                 {t("matchReport.comment")}
               </p>
               <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-[color:var(--aqt-fg-muted)]">
@@ -95,7 +95,7 @@ function ReportCard({
             <dl className="mt-1 space-y-1">
               {customAnswers.map(([key, value]) => (
                 <div key={key}>
-                  <dt className="text-[11px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
+                  <dt className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
                     {customFields.find((field) => field.key === key)?.label ?? key}
                   </dt>
                   <dd className="mt-0.5 whitespace-pre-wrap break-words text-xs text-[color:var(--aqt-fg-muted)]">
@@ -134,7 +134,7 @@ export function CaptainReportsView({
 
   return (
     <div className={cn("space-y-2", className)}>
-      <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
+      <p className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
         {t("matchReport.bothReportsTitle")}
       </p>
       <div className="grid gap-3 sm:grid-cols-2">

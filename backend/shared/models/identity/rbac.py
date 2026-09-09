@@ -62,9 +62,9 @@ class Role(db.TimeStampIntegerMixin):
     )
 
     # Relations
-    users: Mapped[list["AuthUser"]] = relationship(secondary=user_roles, back_populates="roles")
-    permissions: Mapped[list["Permission"]] = relationship(secondary="auth.role_permissions", back_populates="roles")
-    workspace: Mapped["Workspace | None"] = relationship()
+    users: Mapped[list[AuthUser]] = relationship(secondary=user_roles, back_populates="roles")
+    permissions: Mapped[list[Permission]] = relationship(secondary="auth.role_permissions", back_populates="roles")
+    workspace: Mapped[Workspace | None] = relationship()
 
     def __repr__(self):
         return f"<Role id={self.id} name={self.name}>"
@@ -84,7 +84,7 @@ class Permission(db.TimeStampIntegerMixin):
     description: Mapped[str | None] = mapped_column(Text(), nullable=True)
 
     # Relations
-    roles: Mapped[list["Role"]] = relationship(secondary="auth.role_permissions", back_populates="permissions")
+    roles: Mapped[list[Role]] = relationship(secondary="auth.role_permissions", back_populates="permissions")
 
     def __repr__(self):
         return f"<Permission id={self.id} name={self.name} resource={self.resource} action={self.action}>"
@@ -123,7 +123,7 @@ class UserPermissionDeny(db.TimeStampIntegerMixin):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
 
-    permission: Mapped["Permission"] = relationship()
+    permission: Mapped[Permission] = relationship()
 
     def __repr__(self):
         return f"<UserPermissionDeny user_id={self.user_id} permission_id={self.permission_id}>"

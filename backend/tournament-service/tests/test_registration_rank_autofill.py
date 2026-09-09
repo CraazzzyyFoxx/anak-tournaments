@@ -20,10 +20,10 @@ models = importlib.import_module("src.models")
 rank_autofill = importlib.import_module("src.services.registration.rank_autofill")
 rank_sources = importlib.import_module("src.services.registration.rank_sources")
 
-from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
-from shared.services.division_grid.normalization import DivisionGridNormalizer  # noqa: E402
 from shared.core.enums import HeroClass  # noqa: E402
+from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
+from shared.services.division_grid.normalization import DivisionGridNormalizer  # noqa: E402
 from shared.testing.factories import division_tier  # noqa: E402
 
 
@@ -82,9 +82,7 @@ def _roster_for(registration: SimpleNamespace) -> PlayerRoster:
                 priority=priority,
                 subrole=None,
             )
-            for priority, role in enumerate(
-                sorted(registration.roles, key=lambda role: role.priority)
-            )
+            for priority, role in enumerate(sorted(registration.roles, key=lambda role: role.priority))
             if role.is_active
         ),
         is_full_flex=False,
@@ -394,7 +392,9 @@ def test_resolve_stages_all_disabled_is_empty() -> None:
 
 def test_lookback_ids_none_when_unrestricted() -> None:
     target = SimpleNamespace(id=5, start_date=None, workspace_id=1)
-    assert asyncio.run(rank_autofill.rank_autofill_service._autofill_lookback_tournament_ids(None, target, None)) is None
+    assert (
+        asyncio.run(rank_autofill.rank_autofill_service._autofill_lookback_tournament_ids(None, target, None)) is None
+    )
 
 
 def test_lookback_ids_returns_queried_id_set() -> None:
@@ -403,7 +403,9 @@ def test_lookback_ids_returns_queried_id_set() -> None:
             return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [3, 2]))
 
     target = SimpleNamespace(id=5, start_date=datetime(2024, 1, 1, tzinfo=UTC).date(), workspace_id=1)
-    assert asyncio.run(rank_autofill.rank_autofill_service._autofill_lookback_tournament_ids(_Session(), target, 2)) == {3, 2}
+    assert asyncio.run(
+        rank_autofill.rank_autofill_service._autofill_lookback_tournament_ids(_Session(), target, 2)
+    ) == {3, 2}
 
 
 # ── allow_partial + unverified action in the plan builder ────────────────────────────────────

@@ -63,7 +63,7 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
         <Link
           href={`/tournaments/${enc.tournament_id}`}
           onClick={(e) => e.stopPropagation()}
-          className="aqt-mono inline-flex items-center gap-1.5 rounded-[5px] border px-2 py-0.5 text-[11.5px] font-bold"
+          className="aqt-tnum inline-flex items-center gap-1.5 rounded-[5px] border px-2 py-0.5 text-label font-bold"
           style={{
             background: "color-mix(in srgb, var(--aqt-teal) 8%, transparent)",
             borderColor: "color-mix(in srgb, var(--aqt-teal) 25%, transparent)",
@@ -104,10 +104,10 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
             </span>
           </TooltipProvider>
         ) : (
-          <span className="aqt-mono text-[color:var(--aqt-fg-faint)]">—</span>
+          <span className="aqt-tnum text-[color:var(--aqt-fg-faint)]">—</span>
         )}
       </td>
-      <td className="aqt-mono px-3.5 py-3 text-[12px] text-[color:var(--aqt-fg-dim)]">
+      <td className="aqt-tnum px-3.5 py-3 text-label text-[color:var(--aqt-fg-dim)]">
         {enc.closeness != null ? `${(enc.closeness * 100).toFixed(0)}%` : "—"}
       </td>
       <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>

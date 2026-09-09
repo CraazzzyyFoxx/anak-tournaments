@@ -1,8 +1,8 @@
 import type { useTranslations } from "next-intl";
 
+import { getTournamentStatusMeta } from "@/lib/tournament-status";
 import type { Encounter } from "@/types/encounter.types";
-import type { Tournament } from "@/types/tournament.types";
-import type { TournamentStatus } from "@/types/tournament.types";
+import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 
 // Loose translator alias matching next-intl's `useTranslations()` return type so
 // callers can hand their `t` straight through (strictFunctionTypes-safe).
@@ -92,22 +92,24 @@ export interface StageProgress {
 // Coarse stage-progress proxy from stage completion flags. Real "X/Y matches"
 // requires a precomputed backend field (see plan C2); until then we render a
 // graceful label + bar derived from stages.is_completed / is_active.
+//
+// Bucketed by the status's presentation variant rather than by listing statuses
+// again: which statuses read as "signing up" is already decided once, in
+// `@/lib/tournament-status`.
 export function stageProgress(
   tournament: Tournament,
   status: TournamentStatus,
   t: Translate
 ): StageProgress {
-  if (status === "completed" || status === "archived") {
-    return { label: t("tournamentsList.stage.final"), pct: 100, fill: "teal" };
-  }
-  if (status === "registration" || status === "check_in") {
-    return { label: t("tournamentsList.stage.signups"), pct: 30, fill: "amber" };
-  }
-  if (status === "draft") {
-    return { label: t("tournamentsList.stage.setup"), pct: 20, fill: "muted" };
+  switch (getTournamentStatusMeta(status).variant) {
+    case "finished":
+      return { label: t("tournamentsList.stage.final"), pct: 100, fill: "teal" };
+    case "upcoming":
+      return { label: t("tournamentsList.stage.signups"), pct: 30, fill: "amber" };
+    case "draft":
+      return { label: t("tournamentsList.stage.setup"), pct: 20, fill: "muted" };
   }
 
-  // live, playoffs
   const stages = tournament.stages ?? [];
   const total = stages.length;
   const completed = stages.filter((stage) => stage.is_completed).length;

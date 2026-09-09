@@ -65,5 +65,5 @@ class Standing(db.TimeStampIntegerMixin):
 
     tournament: Mapped[Tournament] = relationship(back_populates="standings")
     team: Mapped[Team] = relationship(back_populates="standings")
-    stage: Mapped["Stage | None"] = relationship()
-    stage_item: Mapped["StageItem | None"] = relationship()
+    stage: Mapped[Stage | None] = relationship()
+    stage_item: Mapped[StageItem | None] = relationship()

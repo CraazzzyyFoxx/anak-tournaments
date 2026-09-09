@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import { SearchField } from "@/components/ui/search-field";
 
 import {
   ALEMBIC_HEAD,
@@ -116,51 +117,18 @@ export function DocsExplorer() {
   const activeDomain = domains.find((d) => d.key === selected);
 
   return (
-    <div className={styles.root}>
-      <header className={styles.topbar}>
-        <div className={styles.brand}>
-          <span className={styles.title}>
-            anak-tournaments <span className={styles.accent}>· схема БД</span>
-          </span>
-          <span className={styles.subtitle}>
-            PostgreSQL · {TOTAL_TABLES} таблиц · {schemaOverview.length} схем · alembic head{" "}
-            {ALEMBIC_HEAD}
-          </span>
+    <div className={styles.explorer} data-ui="card">
+      <nav className={styles.sidebar} aria-label="Домены схемы">
+        <SearchField
+          value={query}
+          onValueChange={handleQueryChange}
+          label="Поиск таблицы"
+          placeholder="Таблица или домен…"
+          containerClassName="mb-3"
+        />
+        <div className={styles.sidebarHint}>
+          PostgreSQL · {TOTAL_TABLES} таблиц · alembic {ALEMBIC_HEAD}
         </div>
-        <a
-          className={styles.topLink}
-          href="/docs/design-book.html"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Design book →
-        </a>
-        <div className={styles.search}>
-          <span className={styles.searchIcon}>⌕</span>
-          <input
-            className={styles.searchInput}
-            type="text"
-            value={query}
-            onChange={(e) => handleQueryChange(e.target.value)}
-            placeholder="Поиск таблицы или домена…"
-            spellCheck={false}
-            autoComplete="off"
-          />
-          {query && (
-            <button
-              type="button"
-              className={styles.searchClear}
-              onClick={() => setQuery("")}
-              aria-label="Очистить"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      </header>
-
-      <div className={styles.body}>
-        <nav className={styles.sidebar}>
           {!normalizedQuery && (
             <>
               <div className={styles.sidebarHint}>Обзор</div>
@@ -240,7 +208,6 @@ export function DocsExplorer() {
             </>
           )}
         </main>
-      </div>
     </div>
   );
 }

@@ -205,7 +205,7 @@ export function PresetRunPanel({
               </div>
               <Badge
                 className={cn(
-                  "rounded-full border px-2.5 py-1 text-[11px] font-medium capitalize",
+                  "rounded-full border px-2.5 py-1 text-label font-medium capitalize",
                   jobStatus === "failed"
                     ? "border-red-400/20 bg-red-500/10 text-red-200"
                     : jobStatus === "succeeded"

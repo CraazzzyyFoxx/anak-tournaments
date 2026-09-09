@@ -99,7 +99,7 @@ export default function RosterSlotPicker({
                   {tSlots(code)}
                 </span>
                 {count > 1 && (
-                  <span className="aqt-mono text-[11px] tabular-nums text-[color:var(--aqt-fg-dim)]">
+                  <span className="aqt-tnum text-label tabular-nums text-[color:var(--aqt-fg-dim)]">
                     &times;{count}
                   </span>
                 )}

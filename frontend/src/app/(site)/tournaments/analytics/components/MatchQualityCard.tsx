@@ -225,7 +225,7 @@ export default function MatchQualityCard({ tournamentId }: Readonly<MatchQuality
                       <AnomalyTooltip kind={flag.kind} reasons={flag.reasons}>
                         <Badge
                           variant="outline"
-                          className={cn("text-[11px] uppercase", anomalyTone(flag.kind))}
+                          className={cn("text-label uppercase", anomalyTone(flag.kind))}
                         >
                           {flag.kind} · #{flag.player_id}
                         </Badge>

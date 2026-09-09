@@ -133,13 +133,13 @@ function GroupStagePanel({
                 size="default"
               />
               {stageItem && (
-                <span className="text-sm font-semibold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
+                <span className="text-sm font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                   / {stageItem.name}
                 </span>
               )}
               {isPreview && <Badge variant="outline">{t("common.bracketPreview")}</Badge>}
             </div>
-            <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <p className="text-xs uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               {subtitle}
             </p>
           </div>
@@ -153,7 +153,7 @@ function GroupStagePanel({
                 </Badge>
               )}
             </h3>
-            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <p className="mt-1 text-xs uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               {subtitle}
             </p>
           </div>
@@ -559,7 +559,7 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                               label={t("tournamentDetail.stageTabsLabel")}
                               size="default"
                             />
-                            <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+                            <p className="text-xs uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                               {stage.stage_type.replace(/_/g, " ")}
                             </p>
                           </div>
@@ -573,7 +573,7 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                                 </Badge>
                               )}
                             </h3>
-                            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+                            <p className="mt-1 text-xs uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                               {stage.stage_type.replace(/_/g, " ")}
                             </p>
                           </div>

@@ -30,9 +30,7 @@ class AuditLogService:
     """The audit feed: one query for both the workspace-wide list and the
     per-entity trail, plus the page assembly over it."""
 
-    def _filters(
-        self, workspace_id: int | None, params: schemas.AuditLogListParams
-    ) -> list[sa.ColumnElement[bool]]:
+    def _filters(self, workspace_id: int | None, params: schemas.AuditLogListParams) -> list[sa.ColumnElement[bool]]:
         """Build the WHERE clauses with the tenant scope first and unconditionally.
 
         ``workspace_id`` is the value ``_scope`` already authorized. It is appended
@@ -56,9 +54,7 @@ class AuditLogService:
             filters.append(AuditLog.actor_auth_user_id == params.actor_user_id)
         if params.search:
             pattern = f"%{params.search}%"
-            filters.append(
-                sa.or_(*[getattr(AuditLog, field).ilike(pattern) for field in schemas.AUDIT_SEARCH_FIELDS])
-            )
+            filters.append(sa.or_(*[getattr(AuditLog, field).ilike(pattern) for field in schemas.AUDIT_SEARCH_FIELDS]))
         return filters
 
     def _order_by(self, params: schemas.AuditLogListParams) -> list[sa.UnaryExpression[Any]]:
@@ -112,9 +108,7 @@ class AuditLogService:
             )
             for row, username in rows
         ]
-        return Paginated[schemas.AuditLogRead](
-            page=params.page, per_page=params.per_page, total=total, results=results
-        )
+        return Paginated[schemas.AuditLogRead](page=params.page, per_page=params.per_page, total=total, results=results)
 
 
 audit_log = AuditLogService()

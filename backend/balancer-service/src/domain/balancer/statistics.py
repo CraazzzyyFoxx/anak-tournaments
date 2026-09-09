@@ -13,4 +13,3 @@ def _sample_stdev_from_sums(sum_x: float, sum_x2: float, n: int) -> float:
         return 0.0
 
     return math.sqrt(variance)
-

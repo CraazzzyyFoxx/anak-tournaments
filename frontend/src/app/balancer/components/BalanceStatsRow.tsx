@@ -184,7 +184,7 @@ function PoolDiagnostics({
 
   return (
     <div className="text-xs">
-      <div className="border-b border-border/60 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+      <div className="border-b border-border/60 px-3 py-2 text-label font-medium uppercase tracking-label text-muted-foreground">
         Role supply
       </div>
       <table className="w-full">
@@ -221,7 +221,7 @@ function PoolDiagnostics({
           <div key={row.label} className="flex items-baseline justify-between gap-3 px-3 py-1.5">
             <dt className="text-muted-foreground">
               {row.label}
-              {row.hint ? <p className="mt-0.5 text-[11px] text-muted-foreground/70">{row.hint}</p> : null}
+              {row.hint ? <p className="mt-0.5 text-label text-muted-foreground/70">{row.hint}</p> : null}
             </dt>
             <dd className="shrink-0 font-medium tabular-nums text-foreground">{row.value}</dd>
           </div>

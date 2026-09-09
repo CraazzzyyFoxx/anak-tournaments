@@ -34,9 +34,11 @@ def tournament_cache_patterns(
     # target, and matching it is NOT cosmetic: a trailing bare ``*`` after the id
     # makes tournament 7 also purge 70, 72 and 700, so the busiest tournaments
     # (lowest ids) would evict everyone else's reads on every write.
+    # Cross-tournament encounter/overview keys (`encounters:{workspace}:None:...`)
+    # are left to expire by TTL: a per-tournament write must not SCAN every
+    # workspace's unscoped encounter list.
     bracket_suffixes = (
         f"*encounters*:{tournament_id}:*",
-        "*encounters*:None:*",
         # Standings embed `matches_history`, which is built from completed
         # encounters (standings/flows.py::get_by_tournament), so an encounter
         # write moves them even though the standings rows themselves only change
@@ -49,14 +51,15 @@ def tournament_cache_patterns(
     if reason == "bracket_changed":
         return _with_prefixes(*bracket_suffixes)
     if reason == "registration_changed":
-        # No tournament-service-side cache backs the registration/participants
-        # list itself today (only the gateway's own response cache, invalidated
-        # separately off the same WS topic). But `tournaments/{id}:get_read`
-        # IS cached (tournament/flows.py::get_read) and embeds live
-        # participants_count/registrations_count, which DO change on every
-        # registration write — teams/standings/encounters do not, so they stay
-        # cached.
-        return _with_prefixes(f"*tournaments/{tournament_id}:*")
+        # `tournaments/{id}:get_read` embeds live participants_count/
+        # registrations_count. The public registration list is cashews-cached
+        # on the RPC builder (`registration_list:{id}:`); TTL still bounds
+        # admin writes that only hit the balancer WS topic. Teams/standings/
+        # encounters do not change on a registration write, so they stay cached.
+        return _with_prefixes(
+            f"*tournaments/{tournament_id}:*",
+            f"*registration_list:{tournament_id}:*",
+        )
 
     return _with_prefixes(
         f"*tournaments/{tournament_id}:*",

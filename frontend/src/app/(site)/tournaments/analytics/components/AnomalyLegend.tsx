@@ -56,7 +56,7 @@ export default function AnomalyLegend({ className }: Readonly<{ className?: stri
             </li>
           ))}
         </ul>
-        <p className="mt-3 border-t border-border/60 pt-2 text-[11px] italic text-muted-foreground/80">
+        <p className="mt-3 border-t border-border/60 pt-2 text-label italic text-muted-foreground/80">
           {t("analytics.anomalyLegend.note")}
         </p>
       </PopoverContent>

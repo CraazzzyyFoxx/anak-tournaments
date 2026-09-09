@@ -19,8 +19,7 @@ from ._scope import (
     _compare_player_scope_filters,
     _compare_team_scope_exists,
     _compare_tournament_scope_exists,
-    away_score_case,
-    home_score_case,
+    union_encounter_team_sides,
 )
 
 if typing.TYPE_CHECKING:
@@ -93,22 +92,30 @@ class UserOverviewQueries:
             )
         )
 
-    @staticmethod
-    def _overview_encounter_select(*columns: typing.Any) -> sa.Select:
-        """Player -> Team -> Encounter -> Tournament chain (map/closeness aggregates)."""
-        return (
-            sa.select(*columns)
-            .select_from(models.Player)
-            .join(models.Team, models.Team.id == models.Player.team_id)
-            .join(
-                models.Encounter,
-                sa.or_(
-                    models.Encounter.home_team_id == models.Team.id,
-                    models.Encounter.away_team_id == models.Team.id,
-                ),
+    def _overview_encounter_select(
+        self,
+        build_columns: typing.Callable[[typing.Any, typing.Any, typing.Any], typing.Sequence[typing.Any]],
+        *where_conditions: typing.Any,
+    ) -> sa.CompoundSelect:
+        """Player -> Team -> Encounter -> Tournament via UNION ALL of equality joins.
+
+        `home_team_id = team.id OR away_team_id = team.id` cannot use either FK
+        index (OWT-TOURNAMENTS-21T). Same split as page-level closeness.
+        `build_columns(team_fk, maps_won, maps_lost)` is evaluated per side;
+        wrap the union in AVG/SUM yourself.
+        """
+
+        def _side(team_fk, won, lost):
+            return (
+                sa.select(*build_columns(team_fk, won, lost))
+                .select_from(models.Player)
+                .join(models.Team, models.Team.id == models.Player.team_id)
+                .join(models.Encounter, team_fk == models.Team.id)
+                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+                .where(*where_conditions)
             )
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        )
+
+        return union_encounter_team_sides(_side)
 
     def _overview_tournaments_count_expr(
         self,
@@ -292,11 +299,11 @@ class UserOverviewQueries:
             grid=grid,
             extra=(models.Encounter.closeness.isnot(None),),
         )
-        return (
-            self._overview_encounter_select(sa.func.avg(models.Encounter.closeness))
-            .where(*where_conditions)
-            .scalar_subquery()
-        )
+        sides = self._overview_encounter_select(
+            lambda _fk, _won, _lost: (models.Encounter.closeness.label("value"),),
+            *where_conditions,
+        ).subquery("overview_avg_closeness_sides")
+        return sa.select(sa.func.avg(sides.c.value)).select_from(sides).scalar_subquery()
 
     def _overview_maps_won_expr(
         self,
@@ -316,11 +323,11 @@ class UserOverviewQueries:
             tournament_id=tournament_id,
             grid=grid,
         )
-        return (
-            self._overview_encounter_select(sa.func.coalesce(sa.func.sum(home_score_case), 0))
-            .where(*where_conditions)
-            .scalar_subquery()
-        )
+        sides = self._overview_encounter_select(
+            lambda _fk, won, _lost: (won.label("value"),),
+            *where_conditions,
+        ).subquery("overview_maps_won_sides")
+        return sa.select(sa.func.coalesce(sa.func.sum(sides.c.value), 0)).select_from(sides).scalar_subquery()
 
     def _overview_maps_lost_expr(
         self,
@@ -340,11 +347,11 @@ class UserOverviewQueries:
             tournament_id=tournament_id,
             grid=grid,
         )
-        return (
-            self._overview_encounter_select(sa.func.coalesce(sa.func.sum(away_score_case), 0))
-            .where(*where_conditions)
-            .scalar_subquery()
-        )
+        sides = self._overview_encounter_select(
+            lambda _fk, _won, lost: (lost.label("value"),),
+            *where_conditions,
+        ).subquery("overview_maps_lost_sides")
+        return sa.select(sa.func.coalesce(sa.func.sum(sides.c.value), 0)).select_from(sides).scalar_subquery()
 
     def _overview_match_stat_avg_10_expr(
         self,
@@ -391,7 +398,9 @@ class UserOverviewQueries:
             )
 
         query = (
-            sa.select(sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600)
+            sa.select(
+                sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600
+            )
             .select_from(models.MatchStatistics)
             .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         )
@@ -436,20 +445,19 @@ class UserOverviewQueries:
         instead of being recomputed for every page and every concurrent viewer.
         """
         id_query = _apply_workspace_member_filter(sa.select(models.User.id), workspace_id)
-        total_query = _apply_workspace_member_filter(sa.select(sa.func.count(sa.distinct(models.User.id))), workspace_id)
         sort_expr = self._overview_sort_expr(sort_key, grid)
         if descending:
             id_query = id_query.order_by(sort_expr.desc(), models.User.id.asc())
         else:
             id_query = id_query.order_by(sort_expr.asc(), models.User.id.asc())
-        ids = (await session.execute(id_query)).scalars().all()
-        total = (await session.execute(total_query)).scalar_one()
-        return list(ids), total
+        ids = list((await session.execute(id_query)).scalars().all())
+        # EXISTS-scoped User.id is unique — len(ids) is the count query.
+        return ids, len(ids)
 
     async def get_overview_users(
         self,
         session: AsyncSession,
-        params: "app_schemas.UserOverviewParams",
+        params: app_schemas.UserOverviewParams,
         grid: DivisionGrid,
         workspace_id: int | None = None,
     ) -> tuple[typing.Sequence[models.User], int]:
@@ -516,11 +524,11 @@ class UserOverviewQueries:
         else:
             query = query.order_by(sort_expr.asc(), models.User.id.asc())
 
-        query = params.apply_pagination(query)
-
-        result = await session.execute(query)
-        result_total = await session.execute(total_query)
-        return result.unique().scalars().all(), result_total.scalar_one()
+        paged = params.apply_pagination(query.add_columns(sa.func.count().over().label("overview_total")))
+        rows = (await session.execute(paged)).unique().all()
+        if not rows:
+            return [], (await session.execute(total_query)).scalar_one()
+        return [row[0] for row in rows], int(rows[0][-1])
 
     async def get_overview_role_divisions(
         self,
@@ -697,9 +705,9 @@ class UserOverviewQueries:
         placement_stage_query = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
-                sa.func.avg(sa.case((models.Standing.buchholz.isnot(None), models.Standing.position), else_=None)).label(
-                    "avg_group_placement"
-                ),
+                sa.func.avg(
+                    sa.case((models.Standing.buchholz.isnot(None), models.Standing.position), else_=None)
+                ).label("avg_group_placement"),
                 sa.func.avg(sa.case((models.Standing.buchholz.is_(None), models.Standing.position), else_=None)).label(
                     "avg_playoff_placement"
                 ),
@@ -725,32 +733,32 @@ class UserOverviewQueries:
             .group_by(models.WorkspaceMember.player_id)
         )
 
-        closeness_query = (
-            sa.select(
-                models.WorkspaceMember.player_id.label("user_id"),
-                sa.func.avg(models.Encounter.closeness).label("avg_closeness"),
+        def _closeness_side(team_fk, _won, _lost):
+            return (
+                sa.select(
+                    models.WorkspaceMember.player_id.label("user_id"),
+                    models.Encounter.closeness.label("closeness"),
+                )
+                .select_from(models.Player)
+                .join(models.Team, models.Team.id == models.Player.team_id)
+                .join(models.Encounter, team_fk == models.Team.id)
+                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+                .where(
+                    models.WorkspaceMember.player_id.in_(user_ids),
+                    models.Player.is_substitution.is_(False),
+                    models.Tournament.is_finished.is_(True),
+                    models.Tournament.is_league.is_(False),
+                    models.Encounter.closeness.isnot(None),
+                    *ws_filter,
+                )
             )
-            .select_from(models.Player)
-            .join(models.Team, models.Team.id == models.Player.team_id)
-            .join(
-                models.Encounter,
-                sa.or_(
-                    models.Encounter.home_team_id == models.Team.id,
-                    models.Encounter.away_team_id == models.Team.id,
-                ),
-            )
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .where(
-                models.WorkspaceMember.player_id.in_(user_ids),
-                models.Player.is_substitution.is_(False),
-                models.Tournament.is_finished.is_(True),
-                models.Tournament.is_league.is_(False),
-                models.Encounter.closeness.isnot(None),
-                *ws_filter,
-            )
-            .group_by(models.WorkspaceMember.player_id)
-        )
+
+        closeness_sides = union_encounter_team_sides(_closeness_side).subquery("overview_closeness_sides")
+        closeness_query = sa.select(
+            closeness_sides.c.user_id,
+            sa.func.avg(closeness_sides.c.closeness).label("avg_closeness"),
+        ).group_by(closeness_sides.c.user_id)
 
         placement_result = await session.execute(placement_query)
         placement_stage_result = await session.execute(placement_stage_query)
@@ -769,7 +777,9 @@ class UserOverviewQueries:
             payload[user_id] = (avg_placement, avg_playoff_placement, avg_group_placement, current_closeness)
 
         for user_id, avg_closeness in closeness_result.all():
-            avg_placement, avg_playoff_placement, avg_group_placement, _ = payload.get(user_id, (None, None, None, None))
+            avg_placement, avg_playoff_placement, avg_group_placement, _ = payload.get(
+                user_id, (None, None, None, None)
+            )
             payload[user_id] = (avg_placement, avg_playoff_placement, avg_group_placement, avg_closeness)
 
         return payload
@@ -1052,9 +1062,9 @@ class UserOverviewQueries:
             .distinct()
         )
         if workspace_id is not None:
-            roles_query = roles_query.join(models.Tournament, models.Tournament.id == models.Player.tournament_id).where(
-                models.Tournament.workspace_id == workspace_id
-            )
+            roles_query = roles_query.join(
+                models.Tournament, models.Tournament.id == models.Player.tournament_id
+            ).where(models.Tournament.workspace_id == workspace_id)
         user_roles: dict[int, set[enums.HeroClass]] = defaultdict(set)
         for user_id, player_role in (await session.execute(roles_query)).all():
             user_roles[user_id].add(player_role)

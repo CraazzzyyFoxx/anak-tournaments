@@ -173,21 +173,21 @@ function TriagePlayerCard({
                       <PlayerRoleIcon key={roleCode} role={ROLE_LABELS[roleCode]} size={15} />
                     ))
                   ) : (
-                    <span className="text-[11px] text-[color:var(--aqt-fg-faint)]">No roles</span>
+                    <span className="text-label text-[color:var(--aqt-fg-faint)]">No roles</span>
                   )}
-                  <span className="truncate text-[13px] font-semibold text-[color:var(--aqt-fg)]">{name}</span>
-                  {suffix ? <span className="shrink-0 text-[12px] text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
+                  <span className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]">{name}</span>
+                  {suffix ? <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
                 </div>
               </div>
               {state.player.is_flex || isReady || state.issues.length > 0 || smurfTags.length > 0 ? (
                 <div className="mt-1 flex min-w-0 items-center gap-1 overflow-x-auto whitespace-nowrap pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {state.player.is_flex ? (
-                    <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-200">
+                    <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-violet-200">
                       Flex
                     </span>
                   ) : null}
                   {isReady ? (
-                    <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+                    <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-emerald-200">
                       Ready
                     </span>
                   ) : null}
@@ -204,11 +204,11 @@ function TriagePlayerCard({
                 <DivisionIcon division={primaryEntry.division_number} width={20} height={20} />
               ) : null}
               {primaryEntry?.rank_value != null ? (
-                <span className={cn("min-w-10 text-right text-[13px] font-semibold tabular-nums text-cyan-300", primaryRole && ROLE_TEXT_ACCENTS[primaryRole])}>
+                <span className={cn("min-w-10 text-right text-caption font-semibold tabular-nums text-cyan-300", primaryRole && ROLE_TEXT_ACCENTS[primaryRole])}>
                   {primaryEntry.rank_value}
                 </span>
               ) : (
-                <span className="text-[12px] text-[color:var(--aqt-fg-faint)]">-</span>
+                <span className="text-label text-[color:var(--aqt-fg-faint)]">-</span>
               )}
             </div>
           </div>
@@ -228,7 +228,7 @@ function TriagePlayerCard({
                 variant="ghost"
                 size="sm"
                 disabled={actionsDisabled || !onSetPoolMembership}
-                className="h-7 rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 text-[11px] text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
+                className="h-7 rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
                 onClick={() => onSetPoolMembership?.(state.player.id, !state.player.is_in_pool)}
               >
                 {state.player.is_in_pool ? <ShieldX className="mr-1 h-3 w-3" /> : <PlusCircle className="mr-1 h-3 w-3" />}
@@ -304,9 +304,9 @@ function TriageLaneColumn({
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-[color:var(--aqt-fg)]">{POOL_LANE_LABELS[lane]}</div>
-          <div className="mt-0.5 text-[11px] text-[color:var(--aqt-fg-dim)]">{LANE_COPY[lane]}</div>
+          <div className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">{LANE_COPY[lane]}</div>
         </div>
-        <div className="rounded-full border border-[color:var(--aqt-border-2)] bg-black/20 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
+        <div className="rounded-full border border-[color:var(--aqt-border-2)] bg-black/20 px-2 py-0.5 text-label font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
           {states.length}
         </div>
       </div>

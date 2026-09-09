@@ -2,11 +2,9 @@
 // Pattern mirrors [id]/components/draft/setup-model.ts: a const step list,
 // back-only navigation and per-step validation kept free of React.
 
-import {
-  getTournamentForm,
-  type SchedulablePhase
-} from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
+import { getTournamentForm } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import type { TournamentFormFieldsValue } from "@/components/admin/tournaments/TournamentFormFields";
+import type { SchedulablePhase } from "@/lib/tournament-lifecycle";
 import type { TournamentCreateInput, TournamentUpdateInput } from "@/types/admin.types";
 import type { Tournament } from "@/types/tournament.types";
 

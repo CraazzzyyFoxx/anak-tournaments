@@ -1,10 +1,12 @@
 import {
   Activity,
   Award,
+  Bell,
   Building2,
   Gamepad2,
   History,
   LayoutDashboard,
+  Megaphone,
   type LucideIcon,
   Settings2,
   Shield,
@@ -88,7 +90,7 @@ export const accessSectionViews: AdminNavView[] = [
 ];
 
 /**
- * The sidebar: 13 entries in four groups.
+ * The sidebar: 14 entries in four groups.
  *
  * Three contexts of work instead of six catalogues: what happens in the
  * community (DATA), how the community is configured (WORKSPACE), and the
@@ -283,6 +285,26 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         workspaceAdminVisible: true,
       },
       {
+        title: "Announcements",
+        href: "/admin/announcements",
+        icon: Megaphone,
+        description:
+          "Notices for this workspace, and the platform-wide banner every visitor sees.",
+        aliases: ["announcement", "banner", "notice", "broadcast"],
+        permissions: ["announcement.read"],
+        workspaceAdminVisible: true,
+      },
+      {
+        title: "Notifications",
+        href: "/admin/notifications",
+        icon: Bell,
+        description:
+          "System notifications this workspace produced — invites, decisions, disputes — and the retire that takes one out of every inbox.",
+        aliases: ["notification", "inbox", "retire", "registration approved"],
+        permissions: ["notification.read"],
+        workspaceAdminVisible: true,
+      },
+      {
         title: "Audit log",
         href: "/admin/audit",
         icon: History,
@@ -350,6 +372,12 @@ const adminRoutePermissions: Array<{
   { prefix: "/admin/teams", permissions: ["team.read"] },
   { prefix: "/admin/matches", permissions: ["match.read"] },
   { prefix: "/admin/achievements", permissions: ["achievement.read"] },
+  // Reading the feed is the gate; publishing to it is a second grant the page
+  // asks for separately, and a platform-wide one needs the superuser besides.
+  { prefix: "/admin/announcements", permissions: ["announcement.read"], workspaceAdminVisible: true },
+  // Retiring is a second grant the page asks for separately, exactly like
+  // publishing an announcement.
+  { prefix: "/admin/notifications", permissions: ["notification.read"], workspaceAdminVisible: true },
   { prefix: "/admin/audit", permissions: ["audit.read"], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
 

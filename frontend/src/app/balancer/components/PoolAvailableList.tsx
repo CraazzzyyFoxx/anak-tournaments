@@ -46,7 +46,7 @@ export function PoolAvailableList({
     return (
       <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-[color:var(--aqt-border-2)] px-4 py-8 text-center">
         <div className="space-y-1.5">
-          <p className="text-[13px] font-medium text-[color:var(--aqt-fg)]">
+          <p className="text-caption font-medium text-[color:var(--aqt-fg)]">
             {searchQuery ? "No available registrations match this search" : "No available registrations"}
           </p>
           <p className="text-xs text-[color:var(--aqt-fg-dim)]">
@@ -88,12 +88,12 @@ export function PoolAvailableList({
                   ))}
                 </span>
               ) : (
-                <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No roles</span>
+                <span className="text-label text-[color:var(--aqt-fg-dim)]">No roles</span>
               )}
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[color:var(--aqt-fg)]">
+              <span className="min-w-0 flex-1 truncate text-caption font-medium text-[color:var(--aqt-fg)]">
                 {application.battle_tag}
               </span>
-              <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-[color:var(--aqt-fg-dim)]">
+              <span className="flex shrink-0 items-center gap-1 text-label font-medium text-[color:var(--aqt-fg-dim)]">
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 Include
               </span>

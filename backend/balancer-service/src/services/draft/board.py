@@ -164,9 +164,7 @@ class DraftBoardService:
 
         teams = await self.teams_repo.list_by_session(session, draft_session.id, options=loaders.team_options())
         picks = await self.picks_repo.list_by_session(session, draft_session.id, options=loaders.pick_options())
-        players = await self.players_repo.list_by_session(
-            session, draft_session.id, options=loaders.player_options()
-        )
+        players = await self.players_repo.list_by_session(session, draft_session.id, options=loaders.player_options())
         # ONE resolve for the whole board: roles, ranks, sub-role, flex, notes and
         # custom-field answers all come from here, live off the registration.
         rosters = await self.rosters.load(session, draft_session, players)

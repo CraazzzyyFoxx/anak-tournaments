@@ -28,11 +28,10 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from src.services.tickets import LINK_TICKETS, guard_digest  # noqa: E402
 from tests._fakes import DownRedisClient as _DownRedisClient  # noqa: E402
 from tests._fakes import FakeRedisClient as _FakeRedisClient  # noqa: E402
 from tests._fakes import make_oauth_info as _oauth_info  # noqa: E402
-from src.schemas.oauth import OAuthUserInfo  # noqa: E402
-from src.services.tickets import LINK_TICKETS, guard_digest  # noqa: E402
 
 # ``src.core.cache.get_redis`` is the single Redis entry point every store goes
 # through, so pointing it at a fake redirects the whole ticket store.
@@ -41,7 +40,6 @@ _GET_REDIS = "src.core.cache.get_redis"
 
 def _use_redis(monkeypatch: pytest.MonkeyPatch, client: object) -> None:
     monkeypatch.setattr(_GET_REDIS, lambda: client)
-
 
 
 def _link_payload(**overrides: object) -> dict[str, object]:

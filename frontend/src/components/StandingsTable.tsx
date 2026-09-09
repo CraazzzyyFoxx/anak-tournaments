@@ -400,13 +400,13 @@ const StandingsTable = ({
                             <span className="l">{standing.lose}</span>
                           </span>
                         </td>
-                        <td className="r font-mono tabular-nums text-[color:var(--fg-muted)]">
+                        <td className="r tabular-nums text-[color:var(--fg-muted)]">
                           {standing.points.toFixed(1)}
                         </td>
-                        <td className="r font-mono tabular-nums text-[color:var(--fg-dim)]">
+                        <td className="r tabular-nums text-[color:var(--fg-dim)]">
                           {standing.tb ? standing.tb : "—"}
                         </td>
-                        <td className="r font-mono tabular-nums whitespace-nowrap text-[color:var(--fg-dim)]">
+                        <td className="r tabular-nums whitespace-nowrap text-[color:var(--fg-dim)]">
                           {standing.buchholz == null ? (
                             "—"
                           ) : (

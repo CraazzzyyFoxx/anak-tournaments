@@ -7,6 +7,8 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import {
   ArrowDown,
   ArrowLeft,
+  CheckCircle,
+  CircleOff,
   ArrowUp,
   Crosshair,
   Eye,
@@ -31,6 +33,7 @@ import {
 
 import { ConditionFlowEditor } from "@/components/admin/achievements/ConditionFlowEditor";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
@@ -440,9 +443,11 @@ export default function AchievementDetailPage() {
             title={rule.name}
             description={rule.slug}
             meta={
-              <Badge variant={rule.enabled ? "default" : "secondary"}>
-                {rule.enabled ? "Enabled" : "Disabled"}
-              </Badge>
+              rule.enabled ? (
+                <StatusIcon icon={CheckCircle} label="Enabled" variant="success" />
+              ) : (
+                <StatusIcon icon={CircleOff} label="Disabled" variant="muted" />
+              )
             }
             actions={
               <>
@@ -766,7 +771,7 @@ export default function AchievementDetailPage() {
                   <TableRow key={ov.id}>
                     <TableCell>#{ov.user_id}</TableCell>
                     <TableCell>
-                      <Badge variant={ov.action === "grant" ? "default" : "destructive"}>
+                      <Badge variant={ov.action === "grant" ? "success" : "destructive"}>
                         {ov.action}
                       </Badge>
                     </TableCell>

@@ -172,9 +172,9 @@ class AnalyticsService:
                 models.Tournament.id.label("tournament_id"),
                 (sa.func.coalesce(points_home.c.wins, 0) + sa.func.coalesce(points_away.c.wins, 0)).label("wins"),
                 (sa.func.coalesce(points_home.c.losses, 0) + sa.func.coalesce(points_away.c.losses, 0)).label("losses"),
-                (sa.func.coalesce(matches_home.c.match_count, 0) + sa.func.coalesce(matches_away.c.match_count, 0)).label(
-                    "match_count"
-                ),
+                (
+                    sa.func.coalesce(matches_home.c.match_count, 0) + sa.func.coalesce(matches_away.c.match_count, 0)
+                ).label("match_count"),
                 standings.c.overall_position.label("overall_position"),
                 team_counts.c.team_count.label("team_count"),
                 performance_points.c.performance_points.label("performance_points"),
@@ -333,7 +333,9 @@ class AnalyticsService:
         """
         chrono = sa.func.coalesce(models.Tournament.start_date, models.Tournament.created_at)
         end_key = (
-            await session.execute(sa.select(chrono, models.Tournament.id).where(models.Tournament.id == end_tournament_id))
+            await session.execute(
+                sa.select(chrono, models.Tournament.id).where(models.Tournament.id == end_tournament_id)
+            )
         ).one_or_none()
         if end_key is None:
             return [int(end_tournament_id)]
@@ -405,7 +407,6 @@ class AnalyticsService:
 
     async def list_algorithm_names_by_ids(self, session: AsyncSession, ids: typing.Sequence[int]) -> list[str]:
         return await self.algorithms.list_names_by_ids(session, ids)
-
 
     async def get_algorithms(
         self,

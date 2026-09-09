@@ -30,6 +30,7 @@ const resourcesWithCrud = [
   "challonge",
   "asset",
   "tournament_link",
+  "announcement",
 ] as const;
 
 type CrudResource = (typeof resourcesWithCrud)[number];
@@ -39,6 +40,10 @@ type CrudPermission = `${CrudResource}.${CrudAction}`;
 type SpecialPermission =
   | "admin.*"
   | "audit.read"
+  // Read and delete only, mirroring the catalog: nobody writes an inbox row by
+  // hand, and a "delete" here is the retire on the operator screen.
+  | "notification.read"
+  | "notification.delete"
   | "permission.read"
   | "auth_user.read"
   | "auth_user.update"
@@ -55,7 +60,8 @@ type SpecialPermission =
   | "stream.update"
   | "account.avatar"
   | "account.social"
-  | "registration.self_register";
+  | "registration.self_register"
+  | "workspace.self_create";
 
 export type AppPermission = CrudPermission | SpecialPermission;
 

@@ -90,13 +90,13 @@ const RadarAxisPicker = ({ selected, candidates, onToggle }: Props) => {
                 key={name}
                 type="button"
                 onClick={() => onToggle(name)}
-                className="block w-full px-3 py-1.5 text-left text-[13px] text-[color:var(--aqt-fg)] transition-colors hover:bg-[hsl(0_0%_100%/0.05)]"
+                className="block w-full px-3 py-1.5 text-left text-caption text-[color:var(--aqt-fg)] transition-colors hover:bg-[hsl(0_0%_100%/0.05)]"
               >
                 {getHumanizedStats(name)}
               </button>
             ))}
             {filtered.length === 0 ? (
-              <div className="px-3 py-3 text-center text-[12px] text-[color:var(--aqt-fg-dim)]">
+              <div className="px-3 py-3 text-center text-label text-[color:var(--aqt-fg-dim)]">
                 {available.length === 0 ? t("users.heroes.allStatsAdded") : t("users.heroes.noMatch")}
               </div>
             ) : null}

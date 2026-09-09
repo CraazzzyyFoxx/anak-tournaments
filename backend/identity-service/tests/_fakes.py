@@ -145,7 +145,7 @@ class FakeSessionMaker:
     def __init__(self, session: Any) -> None:
         self._session = session
 
-    def __call__(self) -> "FakeSessionMaker":
+    def __call__(self) -> FakeSessionMaker:
         return self
 
     async def __aenter__(self) -> Any:

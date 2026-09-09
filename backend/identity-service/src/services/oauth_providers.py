@@ -134,9 +134,7 @@ class DiscordOAuthProvider(OAuthProviderBase):
 
             return response.json()
         except Exception as exc:
-            _raise_provider_call_error(
-                exc, provider_label="Discord", error_detail="Discord authentication failed"
-            )
+            _raise_provider_call_error(exc, provider_label="Discord", error_detail="Discord authentication failed")
 
     async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
         """Get Discord user information"""
@@ -166,9 +164,7 @@ class DiscordOAuthProvider(OAuthProviderBase):
                 raw_data=user_data,
             )
         except Exception as exc:
-            _raise_provider_call_error(
-                exc, provider_label="Discord", error_detail="Failed to get Discord user info"
-            )
+            _raise_provider_call_error(exc, provider_label="Discord", error_detail="Failed to get Discord user info")
 
     async def get_user_guilds(self, access_token: str) -> list[dict[str, Any]]:
         """Guilds (``id``, ``owner``, ``permissions``, ...) the token's holder
@@ -193,9 +189,7 @@ class DiscordOAuthProvider(OAuthProviderBase):
 
             return response.json()
         except Exception as exc:
-            _raise_provider_call_error(
-                exc, provider_label="Discord", error_detail="Failed to get Discord guild list"
-            )
+            _raise_provider_call_error(exc, provider_label="Discord", error_detail="Failed to get Discord guild list")
 
 
 # Discord permission bitfield flag for MANAGE_GUILD (see Discord's Permissions
@@ -256,9 +250,7 @@ class TwitchOAuthProvider(OAuthProviderBase):
                 )
             return response.json()
         except Exception as exc:
-            _raise_provider_call_error(
-                exc, provider_label="Twitch", error_detail="Twitch authentication failed"
-            )
+            _raise_provider_call_error(exc, provider_label="Twitch", error_detail="Twitch authentication failed")
 
     async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
         headers = {
@@ -302,9 +294,7 @@ class TwitchOAuthProvider(OAuthProviderBase):
                 raw_data=user_data,
             )
         except Exception as exc:
-            _raise_provider_call_error(
-                exc, provider_label="Twitch", error_detail="Failed to get Twitch user info"
-            )
+            _raise_provider_call_error(exc, provider_label="Twitch", error_detail="Failed to get Twitch user info")
 
 
 class BattleNetOAuthProvider(OAuthProviderBase):

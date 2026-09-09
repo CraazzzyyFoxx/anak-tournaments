@@ -51,5 +51,7 @@ def division_grid(version_id: int, tiers: tuple[tuple[int, int, int, int | None]
     """Build a ``DivisionGrid`` from ``(tier_id, number, rank_min, rank_max)`` tuples."""
     return DivisionGrid(
         version_id=version_id,
-        tiers=tuple(division_tier(tier_id, number, rank_min, rank_max) for tier_id, number, rank_min, rank_max in tiers),
+        tiers=tuple(
+            division_tier(tier_id, number, rank_min, rank_max) for tier_id, number, rank_min, rank_max in tiers
+        ),
     )

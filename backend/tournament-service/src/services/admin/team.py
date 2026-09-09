@@ -384,9 +384,7 @@ class AdminTeamService:
         await session.commit()
         return await self.get_player(session, player.id)
 
-    async def update_player(
-        self, session: AsyncSession, player_id: int, data: schemas.PlayerUpdate
-    ) -> models.Player:
+    async def update_player(self, session: AsyncSession, player_id: int, data: schemas.PlayerUpdate) -> models.Player:
         """Update player fields"""
         player = await self.player_repo.get(session, player_id)
 

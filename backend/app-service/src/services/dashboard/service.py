@@ -46,7 +46,6 @@ class DashboardService:
 
         return await asyncio.gather(_run_counts(), _run_issues(), _run_active_stats())
 
-
     async def get_counts(
         self,
         session: AsyncSession,
@@ -255,28 +254,32 @@ class DashboardService:
         if workspace_id is not None:
             ws_filters.append(models.Tournament.workspace_id == workspace_id)
 
-        # Find the most recent non-finished tournament
-        active_q = (
-            sa.select(models.Tournament.id)
+        # Most recent live tournament + its encounter counts in one round trip.
+        # An empty CTE (no live tournament) yields zero rows → None.
+        active = (
+            sa.select(models.Tournament.id.label("tournament_id"))
             .where(models.Tournament.is_finished.is_(False), *ws_filters)
             .order_by(models.Tournament.id.desc())
             .limit(1)
+            .cte("active_tournament")
         )
-        result = await session.execute(active_q)
-        tournament_id = result.scalar_one_or_none()
-        if tournament_id is None:
+        stats_q = (
+            sa.select(
+                active.c.tournament_id,
+                sa.func.count(models.Encounter.id),
+                sa.func.count(models.Encounter.id).filter(models.Encounter.has_logs.is_(False)),
+            )
+            .select_from(active)
+            .outerjoin(models.Encounter, models.Encounter.tournament_id == active.c.tournament_id)
+            .group_by(active.c.tournament_id)
+        )
+        row = (await session.execute(stats_q)).one_or_none()
+        if row is None:
             return None
 
-        # Get encounter stats for the active tournament
-        stats_q = sa.select(
-            sa.func.count(models.Encounter.id),
-            sa.func.count(models.Encounter.id).filter(models.Encounter.has_logs.is_(False)),
-        ).where(models.Encounter.tournament_id == tournament_id)
-
-        stats_result = await session.execute(stats_q)
-        row = stats_result.one()
-        total = row[0] or 0
-        missing = row[1] or 0
+        tournament_id, total, missing = row
+        total = total or 0
+        missing = missing or 0
         coverage = round(((total - missing) / total) * 100) if total > 0 else 100
 
         return {

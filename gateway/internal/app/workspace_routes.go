@@ -34,4 +34,18 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	// caller administers the guild on Discord (via identity-service) before it
 	// can be bound to the workspace. workspace.update, like every sibling here.
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/discord-guild", Queue: "rpc.app.workspaces.discord_guild_verify", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// --- verification tier (self-service design §4.2): superuser sets a
+	// workspace's verification_status (unverified/verified/trusted), which
+	// gates public directory listing. Enforced in app-service, not here.
+	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/verification", Queue: "rpc.app.workspaces.verification_set", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// --- owner: resolves owner_id to a person (GET, workspace.update in the
+	// worker like the discord_* reads -- the public workspace model carries no
+	// owner at all), and reassigns it (PUT, superuser-only: owner_id is what the
+	// per-account create cap is counted over).
+	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/owner", Queue: "rpc.app.workspaces.owner_get", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/v1/workspaces/{workspace_id}/owner", Queue: "rpc.app.workspaces.owner_set", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// Transfer moves the stamp and the owner role together, and is open to the
+	// current owner as well as superusers -- the person on the hook is the one
+	// entitled to get off it. Enforced in app-service, not here.
+	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/owner/transfer", Queue: "rpc.app.workspaces.owner_transfer", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 }

@@ -32,6 +32,7 @@ class RpcReply:
             return ""
         return str(self.error.get("message") or "")
 
+
 # Error codes -> HTTP status are mapped on the gateway side:
 #   unauthorized->401, forbidden->403, bad_request->400, not_found->404,
 #   conflict->409, gone->410, unprocessable->422, payload_too_large->413,

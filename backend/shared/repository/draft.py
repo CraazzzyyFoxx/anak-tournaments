@@ -207,7 +207,12 @@ class DraftPickRepository(BaseRepository[models.DraftPick]):
         )
 
     async def seed_counts(self, session: AsyncSession, session_id: int) -> int:
-        return await session.scalar(sa.select(sa.func.count()).select_from(self.model).where(self.model.session_id == session_id)) or 0
+        return (
+            await session.scalar(
+                sa.select(sa.func.count()).select_from(self.model).where(self.model.session_id == session_id)
+            )
+            or 0
+        )
 
     async def finalize_if_on_clock(
         self,

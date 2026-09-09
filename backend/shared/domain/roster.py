@@ -217,4 +217,3 @@ class PlayerRoster:
             return self.is_draftable
         wanted = role if isinstance(role, HeroClass) else HeroClass.parse(role)
         return wanted in self.playable_roles
-

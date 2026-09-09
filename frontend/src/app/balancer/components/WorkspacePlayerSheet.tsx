@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import type { RosterMember } from "@/services/workspace-player.service";
 
 const EYEBROW_CLASS =
-  "text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--aqt-fg-dim)]";
+  "text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]";
 
 // The panel that mounts this sheet only ever reads/writes the workspace
 // canon (`WorkspacePlayersSidebar`'s sole caller is the tournament balancer
@@ -77,7 +77,7 @@ export function WorkspacePlayerSheet({
           <SheetTitle className="flex items-baseline gap-1.5 pt-1.5 font-display text-xl">
             <span className="truncate">{name}</span>
             {suffix ? (
-              <span className="font-mono text-[13px] font-normal text-[color:var(--aqt-fg-faint)]">
+              <span className="text-caption font-normal text-[color:var(--aqt-fg-faint)]">
                 {suffix}
               </span>
             ) : null}
@@ -85,7 +85,7 @@ export function WorkspacePlayerSheet({
               <BattleTagCopyButton battleTag={member.battle_tag} className="ml-0.5 shrink-0" />
             ) : null}
           </SheetTitle>
-          <SheetDescription className="pt-1 text-[12.5px] text-[color:var(--aqt-fg-dim)]">
+          <SheetDescription className="pt-1 text-caption text-[color:var(--aqt-fg-dim)]">
             {SCOPE_HINT}
           </SheetDescription>
         </SheetHeader>
@@ -94,7 +94,7 @@ export function WorkspacePlayerSheet({
           <div className="flex min-h-0 flex-1 flex-col">
             <section className="space-y-2 border-b border-[color:var(--aqt-border)] px-5 py-4">
               <div>
-                <h3 className="text-[13.5px] font-medium text-[color:var(--aqt-fg)]">
+                <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">
                   Roles and ranks
                 </h3>
                 <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">

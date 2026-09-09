@@ -32,8 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.enums import SubscriptionCollectionSource
-from shared.services.subscriptions.entitlements import ProviderConfigRow, StoredEntitlement
 from shared.services.subscriptions import SubscriptionVerdict
+from shared.services.subscriptions.entitlements import ProviderConfigRow, StoredEntitlement
 
 __all__ = ("SqlCheckLogSink", "SqlEntitlementStore")
 

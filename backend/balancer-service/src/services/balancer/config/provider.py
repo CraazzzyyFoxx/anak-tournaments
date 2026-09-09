@@ -415,4 +415,3 @@ def get_balancer_config_payload() -> dict[str, typing.Any]:
         "presets": presets,
         "fields": build_config_fields(defaults),
     }
-

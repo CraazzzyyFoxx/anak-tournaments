@@ -80,14 +80,14 @@ const PercentileTile = ({
 }) => {
   const inner = (
     <>
-      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">{label}</div>
+      <div className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{label}</div>
       <div
-        className="aqt-display aqt-tnum text-[22px] font-bold leading-[1.05]"
+        className="aqt-display aqt-tnum text-title font-bold leading-[1.05]"
         style={{ color: highlight === "good" ? "var(--aqt-emerald)" : highlight === "bad" ? "var(--aqt-rose)" : "var(--aqt-fg)" }}
       >
         {value}
       </div>
-      {topLabel ? <div className="aqt-mono text-[11.5px] text-[color:var(--aqt-fg-muted)]">{topLabel}</div> : null}
+      {topLabel ? <div className="aqt-tnum text-label text-[color:var(--aqt-fg-muted)]">{topLabel}</div> : null}
       {barPct != null ? (
         <div className="mt-0.5 h-[5px] w-full overflow-hidden rounded-full bg-[color:var(--aqt-card-2)]">
           <div
@@ -188,14 +188,14 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
           <Select value={String(tournament.id)} onValueChange={onSelectTournament}>
             <SelectTrigger
               aria-label={t("users.overview.lastTournament.selectTournament")}
-              className="h-7 w-44 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[12.5px]"
+              className="h-7 w-44 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-caption"
             >
               <SelectValue placeholder={t("users.overview.lastTournament.selectTournament")} />
             </SelectTrigger>
             <SelectContent className="liquid-glass-panel max-h-[min(var(--radix-select-content-available-height),20rem)]">
               <SelectGroup>
                 {tournaments.map((tour) => (
-                  <SelectItem key={tour.id} value={String(tour.id)} className="text-[13px]">
+                  <SelectItem key={tour.id} value={String(tour.id)} className="text-caption">
                     {tour.name}
                   </SelectItem>
                 ))}
@@ -221,7 +221,7 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
               <PlayerRoleIcon role={tournament.role} size={18} color={roleColor(tournament.role)} decorative />
               {tournament.role}
             </div>
-            <div className="aqt-mono mt-1 text-[13px] text-[color:var(--aqt-fg-muted)]">
+            <div className="aqt-tnum mt-1 text-caption text-[color:var(--aqt-fg-muted)]">
               {t("users.overview.lastTournament.placed")} <span className="aqt-tnum font-semibold text-[color:var(--aqt-fg)]">
                 {tournament.group_placement ?? tournament.playoff_placement ?? "—"}
               </span>
@@ -237,14 +237,14 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
             </div>
           </div>
           <div className="text-right">
-            <div className="aqt-display text-[28px] font-bold leading-none">
+            <div className="aqt-display text-headline font-bold leading-none">
               <span style={{ color: "var(--aqt-emerald)" }}>{tournament.maps_won}</span>
-              <span className="text-[18px] text-[color:var(--aqt-fg-faint)]"> {t("users.overview.win")}</span>
+              <span className="text-heading text-[color:var(--aqt-fg-faint)]"> {t("users.overview.win")}</span>
               <span className="mx-1.5">·</span>
               <span style={{ color: "var(--aqt-rose)" }}>{mapsLost}</span>
-              <span className="text-[18px] text-[color:var(--aqt-fg-faint)]"> {t("users.overview.loss")}</span>
+              <span className="text-heading text-[color:var(--aqt-fg-faint)]"> {t("users.overview.loss")}</span>
             </div>
-            <div className="aqt-mono mt-1 text-[12px] text-[color:var(--aqt-fg-dim)]">{formatPercent(winrate)} {t("users.overview.lastTournament.mapWinrate")}</div>
+            <div className="aqt-tnum mt-1 text-label text-[color:var(--aqt-fg-dim)]">{formatPercent(winrate)} {t("users.overview.lastTournament.mapWinrate")}</div>
           </div>
         </div>
         {/* Heroes played per THIS tournament is intentionally omitted: the
@@ -253,10 +253,10 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
         {tournament.maps > 0 ? (
           <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+              <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                 {t("users.overview.lastTournament.mapResults")}
               </span>
-              <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-dim)]">
+              <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                 {t("users.overview.mapsCount", { count: tournament.maps })}
               </span>
             </div>
@@ -276,7 +276,7 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
                     return (
                       <span
                         key={`${pip}${i}`}
-                        className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
+                        className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-label font-bold"
                         style={{
                           color,
                           background: `color-mix(in srgb, ${color} 14%, transparent)`,
@@ -292,7 +292,7 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
                     ...Array.from({ length: tournament.maps_won }).map((_, i) => (
                       <span
                         key={`w${i}`}
-                        className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
+                        className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-label font-bold"
                         style={{
                           color: "var(--aqt-emerald)",
                           background: "color-mix(in srgb, var(--aqt-emerald) 14%, transparent)",
@@ -306,7 +306,7 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
                     ...Array.from({ length: Math.max(0, mapsLost) }).map((_, i) => (
                       <span
                         key={`l${i}`}
-                        className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
+                        className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-label font-bold"
                         style={{
                           color: "var(--aqt-rose)",
                           background: "color-mix(in srgb, var(--aqt-rose) 14%, transparent)",
@@ -320,7 +320,7 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
                   ]}
             </div>
             {mapPips && mapPips.length > 0 ? null : (
-            <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">
+            <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">
               {t("users.overview.lastTournament.mapResultsAggregate")}
             </span>
             )}
@@ -329,11 +329,11 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
         {statTiles.length > 0 ? (
           <div className="flex flex-col gap-2.5 border-t border-[color:var(--aqt-border)] pt-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+              <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                 {t("users.overview.lastTournament.lobbyRank")}
               </span>
               {lobbySize ? (
-                <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-dim)]">
+                <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                   {t("users.overview.lastTournament.players", { count: lobbySize })}
                 </span>
               ) : null}
@@ -355,7 +355,7 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
                 );
               })}
             </div>
-            <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">
+            <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">
               {t("users.overview.lastTournament.percentileHint")}
             </span>
           </div>

@@ -373,6 +373,7 @@ export const domains: DiagramDomain[] = [
         timestamp discord_guild_verified_at "nullable"
         int discord_guild_verified_by_auth_user_id FK "nullable → auth.user (SET NULL)"
         int owner_id FK "nullable → auth.user (SET NULL); accountability, decoupled from RBAC owner role"
+        string verification_status "unverified | verified | trusted; в публичном каталоге видны verified и trusted, у trusted — знак на карточке"
         int default_division_grid_version_id FK "nullable"
     }
     WORKSPACE_MEMBER {

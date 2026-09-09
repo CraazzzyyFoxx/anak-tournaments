@@ -323,9 +323,7 @@ def _group_names_for_challonge_ids(group_ids: set[int]) -> dict[int, str]:
     return names
 
 
-def _stage_for_challonge_group(
-    tournament: models.Tournament, challonge_group_id: int
-) -> models.Stage | None:
+def _stage_for_challonge_group(tournament: models.Tournament, challonge_group_id: int) -> models.Stage | None:
     """Find the stage that owns a Challonge group, by its `settings_json` marker.
 
     `settings_json["challonge_group_id"]` is the ONLY link: the `tournament.group`
@@ -1254,9 +1252,7 @@ class ChallongeMappingService:
         fetches = [(source, fetch) for source, fetch in raw_fetches if not isinstance(fetch, Exception)]
         return tournament, teams, fetches
 
-    async def preview_team_mapping(
-        self, session: AsyncSession, tournament_id: int
-    ) -> schemas.ChallongeTeamSyncPreview:
+    async def preview_team_mapping(self, session: AsyncSession, tournament_id: int) -> schemas.ChallongeTeamSyncPreview:
         """Read-only: for every Challonge participant on this tournament's linked
         source(s), suggest a local team by normalized-name match and report any
         mapping already persisted. Counterpart to ``apply_team_mapping``, which
@@ -1422,9 +1418,7 @@ class ChallongeSyncService:
     ) -> list[models.ChallongeSyncLog]:
         return await self.sync_log.get_sync_log(session, tournament_id, limit)
 
-    async def preview_team_mapping(
-        self, session: AsyncSession, tournament_id: int
-    ) -> schemas.ChallongeTeamSyncPreview:
+    async def preview_team_mapping(self, session: AsyncSession, tournament_id: int) -> schemas.ChallongeTeamSyncPreview:
         return await self.mapping.preview_team_mapping(session, tournament_id)
 
     async def apply_team_mapping(
@@ -1489,13 +1483,9 @@ class ChallongeSyncService:
             # A locally generated bracket may already have an Encounter sitting in
             # this exact slot (same stage, round, team pair) with no Challonge
             # mapping yet — adopt it instead of creating a sibling next to it.
-            encounter = match_lookup.claim_unlinked(
-                refs.stage_id, match.round, frozenset({home_team_id, away_team_id})
-            )
+            encounter = match_lookup.claim_unlinked(refs.stage_id, match.round, frozenset({home_team_id, away_team_id}))
         if encounter is None:
-            initial_status = (
-                enums.EncounterStatus.OPEN if status == enums.EncounterStatus.COMPLETED else status
-            )
+            initial_status = enums.EncounterStatus.OPEN if status == enums.EncounterStatus.COMPLETED else status
             encounter = models.Encounter(
                 name=build_encounter_name(
                     home_team.name if home_team is not None else None,

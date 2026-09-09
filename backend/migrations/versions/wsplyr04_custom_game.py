@@ -63,9 +63,7 @@ def upgrade() -> None:
         sa.Column("team_index", sa.Integer(), nullable=True),
         sa.Column("sort_order", sa.Integer(), server_default="0", nullable=False),
         sa.ForeignKeyConstraint(["custom_game_id"], ["balancer.custom_game.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["workspace_player_id"], ["balancer.workspace_player.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["workspace_player_id"], ["balancer.workspace_player.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("custom_game_id", "workspace_player_id", name="uq_custom_game_player"),
         schema="balancer",

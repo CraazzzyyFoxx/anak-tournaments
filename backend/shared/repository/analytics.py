@@ -24,7 +24,9 @@ class AnalyticsAlgorithmRepository(BaseRepository[models.AnalyticsAlgorithm]):
         return await self.get_by(session, name=name)
 
     async def get_id_by_name(self, session: AsyncSession, name: str) -> int | None:
-        return await session.scalar(sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == name))
+        return await session.scalar(
+            sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == name)
+        )
 
     async def list_names_by_ids(self, session: AsyncSession, ids: Sequence[int]) -> list[str]:
         if not ids:
@@ -170,7 +172,6 @@ class AnalyticsAnomalyFeedbackRepository(BaseRepository[models.AnalyticsAnomalyF
         return result.all()
 
 
-
 class AnalyticsPerformanceRepository(BaseRepository[models.AnalyticsPerformance]):
     def __init__(self) -> None:
         super().__init__(models.AnalyticsPerformance)
@@ -182,9 +183,7 @@ class AnalyticsPerformanceRepository(BaseRepository[models.AnalyticsPerformance]
         *,
         algorithm_id: int | None = None,
     ) -> Sequence[models.AnalyticsPerformance]:
-        query = sa.select(models.AnalyticsPerformance).where(
-            models.AnalyticsPerformance.tournament_id == tournament_id
-        )
+        query = sa.select(models.AnalyticsPerformance).where(models.AnalyticsPerformance.tournament_id == tournament_id)
         if algorithm_id is not None:
             query = query.where(models.AnalyticsPerformance.algorithm_id == algorithm_id)
         result = await session.execute(query)
@@ -272,7 +271,6 @@ class AnalyticsPlayerAnomalyRepository(BaseRepository[models.AnalyticsPlayerAnom
             query = query.where(models.AnalyticsPlayerAnomaly.kind == kind)
         result = await session.execute(query)
         return result.scalars().all()
-
 
 
 class MLModelArtifactRepository(BaseRepository[models.MLModelArtifact]):

@@ -15,7 +15,7 @@
 //     that stale, empty filter set.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { act, StrictMode, useState } from "react";
+import { act, StrictMode, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -116,7 +116,11 @@ async function renderControlled(search = "") {
 
   function Harness() {
     const [filters, setFilters] = useState<AdminTableFilters>({});
-    applyFilters = setFilters;
+    // Published from an effect, not during render: writing a module-scope binding
+    // while rendering is a side effect the react-compiler rules reject.
+    useEffect(() => {
+      applyFilters = setFilters;
+    }, [setFilters]);
     return (
       <AdminDataTable<Row>
         filters={filters}

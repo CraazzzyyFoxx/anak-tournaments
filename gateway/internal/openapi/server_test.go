@@ -42,7 +42,15 @@ func TestRegister_PublicAlwaysOn(t *testing.T) {
 		t.Errorf("/api/docs content-type = %q", ct)
 	}
 	body := page.Body.String()
-	for _, want := range []string{"/api/openapi.json", "https://cdn.example/scalar@1.60.0", "createApiReference"} {
+	for _, want := range []string{
+		"/api/openapi.json",
+		"/api/openapi.v2.json",
+		`"slug":"v1"`,
+		`"slug":"v2"`,
+		"persistAuth",
+		"https://cdn.example/scalar@1.60.0",
+		"createApiReference",
+	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/api/docs body missing %q", want)
 		}
@@ -59,6 +67,14 @@ func TestRegister_PublicAlwaysOn(t *testing.T) {
 	if err := json.Unmarshal(spec.Body.Bytes(), &doc); err != nil {
 		t.Errorf("/api/openapi.json invalid: %v", err)
 	}
+
+	specV2 := get(t, mux, "/api/openapi.v2.json")
+	if specV2.Code != http.StatusOK {
+		t.Fatalf("/api/openapi.v2.json status = %d, want 200", specV2.Code)
+	}
+	if err := json.Unmarshal(specV2.Body.Bytes(), &doc); err != nil {
+		t.Errorf("/api/openapi.v2.json invalid: %v", err)
+	}
 }
 
 func TestRegister_AdminGated(t *testing.T) {
@@ -73,8 +89,15 @@ func TestRegister_AdminGated(t *testing.T) {
 
 func TestRegister_AdminEnabled(t *testing.T) {
 	mux := testServer(config.Docs{Enabled: true, AdminEnabled: true, CDN: "x"})
-	if rec := get(t, mux, "/api/docs/admin"); rec.Code != http.StatusOK {
-		t.Errorf("/api/docs/admin (enabled) status = %d, want 200", rec.Code)
+	adminPage := get(t, mux, "/api/docs/admin")
+	if adminPage.Code != http.StatusOK {
+		t.Errorf("/api/docs/admin (enabled) status = %d, want 200", adminPage.Code)
+	}
+	adminBody := adminPage.Body.String()
+	for _, want := range []string{"/api/openapi.admin.json", "/api/openapi.v2.admin.json", `"slug":"v2"`} {
+		if !strings.Contains(adminBody, want) {
+			t.Errorf("/api/docs/admin body missing %q", want)
+		}
 	}
 	spec := get(t, mux, "/api/openapi.admin.json")
 	if spec.Code != http.StatusOK {

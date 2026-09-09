@@ -72,7 +72,7 @@ export function MapCard({ map, size = "md", className }: Readonly<MapCardProps>)
         <figcaption
           className={cn(
             "absolute inset-x-0 bottom-0 truncate px-2 pb-1.5 font-semibold text-white drop-shadow",
-            small ? "text-[11px]" : "text-[13px]"
+            small ? "text-label" : "text-caption"
           )}
         >
           {map.name}

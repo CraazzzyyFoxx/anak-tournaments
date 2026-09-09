@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 
 import { InlineEditText } from "@/components/admin/InlineEditText";
-import { TONE_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { Stage, StageItem, StageItemType } from "@/types/tournament.types";
@@ -164,11 +162,8 @@ export function StageItemsSection({
           {progress.items.map((itemProgress) => (
             <li key={itemProgress.stage_item_id}>
               <Badge
-                variant="outline"
-                className={cn(
-                  "tabular-nums",
-                  itemProgress.is_completed && TONE_CLASS.success
-                )}
+                tone={itemProgress.is_completed ? "success" : "neutral"}
+                className="tabular-nums"
               >
                 {itemProgress.name}: {itemProgress.completed}/{itemProgress.total}
               </Badge>
@@ -344,11 +339,8 @@ export function StageItemsSection({
                           ) : (
                             <>
                               <Badge
-                                variant="outline"
-                                className={cn(
-                                  "shrink-0 text-xs",
-                                  input.input_type === "tentative" && TONE_CLASS.warning
-                                )}
+                                tone={input.input_type === "tentative" ? "warning" : "neutral"}
+                                className="shrink-0 text-xs"
                               >
                                 {input.input_type}
                               </Badge>

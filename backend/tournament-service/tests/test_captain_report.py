@@ -584,7 +584,9 @@ class AdminSetResult(IsolatedAsyncioTestCase):
         encounter = _mk_encounter(result_status=enums.EncounterResultStatus.NONE)
         session = _mk_session(encounter, [])
         with assert_http_status(self, 422):
-            await captain_service.captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, home_score=2)
+            await captain_service.captain_service.set_encounter_result(
+                session, 10, actor_user_id=self.ADMIN, home_score=2
+            )
 
     async def test_rejects_adopting_a_team_that_never_reported(self) -> None:
         report = _mk_report(team_id=1, home=3, away=0, closeness=7)
@@ -594,7 +596,9 @@ class AdminSetResult(IsolatedAsyncioTestCase):
         )
         session = _mk_session(encounter, [])
         with assert_http_status(self, 422):
-            await captain_service.captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, adopt_report_team_id=2)
+            await captain_service.captain_service.set_encounter_result(
+                session, 10, actor_user_id=self.ADMIN, adopt_report_team_id=2
+            )
 
     async def test_rejects_reconfirming_a_confirmed_result(self) -> None:
         """Unlike the old confirm, ``none`` is now a legal starting point — the
@@ -678,4 +682,3 @@ class ResolveOptionalViewerSide(IsolatedAsyncioTestCase):
             side = await resolve_optional_viewer_side(object(), object(), object())
 
         self.assertIsNone(side)
-

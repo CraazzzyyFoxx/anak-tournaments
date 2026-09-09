@@ -13,36 +13,14 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
+import {
+  TOURNAMENT_PHASES,
+  TOURNAMENT_STATUS_LABELS,
+  VALID_TRANSITIONS
+} from "@/lib/tournament-lifecycle";
 import adminService from "@/services/admin.service";
 import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
-
-export const TOURNAMENT_STATUS_LABELS: Record<TournamentStatus, string> = {
-  registration: "Registration",
-  check_in: "Check-in",
-  draft: "Draft",
-  live: "Live",
-  playoffs: "Playoffs",
-  completed: "Completed",
-  archived: "Archived"
-};
-
-/**
- * Mirrors `backend/shared/core/tournament_state.py:_VALID_TRANSITIONS`. Anything
- * outside this set needs `force`, which the server accepts from a superuser
- * only — so the picker offers it to a superuser only.
- */
-const VALID_TRANSITIONS: Record<TournamentStatus, readonly TournamentStatus[]> = {
-  registration: ["check_in", "draft", "live"],
-  check_in: ["draft", "live", "registration"],
-  draft: ["live", "check_in", "registration"],
-  live: ["playoffs", "completed", "draft", "check_in"],
-  playoffs: ["completed"],
-  completed: ["archived"],
-  archived: ["completed"]
-};
-
-const STATUS_ORDER = Object.keys(TOURNAMENT_STATUS_LABELS) as TournamentStatus[];
 
 /**
  * The one place the tournament's status is changed.
@@ -64,8 +42,10 @@ export function TournamentStatusControl({ tournament }: Readonly<{ tournament: T
 
   const allowed = VALID_TRANSITIONS[tournament.status];
   const options = isSuperuser
-    ? STATUS_ORDER
-    : STATUS_ORDER.filter((status) => status === tournament.status || allowed.includes(status));
+    ? TOURNAMENT_PHASES
+    : TOURNAMENT_PHASES.filter(
+        (status) => status === tournament.status || allowed.includes(status)
+      );
 
   const mutation = useMutation({
     mutationFn: (status: TournamentStatus) =>

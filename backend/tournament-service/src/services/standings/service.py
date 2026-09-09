@@ -665,7 +665,6 @@ def _build_elimination_stage_standings(
     if not encounters and not seed_team_ids:
         return []
 
-
     if not encounters:
         # No matches played yet — create placeholder standings with position 0.
         standings: list[models.Standing] = []

@@ -158,7 +158,9 @@ class UpsertReportForm(IsolatedAsyncioTestCase):
 
     async def test_inserts_when_absent_and_round_trips(self) -> None:
         session = _mk_session(stored=None)
-        out = await report_form.report_form_service.upsert_report_form(session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY))
+        out = await report_form.report_form_service.upsert_report_form(
+            session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY)
+        )
 
         self.assertEqual(1, len(session._added))
         row = session._added[0]
@@ -177,7 +179,9 @@ class UpsertReportForm(IsolatedAsyncioTestCase):
     async def test_updates_the_existing_row_in_place(self) -> None:
         stored = _mk_stored(built_in={"comment": {"enabled": False, "required": False}}, custom=[])
         session = _mk_session(stored)
-        out = await report_form.report_form_service.upsert_report_form(session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY))
+        out = await report_form.report_form_service.upsert_report_form(
+            session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY)
+        )
 
         self.assertEqual([], session._added)
         self.assertNotIn("comment", stored.built_in_fields_json)

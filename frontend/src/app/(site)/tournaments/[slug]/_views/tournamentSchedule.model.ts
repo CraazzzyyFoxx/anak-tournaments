@@ -1,15 +1,15 @@
-import type { Tournament, TournamentStatus } from "@/types/tournament.types";
+import {
+  SCHEDULABLE_PHASES,
+  phaseRank,
+  type SchedulablePhase
+} from "@/lib/tournament-lifecycle";
+import type { Tournament } from "@/types/tournament.types";
 
 /**
- * The phases that may carry a `tournament_phase_schedule` row, in the backend's
- * own lifecycle order — mirrors `SCHEDULABLE_STATUSES` ordered by `PHASE_ORDER`
- * in `backend/shared/core/tournament_state.py`. PLAYOFFS and everything after
- * it depend on the actual course of play and are never scheduled, so they can
- * never appear on this timeline: the hero's status pill carries them instead.
+ * PLAYOFFS and everything after it depend on the actual course of play and are
+ * never scheduled, so they can never appear on this timeline: the hero's status
+ * pill carries them instead.
  */
-const SCHEDULABLE_PHASES = ["registration", "check_in", "draft", "live"] as const;
-
-type SchedulablePhase = (typeof SCHEDULABLE_PHASES)[number];
 
 type PhaseSegmentState = "done" | "current" | "upcoming";
 
@@ -77,15 +77,6 @@ type ScheduleInput = {
   now: number;
 };
 
-/**
- * Position of a status within the schedulable prefix of the lifecycle.
- * PLAYOFFS/COMPLETED/ARCHIVED all sit after the whole prefix, so a finished
- * tournament ranks above every segment and the timeline reads as all-done.
- */
-function statusRank(status: TournamentStatus): number {
-  const index = (SCHEDULABLE_PHASES as readonly string[]).indexOf(status);
-  return index === -1 ? SCHEDULABLE_PHASES.length : index;
-}
 
 function epoch(iso: string | null): number | null {
   if (iso === null) return null;
@@ -99,7 +90,7 @@ export function buildTournamentSchedule({
 }: ScheduleInput): TournamentScheduleModel {
   const schedule = tournament.phase_schedule ?? [];
 
-  const currentRank = statusRank(tournament.status);
+  const currentRank = phaseRank(tournament.status);
   const segments: PhaseSegment[] = [];
 
   for (const phase of SCHEDULABLE_PHASES) {
@@ -113,7 +104,7 @@ export function buildTournamentSchedule({
     // check-in" means. A row of em-dashes would be noise, not information.
     if (!row) continue;
 
-    const rank = statusRank(phase);
+    const rank = phaseRank(phase);
     segments.push({
       status: phase,
       state: rank < currentRank ? "done" : rank === currentRank ? "current" : "upcoming",

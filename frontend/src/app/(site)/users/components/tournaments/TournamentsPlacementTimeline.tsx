@@ -83,7 +83,7 @@ const TournamentsPlacementTimeline = ({ tournaments, selectedIds = [], onSelect 
           {n > 1 ? <span>{valid[n - 1].name}</span> : null}
         </div>
       </div>
-      <div className="flex flex-wrap gap-3.5 border-t border-[color:var(--aqt-border)] px-[18px] py-3.5 text-[12px] text-[color:var(--aqt-fg-muted)]">
+      <div className="flex flex-wrap gap-3.5 border-t border-[color:var(--aqt-border)] px-[18px] py-3.5 text-label text-[color:var(--aqt-fg-muted)]">
         <span className="inline-flex items-center gap-1.5">
           {/* Must stay identical to `.aqt-timeline .aqt-dot.gold` in globals.css. */}
           <span

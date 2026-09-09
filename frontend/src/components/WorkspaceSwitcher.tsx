@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Check, ChevronsUpDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useHoverIntent } from "@/hooks/useHoverIntent";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { Workspace } from "@/types/workspace.types";
@@ -30,7 +29,7 @@ const FALLBACK_ACCENTS = [
 
 function WorkspaceAvatar({ workspace, size = "sm" }: Readonly<{ workspace: Workspace; size?: "sm" | "md" | "header" }>) {
   const sizeClass = size === "sm" ? "size-5" : "size-7";
-  const textSize = size === "sm" ? "text-[11px]" : "text-xs";
+  const textSize = size === "sm" ? "text-label" : "text-xs";
 
   return (
     <Avatar key={workspace.id} className={cn(sizeClass, "rounded-md")}>
@@ -52,10 +51,7 @@ function WorkspaceAvatar({ workspace, size = "sm" }: Readonly<{ workspace: Works
 
 export default function WorkspaceSwitcher() {
   const t = useTranslations();
-  const { open, setOpen, cancel, scheduleOpen, scheduleClose } = useHoverIntent({
-    openDelay: 200,
-    closeDelay: 300,
-  });
+  const [open, setOpen] = useState(false);
   const { workspaces, currentWorkspaceId, fetchWorkspaces, setCurrentWorkspace } =
     useWorkspaceStore();
 
@@ -69,21 +65,11 @@ export default function WorkspaceSwitcher() {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      {/* One real button is the whole control. It used to be a non-interactive
-          <div> carrying the hover handlers next to an 18x18 chevron button —
-          below the 24x24 target floor, and the only keyboard path in. */}
+      {/* Click-only: one real button is the whole control, no hover intent. */}
       <PopoverTrigger asChild>
         <button
           type="button"
           aria-label={t("nav.switchWorkspace")}
-          onPointerEnter={(e) => {
-            if (e.pointerType !== "mouse") return;
-            scheduleOpen();
-          }}
-          onPointerLeave={(e) => {
-            if (e.pointerType !== "mouse") return;
-            scheduleClose();
-          }}
           className={cn(
             "flex h-9 shrink-0 items-center gap-1 rounded-lg px-1",
             "transition-colors hover:bg-accent",
@@ -102,14 +88,6 @@ export default function WorkspaceSwitcher() {
         align="start"
         className="w-64 p-1"
         sideOffset={8}
-        onPointerEnter={(e) => {
-          if (e.pointerType !== "mouse") return;
-          cancel();
-        }}
-        onPointerLeave={(e) => {
-          if (e.pointerType !== "mouse") return;
-          scheduleClose();
-        }}
       >
         <div className="px-2 py-1.5">
           <p className="text-xs font-medium text-muted-foreground">{t("nav.workspaces")}</p>

@@ -9,20 +9,14 @@ import { Switch } from "@/components/ui/switch";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { SaveBar } from "@/components/admin/kit/SaveBar";
 import { getUtcOffsetLabel } from "@/lib/timezone";
-import type { Tournament } from "@/types/tournament.types";
 import {
   SCHEDULABLE_PHASES,
+  TOURNAMENT_STATUS_LABELS,
   type SchedulablePhase
-} from "../../components/tournamentWorkspace.helpers";
+} from "@/lib/tournament-lifecycle";
+import type { Tournament } from "@/types/tournament.types";
 import { SettingsSectionPage } from "../SettingsSection";
 import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
-
-const PHASE_LABELS: Record<SchedulablePhase, string> = {
-  registration: "Registration",
-  draft: "Draft",
-  check_in: "Check-in",
-  live: "Live"
-};
 
 export default function ScheduleSettingsPage() {
   return (
@@ -110,13 +104,13 @@ function ScheduleForm({
               {visiblePhases.map((phase) => (
                 <div key={phase} className="flex flex-col gap-2 lg:contents">
                   <p className="text-xs font-medium text-foreground lg:py-1">
-                    {PHASE_LABELS[phase]}
+                    {TOURNAMENT_STATUS_LABELS[phase]}
                   </p>
                   <DateTimePicker
                     id={`settings-phase-${phase}-starts`}
                     timeId={`settings-phase-${phase}-starts-time`}
-                    dateLabel={`${PHASE_LABELS[phase]} starts at`}
-                    timeLabel={`${PHASE_LABELS[phase]} start time`}
+                    dateLabel={`${TOURNAMENT_STATUS_LABELS[phase]} starts at`}
+                    timeLabel={`${TOURNAMENT_STATUS_LABELS[phase]} start time`}
                     labelClassName="lg:sr-only"
                     value={form.phase_schedule[phase].starts_at}
                     onChange={(next) => setPhaseField(phase, "starts_at", next)}
@@ -124,8 +118,8 @@ function ScheduleForm({
                   <DateTimePicker
                     id={`settings-phase-${phase}-ends`}
                     timeId={`settings-phase-${phase}-ends-time`}
-                    dateLabel={`${PHASE_LABELS[phase]} ends at (optional)`}
-                    timeLabel={`${PHASE_LABELS[phase]} end time`}
+                    dateLabel={`${TOURNAMENT_STATUS_LABELS[phase]} ends at (optional)`}
+                    timeLabel={`${TOURNAMENT_STATUS_LABELS[phase]} end time`}
                     labelClassName="lg:sr-only"
                     value={form.phase_schedule[phase].ends_at}
                     onChange={(next) => setPhaseField(phase, "ends_at", next)}

@@ -32,7 +32,7 @@ export function SocialAccountBadge({ account, linkify = true }: Readonly<SocialA
 
   const badge = (
     <span
-      className="inline-flex items-center gap-1.5 rounded-[7px] border px-2 py-1 text-[12.5px] font-medium"
+      className="inline-flex items-center gap-1.5 rounded-[7px] border px-2 py-1 text-caption font-medium"
       style={{
         background: surface,
         borderColor: border,

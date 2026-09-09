@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"bytes"
+	"encoding/json"
 	"html/template"
 	"net/http"
 
@@ -45,8 +46,14 @@ func New(cfg config.Docs, info Info, publicGroups, adminGroups []Group) *Server 
 		adminSpec:    Build(adminInfo, adminGroups),
 		publicV2Spec: BuildV2(info, publicGroups),
 		adminV2Spec:  BuildV2(adminInfo, adminGroups),
-		publicPage:   page(info.Title, publicSpecPath, cfg.CDN),
-		adminPage:    page(adminInfo.Title, adminSpecPath, cfg.CDN),
+		publicPage: page(info.Title, cfg.CDN, []source{
+			{Title: "v1", Slug: "v1", URL: publicSpecPath},
+			{Title: "v2", Slug: "v2", URL: publicV2SpecPath},
+		}),
+		adminPage: page(adminInfo.Title, cfg.CDN, []source{
+			{Title: "v1", Slug: "v1", URL: adminSpecPath},
+			{Title: "v2", Slug: "v2", URL: adminV2SpecPath},
+		}),
 	}
 }
 
@@ -96,7 +103,8 @@ func notFound(w http.ResponseWriter) {
 }
 
 // pageTmpl renders the Scalar standalone page. html/template escapes the title
-// (HTML), the CDN URL (attribute) and the spec URL (JS string) per context.
+// (HTML) and the CDN URL (attribute). Config is encoding/json output marked
+// template.JS so the sources array is valid JS.
 var pageTmpl = template.Must(template.New("scalar").Parse(`<!doctype html>
 <html>
 <head>
@@ -108,17 +116,27 @@ var pageTmpl = template.Must(template.New("scalar").Parse(`<!doctype html>
 <div id="app"></div>
 <script src="{{.CDN}}"></script>
 <script>
-Scalar.createApiReference('#app', { url: {{.SpecURL}} })
+Scalar.createApiReference('#app', {{.Config}})
 </script>
 </body>
 </html>`))
 
-func page(title, specURL, cdn string) []byte {
+type source struct {
+	Title string `json:"title"`
+	Slug  string `json:"slug"`
+	URL   string `json:"url"`
+}
+
+func page(title, cdn string, sources []source) []byte {
+	cfg, _ := json.Marshal(map[string]any{
+		"sources":     sources,
+		"persistAuth": true,
+	})
 	var buf bytes.Buffer
-	_ = pageTmpl.Execute(&buf, map[string]string{
-		"Title":   title,
-		"SpecURL": specURL,
-		"CDN":     cdn,
+	_ = pageTmpl.Execute(&buf, map[string]any{
+		"Title":  title,
+		"CDN":    cdn,
+		"Config": template.JS(cfg),
 	})
 	return buf.Bytes()
 }

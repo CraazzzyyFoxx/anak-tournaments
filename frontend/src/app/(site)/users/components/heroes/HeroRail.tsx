@@ -135,7 +135,7 @@ const HeroRail = ({ rows, selectedId, onSelect }: Props) => {
           <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
             <SelectTrigger
               aria-label={t("users.heroes.sortHeroes")}
-              className="aqt-mono h-9 w-[116px] shrink-0 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.025)] text-[12px] text-[color:var(--aqt-fg)] shadow-none"
+              className="aqt-tnum h-9 w-[116px] shrink-0 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.025)] text-label text-[color:var(--aqt-fg)] shadow-none"
             >
               <SelectValue />
             </SelectTrigger>
@@ -165,8 +165,8 @@ const HeroRail = ({ rows, selectedId, onSelect }: Props) => {
             >
               <HeroImage hero={r.hero} size="md" />
               <div className="min-w-0">
-                <div className="truncate text-[14px] font-semibold text-[color:var(--aqt-fg)]">{r.hero.name}</div>
-                <div className="truncate text-[12px] capitalize text-[color:var(--aqt-fg-dim)]">
+                <div className="truncate text-body font-semibold text-[color:var(--aqt-fg)]">{r.hero.name}</div>
+                <div className="truncate text-label capitalize text-[color:var(--aqt-fg-dim)]">
                   {r.role} · {t("users.heroes.wr", { value: r.winratePct == null ? "—" : `${r.winratePct.toFixed(0)}%` })} · {(r.share * 100).toFixed(0)}%
                 </div>
                 <div className="mt-1 h-1 w-full overflow-hidden rounded-sm bg-[hsl(0_0%_100%/0.05)]">
@@ -180,14 +180,14 @@ const HeroRail = ({ rows, selectedId, onSelect }: Props) => {
                   />
                 </div>
               </div>
-              <span className="aqt-mono text-right text-[14px] font-bold text-[color:var(--aqt-fg)]">
+              <span className="aqt-tnum text-right text-body font-bold text-[color:var(--aqt-fg)]">
                 {metricValue(format, sort, r)}
               </span>
             </button>
           );
         })}
         {visible.length === 0 ? (
-          <div className="px-3 py-8 text-center text-[13px] text-[color:var(--aqt-fg-dim)]">{t("users.heroes.noHeroes")}</div>
+          <div className="px-3 py-8 text-center text-caption text-[color:var(--aqt-fg-dim)]">{t("users.heroes.noHeroes")}</div>
         ) : null}
       </div>
     </CardSurface>

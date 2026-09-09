@@ -34,6 +34,7 @@ import asyncio
 from datetime import timedelta
 from typing import Any
 
+from cashews import cache
 from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
 
@@ -163,9 +164,16 @@ def _optional_identity(data: dict[str, Any]) -> models.AuthUser | None:
 _reg_pub_list_inflight: dict[int, asyncio.Task[Any]] = {}
 
 
+@cache(
+    ttl=settings.tournaments_cache_ttl,
+    key="registration_list:{tournament_id}:",
+    prefix="fastapi:",
+)
 async def _build_registration_list(tournament_id: int) -> Any:
     async with db.async_session_maker() as session:
-        return await reg_service.registration_service.build_public_registration_list(session, tournament_id=tournament_id)
+        return await reg_service.registration_service.build_public_registration_list(
+            session, tournament_id=tournament_id
+        )
 
 
 async def _coalesced_registration_list(tournament_id: int) -> Any:
@@ -239,7 +247,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             # Public read: reports are visible to anyone who can view the encounter.
             encounter_id = _require_id(data)
-            tournament_id = await visibility_resolvers.visibility_resolvers_service.tournament_id_for_encounter(session, encounter_id)
+            tournament_id = await visibility_resolvers.visibility_resolvers_service.tournament_id_for_encounter(
+                session, encounter_id
+            )
             await assert_tournament_viewable(session, _optional_identity(data), tournament_id)
             # The form config rides this envelope so the report dialog opens with
             # exactly the rules the submit endpoint will enforce, in one round trip.
@@ -249,7 +259,6 @@ def register(broker: Any, logger: Any) -> None:
             }
 
         return await _run(logger, op)
-
 
     def _parse_kind(data: dict) -> PickBanKind:
         raw = data.get("kind")
@@ -263,7 +272,9 @@ def register(broker: Any, logger: Any) -> None:
             kind = _parse_kind(data)
             encounter_id = _require_id(data)
             user = _optional_identity(data)
-            tournament_id = await visibility_resolvers.visibility_resolvers_service.tournament_id_for_encounter(session, encounter_id)
+            tournament_id = await visibility_resolvers.visibility_resolvers_service.tournament_id_for_encounter(
+                session, encounter_id
+            )
             await assert_tournament_viewable(session, user, tournament_id)
             encounter = await captain_service._load_encounter(session, encounter_id)
             viewer_side = await resolve_optional_viewer_side(session, user, encounter)
@@ -377,7 +388,9 @@ def register(broker: Any, logger: Any) -> None:
             subrole_catalog = await resolve_subrole_catalog(session, form.workspace_id)
             # The rule is the workspace's now; fetched once here so the sync serializer
             # below stays free of round trips.
-            requirement = await subscription_config.subscription_config_service.load_workspace_requirement_blob(session, form.workspace_id)
+            requirement = await subscription_config.subscription_config_service.load_workspace_requirement_blob(
+                session, form.workspace_id
+            )
             is_open = await windows_service.load_registration_open(session, tournament_id)
             return _dump(
                 _form_to_read(
@@ -444,9 +457,7 @@ def register(broker: Any, logger: Any) -> None:
             # verdict and the subscription verdicts itself, with its own two calls,
             # and "why am I not admitted" was therefore answerable differently here
             # than on the list the player was reading it next to.
-            admissions = await reg_service.registration_service.resolve_admission_list(
-                session, [reg], form=form
-            )
+            admissions = await reg_service.registration_service.resolve_admission_list(session, [reg], form=form)
             chips = AdmissionChips.of(admissions.get(reg.id))
             workspace_id = (
                 form.workspace_id if form is not None else await _resolve_tournament_workspace(session, tournament_id)
@@ -690,12 +701,15 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _path_int(data, "tournament_id")
             user = _optional_identity(data)
             await assert_tournament_viewable(session, user, tournament_id)
-            pairs = await team_service.teams_service.list_teams(session, tournament_id=tournament_id, include_terminal=False)
+            pairs = await team_service.teams_service.list_teams(
+                session, tournament_id=tournament_id, include_terminal=False
+            )
             items = [
                 await team_service.teams_service.describe_team(
                     session,
                     team,
-                    include_invites=user is not None and await team_service.teams_service.is_team_captain(session, team, user.id),
+                    include_invites=user is not None
+                    and await team_service.teams_service.is_team_captain(session, team, user.id),
                 )
                 for team, _occupancy in pairs
             ]
@@ -705,7 +719,9 @@ def register(broker: Any, logger: Any) -> None:
                 RegistrationTeamListResponse(
                     items=items,
                     total=len(items),
-                    unassigned_players=await team_service.teams_service.count_unassigned_players(session, tournament_id),
+                    unassigned_players=await team_service.teams_service.count_unassigned_players(
+                        session, tournament_id
+                    ),
                 )
             )
 

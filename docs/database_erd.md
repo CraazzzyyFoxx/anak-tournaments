@@ -12,7 +12,7 @@ schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_proces
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`tiegrp01`** (45 revisions in `backend/migrations/versions/`).
+Alembic head: **`notif003`** (49 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -441,6 +441,7 @@ erDiagram
         timestamptz discord_guild_verified_at "nullable"
         bigint discord_guild_verified_by_auth_user_id FK "nullable"
         bigint owner_id FK "nullable"
+        varchar(16) verification_status
         bigint default_division_grid_version_id FK "nullable"
         jsonb default_roster_slots_json "nullable"
         varchar(16) newcomer_scope
@@ -2541,9 +2542,9 @@ Composite unique keys:
 ## platform — `public`, `realtime`
 
 Cross-domain infrastructure: the transactional outbox, the realtime event journal the gateway
-replays from, and the platform audit log.
+replays from, the platform audit log, and the notification inbox.
 
-These three tables carry `workspace_id`, `tournament_id` and actor ids as plain `BigInteger`
+These tables carry `workspace_id`, `tournament_id` and actor ids as plain `BigInteger`
 with **no foreign keys**, which is why they appear unconnected on the diagram. That is the
 point: an append-only bus or journal must outlive the business rows it describes, and must not
 be draggable into a cascade delete.
@@ -2555,6 +2556,23 @@ replay journal the Go gateway reads by topic and id when a WebSocket client reco
 `schema_version` lets the payload shape change without invalidating older entries. `audit_log`
 stores `before_json` / `after_json` together with `actor_label` and `entity_label` snapshots, so
 an entry stays readable after the row it describes is gone.
+
+`notification` is the inbox journal — appended by `shared.services.notifications.notify()`
+inside the transaction that causes the event, never committed on its own. It stores `kind` plus
+a `payload_json` snapshot rather than rendered text, so the wording lives in the frontend
+dictionary and a deleted team still reads by name; `audience` decides who may see the row
+(`user`, `workspace` or `global`) and the check constraints keep `recipient_auth_user_id` /
+`workspace_id` filled exactly for the audience that needs one. `source_workspace_id` answers a
+different question — *which tenant produced* the row — and is therefore set for every audience,
+`user` included: a registration decision is addressed to one competitor and owned by the
+organizer that decided it. It is what the workspace operator screen scopes on
+(`rpc.app.notification_admin_*`), where a "delete" is an `expires_at = now()` retire, so the row
+and its read marks survive. `notification_read` is the per-viewer state, primary key
+`(auth_user_id, notification_id)`: "read" is a fact about one viewer, which is what lets a global
+announcement be dismissed by each reader independently, and the mark survives the announcement
+being unpublished, so who saw it stays answerable. `deleted_at` on the same row is the inbox's
+own delete button — that viewer stops seeing the notification while every other recipient's copy,
+and the journal row itself, are untouched.
 
 <!-- ERD:auto platform -->
 ```mermaid
@@ -2590,6 +2608,25 @@ erDiagram
         timestamptz created_at
         timestamptz published_at "nullable"
         text last_error "nullable"
+    }
+    PUBLIC_NOTIFICATION {
+        bigint id PK
+        varchar(16) audience
+        bigint recipient_auth_user_id "nullable"
+        bigint workspace_id "nullable"
+        bigint source_workspace_id "nullable"
+        varchar(64) kind
+        jsonb payload_json
+        bigint actor_auth_user_id "nullable"
+        timestamptz published_at
+        timestamptz expires_at "nullable"
+        timestamptz created_at
+    }
+    PUBLIC_NOTIFICATION_READ {
+        bigint auth_user_id PK
+        bigint notification_id PK
+        timestamptz read_at
+        timestamptz deleted_at "nullable"
     }
     REALTIME_WORKSPACE_EVENT {
         bigint id PK

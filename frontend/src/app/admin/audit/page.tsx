@@ -146,6 +146,10 @@ export default function AdminAuditPage() {
   }, [isSuperuser, entityIdParam, actorParam, actionParam, pageRows]);
 
   const filters = useAdminFilters(defs);
+  // `filters` is a fresh object every render; its two writers are not. Pulled
+  // out here so the column memo below depends on the callbacks themselves
+  // rather than on the container that carries them.
+  const { set: setFilter, setMany: setFilters } = filters;
 
   const entityType = String(filters.values.entity_type ?? "") || null;
   // `|| null` on the parse, not a guard function: `NaN || null` is `null`, so a
@@ -229,10 +233,7 @@ export default function AdminAuditPage() {
                 // Never let a phrase we derived from the raw string pass for a
                 // curated one: `action` is written from every service on the
                 // platform, so this dictionary will always trail new call sites.
-                <Badge
-                  variant="outline"
-                  className="border-border/60 font-normal text-muted-foreground"
-                >
+                <Badge tone="neutral" className="font-normal">
                   unrecognised
                 </Badge>
               )}
@@ -259,9 +260,7 @@ export default function AdminAuditPage() {
               <button
                 type="button"
                 className="text-xs tabular-nums text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                onClick={() =>
-                  filters.set("actor_user_id", String(row.original.actor_auth_user_id))
-                }
+                onClick={() => setFilter("actor_user_id", String(row.original.actor_auth_user_id))}
               >
                 only this actor
               </button>
@@ -290,7 +289,7 @@ export default function AdminAuditPage() {
                   // in one write — `set` twice would start from the same URL
                   // snapshot and only the second would survive.
                   onClick={() =>
-                    filters.setMany({
+                    setFilters({
                       entity_type: row.original.entity_type ?? null,
                       entity_id: String(row.original.entity_id),
                     })
@@ -339,8 +338,7 @@ export default function AdminAuditPage() {
         },
       },
     ],
-    // `filters` is a fresh object every render; its two writers are not.
-    [format, filters.set, filters.setMany],
+    [format, setFilter, setFilters],
   );
 
   if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;

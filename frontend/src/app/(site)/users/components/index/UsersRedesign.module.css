@@ -29,7 +29,7 @@
   );
 
   --u-display: var(--aqt-display);
-  --u-mono: var(--aqt-mono);
+  --u-mono: var(--aqt-data);
 
   color: var(--u-fg);
   display: flex;
@@ -54,9 +54,9 @@
 }
 
 .statLabel {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--u-faint);
 }
@@ -76,7 +76,7 @@
 }
 
 .statSub {
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-dim);
 }
 
@@ -103,7 +103,7 @@
   border: 1px solid var(--u-border-2);
   padding: 3px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-muted);
 }
 
@@ -125,7 +125,7 @@
   background: var(--aqt-overlay-2);
   border: 1px solid var(--u-border);
   color: var(--u-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
   font-weight: 500;
   padding: 7px 12px;
   border-radius: 8px;
@@ -153,7 +153,7 @@
 
 .filterChipCount {
   font-family: var(--u-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-faint);
   background: var(--aqt-overlay-3);
   padding: 1px 6px;
@@ -195,7 +195,7 @@
 
 @media (min-width: 640px) {
   .filterSearch input {
-    font-size: 13px;
+    font-size: var(--text-caption);
   }
 }
 
@@ -221,7 +221,7 @@
   background: var(--aqt-overlay-2);
   border: 1px solid var(--u-border);
   color: var(--u-muted);
-  font-size: 12px;
+  font-size: var(--text-label);
   font-weight: 500;
   border-radius: 8px;
 }
@@ -239,16 +239,16 @@
   margin: 0;
   font-family: var(--u-display);
   font-weight: 700;
-  font-size: 22px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
+  letter-spacing: var(--text-title--letter-spacing);
   color: var(--u-fg);
 }
 
 .sectionMeta {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--u-faint);
 }
@@ -272,9 +272,9 @@
 }
 
 .table th {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--u-faint);
   text-align: left;
@@ -297,7 +297,7 @@
 .table td {
   padding: 12px 14px;
   border-bottom: 1px solid color-mix(in srgb, var(--u-border) 55%, var(--u-bg));
-  font-size: 13px;
+  font-size: var(--text-caption);
   vertical-align: middle;
   color: var(--u-fg);
 }
@@ -324,7 +324,7 @@
 
 .playerRank {
   font-family: var(--u-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-faint);
   min-width: 28px;
   text-align: right;
@@ -341,7 +341,7 @@
   justify-content: center;
   font-family: var(--u-display);
   font-weight: 800;
-  font-size: 12px;
+  font-size: var(--text-label);
   color: var(--u-muted);
   flex-shrink: 0;
   overflow: hidden;
@@ -358,7 +358,7 @@
 .playerName {
   font-weight: 600;
   color: var(--u-fg);
-  font-size: 13.5px;
+  font-size: var(--text-caption);
   text-decoration: none;
   max-width: 220px;
   overflow: hidden;
@@ -376,7 +376,7 @@
 }
 
 .playerSub {
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-dim);
 }
 
@@ -467,7 +467,7 @@
 
 .placementNum {
   font-family: var(--u-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-muted);
   min-width: 38px;
   text-align: right;
@@ -478,7 +478,7 @@
   align-items: center;
   gap: 6px;
   font-family: var(--u-mono);
-  font-size: 12px;
+  font-size: var(--text-label);
   color: var(--u-fg);
   font-weight: 600;
 }
@@ -528,9 +528,9 @@
 }
 
 .exStatLabel {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--u-faint);
 }
@@ -538,21 +538,21 @@
 .exStatValue {
   font-family: var(--u-display);
   font-weight: 700;
-  font-size: 22px;
+  font-size: var(--text-title);
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--u-fg);
 }
 
 .exSectionTitle {
-  font-size: 13px;
+  font-size: var(--text-caption);
   font-weight: 600;
   margin: 6px 0 2px;
   color: var(--u-fg);
 }
 
 .exSectionNote {
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-dim);
   margin-bottom: 10px;
 }
@@ -598,12 +598,12 @@
 
 .heroCardName {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-caption);
   color: var(--u-fg);
 }
 
 .heroCardPlaytime {
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-dim);
 }
 
@@ -619,7 +619,7 @@
   gap: 5px;
   background: var(--aqt-overlay-2);
   border: 1px solid var(--u-border-2);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-family: var(--u-mono);
   color: var(--u-muted);
   padding: 3px 7px;
@@ -627,7 +627,7 @@
 }
 
 .metricBadgeKey {
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-faint);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -654,14 +654,14 @@
   padding: 40px 20px;
   text-align: center;
   color: var(--u-muted);
-  font-size: 13px;
+  font-size: var(--text-caption);
 }
 
 .errorMsg {
   padding: 40px 20px;
   text-align: center;
   color: var(--u-rose);
-  font-size: 13px;
+  font-size: var(--text-caption);
 }
 
 .skelRow {
@@ -746,7 +746,7 @@
   color: var(--u-muted);
   font-family: inherit;
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-caption);
   padding: 8px 16px;
   border-radius: 7px;
   cursor: pointer;
@@ -768,7 +768,7 @@
 
 .viewSwitch .countBadge {
   font-family: var(--u-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-faint);
   background: var(--aqt-overlay-3);
   padding: 1px 6px;
@@ -793,9 +793,9 @@
 }
 
 .alphaLabel {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--u-faint);
   margin-right: 6px;
@@ -805,7 +805,7 @@
   padding: 5px 8px;
   border-radius: 6px;
   font-family: var(--u-mono);
-  font-size: 12px;
+  font-size: var(--text-label);
   color: var(--u-muted);
   min-width: 24px;
   text-align: center;
@@ -892,7 +892,7 @@
   justify-content: center;
   font-family: var(--u-display);
   font-weight: 800;
-  font-size: 15px;
+  font-size: var(--text-ui);
   color: var(--u-muted);
   flex-shrink: 0;
   text-transform: uppercase;
@@ -908,7 +908,7 @@
 
 .catCardName {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--text-body);
   color: var(--u-fg);
   white-space: nowrap;
   overflow: hidden;
@@ -921,7 +921,7 @@
 }
 
 .catCardMeta {
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-dim);
 }
 
@@ -938,9 +938,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--u-dim);
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -972,9 +972,9 @@
 }
 
 .catStatLabel {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--u-faint);
 }
@@ -982,7 +982,7 @@
 .catStatValue {
   font-family: var(--u-display);
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--text-heading);
   line-height: 1;
   color: var(--u-fg);
   font-variant-numeric: tabular-nums;

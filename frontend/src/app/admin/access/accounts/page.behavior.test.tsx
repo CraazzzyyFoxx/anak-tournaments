@@ -9,9 +9,9 @@
 //     restores it, rather than living in component state;
 //  3. one permission toggle end to end, through the shared `PermissionPicker`:
 //     checking a capability in the inspector's restrictions panel POSTs a deny;
-//  4. five columns do not fit a phone, so rows render as cards below `md`.
+//  4. six columns do not fit a phone, so rows render as cards below `md`.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, useState, type ReactNode } from "react";
+import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -156,7 +156,11 @@ async function settle(turns = 8, delayMs = 0) {
 
 function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
   const [, force] = useState(0);
-  rerender = () => force((value) => value + 1);
+  // Published from an effect, not during render: writing a module-scope binding
+  // while rendering is a side effect the react-compiler rules reject.
+  useEffect(() => {
+    rerender = () => force((value) => value + 1);
+  }, []);
   return <>{render()}</>;
 }
 
@@ -278,6 +282,22 @@ beforeEach(() => {
       action: "social",
       description: "Manage own linked accounts",
       created_at: "2026-01-01"
+    },
+    {
+      id: 73,
+      name: "registration.self_register",
+      resource: "registration",
+      action: "self_register",
+      description: "Self-register for a tournament",
+      created_at: "2026-01-01"
+    },
+    {
+      id: 74,
+      name: "workspace.self_create",
+      resource: "workspace",
+      action: "self_create",
+      description: "Create one's own workspace",
+      created_at: "2026-01-01"
     }
   ]);
   getUserDenies.mockReset().mockResolvedValue([]);
@@ -388,6 +408,21 @@ describe("Access › Accounts · one permission toggle", () => {
     await click(box);
 
     expect(addUserDeny).toHaveBeenCalledWith(90, 71, null);
+  });
+
+  // The whole point of a restrictable capability is that this screen can take
+  // it away; one that the backend gates but the picker never lists is
+  // unrevokable in practice.
+  it("can revoke workspace creation globally", async () => {
+    await mount("?id=90");
+    const box = await waitFor(
+      () => document.querySelector('[aria-label="Toggle workspace.self_create"]'),
+      "the workspace.self_create row"
+    );
+
+    await click(box);
+
+    expect(addUserDeny).toHaveBeenCalledWith(90, 74, null);
   });
 
   it("offers no restriction control without role.update", async () => {

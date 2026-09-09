@@ -29,6 +29,7 @@ const fetchMock = vi.fn();
 
 let superuser = true;
 let managesAny = true;
+let mayCreate = true;
 
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/hooks/usePermissions", () => ({
@@ -36,7 +37,8 @@ vi.mock("@/hooks/usePermissions", () => ({
     isLoaded: true,
     isSuperuser: superuser,
     isWorkspaceAdmin: () => managesAny,
-    canManageAnyWorkspace: () => managesAny
+    canManageAnyWorkspace: () => managesAny,
+    canUseCapability: () => mayCreate
   })
 }));
 vi.mock("@/stores/workspace.store", () => ({
@@ -47,6 +49,14 @@ vi.mock("@/stores/workspace.store", () => ({
 vi.mock("@/services/workspace.service", () => ({
   default: {
     getAll: (...args: unknown[]) => getAll(...args),
+    getOwner: vi.fn(async () => ({
+      auth_user_id: 3,
+      username: "ada",
+      email: "ada@example.com",
+      first_name: null,
+      last_name: null,
+      avatar_url: null
+    })),
     create: vi.fn(),
     uploadIcon: vi.fn()
   }
@@ -96,6 +106,8 @@ function workspace(overrides: Partial<Workspace> = {}): Workspace {
     custom_domain_verified_at: null,
     custom_domain_verification_token: null,
     discord_guild_id: null,
+    discord_guild_verified_at: null,
+    verification_status: "unverified",
     default_division_grid_version_id: null,
     default_division_grid_version: null,
     newcomer_scope: "workspace",
@@ -209,6 +221,7 @@ function setViewportWidth(width: number) {
 beforeEach(() => {
   superuser = true;
   managesAny = true;
+  mayCreate = true;
   replace.mockClear();
   setViewportWidth(1280);
   getAll.mockReset().mockResolvedValue([workspace()]);
@@ -249,6 +262,9 @@ describe("/admin/workspaces", () => {
     // The list shows none of this; the inspector is why the row is clickable.
     expect(inspector.textContent).toContain("Europe/Moscow");
     expect(inspector.textContent).toContain("Hidden from the public list");
+    // The owner is not on the workspace payload at all — the inspector is the
+    // only place on this screen that resolves it.
+    await waitFor(() => inspector.textContent?.includes("@ada"), "the resolved owner");
     expect(generalLinks(inspector)).toContain("/admin/workspaces/8/general");
   });
 
@@ -314,5 +330,39 @@ describe("/admin/workspaces", () => {
     // flags are what tells two workspaces apart on a phone.
     expect(cards[0].textContent).toContain("rivals");
     expect(cards[0].textContent).toContain("Hidden");
+  });
+
+  it("opens the create dialog for a non-superuser, because creation is no longer superuser-only", async () => {
+    superuser = false;
+    const container = await mount();
+    const create = await waitFor(
+      () =>
+        Array.from(container.querySelectorAll("button")).find(
+          (button) => button.textContent?.trim() === "Create workspace"
+        ),
+      "the create button"
+    );
+
+    expect(create.hasAttribute("disabled")).toBe(false);
+    await click(create);
+
+    const dialog = await waitFor(() => document.querySelector('[role="dialog"]'), "the dialog");
+    expect(dialog.querySelector("#slug")).not.toBeNull();
+    expect(dialog.querySelector("#name")).not.toBeNull();
+  });
+
+  // `workspace.self_create` is allow-by-default and revocable per account
+  // (negative RBAC). The backend refuses a denied account outright, so the
+  // button must not be offered as a guaranteed 403.
+  it("drops the create button when the account's creation right was revoked", async () => {
+    mayCreate = false;
+    const container = await mount();
+    await waitFor(() => container.textContent?.includes("Rivals Cup"), "the workspace row");
+
+    expect(
+      Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent?.trim() === "Create workspace"
+      )
+    ).toBeUndefined();
   });
 });

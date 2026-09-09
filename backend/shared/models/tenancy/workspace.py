@@ -94,6 +94,16 @@ class Workspace(db.TimeStampIntegerMixin):
     owner_id: Mapped[int | None] = mapped_column(
         ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Self-service trust tier (workspace self-service design §4.2). Plain
+    # string, not a Postgres enum -- same "stay flexible" precedent as
+    # ``newcomer_scope`` below: a fourth tier is a data change, not a
+    # migration. ``unverified`` (default for every self-service creation)
+    # blocks GPU compute jobs, defers full-history achievement recomputes and
+    # keeps the workspace off the public directory; ``verified`` lifts the
+    # compute gates; ``trusted`` additionally makes it publicly listed. Only a
+    # superuser moves a workspace between tiers
+    # (``rpc.app.workspaces.verification_set``) -- there is no automatic path.
+    verification_status: Mapped[str] = mapped_column(String(16), server_default="unverified", nullable=False)
     default_division_grid_version_id: Mapped[int | None] = mapped_column(
         ForeignKey("division_grid_version.id", ondelete="SET NULL"),
         nullable=True,
@@ -112,8 +122,8 @@ class Workspace(db.TimeStampIntegerMixin):
     # Admin-editable via the same PATCH /workspaces/{id} path as
     # ``branding_enabled``.
     newcomer_scope: Mapped[str] = mapped_column(String(16), server_default="global", nullable=False)
-    members: Mapped[list["WorkspaceMember"]] = relationship(back_populates="workspace", passive_deletes=True)
-    default_division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(
+    members: Mapped[list[WorkspaceMember]] = relationship(back_populates="workspace", passive_deletes=True)
+    default_division_grid_version: Mapped[DivisionGridVersion | None] = relationship(
         foreign_keys=[default_division_grid_version_id],
         lazy="selectin",
     )
@@ -133,5 +143,5 @@ class WorkspaceMember(db.TimeStampIntegerMixin):
     # other than their global ``players.user.name``. Falls back to that name.
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    workspace: Mapped["Workspace"] = relationship(back_populates="members")
-    player: Mapped["User"] = relationship()
+    workspace: Mapped[Workspace] = relationship(back_populates="members")
+    player: Mapped[User] = relationship()

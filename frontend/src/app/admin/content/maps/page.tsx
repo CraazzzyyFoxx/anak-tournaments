@@ -3,7 +3,7 @@
 import { useId, useMemo } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
+import { Gamepad2, Pencil, Swords, Trash2 } from "lucide-react";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AssetPreview } from "@/components/admin/AssetPreview";
@@ -12,6 +12,7 @@ import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/c
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { createAliasesColumn } from "@/components/admin/catalog-table-columns";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
@@ -176,16 +177,13 @@ export default function MapsAdminPage() {
       accessorKey: "in_competitive",
       header: "Mode Pool",
       size: 120,
+      meta: adminColumnMeta<MapRead>({ align: "center" }),
       cell: ({ row }) => {
         const map = row.original;
         return map.in_competitive !== false ? (
-          <Badge variant="secondary" className="border-success/30 text-success bg-success/10">
-            Competitive
-          </Badge>
+          <StatusIcon icon={Swords} label="Competitive" variant="success" />
         ) : (
-          <Badge variant="outline" className="text-muted-foreground">
-            Casual
-          </Badge>
+          <StatusIcon icon={Gamepad2} label="Casual" variant="muted" />
         );
       },
     },

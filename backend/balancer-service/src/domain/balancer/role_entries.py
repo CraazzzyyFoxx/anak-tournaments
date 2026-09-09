@@ -20,5 +20,3 @@ def resolve_division_from_rank(
     if rank_value is None:
         return None
     return resolve_tournament_division(rank_value, tournament_grid=grid)
-
-

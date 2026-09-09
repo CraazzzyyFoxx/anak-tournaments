@@ -11,6 +11,10 @@ runs ML inference like every other compute job). Wired from ``serve_rpc.py``.
 Auth mirrors the routes: create_job / recalculate / points gate per
 ``_require_actor`` (compute → workspace-scoped ``analytics.update``; train_ml →
 superuser); the deprecated train/infer use a global ``analytics.update``.
+On top of the permission gate, every workspace-scoped GPU job (``kind=compute``
+and the deprecated train/infer) also requires the workspace to be verified or
+trusted — see ``shared.services.workspace_tier``: self-service workspaces start
+``unverified`` and must not burn GPU time (403 ``workspace_not_verified``).
 """
 
 from __future__ import annotations
@@ -27,11 +31,13 @@ from shared.messaging.config import (
     ANALYTICS_TRAIN_QUEUE,
 )
 from shared.observability import publish_message
+from shared.repository import WorkspaceRepository
 from shared.schemas.events import (
     AnalyticsInferRequest,
     AnalyticsJobRequested,
     AnalyticsTrainRequest,
 )
+from shared.services.workspace_tier import is_verified_or_trusted
 from src.core import config, db
 from src.core.jobs import JOB_KIND_COMPUTE, JOB_KIND_TRAIN_ML, create_analytics_job, job_runtime
 from src.schemas.ml import (
@@ -48,6 +54,19 @@ from . import _common as c
 # Mirror src.services.analytics.flows.POINTS without importing that module
 # (it pulls pandas/numpy/openskill into the lightweight svc).
 _POINTS = "Points"
+
+_workspaces = WorkspaceRepository()
+
+
+async def _require_verified_workspace(session: Any, workspace_id: int | None) -> None:
+    """GPU gate: a workspace-scoped compute/train/infer job only runs for a
+    verified or trusted workspace. Global (``workspace_id is None``) jobs are
+    superuser/global-permission territory and stay ungated."""
+    if workspace_id is None:
+        return
+    workspace = await _workspaces.get(session, workspace_id)
+    if workspace is None or not is_verified_or_trusted(workspace):
+        raise HTTPException(status_code=403, detail="workspace_not_verified")
 
 
 async def _require_actor(
@@ -88,11 +107,11 @@ def register(broker: Any, logger: Any) -> None:
             logger.exception("Failed to publish analytics job to RabbitMQ")
             raise HTTPException(status_code=502, detail=failed)
 
-    async def _dispatch(
-        session: Any, body: AnalyticsJobCreate, workspace_id: int | None, user: Any
-    ) -> Any:
+    async def _dispatch(session: Any, body: AnalyticsJobCreate, workspace_id: int | None, user: Any) -> Any:
         """Create + enqueue a job, mirroring routes.v2.create_analytics_job."""
         await _require_actor(body, workspace_id, user)
+        if body.kind == JOB_KIND_COMPUTE:
+            await _require_verified_workspace(session, workspace_id)
         try:
             job = await create_analytics_job(
                 session,
@@ -191,6 +210,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_permission(c.actor(data), "analytics", "update")
             body = TrainRequestBody.model_validate(c.payload(data))
+            await _require_verified_workspace(session, body.workspace_id)
             event = AnalyticsTrainRequest(
                 cutoff_tournament_id=body.cutoff_tournament_id,
                 model_kinds=body.model_kinds,
@@ -213,6 +233,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             c.require_permission(c.actor(data), "analytics", "update")
             body = InferRequestBody.model_validate(c.payload(data))
+            await _require_verified_workspace(session, body.workspace_id)
             event = AnalyticsInferRequest(
                 tournament_id=body.tournament_id,
                 model_kinds=body.model_kinds,

@@ -405,7 +405,9 @@ class StreamPollTick:
             data={"tournament_id": int(tournament_id), "live_count": int(live_count)},
         )
         try:
-            await publish_envelope_to_redis(self._redis, topic=realtime_topics.streams(tournament_id), envelope=envelope)
+            await publish_envelope_to_redis(
+                self._redis, topic=realtime_topics.streams(tournament_id), envelope=envelope
+            )
         except Exception:  # pragma: no cover - best-effort signal, Redis write already landed
             logger.exception(f"Failed to publish stream.updated for tournament {tournament_id}")
 

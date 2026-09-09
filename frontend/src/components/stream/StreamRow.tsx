@@ -92,14 +92,14 @@ export function StreamRow({ entry, isSelected, onSelect, now }: Readonly<StreamR
         <span className="flex min-w-0 items-baseline gap-2">
           <span
             className={cn(
-              "truncate text-[13.5px] font-semibold",
+              "truncate text-caption font-semibold",
               isSelected ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg)]"
             )}
           >
             {name}
           </span>
           {entry.player?.team ? (
-            <span className="truncate text-[12px] text-[color:var(--aqt-fg-muted)]">
+            <span className="truncate text-label text-[color:var(--aqt-fg-muted)]">
               {entry.player.team.name}
             </span>
           ) : null}
@@ -107,18 +107,18 @@ export function StreamRow({ entry, isSelected, onSelect, now }: Readonly<StreamR
 
         <span className="flex min-w-0 items-center gap-2">
           {entry.viewer_count != null ? (
-            <span className="aqt-mono shrink-0 text-[12px] font-semibold tabular-nums text-[color:var(--aqt-fg-dim)]">
+            <span className="aqt-tnum shrink-0 text-label font-semibold tabular-nums text-[color:var(--aqt-fg-dim)]">
               {t("stream.card.watching", { count: entry.viewer_count })}
             </span>
           ) : null}
           {uptime ? (
-            <span className="aqt-mono shrink-0 text-[12px] tabular-nums text-[color:var(--aqt-fg-faint)]">
+            <span className="aqt-tnum shrink-0 text-label tabular-nums text-[color:var(--aqt-fg-faint)]">
               <span className="sr-only">{t("stream.card.onAir", { duration: uptime })}</span>
               <span aria-hidden>{uptime}</span>
             </span>
           ) : null}
           {onSelect ? null : (
-            <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-[color:var(--aqt-fg-dim)]">
+            <span className="inline-flex shrink-0 items-center gap-1 text-label text-[color:var(--aqt-fg-dim)]">
               <ExternalLink className="size-3" aria-hidden />
               {streamPlatformLabel(entry)}
             </span>
@@ -129,7 +129,7 @@ export function StreamRow({ entry, isSelected, onSelect, now }: Readonly<StreamR
             of emoji; letting one of them set the row height is what made the
             old grid ragged. */}
         {entry.title ? (
-          <span className="truncate text-[12px] text-[color:var(--aqt-fg-muted)]">
+          <span className="truncate text-label text-[color:var(--aqt-fg-muted)]">
             {entry.title}
           </span>
         ) : null}

@@ -113,6 +113,7 @@ class _ExplodingRepo:
 
 from tests._fakes import FakeSessionCache as _HitCache
 
+
 def test_full_cache_hit_answers_the_whole_payload_without_the_database() -> None:
     """Every component in the entry => zero queries and zero rewrites.
 
@@ -126,9 +127,7 @@ def test_full_cache_hit_answers_the_whole_payload_without_the_database() -> None
         "roles": ["user"],
         "permissions": [{"resource": "tournament", "action": "read"}],
         "workspaces": [[11, "ws-eleven"]],
-        "workspace_roles": {
-            "11": {"roles": ["admin"], "permissions": [{"resource": "*", "action": "*"}]}
-        },
+        "workspace_roles": {"11": {"roles": ["admin"], "permissions": [{"resource": "*", "action": "*"}]}},
         "denies": [{"resource": "tournament", "action": "delete", "workspace_id": None}],
     }
     cache = _HitCache(entry)

@@ -140,7 +140,7 @@ class HeroLeaderboardParams(pagination.PaginationParams):
     stat: enums.LogStatsName = enums.LogStatsName.Performance
 
     @classmethod
-    def from_query_params(cls, query_params: HeroLeaderboardQueryParams) -> "HeroLeaderboardParams":  # type: ignore[override]
+    def from_query_params(cls, query_params: HeroLeaderboardQueryParams) -> HeroLeaderboardParams:  # type: ignore[override]
         return cls(
             page=query_params.page,
             per_page=query_params.per_page,

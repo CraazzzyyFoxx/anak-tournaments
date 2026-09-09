@@ -257,7 +257,9 @@ def register(broker: Any, logger: Any) -> None:
             if form is None:
                 return None
             # The rule is the workspace's now; one scalar read feeds the sync serializer.
-            requirement = await subscription_config.subscription_config_service.load_workspace_requirement_blob(session, ctx.ws_id)
+            requirement = await subscription_config.subscription_config_service.load_workspace_requirement_blob(
+                session, ctx.ws_id
+            )
             is_open = await windows_service.load_registration_open(session, ctx.id)
             return _dump(serialize_registration_form(form, is_open=is_open, subscription_requirement=requirement))
 
@@ -272,8 +274,12 @@ def register(broker: Any, logger: Any) -> None:
             body = RegistrationFormUpsert.model_validate(_payload(data))
             # _tournament_ctx already 404s on a missing tournament;
             # upsert_registration_form commits internally.
-            form = await reg_svc.registration_service.upsert_registration_form(session, ctx.id, body, workspace_id=ctx.ws_id)
-            requirement = await subscription_config.subscription_config_service.load_workspace_requirement_blob(session, ctx.ws_id)
+            form = await reg_svc.registration_service.upsert_registration_form(
+                session, ctx.id, body, workspace_id=ctx.ws_id
+            )
+            requirement = await subscription_config.subscription_config_service.load_workspace_requirement_blob(
+                session, ctx.ws_id
+            )
             is_open = await windows_service.load_registration_open(session, ctx.id)
             return _dump(serialize_registration_form(form, is_open=is_open, subscription_requirement=requirement))
 
@@ -298,7 +304,8 @@ def register(broker: Any, logger: Any) -> None:
                 include_terminal=include_terminal,
             )
             items = [
-                await team_service.teams_service.describe_team(session, team, include_invites=True) for team, _occupancy in pairs
+                await team_service.teams_service.describe_team(session, team, include_invites=True)
+                for team, _occupancy in pairs
             ]
             # The number the organizer must see before pressing export: these
             # players are on no team, so the export cannot place them.
@@ -432,7 +439,9 @@ def register(broker: Any, logger: Any) -> None:
 
         async def op(session: Any) -> Any:
             await _tournament_ctx(session, data, "read")
-            return _dump(await team_service.teams_service.list_invite_history(session, team_id=_path_int(data, "team_id")))
+            return _dump(
+                await team_service.teams_service.list_invite_history(session, team_id=_path_int(data, "team_id"))
+            )
 
         return await _run(logger, op)
 
@@ -1161,7 +1170,9 @@ def register(broker: Any, logger: Any) -> None:
     async def _sub_config_list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = _workspace_ctx(data, "read")
-            return _dump(await subscription_config.subscription_config_service.list_provider_configs(session, ctx.ws_id))
+            return _dump(
+                await subscription_config.subscription_config_service.list_provider_configs(session, ctx.ws_id)
+            )
 
         return await _run(logger, op)
 
@@ -1196,7 +1207,11 @@ def register(broker: Any, logger: Any) -> None:
                     "codes_replaced": body.codes is not None,
                 },
             )
-            return _dump(await subscription_config.subscription_config_service.upsert_provider_config(session, workspace_id=ctx.ws_id, body=body))
+            return _dump(
+                await subscription_config.subscription_config_service.upsert_provider_config(
+                    session, workspace_id=ctx.ws_id, body=body
+                )
+            )
 
         return await _run(logger, op)
 
@@ -1206,7 +1221,9 @@ def register(broker: Any, logger: Any) -> None:
     async def _sub_requirement_get(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = _workspace_ctx(data, "read")
-            return _dump(await subscription_config.subscription_config_service.get_workspace_requirement(session, ctx.ws_id))
+            return _dump(
+                await subscription_config.subscription_config_service.get_workspace_requirement(session, ctx.ws_id)
+            )
 
         return await _run(logger, op)
 
@@ -1237,7 +1254,9 @@ def register(broker: Any, logger: Any) -> None:
                 after={"requirement": body.requirement},
             )
             return _dump(
-                await subscription_config.subscription_config_service.upsert_workspace_requirement(session, workspace_id=ctx.ws_id, body=body)
+                await subscription_config.subscription_config_service.upsert_workspace_requirement(
+                    session, workspace_id=ctx.ws_id, body=body
+                )
             )
 
         return await _run(logger, op)

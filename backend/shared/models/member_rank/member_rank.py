@@ -54,9 +54,7 @@ class MemberRank(db.TimeStampIntegerMixin):
     )
 
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
-    workspace_member_id: Mapped[int] = mapped_column(
-        ForeignKey("workspace_member.id", ondelete="CASCADE"), index=True
-    )
+    workspace_member_id: Mapped[int] = mapped_column(ForeignKey("workspace_member.id", ondelete="CASCADE"), index=True)
     author_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("auth.user.id", ondelete="CASCADE"), nullable=True, index=True
     )

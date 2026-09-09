@@ -58,7 +58,7 @@ const OpponentRecord = ({ o }: { o: OpponentStat }) => (
 );
 
 const thLeft =
-  "aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]";
+  "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2 text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 const thRight = `${thLeft} text-right`;
 
 const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) => {
@@ -94,7 +94,7 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
                   </DialogTitle>
                 </DialogHeader>
                 <div className="max-h-[60vh] overflow-y-auto">
-                  <table className="w-full border-collapse text-[13px]">
+                  <table className="w-full border-collapse text-caption">
                     <thead>
                       <tr>
                         <th className={thLeft} style={{ width: 34 }}>#</th>
@@ -112,15 +112,15 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
                             key={o.name}
                             className="border-b border-[color:var(--aqt-border)] last:border-b-0 hover:bg-[color:var(--aqt-overlay-2)]"
                           >
-                            <td className="aqt-mono px-3 py-2 text-[color:var(--aqt-fg-faint)]">
+                            <td className="aqt-tnum px-3 py-2 text-[color:var(--aqt-fg-faint)]">
                               {String(i + 1).padStart(2, "0")}
                             </td>
                             <td className="px-3 py-2 font-semibold text-[color:var(--aqt-fg)]">{o.name}</td>
-                            <td className="aqt-mono px-3 py-2 text-right">
+                            <td className="aqt-tnum px-3 py-2 text-right">
                               <OpponentRecord o={o} />
                             </td>
                             <td
-                              className="aqt-mono px-3 py-2 text-right font-bold"
+                              className="aqt-tnum px-3 py-2 text-right font-bold"
                               style={{ color: wrColor(wr, total) }}
                             >
                               {total > 0 ? `${wr.toFixed(0)}%` : "—"}
@@ -147,7 +147,7 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
           </div>
         ))}
         {opponentStats.length === 0 ? (
-          <div className="p-4 text-center text-[13px] text-[color:var(--aqt-fg-dim)]">{t("users.matches.noData")}</div>
+          <div className="p-4 text-center text-caption text-[color:var(--aqt-fg-dim)]">{t("users.matches.noData")}</div>
         ) : null}
       </CardSurface>
 
@@ -163,7 +163,7 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
               </span>
               <span className="aqt-pct tabular-nums">{stats.w}-{stats.l}</span>
               <span
-                className="aqt-mono text-[12px] font-bold"
+                className="aqt-tnum text-label font-bold"
                 style={{
                   color: winrate > 55 ? "var(--aqt-emerald)" : winrate < 45 ? "var(--aqt-rose)" : "var(--aqt-amber)"
                 }}

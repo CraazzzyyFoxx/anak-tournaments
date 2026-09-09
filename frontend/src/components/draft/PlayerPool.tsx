@@ -110,7 +110,7 @@ export function PlayerPool({
     <section aria-labelledby={headingId}>
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[color:var(--aqt-border)] pb-3">
         <h2 id={headingId} className="font-onest text-lg font-semibold">{t("availablePool")}</h2>
-        <span className="font-mono text-xs text-[color:var(--aqt-fg-muted)]">{visiblePlayers.length}/{totalPlayers}</span>
+        <span className="text-xs text-[color:var(--aqt-fg-muted)]">{visiblePlayers.length}/{totalPlayers}</span>
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -297,13 +297,13 @@ export function PlayerPool({
                       <span className="pointer-events-auto inline-flex min-w-0 items-center gap-1" title={t(`roles.${primaryRole}`)}>
                         <PlayerRoleIcon role={getRoleIconName(primaryRole)} size={18} color={ROLE_ACCENT[primaryRole]} />
                         {player.sub_role && (
-                          <span className="truncate text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
+                          <span className="truncate text-label uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
                             {formatSubRoleLabel(player.sub_role)}
                           </span>
                         )}
                       </span>
                     ) : (
-                      <span className="rounded border border-[color:var(--aqt-border-2)] px-1 text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
+                      <span className="rounded border border-[color:var(--aqt-border-2)] px-1 text-label uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
                         {t("noRole")}
                       </span>
                     )}
@@ -311,7 +311,7 @@ export function PlayerPool({
                       <PlayerRoleIcon key={entry} role={getRoleIconName(entry)} size={12} color="var(--aqt-fg-faint)" />
                     ))}
                     {player.is_flex && (
-                      <span className="rounded border border-[color:var(--aqt-border-2)] px-1 text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
+                      <span className="rounded border border-[color:var(--aqt-border-2)] px-1 text-label uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
                         {t("flex")}
                       </span>
                     )}

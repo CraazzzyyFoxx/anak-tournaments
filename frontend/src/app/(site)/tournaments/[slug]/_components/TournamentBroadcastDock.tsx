@@ -135,7 +135,7 @@ export function TournamentBroadcastDock({ streams, className }: Readonly<Tournam
         onClick={() => toggle(true)}
         className={cn(
           ANCHOR,
-          "inline-flex items-center gap-2 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card)]/95 px-3.5 py-2.5 text-[13px] font-semibold text-[color:var(--aqt-fg)] shadow-xl backdrop-blur outline-none transition-colors hover:border-[color:var(--aqt-teal)] hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]",
+          "inline-flex items-center gap-2 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card)]/95 px-3.5 py-2.5 text-caption font-semibold text-[color:var(--aqt-fg)] shadow-xl backdrop-blur outline-none transition-colors hover:border-[color:var(--aqt-teal)] hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]",
           className
         )}
       >
@@ -224,7 +224,7 @@ export function TournamentBroadcastDock({ streams, className }: Readonly<Tournam
               href={featured.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex w-fit items-center gap-2 rounded-[9px] border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-3 py-2 text-[13px] font-semibold text-inherit no-underline outline-none transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+              className="inline-flex w-fit items-center gap-2 rounded-[9px] border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-3 py-2 text-caption font-semibold text-inherit no-underline outline-none transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
             >
               <SocialIcon provider={featured.platform} size={14} />
               <span>{t("stream.broadcast.watchOn", { platform: streamPlatformLabel(featured) })}</span>
@@ -242,7 +242,7 @@ export function TournamentBroadcastDock({ streams, className }: Readonly<Tournam
                     href={entry.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-[7px] border border-[color:var(--aqt-border-2)] px-2 py-1 text-[12.5px] font-medium text-inherit no-underline outline-none transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+                    className="inline-flex items-center gap-1.5 rounded-[7px] border border-[color:var(--aqt-border-2)] px-2 py-1 text-caption font-medium text-inherit no-underline outline-none transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
                   >
                     <SocialIcon provider={entry.platform} size={12} />
                     <span>{entry.channel || streamPlatformLabel(entry)}</span>

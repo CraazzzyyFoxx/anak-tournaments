@@ -194,6 +194,9 @@ export default defineConfig({
       "src/components/FavoriteStarButton.behavior.test.tsx",
       "src/components/UserSearch.behavior.test.tsx",
       "src/components/StandingsTable.advance.behavior.test.tsx",
+      // The only workspace-creation surface a plain account can reach; unrun,
+      // a green suite would coexist with a dead self-service entry point.
+      "src/components/CreateWorkspaceLauncher.behavior.test.tsx",
       // Same file-level rule: `account-settings` is under `src/components`, and
       // these are its only vitest files so far.
       "src/components/account-settings/MyAccountSection.behavior.test.tsx",
@@ -201,6 +204,17 @@ export default defineConfig({
       // Same file-level rule: `src/components/match` is otherwise untested, and
       // this pins that the log download is offered only to a signed-in viewer.
       "src/components/match/MatchLogIndicator.behavior.test.tsx",
+      // `src/components/notifications` is vitest-only, so a directory glob is
+      // safe and covers the next test added without another edit to this list.
+      // Unrun, a green suite would coexist with a bell that never refetches.
+      "src/components/notifications/**/*.test.tsx",
+      // `src/components/roster-shape` is vitest-only, so a directory glob is
+      // safe here too. Both files were the allow-list trap in its loud form:
+      // unmatched, they fell into bun's complement, where the editor's mount
+      // test has no DOM at all (`document is not defined`) — a red suite for a
+      // reason that has nothing to do with the code under test.
+      "src/components/roster-shape/**/*.test.ts",
+      "src/components/roster-shape/**/*.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/tournament-section-nav.test.ts",
       "src/app/(site)/tournaments/[slug]/_components/tournament-shared-ui.test.tsx",
       "src/app/(site)/tournaments/[slug]/_components/PhaseTimeline.behavior.test.tsx",

@@ -68,7 +68,6 @@ var Routes = []edge.RouteSpec{
 	{Method: "DELETE", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel", Queue: "rpc.parser.discord_channel.delete", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
 }
 
-
 // AchievementAdminRoutes are the workspace-scoped achievement rule/library/override
 // admin endpoints (src/routes/admin/achievement_rule.py), served via the ordered
 // edge.Subtree matcher under /api/v1/admin/ws/ (literal segments like

@@ -27,7 +27,7 @@ function render(node: React.ReactNode): string {
 // component used to bypass it entirely and emit a bare `<div className={…}>`,
 // so "Showing 1–2 of 2" rendered at default size and color, flush against the
 // card edge, with none of the chrome the caller's className provides.
-const SUMMARY_WRAPPER = '<div class="text-[12px] text-[color:var(--aqt-fg-dim)]">';
+const SUMMARY_WRAPPER = '<div class="text-label text-[color:var(--aqt-fg-dim)]">';
 
 describe("DataPagination", () => {
   it("styles the summary identically whether or not page controls render", () => {

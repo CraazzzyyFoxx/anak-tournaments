@@ -38,9 +38,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         schema="casual",
     )
-    op.create_index(
-        op.f("ix_casual_team_workspace_id"), "team", ["workspace_id"], unique=False, schema="casual"
-    )
+    op.create_index(op.f("ix_casual_team_workspace_id"), "team", ["workspace_id"], unique=False, schema="casual")
 
     op.create_table(
         "player",
@@ -91,12 +89,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         schema="casual",
     )
-    op.create_index(
-        op.f("ix_casual_match_custom_game_id"), "match", ["custom_game_id"], unique=False, schema="casual"
-    )
-    op.create_index(
-        op.f("ix_casual_match_workspace_id"), "match", ["workspace_id"], unique=False, schema="casual"
-    )
+    op.create_index(op.f("ix_casual_match_custom_game_id"), "match", ["custom_game_id"], unique=False, schema="casual")
+    op.create_index(op.f("ix_casual_match_workspace_id"), "match", ["workspace_id"], unique=False, schema="casual")
     op.create_index(op.f("ix_casual_match_map_id"), "match", ["map_id"], unique=False, schema="casual")
 
 

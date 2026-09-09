@@ -341,7 +341,9 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
         )
 
     async def act(self, kind: PickBanKind, side: str, item_id: int, action: str = "ban") -> None:
-        await pick_ban_action_service.perform_pick_ban_action(self.store, self.encounter_id, kind, side, item_id, action)
+        await pick_ban_action_service.perform_pick_ban_action(
+            self.store, self.encounter_id, kind, side, item_id, action
+        )
 
     async def ban_out_the_map_round(self) -> int:
         """Both sides ban this round's first two candidates; the decider takes

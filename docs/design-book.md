@@ -70,27 +70,26 @@ Every `--aqt-*` is declared **once** as an HSL triplet (`--aqt-h-*`) and expande
 
 | Role | Typeface | Reason |
 |---|---|---|
-| UI + headings | **Inter** (400/500/600/700) | mixed-case, **never** condensed caps |
+| UI, headings, data/labels | **Inter** (400/500/600/700) | mixed-case, **never** condensed caps; the "tactical voice" (eyebrows, table heads, scores) is Inter uppercase with `tracking-label` + `tabular-nums` (`.aqt-tnum`, `--aqt-data`) |
 | Display + large numbers | **Onest** (500/600/700/800) | a Cyrillic-native geometric grotesque: "Grand Final" and its Cyrillic equivalent have identical plastics. Space Grotesk was rejected — it has no Cyrillic |
-| Data, labels, the "tactical voice" | **JetBrains Mono** (400/600/700) | mono coordinates, uppercase labels with `.08–.16em` tracking, `tabular-nums` |
+| Code, identifiers | system monospace (Tailwind `font-mono`) | API keys, usernames, log output only — never UI labels. JetBrains Mono was retired: at 11px uppercase it read as an IDE, not a product |
 
 ```tsx
 // app/layout.tsx — the fonts are self-hosted (next/font/local), NOT next/font/google:
 // next/font/google fetches from fonts.gstatic.com at build time, and a production build
 // once broke on a hash rotation. The .variable classes sit on <html>, not on <body> —
-// globals.css aliases them from :root (--aqt-mono/--aqt-display), and a custom property
+// globals.css aliases them from :root (--aqt-data/--aqt-display), and a custom property
 // resolves where it is declared: an alias on :root cannot see a variable
 // set one level below (<body>).
 import localFont from "next/font/local";
 
 const inter = localFont({ src: "./fonts/inter-variable.woff2", variable: "--font-inter" });
 const onest = localFont({ src: "./fonts/onest-variable.woff2", variable: "--font-onest" });
-const jetbrainsMono = localFont({ src: "./fonts/jetbrains-mono-variable.woff2", variable: "--font-jetbrains-mono" });
 
-// <html className={cn(inter.variable, onest.variable, jetbrainsMono.variable)}>
+// <html className={cn(inter.variable, onest.variable)}>
 ```
 
-Scale: display 52/700 (Onest) · h1 30/600 · h2 22/600 · title 17/600 · body 15/400 · data mono 15 · label mono 11 uppercase. **The readability floor is 11px**: 9–10px is acceptable only for decorative mono coordinates that are not required to be read.
+**Scale = type roles**, defined once in `globals.css` (`@theme static`) and used as `text-<role>` / `var(--text-<role>)`; each carries its line-height, weight stays explicit. `label 12/1.25` · `caption 13/1.4` · `body 14/1.5` · `ui 15/1.5` · `heading 18/1.3` · `title 22/1.15/−.01em` (section h2, mixed-case) · `headline 30/1.1/−.02em` · `display clamp(32–56)/1.03/−.01em` (hero h1). Uppercase labels take `tracking-label` (0.08em). No `text-[Npx]` anywhere; **the readability floor is 12px** for anything meant to be read (R6 in `check-design-compliance.mjs` still bans <11).
 
 ## 3. Roles, divisions, avatars
 

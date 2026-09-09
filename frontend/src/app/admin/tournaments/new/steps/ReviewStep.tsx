@@ -1,11 +1,8 @@
 "use client";
 
-import {
-  SCHEDULABLE_PHASES,
-  type SchedulablePhase
-} from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { SCHEDULABLE_PHASES, TOURNAMENT_STATUS_LABELS } from "@/lib/tournament-lifecycle";
 import type { SubscriptionRequirement } from "@/types/registration.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
@@ -29,13 +26,6 @@ interface ReviewStepProps {
    *  enforce what the workspace already decided. */
   subscriptionRequirement: SubscriptionRequirement | undefined;
 }
-
-const PHASE_LABELS: Record<SchedulablePhase, string> = {
-  registration: "Registration",
-  draft: "Draft",
-  check_in: "Check-in",
-  live: "Live"
-};
 
 /** Same labels the Rules step offers, so the summary cannot rename a choice.
  *  A ternary here used to read every non-draft formation as "Auto-balance". */
@@ -97,7 +87,7 @@ export function ReviewStep({
           {scheduledPhases.map((phase) => (
             <Row
               key={phase}
-              label={PHASE_LABELS[phase]}
+              label={TOURNAMENT_STATUS_LABELS[phase]}
               value={`${schedule.phase_schedule[phase].starts_at}${
                 schedule.phase_schedule[phase].ends_at
                   ? ` → ${schedule.phase_schedule[phase].ends_at}`

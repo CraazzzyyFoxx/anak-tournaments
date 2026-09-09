@@ -52,7 +52,7 @@ const HeroStatsTable = ({
         type="button"
         onClick={() => onSortChange(k)}
         className={cn(
-          "aqt-mono inline-flex select-none items-center gap-1 rounded-sm text-[11px] font-bold uppercase tracking-[0.1em] outline-none transition-colors",
+          "aqt-tnum inline-flex select-none items-center gap-1 rounded-sm text-label font-bold uppercase tracking-label outline-none transition-colors",
           "focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
           sort === k ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-faint)] hover:text-[color:var(--aqt-fg-muted)]"
         )}
@@ -80,22 +80,22 @@ const HeroStatsTable = ({
           onValueChange={onSearchChange}
           containerClassName="min-w-[180px] max-w-[280px] flex-1"
         />
-        <span className="aqt-mono inline-flex items-center gap-1.5 text-[11.5px] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-tnum inline-flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-faint)]">
           <Crown aria-hidden className="h-3 w-3 text-[color:var(--aqt-amber)]" />
           {t("users.heroes.recordTitle")}
         </span>
       </div>
       <div className="overflow-x-auto">
-        <table className="aqt-tnum w-full border-collapse text-[13.5px]">
+        <table className="aqt-tnum w-full border-collapse text-caption">
           <thead>
             <tr>
               {sortTh(t("users.heroes.col.stat"), "name", "left")}
               {sortTh(t("users.heroes.col.overall"), "overall")}
-              <th scope="col" className="aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.bestYou")}</th>
+              <th scope="col" className="aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.bestYou")}</th>
               {sortTh(t("users.heroes.col.avg10"), "avg10")}
               {sortTh("Δ", "delta", "right", t("users.heroes.col.delta"))}
-              <th scope="col" className="aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.bestAll")}</th>
-              <th scope="col" className="aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.global10")}</th>
+              <th scope="col" className="aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.bestAll")}</th>
+              <th scope="col" className="aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.global10")}</th>
             </tr>
           </thead>
           <tbody>
@@ -111,27 +111,27 @@ const HeroStatsTable = ({
                     />
                   ) : null}
                 </td>
-                <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{formatStatValue(format, r.name, r.overall)}</td>
-                <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
+                <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{formatStatValue(format, r.name, r.overall)}</td>
+                <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
                   {r.bestYou != null ? formatStatValue(format, r.name, r.bestYou) : "—"}
                 </td>
-                <td className="aqt-mono px-3 py-2 text-right font-semibold text-[color:var(--aqt-fg)]">{formatStatValue(format, r.name, r.avg10)}</td>
+                <td className="aqt-tnum px-3 py-2 text-right font-semibold text-[color:var(--aqt-fg)]">{formatStatValue(format, r.name, r.avg10)}</td>
                 <td
-                  className="aqt-mono px-3 py-2 text-right font-bold"
+                  className="aqt-tnum px-3 py-2 text-right font-bold"
                   style={{ color: r.delta == null ? "var(--aqt-fg-faint)" : r.delta >= 0 ? "var(--aqt-emerald)" : "var(--aqt-rose)" }}
                 >
                   {r.delta != null ? formatDelta(r.delta) : "—"}
                 </td>
-                <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-dim)]">
+                <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-dim)]">
                   {r.bestAll != null ? formatStatValue(format, r.name, r.bestAll) : "—"}
                 </td>
-                <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-dim)]">{formatStatValue(format, r.name, r.global10)}</td>
+                <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-dim)]">{formatStatValue(format, r.name, r.global10)}</td>
               </tr>
             ))}
           </tbody>
         </table>
         {rows.length === 0 ? (
-          <div className="py-8 text-center text-[13px] text-[color:var(--aqt-fg-dim)]">{t("users.heroes.noStatsMatch")}</div>
+          <div className="py-8 text-center text-caption text-[color:var(--aqt-fg-dim)]">{t("users.heroes.noStatsMatch")}</div>
         ) : null}
       </div>
     </div>

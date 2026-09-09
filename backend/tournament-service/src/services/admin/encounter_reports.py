@@ -150,7 +150,8 @@ def _report_read(report: models.EncounterCaptainReport, encounter: models.Encoun
         comment=report.comment,
         custom_fields=dict(report.custom_fields_json or {}),
         map_codes=[
-            schemas.EncounterMapCodeRead(id=c.id, map_index=c.map_index, map_id=c.map_id, code=c.code) for c in report.map_codes
+            schemas.EncounterMapCodeRead(id=c.id, map_index=c.map_index, map_id=c.map_id, code=c.code)
+            for c in report.map_codes
         ],
         created_at=report.created_at.isoformat() if report.created_at else None,
         updated_at=report.updated_at.isoformat() if report.updated_at else None,

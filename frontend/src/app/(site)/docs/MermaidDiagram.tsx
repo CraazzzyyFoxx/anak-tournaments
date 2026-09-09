@@ -26,19 +26,14 @@ const THEME_FALLBACK = {
   "--aqt-fg": "#e6edf3",
   "--aqt-teal": "#2dd4bf"
 };
-const MONO_FALLBACK = '"JetBrains Mono", ui-monospace, Consolas, monospace';
+// Same stack as Tailwind's `font-mono`: diagrams are code-adjacent, not UI labels.
+const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
-/**
- * Reads the palette + mono stack off `<body>`, where next/font declares its
- * `--font-*` variables and the `:root` `--aqt-*` tokens have inherited down.
- * Note it reads `--font-jetbrains-mono`, not `--aqt-mono`: the latter is
- * declared on `:root` yet references a `<body>`-scoped variable, so it computes
- * to the guaranteed-invalid value and always reads back empty.
- */
+/** Reads the palette off `<body>`, where the `:root` `--aqt-*` tokens have inherited down. */
 function readTheme(): { c: Record<string, string>; mono: string } {
   const c: Record<string, string> = { ...THEME_FALLBACK };
   if (typeof document === "undefined" || typeof getComputedStyle !== "function" || !document.body) {
-    return { c, mono: MONO_FALLBACK };
+    return { c, mono: MONO };
   }
   const bodyStyle = getComputedStyle(document.body);
   const probe = document.createElement("div");
@@ -56,8 +51,7 @@ function readTheme(): { c: Record<string, string>; mono: string } {
       const normalised = getComputedStyle(probe).color;
       if (normalised) c[token] = normalised;
     }
-    const face = bodyStyle.getPropertyValue("--font-jetbrains-mono").trim();
-    return { c, mono: face ? `${face}, ${MONO_FALLBACK}` : MONO_FALLBACK };
+    return { c, mono: MONO };
   } finally {
     probe.remove();
   }

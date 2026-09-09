@@ -36,15 +36,14 @@ from shared.core.errors import BaseAPIException as HTTPException
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tests._fakes import FakeRedisClient as _FakeRedisClient  # noqa: E402
-from tests._fakes import make_oauth_info as _oauth_info  # noqa: E402
-
 from src.schemas.oauth import OAuthUserInfo  # noqa: E402
 from src.services.oauth import oauth  # noqa: E402
 from src.services.oauth_accounts import oauth_accounts  # noqa: E402
 from src.services.oauth_providers import oauth_providers  # noqa: E402
 from src.services.oauth_state import oauth_state  # noqa: E402
 from src.services.tickets import LINK_TICKETS  # noqa: E402
+from tests._fakes import FakeRedisClient as _FakeRedisClient  # noqa: E402
+from tests._fakes import make_oauth_info as _oauth_info  # noqa: E402
 
 # Every Redis-backed store in the service (the ticket store AND the state-nonce
 # store the flow claims through) reaches Redis via this one entry point.
@@ -332,9 +331,7 @@ def test_link_complete_rejects_mismatched_guard_even_with_valid_ticket_and_beare
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            oauth.link_complete(
-                session=None, user=bearer_user, ticket=ticket, guard="an-attackers-forged-guard-value"
-            )
+            oauth.link_complete(session=None, user=bearer_user, ticket=ticket, guard="an-attackers-forged-guard-value")
         )
 
     assert exc_info.value.status_code == 400

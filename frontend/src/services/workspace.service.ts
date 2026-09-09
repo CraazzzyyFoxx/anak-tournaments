@@ -12,8 +12,12 @@ import {
   DivisionGridPortableDocument,
   DivisionGridSaveResult,
   DivisionGridVersion,
+  ManageableDiscordGuild,
   Workspace,
-  WorkspaceMember
+  WorkspaceListScope,
+  WorkspaceMember,
+  WorkspaceOwner,
+  WorkspaceVerificationStatus
 } from "@/types/workspace.types";
 import type {
   DiscordChannelsResponse,
@@ -34,12 +38,49 @@ type DivisionGridTierInput = {
   ow_rank_max: number | null;
 };
 export default class workspaceService {
-  static async getAll(): Promise<Workspace[]> {
-    return apiFetch("/api/v1/workspaces").then((r) => r.json());
+  /**
+   * `public` (default) is the home-page directory: hidden and `unverified`
+   * workspaces are absent for everyone, superusers included. `admin` is the
+   * management list (superuser: everything, else own memberships) and `all`
+   * unions that with the directory, for the switcher and slug resolution.
+   */
+  static async getAll(scope: WorkspaceListScope = "public"): Promise<Workspace[]> {
+    return apiFetch("/api/v1/workspaces", { query: { scope } }).then((r) => r.json());
   }
 
   static async getById(id: number): Promise<Workspace> {
     return apiFetch(`/api/v1/workspaces/${id}`).then((r) => r.json());
+  }
+
+  /**
+   * The account accountable for a workspace, or `null` when none is stamped.
+   * Requires `workspace.update` — `getById` is public and carries no owner.
+   */
+  static async getOwner(id: number): Promise<WorkspaceOwner | null> {
+    return apiFetch(`/api/v1/workspaces/${id}/owner`).then((r) => r.json());
+  }
+
+  /**
+   * Stamp or clear the accountable owner. Superuser-only server-side — the cap
+   * on how many workspaces an account may own is counted over this field.
+   */
+  static async setOwner(id: number, authUserId: number | null): Promise<WorkspaceOwner | null> {
+    return apiFetch(`/api/v1/workspaces/${id}/owner`, {
+      method: "PUT",
+      body: { auth_user_id: authUserId }
+    }).then((r) => r.json());
+  }
+
+  /**
+   * Hand the workspace over: the accountability stamp AND the RBAC `owner`
+   * role. Allowed for the current owner as well as superusers, unlike
+   * `setOwner`, which only moves the stamp.
+   */
+  static async transferOwnership(id: number, authUserId: number): Promise<WorkspaceOwner> {
+    return apiFetch(`/api/v1/workspaces/${id}/owner/transfer`, {
+      method: "POST",
+      body: { auth_user_id: authUserId }
+    }).then((r) => r.json());
   }
 
   static async create(data: {
@@ -76,7 +117,6 @@ export default class workspaceService {
       subdomain?: string | null;
       seo_title?: string | null;
       seo_description?: string | null;
-      discord_guild_id?: string | null;
       newcomer_scope?: "global" | "workspace";
       default_division_grid_version_id?: number | null;
     }
@@ -170,6 +210,39 @@ export default class workspaceService {
   static async clearCustomDomain(workspaceId: number): Promise<Workspace> {
     return apiFetch(`/api/v1/workspaces/${workspaceId}/custom-domain`, {
       method: "DELETE"
+    }).then((r) => r.json());
+  }
+
+  /** Every Discord guild the signed-in user administers (owner or MANAGE_GUILD). */
+  static async myDiscordGuilds(): Promise<ManageableDiscordGuild[]> {
+    return apiFetch("/api/v1/me/discord-guilds")
+      .then((r) => r.json())
+      .then((body: { guilds?: ManageableDiscordGuild[] }) => body.guilds ?? []);
+  }
+
+  /**
+   * Bind a Discord guild to a workspace, proving the caller administers it.
+   *
+   * The guild is no longer a PATCH-able field: the backend re-asks Discord who
+   * administers it on every bind, so 403 (not yours any more), 409 (another
+   * workspace claimed it) and 503 (Discord unreachable) are all real answers a
+   * plain form field could not have produced.
+   */
+  static async verifyDiscordGuild(workspaceId: number, guildId: string): Promise<Workspace> {
+    return apiFetch(`/api/v1/workspaces/${workspaceId}/discord-guild`, {
+      method: "POST",
+      body: { guild_id: guildId }
+    }).then((r) => r.json());
+  }
+
+  /** Superuser-only trust tier change (`unverified` | `verified` | `trusted`). */
+  static async setVerificationStatus(
+    workspaceId: number,
+    status: WorkspaceVerificationStatus
+  ): Promise<Workspace> {
+    return apiFetch(`/api/v1/workspaces/${workspaceId}/verification`, {
+      method: "POST",
+      body: { verification_status: status }
     }).then((r) => r.json());
   }
 

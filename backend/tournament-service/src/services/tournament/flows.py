@@ -7,15 +7,16 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared.core.tournament_state import IN_PLAY_STATUSES
 from shared.division_grid import DivisionGrid
 from shared.domain.roster_shape import resolve_roster_shape
 from shared.models.identity.auth_user import AuthUser
 from shared.services.challonge_refs import ChallongeRef, resolve_stage_challonge, resolve_tournament_challonge
 from shared.services.division_grid.normalization import DivisionGridNormalizationError, DivisionGridNormalizer
 from shared.services.division_grid.resolution import resolve_tournament_division
-from shared.services.draft_guards import has_unfinished_draft_session
-from shared.services.registration_team_guards import has_registered_teams
-from shared.services.roster_shape_access import get_tournament_roster_slots, get_workspace_roster_slots
+from shared.services.draft_guards import has_unfinished_draft_session, unfinished_draft_tournament_ids
+from shared.services.registration_team_guards import has_registered_teams, registered_team_tournament_ids
+from shared.services.roster_shape_access import get_workspace_roster_slots
 from shared.services.tournament.visibility import visible_tournaments_predicate
 from src import models, schemas
 from src.core import config, enums, errors, pagination
@@ -38,12 +39,6 @@ def _loaded_relationship(model: typing.Any, name: str) -> typing.Any | None:
 
 
 _StageReadT = typing.TypeVar("_StageReadT", schemas.StageSummaryRead, schemas.StageRead)
-
-
-#: "Live right now" for the page hero: a tournament in group play or already in
-#: its bracket. Both are matches being played, which is what a visitor reads the
-#: counter as — `check_in` is not.
-_LIVE_STATUSES = (enums.TournamentStatus.LIVE, enums.TournamentStatus.PLAYOFFS)
 
 
 def _apply_stage_challonge(
@@ -74,6 +69,10 @@ class TournamentFlowsService:
         teams_counts: typing.Mapping[int, int] | None = None,
         challonge_ref: ChallongeRef | None = None,
         stage_challonge_refs: typing.Mapping[int, ChallongeRef] | None = None,
+        workspace_slots_by_workspace: typing.Mapping[int, dict[str, int] | None] | None = None,
+        draft_locked_ids: set[int] | None = None,
+        teams_locked_ids: set[int] | None = None,
+        links_by_tournament: typing.Mapping[int, list[schemas.TournamentLinkRead]] | None = None,
     ) -> schemas.TournamentRead:
         """
         Converts a `Tournament` model instance to a Pydantic `TournamentRead` schema, optionally including related entities.
@@ -138,20 +137,30 @@ class TournamentFlowsService:
         if _entity_requested(entities, "roster_shape"):
             # Both levels are read explicitly so `source` is KNOWN rather than
             # reverse-engineered from the resolved shape: an override that happens to
-            # equal the workspace default is still an override. Both getters are
-            # cache-backed, so this costs no query on a warm read.
-            tournament_slots = await get_tournament_roster_slots(session, tournament.id)
-            workspace_slots = await get_workspace_roster_slots(session, tournament.workspace_id)
+            # equal the workspace default is still an override. Tournament slots
+            # come off the already-loaded ORM column; workspace slots are
+            # cache-backed (and prefetched by `get_all` when serializing a page).
+            tournament_slots = tournament.roster_slots_json
+            if workspace_slots_by_workspace is not None:
+                workspace_slots = workspace_slots_by_workspace.get(tournament.workspace_id)
+            else:
+                workspace_slots = await get_workspace_roster_slots(session, tournament.workspace_id)
             shape = resolve_roster_shape(tournament_slots, workspace_slots)
             source = "tournament" if tournament_slots else "workspace" if workspace_slots else "default"
             roster_shape = schemas.RosterShapeRead.from_shape(shape, source=source)
             # Same opt-in gate, same reason: these DO cost a query, so nested
             # reads must not pay for it. The write-path guards use the same
             # predicates, so the form disables exactly what a save would reject.
-            roster_locked_by_draft = await has_unfinished_draft_session(session, tournament.id)
+            if draft_locked_ids is not None:
+                roster_locked_by_draft = tournament.id in draft_locked_ids
+            else:
+                roster_locked_by_draft = await has_unfinished_draft_session(session, tournament.id)
             # The other half of the same lock: a registered team's members hold slots
             # assigned from the current shape, so changing it would invalidate them.
-            roster_locked_by_teams = await has_registered_teams(session, tournament.id)
+            if teams_locked_ids is not None:
+                roster_locked_by_teams = tournament.id in teams_locked_ids
+            else:
+                roster_locked_by_teams = await has_registered_teams(session, tournament.id)
         links: list[schemas.TournamentLinkRead] = []
         if _entity_requested(entities, "links"):
             # Explicit query, not a relationship: `Tournament` deliberately declares no
@@ -159,10 +168,13 @@ class TournamentFlowsService:
             # outside the greenlet (MissingGreenlet) when a cached/detached
             # TournamentRead is rebuilt. Same opt-in gate as `roster_shape` — this
             # costs a query, so the six schemas that nest TournamentRead don't pay it.
-            links = [
-                schemas.TournamentLinkRead.model_validate(row, from_attributes=True)
-                for row in await tournament_link_service.list_links(session, tournament.id, active_only=True)
-            ]
+            if links_by_tournament is not None:
+                links = list(links_by_tournament.get(tournament.id, []))
+            else:
+                links = [
+                    schemas.TournamentLinkRead.model_validate(row, from_attributes=True)
+                    for row in await tournament_link_service.list_links(session, tournament.id, active_only=True)
+                ]
         tournament_challonge_id, tournament_challonge_slug = (
             challonge_ref if challonge_ref is not None else (None, None)
         )
@@ -369,7 +381,7 @@ class TournamentFlowsService:
         )
         # Every member present, always: an absent key would force each client to
         # re-derive "this status exists but has none" from the enum itself.
-        by_status = {member: 0 for member in enums.TournamentStatus}
+        by_status = dict.fromkeys(enums.TournamentStatus, 0)
         for row_status, count in status_rows.all():
             by_status[enums.TournamentStatus(row_status)] = int(count)
 
@@ -390,9 +402,7 @@ class TournamentFlowsService:
             await session.execute(
                 sa.select(
                     sa.func.count(models.Tournament.id),
-                    sa.func.count(models.Tournament.id).filter(
-                        models.Tournament.status.in_(_LIVE_STATUSES)
-                    ),
+                    sa.func.count(models.Tournament.id).filter(models.Tournament.status.in_(IN_PLAY_STATUSES)),
                 ).where(*scope)
             )
         ).one()
@@ -465,6 +475,23 @@ class TournamentFlowsService:
         if "stages" in params.entities:
             stage_ids = [stage.id for result in results for stage in (_loaded_relationship(result, "stages") or [])]
             stage_challonge_refs = await resolve_stage_challonge(session, stage_ids)
+        workspace_slots_by_workspace: dict[int, dict[str, int] | None] | None = None
+        draft_locked_ids: set[int] | None = None
+        teams_locked_ids: set[int] | None = None
+        if _entity_requested(params.entities, "roster_shape"):
+            workspace_slots_by_workspace = {
+                workspace_id: await get_workspace_roster_slots(session, workspace_id)
+                for workspace_id in {result.workspace_id for result in results}
+            }
+            draft_locked_ids = await unfinished_draft_tournament_ids(session, tournament_ids)
+            teams_locked_ids = await registered_team_tournament_ids(session, tournament_ids)
+        links_by_tournament: dict[int, list[schemas.TournamentLinkRead]] | None = None
+        if _entity_requested(params.entities, "links"):
+            raw_links = await tournament_link_service.list_links_bulk(session, tournament_ids, active_only=True)
+            links_by_tournament = {
+                tournament_id: [schemas.TournamentLinkRead.model_validate(row, from_attributes=True) for row in rows]
+                for tournament_id, rows in raw_links.items()
+            }
         return pagination.Paginated(
             results=[
                 await self.to_pydantic(
@@ -476,6 +503,10 @@ class TournamentFlowsService:
                     teams_counts=teams_counts,
                     challonge_ref=challonge_refs.get(result.id),
                     stage_challonge_refs=stage_challonge_refs,
+                    workspace_slots_by_workspace=workspace_slots_by_workspace,
+                    draft_locked_ids=draft_locked_ids,
+                    teams_locked_ids=teams_locked_ids,
+                    links_by_tournament=links_by_tournament,
                 )
                 for result in results
             ],

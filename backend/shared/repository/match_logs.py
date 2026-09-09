@@ -50,7 +50,5 @@ class MatchKillFeedRepository(BaseRepository[models.MatchKillFeed]):
         await session.execute(sa.delete(models.MatchKillFeed).where(models.MatchKillFeed.match_id == match_id))
 
     async def list_for_match(self, session: AsyncSession, match_id: int) -> Sequence[models.MatchKillFeed]:
-        result = await session.execute(
-            sa.select(models.MatchKillFeed).where(models.MatchKillFeed.match_id == match_id)
-        )
+        result = await session.execute(sa.select(models.MatchKillFeed).where(models.MatchKillFeed.match_id == match_id))
         return result.scalars().all()

@@ -127,12 +127,8 @@ async def roster_page(
 ) -> tuple[list[RosterMember], int]:
     """One page of the workspace roster, newest-agnostic (ordered by member id)."""
     filters = _filters(workspace_id, search, author_user_id=author_user_id, author_only=author_only)
-    joined = sa.select(models.WorkspaceMember.id).join(
-        models.User, models.User.id == models.WorkspaceMember.player_id
-    )
-    total = await session.scalar(
-        sa.select(sa.func.count()).select_from(joined.where(*filters).subquery())
-    )
+    joined = sa.select(models.WorkspaceMember.id).join(models.User, models.User.id == models.WorkspaceMember.player_id)
+    total = await session.scalar(sa.select(sa.func.count()).select_from(joined.where(*filters).subquery()))
     result = await session.execute(
         sa.select(
             models.WorkspaceMember.id,

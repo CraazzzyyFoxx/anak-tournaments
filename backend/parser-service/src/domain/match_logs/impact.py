@@ -8,6 +8,7 @@ persistence) lives in the callers.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from shared.core.impact import (
@@ -106,7 +107,7 @@ class ImpactContext:
     """
 
     players: Mapping[int, PlayerRef]
-    baselines: "BaselineSet | None"
+    baselines: BaselineSet | None
     has_killfeed: bool
 
 
@@ -189,18 +190,27 @@ def add_impact_scores(
     computed inside each ``round`` group.
     """
     df = df.copy()
-    seconds = df.get(enums.LogStatsName.HeroTimePlayed)
-    if seconds is None:
-        seconds = pd.Series(0.0, index=df.index)
-    seconds = seconds.fillna(0.0)
-    max_seconds = seconds.groupby(df["round"]).transform("max").replace(0, 1.0)
-    time_share = seconds / max_seconds
+    n = len(df)
+    if n == 0:
+        df[enums.LogStatsName.ImpactPoints] = []
+        df[enums.LogStatsName.OverperformanceScore] = []
+        return df
 
-    impact_scores: list[float] = []
-    overperf_scores: list[float] = []
-    for idx, row in df.iterrows():
-        ref = players.get(int(row["player_id"]))
-        secs = float(seconds.loc[idx])
+    if enums.LogStatsName.HeroTimePlayed in df.columns:
+        seconds = pd.to_numeric(df[enums.LogStatsName.HeroTimePlayed], errors="coerce").fillna(0.0)
+    else:
+        seconds = pd.Series(0.0, index=df.index)
+    max_seconds = seconds.groupby(df["round"]).transform("max").replace(0, 1.0)
+    time_share = (seconds / max_seconds).to_numpy(dtype=np.float64, copy=False)
+    secs_arr = seconds.to_numpy(dtype=np.float64, copy=False)
+
+    impact_out = np.zeros(n, dtype=np.float64)
+    over_out = np.zeros(n, dtype=np.float64)
+
+    groups: dict[tuple[str, int], list[int]] = {}
+    for i, pid in enumerate(df["player_id"].to_numpy()):
+        ref = players.get(int(pid))
+        secs = float(secs_arr[i])
         # ``HeroClass.flex`` is a roster role, not a game role: no baseline is
         # ever computed for it (baselines group by ``Hero.type``, which cannot be
         # flex), so every z-score would come back 0.0 anyway. Routing it through
@@ -209,26 +219,54 @@ def add_impact_scores(
         # the dominant role derived from actual hero playtime, so this only bites
         # a match with no per-hero playtime rows at all.
         if ref is None or ref.role is None or ref.role is enums.HeroClass.flex or secs < MIN_SECONDS:
-            impact_scores.append(0.0)
-            overperf_scores.append(0.0)
             continue
         role = ref.role.value.lower() if hasattr(ref.role, "value") else str(ref.role).lower()
-        bucket = baselines.bucket_for(ref.rank)
-        base_score = 0.0
-        rank_score = 0.0
-        for stat_name, weight in IMPACT_WEIGHTS.items():
-            member = enums.LogStatsName[stat_name]
-            raw = row.get(member, 0.0)
-            value = 0.0 if pd.isna(raw) else float(raw)
-            if stat_name in EVENT_STATS and not has_killfeed:
-                continue
-            rate = value / secs * 600.0
-            base_score += weight * baselines.z(role, -1, stat_name, rate)
-            rank_score += weight * baselines.z(role, bucket, stat_name, rate)
-        share = float(time_share.loc[idx])
-        impact_scores.append(base_score * share)
-        overperf_scores.append(rank_score * share)
+        groups.setdefault((role, baselines.bucket_for(ref.rank)), []).append(i)
 
-    df[enums.LogStatsName.ImpactPoints] = impact_scores
-    df[enums.LogStatsName.OverperformanceScore] = overperf_scores
+    if not groups:
+        df[enums.LogStatsName.ImpactPoints] = impact_out
+        df[enums.LogStatsName.OverperformanceScore] = over_out
+        return df
+
+    skip_events = not has_killfeed
+    stat_cols: dict[str, np.ndarray] = {}
+    for stat_name in IMPACT_WEIGHTS:
+        if skip_events and stat_name in EVENT_STATS:
+            continue
+        member = enums.LogStatsName[stat_name]
+        if member in df.columns:
+            raw = pd.to_numeric(df[member], errors="coerce").to_numpy(dtype=np.float64)
+            np.nan_to_num(raw, copy=False, nan=0.0)
+            stat_cols[stat_name] = raw
+        else:
+            stat_cols[stat_name] = np.zeros(n, dtype=np.float64)
+
+    base_acc = np.zeros(n, dtype=np.float64)
+    rank_acc = np.zeros(n, dtype=np.float64)
+    for (role, bucket), idxs in groups.items():
+        idx = np.fromiter(idxs, dtype=np.intp, count=len(idxs))
+        group_secs = secs_arr[idx]
+        for stat_name, weight in IMPACT_WEIGHTS.items():
+            values = stat_cols.get(stat_name)
+            if values is None:
+                continue
+            rate = values[idx] / group_secs * 600.0
+            base_entry = baselines.values.get((role, -1, stat_name))
+            if base_entry is not None:
+                mean, std = base_entry
+                if std > 0.0:
+                    z = np.clip((rate - mean) / std, -WINSOR_LIMIT, WINSOR_LIMIT)
+                    base_acc[idx] += weight * z
+            rank_entry = baselines.values.get((role, bucket, stat_name))
+            if rank_entry is not None:
+                mean, std = rank_entry
+                if std > 0.0:
+                    z = np.clip((rate - mean) / std, -WINSOR_LIMIT, WINSOR_LIMIT)
+                    rank_acc[idx] += weight * z
+
+    scored = np.fromiter((i for idxs in groups.values() for i in idxs), dtype=np.intp)
+    impact_out[scored] = base_acc[scored] * time_share[scored]
+    over_out[scored] = rank_acc[scored] * time_share[scored]
+    df[enums.LogStatsName.ImpactPoints] = impact_out
+    df[enums.LogStatsName.OverperformanceScore] = over_out
     return df

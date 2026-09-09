@@ -425,7 +425,6 @@ ANALYTICS_INFER_DLQ = RabbitQueue(
 )
 
 
-
 # ============================================================================
 # Achievement Evaluate Queue
 # ============================================================================
@@ -442,6 +441,23 @@ ACHIEVEMENT_EVALUATE_QUEUE = RabbitQueue(
 
 ACHIEVEMENT_EVALUATE_DLQ = RabbitQueue(
     "achievement_evaluate.dlq",
+    durable=True,
+)
+
+# Recompute for an unverified workspace: same payload, its own queue so one
+# low-prefetch consumer drains it without competing with parse-driven runs.
+ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE = RabbitQueue(
+    "achievement_evaluate.deferred",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "achievement_evaluate.deferred.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+ACHIEVEMENT_EVALUATE_DEFERRED_DLQ = RabbitQueue(
+    "achievement_evaluate.deferred.dlq",
     durable=True,
 )
 

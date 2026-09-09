@@ -68,8 +68,8 @@ class SocialAccount(db.TimeStampIntegerMixin):
     is_verified: Mapped[bool] = mapped_column(Boolean(), server_default="false")
     is_primary: Mapped[bool] = mapped_column(Boolean(), server_default="false")
 
-    user: Mapped["User"] = relationship(back_populates="social_accounts")
-    visibilities: Mapped[list["SocialAccountVisibility"]] = relationship(
+    user: Mapped[User] = relationship(back_populates="social_accounts")
+    visibilities: Mapped[list[SocialAccountVisibility]] = relationship(
         back_populates="account",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -107,4 +107,4 @@ class SocialAccountVisibility(db.TimeStampIntegerMixin):
     account_id: Mapped[int] = mapped_column(ForeignKey("players.social_account.id", ondelete="CASCADE"))
     workspace_id: Mapped[int | None] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), nullable=True)
 
-    account: Mapped["SocialAccount"] = relationship(back_populates="visibilities")
+    account: Mapped[SocialAccount] = relationship(back_populates="visibilities")

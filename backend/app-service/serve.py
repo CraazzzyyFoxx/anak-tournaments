@@ -23,6 +23,7 @@ from src.core.caching import configure_cache
 from src.rpc import (
     achievements,
     admin_crud,
+    announcements,
     audit,
     binary,
     catalog_aliases,
@@ -30,6 +31,8 @@ from src.rpc import (
     heroes,
     maps,
     metadata_admin,
+    notifications,
+    notifications_admin,
     reads_generic,
     statistics,
     users,
@@ -79,6 +82,17 @@ users_admin.register(broker, logger)
 
 # Platform audit log (read-only feed + per-entity trail), gated by audit.read.
 audit.register(broker, logger)
+
+# Notification inbox reads/mark-read + the public announcement banner.
+notifications.register(broker, logger)
+
+# Operator-facing announcement CRUD (workspace-scoped, plus the superuser-only
+# platform banner).
+announcements.register(broker, logger)
+
+# Operator-facing view of the notifications this workspace produced, and the
+# retire that takes one back out of every recipient's inbox.
+notifications_admin.register(broker, logger)
 
 # Phase 3 — binary/multipart endpoints (icons, assets, match-log) over base64.
 binary.register(broker, logger)

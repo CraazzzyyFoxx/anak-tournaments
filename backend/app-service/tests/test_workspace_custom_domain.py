@@ -111,9 +111,7 @@ class SetCustomDomainTests(IsolatedAsyncioTestCase):
         # tests don't need a session with a working ``execute``, matching how
         # the DNS tests patch ``_dns_txt_contains`` at the exact seam instead
         # of stubbing the network.
-        patcher = patch.object(
-            workspaces.workspace_repo, "get_by_custom_domain_any", AsyncMock(return_value=None)
-        )
+        patcher = patch.object(workspaces.workspace_repo, "get_by_custom_domain_any", AsyncMock(return_value=None))
         patcher.start()
         self.addCleanup(patcher.stop)
 

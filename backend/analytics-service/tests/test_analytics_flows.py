@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
-
 analytics_flows = importlib.import_module("src.services.analytics.reads")
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)

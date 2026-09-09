@@ -163,6 +163,13 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.workspaces.discord_guild_verify": Op(
         request=schemas.WorkspaceDiscordGuildVerify, response=schemas.WorkspaceRead
     ),
+    "rpc.app.workspaces.my_discord_guilds": Op(response=schemas.WorkspaceDiscordGuildsRead),
+    "rpc.app.workspaces.verification_set": Op(request=schemas.WorkspaceVerificationSet, response=schemas.WorkspaceRead),
+    "rpc.app.workspaces.owner_get": Op(response=schemas.WorkspaceOwnerRead),
+    "rpc.app.workspaces.owner_set": Op(request=schemas.WorkspaceOwnerSet, response=schemas.WorkspaceOwnerRead),
+    "rpc.app.workspaces.owner_transfer": Op(
+        request=schemas.WorkspaceOwnerTransfer, response=schemas.WorkspaceOwnerRead
+    ),
     # ── metadata admin (hero/map/gamemode) ─────────────────────────────────
     "rpc.app.heroes.admin_create": Op(request=schemas.HeroCreate, response=schemas.HeroRead),
     "rpc.app.heroes.admin_update": Op(request=schemas.HeroUpdate, response=schemas.HeroRead),
@@ -181,8 +188,12 @@ OPERATIONS: dict[str, Op] = {
     # ── users admin (CRUD + identities + merge) ────────────────────────────
     "rpc.app.users.admin_create": Op(request=schemas.UserCreate, response=schemas.UserRead),
     "rpc.app.users.admin_update": Op(request=schemas.UserAdminUpdate, response=schemas.UserRead),
-    "rpc.app.users.merge_preview": Op(request=schemas.UserMergePreviewRequest, response=schemas.UserMergePreviewResponse),
-    "rpc.app.users.merge_execute": Op(request=schemas.UserMergeExecuteRequest, response=schemas.UserMergeExecuteResponse),
+    "rpc.app.users.merge_preview": Op(
+        request=schemas.UserMergePreviewRequest, response=schemas.UserMergePreviewResponse
+    ),
+    "rpc.app.users.merge_execute": Op(
+        request=schemas.UserMergeExecuteRequest, response=schemas.UserMergeExecuteResponse
+    ),
     "rpc.app.users.social_add": Op(request=schemas.SocialAccountCreate, response=schemas.UserRead),
     "rpc.app.users.social_update": Op(request=schemas.SocialAccountUpdate, response=schemas.UserRead),
     "rpc.app.users.social_verify": Op(response=schemas.UserRead),
@@ -203,4 +214,46 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.users.me_favorites_list": Op(response=schemas.LookupItem, response_array=True),
     "rpc.app.users.avatar_delete": Op(response=schemas.UserRead),
     "rpc.app.users.avatar_upload": Op(response=schemas.UserRead),
+    # ── notification inbox + announcement banner ───────────────────────────
+    # ``cursor``/``limit`` are read ad-hoc via c.q1, so they are declared here
+    # rather than through a query model.
+    "rpc.app.notifications_list": Op(
+        response=schemas.NotificationInboxRead,
+        query_params=(
+            QueryParam("cursor", description="Opaque continuation from the previous page's next_cursor."),
+            QueryParam("limit", "integer", description="Page size (default 20, capped server-side)."),
+        ),
+    ),
+    "rpc.app.notifications_mark_read": Op(
+        request=schemas.NotificationMarkRead, response=schemas.NotificationMarkReadResult
+    ),
+    "rpc.app.notifications_delete": Op(request=schemas.NotificationDelete, response=schemas.NotificationDeleteResult),
+    # ── notifications admin (workspace-scoped operator screen) ─────────────
+    "rpc.app.notification_admin_list": Op(
+        response=schemas.NotificationAdminPage,
+        query_params=(
+            _WS,
+            QueryParam("kind", description="One notification kind; omitted lists every kind."),
+            QueryParam("cursor", description="Opaque continuation from the previous page's next_cursor."),
+            QueryParam("limit", "integer", description="Page size (default 50, capped at 200)."),
+        ),
+    ),
+    "rpc.app.notification_admin_retire": Op(
+        request=schemas.NotificationRetire, response=schemas.NotificationRetireResult
+    ),
+    "rpc.app.active_announcements": Op(response=schemas.NotificationItem, response_array=True),
+    # ── announcements admin (operator CRUD) ────────────────────────────────
+    "rpc.app.announcement_list": Op(
+        response=schemas.NotificationItem,
+        response_array=True,
+        query_params=(
+            _WS,
+            QueryParam("limit", "integer", description="Page size (default 50, capped at 200)."),
+        ),
+    ),
+    "rpc.app.announcement_create": Op(request=schemas.AnnouncementCreate, response=schemas.NotificationItem),
+    "rpc.app.announcement_update": Op(request=schemas.AnnouncementUpdate, response=schemas.NotificationItem),
+    # delete answers 204 with no body (the gateway drops the envelope) -- same
+    # convention as the other 204 subjects above.
+    "rpc.app.announcement_delete": Op(),
 }

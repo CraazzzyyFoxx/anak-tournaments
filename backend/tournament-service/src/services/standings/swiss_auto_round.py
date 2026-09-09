@@ -258,9 +258,7 @@ class SwissRoundsService:
         stage_item_id: int | None,
     ) -> list[models.Encounter]:
         return list(
-            await self.encounter_repo.list_for_stage_scope(
-                session, stage_id=stage_id, stage_item_id=stage_item_id
-            )
+            await self.encounter_repo.list_for_stage_scope(session, stage_id=stage_id, stage_item_id=stage_item_id)
         )
 
 

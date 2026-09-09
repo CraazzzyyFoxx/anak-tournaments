@@ -65,11 +65,26 @@ with `font-size` in Tailwind v4.
 
 ### Typography
 
-- Base fonts are Inter, Onest and JetBrains Mono, self-hosted via `next/font/local` in `frontend/src/app/layout.tsx` (not `next/font/google` — that fetches from `fonts.gstatic.com` at build time and a production build once died on rotated hashes).
-- Use `tabular-nums` for metrics where stable alignment matters.
+- Two faces, both self-hosted via `next/font/local` in `frontend/src/app/layout.tsx` (not `next/font/google` — that fetches from `fonts.gstatic.com` at build time and a production build once died on rotated hashes): **Inter** for everything textual, including the data/label voice (`--aqt-data`, `.aqt-tnum` = Inter + `tabular-nums`), and **Onest** for display titles (`--aqt-display`, `font-display`). JetBrains Mono was retired: `font-mono` is now Tailwind's system monospace and is reserved for code and identifiers (API keys, usernames, log output), never for UI labels.
+- **Type roles are the only sizes.** Defined once in `globals.css` (`@theme static`); each carries size + line-height (+ tracking where relevant), weight stays explicit:
+
+  | Utility | CSS var | Size / lh | Use |
+  | --- | --- | --- | --- |
+  | `text-label` | `--text-label` | 12 / 1.25 | eyebrows, table heads, chips, counters — pair with `uppercase tracking-label` |
+  | `text-caption` | `--text-caption` | 13 / 1.4 | secondary text, table cells |
+  | `text-body` | `--text-body` | 14 / 1.5 | body copy, ledes |
+  | `text-ui` | `--text-ui` | 15 / 1.5 | list rows, primary values |
+  | `text-heading` | `--text-heading` | 18 / 1.3 | card / section sub-headings |
+  | `text-title` | `--text-title` | 22 / 1.15 / −0.01em | section `h2` — mixed-case, never uppercase |
+  | `text-headline` | `--text-headline` | 30 / 1.1 / −0.02em | compact hero titles |
+  | `text-display` | `--text-display` | clamp(32–56) / 1.03 / −0.01em | page-hero `h1` |
+
+  `tracking-label` (`--tracking-label`, 0.08em) is the single tracking for uppercase labels. Never write `text-[Npx]` or `font-size: 11px` again — if a role is missing, add it to the `@theme` block. `scripts/check-design-compliance.mjs` R6 still enforces the 11px floor.
+- `cn()` (`lib/utils.ts`) extends tailwind-merge with these role names; without that, `text-label` is filed under text-_color_ and a later `text-[color:…]` deletes it. Also note tailwind-merge drops `leading-*` when a font-size utility follows it in a later `cn()` argument — put line-height in the role token, not beside it.
+- Use `tabular-nums` (or `.aqt-tnum`) for metrics where stable alignment matters.
   Examples: `frontend/src/components/StatisticsCard.tsx`, `frontend/src/app/(site)/users/components/header/UserHeader.tsx`.
 
-**The `:root`-vs-`<html>` font trap.** The `.variable` classes from `next/font/local` MUST mount on `<html>`, not `<body>`: `globals.css` aliases them from `:root` (`--aqt-mono`, `--aqt-display`), and a custom property is substituted where it is *declared* — an alias on `:root` cannot read a variable defined one level down on `<body>`. It silently resolves to nothing (and poisons the whole declaration, so the literal fallback next to it doesn't apply either), so every `--aqt-mono`/`--aqt-display` surface falls back to plain Inter with no error. If you ever re-alias a `next/font` variable in a scoped `:root`, mount its class at or above that scope.
+**The `:root`-vs-`<html>` font trap.** The `.variable` classes from `next/font/local` MUST mount on `<html>`, not `<body>`: `globals.css` aliases them from `:root` (`--aqt-data`, `--aqt-display`), and a custom property is substituted where it is _declared_ — an alias on `:root` cannot read a variable defined one level down on `<body>`. It silently resolves to nothing (and poisons the whole declaration, so the literal fallback next to it doesn't apply either), so every `--aqt-display` surface falls back to plain Inter with no error. If you ever re-alias a `next/font` variable in a scoped `:root`, mount its class at or above that scope.
 
 ## Core building blocks
 
@@ -89,24 +104,24 @@ Important: `Card` sets `data-ui="card"`. This is used for theming (notably Liqui
 Every one of these replaced three to six hand-rolled copies. Reach for them
 before writing markup:
 
-| Need | Use |
-| --- | --- |
-| Filter chip | `components/ui/filter-chip.tsx` — `<FilterChip active count>` inside `<FilterChipGroup label>` |
-| Search input | `components/ui/search-field.tsx` — `label` is required (a placeholder is not a label) |
-| Pagination | `components/ui/data-pagination.tsx` — windowed, `aria-current`, real chevrons |
-| Empty / error / not-found | `components/ui/page-state-card.tsx` |
-| Data table | `components/ui/data-table.tsx` — header scope, scroll region, skeletons, keyboard rows |
-| Placement medal | `components/ui/place-badge.tsx` — `--aqt-medal-*` tokens |
-| Role / division marker | `components/PlayerRoleIcon.tsx`, `components/DivisionIcon.tsx` — icon+label only in a Role split; icon-only (name in `title`/`aria-label`) elsewhere on display surfaces |
-| MVP pill | `components/match/MvpMatchPill.tsx` |
-| Hero avatar / stack | `components/hero/HeroImage.tsx` (`HeroStrip` for the collapsing stack) |
-| Platform totals | `components/stats/PlatformStatsGrid.tsx` |
-| Filter/sort/page in the URL | `hooks/useQueryParams.ts` |
+| Need                        | Use                                                                                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Filter chip                 | `components/ui/filter-chip.tsx` — `<FilterChip active count>` inside `<FilterChipGroup label>`                                                                           |
+| Search input                | `components/ui/search-field.tsx` — `label` is required (a placeholder is not a label)                                                                                    |
+| Pagination                  | `components/ui/data-pagination.tsx` — windowed, `aria-current`, real chevrons                                                                                            |
+| Empty / error / not-found   | `components/ui/page-state-card.tsx`                                                                                                                                      |
+| Data table                  | `components/ui/data-table.tsx` — header scope, scroll region, skeletons, keyboard rows                                                                                   |
+| Placement medal             | `components/ui/place-badge.tsx` — `--aqt-medal-*` tokens                                                                                                                 |
+| Role / division marker      | `components/PlayerRoleIcon.tsx`, `components/DivisionIcon.tsx` — icon+label only in a Role split; icon-only (name in `title`/`aria-label`) elsewhere on display surfaces |
+| MVP pill                    | `components/match/MvpMatchPill.tsx`                                                                                                                                      |
+| Hero avatar / stack         | `components/hero/HeroImage.tsx` (`HeroStrip` for the collapsing stack)                                                                                                   |
+| Platform totals             | `components/stats/PlatformStatsGrid.tsx`                                                                                                                                 |
+| Filter/sort/page in the URL | `hooks/useQueryParams.ts`                                                                                                                                                |
 
 ### Tabs, Button, and other primitives
 
 - Tabs: `frontend/src/components/ui/tabs.tsx` (Radix) with visible `focus-visible` rings.
-- Buttons: `frontend/src/components/ui/button.tsx` (CVA) with focus/disabled states.
+- Buttons: `frontend/src/components/ui/button.tsx` (CVA) with focus/disabled states. `static={false}` opts a control into a reduced-motion-safe `scale(0.96)` press; the default is no press motion.
 
 Principle: any new primitive must preserve:
 
@@ -128,51 +143,54 @@ inventing a surface.
 
 ### The seven templates
 
-| # | Template | Structure | Where it is used |
-| --- | --- | --- | --- |
-| T1 | Dashboard | Greeting + one next action -> KPI strip -> two columns: "work" / "attention" | `/admin` |
-| T2 | Browser | Header -> filter bar (search + chips) -> table with an always-visible kebab -> Inspector (`?id=`) with "Open page" when the row has a route | Tournaments, People, Teams, Matches, Achievements, Members, `content/*`, `access/*` lists, Audit, hub Registration entries, hub Matches views |
-| T3 | Hub | Entity header (name, status, metrics, 1–2 actions) -> routed tabs -> optional routed sub-tabs -> body | Tournament hub, `people/[id]`, `teams/[id]`, `achievements/[id]` |
-| T4 | Master-detail | Sortable list left (`+ Add`) -> editor right; destructive actions in a menu, one parameterised confirm | `kit/MasterDetail`: Bracket stages, Pre-game phase scopes, Access roles. The Divisions draft editor is the full-screen variant — a ladder column instead of a list |
-| T5 | Settings | Vertical section nav left -> the section's form -> sticky save bar while dirty | `/admin/settings/*`, tournament `settings/*`, `workspaces/[id]/*`, collector settings |
-| T6 | Wizard | Step rail -> step body -> footer (Back · Save draft · Continue) | New tournament, Draft setup, Divisions import, Challonge sync |
-| T7 | Control room | Status hero (phase, timer, connection) -> current action + lifecycle buttons -> right column (presence, feasibility) | Draft live (`tournaments/[id]/teams/draft` once the draft is running) |
+| #   | Template      | Structure                                                                                                                                   | Where it is used                                                                                                                                                   |
+| --- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| T1  | Dashboard     | Greeting + one next action -> KPI strip -> two columns: "work" / "attention"                                                                | `/admin`                                                                                                                                                           |
+| T2  | Browser       | Header -> filter bar (search + chips) -> table with an always-visible kebab -> Inspector (`?id=`) with "Open page" when the row has a route | Tournaments, People, Teams, Matches, Achievements, Members, `content/*`, `access/*` lists, Audit, hub Registration entries, hub Matches views                      |
+| T3  | Hub           | Entity header (name, status, metrics, 1–2 actions) -> routed tabs -> optional routed sub-tabs -> body                                       | Tournament hub, `people/[id]`, `teams/[id]`, `achievements/[id]`                                                                                                   |
+| T4  | Master-detail | Sortable list left (`+ Add`) -> editor right; destructive actions in a menu, one parameterised confirm                                      | `kit/MasterDetail`: Bracket stages, Pre-game phase scopes, Access roles. The Divisions draft editor is the full-screen variant — a ladder column instead of a list |
+| T5  | Settings      | Vertical section nav left -> the section's form -> sticky save bar while dirty                                                              | `/admin/settings/*`, tournament `settings/*`, `workspaces/[id]/*`, collector settings                                                                              |
+| T6  | Wizard        | Step rail -> step body -> footer (Back · Save draft · Continue)                                                                             | New tournament, Draft setup, Divisions import, Challonge sync                                                                                                      |
+| T7  | Control room  | Status hero (phase, timer, connection) -> current action + lifecycle buttons -> right column (presence, feasibility)                        | Draft live (`tournaments/[id]/teams/draft` once the draft is running)                                                                                              |
 
 ### Rules that hold on every admin screen
 
-- **Row detail has one answer per case.** Up to ~6 editable fields -> `EntityFormDialog`. Read-only investigation -> `AdminInspector`. An entity that is editable *and* shareable -> its own route. The default for T2 is the Inspector.
+- **Row detail has one answer per case.** Up to ~6 editable fields -> `EntityFormDialog`. Read-only investigation -> `AdminInspector`. An entity that is editable _and_ shareable -> its own route. The default for T2 is the Inspector.
 - **One filter surface.** `AdminFilterBar` above the table, nothing in the header and no `<Select>` in the toolbar. A column may still declare `meta.filter` — that is the endpoint/param contract the table applies, not a second control.
 - **One tab implementation.** `AdminTabs` (`level={2}` for sub-tabs). Not Radix `Tabs`, not a `ToggleGroup`, not a hand-rolled pill `<nav>`: nesting breaks their roving tabindex.
-- **One row-actions convention.** `createKebabColumn`. An action the reader may not perform is *absent*, never disabled — and the menu is always visible, never revealed on hover.
+- **One row-actions convention.** `createKebabColumn`. An action the reader may not perform is _absent_, never disabled — and the menu is always visible, never revealed on hover.
 - **At most three dialogs per screen**: create/edit (`EntityFormDialog`), one `ConfirmDialog` whose `intent` is swapped per operation, and at most one domain-specific dialog. Six copies of the same confirmation differing only in strings is the anti-pattern this replaced.
 - **All three page states, always.** `PageStateCard` for `empty`, `error` and `filtered-empty`; a query that can fail MUST destructure `isError`.
 - **State lives in the URL.** Tab, view, filters and the open Inspector row go through `hooks/useQueryParams.ts`, so a link pasted into Discord opens the same screen. Depth stays at three: sidebar -> screen -> (sub-tab | inspector); anything deeper becomes a route or a wizard.
 
 ### What each kit component owns
 
-| Component | The job it owns |
-| --- | --- |
-| `kit/AdminTabs.tsx` | Routed tabs and sub-tabs: `next/link` items, `aria-current="page"`, arrow-key movement, horizontal scroll when narrow |
-| `kit/AdminFilterBar.tsx` | The one filter surface: search, removable chips, a "+ Filter" popover, pinned chips and saved presets |
-| `kit/useAdminFilters.ts` | Filter state, which is the URL: `set`/`setMany`/`clear`, plus `toTableFilters()` and a `filterKey` that resets paging |
-| `kit/AdminInspector.tsx` | The row detail: a right-hand panel at `lg`+, a full sheet below it; `Esc`, up/down between rows, optional "Open page" |
-| `kit/kebab-column.tsx` | The actions column, and the permission gating inside it |
-| `kit/ConfirmDialog.tsx` | Every confirmation: tone, cascade list, type-to-confirm, one mount per screen |
-| `kit/AdminSectionNav.tsx` | T5 section navigation: a `<nav>` at `md`+, a `Select` below it |
-| `kit/SaveBar.tsx` | Save/discard for a dirty form, plus the unsaved-changes guard (turn the anchor half off with `guardNavigation={false}` when the screen's own routed sub-navigation is part of that form) |
-| `kit/useUnsavedGuard.ts` | The two halves of "do not lose my edits": `beforeunload` and in-app anchor interception. Shared by `SaveBar` and `EntityFormDialog` so there is only one behaviour |
-| `kit/WizardShell.tsx` | T6 frame: step rail with `aria-current="step"`, body, footer, optional aside |
-| `kit/EntityHubHeader.tsx` | The T3 header: title, status pill, middot-joined metrics, actions, back link, and `level` for an entity nested inside a hub that already owns the `<h1>` |
-| `kit/PhaseStrip.tsx` | Lifecycle position as an indicator only — it carries no actions |
-| `kit/MasterDetail.tsx` | The T4 split, including the narrow-viewport switch to list-or-detail with a Back button |
-| `kit/NextActionHero.tsx` | The single "do this next" call to action on T1 and a hub Overview |
+| Component                 | The job it owns                                                                                                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kit/AdminTabs.tsx`       | Routed tabs and sub-tabs: `next/link` items, `aria-current="page"`, arrow-key movement, horizontal scroll when narrow                                                                    |
+| `kit/AdminFilterBar.tsx`  | The one filter surface: search, removable chips, a "+ Filter" popover, pinned chips and saved presets                                                                                    |
+| `kit/useAdminFilters.ts`  | Filter state, which is the URL: `set`/`setMany`/`clear`, plus `toTableFilters()` and a `filterKey` that resets paging                                                                    |
+| `kit/AdminInspector.tsx`  | The row detail: a right-hand panel at `lg`+, a full sheet below it; `Esc`, up/down between rows, optional "Open page"                                                                    |
+| `kit/kebab-column.tsx`    | The actions column, and the permission gating inside it                                                                                                                                  |
+| `kit/ConfirmDialog.tsx`   | Every confirmation: tone, cascade list, type-to-confirm, one mount per screen                                                                                                            |
+| `kit/AdminSectionNav.tsx` | T5 section navigation: a `<nav>` at `md`+, a `Select` below it                                                                                                                           |
+| `kit/SaveBar.tsx`         | Save/discard for a dirty form, plus the unsaved-changes guard (turn the anchor half off with `guardNavigation={false}` when the screen's own routed sub-navigation is part of that form) |
+| `kit/useUnsavedGuard.ts`  | The two halves of "do not lose my edits": `beforeunload` and in-app anchor interception. Shared by `SaveBar` and `EntityFormDialog` so there is only one behaviour                       |
+| `kit/WizardShell.tsx`     | T6 frame: step rail with `aria-current="step"`, body, footer, optional aside                                                                                                             |
+| `kit/EntityHubHeader.tsx` | The T3 header: title, status pill, middot-joined metrics, actions, back link, and `level` for an entity nested inside a hub that already owns the `<h1>`                                 |
+| `kit/PhaseStrip.tsx`      | Lifecycle position as an indicator only — it carries no actions                                                                                                                          |
+| `kit/MasterDetail.tsx`    | The T4 split, including the narrow-viewport switch to list-or-detail with a Back button                                                                                                  |
+| `kit/NextActionHero.tsx`  | The single "do this next" call to action on T1 and a hub Overview                                                                                                                        |
 
 Supporting these, outside `kit/`: `components/admin/AdminDataTable.tsx` is the
 table engine (server or client mode, paging, sorting, column picker, mobile
-cards, `toolbar` slot for the filter bar); `components/admin/tone.ts` holds
-`TONE_CLASS` and `EYEBROW_CLASS`, which is where a status colour or a small
-uppercase label comes from; `components/admin/AdminDetailTable.tsx` is styling
-only, for a dense table nested inside an editor — not a browser.
+cards, `toolbar` slot for the filter bar); `components/ui/tone.ts` is the
+shared tone map (`TONE_CLASS` / `TONE_TEXT`), re-exported from
+`components/admin/tone.ts` with `EYEBROW_CLASS`. Boolean flags in tables
+use `StatusIcon`; lifecycle state uses `kit/StatusPill` (a pill-shaped
+`Badge` with `tone=`); categories stay on shadcn `Badge`.
+`components/admin/AdminDetailTable.tsx` is styling only, for a dense table
+nested inside an editor — not a browser.
 
 ## Layout and responsive behavior
 
@@ -261,7 +279,6 @@ The previous system (a React context writing `--lg-a/--lg-b/--lg-c`, plus an
 "aura reporter" that sampled avatar colors) was removed: no CSS rule ever read
 those variables, so every inline `style={{ "--lg-a": ... }}` was inert markup.
 Do not reintroduce them.
-
 
 ## Content: numbers, density, readability
 

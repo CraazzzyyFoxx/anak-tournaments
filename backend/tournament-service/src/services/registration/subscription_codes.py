@@ -22,7 +22,6 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.services.subscriptions.entitlements import ProviderConfigRow, StoredEntitlement
 from shared.services.subscriptions import (
     SubscriptionSource,
     SubscriptionState,
@@ -31,6 +30,7 @@ from shared.services.subscriptions import (
     parse_verification_method,
 )
 from shared.services.subscriptions.challenge_code import match_code, parse_code_tiers
+from shared.services.subscriptions.entitlements import ProviderConfigRow, StoredEntitlement
 
 __all__ = ("redeem_challenge_code",)
 

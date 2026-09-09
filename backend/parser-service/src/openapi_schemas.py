@@ -70,9 +70,7 @@ OPERATIONS: dict[str, Op] = {
     # ── subscription collection admin ──────────────────────────────────────
     "rpc.parser.subscription.stats": Op(response=schemas.SubscriptionCollectionStats),
     "rpc.parser.subscription.check_log": Op(response=schemas.SubscriptionCheckLogRead, response_array=True),
-    "rpc.parser.subscription.user_collection": Op(
-        response=schemas.SubscriptionUserCollectionRead, response_array=True
-    ),
+    "rpc.parser.subscription.user_collection": Op(response=schemas.SubscriptionUserCollectionRead, response_array=True),
     "rpc.parser.subscription.collect": Op(
         request=schemas.SubscriptionCollectTriggerRequest,
         response=schemas.SubscriptionCollectTriggerResponse,
@@ -90,9 +88,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.parser.settings.upsert": Op(request=schemas.SettingUpsert, response=schemas.SettingRead),
     # ── discord channel ────────────────────────────────────────────────────
     "rpc.parser.discord_channel.get": Op(response=schemas.DiscordChannelRead),
-    "rpc.parser.discord_channel.upsert": Op(
-        request=schemas.DiscordChannelUpsert, response=schemas.DiscordChannelRead
-    ),
+    "rpc.parser.discord_channel.upsert": Op(request=schemas.DiscordChannelUpsert, response=schemas.DiscordChannelRead),
     # ── achievement rules admin ────────────────────────────────────────────
     "rpc.parser.ach.condition_types": Op(response=schemas.ConditionTypeInfo, response_array=True),
     "rpc.parser.ach.validate": Op(

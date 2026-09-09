@@ -29,8 +29,8 @@ const toggleVariants = cva(
       // The pill sits inside a 3px-padded frame, so its own height is the row
       // height minus that frame: an `sm` pill group is 32px tall like the
       // `sm` select and search field beside it.
-      { variant: "pill", size: "sm", class: "h-6 min-w-6 rounded-[7px] px-3 text-[12.5px]" },
-      { variant: "pill", size: "default", class: "h-7 min-w-7 rounded-[7px] px-3.5 text-[13px]" },
+      { variant: "pill", size: "sm", class: "h-6 min-w-6 rounded-[7px] px-3 text-caption" },
+      { variant: "pill", size: "default", class: "h-7 min-w-7 rounded-[7px] px-3.5 text-caption" },
       { variant: "pill", size: "lg", class: "h-8 min-w-8 rounded-[7px] px-4 text-sm" },
     ],
     defaultVariants: {

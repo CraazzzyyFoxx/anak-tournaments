@@ -195,11 +195,7 @@ def _dump_game(
             _dump_row(
                 row,
                 by_id.get(row.workspace_member_id),
-                (
-                    by_player.get(row.id, [])
-                    if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
-                    else None
-                ),
+                (by_player.get(row.id, []) if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT else None),
                 resolved or {},
                 author_ranks or {},
             )
@@ -227,22 +223,16 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     """
     settings = await _game_settings(session, game)
     roster_shape = (
-        await custom_game_service.roster_shape(
-            session, workspace_id=game.workspace_id, custom_game_id=game.id
-        )
+        await custom_game_service.roster_shape(session, workspace_id=game.workspace_id, custom_game_id=game.id)
     ).model_dump()
     roster = list(await custom_game_service.roster.list_for_game(session, game.id))
     # One name lookup for every identity on the write side: the host and each
     # co-host are all ``auth.user.id``s, and the lookup is left-joined, so an
     # account that holds a role here without playing still resolves to a name.
     co_host_user_ids = await custom_game_service.co_hosts.user_ids_for_game(session, game.id)
-    host_names = await custom_game_service.hosts(
-        session, game.workspace_id, [game.host_user_id, *co_host_user_ids]
-    )
+    host_names = await custom_game_service.hosts(session, game.workspace_id, [game.host_user_id, *co_host_user_ids])
     host_display_name = host_names.get(game.host_user_id)
-    co_hosts = [
-        {"user_id": user_id, "display_name": host_names.get(user_id)} for user_id in co_host_user_ids
-    ]
+    co_hosts = [{"user_id": user_id, "display_name": host_names.get(user_id)} for user_id in co_host_user_ids]
     if not roster:
         return _dump_game(
             game,
@@ -254,9 +244,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         )
     member_ids = [row.workspace_member_id for row in roster]
     members = await custom_game_service.members(session, game.workspace_id, member_ids)
-    roles_by_player = await custom_game_service.player_roles.roles_for_players(
-        session, [row.id for row in roster]
-    )
+    roles_by_player = await custom_game_service.player_roles.roles_for_players(session, [row.id for row in roster])
     layer_rows = await custom_game_service.ranks.list_layer_rows(
         session,
         workspace_id=game.workspace_id,
@@ -277,9 +265,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         {}
         if game.host_user_id is None
         else {
-            (row.workspace_member_id, row.role): row.rank_value
-            for row in layer_rows
-            if row.author_user_id is not None
+            (row.workspace_member_id, row.role): row.rank_value for row in layer_rows if row.author_user_id is not None
         }
     )
     return _dump_game(
@@ -377,9 +363,7 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = _int(data, "workspace_id")
             _require_mix(data, user, workspace_id, "read")
             rows = await custom_game_service.list(session, workspace_id=workspace_id)
-            host_names = await custom_game_service.hosts(
-                session, workspace_id, [row.host_user_id for row in rows]
-            )
+            host_names = await custom_game_service.hosts(session, workspace_id, [row.host_user_id for row in rows])
             return [
                 _dump_game(
                     row,
@@ -750,9 +734,7 @@ def register(broker: Any, logger: Any) -> None:
             if not user.is_workspace_admin(workspace_id):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace admin required")
             custom_game_id = _game_id(data)
-            await custom_game_service.hard_delete(
-                session, workspace_id=workspace_id, custom_game_id=custom_game_id
-            )
+            await custom_game_service.hard_delete(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
             await session.commit()
             await emit_pickup_mix_updated(workspace_id, reason="hard_delete", actor_user_id=user.id)
             return {"id": custom_game_id}

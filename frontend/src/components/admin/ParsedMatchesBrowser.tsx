@@ -9,12 +9,12 @@ import { ParsedMatchDetail } from "@/components/admin/ParsedMatchDetail";
 import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
 import { AdminInspector } from "@/components/admin/kit/AdminInspector";
 import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
-import { TONE_CLASS, type Tone } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { type Tone } from "@/components/admin/tone";
 import {
   TOURNAMENT_QUERY_PARAM,
   parseTournamentQueryParam
 } from "@/components/admin/tournament-filter";
-import { Badge } from "@/components/ui/badge";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
@@ -204,13 +204,13 @@ export function ParsedMatchesBrowser({
         enableSorting: false,
         cell: ({ row }) =>
           row.original.log_record ? (
-            <Badge className={cn(TONE_CLASS[STATUS_TONE[row.original.log_record.status]])}>
+            <StatusPill tone={STATUS_TONE[row.original.log_record.status]}>
               {row.original.log_record.status}
-            </Badge>
+            </StatusPill>
           ) : (
             // Never "failed": no record is unknown provenance, and the word
             // carries the whole meaning so the state survives greyscale.
-            <Badge className={cn(TONE_CLASS.neutral)}>unresolved</Badge>
+            <StatusPill tone="neutral">unresolved</StatusPill>
           )
       }
     ],

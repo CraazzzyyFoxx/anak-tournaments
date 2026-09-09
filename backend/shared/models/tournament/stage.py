@@ -73,7 +73,7 @@ class Stage(db.TimeStampIntegerMixin):
     settings_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     tournament: Mapped[Tournament] = relationship(back_populates="stages")
-    items: Mapped[list["StageItem"]] = relationship(
+    items: Mapped[list[StageItem]] = relationship(
         uselist=True,
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -96,7 +96,7 @@ class StageItem(db.TimeStampIntegerMixin):
     advance_count: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
     stage: Mapped[Stage] = relationship(back_populates="items")
-    inputs: Mapped[list["StageItemInput"]] = relationship(
+    inputs: Mapped[list[StageItemInput]] = relationship(
         foreign_keys="[StageItemInput.stage_item_id]",
         uselist=True,
         cascade="all, delete-orphan",
@@ -126,5 +126,5 @@ class StageItemInput(db.TimeStampIntegerMixin):
     source_position: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
     stage_item: Mapped[StageItem] = relationship(back_populates="inputs", foreign_keys=[stage_item_id])
-    team: Mapped["Team | None"] = relationship(foreign_keys=[team_id])
-    source_stage_item: Mapped["StageItem | None"] = relationship(foreign_keys=[source_stage_item_id])
+    team: Mapped[Team | None] = relationship(foreign_keys=[team_id])
+    source_stage_item: Mapped[StageItem | None] = relationship(foreign_keys=[source_stage_item_id])

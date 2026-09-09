@@ -20,7 +20,7 @@ export function PlaceBadge({
   return (
     <span
       className={cn(
-        "inline-flex h-5 min-w-5 items-center justify-center rounded-[6px] px-1.5 text-[11px] font-bold tabular-nums",
+        "inline-flex h-5 min-w-5 items-center justify-center rounded-[6px] px-1.5 text-label font-bold tabular-nums",
         className
       )}
       style={{

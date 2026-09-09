@@ -69,8 +69,7 @@ def _load_rows(conn) -> list[RegistrationBackfillRow]:
         if row.role is not None:
             roles[row.id].append(RoleBackfillRow(row.role, row.rank_value, row.role_updated_at))
     return [
-        RegistrationBackfillRow(**payload, roles=tuple(roles.get(payload["id"], ())))
-        for payload in grouped.values()
+        RegistrationBackfillRow(**payload, roles=tuple(roles.get(payload["id"], ()))) for payload in grouped.values()
     ]
 
 
@@ -136,9 +135,7 @@ def _apply(conn, plan) -> None:
         )
     if links:
         conn.execute(
-            sa.text(
-                "UPDATE balancer.registration SET workspace_player_id = :workspace_player_id WHERE id = :id"
-            ),
+            sa.text("UPDATE balancer.registration SET workspace_player_id = :workspace_player_id WHERE id = :id"),
             links,
         )
     if plan.pin_ids:

@@ -20,6 +20,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
+
 from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
 
 backend_root = Path(__file__).resolve().parents[2]
@@ -43,7 +44,6 @@ IDENTITY = make_identity(
         }
     ],
 )
-
 
 
 def _status_row(**overrides) -> SimpleNamespace:

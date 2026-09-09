@@ -127,9 +127,7 @@ class HostsByUserIdTests(IsolatedAsyncioTestCase):
             return
         async with self.Session() as session:
             await session.execute(sa.delete(WorkspaceMember).where(WorkspaceMember.workspace_id == self.workspace_id))
-            await session.execute(
-                sa.delete(User).where(User.id.in_([self.signed_in_player_id, self.ghost_player_id]))
-            )
+            await session.execute(sa.delete(User).where(User.id.in_([self.signed_in_player_id, self.ghost_player_id])))
             await session.execute(
                 sa.delete(AuthUser).where(AuthUser.id.in_([self.signed_in_auth_id, self.unrostered_auth_id]))
             )
@@ -161,4 +159,3 @@ class HostsByUserIdTests(IsolatedAsyncioTestCase):
                 session, workspace_id=self.workspace_id, user_ids=[self.unrostered_auth_id]
             )
         self.assertEqual(names, {self.unrostered_auth_id: self.unrostered_username})
-

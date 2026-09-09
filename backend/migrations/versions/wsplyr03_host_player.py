@@ -30,13 +30,9 @@ def upgrade() -> None:
         sa.Column("workspace_player_id", sa.BigInteger(), nullable=False),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspace.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["host_user_id"], ["auth.user.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["workspace_player_id"], ["balancer.workspace_player.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["workspace_player_id"], ["balancer.workspace_player.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "workspace_id", "host_user_id", "workspace_player_id", name="uq_host_player"
-        ),
+        sa.UniqueConstraint("workspace_id", "host_user_id", "workspace_player_id", name="uq_host_player"),
         schema="balancer",
     )
     op.create_index(
@@ -71,13 +67,9 @@ def upgrade() -> None:
         sa.Column("role", sa.String(length=16), nullable=False),
         sa.Column("rank_value", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["host_user_id"], ["auth.user.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["workspace_player_id"], ["balancer.workspace_player.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["workspace_player_id"], ["balancer.workspace_player.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "host_user_id", "workspace_player_id", "role", name="uq_host_player_rank"
-        ),
+        sa.UniqueConstraint("host_user_id", "workspace_player_id", "role", name="uq_host_player_rank"),
         schema="balancer",
     )
     op.create_index(

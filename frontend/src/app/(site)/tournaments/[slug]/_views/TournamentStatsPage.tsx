@@ -329,7 +329,7 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
         >
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[color:var(--aqt-border)] font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+              <tr className="border-b border-[color:var(--aqt-border)] text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                 <th scope="col" className="py-2 pr-3 text-left font-medium">
                   {t("tournamentDetail.mapPool.col.map")}
                 </th>
@@ -383,7 +383,7 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
                       {played > 0 ? (
                         <Link
                           href={tournamentHref({ slug }, `/matches?map=${map.id}`)}
-                          className="font-mono text-[11px] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]"
+                          className="text-label text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]"
                         >
                           {t("common.matches")} →
                         </Link>

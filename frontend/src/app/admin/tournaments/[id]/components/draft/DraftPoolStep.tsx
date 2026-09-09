@@ -4,8 +4,8 @@ import { AlertTriangle, CheckCircle2, Link2Off, ShieldAlert, Users, XCircle } fr
 import { useTranslations } from "next-intl";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { TONE_CLASS } from "@/components/admin/tone";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -59,9 +59,9 @@ export function DraftPoolStep({ readiness, feasibility, loading, failed }: Reado
               </span>
             </p>
           </div>
-          <Badge variant={readiness.blockers.length === 0 ? "default" : "destructive"}>
+          <StatusPill tone={readiness.blockers.length === 0 ? "success" : "danger"}>
             {readiness.blockers.length === 0 ? t("poolReady") : t("poolBlocked")}
-          </Badge>
+          </StatusPill>
         </div>
         <Progress value={percent} className="mt-4 h-2" aria-label={t("poolPlayers")} />
       </div>

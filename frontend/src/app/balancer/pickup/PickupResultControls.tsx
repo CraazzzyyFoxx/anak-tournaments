@@ -63,7 +63,7 @@ export function PickupResultControls({
           onClick={() => onRecord({ winner: option.winner })}
           className={cn(
             "flex items-center rounded-lg border font-semibold transition-colors",
-            size === "lg" ? "h-[38px] px-4 text-[13px]" : "h-8 px-3 text-[12.5px]",
+            size === "lg" ? "h-[38px] px-4 text-caption" : "h-8 px-3 text-caption",
             BUTTON_TONE,
             canRecord && "hover:border-[color:var(--aqt-border-3)]",
             "disabled:cursor-default disabled:opacity-100",
@@ -72,7 +72,7 @@ export function PickupResultControls({
           {option.label}
           {/* A draw never adjusts ranks, so it never earns the hint. */}
           {pointsPerWin && option.winner != null ? (
-            <span className="ml-1 font-mono text-[0.9em] opacity-70"> +{pointsPerWin}</span>
+            <span className="ml-1 text-[0.9em] opacity-70"> +{pointsPerWin}</span>
           ) : null}
         </button>
       ))}

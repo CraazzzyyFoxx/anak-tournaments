@@ -108,7 +108,7 @@ const TeammateRows = ({
             className="group grid grid-cols-[26px_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-[18px] py-2.5 transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]"
           >
             <span
-              className="aqt-display flex h-[26px] w-[26px] items-center justify-center rounded-full text-[11px] font-extrabold"
+              className="aqt-display flex h-[26px] w-[26px] items-center justify-center rounded-full text-label font-extrabold"
               style={{ background: TEAMMATE_COLORS[i % TEAMMATE_COLORS.length], color: "hsl(220 30% 8%)" }}
               aria-hidden
             >
@@ -116,12 +116,12 @@ const TeammateRows = ({
             </span>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="truncate text-[13px] font-semibold text-[color:var(--aqt-fg)] group-hover:text-[color:var(--aqt-teal)]">
+                <span className="truncate text-caption font-semibold text-[color:var(--aqt-fg)] group-hover:text-[color:var(--aqt-teal)]">
                   {nm}
                 </span>
-                {tag ? <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">#{tag}</span> : null}
+                {tag ? <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">#{tag}</span> : null}
               </div>
-              <div className="aqt-mono text-[11px] text-[color:var(--aqt-fg-dim)]">
+              <div className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                 {t("users.overview.teammates.playedMaps", { count: tm.tournaments, maps: tm.maps })}
               </div>
             </div>
@@ -129,14 +129,14 @@ const TeammateRows = ({
               <span className="h-[5px] w-[84px] overflow-hidden rounded-full bg-[color:var(--aqt-card-2)]">
                 <span className="block h-full rounded-full" style={{ width: `${wrPct}%`, background: color }} />
               </span>
-              <span className="aqt-tnum w-9 text-right text-[13px] font-bold" style={{ color }}>
+              <span className="aqt-tnum w-9 text-right text-caption font-bold" style={{ color }}>
                 {wrPct.toFixed(0)}%
               </span>
             </div>
           </Link>
         );
       })}
-      <div className="aqt-mono flex justify-between px-[18px] py-2.5 text-[12px] text-[color:var(--aqt-fg-dim)]">
+      <div className="aqt-tnum flex justify-between px-[18px] py-2.5 text-label text-[color:var(--aqt-fg-dim)]">
         <span>{t("users.overview.teammates.wrHint")}</span>
         <span>{t("users.overview.teammates.footer", { count: totalCount, maps: totalMaps })}</span>
       </div>
@@ -186,7 +186,7 @@ const AllTeammatesTable = ({
         />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        <table className="aqt-tnum w-full border-collapse text-[13.5px]">
+        <table className="aqt-tnum w-full border-collapse text-caption">
           <thead className="sticky top-0 z-[1] bg-[color:var(--aqt-bg)]">
             <tr>
               {[
@@ -211,21 +211,21 @@ const AllTeammatesTable = ({
                   <td className="px-3 py-2">
                     <Link href={`/users/${getPlayerSlug(tm.user.name)}`} className="inline-flex items-center gap-1.5 hover:text-[color:var(--aqt-teal)]">
                       <span className="font-semibold text-[color:var(--aqt-fg)]">{tmName}</span>
-                      {tmTag ? <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">#{tmTag}</span> : null}
+                      {tmTag ? <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">#{tmTag}</span> : null}
                     </Link>
                   </td>
-                  <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{tm.tournaments}</td>
-                  <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{tm.maps}</td>
+                  <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{tm.tournaments}</td>
+                  <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{tm.maps}</td>
                   <td
-                    className="aqt-mono px-3 py-2 text-right font-semibold"
+                    className="aqt-tnum px-3 py-2 text-right font-semibold"
                     style={{ color: wrColorOf(tm.winrate) }}
                   >
                     {(tm.winrate * 100).toFixed(0)}%
                   </td>
-                  <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
+                  <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
                     {formatStat(tm.stats?.[LogStatsName.KDA], 2)}
                   </td>
-                  <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
+                  <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
                     {formatStat(tm.stats?.[LogStatsName.Performance], 1)}
                   </td>
                 </tr>
@@ -233,7 +233,7 @@ const AllTeammatesTable = ({
             })}
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-[13px] text-[color:var(--aqt-fg-dim)]">
+                <td colSpan={6} className="px-3 py-6 text-center text-caption text-[color:var(--aqt-fg-dim)]">
                   {t("users.overview.teammates.noMatch")}
                 </td>
               </tr>
@@ -248,7 +248,7 @@ const AllTeammatesTable = ({
           onPageChange={setPage}
           className="border-t border-[color:var(--aqt-border)] px-5 py-2.5"
           summary={
-            <span className="aqt-mono text-[12px] text-[color:var(--aqt-fg-dim)]">
+            <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
               {t("users.overview.teammates.pageRange", {
                 start: String((safePage - 1) * perPage + 1),
                 end: String(Math.min(safePage * perPage, filtered.length)),
@@ -263,7 +263,7 @@ const AllTeammatesTable = ({
 };
 
 const cnHeader = (left: boolean) =>
-  `aqt-mono border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)] ${
+  `aqt-tnum border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] px-3 py-2.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)] ${
     left ? "text-left" : "text-right"
   }`;
 

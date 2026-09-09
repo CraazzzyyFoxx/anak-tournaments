@@ -6,7 +6,8 @@ This module provides fast C++ implementation for team balancing
 with role constraints and quality metrics.
 """
 
-from typing import Iterator, overload
+from collections.abc import Iterator
+from typing import overload
 
 class RoleRating:
     """Player's rating and priority for a specific role."""
@@ -132,9 +133,7 @@ class QualityMetrics:
     @overload
     def __init__(self) -> None: ...
     @overload
-    def __init__(
-        self, fairness: float, role_fairness: float, role_points: float, uniformity: float
-    ) -> None: ...
+    def __init__(self, fairness: float, role_fairness: float, role_points: float, uniformity: float) -> None: ...
     def total(self) -> float:
         """Calculate total quality score (lower is better)."""
         ...

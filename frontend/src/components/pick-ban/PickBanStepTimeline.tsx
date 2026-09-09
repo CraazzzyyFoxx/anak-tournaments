@@ -95,7 +95,7 @@ export function PickBanStepTimeline({
           done ? "opacity-70" : null
         )}
       >
-        <span className="w-5 shrink-0 text-right font-mono text-xs text-[color:var(--aqt-fg-faint)]">
+        <span className="w-5 shrink-0 text-right text-xs text-[color:var(--aqt-fg-faint)]">
           {index + 1}
         </span>
         <Icon
@@ -196,7 +196,7 @@ export function PickBanStepTimeline({
                     </span>
                     <Badge
                       variant={state === "current" ? "default" : "outline"}
-                      className="px-1.5 py-0 text-[11px] font-normal"
+                      className="px-1.5 py-0 text-label font-normal"
                     >
                       {state === "current"
                         ? t("round.current")

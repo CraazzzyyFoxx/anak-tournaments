@@ -171,11 +171,17 @@ describe("MyTeamPanel i18n", () => {
     // sentence. And the labels must come from `rosterShape.slotCodes`, the same
     // set the chips use: an earlier version reached for the hardcoded-English
     // `ROLE_LABELS`, so one card read "1× DPS" beside a "Урон" chip.
+    //
+    // Read off the dictionary rather than spelled out here, because spelling
+    // them out is the very coupling this pins against: the glossary sweep in
+    // a26165cc renamed dps/support to Дамаг/Саппорт, and a literal expectation
+    // failed for the one reason that is not a bug.
     const { container, root } = await renderPanel("ru", true);
     const text = container.textContent ?? "";
+    const slot = ru.rosterShape.slotCodes;
 
-    expect(text).toContain("1× Урон");
-    expect(text).toContain("2× Поддержка");
+    expect(text).toContain(`1× ${slot.dps}`);
+    expect(text).toContain(`2× ${slot.support}`);
     expect(text).not.toContain("1x dps");
     expect(text).not.toContain("1× DPS");
 

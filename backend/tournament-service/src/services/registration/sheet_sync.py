@@ -409,7 +409,6 @@ class SheetSyncService:
         tournament = await self.common.ensure_tournament_exists(session, tournament_id)
         subrole_catalog = await resolve_subrole_catalog(session, tournament.workspace_id)
 
-
         known_source_keys, known_battle_tag_keys = await self._existing_match_keys(session, tournament_id, feed)
 
         preview_rows: list[dict[str, Any]] = []
@@ -520,7 +519,6 @@ class SheetSyncService:
             )
             value_mapping = feed.value_mapping_json or build_default_value_mapping()
             subrole_catalog = await resolve_subrole_catalog(session, tournament.workspace_id)
-
 
             parsed_rows: dict[str, tuple[dict[str, str], dict[str, Any]]] = {}
             skipped = 0
@@ -761,9 +759,7 @@ class SheetSyncService:
             feed.last_sync_status = "failed"
             feed.last_error = str(exc)
             await session.commit()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to fetch Google Sheet"
-            ) from exc
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to fetch Google Sheet") from exc
 
 
 sheet_sync_service = SheetSyncService()

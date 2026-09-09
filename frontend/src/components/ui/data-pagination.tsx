@@ -43,7 +43,7 @@ interface DataPaginationProps {
 }
 
 const buttonClass =
-  "aqt-mono inline-flex h-8 min-w-8 items-center justify-center rounded-[6px] border px-2 text-[13px] tabular-nums transition-colors outline-none " +
+  "aqt-tnum inline-flex h-8 min-w-8 items-center justify-center rounded-[6px] border px-2 text-caption tabular-nums transition-colors outline-none " +
   "focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)] " +
   "disabled:cursor-not-allowed disabled:opacity-40";
 
@@ -79,7 +79,7 @@ export function DataPagination({
       className={cn("flex flex-wrap items-center justify-between gap-3", className)}
     >
       {summary ? (
-        <div className="text-[12px] text-[color:var(--aqt-fg-dim)]">{summary}</div>
+        <div className="text-label text-[color:var(--aqt-fg-dim)]">{summary}</div>
       ) : (
         <span />
       )}
@@ -103,7 +103,7 @@ export function DataPagination({
               <span
                 key={`gap-${index}`}
                 aria-hidden
-                className="px-1 text-[13px] text-[color:var(--aqt-fg-faint)]"
+                className="px-1 text-caption text-[color:var(--aqt-fg-faint)]"
               >
                 &hellip;
               </span>

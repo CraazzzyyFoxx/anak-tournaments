@@ -63,7 +63,7 @@ export function MatchCard({
   const away = encounter.score?.away ?? 0;
   const hasScore = completed || home !== 0 || away !== 0;
   const winner: "home" | "away" | null = completed ? (home > away ? "home" : away > home ? "away" : null) : null;
-  const rows = size === "sm" ? "h-8 text-[13px]" : "h-10 text-[14px]";
+  const rows = size === "sm" ? "h-8 text-caption" : "h-10 text-body";
 
   const row = (side: "home" | "away") => {
     const team = side === "home" ? encounter.home_team : encounter.away_team;
@@ -85,7 +85,7 @@ export function MatchCard({
         <span
           className={cn(
             "shrink-0 font-onest font-bold leading-none tabular-nums",
-            size === "sm" ? "text-[16px]" : "text-[20px]",
+            size === "sm" ? "text-base" : "text-[20px]",
             won ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]"
           )}
         >
@@ -110,10 +110,10 @@ export function MatchCard({
       {/* The mini tile sits under a column heading that already names the
           round, so it carries no eyebrow of its own — only the live marker. */}
       {size === "md" || live ? (
-        <div className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
+        <div className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-2.5 py-1 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
           <span className="truncate">{size === "md" ? eyebrow : null}</span>
           {live ? (
-            <span className="status-pill live shrink-0" style={{ padding: "0 6px", fontSize: 10 }}>
+            <span className="status-pill live shrink-0" style={{ padding: "0 6px" }}>
               <span aria-hidden className="dot" />
               {t("common.live")}
               {streamsCount ? ` · ${streamsCount}` : null}
@@ -131,7 +131,7 @@ export function MatchCard({
               <li
                 key={map.id}
                 className={cn(
-                  "rounded border px-1.5 py-0.5 font-mono text-[10px]",
+                  "rounded border px-1.5 py-0.5 text-label",
                   played
                     ? "border-[color:var(--aqt-fg-muted)] text-[color:var(--aqt-fg)]"
                     : "border-dashed border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-faint)]"

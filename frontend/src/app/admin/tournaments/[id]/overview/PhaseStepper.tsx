@@ -3,18 +3,9 @@
 import { AlertTriangle } from "lucide-react";
 
 import { PhaseStrip, type Phase } from "@/components/admin/kit/PhaseStrip";
-import type { Tournament, TournamentStatus } from "@/types/tournament.types";
+import { TOURNAMENT_STATUS_LABELS } from "@/lib/tournament-lifecycle";
+import type { Tournament } from "@/types/tournament.types";
 import { effectivePhases } from "./effective-phases";
-
-const PHASE_LABELS: Record<TournamentStatus, string> = {
-  registration: "Registration",
-  check_in: "Check-in",
-  draft: "Draft phase",
-  live: "Live",
-  playoffs: "Playoffs",
-  completed: "Completed",
-  archived: "Archived"
-};
 
 /**
  * Where the tournament is in its effective phase chain (D19).
@@ -39,7 +30,7 @@ export function PhaseStepper({ tournament }: Readonly<{ tournament: Tournament }
     .filter((phase) => !phase.drifted)
     .map((phase) => ({
       key: phase.key,
-      label: PHASE_LABELS[phase.key] ?? phase.key,
+      label: TOURNAMENT_STATUS_LABELS[phase.key] ?? phase.key,
       state:
         !drifted && phase.key === tournament.status
           ? "current"
@@ -54,7 +45,7 @@ export function PhaseStepper({ tournament }: Readonly<{ tournament: Tournament }
       {drifted ? (
         <p className="inline-flex items-center gap-1.5 text-xs font-medium text-warning">
           <AlertTriangle className="size-3.5" aria-hidden />
-          Off track: {PHASE_LABELS[drifted.key] ?? drifted.key}
+          Off track: {TOURNAMENT_STATUS_LABELS[drifted.key] ?? drifted.key}
         </p>
       ) : null}
     </div>

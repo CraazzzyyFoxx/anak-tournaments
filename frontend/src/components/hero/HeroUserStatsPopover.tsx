@@ -120,11 +120,11 @@ const HeroUserStatsPopover = ({ hero, stats, playtimeShare, mapStats }: Props) =
       <div className="flex items-center gap-3">
         <HeroImage hero={hero} size="lg" title={hero.name} />
         <div className="min-w-0">
-          <div className="aqt-display truncate text-[15px] font-bold text-[color:var(--aqt-fg)]">{hero.name}</div>
+          <div className="aqt-display truncate text-ui font-bold text-[color:var(--aqt-fg)]">{hero.name}</div>
           {roleKey ? (
             <div className="mt-0.5 flex items-center gap-1.5" style={{ color: ROLE_COLOR[roleKey] }}>
               <PlayerRoleIcon role={ROLE_ICON[roleKey]} size={13} color={ROLE_COLOR[roleKey]} decorative />
-              <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.1em]">{roleName}</span>
+              <span className="aqt-tnum text-label font-bold uppercase tracking-label">{roleName}</span>
             </div>
           ) : null}
         </div>
@@ -134,11 +134,11 @@ const HeroUserStatsPopover = ({ hero, stats, playtimeShare, mapStats }: Props) =
         <div className="grid grid-cols-3 gap-2">
           {cells.map((cell) => (
             <div key={cell.label} className="rounded-[7px] border border-[color:var(--aqt-border)] px-2 py-1.5">
-              <div className="aqt-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">
+              <div className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                 {cell.label}
               </div>
               <div
-                className="aqt-tnum text-[15px] font-bold tabular-nums"
+                className="aqt-tnum text-ui font-bold tabular-nums"
                 style={{ color: cell.color ?? "var(--aqt-fg)" }}
               >
                 {cell.value}
@@ -151,17 +151,17 @@ const HeroUserStatsPopover = ({ hero, stats, playtimeShare, mapStats }: Props) =
       {mapStats && mapShare != null ? (
         <div className="border-t border-[color:var(--aqt-border)] pt-2">
           <div className="flex items-center justify-between">
-            <span className="aqt-mono text-[11px] uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">
+            <span className="aqt-tnum text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
               {t("common.heroStats.playtimeOnMap")}
             </span>
-            <span className="aqt-tnum text-[12px] font-bold tabular-nums text-[color:var(--aqt-fg)]">
+            <span className="aqt-tnum text-label font-bold tabular-nums text-[color:var(--aqt-fg)]">
               {formatSeconds(mapStats.playtime_seconds)} · {mapShare.toFixed(0)}%
             </span>
           </div>
           <div className="mt-2">
             <Progress value={mapShare} aria-label={t("common.heroStats.playtimeOnMap")} />
           </div>
-          <div className="mt-2 text-[11px] text-[color:var(--aqt-fg-faint)]">
+          <div className="mt-2 text-label text-[color:var(--aqt-fg-faint)]">
             {t("common.heroStats.countedNote")}
           </div>
         </div>
@@ -173,17 +173,17 @@ const HeroUserStatsPopover = ({ hero, stats, playtimeShare, mapStats }: Props) =
             cells.length > 0 ? "border-t border-[color:var(--aqt-border)] pt-2" : ""
           }`}
         >
-          <span className="aqt-mono text-[11px] uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">
+          <span className="aqt-tnum text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
             {t("users.heroes.playtimeShare")}
           </span>
-          <span className="aqt-tnum text-[12px] font-bold tabular-nums text-[color:var(--aqt-fg)]">
+          <span className="aqt-tnum text-label font-bold tabular-nums text-[color:var(--aqt-fg)]">
             {(share * 100).toFixed(0)}%
           </span>
         </div>
       ) : null}
 
       {cells.length === 0 && share == null && !mapStats ? (
-        <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.noStats")}</span>
+        <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">{t("users.heroes.noStats")}</span>
       ) : null}
     </div>
   );

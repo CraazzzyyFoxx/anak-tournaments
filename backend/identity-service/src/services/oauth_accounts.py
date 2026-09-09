@@ -297,9 +297,7 @@ class OAuthAccountService:
         if not normalized:
             return None
 
-        players = await self.socials.find_players_by_handle(
-            session, provider=provider, username_normalized=normalized
-        )
+        players = await self.socials.find_players_by_handle(session, provider=provider, username_normalized=normalized)
         if len(players) == 1 and players[0].auth_user_id is None:
             logger.info(
                 "Reconciled OAuth login onto existing unowned player by handle",

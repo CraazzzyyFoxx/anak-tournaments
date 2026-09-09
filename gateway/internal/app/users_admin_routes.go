@@ -47,4 +47,9 @@ var UsersAdminRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/me/favorite-players", Queue: "rpc.app.users.me_favorites_list", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/me/favorite-players/{id}", Queue: "rpc.app.users.me_favorite_add", IDParam: "id", Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/me/favorite-players/{id}", Queue: "rpc.app.users.me_favorite_remove", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
+	// Self-service workspace creation (design §4.1): guild picker for the
+	// discord-guild verify flow above -- lists Discord guilds the caller
+	// administers, via identity-service's OAuth guild scope. Actor-scoped
+	// passthrough, no workspace_id yet at this point.
+	{Method: "GET", Pattern: "/api/v1/me/discord-guilds", Queue: "rpc.app.workspaces.my_discord_guilds", Auth: edge.AuthRequired},
 }

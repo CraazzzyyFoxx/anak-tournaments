@@ -86,7 +86,7 @@ services:
   # reads/writes/binary) behind the gateway + owns the tournament_changed
   # cache-invalidation consumer. Replaces the former HTTP `backend` service.
   app-svc:
-    image: registry.craazzzyyfoxx.me/aqt-app:dev
+    image: registry.craazzzyyfoxx.me/owt-app:dev
     build:
       context: ./backend
       args:
@@ -146,7 +146,7 @@ services:
   # tournament:{id}:balancer WS topic).
 
   parser-svc:
-    image: registry.craazzzyyfoxx.me/aqt-parser:dev
+    image: registry.craazzzyyfoxx.me/owt-parser:dev
     build:
       context: ./backend
       args:
@@ -188,7 +188,7 @@ services:
           memory: 128M
 
   tournament-svc:
-    image: registry.craazzzyyfoxx.me/aqt-tournament:dev
+    image: registry.craazzzyyfoxx.me/owt-tournament:dev
     build:
       context: ./backend
       args:
@@ -226,7 +226,7 @@ services:
           memory: 128M
 
   balancer-svc:
-    image: registry.craazzzyyfoxx.me/aqt-balancer:dev
+    image: registry.craazzzyyfoxx.me/owt-balancer:dev
     build:
       context: ./backend
       args:
@@ -270,7 +270,7 @@ services:
   # the gateway; heavy ML compute stays in analytics-worker (job queues).
 
   analytics-worker:
-    image: registry.craazzzyyfoxx.me/aqt-analytics:dev
+    image: registry.craazzzyyfoxx.me/owt-analytics:dev
     profiles: ["workers"]
     build:
       context: ./backend
@@ -316,7 +316,7 @@ services:
   # (reads + job-control) for the gateway. The heavy ML compute stays in
   # analytics-worker; this process must NOT own the ANALYTICS_* job queues.
   analytics-svc:
-    image: registry.craazzzyyfoxx.me/aqt-analytics:dev
+    image: registry.craazzzyyfoxx.me/owt-analytics:dev
     build:
       context: ./backend
       args:
@@ -359,7 +359,7 @@ services:
   # the Twitch poll tick. Owns no Postgres schema — live state is Redis-only,
   # and polling stays off until the `stream.collection` admin setting enables it.
   stream-svc:
-    image: registry.craazzzyyfoxx.me/aqt-stream:dev
+    image: registry.craazzzyyfoxx.me/owt-stream:dev
     build:
       context: ./backend
       args:
@@ -399,7 +399,7 @@ services:
           memory: 64M
 
   discord-worker:
-    image: registry.craazzzyyfoxx.me/aqt-discord:dev
+    image: registry.craazzzyyfoxx.me/owt-discord:dev
     profiles: ["workers"]
     build:
       context: ./backend
@@ -532,7 +532,7 @@ services:
   # stack so a plain `docker compose up -d --build` brings everything up.
   # --------------------------------------------------------------------------
   identity-svc:
-    image: registry.craazzzyyfoxx.me/aqt-identity:dev
+    image: registry.craazzzyyfoxx.me/owt-identity:dev
     build:
       context: ./backend
       args:
@@ -571,7 +571,7 @@ services:
   # The gateway is also published on :8080 for direct testing.
   # --------------------------------------------------------------------------
   gateway:
-    image: registry.craazzzyyfoxx.me/aqt-gateway:dev
+    image: registry.craazzzyyfoxx.me/owt-gateway:dev
     build:
       context: ./gateway
       dockerfile: Dockerfile

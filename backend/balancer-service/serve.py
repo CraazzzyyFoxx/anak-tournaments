@@ -26,8 +26,8 @@ from src.core.security.api_key_limiter import close_api_key_limiter
 from src.rpc import admin as rpc_admin
 from src.rpc import binary as rpc_binary
 from src.rpc import config as rpc_config
-from src.rpc import draft as rpc_draft
 from src.rpc import custom as rpc_custom
+from src.rpc import draft as rpc_draft
 from src.rpc import jobs as rpc_jobs
 from src.rpc import players as rpc_players
 from src.services.balancer.jobs import execute_balance_job
@@ -60,7 +60,6 @@ rpc_draft.register(broker, logger)
 rpc_jobs.register(broker, logger)
 rpc_custom.register(broker, logger)
 rpc_players.register(broker, logger)
-
 
 
 # Balance jobs run for minutes (MOO solver); isolate them from the RPC channel.
@@ -123,7 +122,9 @@ async def start_draft_clock() -> None:
     # Single server-authoritative clock owner per LIVE draft (guarded by a Redis
     # lock inside the loop, so multiple worker replicas are safe).
     _draft_clock_redis = Redis.from_url(config.redis_url, decode_responses=True)
-    _draft_clock_task = asyncio.create_task(draft_clock_service.draft_clock_supervisor(db.async_session_maker, _draft_clock_redis))
+    _draft_clock_task = asyncio.create_task(
+        draft_clock_service.draft_clock_supervisor(db.async_session_maker, _draft_clock_redis)
+    )
     logger.info("Draft clock supervisor started")
 
 

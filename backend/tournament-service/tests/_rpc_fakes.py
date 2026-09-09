@@ -57,7 +57,7 @@ class FakeSessionMaker:
     def __init__(self, session: Any | None = None) -> None:
         self._session = session if session is not None else SimpleNamespace(add=lambda _row: None)
 
-    def __call__(self) -> "FakeSessionMaker":
+    def __call__(self) -> FakeSessionMaker:
         return self
 
     async def __aenter__(self) -> Any:

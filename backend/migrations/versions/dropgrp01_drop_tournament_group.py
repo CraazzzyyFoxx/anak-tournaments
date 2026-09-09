@@ -143,7 +143,9 @@ def downgrade() -> None:
         referent_schema="tournament",
         ondelete="CASCADE",
     )
-    op.create_index("ix_encounter_tournament_group", "encounter", ["tournament_id", "tournament_group_id"], schema="tournament")
+    op.create_index(
+        "ix_encounter_tournament_group", "encounter", ["tournament_id", "tournament_group_id"], schema="tournament"
+    )
     op.create_index("ix_encounter_tournament_group_id", "encounter", ["tournament_group_id"], schema="tournament")
     op.create_index("ix_standing_group_id", "standing", ["group_id"], schema="tournament")
     op.create_index("ix_tournament_challonge_team_group_id", "challonge_team", ["group_id"], schema="tournament")

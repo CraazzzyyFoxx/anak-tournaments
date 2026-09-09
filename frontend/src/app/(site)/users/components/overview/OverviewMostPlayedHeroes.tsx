@@ -55,8 +55,8 @@ const OverviewMostPlayedHeroes = async ({ heroes, userSlug, totalCount, limit = 
               />
               <div className="min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-[13px] font-semibold text-[color:var(--aqt-fg)]">{hp.hero.name}</span>
-                  <span className="aqt-mono shrink-0 text-[12px] text-[color:var(--aqt-fg-muted)]">
+                  <span className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]">{hp.hero.name}</span>
+                  <span className="aqt-tnum shrink-0 text-label text-[color:var(--aqt-fg-muted)]">
                     {formatShare(hp.playtime)}
                   </span>
                 </div>

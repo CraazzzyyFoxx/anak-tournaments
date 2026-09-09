@@ -459,7 +459,6 @@ class AnalyticsReadFlowsService:
 
         return sorted(output, key=lambda x: (x.sum_position, x.user.name or ""))
 
-
     async def list_performance(
         self,
         session: AsyncSession,
@@ -510,9 +509,7 @@ class AnalyticsReadFlowsService:
         player_id: int | None = None,
         kind: str | None = None,
     ) -> typing.Sequence[models.AnalyticsPlayerAnomaly]:
-        return await self.player_anomalies.list_by_tournament(
-            session, tournament_id, player_id=player_id, kind=kind
-        )
+        return await self.player_anomalies.list_by_tournament(session, tournament_id, player_id=player_id, kind=kind)
 
     async def list_feedback(
         self,
@@ -559,7 +556,6 @@ class AnalyticsReadFlowsService:
         )
         await self.feedback.create(session, row)
         return row
-
 
     async def get_explanation(
         self,

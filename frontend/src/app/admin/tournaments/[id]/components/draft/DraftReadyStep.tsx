@@ -15,8 +15,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { TONE_CLASS } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
@@ -64,9 +64,9 @@ export function DraftReadyStep({
               </p>
             </div>
           </div>
-          <Badge variant={ready ? "default" : "destructive"}>
+          <StatusPill tone={ready ? "success" : "danger"}>
             {ready ? t("ready") : t("blocked")}
-          </Badge>
+          </StatusPill>
         </div>
       </div>
 

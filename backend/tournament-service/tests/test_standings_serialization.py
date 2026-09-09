@@ -97,7 +97,7 @@ class _ScalarResult:
     def __init__(self, rows: list[models.Encounter]) -> None:
         self._rows = rows
 
-    def scalars(self) -> "_ScalarResult":
+    def scalars(self) -> _ScalarResult:
         return self
 
     def all(self) -> list[models.Encounter]:
@@ -231,7 +231,6 @@ class MatchHistoryRoundScopeTests(IsolatedAsyncioTestCase):
         )
 
         self.assertEqual([1, 2, 5], [encounter.id for encounter in history])
-
 
 
 class StandingLoadOptionTests(TestCase):

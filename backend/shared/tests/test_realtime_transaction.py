@@ -29,7 +29,6 @@ from shared.services import realtime_transaction  # noqa: E402
 from shared.services.realtime_transaction import register_realtime_update  # noqa: E402
 from shared.testing import install_postgres_type_shims
 
-
 install_postgres_type_shims()
 
 

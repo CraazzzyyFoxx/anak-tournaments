@@ -24,11 +24,13 @@ from shared.schemas.settings import (
     SETTINGS_KEY_SCRIM,
     SETTINGS_KEY_STREAM_COLLECTION,
     SETTINGS_KEY_SUBSCRIPTION_COLLECTION,
+    SETTINGS_KEY_WORKSPACE_CREATION,
     RankCollectionConfig,
     RankMappingConfig,
     ScrimConfig,
     StreamCollectionConfig,
     SubscriptionCollectionConfig,
+    WorkspaceCreationConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,3 +118,12 @@ async def get_scrim_config(session: AsyncSession) -> ScrimConfig:
     except ValidationError as exc:
         logger.warning("invalid %s settings, using defaults: %s", SETTINGS_KEY_SCRIM, exc)
         return ScrimConfig()
+
+
+async def get_workspace_creation_config(session: AsyncSession) -> WorkspaceCreationConfig:
+    raw = await get_setting_value(session, SETTINGS_KEY_WORKSPACE_CREATION)
+    try:
+        return WorkspaceCreationConfig.model_validate(raw)
+    except ValidationError as exc:
+        logger.warning("invalid %s settings, using defaults: %s", SETTINGS_KEY_WORKSPACE_CREATION, exc)
+        return WorkspaceCreationConfig()

@@ -63,9 +63,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         schema="balancer",
     )
-    op.create_index(
-        op.f("ix_balancer_member_rank_workspace_id"), "member_rank", ["workspace_id"], schema="balancer"
-    )
+    op.create_index(op.f("ix_balancer_member_rank_workspace_id"), "member_rank", ["workspace_id"], schema="balancer")
     op.create_index(
         op.f("ix_balancer_member_rank_workspace_member_id"),
         "member_rank",
@@ -306,12 +304,8 @@ def downgrade() -> None:
 
     op.drop_index("uq_member_rank_author", table_name="member_rank", schema="balancer")
     op.drop_index("uq_member_rank_canon", table_name="member_rank", schema="balancer")
-    op.drop_index(
-        op.f("ix_balancer_member_rank_author_user_id"), table_name="member_rank", schema="balancer"
-    )
-    op.drop_index(
-        op.f("ix_balancer_member_rank_workspace_member_id"), table_name="member_rank", schema="balancer"
-    )
+    op.drop_index(op.f("ix_balancer_member_rank_author_user_id"), table_name="member_rank", schema="balancer")
+    op.drop_index(op.f("ix_balancer_member_rank_workspace_member_id"), table_name="member_rank", schema="balancer")
     op.drop_index(op.f("ix_balancer_member_rank_workspace_id"), table_name="member_rank", schema="balancer")
     op.drop_table("member_rank", schema="balancer")
 

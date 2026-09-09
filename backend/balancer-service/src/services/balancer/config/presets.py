@@ -93,5 +93,3 @@ class ConfigPresets:
         "stagnation_kick_patience": 25,
         "convergence_patience": 60,
     }
-
-

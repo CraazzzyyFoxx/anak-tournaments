@@ -58,14 +58,14 @@ class AuthUser(db.TimeStampIntegerMixin):
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    player: Mapped["User | None"] = relationship(
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    player: Mapped[User | None] = relationship(
         back_populates="auth_user",
         uselist=False,
         viewonly=False,
     )
-    roles: Mapped[list["Role"]] = relationship(secondary="auth.user_roles", back_populates="users", lazy="selectin")
-    oauth_connections: Mapped[list["OAuthConnection"]] = relationship(
+    roles: Mapped[list[Role]] = relationship(secondary="auth.user_roles", back_populates="users", lazy="selectin")
+    oauth_connections: Mapped[list[OAuthConnection]] = relationship(
         back_populates="auth_user", cascade="all, delete-orphan", lazy="selectin"
     )
 
@@ -331,7 +331,7 @@ class RefreshToken(db.TimeStampIntegerMixin):
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
 
     # Relations
-    user: Mapped["AuthUser"] = relationship(back_populates="refresh_tokens")
+    user: Mapped[AuthUser] = relationship(back_populates="refresh_tokens")
 
     def __repr__(self):
         return f"<RefreshToken id={self.id} user_id={self.user_id}>"

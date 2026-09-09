@@ -83,7 +83,7 @@ export function RoleMatrixRow({
         </span>
         <span
           className={cn(
-            "truncate text-[12px] font-semibold",
+            "truncate text-label font-semibold",
             active ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]",
           )}
         >
@@ -104,7 +104,7 @@ export function RoleMatrixRow({
           carries its own labels instead of leaving bare controls. */}
       {subroleOptions.length > 0 ? (
         <div className="grid gap-1">
-          <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)] sm:hidden">
+          <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:hidden">
             {t("registration.roles.specialization")}
           </span>
           <Select
@@ -114,7 +114,7 @@ export function RoleMatrixRow({
             <SelectTrigger
               id={subroleId}
               aria-label={t("registration.roles.roleSpecialization", { role: roleLabel })}
-              className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[11px] text-[color:var(--aqt-fg)]"
+              className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-label text-[color:var(--aqt-fg)]"
             >
               <SelectValue />
             </SelectTrigger>
@@ -134,7 +134,7 @@ export function RoleMatrixRow({
 
       {topHeroesEnabled ? (
         <div className="grid gap-1">
-          <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)] sm:hidden">
+          <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:hidden">
             {t("registration.roles.topHeroes.title")}
           </span>
           <HeroPickerCell

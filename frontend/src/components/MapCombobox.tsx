@@ -7,8 +7,8 @@ import { CommandGroup, CommandItem } from "@/components/ui/command";
 import type { LookupItem } from "@/types/pagination.types";
 
 const TRIGGER_SIZE_CLASS = {
-  sm: "h-8 w-[160px] rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 text-[12.5px]",
-  lg: "h-[38px] w-[170px] rounded-lg border-[color:var(--aqt-border)] bg-white/[0.015] text-[13px]",
+  sm: "h-8 w-[160px] rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 text-caption",
+  lg: "h-[38px] w-[170px] rounded-lg border-[color:var(--aqt-border)] bg-white/[0.015] text-caption",
 } as const;
 
 type MapComboboxProps = {

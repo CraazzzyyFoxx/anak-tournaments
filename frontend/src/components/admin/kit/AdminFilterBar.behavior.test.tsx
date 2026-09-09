@@ -10,7 +10,7 @@
 //  4. a pinned chip has no remove control (the tournament inside a hub);
 //  5. a preset applies all its keys in ONE write — sequential `set` calls read
 //     the same stale query snapshot and only the last one would survive.
-import { act, useState } from "react";
+import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -55,7 +55,11 @@ let root: Root;
 
 function Harness() {
   const [, force] = useState(0);
-  rerender = () => force((value) => value + 1);
+  // Published from an effect, not during render: writing a module-scope binding
+  // while rendering is a side effect the react-compiler rules reject.
+  useEffect(() => {
+    rerender = () => force((value) => value + 1);
+  }, []);
   const filters = useAdminFilters(DEFS);
   return (
     <AdminFilterBar

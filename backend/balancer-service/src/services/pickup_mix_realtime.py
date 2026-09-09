@@ -43,9 +43,7 @@ def _get_redis() -> Redis:
     return _redis_client
 
 
-async def emit_pickup_mix_updated(
-    workspace_id: int, *, reason: str, actor_user_id: int | None = None
-) -> None:
+async def emit_pickup_mix_updated(workspace_id: int, *, reason: str, actor_user_id: int | None = None) -> None:
     """Best-effort publish, called after the caller's mutation has committed.
 
     ``reason`` (``roster``/``rank``/``member``) is diagnostic only -- every
@@ -61,8 +59,6 @@ async def emit_pickup_mix_updated(
         data={"workspace_id": int(workspace_id), "reason": reason},
     )
     try:
-        await publish_envelope_to_redis(
-            _get_redis(), topic=realtime_topics.pickup_mix(workspace_id), envelope=envelope
-        )
+        await publish_envelope_to_redis(_get_redis(), topic=realtime_topics.pickup_mix(workspace_id), envelope=envelope)
     except Exception:  # pragma: no cover - best-effort signal
         logger.exception(f"Failed to publish pickup_mix.updated for workspace {workspace_id}")

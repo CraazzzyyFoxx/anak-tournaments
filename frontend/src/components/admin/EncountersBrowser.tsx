@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,17 +32,18 @@ import {
   type EncounterFormState
 } from "@/components/admin/EncounterForm";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { adminColumnMeta } from "@/components/admin/admin-table-columns";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { AdminFilterBar } from "@/components/admin/kit/AdminFilterBar";
 import { AdminInspector } from "@/components/admin/kit/AdminInspector";
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { createKebabColumn } from "@/components/admin/kit/kebab-column";
 import { useAdminFilters, type FilterDef } from "@/components/admin/kit/useAdminFilters";
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { hasChallongeSource } from "@/components/admin/tournament-checklist";
 import { TOURNAMENT_QUERY_PARAM, parseTournamentQueryParam } from "@/components/admin/tournament-filter";
 import TeamName from "@/components/TeamName";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TournamentLogUploadDialog } from "@/app/admin/tournaments/[id]/components/TournamentLogUploadDialog";
 import { invalidateTournamentWorkspace } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
@@ -332,10 +333,14 @@ export function EncountersBrowser({
     }
   });
 
+  // `saveMutation` is rebuilt on every state transition; `reset` is not, so the
+  // memoised `openEdit` below hangs on the callback instead of the container.
+  const { reset: resetSaveMutation } = saveMutation;
+
   const openCreate = () => {
     const stage = stages[0] ?? null;
     const blank = emptyEncounterForm(stage?.id ?? null, stage?.items[0]?.id ?? null);
-    saveMutation.reset();
+    resetSaveMutation();
     setSaveError(undefined);
     setEditing(null);
     setForm(blank);
@@ -343,15 +348,21 @@ export function EncountersBrowser({
     setFormMode("create");
   };
 
-  const openEdit = (encounter: Encounter) => {
-    const initial = encounterFormOf(encounter);
-    saveMutation.reset();
-    setSaveError(undefined);
-    setEditing(encounter);
-    setForm(initial);
-    setFormInitial(initial);
-    setFormMode("edit");
-  };
+  // The kebab column closes over this, so the column memo has to depend on it —
+  // which means it needs an identity that only moves when its inputs do. Every
+  // other name it touches is a `useState` setter (stable by contract).
+  const openEdit = useCallback(
+    (encounter: Encounter) => {
+      const initial = encounterFormOf(encounter);
+      resetSaveMutation();
+      setSaveError(undefined);
+      setEditing(encounter);
+      setForm(initial);
+      setFormInitial(initial);
+      setFormMode("edit");
+    },
+    [resetSaveMutation]
+  );
 
   const columns = useMemo<ColumnDef<Encounter>[]>(
     () => [
@@ -414,6 +425,7 @@ export function EncountersBrowser({
         accessorKey: "status",
         header: "Status",
         size: 132,
+        meta: adminColumnMeta<Encounter>({ align: "center" }),
         cell: ({ row }) => <EncounterStatusCell status={row.original.status} />
       },
       {
@@ -422,19 +434,16 @@ export function EncountersBrowser({
         size: 132,
         enableSorting: false,
         cell: ({ row }) => (
-          <Badge
-            className={cn(
-              TONE_CLASS[row.original.result_status === "disputed" ? "danger" : "neutral"]
-            )}
-          >
+          <StatusPill tone={row.original.result_status === "disputed" ? "danger" : "neutral"}>
             {row.original.result_status}
-          </Badge>
+          </StatusPill>
         )
       },
       {
         accessorKey: "has_logs",
         header: "Logs",
         size: 108,
+        meta: adminColumnMeta<Encounter>({ align: "center" }),
         cell: ({ row }) =>
           row.original.has_logs ? (
             <StatusIcon icon={FileCheck2} label="Available" variant="success" />
@@ -456,7 +465,9 @@ export function EncountersBrowser({
         { rowLabel: (row) => row.name }
       )
     ],
-    [canUpdate, canDelete, stages]
+    // `openEdit` was missing here: the kebab's "Edit encounter" called whichever
+    // closure the first render happened to build.
+    [canUpdate, canDelete, openEdit]
   );
 
   if (workspaceId == null) {

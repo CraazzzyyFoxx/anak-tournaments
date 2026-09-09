@@ -35,7 +35,7 @@ type ViewMode = "simple" | "extended";
 type ExtendedTab = "tables" | "comparison" | "timeline";
 
 const ControlLabel = ({ children }: { children: React.ReactNode }) => (
-  <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+  <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
     {children}
   </span>
 );
@@ -68,7 +68,7 @@ const MatchStatsSection = ({ match, tournamentGrid }: MatchStatsSectionProps) =>
     <div className="flex items-center gap-2">
       <ControlLabel>{t("matches.roundLabel")}</ControlLabel>
       <Select value={String(activeRound)} onValueChange={(value) => setRound(Number(value))}>
-        <SelectTrigger className="h-8 w-[150px] text-[12.5px]">
+        <SelectTrigger className="h-8 w-[150px] text-caption">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -142,7 +142,7 @@ const MatchStatsSection = ({ match, tournamentGrid }: MatchStatsSectionProps) =>
             <div className="flex items-center gap-2">
               <ControlLabel>{t("matches.tableView")}</ControlLabel>
               <Select value={preset} onValueChange={(value) => setPreset(value as PresetKey)}>
-                <SelectTrigger className="h-8 w-[160px] text-[12.5px]">
+                <SelectTrigger className="h-8 w-[160px] text-caption">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

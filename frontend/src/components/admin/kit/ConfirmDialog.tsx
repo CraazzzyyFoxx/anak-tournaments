@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { AlertTriangle, LoaderCircle } from "lucide-react";
 
 import {
@@ -63,10 +63,14 @@ export function ConfirmDialog({
   const [typed, setTyped] = useState("");
 
   // A reused instance must not carry the previous intent's typed value into
-  // the next confirmation.
-  useEffect(() => {
+  // the next confirmation. Adjusted during render rather than in an effect:
+  // the value is derived from `open`/`requireTyped`, so an effect would commit
+  // one render with the stale text before clearing it.
+  const [seen, setSeen] = useState({ open, requireTyped: intent.requireTyped });
+  if (seen.open !== open || seen.requireTyped !== intent.requireTyped) {
+    setSeen({ open, requireTyped: intent.requireTyped });
     if (!open) setTyped("");
-  }, [open, intent.requireTyped]);
+  }
 
   const typedOk = intent.requireTyped === undefined || typed.trim() === intent.requireTyped;
 

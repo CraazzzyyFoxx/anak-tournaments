@@ -21,7 +21,7 @@
   --ed-violet: var(--aqt-violet);
   --ed-blue: var(--aqt-blue);
   --ed-display: var(--aqt-display);
-  --ed-mono: var(--aqt-mono);
+  --ed-mono: var(--aqt-data);
   /* Side identity. The home/away pair is the page's organising contrast, so it
      is declared once here and every side-tinted element derives from it. */
   --ed-home: var(--aqt-teal);
@@ -55,15 +55,15 @@
   margin: 0;
   font-family: var(--ed-display);
   font-weight: 700;
-  font-size: 22px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
+  letter-spacing: var(--text-title--letter-spacing);
 }
 
 .sectionMeta {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--ed-faint);
 }
@@ -90,14 +90,14 @@
   margin: 0;
   font-family: var(--ed-display);
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--text-body);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--ed-fg) 80%, var(--ed-muted));
 }
 
 .cardSub {
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--ed-dim);
   font-family: var(--ed-mono);
 }
@@ -116,9 +116,9 @@
 }
 
 .label {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--ed-faint);
 }
@@ -131,7 +131,7 @@
   border-radius: 999px;
   border: 1px solid var(--ed-border-2);
   background: var(--aqt-overlay-3);
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--ed-muted);
   white-space: nowrap;
 }
@@ -282,9 +282,9 @@
 
 .boardVerdict {
   font-family: var(--ed-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--ed-faint);
   text-align: center;
@@ -360,7 +360,7 @@
   gap: 7px;
   font-family: var(--ed-display);
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--text-ui);
   font-variant-numeric: tabular-nums;
   color: var(--ed-fg);
   overflow-wrap: anywhere;
@@ -409,7 +409,7 @@
 
 .mapIndex {
   font-family: var(--ed-mono);
-  font-size: 12px;
+  font-size: var(--text-label);
   font-weight: 700;
   color: var(--ed-faint);
   font-variant-numeric: tabular-nums;
@@ -446,7 +446,7 @@
 .mapName {
   font-family: var(--ed-display);
   font-weight: 650;
-  font-size: 15px;
+  font-size: var(--text-ui);
   color: var(--ed-fg);
   overflow-wrap: anywhere;
 }
@@ -456,7 +456,7 @@
   align-items: center;
   gap: 6px;
   font-family: var(--ed-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--ed-dim);
 }
 
@@ -497,7 +497,7 @@
   align-items: baseline;
   min-width: 0;
   font-family: var(--ed-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--ed-dim);
 }
 
@@ -547,7 +547,7 @@
   background: var(--aqt-overlay-2);
   color: var(--ed-fg);
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -616,7 +616,7 @@
   margin: 0;
   font-family: var(--ed-display);
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--text-ui);
   letter-spacing: 0.02em;
   color: var(--ed-side);
   overflow-wrap: anywhere;
@@ -669,9 +669,9 @@
 /* The head cells carry abbreviations because the columns are ~3rem wide; the
    full column name is the accessible name and the explanation is the title. */
 .rosterHeadCell {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--ed-faint);
   overflow: hidden;
@@ -720,7 +720,7 @@
 }
 
 .playerLink {
-  font-size: 13.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
   color: var(--ed-fg);
   text-decoration: none;
@@ -736,13 +736,13 @@
 
 .playerTag {
   font-family: var(--ed-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--ed-faint);
 }
 
 .playerSpec {
   font-family: var(--ed-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--ed-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -789,7 +789,7 @@
 }
 
 .statsNotice {
-  font-size: 12px;
+  font-size: var(--text-label);
   color: var(--ed-dim);
   line-height: 1.5;
 }
@@ -812,9 +812,9 @@
 }
 
 .seriesTable th {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--ed-faint);
   text-align: right;
@@ -840,7 +840,7 @@
   text-align: right;
   border-bottom: 1px solid color-mix(in srgb, var(--ed-border) 55%, var(--ed-card));
   font-family: var(--ed-mono);
-  font-size: 12.5px;
+  font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
   color: var(--ed-muted);
   white-space: nowrap;
@@ -854,7 +854,7 @@
   background: color-mix(in srgb, var(--ed-side) 10%, transparent);
   font-family: var(--ed-display);
   font-weight: 700;
-  font-size: 12px;
+  font-size: var(--text-label);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ed-side);
@@ -917,7 +917,7 @@
 }
 
 .reportValue {
-  font-size: 13px;
+  font-size: var(--text-caption);
   color: var(--ed-muted);
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -932,7 +932,7 @@
 
 .reportCode {
   font-family: var(--ed-mono);
-  font-size: 11.5px;
+  font-size: var(--text-label);
   letter-spacing: 0.06em;
   padding: 3px 8px;
   border-radius: 6px;
@@ -949,7 +949,7 @@
   border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--ed-amber) 30%, transparent);
   background: color-mix(in srgb, var(--ed-amber) 8%, transparent);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.5;
   color: var(--ed-amber);
 }
@@ -989,7 +989,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: var(--text-caption);
   font-weight: 600;
 }
 
@@ -1000,7 +1000,7 @@
   align-items: center;
   gap: 6px 14px;
   font-family: var(--ed-mono);
-  font-size: 11px;
+  font-size: var(--text-label);
   color: var(--ed-dim);
 }
 

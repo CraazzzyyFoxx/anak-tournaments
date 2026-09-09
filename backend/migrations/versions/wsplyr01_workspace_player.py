@@ -71,9 +71,7 @@ def upgrade() -> None:
         sa.Column("workspace_player_id", sa.BigInteger(), nullable=False),
         sa.Column("role", sa.String(length=16), nullable=False),
         sa.Column("rank_value", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["workspace_player_id"], ["balancer.workspace_player.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["workspace_player_id"], ["balancer.workspace_player.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("workspace_player_id", "role", name="uq_workspace_player_rank"),
         schema="balancer",

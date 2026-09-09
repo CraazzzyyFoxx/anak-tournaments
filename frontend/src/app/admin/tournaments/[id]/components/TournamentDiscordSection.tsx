@@ -6,15 +6,14 @@ import { History, Pencil, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/admin/kit/ConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/admin/kit/StatusPill";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DiscordChannelSelect } from "@/components/discord/DiscordChannelSelect";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EYEBROW_CLASS, TONE_CLASS, type Tone } from "@/components/admin/tone";
-import { cn } from "@/lib/utils";
+import { EYEBROW_CLASS, type Tone } from "@/components/admin/tone";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
@@ -127,9 +126,9 @@ export function TournamentDiscordSection({
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className={EYEBROW_CLASS}>Discord match logs</h3>
-          <Badge variant="outline" className={cn("shrink-0", TONE_CLASS[tone])}>
+          <StatusPill tone={tone} className="shrink-0">
             {label}
-          </Badge>
+          </StatusPill>
         </div>
         <p className="text-xs text-muted-foreground">
           Route Discord match logs into this tournament workspace.

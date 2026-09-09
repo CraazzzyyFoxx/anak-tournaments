@@ -14,7 +14,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-
 from sqlalchemy.dialects import postgresql  # noqa: E402
 
 from shared.core.enums import StageType  # noqa: E402
@@ -306,9 +305,7 @@ class ValidationTests(TestCase):
 
     def test_default_rule_catalog_matches_legacy_consts(self) -> None:
         rules = {rule.slug: rule for rule in _all_default_rules(1)}
-        expected = {
-            slug: meta for slug, meta in EXPECTED_LEGACY_RULES.items() if slug not in _DEFAULT_EXCLUDED_SLUGS
-        }
+        expected = {slug: meta for slug, meta in EXPECTED_LEGACY_RULES.items() if slug not in _DEFAULT_EXCLUDED_SLUGS}
         self.assertEqual(sorted(expected), sorted(rules))
 
         metadata_mismatches = [

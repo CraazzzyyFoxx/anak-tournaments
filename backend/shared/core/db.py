@@ -146,7 +146,7 @@ class DatabaseEngines:
     async_engine: AsyncEngine
     async_session_maker: async_sessionmaker[AsyncSession]
 
-    async def get_async_session(self) -> AsyncGenerator[AsyncSession, None]:
+    async def get_async_session(self) -> AsyncGenerator[AsyncSession]:
         async with self.async_session_maker() as session:
             yield session
 

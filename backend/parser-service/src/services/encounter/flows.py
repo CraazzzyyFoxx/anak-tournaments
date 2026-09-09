@@ -1,4 +1,3 @@
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
@@ -27,6 +26,3 @@ async def get_by_teams_ids(
             ],
         )
     return encounter
-
-
-

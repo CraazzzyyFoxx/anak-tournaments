@@ -200,11 +200,15 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=existing_user)),
+            patch.object(
+                reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=existing_user)
+            ),
             patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
-            resolved = await reg_service.registration_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
+            resolved = await reg_service.registration_service.ensure_player_identity(
+                session, registration, workspace_id=_WORKSPACE_ID
+            )
 
         self.assertEqual(resolved, 7)
         # The registration is anchored on the player's member row for the
@@ -232,7 +236,9 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
             patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
-            resolved = await reg_service.registration_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
+            resolved = await reg_service.registration_service.ensure_player_identity(
+                session, registration, workspace_id=_WORKSPACE_ID
+            )
 
         self.assertEqual(resolved, 5)
         self.assertEqual(registration.workspace_member_id, 10)
@@ -249,7 +255,9 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
             patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
-            resolved = await reg_service.registration_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
+            resolved = await reg_service.registration_service.ensure_player_identity(
+                session, registration, workspace_id=_WORKSPACE_ID
+            )
 
         self.assertEqual(resolved, 999)
         member_mock.assert_awaited_once_with(session, workspace_id=_WORKSPACE_ID, player_id=999)
@@ -269,7 +277,9 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
             patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()),
         ):
-            resolved = await reg_service.registration_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
+            resolved = await reg_service.registration_service.ensure_player_identity(
+                session, registration, workspace_id=_WORKSPACE_ID
+            )
 
         self.assertEqual(resolved, 999)
 
@@ -282,7 +292,9 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=owned_user)),
-            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=owned_user)),
+            patch.object(
+                reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=owned_user)
+            ),
             patch.object(reg_service.registration_service, "_move_battle_tag_identity", AsyncMock()) as move_mock,
             patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
@@ -307,7 +319,9 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=owned_user)),
-            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=shadow_user)),
+            patch.object(
+                reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=shadow_user)
+            ),
             patch.object(reg_service.registration_service, "_move_battle_tag_identity", AsyncMock()) as move_mock,
             patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
@@ -330,8 +344,12 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=None)) as owned_mock,
-            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=shadow_user)),
+            patch.object(
+                reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=None)
+            ) as owned_mock,
+            patch.object(
+                reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=shadow_user)
+            ),
             patch.object(reg_service.registration_service, "_move_battle_tag_identity", AsyncMock()) as move_mock,
             patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
@@ -376,11 +394,15 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session(collides=True)  # EXISTS guard: collision
 
         with (
-            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=existing_user)),
+            patch.object(
+                reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=existing_user)
+            ),
             patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()),
         ):
-            resolved = await reg_service.registration_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
+            resolved = await reg_service.registration_service.ensure_player_identity(
+                session, registration, workspace_id=_WORKSPACE_ID
+            )
 
         self.assertEqual(resolved, 7)
         self.assertIsNone(registration.workspace_member_id)

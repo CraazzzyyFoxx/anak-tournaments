@@ -166,9 +166,7 @@ class BalancerRegistrationRoleRepository(BaseRepository[models.BalancerRegistrat
         super().__init__(models.BalancerRegistrationRole)
 
 
-class BalancerRegistrationTeamInviteRepository(
-    BaseRepository[models.BalancerRegistrationTeamInvite]
-):
+class BalancerRegistrationTeamInviteRepository(BaseRepository[models.BalancerRegistrationTeamInvite]):
     """``registration_team_invite`` — slot offers a captain issues for their team."""
 
     def __init__(self) -> None:
@@ -176,7 +174,7 @@ class BalancerRegistrationTeamInviteRepository(
 
     @staticmethod
     def _live_clause() -> sa.ColumnElement[bool]:
-        """"Not expired" — a NULL ``expires_at`` never lapses."""
+        """ "Not expired" — a NULL ``expires_at`` never lapses."""
         invite = models.BalancerRegistrationTeamInvite
         return sa.or_(invite.expires_at.is_(None), invite.expires_at > sa.func.now())
 
@@ -212,9 +210,7 @@ class BalancerRegistrationTeamInviteRepository(
         The raw token is never compared against anything stored.
         """
         return await session.scalar(
-            self.select().where(
-                models.BalancerRegistrationTeamInvite.token_sha256 == token_sha256
-            )
+            self.select().where(models.BalancerRegistrationTeamInvite.token_sha256 == token_sha256)
         )
 
     async def consume_if_pending(
@@ -268,21 +264,15 @@ class BalancerRegistrationTeamInviteRepository(
         )
 
 
-class GoogleSheetBindingRepository(
-    BaseRepository[models.BalancerRegistrationGoogleSheetBinding]
-):
+class GoogleSheetBindingRepository(BaseRepository[models.BalancerRegistrationGoogleSheetBinding]):
     """``registration_google_sheet_binding`` — one imported sheet row ↔ one registration."""
 
     def __init__(self) -> None:
         super().__init__(models.BalancerRegistrationGoogleSheetBinding)
 
-    async def list_source_record_keys(
-        self, session: AsyncSession, feed_id: int
-    ) -> Sequence[str]:
+    async def list_source_record_keys(self, session: AsyncSession, feed_id: int) -> Sequence[str]:
         binding = models.BalancerRegistrationGoogleSheetBinding
-        result = await session.scalars(
-            sa.select(binding.source_record_key).where(binding.feed_id == feed_id)
-        )
+        result = await session.scalars(sa.select(binding.source_record_key).where(binding.feed_id == feed_id))
         return result.all()
 
     async def list_by_feed(
@@ -293,9 +283,7 @@ class GoogleSheetBindingRepository(
         options: Sequence[_AbstractLoad] | None = None,
     ) -> Sequence[models.BalancerRegistrationGoogleSheetBinding]:
         query = self._apply_options(
-            self.select().where(
-                models.BalancerRegistrationGoogleSheetBinding.feed_id == feed_id
-            ),
+            self.select().where(models.BalancerRegistrationGoogleSheetBinding.feed_id == feed_id),
             options,
         )
         result = await session.execute(query)

@@ -49,7 +49,7 @@ const MEDAL_COLOR: Record<string, string> = {
 };
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <div className="mb-2.5 aqt-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+  <div className="mb-2.5 aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
     {children}
   </div>
 );
@@ -66,7 +66,7 @@ const useVerdict = (placement: number | null | undefined, countTeams: number | n
 
 const Verdict = ({ text }: { text: string }) => (
   <div
-    className="mx-4 mt-4 rounded-[8px] bg-[color:var(--aqt-card-2)] px-3 py-2.5 text-[12.5px] text-[color:var(--aqt-fg-muted)]"
+    className="mx-4 mt-4 rounded-[8px] bg-[color:var(--aqt-card-2)] px-3 py-2.5 text-caption text-[color:var(--aqt-fg-muted)]"
     style={{ borderLeft: "2px solid var(--aqt-teal)" }}
   >
     {text}
@@ -82,10 +82,10 @@ const ChampionBanner = () => {
     >
       <Crown size={22} style={{ color: "var(--aqt-gold)" }} aria-hidden="true" />
       <div className="min-w-0">
-        <div className="aqt-display text-[15px] font-bold" style={{ color: "var(--aqt-gold)" }}>
+        <div className="aqt-display text-ui font-bold" style={{ color: "var(--aqt-gold)" }}>
           {t("users.tournaments.dossier.champions")}
         </div>
-        <div className="aqt-mono text-[11.5px] text-[color:var(--aqt-fg-muted)]">
+        <div className="aqt-tnum text-label text-[color:var(--aqt-fg-muted)]">
           {t("users.tournaments.dossier.championsSub")}
         </div>
       </div>
@@ -117,7 +117,7 @@ const summaryCells = (
         <>
           {args.placement && args.placement > 0 ? args.placement : "—"}
           {args.countTeams ? (
-            <span className="text-[12px] font-normal text-[color:var(--aqt-fg-faint)]"> / {args.countTeams}</span>
+            <span className="text-label font-normal text-[color:var(--aqt-fg-faint)]"> / {args.countTeams}</span>
           ) : null}
         </>
       )
@@ -125,7 +125,7 @@ const summaryCells = (
     {
       key: "record",
       label: t("users.tournaments.dossier.summary.record"),
-      value: <WdlText won={args.won} lost={args.lost} draw={args.draw} className="text-[15px]" />
+      value: <WdlText won={args.won} lost={args.lost} draw={args.draw} className="text-ui" />
     },
     {
       key: "maps",
@@ -196,10 +196,10 @@ const EventBody = ({
             {stages.map((stage) => (
               <div key={stage.key}>
                 <div className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.018)] px-4 py-2">
-                  <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-muted)]">
+                  <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
                     {stage.name}
                   </span>
-                  <WdlText won={stage.won} lost={stage.lost} draw={stage.drawn} className="text-[11px]" />
+                  <WdlText won={stage.won} lost={stage.lost} draw={stage.drawn} className="text-label" />
                 </div>
                 {stage.encounters.map((enc) => (
                   <EncounterRow key={enc.id} enc={enc} selfUserId={selfUserId} teamId={t.team_id} />
@@ -208,7 +208,7 @@ const EventBody = ({
             ))}
           </div>
         ) : (
-          <div className="rounded-[10px] border border-[color:var(--aqt-border)] px-4 py-6 text-center text-[13px] text-[color:var(--aqt-fg-muted)]">
+          <div className="rounded-[10px] border border-[color:var(--aqt-border)] px-4 py-6 text-center text-caption text-[color:var(--aqt-fg-muted)]">
             {tr("users.tournaments.dossier.noRun")}
           </div>
         )}
@@ -250,17 +250,17 @@ const SingleDossier = ({
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={`/tournaments/${t.id}`}
-                className="aqt-display text-[22px] font-bold leading-tight text-[color:var(--aqt-fg)] hover:text-[color:var(--aqt-teal)]"
+                className="aqt-display text-title font-bold leading-tight text-[color:var(--aqt-fg)] hover:text-[color:var(--aqt-teal)]"
               >
                 {t.name}
               </Link>
               {t.is_league ? <LeagueBadge>{tr("users.tournaments.leagueBadge")}</LeagueBadge> : null}
             </div>
-            <div className="mt-1.5 flex items-center gap-2 text-[12.5px] text-[color:var(--aqt-fg-muted)]">
+            <div className="mt-1.5 flex items-center gap-2 text-caption text-[color:var(--aqt-fg-muted)]">
               <span className="inline-flex" title={t.role ?? undefined}>
                 <PlayerRoleIcon role={t.role} size={15} color={roleColorVar(t.role)} />
               </span>
-              <span className="aqt-mono truncate">{tr("users.tournaments.teamName", { name: String(t.team) })}</span>
+              <span className="aqt-tnum truncate">{tr("users.tournaments.teamName", { name: String(t.team) })}</span>
               <DivisionIcon division={t.division} tournamentGrid={t.division_grid_version} width={20} height={20} />
             </div>
           </div>
@@ -281,12 +281,12 @@ const DivisionHeader = ({ t }: { t: UserTournament }) => {
       <DivisionIcon division={t.division} tournamentGrid={t.division_grid_version} width={28} height={28} />
       <Link
         href={`/tournaments/${t.id}`}
-        className="min-w-0 flex-1 truncate text-[14px] font-semibold text-[color:var(--aqt-fg)] hover:text-[color:var(--aqt-teal)]"
+        className="min-w-0 flex-1 truncate text-body font-semibold text-[color:var(--aqt-fg)] hover:text-[color:var(--aqt-teal)]"
       >
         {divisionLabel(t)}
       </Link>
       <PlaceBadge placement={t.placement ?? null} size="sm" />
-      <WdlText won={agg.won} lost={agg.lost} draw={agg.draw} className="text-[12px]" />
+      <WdlText won={agg.won} lost={agg.lost} draw={agg.draw} className="text-label" />
     </div>
   );
 };
@@ -342,12 +342,12 @@ const LeagueDossier = ({
           <PlaceBadge placement={best} size="lg" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="aqt-display text-[22px] font-bold leading-tight text-[color:var(--aqt-fg)]">
+              <span className="aqt-display text-title font-bold leading-tight text-[color:var(--aqt-fg)]">
                 {groupDisplayName(entries)}
               </span>
               <LeagueBadge>{tr("users.tournaments.leagueBadge")}</LeagueBadge>
             </div>
-            <div className="mt-1.5 aqt-mono text-[12.5px] text-[color:var(--aqt-fg-muted)]">
+            <div className="mt-1.5 aqt-tnum text-caption text-[color:var(--aqt-fg-muted)]">
               {tr("users.tournaments.divisionsCount", { count: String(entries.length) })}
             </div>
           </div>
@@ -375,7 +375,7 @@ const TournamentDossier = ({ group, selfUserId, loadingEncounters }: Props) => {
     return (
       <div className="aqt-card-surface flex flex-col items-center justify-center gap-3 px-4 py-16 text-center">
         <Trophy size={26} className="text-[color:var(--aqt-fg-faint)]" aria-hidden="true" />
-        <span className="text-[13px] text-[color:var(--aqt-fg-muted)]">{t("users.tournaments.dossier.empty")}</span>
+        <span className="text-caption text-[color:var(--aqt-fg-muted)]">{t("users.tournaments.dossier.empty")}</span>
       </div>
     );
   }

@@ -582,9 +582,7 @@ class PickBanSessionService:
             return
         await self.reset_pick_ban_session(session, encounter, kind, commit=False)
 
-    async def sync_all_pick_ban_sessions_after_team_change(
-        self, session: AsyncSession, encounter: Encounter
-    ) -> None:
+    async def sync_all_pick_ban_sessions_after_team_change(self, session: AsyncSession, encounter: Encounter) -> None:
         """``sync_pick_ban_session_after_team_change`` for every kind, in the
         legacy two-arg shape (``session``, ``encounter``) that
         ``admin/encounter.py``, ``challonge/sync.py`` and

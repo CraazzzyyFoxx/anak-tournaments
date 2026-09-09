@@ -70,7 +70,7 @@ const AchievementConditionsDialog = ({ achievement, onClose }: Props) => {
             </div>
 
             <div className="flex flex-col gap-2">
-              <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+              <div className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                 {t("achievements.conditionsTitle")}
               </div>
               <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] p-3">
@@ -87,7 +87,7 @@ const AchievementConditionsDialog = ({ achievement, onClose }: Props) => {
             <Link
               href={`/achievements/${ach.id}`}
               onClick={onClose}
-              className="inline-flex items-center gap-1 self-start text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-teal)] transition-opacity hover:opacity-80"
+              className="inline-flex items-center gap-1 self-start text-label font-bold uppercase tracking-label text-[color:var(--aqt-teal)] transition-opacity hover:opacity-80"
             >
               {t("achievements.detail.viewEarners")}
               <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />

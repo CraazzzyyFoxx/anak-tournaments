@@ -75,9 +75,7 @@ def test_attach_rejects_a_blank_alias(blank: str) -> None:
 
 
 def test_attach_strips_the_alias_so_the_handler_never_has_to() -> None:
-    model = schemas.CatalogAliasAttach.model_validate(
-        {"entity_type": "map", "entity_id": 1, "alias": "  King's Row  "}
-    )
+    model = schemas.CatalogAliasAttach.model_validate({"entity_type": "map", "entity_id": 1, "alias": "  King's Row  "})
     assert model.alias == "King's Row"
 
 

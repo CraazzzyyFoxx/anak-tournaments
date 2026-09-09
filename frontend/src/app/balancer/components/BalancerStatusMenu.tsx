@@ -79,7 +79,7 @@ export function BalancerStatusMenu({
           size="sm"
           disabled={disabled}
           className={cn(
-            "h-7 justify-start rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 text-[11px] text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]",
+            "h-7 justify-start rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]",
             size === "compact" ? "max-w-[128px]" : "max-w-[110px]"
           )}
           title={`Balancer status: ${getStatusName(statusOptions, value)}`}

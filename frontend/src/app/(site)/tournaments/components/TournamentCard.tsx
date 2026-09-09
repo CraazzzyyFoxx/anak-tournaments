@@ -112,10 +112,10 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
               the first thing a reader wants to know, so it shares the name's
               baseline instead of a corner of the artwork. */}
           <div className="flex items-start justify-between gap-3">
-            <h3 className="flex min-w-0 items-start gap-2 text-[15px] font-semibold leading-snug text-[color:var(--aqt-fg)] transition-colors group-hover:text-[color:var(--aqt-teal)]">
+            <h3 className="flex min-w-0 items-start gap-2 text-ui font-semibold leading-snug text-[color:var(--aqt-fg)] transition-colors group-hover:text-[color:var(--aqt-teal)]">
               <span className="line-clamp-2">{tournament.name}</span>
               {tournament.is_hidden && (
-                <span className="aqt-mono mt-0.5 shrink-0 rounded border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
+                <span className="aqt-tnum mt-0.5 shrink-0 rounded border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                   {t("common.previewBadge")}
                 </span>
               )}
@@ -125,7 +125,7 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
               {t(`common.statusBadge.${tournament.status}`)}
             </span>
           </div>
-          <p className="aqt-mono flex flex-wrap items-center gap-x-2 text-[11px] uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
+          <p className="aqt-tnum flex flex-wrap items-center gap-x-2 text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
             <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
             {tournament.is_league && (
               <>
@@ -145,17 +145,17 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
         </div>
 
         {tournament.description ? (
-          <p className="line-clamp-2 text-[12.5px] leading-relaxed text-[color:var(--aqt-fg-muted)]">
+          <p className="line-clamp-2 text-caption leading-relaxed text-[color:var(--aqt-fg-muted)]">
             {tournament.description}
           </p>
         ) : null}
 
         <div className="mt-auto flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
-          <div className="flex items-baseline justify-between gap-3 text-[11px]">
-            <span className="aqt-mono font-semibold uppercase tracking-[0.08em] text-[color:var(--aqt-fg-muted)]">
+          <div className="flex items-baseline justify-between gap-3 text-label">
+            <span className="aqt-tnum font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
               {stage.label}
             </span>
-            <span className="aqt-mono flex items-center gap-1.5 text-[color:var(--aqt-fg-dim)]">
+            <span className="aqt-tnum flex items-center gap-1.5 text-[color:var(--aqt-fg-dim)]">
               <span>{t("tournamentsList.card.playersCount", { count: players })}</span>
               {teams != null ? (
                 <>

@@ -67,7 +67,7 @@ class ResilientHttpClient:
         self.default_headers = headers or {}
         self._client: httpx.AsyncClient | None = None
 
-    async def __aenter__(self) -> "ResilientHttpClient":
+    async def __aenter__(self) -> ResilientHttpClient:
         await self.start()
         return self
 

@@ -34,9 +34,7 @@ class GamemodeAdminService:
             params,
         )
 
-    async def create_gamemode(
-        self, session: AsyncSession, data: schemas.GamemodeCreate
-    ) -> models.Gamemode:
+    async def create_gamemode(self, session: AsyncSession, data: schemas.GamemodeCreate) -> models.Gamemode:
         """Create a new gamemode"""
         existing = await self.repo.get_by(session, name=data.name)
         if existing:

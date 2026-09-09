@@ -187,13 +187,13 @@ class UserCompareQueries:
                 )
             )
 
-        map_sides = _maps_for_side(
-            models.Encounter.home_team_id, models.Encounter.home_score, models.Encounter.away_score
-        ).union_all(
-            _maps_for_side(
-                models.Encounter.away_team_id, models.Encounter.away_score, models.Encounter.home_score
+        map_sides = (
+            _maps_for_side(models.Encounter.home_team_id, models.Encounter.home_score, models.Encounter.away_score)
+            .union_all(
+                _maps_for_side(models.Encounter.away_team_id, models.Encounter.away_score, models.Encounter.home_score)
             )
-        ).subquery("compare_map_sides")
+            .subquery("compare_map_sides")
+        )
         map_totals = (
             sa.select(
                 map_sides.c.user_id,
@@ -266,9 +266,11 @@ class UserCompareQueries:
                 )
             )
 
-        closeness_sides = _closeness_for_side(models.Encounter.home_team_id).union_all(
-            _closeness_for_side(models.Encounter.away_team_id)
-        ).subquery("compare_closeness_sides")
+        closeness_sides = (
+            _closeness_for_side(models.Encounter.home_team_id)
+            .union_all(_closeness_for_side(models.Encounter.away_team_id))
+            .subquery("compare_closeness_sides")
+        )
         average_closeness = (
             sa.select(
                 closeness_sides.c.user_id,
@@ -429,9 +431,9 @@ class UserCompareQueries:
                 models.Encounter,
                 models.Encounter.id == models.Match.encounter_id,
             ).where(models.Encounter.tournament_id == tournament_id)
-        mvp_per_match = mvp_per_match.group_by(
-            models.MatchStatistics.user_id, models.MatchStatistics.match_id
-        ).cte("compare_mvp_per_match")
+        mvp_per_match = mvp_per_match.group_by(models.MatchStatistics.user_id, models.MatchStatistics.match_id).cte(
+            "compare_mvp_per_match"
+        )
 
         mvp_placement = sa.func.coalesce(mvp_per_match.c.impact_rank, mvp_per_match.c.performance)
         mvp_stats = (
@@ -679,9 +681,9 @@ class UserCompareQueries:
             sa.select(
                 models.MatchStatistics.user_id,
                 models.MatchStatistics.name,
-                (sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600).label(
-                    "avg_10"
-                ),
+                (
+                    sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600
+                ).label("avg_10"),
             )
             .select_from(models.MatchStatistics)
             .join(models.Match, models.Match.id == models.MatchStatistics.match_id)

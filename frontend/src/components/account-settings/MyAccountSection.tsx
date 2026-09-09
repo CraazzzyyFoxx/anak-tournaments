@@ -250,7 +250,7 @@ export default function MyAccountSection() {
                 </a>
               ))}
             </div>
-            <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">{t("linked.footnote")}</p>
+            <p className="text-label text-[color:var(--aqt-fg-dim)]">{t("linked.footnote")}</p>
           </>
         )}
       </section>
@@ -278,7 +278,7 @@ export default function MyAccountSection() {
             aria-describedby="stream-visibility-desc"
           />
         </div>
-        <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">{t("stream.footnote")}</p>
+        <p className="text-label text-[color:var(--aqt-fg-dim)]">{t("stream.footnote")}</p>
       </section>
 
       {/* ── Danger zone ────────────────────────────────── */}
@@ -287,7 +287,7 @@ export default function MyAccountSection() {
           <h4 className="text-sm font-medium text-destructive">{t("danger.title")}</h4>
           <div className="space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
             <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("danger.deleteDesc")}</p>
-            <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">{t("danger.deleteKeeps")}</p>
+            <p className="text-label text-[color:var(--aqt-fg-dim)]">{t("danger.deleteKeeps")}</p>
             <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" size="sm">

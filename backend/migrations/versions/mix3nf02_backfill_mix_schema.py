@@ -298,6 +298,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise NotImplementedError(
-        "mix3nf02 transforms valuable mix data; restore a pre-maintenance backup or roll forward"
-    )
+    raise NotImplementedError("mix3nf02 transforms valuable mix data; restore a pre-maintenance backup or roll forward")

@@ -97,7 +97,6 @@ def _match_detail() -> schemas.AdminMatchDetail:
     )
 
 
-
 def _pydantic_models(value, path="data") -> list[str]:
     """Paths of every Pydantic model still embedded in an envelope."""
     if hasattr(value, "model_dump"):
@@ -175,9 +174,7 @@ class AdminRpcEnvelopesAreJson(IsolatedAsyncioTestCase):
             **{
                 "reports_service.encounter_reports_service.list_encounter_reports": pagination.Paginated[
                     schemas.EncounterReportsRow
-                ](
-                    page=1, per_page=10, total=0, results=[]
-                )
+                ](page=1, per_page=10, total=0, results=[])
             },
         )
         data = self._assert_encodes(envelope)

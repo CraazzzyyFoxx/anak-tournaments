@@ -197,7 +197,7 @@ function ConfigFieldControl({
           value={[numeric]}
           onValueChange={(next) => onChange(next[0])}
         />
-        <div className="flex justify-between text-[11px] text-[color:var(--aqt-fg-dim)]">
+        <div className="flex justify-between text-label text-[color:var(--aqt-fg-dim)]">
           <span>balance</span>
           <span className="tabular-nums text-[color:var(--aqt-fg-muted)]">{numeric.toFixed(2)}</span>
           <span>comfort</span>
@@ -257,7 +257,7 @@ export function BalancerConfigDrawer({
           <div className="space-y-5">
             {fieldsByGroup.map(({ group, fields: groupFields }) => (
               <section key={group} className="space-y-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
+                <div className="text-xs font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
                   {group}
                 </div>
                 <div className="space-y-3">
@@ -276,7 +276,7 @@ export function BalancerConfigDrawer({
                             <p className="mt-1 text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
                               {field.description}
                             </p>
-                            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[color:var(--aqt-fg-dim)]">
+                            <div className="mt-2 flex flex-wrap gap-2 text-label text-[color:var(--aqt-fg-dim)]">
                               <span>Default: {formatValue(field.default)}</span>
                               {field.limits ? (
                                 <span>

@@ -65,9 +65,7 @@ class HeroAdminService:
         await session.refresh(hero)
         return hero
 
-    async def update_hero(
-        self, session: AsyncSession, hero_id: int, data: schemas.HeroUpdate
-    ) -> models.Hero:
+    async def update_hero(self, session: AsyncSession, hero_id: int, data: schemas.HeroUpdate) -> models.Hero:
         """Update hero fields"""
         hero = await self.repo.get(session, hero_id)
         if not hero:

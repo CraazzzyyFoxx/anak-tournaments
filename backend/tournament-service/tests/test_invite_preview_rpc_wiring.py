@@ -30,6 +30,7 @@ helpers = importlib.import_module("src.rpc._helpers")
 
 from tests._rpc_fakes import CapturingBroker, FakeSessionMaker
 
+
 class InvitePreviewRequestShapeTests(IsolatedAsyncioTestCase):
     async def _invoke(self, data: dict) -> AsyncMock:
         broker = CapturingBroker()

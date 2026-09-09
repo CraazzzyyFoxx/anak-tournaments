@@ -101,7 +101,7 @@ services:
   # backend/realtime-service/ as reference (not deployed).
 
   discord-worker:
-    image: registry.craazzzyyfoxx.me/aqt-discord:latest
+    image: ghcr.io/craazzzyyfoxx/owt-discord:${IMAGE_TAG:-latest}
     deploy:
       resources:
         limits:
@@ -148,7 +148,7 @@ services:
     restart: always
 
 #  twitch:
-#    image: registry.craazzzyyfoxx.me/aqt-twitch:latest
+#    image: ghcr.io/craazzzyyfoxx/owt-twitch:${IMAGE_TAG:-latest}
 #    build:
 #      context: ./backend
 #      args:
@@ -187,7 +187,7 @@ services:
   # compute stays in analytics-worker (job queues).
 
   parser-svc:
-    image: registry.craazzzyyfoxx.me/aqt-parser:latest
+    image: ghcr.io/craazzzyyfoxx/owt-parser:${IMAGE_TAG:-latest}
     deploy:
       resources:
         limits:
@@ -234,7 +234,7 @@ services:
     restart: always
 
   tournament-svc:
-    image: registry.craazzzyyfoxx.me/aqt-tournament:latest
+    image: ghcr.io/craazzzyyfoxx/owt-tournament:${IMAGE_TAG:-latest}
     deploy:
       resources:
         limits:
@@ -278,7 +278,7 @@ services:
 
   # Headless RPC worker replacing the HTTP `backend` behind the gateway.
   app-svc:
-    image: registry.craazzzyyfoxx.me/aqt-app:latest
+    image: ghcr.io/craazzzyyfoxx/owt-app:${IMAGE_TAG:-latest}
     # Hottest read/write path (all of /api/v1/core). Single event loop per
     # process, so raise the CPU ceiling AND scale replicas (`make prod-scale`)
     # for real throughput — the two are complementary.
@@ -328,7 +328,7 @@ services:
     restart: always
 
   balancer-svc:
-    image: registry.craazzzyyfoxx.me/aqt-balancer:latest
+    image: ghcr.io/craazzzyyfoxx/owt-balancer:${IMAGE_TAG:-latest}
     deploy:
       resources:
         limits:
@@ -373,12 +373,17 @@ services:
     restart: always
 
   analytics-worker:
-    image: registry.craazzzyyfoxx.me/aqt-analytics:latest
+    image: ghcr.io/craazzzyyfoxx/owt-analytics:${IMAGE_TAG:-latest}
     deploy:
       resources:
         limits:
-          cpus: '8.00'
-          memory: 4G
+          # Training is the only CPU-hungry thing in the stack, so the ceiling
+          # is per host: 8 fits the 8-core box, the 4-core one sets
+          # ANALYTICS_WORKER_CPUS=3 in its .env. A committed number meant the
+          # smaller host carried a permanent local edit to this file, which is
+          # exactly what a release checkout cannot tolerate.
+          cpus: '${ANALYTICS_WORKER_CPUS:-8.00}'
+          memory: ${ANALYTICS_WORKER_MEMORY:-4G}
         reservations:
           cpus: '1.00'
           memory: 1G
@@ -423,7 +428,7 @@ services:
   # consumed by the gateway's analytics edge routes. The heavy ML work stays in
   # analytics-worker; this is the light request/reply service (serve_rpc:app).
   analytics-svc:
-    image: registry.craazzzyyfoxx.me/aqt-analytics:latest
+    image: ghcr.io/craazzzyyfoxx/owt-analytics:${IMAGE_TAG:-latest}
     deploy:
       resources:
         limits:
@@ -473,7 +478,7 @@ services:
   # Do NOT scale past one replica for polling's sake: the tick is Redis
   # leader-locked, so extras only add RPC consumer capacity.
   stream-svc:
-    image: registry.craazzzyyfoxx.me/aqt-stream:latest
+    image: ghcr.io/craazzzyyfoxx/owt-stream:${IMAGE_TAG:-latest}
     deploy:
       resources:
         limits:
@@ -533,7 +538,7 @@ services:
   # three cores, and three replicas at the old ceiling would have oversubscribed
   # this 8-core box badly enough to starve nginx and the gateway under load.
   frontend:
-    image: registry.craazzzyyfoxx.me/frontend:latest
+    image: ghcr.io/craazzzyyfoxx/owt-frontend:${IMAGE_TAG:-latest}
     deploy:
       replicas: 1
       resources:
@@ -591,7 +596,7 @@ services:
   # ==========================================================================
 
   identity-svc:
-    image: registry.craazzzyyfoxx.me/aqt-identity:latest
+    image: ghcr.io/craazzzyyfoxx/owt-identity:${IMAGE_TAG:-latest}
     # Auth hot path: every authenticated request validates its token via
     # gateway -> identity-svc. Under-provisioning this throttles all traffic.
     deploy:
@@ -641,7 +646,7 @@ services:
     restart: always
 
   gateway:
-    image: registry.craazzzyyfoxx.me/aqt-gateway:latest
+    image: ghcr.io/craazzzyyfoxx/owt-gateway:${IMAGE_TAG:-latest}
     # Single entry point for ALL REST + WS + JWT. 0.5 CPU here was the primary
     # ingress bottleneck (CFS throttling under load); give it headroom.
     deploy:

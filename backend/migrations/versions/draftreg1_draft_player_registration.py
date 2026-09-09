@@ -82,7 +82,15 @@ def upgrade() -> None:
 
     op.drop_table("draft_player_role_hero", schema="balancer")
     op.drop_table("draft_player_role", schema="balancer")
-    for column in ("primary_role", "sub_role", "is_flex", "division_number", "rank_value", "battle_tag", "additional_info"):
+    for column in (
+        "primary_role",
+        "sub_role",
+        "is_flex",
+        "division_number",
+        "rank_value",
+        "battle_tag",
+        "additional_info",
+    ):
         op.drop_column("draft_player", column, schema="balancer")
 
 
@@ -233,7 +241,9 @@ def downgrade() -> None:
         sa.UniqueConstraint("draft_player_id", "role", name="uq_draft_player_role"),
         schema="balancer",
     )
-    op.create_index("ix_balancer_draft_player_role_draft_player_id", "draft_player_role", ["draft_player_id"], schema="balancer")
+    op.create_index(
+        "ix_balancer_draft_player_role_draft_player_id", "draft_player_role", ["draft_player_id"], schema="balancer"
+    )
     op.create_table(
         "draft_player_role_hero",
         sa.Column("id", sa.Integer(), primary_key=True),

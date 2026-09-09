@@ -1,4 +1,3 @@
-import typing
 from dataclasses import dataclass
 
 from pydantic import UUID4, BaseModel, Field
@@ -57,7 +56,7 @@ class PlayerRead(BaseRead):
     related_player_id: int | None
 
     tournament: TournamentRead | None
-    team: typing.Optional["TeamRead"]
+    team: TeamRead | None
     user: UserRead | None
 
 

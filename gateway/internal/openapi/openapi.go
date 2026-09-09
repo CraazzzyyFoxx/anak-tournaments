@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
 
 // schemasJSON is the Pydantic-derived schema manifest. Regenerate with
@@ -106,10 +107,22 @@ func AuthedOnly(routes []edge.RouteSpec) []edge.RouteSpec {
 	return out
 }
 
-// credentialNote is appended to every generated document's info.description. It
-// is the one place the two credential types are explained, because the per-route
-// security requirements deliberately carry no scopes (see security()).
-const credentialNote = "\n\n## Authentication\n\n" +
+// documentNote is appended to every generated document's info.description.
+func documentNote(envelope bool) string {
+	errNote := v1ErrorNote
+	if envelope {
+		errNote = v2ErrorNote
+	}
+	return versionsNote + authNote + errNote + errorTableMD() + workspaceNote
+}
+
+const versionsNote = "\n\n## Versions\n\n" +
+	"- **v1** — `/api/v1` and `/api/auth`. Unwrapped JSON.\n" +
+	"- **v2** — `/api/v2` (auth stays on v1). Same handlers and HTTP status; " +
+	"body is `{ok: true, data, warnings?}` or `{ok: false, error: {code, message, details?}}`.\n\n" +
+	"Switcher: `/api/docs`. Specs: `/api/openapi.json`, `/api/openapi.v2.json`."
+
+const authNote = "\n\n## Authentication\n\n" +
 	"Two credential types share the `Authorization: Bearer` header, and every authenticated " +
 	"operation below accepts either one (its `security` list is a logical OR).\n\n" +
 	"A **session JWT** is the browser credential: short-lived, minted by `POST /api/auth/login` " +
@@ -130,19 +143,72 @@ const credentialNote = "\n\n## Authentication\n\n" +
 	"`GET /api/auth/api-keys/self` is the inverse: it describes the calling key, so it needs a " +
 	"key. WebSocket connections (`/ws`, `/api/realtime/ws`) accept either credential, but a key " +
 	"only authenticates the socket if it holds at least one grant in its workspace; a " +
-	"zero-scope key connects anonymously and cannot subscribe to auth-gated topics.\n\n" +
-	"## Errors\n\n" +
-	"Failed responses carry the HTTP status plus a single envelope: `detail` is the human " +
-	"message and is always present; `code` is the machine reason (`forbidden`, `not_found`, " +
-	"`rate_limited`, ...); `fields` lists per-item validation/business detail when there is " +
-	"any; `retry_after` (seconds) accompanies 429 and mirrors the `Retry-After` header. " +
-	"Branch on `code`, show `detail`, and never parse `detail` — see the `Error` schema.\n\n" +
-	"## Workspace scope\n\n" +
+	"zero-scope key connects anonymously and cannot subscribe to auth-gated topics."
+
+const v1ErrorNote = "\n\n## Errors\n\n" +
+	"HTTP status plus `{detail, code?, fields?, retry_after?}`. `detail` is always present. " +
+	"Branch on `code`, show `detail`, never parse `detail`.\n\n" +
+	"`fields` is per-item validation (`field`, `msg`, `code`). `retry_after` (seconds) comes " +
+	"with 429 and mirrors the `Retry-After` header.\n\n"
+
+const v2ErrorNote = "\n\n## Errors\n\n" +
+	"HTTP status plus `{ok: false, error: {code, message, details?}}`. Branch on `error.code`, " +
+	"show `error.message`, never parse `error.message`.\n\n" +
+	"`error.details.fields` is per-item validation; `error.details.retry_after` comes with 429 " +
+	"and mirrors `Retry-After`.\n\n"
+
+const workspaceNote = "\n\n## Workspace scope\n\n" +
 	"Workspace-scoped reads take a `workspace_id` query parameter. When the credential is " +
 	"pinned to exactly ONE workspace — always true for an API key — it may be omitted and the " +
 	"gateway fills it in from the credential. An explicit value always wins, and a credential " +
 	"holding several workspaces must send one (the read fails closed rather than guessing a " +
 	"tenant)."
+
+type errDoc struct {
+	Code  string
+	Title string
+	When  string
+}
+
+// errorCatalog is the public machine-code list. HTTP status is rpc.StatusForCode
+// so this table cannot drift from the gateway mapping.
+var errorCatalog = []errDoc{
+	{"bad_request", "Bad request", "Malformed JSON or a request the gateway rejects before RPC."},
+	{"unauthorized", "Not authenticated", "Missing, invalid, or expired bearer. Session-only `/api/auth` routes also return this for an API key."},
+	{"forbidden", "Not authorized", "Authenticated, but the credential lacks the permission, workspace, or scope."},
+	{"not_found", "Not found", "Unknown id, or an id outside this credential's workspace (no existence leak)."},
+	{"conflict", "Conflict", "The current state does not allow the write (already confirmed, duplicate, concurrent update)."},
+	{"gone", "Gone", "The resource existed and has been permanently removed."},
+	{"payload_too_large", "Payload too large", "Request body exceeded the gateway limit."},
+	{"unprocessable", "Validation error", "JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`."},
+	{"rate_limited", "Rate limited", "Wait `retry_after` seconds (also sent as `Retry-After`)."},
+	{"unavailable", "Unavailable", "A required dependency is down. Retry shortly; this is not an application bug."},
+	{"internal", "Internal error", "Unexpected failure. Do not retry blindly on writes."},
+}
+
+func errorTableMD() string {
+	var b strings.Builder
+	b.WriteString("| code | HTTP | when |\n| --- | --- | --- |\n")
+	for _, e := range errorCatalog {
+		b.WriteString("| `")
+		b.WriteString(e.Code)
+		b.WriteString("` | ")
+		b.WriteString(strconv.Itoa(rpc.StatusForCode(e.Code)))
+		b.WriteString(" | ")
+		b.WriteString(e.When)
+		b.WriteString(" |\n")
+	}
+	return b.String()
+}
+
+func lookupErr(code string) errDoc {
+	for _, e := range errorCatalog {
+		if e.Code == code {
+			return e
+		}
+	}
+	return errDoc{Code: code, Title: code}
+}
 
 // Build assembles an OpenAPI 3.1.0 document (indented JSON) from the groups.
 // Output is deterministic: encoding/json sorts the paths/methods maps, and the
@@ -157,15 +223,8 @@ func Build(info Info, groups []Group) []byte {
 // response wrapped in the RPC envelope. Auth routes under /api/auth are omitted.
 func BuildV2(info Info, groups []Group) []byte {
 	info.Title = info.Title + " v2"
-	if info.Description != "" {
-		info.Description = envelopeNote + info.Description
-	} else {
-		info.Description = envelopeNote
-	}
 	return build(info, v2Groups(groups), true)
 }
-
-const envelopeNote = "v2 JSON bodies are the RPC envelope: `{ok: true, data, warnings?}` on success and `{ok: false, error: {code, message, details?}}` on error. HTTP status still reflects the outcome. `/api/v1` is unchanged.\n\n"
 
 func v2Groups(groups []Group) []Group {
 	out := make([]Group, 0, len(groups))
@@ -220,7 +279,7 @@ func build(info Info, groups []Group, envelope bool) []byte {
 		"info": map[string]any{
 			"title":       info.Title,
 			"version":     version,
-			"description": info.Description + credentialNote,
+			"description": info.Description + documentNote(envelope),
 		},
 		"servers":    []any{map[string]any{"url": "/"}},
 		"tags":       tags,
@@ -383,7 +442,8 @@ func (b *builder) requestBody(route edge.RouteSpec) map[string]any {
 	}
 }
 
-// responses builds the success response plus a small set of generic errors.
+// responses builds the success response plus the errors every route can
+// actually produce. 401/403 only on AuthRequired; 429 is gateway-global.
 func (b *builder) responses(route edge.RouteSpec) map[string]any {
 	status := route.Success
 	if status == 0 {
@@ -404,12 +464,31 @@ func (b *builder) responses(route edge.RouteSpec) map[string]any {
 	}
 	resp := map[string]any{
 		strconv.Itoa(status): success,
-		"404":                map[string]any{"description": "Not found", "content": errContent},
-		"422":                map[string]any{"description": "Validation error", "content": errContent},
-		"500":                map[string]any{"description": "Internal error", "content": errContent},
+		"404":                errorResponse("not_found", errContent),
+		"422":                errorResponse("unprocessable", errContent),
+		"429":                errorResponse("rate_limited", errContent),
+		"500":                errorResponse("internal", errContent),
 	}
 	if route.Auth == edge.AuthRequired {
-		resp["401"] = map[string]any{"description": "Not authenticated", "content": errContent}
+		resp["401"] = errorResponse("unauthorized", errContent)
+		resp["403"] = errorResponse("forbidden", errContent)
+	}
+	return resp
+}
+
+func errorResponse(code string, content map[string]any) map[string]any {
+	e := lookupErr(code)
+	resp := map[string]any{
+		"description": e.Title + " (`" + e.Code + "`). " + e.When,
+		"content":     content,
+	}
+	if code == "rate_limited" {
+		resp["headers"] = map[string]any{
+			"Retry-After": map[string]any{
+				"description": "Seconds to wait before retrying. Mirrors `retry_after` in the body.",
+				"schema":      map[string]any{"type": "integer", "minimum": 1},
+			},
+		}
 	}
 	return resp
 }
@@ -462,6 +541,10 @@ func (b *builder) components() map[string]any {
 }
 
 func (b *builder) errorSchema() map[string]any {
+	codeSchema := map[string]any{
+		"type":        "string",
+		"description": "Machine reason. Branch on this; do not parse the human message. Known values are listed under Errors in info.description; workers may emit others.",
+	}
 	if b.envelope {
 		return map[string]any{
 			"type":     "object",
@@ -475,11 +558,21 @@ func (b *builder) errorSchema() map[string]any {
 					"type":     "object",
 					"required": []any{"code", "message"},
 					"properties": map[string]any{
-						"code":    map[string]any{"type": "string"},
-						"message": map[string]any{"type": "string"},
-						"details": map[string]any{"type": "object"},
+						"code":    codeSchema,
+						"message": map[string]any{"type": "string", "description": "Human message. Show it; never parse it."},
+						"details": map[string]any{
+							"type":        "object",
+							"description": "Optional structured data. Recognized keys: `fields`, `retry_after`.",
+						},
 					},
 				},
+			},
+			"examples": []any{
+				map[string]any{"ok": false, "error": map[string]any{"code": "not_found", "message": "Not found"}},
+				map[string]any{"ok": false, "error": map[string]any{
+					"code": "rate_limited", "message": "Too many requests",
+					"details": map[string]any{"retry_after": 60},
+				}},
 			},
 		}
 	}
@@ -489,8 +582,8 @@ func (b *builder) errorSchema() map[string]any {
 			"`code` is the machine reason; `fields` carries per-item validation/business detail; " +
 			"`retry_after` (seconds) accompanies 429 and mirrors the Retry-After header.",
 		"properties": map[string]any{
-			"detail": map[string]any{"type": "string"},
-			"code":   map[string]any{"type": "string"},
+			"detail": map[string]any{"type": "string", "description": "Human message. Show it; never parse it."},
+			"code":   codeSchema,
 			"retry_after": map[string]any{
 				"type":        "integer",
 				"description": "Seconds to wait before retrying (429 only).",
@@ -510,6 +603,15 @@ func (b *builder) errorSchema() map[string]any {
 			},
 		},
 		"required": []any{"detail"},
+		"examples": []any{
+			map[string]any{"detail": "Not found", "code": "not_found"},
+			map[string]any{"detail": "Too many requests", "code": "rate_limited", "retry_after": 60},
+			map[string]any{
+				"detail": "Validation error",
+				"code":   "unprocessable",
+				"fields": []any{map[string]any{"field": "name", "msg": "Field required", "code": "missing"}},
+			},
+		},
 	}
 }
 

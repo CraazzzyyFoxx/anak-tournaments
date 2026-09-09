@@ -235,5 +235,3 @@ def _ub_round_label(round_num: int, upper_rounds: int, match_idx: int) -> str:
     if round_num == upper_rounds - 1:
         return f"UB Semifinal {match_idx}"
     return f"UB R{round_num} Match {match_idx}"
-
-

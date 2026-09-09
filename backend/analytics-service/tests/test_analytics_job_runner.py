@@ -137,7 +137,6 @@ class AnalyticsJobRunnerFailureTests(IsolatedAsyncioTestCase):
         )
 
 
-
 class AnalyticsJobServiceTests(TestCase):
     def test_failed_progress_stage_marks_job_as_reconcilable(self) -> None:
         self.assertTrue(

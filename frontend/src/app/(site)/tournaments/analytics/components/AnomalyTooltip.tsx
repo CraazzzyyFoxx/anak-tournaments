@@ -94,7 +94,7 @@ export default function AnomalyTooltip({
           ) : null}
           {displayReasons.length > 0 ? (
             <div className="mt-1.5 border-t border-border/60 pt-1.5">
-              <span className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
+              <span className="block text-label font-medium uppercase tracking-wide text-muted-foreground/80">
                 {t("analytics.glossary.reasonsLabel")}
               </span>
               <ul className="mt-0.5 space-y-0.5">

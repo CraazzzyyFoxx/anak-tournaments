@@ -114,17 +114,17 @@ class UpsertConfigCreatePathTest(IsolatedAsyncioTestCase):
         self.engine.dispose()
 
     async def _upsert(self, **overrides) -> PickBanConfig:  # noqa: ANN003
-        kwargs = dict(
-            tournament_id=TOURNAMENT_ID,
-            kind=PickBanKind.MAP,
-            mode=MapVetoMode.SLOTS,
-            first_pick_rule=FirstPickRule.HIGHER_SEED,
-            first_ban_rotation=FirstBanRotation.ALTERNATE,
-            no_repeat_scope=PickBanNoRepeatScope.NONE,
-            sequence=[],
-            item_ids=[1, 2, 3],
-            slots=[SlotSpec(candidates=[1, 2], reserve_item_id=3)],
-        )
+        kwargs = {
+            "tournament_id": TOURNAMENT_ID,
+            "kind": PickBanKind.MAP,
+            "mode": MapVetoMode.SLOTS,
+            "first_pick_rule": FirstPickRule.HIGHER_SEED,
+            "first_ban_rotation": FirstBanRotation.ALTERNATE,
+            "no_repeat_scope": PickBanNoRepeatScope.NONE,
+            "sequence": [],
+            "item_ids": [1, 2, 3],
+            "slots": [SlotSpec(candidates=[1, 2], reserve_item_id=3)],
+        }
         kwargs.update(overrides)
         return await self.service.upsert_config(self.shim, **kwargs)
 

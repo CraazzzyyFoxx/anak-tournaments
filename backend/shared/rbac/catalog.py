@@ -71,12 +71,28 @@ PERMISSION_CATALOG: tuple[PermissionSpec, ...] = (
     _permission("subscription", "update", "Trigger a subscription re-check"),
     _permission("stream", "read", "Read stream live-status and polling health"),
     _permission("stream", "update", "Trigger a stream live-status re-poll"),
+    # Workspace-scoped announcements. The platform-wide ones are deliberately
+    # NOT reachable through these: a banner every visitor sees is gated on the
+    # superuser flag, not on a grant an owner can hand out inside a tenant.
+    *_crud("announcement"),
+    # Workspace-scoped operator access to the notifications this tenant's own
+    # activity produced (``notification.source_workspace_id``). Read and delete
+    # only: nobody writes an inbox row by hand -- the flows that cause one do --
+    # and "delete" is a retire, which takes the row out of every recipient's
+    # inbox, so it is deliberately not part of the member read set.
+    _permission("notification", "read", "Read the notifications this workspace produced"),
+    _permission("notification", "delete", "Retire a notification this workspace produced"),
     _permission("audit", "read", "Read the platform audit log"),
     # Self-service capabilities: allowed by default for every authenticated user;
     # exist only so an admin can DENY them per user (negative RBAC).
     _permission("account", "avatar", "Change one's own avatar"),
     _permission("account", "social", "Manage one's own social accounts"),
     _permission("registration", "self_register", "Self-register for a tournament"),
+    # Distinct from the workspace-scoped ``workspace.create`` above, which is a
+    # grant held inside a workspace: this one is the platform-wide right to
+    # bring a NEW workspace into existence, so denying it revokes self-service
+    # creation for one account without touching any workspace role.
+    _permission("workspace", "self_create", "Create one's own workspace"),
 )
 
 _ALL_PERMISSION_NAMES = frozenset(permission.name for permission in PERMISSION_CATALOG)

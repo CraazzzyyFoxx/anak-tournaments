@@ -82,7 +82,7 @@ function BulkStatusMenu({
           variant="outline"
           size="sm"
           disabled={disabled}
-          className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 px-2 text-[11px] text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
+          className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
         >
           <Tag className="mr-1 h-3 w-3" aria-hidden="true" />
           Status
@@ -299,17 +299,17 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
             <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[color:var(--aqt-border)] bg-black/15 text-[color:var(--aqt-fg-muted)]">
               <Columns3 className="h-4 w-4" aria-hidden="true" />
             </div>
-            <div className="text-center text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-dim)] [writing-mode:vertical-rl]">
+            <div className="text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)] [writing-mode:vertical-rl]">
               Pool
             </div>
           </div>
           <div className="flex flex-col items-center gap-1.5">
-            <div className="rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 py-1 text-[11px] tabular-nums text-[color:var(--aqt-fg-muted)]">
+            <div className="rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 py-1 text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
               {poolPlayers.length}
             </div>
             {invalidPlayers.length > 0 ? (
               <div
-                className="rounded-lg border border-amber-400/25 bg-amber-500/10 px-2 py-1 text-[11px] tabular-nums text-amber-100"
+                className="rounded-lg border border-amber-400/25 bg-amber-500/10 px-2 py-1 text-label tabular-nums text-amber-100"
                 title={`${invalidPlayers.length} pooled players need fixes`}
               >
                 {invalidPlayers.length}
@@ -324,7 +324,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
       <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col p-4")}>
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-dim)]">
+            <div className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
               Balancing Pool
             </div>
             <div className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
@@ -428,7 +428,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                   )}
                 >
                   {option.label}
-                  <span className="ml-1 text-[11px] tabular-nums opacity-70">{option.count}</span>
+                  <span className="ml-1 text-label tabular-nums opacity-70">{option.count}</span>
                 </button>
               );
             })}
@@ -436,7 +436,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
 
           {selectedCount > 0 && !isAvailableView ? (
             <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[color:var(--aqt-border)] bg-black/15 p-1.5">
-              <div className="flex items-center gap-1.5 px-1.5 text-[11px] font-medium tabular-nums text-[color:var(--aqt-fg-muted)]">
+              <div className="flex items-center gap-1.5 px-1.5 text-label font-medium tabular-nums text-[color:var(--aqt-fg-muted)]">
                 <Check className="h-3.5 w-3.5 text-cyan-200" aria-hidden="true" />
                 {selectedCount} selected
               </div>
@@ -445,7 +445,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 text-[11px] text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
+                  className="h-7 rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
                   onClick={selectAllVisible}
                 >
                   Select all {filteredPoolPlayerStates.length}
@@ -456,7 +456,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 variant="outline"
                 size="sm"
                 disabled={quickActionsDisabled || !onBulkPoolMembership}
-                className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 px-2 text-[11px] text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
+                className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
                 onClick={() => runBulkPoolMembership(true)}
               >
                 <PlusCircle className="mr-1 h-3 w-3" aria-hidden="true" />
@@ -467,7 +467,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 variant="outline"
                 size="sm"
                 disabled={quickActionsDisabled || !onBulkPoolMembership}
-                className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 px-2 text-[11px] text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
+                className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
                 onClick={() => runBulkPoolMembership(false)}
               >
                 <ShieldX className="mr-1 h-3 w-3" aria-hidden="true" />

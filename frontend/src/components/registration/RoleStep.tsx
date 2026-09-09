@@ -260,7 +260,7 @@ export default function RoleStep({
             aria-pressed={isFlex}
             onClick={toggleFlex}
             className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+              "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-label font-medium transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               isFlex
                 ? cn(ROLE_ACCENTS.flex.selectedCard, "text-[color:var(--aqt-fg)]")
@@ -281,7 +281,7 @@ export default function RoleStep({
 
       {isAllRoles && (
         <div className="grid gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+          <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
             {t("registration.roles.matrix.choiceLabel")}
           </span>
           <SegmentedRadio
@@ -296,7 +296,7 @@ export default function RoleStep({
       <div
         aria-hidden
         className={cn(
-          "hidden gap-2 px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)] sm:grid",
+          "hidden gap-2 px-2 text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:grid",
           columnClass,
         )}
       >
