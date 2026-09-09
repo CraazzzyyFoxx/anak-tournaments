@@ -26862,6 +26862,11 @@
           "title": "Interval Seconds",
           "type": "integer"
         },
+        "invalid_battle_tags_24h": {
+          "default": 0,
+          "title": "Invalid Battle Tags 24H",
+          "type": "integer"
+        },
         "last_success_at": {
           "anyOf": [
             {
@@ -26877,6 +26882,16 @@
         "never_checked": {
           "title": "Never Checked",
           "type": "integer"
+        },
+        "overfast_base_url": {
+          "default": "",
+          "title": "Overfast Base Url",
+          "type": "string"
+        },
+        "overfast_circuit_state": {
+          "default": "closed",
+          "title": "Overfast Circuit State",
+          "type": "string"
         },
         "rate_limit_per_minute": {
           "title": "Rate Limit Per Minute",
