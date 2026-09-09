@@ -1,16 +1,21 @@
 name: Deploy to Production
 
 on:
-  release:
-    types:
-      - published
+  # Pushing a version tag IS the release. The GitHub Release object is created
+  # at the end of this workflow, from the commit log, so "released" means
+  # "built, migrated and running in production" rather than "somebody clicked
+  # publish". A `release: published` trigger would also double-fire here: the
+  # release UI creates the tag, and that is already this push.
+  push:
+    tags:
+      - "v*"
   # Redeploy or roll back to any tag that was ever built, without cutting a new
   # release. The images are immutable and live in GHCR, so this is a pull, not
   # a rebuild.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Git tag / image tag to deploy (defaults to the latest release)"
+        description: "Git tag / image tag to deploy (defaults to the pushed tag)"
         required: false
         type: string
       skip_build:
@@ -26,7 +31,8 @@ on:
 # wheel) could fail the whole deploy. Nothing here runs on a self-hosted runner.
 #
 # Three paths, one workflow:
-#   release published        -> gates, build every image, deploy that tag
+#   push a v* tag            -> gates, build every image, deploy it, publish the
+#                               GitHub Release with notes from the commit log
 #   dispatch with a tag      -> build and deploy it, no gates (operator's call)
 #   dispatch with skip_build -> deploy a tag whose images already exist (rollback)
 #
@@ -37,7 +43,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write # creating the GitHub Release at the end
   packages: write
 
 jobs:
@@ -48,13 +54,13 @@ jobs:
     steps:
       - id: pick
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          PUSHED_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${INPUT_TAG:-$RELEASE_TAG}"
+          TAG="${INPUT_TAG:-$PUSHED_TAG}"
           if [ -z "$TAG" ]; then
-            echo "::error::no tag: publish a release or pass one to workflow_dispatch"
+            echo "::error::no tag: push a v* tag or pass one to workflow_dispatch"
             exit 1
           fi
           # A tag is a Docker image tag here as well, so it has to be one:
@@ -64,25 +70,25 @@ jobs:
           esac
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-  # Gates run for a release and only for a release: publishing one is the
-  # automatic path, so it is held to the bar a PR is held to. A manual
-  # workflow_dispatch is an operator saying "ship this tag" -- it skips them on
-  # purpose, which is also the only way to deploy while the repo's CI is red.
+  # Gates run for a tag push and only for a tag push: that is the automatic
+  # path, so it is held to the bar a PR is held to. A manual workflow_dispatch
+  # is an operator saying "ship this tag" -- it skips them on purpose, which is
+  # also the only way to deploy while the repo's CI is red.
   gate-lint-backend:
-    if: ${{ github.event_name == 'release' }}
+    if: ${{ github.event_name == 'push' }}
     uses: ./.github/workflows/lint-backend.yml
 
   gate-test-backend:
-    if: ${{ github.event_name == 'release' }}
+    if: ${{ github.event_name == 'push' }}
     uses: ./.github/workflows/test-backend.yml
     secrets: inherit
 
   gate-ci-frontend:
-    if: ${{ github.event_name == 'release' }}
+    if: ${{ github.event_name == 'push' }}
     uses: ./.github/workflows/ci-frontend.yml
 
   gate-ci-gateway:
-    if: ${{ github.event_name == 'release' }}
+    if: ${{ github.event_name == 'push' }}
     uses: ./.github/workflows/ci-gateway.yml
 
   build:
@@ -231,3 +237,37 @@ jobs:
             cat ops/deploy/remote-deploy.sh
           } | ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
             'set -e; f=$(mktemp /tmp/owt-deploy.XXXXXX.sh); trap "rm -f $f" EXIT; cat > "$f"; bash "$f"'
+
+  release:
+    needs:
+      - meta
+      - deploy
+    # Last, on purpose: the Release entry means "this is what production is
+    # running", so it is written after the deploy succeeded and not before.
+    if: ${{ needs.deploy.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Notes are rendered from the commits since the previous tag, so the
+          # whole history and every tag have to be here.
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ needs.meta.outputs.tag }}
+
+      - name: Publish ${{ needs.meta.outputs.tag }}
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash ops/release/changelog.sh "$TAG" > /tmp/notes.md
+          cat /tmp/notes.md >> "$GITHUB_STEP_SUMMARY"
+          # Idempotent: a re-run of a deployed tag refreshes the notes instead of
+          # failing on "release already exists".
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file /tmp/notes.md --title "$TAG"
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file /tmp/notes.md
+          fi
