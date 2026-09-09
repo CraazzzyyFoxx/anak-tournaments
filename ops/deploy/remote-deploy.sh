@@ -39,7 +39,14 @@ if [ -n "${GHCR_TOKEN:-}" ]; then
 fi
 
 export IMAGE_TAG="${TAG}"
-docker compose -f "${COMPOSE_FILE}" pull --quiet
+# `--policy missing`, not a plain pull: the stack also names redis, rabbitmq,
+# nginx and xray, and Docker Hub is not reachable from this host (which is why
+# the xray proxy exists at all) -- a plain pull fails the whole deploy on
+# `teddysun/xray:latest` even though the image has been on disk for months.
+# Release tags are immutable, so "already present" can only mean "already the
+# right image"; the ones this release actually changed are absent and do get
+# pulled, and a GHCR failure still stops the deploy at `up`.
+docker compose -f "${COMPOSE_FILE}" pull --quiet --policy missing
 
 # Migrations run from the NEW image while the OLD containers still serve. That
 # order is what keeps a deploy from 500ing in between: every migration this
