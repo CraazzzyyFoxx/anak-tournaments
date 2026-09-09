@@ -24,7 +24,7 @@ transaction pooling breaks DDL):
       -e POSTGRES_HOST=db_postgres -e POSTGRES_PORT=5432 \
       -v /root/overwatch-tournaments/backend/alembic.ini:/app/alembic.ini:ro \
       -v /root/overwatch-tournaments/backend/migrations:/app/migrations:ro \
-      -w /app registry.craazzzyyfoxx.me/aqt-tournament:latest \
+      -w /app registry.craazzzyyfoxx.me/owt-tournament:latest \
       /app/.venv/bin/alembic stamp initial_v6
 
 The baseline reproduces production, verified by comparing catalog snapshots of a

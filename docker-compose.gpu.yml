@@ -21,7 +21,7 @@ x-nvidia-gpu-device: &nvidia-gpu-device
 
 services:
   analytics-worker:
-    image: registry.craazzzyyfoxx.me/aqt-analytics-worker-gpu:dev
+    image: registry.craazzzyyfoxx.me/owt-analytics-worker-gpu:dev
     build:
       context: ./backend
       dockerfile: analytics-worker.gpu.Dockerfile

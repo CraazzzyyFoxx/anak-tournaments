@@ -187,7 +187,7 @@ and [`monitoring/README.md`](../monitoring/README.md)):
 
 - `docker-compose.yml` — dev/base (hot reload, local Postgres via the `db` profile, gateway
   published for direct testing). Profiles: `db`, `workers`, `monitoring`.
-- `docker-compose.production.yml` — GHCR images (`ghcr.io/craazzzyyfoxx/aqt-*`, tag
+- `docker-compose.production.yml` — GHCR images (`ghcr.io/craazzzyyfoxx/owt-*`, tag
   `${IMAGE_TAG:-latest}`), external Postgres, `restart: always`, resource limits, gateway
   reachable only through nginx.
 - `docker-compose.monitoring.yml` — a separate `owt-monitoring` project (Prometheus,

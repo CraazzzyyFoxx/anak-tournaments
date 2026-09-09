@@ -111,33 +111,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: aqt-app
+          - image: owt-app
             context: ./backend
             build-args: APP_PATH=app
-          - image: aqt-identity
+          - image: owt-identity
             context: ./backend
             build-args: APP_PATH=identity
-          - image: aqt-tournament
+          - image: owt-tournament
             context: ./backend
             build-args: APP_PATH=tournament
-          - image: aqt-parser
+          - image: owt-parser
             context: ./backend
             build-args: APP_PATH=parser
-          - image: aqt-balancer
+          - image: owt-balancer
             context: ./backend
             build-args: APP_PATH=balancer
-          - image: aqt-analytics
+          - image: owt-analytics
             context: ./backend
             build-args: APP_PATH=analytics
-          - image: aqt-stream
+          - image: owt-stream
             context: ./backend
             build-args: APP_PATH=stream
-          - image: aqt-discord
+          - image: owt-discord
             context: ./backend
             build-args: APP_PATH=discord
-          - image: aqt-gateway
+          - image: owt-gateway
             context: ./gateway
-          - image: aqt-frontend
+          - image: owt-frontend
             context: ./frontend
             dockerfile: prod.Dockerfile
     steps:
