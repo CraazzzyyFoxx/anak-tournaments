@@ -25,6 +25,7 @@ def main() -> None:
             schemas[name] = schema
         operations.update(frag.get("operations", {}))
     json.dump({"schemas": schemas, "operations": operations}, sys.stdout, indent=2, sort_keys=True)
+    sys.stdout.write("\n")  # end-of-file-fixer appends one on commit; match it so --check holds
 
 
 if __name__ == "__main__":
