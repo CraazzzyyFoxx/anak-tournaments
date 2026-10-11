@@ -1,14 +1,10 @@
 import { getTranslations } from "next-intl/server";
 import { ArrowRight } from "lucide-react";
-import Image from "next/image";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { AchievementArt } from "@/components/achievements/AchievementArt";
 import { AchievementRarity } from "@/types/achievement.types";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import {
-  classifyRarity,
-  rarityVarClass,
-  type Rarity
-} from "@/app/(site)/users/components/achievements/rarity";
+import { classifyRarity, rarityVarClass, type Rarity } from "@/lib/achievements/rarity";
 
 interface Props {
   achievements: AchievementRarity[];
@@ -54,14 +50,9 @@ const OverviewAchievementsPreview = async ({ achievements, userSlug, limit = DEF
         {top.map((ach) => {
           const rarity = classifyRarity(ach.rarity * 100);
           const rarityLabel = t(TIER_LABEL_KEY[rarity] as Parameters<typeof t>[0]);
-          const imgSrc = ach.image_url ?? `/achievements/${ach.slug}.webp`;
           return (
             <div key={ach.id} className={`${rarityVarClass(rarity)} flex items-center gap-3 py-2.5 first:pt-0 last:pb-0`}>
-              {/* Decorative: the name sits right next to it. A missing file then
-                  renders an empty neutral tile instead of spilling alt text. */}
-              <div className="relative size-10 shrink-0 overflow-hidden rounded-[9px] bg-[color:var(--aqt-card-2)]">
-                <Image src={imgSrc} alt="" fill sizes="40px" className="object-cover" />
-              </div>
+              <AchievementArt achievement={ach} sizes="40px" className="size-10 shrink-0 rounded-[9px]" />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <div className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]" title={ach.name}>
                   {ach.name}

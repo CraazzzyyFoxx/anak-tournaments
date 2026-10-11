@@ -27,16 +27,6 @@ export const classifyRarity = (rarityPercent: number): Rarity => {
 // `hsl(var(--rar))`, so it only needs this one class on an ancestor.
 export const rarityVarClass = (rarity: Rarity): string => `aqt-rar-${rarity}`;
 
-// Localized tier titles (e.g. "Mythic · < 1% of all players"), keyed by rarity.
-export const rarityTitles = (t: Translate): Record<Rarity, string> => ({
-  mythic: t("users.achievements.rarity.mythic.title"),
-  legendary: t("users.achievements.rarity.legendary.title"),
-  epic: t("users.achievements.rarity.epic.title"),
-  rare: t("users.achievements.rarity.rare.title"),
-  uncommon: t("users.achievements.rarity.uncommon.title"),
-  common: t("users.achievements.rarity.common.title")
-});
-
 // Localized compact ranges (e.g. "< 1% earn"), keyed by rarity.
 export const rarityRanges = (t: Translate): Record<Rarity, string> => ({
   mythic: t("users.achievements.rarity.mythic.range"),

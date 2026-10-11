@@ -2266,12 +2266,8 @@
     "title": "Achievements",
     "subtitle": "Browse all achievements, filter by category, and view earning conditions.",
     "hero": {
-      "coord": "ACHIEVEMENTS // CATALOG",
-      "title": "Every badge in the vault",
-      "lede": "The full catalog of earnable achievements, ranked by how rare they are across the roster. Filter by tier or category, search by name, and open any badge to see exactly how it's won — and who holds it.",
-      "mythicCount": "{count, plural, one {# mythic badge} other {# mythic badges}}",
-      "rarestSub": "Hardest badge to earn",
-      "earnedSub": "Total awards, all-time"
+      "title": "All achievements",
+      "lede": "Every badge players can earn. Open one to see how to get it and who already has it."
     },
     "searchPlaceholder": "Search achievements…",
     "meta": {
@@ -2284,6 +2280,14 @@
       "rare": "Rare",
       "uncommon": "Uncommon",
       "common": "Common"
+    },
+    "rarityFilter": "Filter by rarity",
+    "categoryFilter": "Filter by category",
+    "sortHolders": "Sort: Most owned",
+    "holders": "{count, plural, one {# player has it} other {# players have it}}",
+    "notEarned": {
+      "title": "Not earned yet",
+      "tile": "Nobody yet"
     },
     "results": "{count, plural, one {# result} other {# results}}",
     "sectionCount": "{count, plural, one {# badge} other {# badges}}",
@@ -2304,7 +2308,7 @@
       "total": "Total Achievements",
       "rarest": "Rarest",
       "avgRarity": "Avg Rarity",
-      "totalEarned": "Total Earned"
+      "unlocks": "Unlocks"
     },
     "sort": {
       "placeholder": "Sort by...",
@@ -2318,9 +2322,7 @@
       "title": "No achievements found",
       "body": "Try adjusting your filters."
     },
-    "viewRules": "View rules for {name}",
     "rarity": "{percent}% rarity",
-    "conditionsTitle": "Conditions",
     "noConditionsDefined": "No conditions defined",
     "emptyCondition": "Empty condition",
     "condition": {
@@ -2375,10 +2377,249 @@
       "tournament_format": "Tournament Format",
       "tournament_winrate": "Tournament Winrate"
     },
-    "logic": {
-      "and": "AND",
-      "or": "OR",
-      "not": "NOT"
+    "conditionText": {
+      "title": "How to earn",
+      "unnamed": "Condition",
+      "group": {
+        "and": "All of:",
+        "or": "Any of:",
+        "not": "Except:"
+      },
+      "op": {
+        "eq": "exactly {value}",
+        "ne": "anything but {value}",
+        "gte": "at least {value}",
+        "gt": "more than {value}",
+        "lte": "at most {value}",
+        "lt": "less than {value}"
+      },
+      "diagram": {
+        "toggle": "Condition diagram",
+        "outlineTitle": "Condition tree outline",
+        "outlineGroup": "{path} {op} group",
+        "fullscreen": "Fullscreen",
+        "fullscreenLabel": "Show the condition diagram fullscreen",
+        "exitFullscreen": "Exit fullscreen (Esc)",
+        "exitFullscreenLabel": "Exit fullscreen, or press Escape"
+      },
+      "leaf": {
+        "stat_threshold": "{stat} on a single map: {amount}",
+        "global_stat_sum": "{stat} over the whole career: {amount}",
+        "hero_stat": "{stat} on {hero} in a single map: {amount}",
+        "hero_kd_best": "Best K/D on {hero} in a tournament",
+        "hero_kd_best_any": "Best K/D on any hero in a tournament",
+        "hero_pickrate": "Played a hero whose pickrate in the tournament is {amount}",
+        "match_win": "Won the map",
+        "match_criteria": "{field}: {amount}",
+        "match_mvp_check": "Players from the team in the map's top {top} by {stat}: {amount}",
+        "match_event_count": "{event} on a single map: {amount}",
+        "fight_multikill": "Fights on one map with {kills, plural, one {# kill} other {# kills}} or more: {amount}",
+        "encounter_score": "Series finished with the score {scores}",
+        "encounter_revenge": "Beat a team that had already beaten you in this tournament",
+        "encounter_result_win": "Won the series",
+        "encounter_result_loss": "Lost the series",
+        "encounter_comeback": "Won a series after trailing by {count, plural, one {# map} other {# maps}}",
+        "bracket_path_upper": "Went through the upper bracket only",
+        "bracket_path_lower": "Played in the lower bracket",
+        "tournament_format": "Tournament format: {format}",
+        "stage_completed": "The tournament stage numbered {amount} is completed",
+        "reached_playoffs": "Reached the playoff bracket",
+        "reached_playoffs_count": "Tournaments with a playoff appearance: {amount}",
+        "standing_position": "Final placement in the tournament: {amount}",
+        "standing_record": "{field} in the standings: {amount}",
+        "standing_count": "Tournaments finished in placement {position}: {amount}",
+        "standing_count_role": "Roles in which placement {position} was reached: {amount}",
+        "tournament_winrate": "Winrate in the tournament: {amount}",
+        "div_level": "Division at the time of the tournament: {amount}",
+        "div_change_up": "Division moved up by at least {count, plural, one {# division} other {# divisions}} between tournaments",
+        "div_change_down": "Division dropped by at least {count, plural, one {# division} other {# divisions}} between tournaments",
+        "div_span": "Divisions climbed from the first tournament to the last: {amount}",
+        "rank_peak": "Peak Overwatch rank: {division} or higher",
+        "rank_climb": "Divisions climbed within one season: {amount}",
+        "player_div": "Division: {amount}",
+        "player_role": "Plays {role}",
+        "is_captain": "Captained the team",
+        "is_newcomer": "First tournament for the player",
+        "is_newcomer_count": "Tournaments entered as a newcomer: {amount}",
+        "tournament_type_league": "League tournament",
+        "tournament_type_regular": "Regular tournament, not a league",
+        "tournament_type_any": "Tournament of any type",
+        "tournament_count": "Tournaments entered: {amount}",
+        "draft_pick": "Overall pick number in the live draft: {amount}",
+        "draft_pick_any": "Was picked in the live draft",
+        "draft_pick_captain": "Was a drafting captain",
+        "registration_timing": "{event}: {amount}",
+        "log_upload_count": "Match logs uploaded: {amount}",
+        "captain_report_activity": "{metric}: {amount}",
+        "team_players_match_all": "Every player on the team matches:",
+        "team_players_match_any": "At least one player on the team matches:",
+        "team_players_match_count": "Players on the team matching the condition: {amount}",
+        "captain_property": "The team captain matches:",
+        "team_otp_count": "One-trick players on the team: {amount}",
+        "teammate_recurrence": "Tournaments played alongside the same player: {amount}",
+        "global_winrate_top": "Top {limit} of the all-time leaderboard by {metric}",
+        "global_winrate_bottom": "Bottom {limit} of the all-time leaderboard by {metric}",
+        "global_winrate": "Ranked on the all-time leaderboard by {metric}",
+        "distinct_count": "Different {field}: {amount}",
+        "map_coverage_played": "Different {field} played: {amount}",
+        "map_coverage_won": "Different {field} won: {amount}",
+        "map_winrate": "Career winrate on a single map: {amount}",
+        "map_winrate_map": "Career winrate on {map}: {amount}",
+        "log_stat_rank_top": "Top {limit} in the tournament by {stat}",
+        "log_stat_rank_bottom": "Bottom {limit} in the tournament by {stat}",
+        "duel_dominance": "Opponents out-killed across your meetings: {amount}",
+        "consecutive": "{metric} in at least {count, plural, one {# tournament} other {# tournaments}} in a row",
+        "stable_streak": "The same {fields} across at least {count, plural, one {# tournament} other {# tournaments}} in a row"
+      },
+      "q": {
+        "perTournament": "within one tournament",
+        "onHero": "on {hero}",
+        "minTimeOnHero": "at least {seconds} s on the hero",
+        "minMatchesOnHero": "{count, plural, one {at least # match} other {at least # matches}}",
+        "minMatchTime": "at least {seconds} s in each match",
+        "inFinal": "in the final",
+        "margin": "map difference of exactly {count}",
+        "opponentScore": "{count, plural, one {opponent took # map} other {opponent took # maps}}",
+        "lowerBracketWins": "{count, plural, one {at least # win} other {at least # wins}} in the lower bracket",
+        "lostInRound": "lost in round {amount}",
+        "groupsIncluded": "group stage standings included",
+        "groupsOnly": "group stage only",
+        "leaguesOnly": "league tournaments only",
+        "leaguesIncluded": "leagues included",
+        "startedAfter": "started after {date}",
+        "startedBefore": "started before {date}",
+        "autopick": "picked automatically",
+        "notAutopick": "picked by a captain",
+        "beforeOpening": "a negative value is before the phase opened",
+        "anyStatus": "any processing status",
+        "status": "status {status}",
+        "winrateThreshold": "winrate {amount}",
+        "minPlaytimeEach": "at least {seconds} s on each",
+        "gamemode": "gamemode {name}",
+        "minMapMatches": "{count, plural, one {at least # match} other {at least # matches}} on that map",
+        "minKillsEach": "{count, plural, one {at least # kill} other {at least # kills}} against each opponent",
+        "minDiff": "by a margin of at least {count}",
+        "perTimePlayed": "measured per time played",
+        "dayTwoPosition": "day-two placement {amount}",
+        "rankRole": "{role} role",
+        "platform": "platform {platform}",
+        "season": "season {season}",
+        "sortOrder": {
+          "asc": "ranked from the lowest value",
+          "desc": "ranked from the highest value"
+        },
+        "side": {
+          "winner": "awarded to the winning team",
+          "loser": "awarded to the losing team",
+          "both": "awarded to both teams"
+        },
+        "matchField": {
+          "closeness": "Closeness of the series",
+          "match_time": "Map duration in seconds",
+          "time": "Map duration in seconds"
+        },
+        "record": {
+          "wins": "Wins",
+          "losses": "Losses",
+          "draws": "Draws",
+          "points": "Points",
+          "buchholz": "Buchholz score",
+          "matches": "Matches played"
+        },
+        "format": {
+          "double_elim": "double elimination",
+          "single_elim": "single elimination",
+          "round_robin": "round robin",
+          "has_bracket": "any bracket"
+        },
+        "distinct": {
+          "role": "roles",
+          "hero": "heroes",
+          "match": "matches"
+        },
+        "coverage": {
+          "map": "maps",
+          "gamemode": "gamemodes"
+        },
+        "winrateMetric": {
+          "winrate": "winrate",
+          "won_maps": "won maps"
+        },
+        "reportMetric": {
+          "series_reported": "Series results reported",
+          "map_reports": "Map results reported"
+        },
+        "streakMetric": {
+          "win": "Won",
+          "day_two": "Reached day two",
+          "playoffs": "Reached the playoffs"
+        },
+        "stableField": {
+          "role": "role",
+          "division": "division",
+          "rank": "rank"
+        },
+        "regEvent": {
+          "signup": "Minutes from registration opening to the sign-up",
+          "check_in": "Minutes from check-in opening to the check-in"
+        },
+        "role": {
+          "Tank": "Tank",
+          "Damage": "Damage",
+          "Support": "Support"
+        },
+        "flagTrue": {
+          "substitute": "Entered the tournament as a substitute",
+          "team_manager": "Entered the tournament as a team manager",
+          "checked_in": "Checked in for the tournament"
+        },
+        "flagFalse": {
+          "substitute": "Did not enter as a substitute",
+          "team_manager": "Did not enter as a team manager",
+          "checked_in": "Did not check in for the tournament"
+        },
+        "event": {
+          "OffensiveAssist": "Offensive assists",
+          "DefensiveAssist": "Defensive assists",
+          "UltimateCharged": "Ultimates charged",
+          "UltimateStart": "Ultimates used",
+          "UltimateEnd": "Ultimates ended",
+          "HeroSwap": "Hero swaps",
+          "MercyRez": "Mercy resurrections",
+          "EchoDuplicateStart": "Echo duplications",
+          "EchoDuplicateEnd": "Echo duplications ended"
+        }
+      },
+      "stat": {
+        "Eliminations": "Eliminations",
+        "FinalBlows": "Final blows",
+        "Deaths": "Deaths",
+        "AllDamageDealt": "All damage dealt",
+        "HeroDamageDealt": "Hero damage",
+        "HealingDealt": "Healing done",
+        "DamageTaken": "Damage taken",
+        "DamageBlocked": "Damage blocked",
+        "EnvironmentalKills": "Environmental kills",
+        "EnvironmentalDeaths": "Environmental deaths",
+        "ScopedCriticalHitKills": "Scoped critical hit kills",
+        "SoloKills": "Solo kills",
+        "CriticalHits": "Critical hits",
+        "HeroTimePlayed": "Time played on the hero",
+        "UltimatesEarned": "Ultimates earned",
+        "Performance": "Performance",
+        "KD": "K/D",
+        "KDA": "KDA"
+      },
+      "division": {
+        "bronze": "Bronze",
+        "silver": "Silver",
+        "gold": "Gold",
+        "platinum": "Platinum",
+        "emerald": "Emerald",
+        "diamond": "Diamond",
+        "master": "Master",
+        "grandmaster": "Grandmaster"
+      }
     },
     "users": {
       "user": "User",
@@ -2389,10 +2630,8 @@
     "detail": {
       "backToCatalog": "All achievements",
       "earnedBy": "Earned by",
-      "viewEarners": "See who earned it",
       "noEarners": "No one has earned this achievement yet.",
-      "rarityShare": "Share of players",
-      "timesAwarded": "Times awarded",
+      "rarity": "Rarity",
       "earnersCount": "{count, plural, one {# player} other {# players}}"
     }
   },
@@ -4862,27 +5101,21 @@
       },
       "rarity": {
         "mythic": {
-          "title": "Mythic · < 1% of all players",
           "range": "< 1% earn"
         },
         "legendary": {
-          "title": "Legendary · 1-5%",
           "range": "1-5%"
         },
         "epic": {
-          "title": "Epic · 5-15%",
           "range": "5-15%"
         },
         "rare": {
-          "title": "Rare · 15-30%",
           "range": "15-30%"
         },
         "uncommon": {
-          "title": "Uncommon · 30-50%",
           "range": "30-50%"
         },
         "common": {
-          "title": "Common · > 50%",
           "range": "> 50%"
         }
       },
@@ -4891,7 +5124,7 @@
         "locked": "You haven't earned this achievement yet.",
         "earnedIn": "Earned in",
         "earnedCount": "earned ×{count}",
-        "earnedNoDetails": "Earned {count}× — no tournament or match details recorded."
+        "earnedNoDetails": "Earned {count}×. No tournament or match details recorded."
       },
       "searchLabel": "Search achievements"
     },

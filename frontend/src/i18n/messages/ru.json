@@ -2266,12 +2266,8 @@
     "title": "Достижения",
     "subtitle": "Просматривайте все достижения, фильтруйте по категориям и смотрите условия получения.",
     "hero": {
-      "coord": "ДОСТИЖЕНИЯ // КАТАЛОГ",
-      "title": "Каждый значок коллекции",
-      "lede": "Полный каталог достижений, отсортированный по тому, насколько они редки среди игроков. Фильтруйте по уровню или категории, ищите по названию и открывайте любой значок, чтобы узнать, как его получить — и кто уже им владеет.",
-      "mythicCount": "{count, plural, one {# мифический значок} few {# мифических значка} many {# мифических значков} other {# мифических значка}}",
-      "rarestSub": "Самый труднодоступный значок",
-      "earnedSub": "Всего выдач за всё время"
+      "title": "Все достижения",
+      "lede": "Все значки, которые можно получить. Откройте любой, чтобы узнать условия и кто его уже получил."
     },
     "searchPlaceholder": "Поиск достижений…",
     "meta": {
@@ -2284,6 +2280,14 @@
       "rare": "Редкое",
       "uncommon": "Необычное",
       "common": "Обычное"
+    },
+    "rarityFilter": "Фильтр по редкости",
+    "categoryFilter": "Фильтр по категории",
+    "sortHolders": "Сортировка: по числу игроков",
+    "holders": "{count, plural, one {# игрок получил} few {# игрока получили} many {# игроков получили} other {# игрока получили}}",
+    "notEarned": {
+      "title": "Ещё не получены",
+      "tile": "Ещё никто"
     },
     "results": "{count, plural, one {# результат} few {# результата} many {# результатов} other {# результата}}",
     "sectionCount": "{count, plural, one {# значок} few {# значка} many {# значков} other {# значка}}",
@@ -2304,7 +2308,7 @@
       "total": "Всего достижений",
       "rarest": "Самое редкое",
       "avgRarity": "Средняя редкость",
-      "totalEarned": "Всего получено"
+      "unlocks": "Получений"
     },
     "sort": {
       "placeholder": "Сортировка…",
@@ -2318,9 +2322,7 @@
       "title": "Достижения не найдены",
       "body": "Попробуйте изменить фильтры."
     },
-    "viewRules": "Посмотреть условия для {name}",
     "rarity": "редкость {percent}%",
-    "conditionsTitle": "Условия",
     "noConditionsDefined": "Условия не заданы",
     "emptyCondition": "Пустое условие",
     "condition": {
@@ -2375,10 +2377,249 @@
       "tournament_format": "Формат турнира",
       "tournament_winrate": "Винрейт на турнире"
     },
-    "logic": {
-      "and": "И",
-      "or": "ИЛИ",
-      "not": "НЕ"
+    "conditionText": {
+      "title": "Как получить",
+      "unnamed": "Условие",
+      "group": {
+        "and": "Все условия:",
+        "or": "Любое из:",
+        "not": "Кроме:"
+      },
+      "op": {
+        "eq": "ровно {value}",
+        "ne": "любое значение, кроме {value}",
+        "gte": "не менее {value}",
+        "gt": "больше {value}",
+        "lte": "не более {value}",
+        "lt": "меньше {value}"
+      },
+      "diagram": {
+        "toggle": "Схема условий",
+        "outlineTitle": "Структура дерева условий",
+        "outlineGroup": "{path} группа {op}",
+        "fullscreen": "Во весь экран",
+        "fullscreenLabel": "Показать схему условий во весь экран",
+        "exitFullscreen": "Выйти из полноэкранного режима (Esc)",
+        "exitFullscreenLabel": "Выйти из полноэкранного режима или нажать Escape"
+      },
+      "leaf": {
+        "stat_threshold": "{stat} за одну карту: {amount}",
+        "global_stat_sum": "{stat} за всю карьеру: {amount}",
+        "hero_stat": "{stat} на герое {hero} за одну карту: {amount}",
+        "hero_kd_best": "Лучший K/D на герое {hero} за турнир",
+        "hero_kd_best_any": "Лучший K/D на любом герое за турнир",
+        "hero_pickrate": "Игра на герое, чей пикрейт на турнире {amount}",
+        "match_win": "Победа на карте",
+        "match_criteria": "{field}: {amount}",
+        "match_mvp_check": "Игроков команды в топ-{top} карты по статистике {stat}: {amount}",
+        "match_event_count": "{event} за одну карту: {amount}",
+        "fight_multikill": "Боёв на одной карте с {kills, plural, one {# убийством} few {# убийствами} many {# убийствами} other {# убийствами}} и больше: {amount}",
+        "encounter_score": "Серия завершилась со счётом {scores}",
+        "encounter_revenge": "Победа над командой, которая ранее обыграла вас на этом турнире",
+        "encounter_result_win": "Победа в серии",
+        "encounter_result_loss": "Поражение в серии",
+        "encounter_comeback": "Победа в серии после отставания в {count, plural, one {# карту} few {# карты} many {# карт} other {# карты}}",
+        "bracket_path_upper": "Путь только по верхней сетке",
+        "bracket_path_lower": "Игра в нижней сетке",
+        "tournament_format": "Формат турнира: {format}",
+        "stage_completed": "Стадия турнира с номером {amount} завершена",
+        "reached_playoffs": "Выход в плей-офф",
+        "reached_playoffs_count": "Турниров с выходом в плей-офф: {amount}",
+        "standing_position": "Итоговое место на турнире: {amount}",
+        "standing_record": "{field} в таблице: {amount}",
+        "standing_count": "Турниров с местом {position}: {amount}",
+        "standing_count_role": "Ролей, на которых занято место {position}: {amount}",
+        "tournament_winrate": "Винрейт на турнире: {amount}",
+        "div_level": "Дивизион на момент турнира: {amount}",
+        "div_change_up": "Дивизион вырос минимум на {count, plural, one {# дивизион} few {# дивизиона} many {# дивизионов} other {# дивизиона}} между турнирами",
+        "div_change_down": "Дивизион упал минимум на {count, plural, one {# дивизион} few {# дивизиона} many {# дивизионов} other {# дивизиона}} между турнирами",
+        "div_span": "Рост дивизиона от первого турнира к последнему: {amount}",
+        "rank_peak": "Пиковый ранг Overwatch: {division} или выше",
+        "rank_climb": "Рост дивизионов за один сезон: {amount}",
+        "player_div": "Дивизион: {amount}",
+        "player_role": "Играет на роли {role}",
+        "is_captain": "Был капитаном команды",
+        "is_newcomer": "Первый турнир игрока",
+        "is_newcomer_count": "Турниров в статусе новичка: {amount}",
+        "tournament_type_league": "Турнир лиги",
+        "tournament_type_regular": "Обычный турнир, не лига",
+        "tournament_type_any": "Турнир любого типа",
+        "tournament_count": "Сыграно турниров: {amount}",
+        "draft_pick": "Общий номер пика на живом драфте: {amount}",
+        "draft_pick_any": "Был выбран на живом драфте",
+        "draft_pick_captain": "Был капитаном на драфте",
+        "registration_timing": "{event}: {amount}",
+        "log_upload_count": "Загружено логов матчей: {amount}",
+        "captain_report_activity": "{metric}: {amount}",
+        "team_players_match_all": "Каждый игрок команды подходит под условие:",
+        "team_players_match_any": "Хотя бы один игрок команды подходит под условие:",
+        "team_players_match_count": "Игроков команды, подходящих под условие: {amount}",
+        "captain_property": "Капитан команды подходит под условие:",
+        "team_otp_count": "Игроков на одном герое в команде: {amount}",
+        "teammate_recurrence": "Турниров в одной команде с одним и тем же игроком: {amount}",
+        "global_winrate_top": "Топ-{limit} рейтинга за всё время по {metric}",
+        "global_winrate_bottom": "Последние {limit} рейтинга за всё время по {metric}",
+        "global_winrate": "Место в рейтинге за всё время по {metric}",
+        "distinct_count": "Разных {field}: {amount}",
+        "map_coverage_played": "Разных {field} сыграно: {amount}",
+        "map_coverage_won": "Разных {field} выиграно: {amount}",
+        "map_winrate": "Винрейт на одной карте за карьеру: {amount}",
+        "map_winrate_map": "Винрейт на карте {map} за карьеру: {amount}",
+        "log_stat_rank_top": "Топ-{limit} турнира по статистике {stat}",
+        "log_stat_rank_bottom": "Последние {limit} турнира по статистике {stat}",
+        "duel_dominance": "Соперников, которых вы перестреляли по личным встречам: {amount}",
+        "consecutive": "{metric} минимум в {count, plural, one {# турнире} few {# турнирах} many {# турнирах} other {# турнирах}} подряд",
+        "stable_streak": "Неизменные {fields} минимум в {count, plural, one {# турнире} few {# турнирах} many {# турнирах} other {# турнирах}} подряд"
+      },
+      "q": {
+        "perTournament": "в рамках одного турнира",
+        "onHero": "на герое {hero}",
+        "minTimeOnHero": "минимум {seconds} с на герое",
+        "minMatchesOnHero": "не менее {count, plural, one {# матча} few {# матчей} many {# матчей} other {# матчей}}",
+        "minMatchTime": "минимум {seconds} с в каждом матче",
+        "inFinal": "в финале",
+        "margin": "разница карт ровно {count}",
+        "opponentScore": "{count, plural, one {соперник взял # карту} few {соперник взял # карты} many {соперник взял # карт} other {соперник взял # карты}}",
+        "lowerBracketWins": "не менее {count, plural, one {# победы} few {# побед} many {# побед} other {# побед}} в нижней сетке",
+        "lostInRound": "проигрыш в раунде {amount}",
+        "groupsIncluded": "с учётом таблиц групповой стадии",
+        "groupsOnly": "только групповая стадия",
+        "leaguesOnly": "только турниры лиги",
+        "leaguesIncluded": "с учётом лиг",
+        "startedAfter": "начало после {date}",
+        "startedBefore": "начало до {date}",
+        "autopick": "автопик",
+        "notAutopick": "выбран капитаном",
+        "beforeOpening": "отрицательное значение - до открытия этапа",
+        "anyStatus": "любой статус обработки",
+        "status": "статус {status}",
+        "winrateThreshold": "винрейт {amount}",
+        "minPlaytimeEach": "минимум {seconds} с на каждом",
+        "gamemode": "режим {name}",
+        "minMapMatches": "не менее {count, plural, one {# матча} few {# матчей} many {# матчей} other {# матчей}} на этой карте",
+        "minKillsEach": "не менее {count, plural, one {# убийства} few {# убийств} many {# убийств} other {# убийств}} по каждому сопернику",
+        "minDiff": "с перевесом не менее {count}",
+        "perTimePlayed": "в пересчёте на время игры",
+        "dayTwoPosition": "место во второй день {amount}",
+        "rankRole": "роль {role}",
+        "platform": "платформа {platform}",
+        "season": "сезон {season}",
+        "sortOrder": {
+          "asc": "ранжирование от меньшего значения",
+          "desc": "ранжирование от большего значения"
+        },
+        "side": {
+          "winner": "засчитывается команде-победителю",
+          "loser": "засчитывается проигравшей команде",
+          "both": "засчитывается обеим командам"
+        },
+        "matchField": {
+          "closeness": "Близость серии",
+          "match_time": "Длительность карты в секундах",
+          "time": "Длительность карты в секундах"
+        },
+        "record": {
+          "wins": "Побед",
+          "losses": "Поражений",
+          "draws": "Ничьих",
+          "points": "Очков",
+          "buchholz": "Коэффициент Бухгольца",
+          "matches": "Сыграно матчей"
+        },
+        "format": {
+          "double_elim": "двойное выбывание",
+          "single_elim": "одиночное выбывание",
+          "round_robin": "круговой",
+          "has_bracket": "любая сетка"
+        },
+        "distinct": {
+          "role": "ролей",
+          "hero": "героев",
+          "match": "матчей"
+        },
+        "coverage": {
+          "map": "карт",
+          "gamemode": "режимов"
+        },
+        "winrateMetric": {
+          "winrate": "винрейту",
+          "won_maps": "выигранным картам"
+        },
+        "reportMetric": {
+          "series_reported": "Отправлено результатов серий",
+          "map_reports": "Отправлено результатов карт"
+        },
+        "streakMetric": {
+          "win": "Победа",
+          "day_two": "Выход во второй день",
+          "playoffs": "Выход в плей-офф"
+        },
+        "stableField": {
+          "role": "роль",
+          "division": "дивизион",
+          "rank": "ранг"
+        },
+        "regEvent": {
+          "signup": "Минут от открытия регистрации до заявки",
+          "check_in": "Минут от открытия чек-ина до отметки"
+        },
+        "role": {
+          "Tank": "Танк",
+          "Damage": "Дамаг",
+          "Support": "Саппорт"
+        },
+        "flagTrue": {
+          "substitute": "Заявился на турнир запасным",
+          "team_manager": "Заявился на турнир менеджером команды",
+          "checked_in": "Прошёл чек-ин на турнир"
+        },
+        "flagFalse": {
+          "substitute": "Не заявлялся запасным",
+          "team_manager": "Не был менеджером команды",
+          "checked_in": "Не прошёл чек-ин"
+        },
+        "event": {
+          "OffensiveAssist": "Атакующие ассисты",
+          "DefensiveAssist": "Защитные ассисты",
+          "UltimateCharged": "Набранные ультимейты",
+          "UltimateStart": "Использованные ультимейты",
+          "UltimateEnd": "Завершённые ультимейты",
+          "HeroSwap": "Смены героя",
+          "MercyRez": "Воскрешения Мерси",
+          "EchoDuplicateStart": "Дубликаты Эхо",
+          "EchoDuplicateEnd": "Завершённые дубликаты Эхо"
+        }
+      },
+      "stat": {
+        "Eliminations": "Убийства",
+        "FinalBlows": "Финальные удары",
+        "Deaths": "Смерти",
+        "AllDamageDealt": "Весь урон",
+        "HeroDamageDealt": "Урон по героям",
+        "HealingDealt": "Лечение",
+        "DamageTaken": "Полученный урон",
+        "DamageBlocked": "Заблокированный урон",
+        "EnvironmentalKills": "Убийства окружением",
+        "EnvironmentalDeaths": "Смерти от окружения",
+        "ScopedCriticalHitKills": "Убийства хедшотом в прицеле",
+        "SoloKills": "Одиночные убийства",
+        "CriticalHits": "Критические попадания",
+        "HeroTimePlayed": "Время на герое",
+        "UltimatesEarned": "Набранные ультимейты",
+        "Performance": "Перформанс",
+        "KD": "K/D",
+        "KDA": "KDA"
+      },
+      "division": {
+        "bronze": "Бронза",
+        "silver": "Серебро",
+        "gold": "Золото",
+        "platinum": "Платина",
+        "emerald": "Изумруд",
+        "diamond": "Алмаз",
+        "master": "Мастер",
+        "grandmaster": "Грандмастер"
+      }
     },
     "users": {
       "user": "Игрок",
@@ -2389,10 +2630,8 @@
     "detail": {
       "backToCatalog": "Все достижения",
       "earnedBy": "Получили",
-      "viewEarners": "Кто получил",
       "noEarners": "Пока никто не получил это достижение.",
-      "rarityShare": "Доля игроков",
-      "timesAwarded": "Всего выдач",
+      "rarity": "Редкость",
       "earnersCount": "{count, plural, one {# игрок} few {# игрока} many {# игроков} other {# игрока}}"
     }
   },
@@ -4862,27 +5101,21 @@
       },
       "rarity": {
         "mythic": {
-          "title": "Мифическое · < 1% всех игроков",
           "range": "< 1% получают"
         },
         "legendary": {
-          "title": "Легендарное · 1–5%",
-          "range": "1–5%"
+          "range": "1-5%"
         },
         "epic": {
-          "title": "Эпическое · 5–15%",
-          "range": "5–15%"
+          "range": "5-15%"
         },
         "rare": {
-          "title": "Редкое · 15–30%",
-          "range": "15–30%"
+          "range": "15-30%"
         },
         "uncommon": {
-          "title": "Необычное · 30–50%",
-          "range": "30–50%"
+          "range": "30-50%"
         },
         "common": {
-          "title": "Обычное · > 50%",
           "range": "> 50%"
         }
       },
@@ -4891,7 +5124,7 @@
         "locked": "Вы ещё не получили это достижение.",
         "earnedIn": "Получено в",
         "earnedCount": "получено ×{count}",
-        "earnedNoDetails": "Получено {count}× — данные о турнире или матче не сохранены."
+        "earnedNoDetails": "Получено {count}×. Данные о турнире или матче не сохранены."
       },
       "searchLabel": "Поиск достижений"
     },
