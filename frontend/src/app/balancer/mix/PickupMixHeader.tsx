@@ -58,22 +58,6 @@ export function signupPostOf(game: CustomGame): CustomGameDiscordPost | null {
 }
 
 /**
- * The lobby's newest lineup card still standing in Discord whose match is not
- * recorded yet: the one a lineup change refreshes. A played round's card is history.
- */
-export function liveLineupPostOf(game: CustomGame, lobbyIndex: number): CustomGameDiscordPost | null {
-  const recorded = game.lobbies.find((lobby) => lobby.lobby_index === lobbyIndex)?.matches_count ?? 0;
-  const post =
-    (game.discord_posts ?? []).findLast(
-      (row) =>
-        row.kind === "mix.lineup" &&
-        row.slot.startsWith(`lineup:${lobbyIndex}:`) &&
-        (row.status === "posted" || row.status === "pending")
-    ) ?? null;
-  return post && Number(post.slot.split(":")[2]) > recorded ? post : null;
-}
-
-/**
  * The mode a signup post goes out in. Posting the card IS opening signup
  * (`signup_post` writes the mode server-side), so a closed mix opens into the
  * pool -- and every label that triggers this says so.

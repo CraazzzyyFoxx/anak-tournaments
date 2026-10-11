@@ -37,8 +37,6 @@ const updateMySeat = vi.fn();
 const setSelfService = vi.fn();
 const postSignup = vi.fn();
 const voiceMove = vi.fn();
-const balanceMix = vi.fn();
-const refreshLineup = vi.fn();
 
 vi.mock("@/services/custom-game.service", () => ({
   customGameKeys: {
@@ -89,8 +87,6 @@ vi.mock("@/services/custom-game.service", () => ({
     setVoiceChannels: vi.fn(),
     voiceMove: (...args: unknown[]) => voiceMove(...args),
     voiceReturn: vi.fn(),
-    balance: (...args: unknown[]) => balanceMix(...args),
-    refreshLineup: (...args: unknown[]) => refreshLineup(...args),
   },
 }));
 
@@ -172,10 +168,9 @@ type HarnessApi = {
   setRoster: (ids: number[]) => void;
   applyRotationHints: () => void;
   undoMatch: (matchId: number) => void;
-  postToDiscord: (variantIndex: number, image: Blob | null) => void;
+  postToDiscord: (variantIndex: number) => void;
   setVariantIndex: (index: number) => void;
   voiceMove: (lobbyIndex: number | null) => void;
-  shuffleAll: () => void;
   client: QueryClient;
 };
 
@@ -193,16 +188,14 @@ function Harness({
     postToDiscord: post,
     setVariantIndex: paging,
     voiceMove: move,
-    balance,
   } = usePickupMix(WORKSPACE_ID, GAME_ID);
   onReady({
     setRoster: (ids) => setRoster.mutate(ids),
     applyRotationHints: () => applyRotationHints.mutate(),
     undoMatch: (matchId) => undo.mutate(matchId),
-    postToDiscord: (variantIndex, image) => post.mutate({ lobbyIndex: 0, variantIndex, image }),
+    postToDiscord: (variantIndex) => post.mutate({ lobbyIndex: 0, variantIndex }),
     setVariantIndex: (index) => paging.mutate({ lobbyIndex: 0, variantIndex: index }),
     voiceMove: (lobbyIndex) => move.mutate(lobbyIndex),
-    shuffleAll: () => balance.mutate({ scope: "all" }),
     client,
   });
   return null;
@@ -308,19 +301,18 @@ describe("usePickupMix", () => {
     expect(listMatches.mock.calls.length).toBeGreaterThan(before);
   });
 
-  it("posts the matchup, and its screenshot, to Discord without disturbing the mix cache", async () => {
+  it("posts the matchup to Discord without disturbing the mix cache", async () => {
     const { postToDiscord: post, client } = await mount();
     const gameKey = ["custom-games", WORKSPACE_ID, GAME_ID];
-    const image = new Blob(["png"], { type: "image/png" });
     expect(client.getQueryState(gameKey)?.isInvalidated).toBe(false);
 
     await act(async () => {
-      post(1, image);
+      post(1);
       await tick();
       await tick();
     });
 
-    expect(postToDiscord).toHaveBeenCalledWith(WORKSPACE_ID, GAME_ID, 0, 1, image);
+    expect(postToDiscord).toHaveBeenCalledWith(WORKSPACE_ID, GAME_ID, 0, 1);
     // Nothing about the mix changed, so a refetch would be pure noise.
     expect(client.getQueryState(gameKey)?.isInvalidated).toBe(false);
   });
@@ -490,46 +482,5 @@ describe("usePickupMix", () => {
 
     expect(notify.error).toHaveBeenCalledTimes(1);
     expect(notify.apiError).toHaveBeenCalledTimes(1);
-  });
-
-  it("refreshes the cards of the lobbies the shuffle changed off screen", async () => {
-    // A shuffle across every lobby re-seats the lobbies the host is NOT
-    // looking at too: only the shown one has a canvas to capture, so the
-    // others are re-sent without an image and the bot redraws the text card.
-    const lineup = (id: number, lobbyIndex: number, status = "posted") => ({
-      id,
-      slot: `lineup:${lobbyIndex}:1`,
-      kind: "mix.lineup",
-      status,
-      url: null,
-      error: null,
-      created_at: "2026-01-01T00:00:00Z",
-    });
-    const shuffled = game({
-      lobby_count: 3,
-      lobbies: [0, 1, 2].map((lobby_index) => ({
-        lobby_index,
-        balance_result: null,
-        selected_variant_index: 0,
-        next_map_id: null,
-        balanced_at: null,
-        lineup_recorded: true,
-        matches_count: 0,
-      })),
-      // Lobby C never had a card posted, so it has nothing to refresh.
-      discord_posts: [lineup(1, 0), lineup(2, 1), lineup(3, 2, "failed")],
-    });
-    balanceMix.mockResolvedValue(shuffled);
-    const { shuffleAll } = await mount();
-
-    await act(async () => {
-      shuffleAll();
-      await tick();
-      await tick();
-    });
-
-    // Lobby A is the one on screen: the panel recaptures and sends that card.
-    expect(refreshLineup).toHaveBeenCalledTimes(1);
-    expect(refreshLineup).toHaveBeenCalledWith(WORKSPACE_ID, GAME_ID, 1, null);
   });
 });

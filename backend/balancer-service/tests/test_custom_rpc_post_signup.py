@@ -10,7 +10,7 @@ delete of the previous signup card before the post of its replacement).
 
 The live card's own refresh is not here: no handler edits it. Every mutation
 emits ``pickup_mix_changed`` and the projector re-renders from the committed
-state (``src/services/mix_signup_projector.py``).
+state (``src/services/mix_discord_projector.py``).
 """
 
 from __future__ import annotations

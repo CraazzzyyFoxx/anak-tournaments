@@ -20,7 +20,7 @@ transaction, and it does two things:
 - A ``PickupMixChangedEvent`` outbox row on ``pickup_mix_changed``, for the
   Discord side. Durable because the signup card in a channel has no client to
   refetch on reconnect: the card is only as fresh as the last event that
-  reached :mod:`src.services.mix_signup_projector`. It carries no state either
+  reached :mod:`src.services.mix_discord_projector`. It carries no state either
   -- the projector re-renders from the database.
 
 Only balancer-service ever writes either signal (custom-game roster/lineup

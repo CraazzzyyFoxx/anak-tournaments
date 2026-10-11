@@ -31,10 +31,11 @@ Every Discord message this service sends is a ``discord_message`` row
 the host takes one down with ``delete_discord_post``, and deleting the mix
 deletes all of them. Commands for the bot are queued through the outbox
 (``discord_messages.enqueue``) INSIDE the handler's transaction, so a rolled
-back write queues nothing. Keeping the live signup card in step with a
-mutation is nobody's job here: every write emits ``emit_pickup_mix_changed``
-and ``src.services.mix_signup_projector`` re-renders the card from the
-committed state. The bot answers nothing back here -- it writes the row's
+back write queues nothing. Keeping the live signup and lineup cards in step
+with a mutation is nobody's job here: every write emits
+``emit_pickup_mix_changed`` and ``src.services.mix_discord_projector``
+re-renders the cards from the committed state. The bot answers nothing back
+here -- it writes the row's
 outcome itself -- so this module subscribes to no queue but its own RPC
 subjects.
 """
@@ -1017,11 +1018,6 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=user.id,
                 actor_is_superuser=user.is_superuser,
                 board_url_base=config.public_site_url,
-                # The host's screenshot wins when there is one: it is the
-                # matchup card they were looking at, crests and all, which no
-                # rendered text can be. The card then shows the attachment
-                # instead of listing the seats.
-                image_b64=body.image_b64,
             )
             # Nothing about the mix itself changed, but the post it is about to
             # make is a row of its own, so the commit is real and the board
@@ -1034,29 +1030,6 @@ def register(broker: Any, logger: Any) -> None:
             return {"status": "queued", "channel_id": str(channel_id)}
 
         return await c.envelope(logger, "custom.post_discord", op, session_factory=_SF)
-
-    @broker.subscriber("rpc.balancer.custom.update_lineup")
-    async def _update_lineup(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            user = c.active_actor(data)
-            workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
-            body = _body(schemas.CustomGameLineupRefresh, data)
-            commands = await custom_game_service.refresh_lineup(
-                session,
-                workspace_id=workspace_id,
-                custom_game_id=_game_id(data),
-                lobby_index=body.lobby_index,
-                image_b64=body.image_b64,
-                actor_user_id=user.id,
-                actor_is_superuser=user.is_superuser,
-                board_url_base=config.public_site_url,
-            )
-            await discord_messages.enqueue(session, commands)
-            await session.commit()
-            return {"status": "queued" if commands else "nothing_to_update"}
-
-        return await c.envelope(logger, "custom.update_lineup", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.set_voice_channels")
     async def _set_voice_channels(data: dict, msg: RabbitMessage) -> dict:

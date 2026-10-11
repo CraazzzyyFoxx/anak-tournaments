@@ -4101,7 +4101,7 @@ export interface paths {
         };
         /**
          * Compare users
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a head-to-head comparison between the given user and others, resolved against the default division grid.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a head-to-head comparison between the given user and others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default).
          *
          *     RPC subject: `rpc.app.users.compare`
          */
@@ -4123,7 +4123,7 @@ export interface paths {
         };
         /**
          * Compare user heroes
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-hero head-to-head comparison for the given user against others using the default grid.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-hero head-to-head comparison for the given user against others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default).
          *
          *     RPC subject: `rpc.app.users.compare_heroes`
          */
@@ -10031,26 +10031,6 @@ export interface paths {
          *     RPC subject: `rpc.balancer.custom.remove_co_host`
          */
         delete: operations["delete__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__co_hosts__co_host_user_id_"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/discord/lineup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Update lineup
-         * @description RPC subject: `rpc.balancer.custom.update_lineup`
-         */
-        put: operations["put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__discord_lineup"];
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -20537,22 +20517,6 @@ export interface components {
             new_host_user_id: number;
         };
         /**
-         * CustomGameLineupRefresh
-         * @description The lobby's newest lineup card, re-rendered from the lineup on screen now.
-         */
-        "balancer.CustomGameLineupRefresh": {
-            /**
-             * Image B64
-             * @default null
-             */
-            image_b64: string | null;
-            /**
-             * Lobby Index
-             * @default 0
-             */
-            lobby_index: number;
-        };
-        /**
          * CustomGameLobbyCountPatch
          * @description How many lobbies the mix runs at once.
          */
@@ -20629,20 +20593,9 @@ export interface components {
         };
         /**
          * CustomGamePostDiscord
-         * @description Which balance option's lineup to post, and the PNG of it to attach.
-         *
-         *     The image is the matchup card the host is looking at, rasterised in their
-         *     browser (see ``frontend/src/hooks/useNodeCapture.ts``) -- the bot has no
-         *     renderer, and a screenshot of the real card is the one thing guaranteed to
-         *     match what the mix page shows. Omitted when the capture fails, and the
-         *     text embed is then posted instead.
+         * @description Which balance option's lineup to post; the picture of it is drawn server-side.
          */
         "balancer.CustomGamePostDiscord": {
-            /**
-             * Image B64
-             * @default null
-             */
-            image_b64: string | null;
             /**
              * Lobby Index
              * @default 0
@@ -66902,89 +66855,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__discord_lineup: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: string;
-                game_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["balancer.CustomGameLineupRefresh"];
-            };
-        };
         responses: {
             /** @description Success */
             200: {

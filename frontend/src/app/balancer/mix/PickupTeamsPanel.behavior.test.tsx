@@ -26,11 +26,10 @@
 //     page actually handed a handler -- an older one would have to unwind
 //     every match stacked on top of it;
 // 10. Post to Discord appears only for a writer whose mix has a channel
-//     configured, and posts the option the pager is on, not always the first,
-//     together with the rasterised matchup card the bot attaches.
+//     configured, and posts the option the pager is on, not always the first.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CustomGame, CustomGameLobby, CustomGameMatch } from "@/services/custom-game.service";
 import type { MapRead } from "@/types/map.types";
@@ -74,21 +73,15 @@ vi.mock("@dnd-kit/core", () => ({
   useDraggable: dndSpies.useDraggable,
   useDroppable: dndSpies.useDroppable,
 }));
-// The rasteriser is the export pipeline's, not this panel's: what the panel
-// owes is handing the PNG it produced to the post handler, so the capture is
-// stubbed to a known blob.
-const captureSpies = vi.hoisted(() => ({ rasterize: vi.fn(), capture: vi.fn(), capturing: false }));
+// The rasteriser is the export pipeline's, not this panel's.
+const captureSpies = vi.hoisted(() => ({ capture: vi.fn(), capturing: false }));
 vi.mock("@/hooks/useNodeCapture", () => ({
   useNodeCapture: () => ({
     ref: { current: null },
     capturing: captureSpies.capturing,
-    rasterize: captureSpies.rasterize,
     capture: captureSpies.capture,
   }),
 }));
-
-/** Stands in for the rasterised matchup card. */
-const LINEUP_PNG = new Blob(["png"], { type: "image/png" });
 
 const onBalance = vi.fn();
 const onVariantIndexChange = vi.fn();
@@ -101,7 +94,6 @@ const onSwapSeats = vi.fn();
 const onUndoMatch = vi.fn();
 const onPostToDiscord = vi.fn();
 const onShuffleAll = vi.fn();
-const onRefreshLineup = vi.fn();
 
 // One lobby, rated once: an option only says who sits where.
 const PLAYERS = {
@@ -228,8 +220,6 @@ type PanelOptions = {
   undoingMatchId?: number | null;
   omitUndoMatch?: boolean;
   omitPostToDiscord?: boolean;
-  liveLineupPostId?: number | null;
-  omitRefreshLineup?: boolean;
 };
 
 function panel(current: CustomGame | undefined, props: PanelOptions) {
@@ -266,14 +256,11 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
       onCopyBattleTags={onCopyBattleTags}
       postingToDiscord={false}
       onPostToDiscord={props.omitPostToDiscord ? undefined : onPostToDiscord}
-      liveLineupPostId={props.liveLineupPostId ?? null}
-      onRefreshLineup={props.omitRefreshLineup ? undefined : onRefreshLineup}
     />
   );
 }
 
-/** Mounts the panel and keeps the root, so a test can hand it a changed lineup. */
-async function mountPanel(current: CustomGame | undefined, props: PanelOptions = {}) {
+async function mount(current: CustomGame | undefined, props: PanelOptions = {}) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -283,18 +270,7 @@ async function mountPanel(current: CustomGame | undefined, props: PanelOptions =
   await act(async () => {
     await tick();
   });
-  return {
-    container,
-    rerender: async (next: CustomGame | undefined, nextProps: PanelOptions = props) => {
-      await act(async () => {
-        root.render(panel(next, nextProps));
-      });
-    },
-  };
-}
-
-async function mount(current: CustomGame | undefined, props: PanelOptions = {}) {
-  return (await mountPanel(current, props)).container;
+  return container;
 }
 
 function click(node: Element | null | undefined) {
@@ -348,9 +324,6 @@ beforeEach(() => {
   onUndoMatch.mockReset();
   onPostToDiscord.mockReset();
   onShuffleAll.mockReset();
-  onRefreshLineup.mockReset();
-  captureSpies.rasterize.mockReset();
-  captureSpies.rasterize.mockResolvedValue(LINEUP_PNG);
   captureSpies.capture.mockReset();
   captureSpies.capturing = false;
   dndSpies.useDraggable.mockClear();
@@ -771,31 +744,20 @@ describe("PickupTeamsPanel", () => {
     expect(byName(scope, "Post to Discord")).toBeNull();
   });
 
-  it("posts the option on screen, rasterised, to the workspace channel", async () => {
+  it("posts the option on screen to the workspace channel", async () => {
     // The workspace's channel is the only target a mix has: nothing about the
     // mix names one, so the button follows the workspace alone.
     const withChannel = game({ settings: { ...SETTINGS, workspace_discord_channel_id: "123" } });
     const scope = await mount(withChannel);
 
     await click(byName(scope, "Post to Discord"));
-    expect(onPostToDiscord).toHaveBeenCalledWith(0, LINEUP_PNG);
+    expect(onPostToDiscord).toHaveBeenCalledWith(0);
 
     // The pager's option is what a lobby is reading, so that is what goes out.
     document.body.innerHTML = "";
     const second = await mount(withChannel, { variantIndex: 1 });
     await click(byName(second, "Post to Discord"));
-    expect(onPostToDiscord).toHaveBeenLastCalledWith(1, LINEUP_PNG);
-  });
-
-  it("posts without an image when the capture fails", async () => {
-    captureSpies.rasterize.mockRejectedValue(new Error("tainted canvas"));
-    const scope = await mount(game({ settings: { ...SETTINGS, workspace_discord_channel_id: "123" } }));
-
-    await click(byName(scope, "Post to Discord"));
-
-    // The server still has a text embed to fall back on -- losing the
-    // screenshot must not lose the matchup.
-    expect(onPostToDiscord).toHaveBeenCalledWith(0, null);
+    expect(onPostToDiscord).toHaveBeenLastCalledWith(1);
   });
 
   it("hides Post to Discord from a read-only viewer", async () => {
@@ -964,145 +926,5 @@ describe("PickupTeamsPanel", () => {
     const scope = await mount(game(), { matches: [match({ id: 12 })] });
 
     expect(scope.querySelector('[data-testid="match-lobby"]')).toBeNull();
-  });
-});
-
-// 11. the lobby's live Discord card follows what the host sees: any change to
-//     the lineup on screen recaptures it and re-sends it once the edits stop,
-//     while a refetch, a tab switch or a viewer's render send nothing.
-describe("PickupTeamsPanel lineup card refresh", () => {
-  // `shouldAdvanceTime` keeps the harness's own `tick()` resolving, while the
-  // debounce stays under the test's control.
-  let mountedRasterize: typeof captureSpies.rasterize;
-  beforeEach(() => {
-    mountedRasterize = captureSpies.rasterize;
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-  });
-  afterEach(() => {
-    captureSpies.rasterize = mountedRasterize;
-    vi.useRealTimers();
-  });
-
-  /** The same mix with the shown option re-seated -- a lineup the host changed. */
-  function reseated(offset = 0, pair: [string, string] = ["8", "7"]) {
-    return game({
-      lobbies: [
-        lobbyRow({ balance_result: lobby([variant(offset, pair), variant(100), variant(200, ["8", "7"])]) }),
-      ],
-    });
-  }
-
-  async function settle(ms: number) {
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(ms);
-    });
-  }
-
-  it("re-sends the card once the lineup edits stop", async () => {
-    const { rerender } = await mountPanel(game(), { liveLineupPostId: 42 });
-
-    await rerender(reseated());
-    // Still being edited as far as this panel knows.
-    expect(captureSpies.rasterize).not.toHaveBeenCalled();
-
-    await settle(2000);
-
-    expect(captureSpies.rasterize).toHaveBeenCalledTimes(1);
-    expect(onRefreshLineup).toHaveBeenCalledWith(LINEUP_PNG);
-  });
-
-  it("sends one card for a burst of edits, not one per edit", async () => {
-    const { rerender } = await mountPanel(game(), { liveLineupPostId: 42 });
-
-    await rerender(reseated(1));
-    await settle(500);
-    await rerender(reseated(2));
-    await settle(500);
-    await rerender(reseated(3));
-    await settle(2000);
-
-    expect(captureSpies.rasterize).toHaveBeenCalledTimes(1);
-    expect(onRefreshLineup).toHaveBeenCalledTimes(1);
-  });
-
-  it("sends nothing for the lineup it was mounted on", async () => {
-    await mountPanel(game(), { liveLineupPostId: 42 });
-
-    await settle(2000);
-
-    expect(onRefreshLineup).not.toHaveBeenCalled();
-  });
-
-  it("sends nothing when a refetch returned the same lineup", async () => {
-    const { rerender } = await mountPanel(game(), { liveLineupPostId: 42 });
-
-    // A fresh object, seat for seat identical: the card in Discord is correct.
-    await rerender(game());
-    await settle(2000);
-
-    expect(onRefreshLineup).not.toHaveBeenCalled();
-  });
-
-  it("sends nothing while the lobby has no card standing in Discord", async () => {
-    const { rerender } = await mountPanel(game(), { liveLineupPostId: null });
-
-    await rerender(reseated());
-    await settle(2000);
-
-    expect(captureSpies.rasterize).not.toHaveBeenCalled();
-    expect(onRefreshLineup).not.toHaveBeenCalled();
-  });
-
-  it("sends nothing from a read-only viewer's screen", async () => {
-    const { rerender } = await mountPanel(game(), { liveLineupPostId: 42, canWrite: false });
-
-    await rerender(reseated());
-    await settle(2000);
-
-    expect(onRefreshLineup).not.toHaveBeenCalled();
-  });
-
-  it("sends nothing when the host merely switched lobby tabs", async () => {
-    const twoLobbies = game({
-      lobby_count: 2,
-      lobbies: [lobbyRow(), lobbyRow({ lobby_index: 1, balance_result: lobby([variant(500)]) })],
-    });
-    const { rerender } = await mountPanel(twoLobbies, { liveLineupPostId: 42 });
-
-    // Lobby B's own card is not stale just because it came on screen.
-    await rerender(twoLobbies, { liveLineupPostId: 43, lobbyIndex: 1 });
-    await settle(2000);
-
-    expect(onRefreshLineup).not.toHaveBeenCalled();
-  });
-
-  it("falls back to the text card when the capture fails", async () => {
-    captureSpies.rasterize.mockRejectedValue(new Error("tainted canvas"));
-    const { rerender } = await mountPanel(game(), { liveLineupPostId: 42 });
-
-    await rerender(reseated());
-    await settle(2000);
-
-    expect(onRefreshLineup).toHaveBeenCalledWith(null);
-  });
-
-  it("captures with the rasteriser the panel holds when the timer fires", async () => {
-    // `useNodeCapture` rebuilds `rasterize` around its `capturing` guard, so a
-    // host copying the card inside the window leaves the scheduled one stale:
-    // it would either capture on top of that copy or refuse for good.
-    const stale = captureSpies.rasterize;
-    const { rerender } = await mountPanel(game(), { liveLineupPostId: 42 });
-
-    await rerender(reseated());
-    await settle(500);
-    const current = vi.fn().mockResolvedValue(LINEUP_PNG);
-    captureSpies.rasterize = current;
-    // Same lineup, so the debounce keeps running rather than restarting.
-    await rerender(reseated());
-    await settle(2000);
-
-    expect(current).toHaveBeenCalledTimes(1);
-    expect(stale).not.toHaveBeenCalled();
-    expect(onRefreshLineup).toHaveBeenCalledWith(LINEUP_PNG);
   });
 });

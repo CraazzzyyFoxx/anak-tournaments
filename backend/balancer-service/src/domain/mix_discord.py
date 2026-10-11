@@ -14,7 +14,7 @@ The signup card is LIVE: the message the platform posted it as is a
 ``discord_message`` row (``subject='mix:<id>'``, ``slot='signup'``) and every
 mutation that changes something it shows -- a count, a name, who is benched --
 announces itself, after which the projector
-(``src.services.mix_signup_projector``) re-renders this card into that same
+(``src.services.mix_discord_projector``) re-renders this card into that same
 message. It is built from current state every time rather than once at post
 time.
 """
@@ -32,9 +32,10 @@ from shared.domain.discord_ui import BLUE, ROLE_EMOJI, SHORTCODE, TEAL, division
 from shared.domain.mix_lobby import LOBBY_LETTERS
 from shared.schemas.events import DiscordActionButton, DiscordCard, DiscordLinkButton
 from src.domain.balancer.result_serializer import seat_rating
+from src.domain.mix_lineup_image import LineupPicture, LineupSeat, LineupTeam
 from src.services.balancer.role_naming import role_slot_code
 
-__all__ = ("SignupPlayer", "lineup_card", "signup_card")
+__all__ = ("SignupPlayer", "lineup_card", "lineup_picture", "signup_card")
 
 #: Mix statuses nobody can sign up for any more.
 _TERMINAL = {"completed": "завершён", "cancelled": "отменён"}
@@ -214,35 +215,55 @@ def signup_card(
     )
 
 
-def _seat_line(bucket: str, uuid: str, player: Mapping[str, Any]) -> str:
-    """One seat: its role emoji, the player's name and the rating they sit at.
+#: Russian names of the Overwatch divisions, by the tier slug's division part.
+_DIVISION_NAMES = {
+    "bronze": "Бронза",
+    "silver": "Серебро",
+    "gold": "Золото",
+    "platinum": "Платина",
+    "emerald": "Изумруд",
+    "diamond": "Алмаз",
+    "master": "Мастер",
+    "grandmaster": "Грандмастер",
+    "champion": "Чемпион",
+}
 
-    A bucket the role vocabulary does not know (a custom roster shape) keeps its
-    own key as the label instead of borrowing another role's badge.
-    """
-    code = role_slot_code(bucket)
-    badge = emoji(ROLE_EMOJI[code]) if code in ROLE_EMOJI else _escape(bucket)
-    name = player.get("name") or f"#{uuid}"
-    rating = seat_rating(player, bucket)
-    return f"{badge} {_escape(str(name))} · {int(rating) if isinstance(rating, int | float) else rating}"
 
-
-def _team_block(name: str, team: Mapping[str, Any], players: Mapping[str, Any]) -> str:
-    roster = team.get("roster")
-    lines = (
-        [
-            _seat_line(bucket, str(uuid), players.get(str(uuid)) or {})
-            for bucket, seats in roster.items()
-            if isinstance(seats, list)
-            for uuid in seats
-        ]
-        if isinstance(roster, Mapping)
-        else []
+def _picture_seat(bucket: str, uuid: str, player: Mapping[str, Any]) -> LineupSeat:
+    rating = int(seat_rating(player, bucket))
+    tier = DEFAULT_GRID.resolve_division(rating)
+    division, _, number = (tier.slug or "").rpartition("-")
+    return LineupSeat(
+        role=role_slot_code(bucket),
+        name=str(player.get("name") or f"#{uuid}"),
+        rating=rating,
+        division=tier.slug,
+        division_name=f"{_DIVISION_NAMES[division]} {number}" if division in _DIVISION_NAMES else tier.name,
+        captain=player.get("is_captain") is True,
     )
-    return "\n".join([f"**{_escape(name)}**", *(lines or ["—"])])
 
 
-def lineup_card(
+def _picture_team(name: str, team: Mapping[str, Any], players: Mapping[str, Any]) -> LineupTeam:
+    roster = team.get("roster")
+    seats = tuple(
+        _picture_seat(bucket, str(uuid), players.get(str(uuid)) or {})
+        for bucket, uuids in (roster.items() if isinstance(roster, Mapping) else ())
+        if isinstance(uuids, list)
+        for uuid in uuids
+    )
+    # The mean of the numbers drawn, so the two averages and their gap are checkable on the picture.
+    average = round(sum(seat.rating for seat in seats) / len(seats)) if seats else None
+    return LineupTeam(name=name, average=average, seats=seats)
+
+
+def _map_line(next_map: tuple[str, str | None] | None) -> str | None:
+    if next_map is None:
+        return None
+    map_name, gamemode = next_map
+    return f"{map_name} · {gamemode}" if gamemode else map_name
+
+
+def lineup_picture(
     *,
     mix_name: str,
     match_number: int,
@@ -253,20 +274,46 @@ def lineup_card(
     points_per_win: int | None,
     board_url: str,
     lobby_label: str | None = None,
-    image_filename: str | None = None,
+) -> LineupPicture:
+    """What the matchup picture of one lobby shows.
+
+    ``variant`` is one option of a stored ``lobby_document`` and ``players``
+    that document's player map, which its seat uuids resolve against. A rank
+    badge is the Overwatch division the seat's rating lands in, like the
+    signup card's.
+    """
+    teams = variant.get("teams")
+    return LineupPicture(
+        kicker=f"Микс · Лобби {lobby_label}" if lobby_label else "Микс",
+        title=f"Игра {match_number} · {mix_name}",
+        note=f"+{points_per_win} за победу" if points_per_win else None,
+        teams=tuple(
+            _picture_team(team_names.get(index) or f"Команда {index + 1}", team, players)
+            for index, team in enumerate(teams if isinstance(teams, list) else [])
+            if isinstance(team, Mapping)
+        ),
+        map_name=_map_line(next_map),
+        footer=board_url.split("://", 1)[-1],
+    )
+
+
+def lineup_card(
+    *,
+    mix_name: str,
+    match_number: int,
+    next_map: tuple[str, str | None] | None,
+    points_per_win: int | None,
+    board_url: str,
+    image_filename: str,
+    lobby_label: str | None = None,
     mentions: Sequence[str] = (),
     voice_target: str | None = None,
 ) -> DiscordCard:
     """The matchup one lobby is about to play.
 
-    ``variant`` is one option of a stored ``lobby_document`` and ``players``
-    that document's player map, which its seat uuids resolve against.
-
-    A host normally posts the matchup card itself: the mix page rasterises what
-    is on screen and the bot attaches that PNG (``image_filename``), which beats
-    any text rendering -- crests and all. The per-team seat lists are what goes
-    out when there is no image: a capture that failed, or a caller with nothing
-    to capture.
+    The picture (``image_filename``, drawn from :func:`lineup_picture`) IS the
+    lineup; the text only names the game and the map, so a notification
+    preview says which game it is without the picture.
 
     ``next_map`` is ``(map name, gamemode name)`` or ``None`` when nobody has
     rolled one yet -- posting a lineup before the roll is normal, so that reads
@@ -280,35 +327,19 @@ def lineup_card(
     ``voice_target`` is the mix and lobby the voice buttons act on; only the
     lobby's newest card carries them.
     """
-    title = " · ".join(
-        part
-        for part in (_escape(mix_name), f"Лобби {lobby_label}" if lobby_label else None, f"Игра {match_number}")
-        if part
-    )
-    if next_map is None:
-        where = f"{emoji('map')} Карта ещё не выбрана"
-    else:
-        map_name, gamemode = next_map
-        where = f"{emoji('map')} {_escape(map_name)}" + (f" · {_escape(gamemode)}" if gamemode else "")
+    title = " · ".join([_escape(mix_name), *([f"Лобби {lobby_label}"] if lobby_label else []), f"Игра {match_number}"])
+    map_line = _map_line(next_map)
+    where = f"{emoji('map')} " + (_escape(map_line) if map_line else "Карта ещё не выбрана")
     if points_per_win:
         where += f" · {emoji('points')} +{points_per_win} за победу"
-
-    blocks: list[str] = []
-    if image_filename is None:
-        teams = variant.get("teams")
-        blocks = [
-            _team_block(team_names.get(index) or f"Команда {index + 1}", team, players)
-            for index, team in enumerate(teams if isinstance(teams, list) else [])
-            if isinstance(team, Mapping)
-        ]
-    if mentions:
-        blocks.append(f"-# {emoji('players')} " + " ".join(f"<@{discord_id}>" for discord_id in mentions))
 
     return DiscordCard(
         accent_color=TEAL,
         text="\n".join([f"## {emoji('vs')} {title}", where]),
-        details="\n\n".join(blocks) or None,
-        image_url=None if image_filename is None else f"attachment://{image_filename}",
+        details=f"-# {emoji('players')} " + " ".join(f"<@{discord_id}>" for discord_id in mentions)
+        if mentions
+        else None,
+        image_url=f"attachment://{image_filename}",
         rows=[[_board_button(board_url)]],
         answers=[]
         if voice_target is None

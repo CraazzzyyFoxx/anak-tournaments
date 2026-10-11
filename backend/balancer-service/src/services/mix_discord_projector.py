@@ -1,22 +1,25 @@
-"""The signup card as a projection of ``PickupMixChangedEvent``.
+"""A mix's live Discord cards as a projection of ``PickupMixChangedEvent``.
 
 No mutation knows about Discord: a mix write emits the fact
 (``emit_pickup_mix_changed``), the outbox hands it to ``pickup_mix_changed``,
-and this consumer re-renders whatever live signup card the fact affects from
-the database as it stands NOW. A redelivered, late or duplicated event is
+and this consumer re-renders whatever live card the fact affects from the
+database as it stands NOW. A redelivered, late or duplicated event is
 therefore harmless -- it renders the same state twice.
 
 Ordering is the row lock, not the queue. ``get_for_update`` on the
 ``discord_message`` row serializes everyone projecting that card, so the
-render that reads the roster last is the one that writes ``card_json`` last and
+render that reads the mix last is the one that writes ``card_json`` last and
 queues its edit last. The bot coalesces edits by ``message_ref`` and shows the
 row's card at flush, so a burst of Join clicks converges on the newest roster
 whatever order RabbitMQ delivered them in.
 
-An event naming one mix touches that mix's newest live card (an older live row
-is only ever on its way out); an event with no mix -- a renamed player, a
-corrected rank -- touches the newest live card of every mix in the workspace,
-because every one of them shows that name.
+Two kinds of card follow the mix. The signup card: an event naming one mix
+touches that mix's newest live card (an older live row is only ever on its way
+out); an event with no mix -- a renamed player, a corrected rank -- touches the
+newest live card of every mix in the workspace, because every one of them
+shows that name. The lineup cards: only an event naming the mix, because a
+lineup shows the names and ratings its balance stored, not the live roster
+(``CustomGameService.redraw_lineups``).
 """
 
 from __future__ import annotations
@@ -68,7 +71,7 @@ async def _targets(session: Any, event: PickupMixChangedEvent) -> list[Any]:
 
 
 async def project(session: Any, event: PickupMixChangedEvent) -> int:
-    """Re-render every signup card this event affects; returns how many.
+    """Re-render every card this event affects; returns how many.
 
     Commits once at the end: the whole projection -- the ``card_json`` writes
     and the edit commands that tell the bot to re-read them -- is one
@@ -93,6 +96,12 @@ async def project(session: Any, event: PickupMixChangedEvent) -> int:
         if command is not None:
             await discord_messages.enqueue(session, [command])
             rendered += 1
+    if event.custom_game_id is not None:
+        game = await custom_game_service.games.get(session, event.custom_game_id)
+        if game is not None:
+            commands = await custom_game_service.redraw_lineups(session, game, board_url_base=config.public_site_url)
+            await discord_messages.enqueue(session, commands)
+            rendered += len(commands)
     await session.commit()
     return rendered
 
@@ -102,10 +111,10 @@ def register(broker: Any, logger: Any) -> None:
     # FastStream treats it as another payload field and every message fails
     # validation straight into the DLQ.
     @broker.subscriber(PICKUP_MIX_CHANGED_QUEUE, channel=_PROJECTION_CHANNEL)
-    async def project_signup_cards(data: dict[str, Any], msg: RabbitMessage) -> None:
+    async def project_mix_cards(data: dict[str, Any], msg: RabbitMessage) -> None:
         async with observe_message_processing(
             queue=PICKUP_MIX_CHANGED_QUEUE,
-            handler="project_signup_cards",
+            handler="project_mix_cards",
             message=msg,
             logger=logger,
         ):

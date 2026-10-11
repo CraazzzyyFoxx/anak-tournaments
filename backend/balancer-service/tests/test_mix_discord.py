@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,8 +13,11 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
+from PIL import Image  # noqa: E402
+
 from shared.domain.discord_ui import SHORTCODE  # noqa: E402
-from src.domain.mix_discord import SignupPlayer, lineup_card, signup_card  # noqa: E402
+from src.domain.mix_discord import SignupPlayer, lineup_card, lineup_picture, signup_card  # noqa: E402
+from src.domain.mix_lineup_image import render_png  # noqa: E402
 
 BOARD_URL = "https://owt.example/balancer/mix/42"
 NOW = datetime(2026, 10, 6, 18, 0, tzinfo=UTC)
@@ -31,17 +35,14 @@ def _document(*rosters: dict[str, list[tuple[str, int]]]) -> dict:
     return {"players": players, "variants": [{"teams": teams}]}
 
 
-def _lineup(document: dict | None = None, **overrides):
-    document = document if document is not None else _document()
+def _lineup(**overrides):
     kwargs = {
         "mix_name": "Friday Scrim",
         "match_number": 1,
-        "variant": document["variants"][0],
-        "players": document["players"],
-        "team_names": {},
         "next_map": None,
         "points_per_win": None,
         "board_url": BOARD_URL,
+        "image_filename": "lineup-abc.png",
     }
     kwargs.update(overrides)
     return lineup_card(**kwargs)
@@ -240,43 +241,70 @@ def test_the_lineup_says_so_before_anyone_rolled_a_map() -> None:
     assert ":owt_map: Карта ещё не выбрана" in _lineup().text
 
 
-def test_without_an_image_the_card_lists_every_seat_under_its_team() -> None:
+def _picture(document: dict, **overrides):
+    kwargs = {
+        "mix_name": "Friday Scrim",
+        "match_number": 1,
+        "variant": document["variants"][0],
+        "players": document["players"],
+        "team_names": {},
+        "next_map": None,
+        "points_per_win": None,
+        "board_url": BOARD_URL,
+    }
+    kwargs.update(overrides)
+    return lineup_picture(**kwargs)
+
+
+def test_the_picture_seats_every_player_under_their_team_with_the_division_they_sit_in() -> None:
     document = _document(
         {"Tank": [("Ana", 3000)], "Damage": [("Bob", 2900), ("Cid", 2800)], "Support": [("Dee", 2700)]},
         {"Tank": [("Eve", 2600)]},
     )
-    details = _lineup(document, team_names={1: "Синие"}).details or ""
+    document["players"]["Dee"]["is_captain"] = True
+    first, second = _picture(document, team_names={1: "Синие"}).teams
 
-    assert details.split("\n\n") == [
-        "**Команда 1**\n:owt_tank: Ana · 3000\n:owt_damage: Bob · 2900\n:owt_damage: Cid · 2800\n:owt_support: Dee · 2700",
-        "**Синие**\n:owt_tank: Eve · 2600",
+    assert (first.name, second.name) == ("Команда 1", "Синие")
+    assert [(seat.role, seat.name, seat.rating, seat.captain) for seat in first.seats] == [
+        ("tank", "Ana", 3000, False),
+        ("damage", "Bob", 2900, False),
+        ("damage", "Cid", 2800, False),
+        ("support", "Dee", 2700, True),
     ]
-    assert _lineup(document).image_url is None
+    # The badge is the default ladder's tier, named in the card's language.
+    assert (first.seats[0].division, first.seats[0].division_name) == ("diamond-5", "Алмаз 5")
+    # The averages are of the numbers drawn, so their gap checks out on the picture.
+    assert (first.average, second.average) == (2850, 2600)
 
 
-def test_an_unrecognised_bucket_keeps_its_own_key_as_the_label() -> None:
-    assert ":owt_" not in (_lineup(_document({"Goalie": [("Ana", 3000)]})).details or "")
-    assert "Goalie Ana · 3000" in (_lineup(_document({"Goalie": [("Ana", 3000)]})).details or "")
-
-
-def test_with_the_hosts_capture_the_picture_is_the_lineup() -> None:
-    """The screenshot shows the matchup card itself; repeating it as text below
-    would be the same information twice."""
+def test_the_picture_names_the_same_lineup_the_same_file_and_a_swap_a_new_one() -> None:
+    """The file name is how the projector tells an unchanged card from a changed one."""
     document = _document({"Tank": [("Ana", 3000)]}, {"Tank": [("Bob", 2900)]})
-    card = _lineup(document, image_filename="lineup.png")
+    swapped = _document({"Tank": [("Bob", 2900)]}, {"Tank": [("Ana", 3000)]})
 
-    assert card.image_url == "attachment://lineup.png"
-    assert card.attachment_name == "lineup.png"
+    assert (
+        _picture(document).filename
+        == _picture(_document({"Tank": [("Ana", 3000)]}, {"Tank": [("Bob", 2900)]})).filename
+    )
+    assert _picture(document).filename != _picture(swapped).filename
+    assert _picture(document).filename != _picture(document, next_map=("Busan", None)).filename
+
+
+def test_the_picture_draws_as_a_card_sized_png_whatever_the_names() -> None:
+    """Guards the asset paths too: a missing font fails here, not in the projector."""
+    document = _document({"Goalie": [("Ana" * 40, 3000)]}, {"Tank": [("Сережа Спардович", 900)]})
+
+    with Image.open(io.BytesIO(render_png(_picture(document, points_per_win=25, lobby_label="B")))) as image:
+        assert (image.format, image.size) == ("PNG", (1200, 630))
+
+
+def test_the_card_shows_its_picture_and_pings_the_seated_players_it_was_given_ids_for() -> None:
+    card = _lineup()
+
+    assert card.image_url == "attachment://lineup-abc.png"
+    assert card.attachment_name == "lineup-abc.png"
     assert card.details is None
-
-
-def test_the_card_pings_the_seated_players_it_was_given_ids_for() -> None:
-    document = _document({"Tank": [("Ana", 3000)]})
-
-    assert (_lineup(document).details or "").count("<@") == 0
-    assert "-# :owt_players: <@111> <@222>" in (_lineup(document, mentions=["111", "222"]).details or "")
-    # With a picture the mentions are all the card says.
-    assert _lineup(document, image_filename="lineup.png", mentions=["111"]).details == "-# :owt_players: <@111>"
+    assert _lineup(mentions=["111", "222"]).details == "-# :owt_players: <@111> <@222>"
 
 
 def test_only_a_card_given_a_voice_target_offers_to_move_the_lobby() -> None:
