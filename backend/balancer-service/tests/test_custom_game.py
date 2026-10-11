@@ -1456,16 +1456,22 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
     async def test_the_signup_card_lists_the_roster_at_the_ranks_the_balancer_uses(self) -> None:
         """Live, not a snapshot: the card is built from the roster every time,
         under the names the balancer shows and at the numbers it balances with
-        -- the first named role's, or the best one for "any role"."""
+        -- the first named role's, or the best one for "any role". Only Full
+        Flex rows are flex; an "any role" row counts on its best role."""
         self.games.get.return_value = _game(name="Friday mix", self_signup="pool")
         self.roster.list_for_game.return_value = [
             _roster_row(1, 7, 0, roles=["tank"]),
             _roster_row(2, 8, 1, roles=["damage", "support"]),
             _roster_row(3, 9, 2, participation=MixParticipation.BENCHED),
+            _roster_row(4, 10, 3, roles=["support"], is_flex=True, participation=MixParticipation.BENCHED),
         ]
         self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
         self.load_hosts.return_value = {9: "Foxx"}
-        self.ranks.resolve.return_value = {**_ranks(7, 9), (8, "damage"): ResolvedRank(2200, "author")}
+        self.ranks.resolve.return_value = {
+            **_ranks(7, 10),
+            (8, "damage"): ResolvedRank(2200, "author"),
+            (9, "support"): ResolvedRank(2700, "author"),
+        }
 
         _channel_id, [post] = await self.service.signup_post(
             self.session,
@@ -1476,16 +1482,17 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             board_url_base="https://owt.example",
         )
 
-        self.assertIn(":owt_players: **3** записано", post.card.details)
-        self.assertIn(":owt_tank: 1 · :owt_damage: 1 · :owt_support: 0 · любая роль 1", post.card.details)
+        self.assertIn(":owt_players: **4** записано", post.card.details)
+        self.assertIn(":owt_tank: 1 · :owt_damage: 1 · :owt_support: 1 · :owt_flex: 1", post.card.details)
         self.assertIn(":owt_host: Foxx", post.card.text)
         lines = post.card.details.splitlines()
         pool = lines[lines.index("**Игроки**") + 1 : lines.index(":owt_bench: **Скамейка**")]
         self.assertEqual(len(pool), 2)
         self.assertTrue(pool[0].startswith(":owt_tank: ") and pool[0].endswith(" P7 · 2500"), pool[0])
         self.assertTrue(pool[1].startswith(":owt_damage: ") and pool[1].endswith(" P8 · 2200"), pool[1])
-        bench = lines[lines.index(":owt_bench: **Скамейка**") + 1]
-        self.assertTrue(bench.startswith(":owt_flex: ") and bench.endswith(" P9 · 2500"), bench)
+        bench = lines[lines.index(":owt_bench: **Скамейка**") + 1 :][:2]
+        self.assertTrue(bench[0].startswith(":owt_support: ") and bench[0].endswith(" P9 · 2700"), bench[0])
+        self.assertTrue(bench[1].startswith(":owt_flex: ") and bench[1].endswith(" P10 · 2300"), bench[1])
         kwargs = self.ranks.resolve.await_args.kwargs
         self.assertEqual((kwargs["order"], kwargs["author_user_id"]), (MIX_ORDER, 9))
 

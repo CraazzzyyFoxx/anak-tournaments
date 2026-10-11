@@ -38,8 +38,8 @@ __all__ = ("SignupPlayer", "lineup_card", "signup_card")
 
 #: Mix statuses nobody can sign up for any more.
 _TERMINAL = {"completed": "завершён", "cancelled": "отменён"}
-#: The roles a signup counter breaks down by; everything else is "any role".
-_COUNTED_ROLES = ("tank", "damage", "support")
+#: The roles a signup counter breaks down by: the three role codes, then full flex.
+_COUNTED_ROLES = ("tank", "damage", "support", "flex")
 #: Room the player lists may take, measured as Discord counts it: AFTER the bot
 #: swaps every ``:owt_*:`` shortcode for ``<:owt_name:id>``, which the card's
 #: own length check cannot see. Leaves the rest of the card its headroom.
@@ -52,14 +52,15 @@ _SHORTCODE_GROWTH = 21
 class SignupPlayer:
     """One roster row as the signup card shows it, in roster order.
 
-    ``roles`` is the row's explicit role order, or ``None`` for "every role I
-    have a rank for". ``name`` is the one the balancer shows for the row, and
-    ``rank`` the number it balances them at on the role the line shows: their
-    first explicit role, or their best ranked role for "any role".
+    ``role`` is the role the row comes for: ``"flex"`` for a Full Flex row,
+    otherwise its preferred role -- the first explicit one, or the best ranked
+    one for "every role I have a rank for" -- and ``None`` when it has none.
+    ``name`` is the one the balancer shows for the row, and ``rank`` the number
+    it balances them at on their preferred role.
     """
 
     name: str
-    roles: Sequence[str] | None
+    role: str | None
     benched: bool = False
     rank: int | None = None
 
@@ -84,16 +85,11 @@ def _timestamp(moment: datetime) -> str:
 
 
 def _signup_counts(players: Sequence[SignupPlayer]) -> dict[str, int]:
-    """How many rows want each role, keyed by the FIRST role each one named.
-
-    A row in ``all_ranked`` mode (``None``) named no role at all and is counted
-    as "any role": it plays whatever it has a number for, which is not a claim
-    on tank the way an explicit first choice is.
-    """
-    counts = dict.fromkeys((*_COUNTED_ROLES, "any"), 0)
+    """How many rows come for each role; a row with no role is in no counter."""
+    counts = dict.fromkeys(_COUNTED_ROLES, 0)
     for player in players:
-        first = player.roles[0] if player.roles else None
-        counts[first if first in counts else "any"] += 1
+        if player.role in counts:
+            counts[player.role] += 1
     return counts
 
 
@@ -108,9 +104,9 @@ def _player_line(player: SignupPlayer) -> str:
     The badge is the Overwatch rank the number lands in (the seat panel's own
     badges) and simply disappears until it is uploaded; the number stays.
     """
-    role = emoji(ROLE_EMOJI.get(player.roles[0] if player.roles else "flex", "flex"))
+    role = emoji(ROLE_EMOJI[player.role]) if player.role in ROLE_EMOJI else ""
     if player.rank is None:
-        return f"{role} {_escape(player.name)} · без ранга"
+        return " ".join(part for part in (role, _escape(player.name)) if part) + " · без ранга"
     badge = division_emoji(DEFAULT_GRID.resolve_division(player.rank).slug)
     return " ".join(part for part in (role, badge, _escape(player.name)) if part) + f" · {player.rank}"
 
@@ -188,7 +184,7 @@ def signup_card(
         f" · {emoji('tank')} {counts['tank']}"
         f" · {emoji('damage')} {counts['damage']}"
         f" · {emoji('support')} {counts['support']}"
-        f" · любая роль {counts['any']}"
+        f" · {emoji('flex')} {counts['flex']}"
     ]
     details.extend(_player_lists(players))
     if terminal is None and not closed:

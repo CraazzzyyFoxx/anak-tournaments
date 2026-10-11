@@ -64,9 +64,9 @@ def _signup(**overrides):
 
 
 def _player(
-    roles: list[str] | None = None, name: str = "P", *, benched: bool = False, rank: int | None = None
+    role: str | None = None, name: str = "P", *, benched: bool = False, rank: int | None = None
 ) -> SignupPlayer:
-    return SignupPlayer(name=name, roles=roles, benched=benched, rank=rank)
+    return SignupPlayer(name=name, role=role, benched=benched, rank=rank)
 
 
 # ── the signup card ────────────────────────────────────────────────────────
@@ -90,14 +90,12 @@ def test_a_benched_signup_says_the_bench_and_marks_every_lobby() -> None:
     assert ":owt_lobby_a::owt_lobby_b::owt_lobby_c: 3 лобби" in _signup(lobby_count=3).text
 
 
-def test_the_card_counts_the_roster_by_first_role_and_calls_the_rest_any_role() -> None:
-    """A row in all_ranked mode named no role: it is not a claim on tank."""
-    card = _signup(
-        players=[_player(roles) for roles in (["tank"], ["damage", "tank"], ["support"], ["damage"], None, None)]
-    )
+def test_the_card_counts_the_roster_by_role_with_full_flex_under_its_icon() -> None:
+    """A row with no role at all (an explicit empty order) is in no counter."""
+    card = _signup(players=[_player(role) for role in ("tank", "damage", "support", "damage", "flex", "flex", None)])
 
-    assert ":owt_players: **6** записано" in (card.details or "")
-    assert ":owt_tank: 1 · :owt_damage: 2 · :owt_support: 1 · любая роль 2" in (card.details or "")
+    assert ":owt_players: **7** записано" in (card.details or "")
+    assert ":owt_tank: 1 · :owt_damage: 2 · :owt_support: 1 · :owt_flex: 2" in (card.details or "")
 
 
 def test_an_open_card_explains_the_two_clicks_and_stamps_when_it_was_rendered() -> None:
@@ -122,7 +120,7 @@ def test_an_open_card_carries_the_three_actions_with_their_emoji_and_the_board_l
 
 def test_a_closed_card_greys_out_joining_but_still_lets_the_seated_leave() -> None:
     """The mix is still live, so whoever is in can check their seat or get out."""
-    card = _signup(self_signup="closed", players=[_player(["tank"])])
+    card = _signup(self_signup="closed", players=[_player("tank")])
 
     assert card.text.startswith("## :owt_lock: Запись на микс «Friday Scrim» закрыта")
     join, seat, leave = card.answers
@@ -163,22 +161,24 @@ def test_the_card_survives_a_mix_name_at_the_length_cap() -> None:
 
 
 def test_the_card_lists_one_player_a_line_with_role_badge_and_rank() -> None:
-    """Who is in, as the balancer has them: the role they come for (their first
-    explicit one, flex for "any role"), the rank badge and the number -- pool
-    and must-play together, the bench under its own heading. Names are user
-    input, so escaped."""
+    """Who is in, as the balancer has them: the role they come for (flex only
+    for Full Flex), the rank badge and the number -- pool and must-play
+    together, the bench under its own heading. Names are user input, so
+    escaped; a row with no role shows no role icon."""
     card = _signup(
         players=[
-            _player(["damage", "tank"], "Ana", rank=2450),
-            _player(None, "Bob", benched=True, rank=4950),
-            _player(["support"], "_Cid_"),
+            _player("damage", "Ana", rank=2450),
+            _player("flex", "Bob", benched=True, rank=4950),
+            _player("support", "_Cid_"),
+            _player(None, "Dee"),
         ]
     )
 
-    assert (card.details or "").splitlines()[1:6] == [
+    assert (card.details or "").splitlines()[1:7] == [
         "**Игроки**",
         ":owt_damage: :owt_div_platinum_1: Ana · 2450",
         r":owt_support: \_Cid\_ · без ранга",
+        "Dee · без ранга",
         ":owt_bench: **Скамейка**",
         ":owt_flex: :owt_div_champion_1: Bob · 4950",
     ]
@@ -195,8 +195,8 @@ def test_a_full_roster_is_cut_at_what_discord_renders_and_counted_not_refused() 
     once the bot expands every shortcode to ``<:owt_name:id>``: the lists stop
     at their budget measured that way and say how many they left out."""
     card = _signup(
-        players=[_player(["tank"], "*" * 32, rank=2500) for _ in range(90)]
-        + [_player(None, "x", benched=True, rank=2500) for _ in range(10)]
+        players=[_player("tank", "*" * 32, rank=2500) for _ in range(90)]
+        + [_player("flex", "x", benched=True, rank=2500) for _ in range(10)]
     )
 
     details = card.details or ""

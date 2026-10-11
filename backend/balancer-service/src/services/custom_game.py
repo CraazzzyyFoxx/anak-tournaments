@@ -1343,18 +1343,19 @@ class CustomGameService:
                 for role in REGISTRATION_ROLE_CODES
                 if (found := resolved.get((member_id, role))) is not None and found.value is not None
             }
-            # The first role they named, or -- playing anything -- their best.
-            # An explicit empty order plays nothing, so it shows no rank.
+            # The role they come for: the first they named or -- playing
+            # anything -- their best. An explicit empty order plays nothing.
             if roles is None:
-                rank = max(ranks.values(), default=None)
+                role = max(ranks, key=ranks.__getitem__, default=None)
             else:
-                rank = ranks.get(roles[0]) if roles else None
+                role = roles[0] if roles else None
             players.append(
                 SignupPlayer(
                     name=name or f"player-{member_id}",
-                    roles=roles,
+                    # Only Full Flex is flex; everyone else counts on their own role.
+                    role="flex" if row.is_flex else role,
                     benched=row.participation == MixParticipation.BENCHED,
-                    rank=rank,
+                    rank=ranks.get(role) if role else None,
                 )
             )
         return signup_card(
