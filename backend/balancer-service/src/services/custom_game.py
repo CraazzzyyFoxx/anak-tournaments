@@ -612,7 +612,7 @@ class CustomGameService:
             roles=list(REGISTRATION_ROLE_CODES),
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
-            grid=await get_effective_division_grid(session, None),
+            grid=await get_effective_division_grid(session, game.workspace_id),
         )
         for member_id in members:
             seed: dict[str, int] = {}
@@ -1028,7 +1028,7 @@ class CustomGameService:
         if ctx.row is not None:
             stored = (await self.player_roles.roles_for_players(session, [ctx.row.id])).get(ctx.row.id, [])
             explicit = ctx.row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
-            grid = await get_effective_division_grid(session, None)
+            grid = await get_effective_division_grid(session, ctx.game.workspace_id)
             resolved = await self.ranks.resolve(
                 session,
                 workspace_id=ctx.game.workspace_id,
@@ -1338,7 +1338,7 @@ class CustomGameService:
             roles=list(REGISTRATION_ROLE_CODES),
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
-            grid=await get_effective_division_grid(session, None),
+            grid=await get_effective_division_grid(session, game.workspace_id),
         )
         players = []
         for row in roster:
@@ -1555,7 +1555,7 @@ class CustomGameService:
             # mix balances on this host's read of these players, not the official one.
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
-            grid=await get_effective_division_grid(session, None),
+            grid=await get_effective_division_grid(session, game.workspace_id),
         )
         open_ranks = {
             key: ranked.value for key, ranked in resolved.items() if ranked is not None and ranked.value is not None
@@ -2260,7 +2260,7 @@ class CustomGameService:
             points_per_win=points_per_win,
             board_url=board_url,
             # The grid the mix balances on (``balance``), so a badge is the rank it was seated at.
-            grid=await get_effective_division_grid(session, None),
+            grid=await get_effective_division_grid(session, game.workspace_id),
             lobby_label=lobby_label,
         )
         card = lineup_card(

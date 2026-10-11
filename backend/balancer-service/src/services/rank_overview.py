@@ -11,8 +11,8 @@ table, and they must agree with :meth:`MemberRankService.resolve` -- the resolve
 the balancer actually runs on. ``effective_tournament`` is
 ``TOURNAMENT_ORDER`` without the registration layer (workspace canon, then OW
 normalised to the **workspace** grid); ``effective_mix`` is ``MIX_ORDER`` (the
-author's book, then the canon, then OW normalised to the **global** grid -- what
-mixes use today). ``tests/test_rank_overview.py`` pins that parity.
+author's book, then the canon, then OW normalised to the same workspace grid).
+``tests/test_rank_overview.py`` pins that parity.
 """
 
 from __future__ import annotations
@@ -240,7 +240,6 @@ def _branches(
     filters: RankOverviewFilters,
     members: Any,
     ws_grid: DivisionGrid,
-    global_grid: DivisionGrid,
     ranker: RankerSettings,
 ) -> list[Any]:
     wanted = set(filters.layers)
@@ -381,8 +380,8 @@ def _branches(
     if "effective_mix" in wanted:
         authors = sa.select(book.c.member_id, book.c.author_user_id).distinct().cte("rank_mix_authors")
         mix_book = book.alias("rank_mix_book")
-        ow_global = _grid_rank_case(ow_best.c.rank_value, global_grid) if ow_best is not None else _null(sa.Integer)
-        value = sa.func.coalesce(mix_book.c.rank_value, canon.c.rank_value, ow_global)
+        ow_mix = _grid_rank_case(ow_best.c.rank_value, ws_grid) if ow_best is not None else _null(sa.Integer)
+        value = sa.func.coalesce(mix_book.c.rank_value, canon.c.rank_value, ow_mix)
         select = (
             sa.select(
                 *_row(
@@ -394,7 +393,7 @@ def _branches(
                     source=sa.case(
                         (mix_book.c.rank_value.is_not(None), sa.literal("author")),
                         (canon.c.rank_value.is_not(None), sa.literal("workspace")),
-                        (ow_global.is_not(None), sa.literal("ow")),
+                        (ow_mix.is_not(None), sa.literal("ow")),
                     ),
                 )
             )
@@ -595,10 +594,9 @@ async def rank_overview_page(
         return [], 0
 
     ws_grid = await get_effective_division_grid(session, workspace_id)
-    global_grid = await get_effective_division_grid(session, None)
     members = _members_cte(workspace_id, filters)
     branches = _branches(
-        workspace_id, filters, members, ws_grid, global_grid, await mix_ranker_service.settings(session, workspace_id)
+        workspace_id, filters, members, ws_grid, await mix_ranker_service.settings(session, workspace_id)
     )
     if not branches:
         return [], 0

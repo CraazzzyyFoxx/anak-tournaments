@@ -437,7 +437,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             "src.services.custom_game.get_effective_division_grid",
             new=AsyncMock(return_value=self.grid),
         )
-        self._grid_patch.start()
+        self.grid_lookup = self._grid_patch.start()
         self.addCleanup(self._grid_patch.stop)
         # A lineup picture's map art and rank badges come over the network; here
         # none load, and the picture is drawn without them.
@@ -1954,6 +1954,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(seeded[7]["author_user_id"], 9)
         self.assertEqual(seeded[7]["workspace_id"], 1)
         self.assertEqual(seeded[7]["ranks"], {"tank": 2500, "damage": 2400, "support": 2300})
+        # The mix's own workspace grid: the system default once read every OW
+        # rank >= 2000 as its top tier and seeded 2000 into the host's book.
+        self.grid_lookup.assert_awaited_with(self.session, 1)
         kwargs = self.ranks.resolve.await_args.kwargs
         self.assertEqual(kwargs["order"], MIX_ORDER)
         self.assertEqual(kwargs["author_user_id"], 9)

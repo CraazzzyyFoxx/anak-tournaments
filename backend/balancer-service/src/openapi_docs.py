@@ -614,7 +614,7 @@ DOCS: dict[str, dict] = {
             "effective_tournament, effective_mix, registration, tournament, casual); the six current "
             "layers are the default. The two effective layers are computed in SQL and agree with the "
             "resolver the balancer runs on: effective_tournament is canon over OW on the workspace "
-            "grid, effective_mix is the author's book over the canon over OW on the global grid. "
+            "grid, effective_mix is the author's book over the canon over OW on the same workspace grid. "
             "`division` is resolved on the workspace's effective grid for every row. Filtering, "
             "sorting, the exact total and the page all run in the database."
         ),
