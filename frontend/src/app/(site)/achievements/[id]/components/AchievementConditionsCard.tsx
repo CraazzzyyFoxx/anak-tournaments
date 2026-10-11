@@ -30,10 +30,7 @@ const AchievementConditionsCard = ({ achievement }: Props) => {
   return (
     <CardSurface title={t("achievements.conditionText.title")}>
       <ConditionTreeView tree={achievement.condition_tree} />
-      {/* A single condition is one node: the sentence already says everything the diagram would. */}
-      {"type" in achievement.condition_tree ? null : (
-        <AchievementConditionFlow tree={achievement.condition_tree} />
-      )}
+      <AchievementConditionFlow tree={achievement.condition_tree} />
     </CardSurface>
   );
 };

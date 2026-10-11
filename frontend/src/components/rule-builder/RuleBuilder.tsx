@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -81,6 +81,20 @@ export type RuleBuilderProps = RuleBuilderCommonProps &
         labels: RuleBuilderEditLabels;
       }
   );
+
+/** xyflow chrome repainted in the app's shadcn tokens (see the `colorMode` note below). */
+const XY_THEME = {
+  "--xy-background-color": "transparent",
+  "--xy-background-pattern-color": "hsl(var(--muted-foreground) / 0.22)",
+  "--xy-edge-stroke": "hsl(var(--muted-foreground) / 0.55)",
+  "--xy-controls-box-shadow": "none",
+  "--xy-controls-button-background-color": "hsl(var(--card))",
+  "--xy-controls-button-background-color-hover": "hsl(var(--accent))",
+  "--xy-controls-button-color": "hsl(var(--muted-foreground))",
+  "--xy-controls-button-color-hover": "hsl(var(--foreground))",
+  "--xy-controls-button-border-color": "hsl(var(--border))",
+  "--xy-minimap-background-color": "hsl(var(--card))"
+} as CSSProperties;
 
 /**
  * The shared condition-tree canvas: React Flow over a flat parent-pointer
@@ -311,9 +325,12 @@ function RuleBuilderInner({
           minZoom={0.3}
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
-          // The app is dark-only (`<body className="dark">`); xyflow's own chrome
-          // (controls, background dots) otherwise renders in its light palette.
+          // The app is dark-only (`<body className="dark">`). `colorMode` flips
+          // xyflow's own chrome to dark; the `--xy-*` overrides then repaint it in
+          // the app's tokens, since xyflow's dark palette is a neutral grey that
+          // clashes with the blue-tinted surfaces around it.
           colorMode="dark"
+          style={XY_THEME}
         >
           <Background gap={20} size={1} />
           <Controls showInteractive={false} />
