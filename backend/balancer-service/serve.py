@@ -37,7 +37,7 @@ from src.rpc import prefs as rpc_prefs
 from src.rpc import ranks as rpc_ranks
 from src.services.balancer.jobs import execute_balance_job
 from src.services.draft.clock import draft_clock_service
-from src.services.mix_signup_projector import register as register_signup_projector
+from src.services.mix_discord_projector import register as register_mix_card_projector
 
 logger = setup_logging(
     service_name="balancer-svc",
@@ -84,10 +84,10 @@ rpc_players.register(broker, logger)
 rpc_ranks.register(broker, logger)
 # The host's own solver knobs, which every mix they host balances with.
 rpc_prefs.register(broker, logger)
-# The signup card as a projection: every mix mutation emits
-# ``pickup_mix_changed`` through the outbox and this consumer re-renders the
-# live card from the committed state.
-register_signup_projector(broker, logger)
+# The mix's live Discord cards (signup and lineup) as a projection: every mix
+# mutation emits ``pickup_mix_changed`` through the outbox and this consumer
+# re-renders those cards from the committed state.
+register_mix_card_projector(broker, logger)
 
 
 # Balance jobs run for minutes (MOO solver); isolate them from the RPC channel.

@@ -465,7 +465,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         rows, _ = await self._page(layers=("effective_mix",))
         assert {row["author_user_id"] for row in rows} == {self.auth_user_id}
         async with self.Session() as session:
-            grid = await get_effective_division_grid(session, None)
+            grid = await get_effective_division_grid(session, self.workspace_id)
             resolved = await member_rank_service.resolve(
                 session,
                 workspace_id=self.workspace_id,

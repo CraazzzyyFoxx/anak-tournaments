@@ -18,7 +18,9 @@ export default class achievementsService {
     }).then((res) => res.json());
   }
   static async getOne(id: number, scope?: StatsScope): Promise<Achievement> {
-    return apiFetch(`/api/v1/achievements/${id}`, { query: scopeQuery(scope) }).then((res) => res.json());
+    return apiFetch(`/api/v1/achievements/${id}`, {
+      query: { entities: ["count"], ...scopeQuery(scope) }
+    }).then((res) => res.json());
   }
   static async getUsers(
     id: number,

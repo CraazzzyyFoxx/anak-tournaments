@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import Image from "next/image";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -14,18 +13,14 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import {
-  classifyRarity,
-  localizedText,
-  RARITY_ORDER,
-  rarityRanges,
-  rarityVarClass,
-  type Rarity
-} from "@/app/(site)/users/components/achievements/rarity";
+import { classifyRarity, localizedText, RARITY_ORDER, rarityVarClass, type Rarity } from "@/lib/achievements/rarity";
 import { AchievementDetailDialog } from "@/app/(site)/users/components/achievements/AchievementDetailDialog";
+import { AchievementArt } from "@/components/achievements/AchievementArt";
+import { RarityStrip } from "@/components/achievements/RarityStrip";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
-import { CardSurface, ProfileStat } from "@/app/(site)/users/components/shared/atoms";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
 
 const TOURNAMENT_QUERY_KEY = "achievementTournamentId";
@@ -40,7 +35,6 @@ interface Props {
 const AchievementsView = ({ achievements, tournaments = [], selectedTournament }: Props) => {
   const tr = useTranslations();
   const locale = useLocale();
-  const ranges = rarityRanges(tr);
   const tierNames = useMemo(
     () =>
       Object.fromEntries(RARITY_ORDER.map((r) => [r, tr(`achievements.rarityName.${r}`)])) as Record<
@@ -150,32 +144,25 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
 
   return (
     <div className="aqt-player flex flex-col gap-3.5">
-      {/* Rarity rank — unlocked per tier, rarity hue on the label only. */}
-      <CardSurface>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-6">
-          {RARITY_ORDER.map((r) => (
-            <ProfileStat
-              key={r}
-              size="md"
-              title={tierNames[r]}
-              label={<span className={cn(rarityVarClass(r), "aqt-rar-fg")}>{tierNames[r]}</span>}
-              value={unlockedCounts[r]}
-              sub={ranges[r]}
-            />
-          ))}
-        </div>
-      </CardSurface>
+      <RarityStrip
+        values={
+          Object.fromEntries(
+            RARITY_ORDER.map((r) => [
+              r,
+              <>
+                {unlockedCounts[r]}
+                <span className="text-caption font-semibold text-[color:var(--aqt-fg-faint)]"> / {counts[r]}</span>
+              </>
+            ])
+          ) as Record<Rarity, ReactNode>
+        }
+        active={rarityFilter}
+        onToggle={setRarityFilter}
+      />
 
       {/* Filters */}
       <FilterChipGroup label={tr("common.filters")}>
-        <FilterChip
-          active={rarityFilter === null && effectiveLock === "all"}
-          count={totalCount}
-          onClick={() => {
-            setRarityFilter(null);
-            setLockFilter("all");
-          }}
-        >
+        <FilterChip active={effectiveLock === "all"} count={totalCount} onClick={() => setLockFilter("all")}>
           {tr("common.all")}
         </FilterChip>
         {hasLocked ? (
@@ -197,17 +184,6 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
           </>
         ) : null}
         <span aria-hidden className="aqt-filter-divider" />
-        {RARITY_ORDER.map((r) => (
-          <FilterChip
-            key={r}
-            active={rarityFilter === r}
-            count={counts[r]}
-            onClick={() => setRarityFilter(rarityFilter === r ? null : r)}
-          >
-            <span className="capitalize">{r}</span>
-          </FilterChip>
-        ))}
-        <span aria-hidden className="aqt-filter-divider" />
         {tournaments.length > 0 && (
           <div className="w-48">
             <TournamentCombobox
@@ -221,7 +197,7 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
         <Select value={sort} onValueChange={(v) => setSort(v as "rarity" | "name" | "count")}>
           <SelectTrigger
             title={tr("users.achievements.sort.title")}
-            className="aqt-tnum h-8 w-[150px] shadow-none border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-caption text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0"
+            className="aqt-tnum h-8 w-auto min-w-[150px] gap-2 shadow-none border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-caption text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0"
           >
             <SelectValue />
           </SelectTrigger>
@@ -247,8 +223,8 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
         return (
           <CardSurface
             key={r}
+            className={rarityVarClass(r)}
             title={tierNames[r]}
-            subtitle={ranges[r]}
             action={
               <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                 {/* Tier totals, not the filtered list: under the default
@@ -263,7 +239,6 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
           >
             <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
               {list.map((ach) => {
-                const imgSrc = ach.image_url ?? `/achievements/${ach.slug}.webp`;
                 const locked = ach.count === 0;
                 return (
                   <button
@@ -272,15 +247,12 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
                     onClick={() => setSelected(ach)}
                     className="-m-2 flex items-start gap-3 rounded-lg p-2 text-left transition-colors hover:bg-[hsl(0_0%_100%/0.03)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--aqt-teal)]"
                   >
-                    <div className="relative size-12 shrink-0 overflow-hidden rounded-[11px] bg-[color:var(--aqt-card-2)]">
-                      <Image
-                        src={imgSrc}
-                        alt=""
-                        fill
-                        sizes="48px"
-                        className={cn("object-cover", locked && "opacity-45 grayscale")}
-                      />
-                    </div>
+                    <AchievementArt
+                      achievement={ach}
+                      sizes="48px"
+                      className="size-12 shrink-0 rounded-[11px]"
+                      imgClassName={cn(locked && "opacity-45 grayscale")}
+                    />
                     <div className="flex min-w-0 flex-col gap-1">
                       <div
                         className={cn(
@@ -304,7 +276,7 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
                             {tr("users.achievements.locked")}
                           </span>
                         ) : (
-                          <span className={cn(rarityVarClass(r), "aqt-rar-fg")}>{tierNames[r]}</span>
+                          <span className="aqt-rar-fg">{tierNames[r]}</span>
                         )}
                         <span className="aqt-tnum">{(ach.rarity * 100).toFixed(2)}%</span>
                         {ach.count > 0 ? <span className="aqt-tnum">×{ach.count}</span> : null}
@@ -319,11 +291,18 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
       })}
 
       {visibleTotal === 0 ? (
-        <CardSurface bodyClassName="text-center text-[color:var(--aqt-fg-dim)]">
-          {achievements.length === 0
-            ? tr("users.achievements.emptyState")
-            : tr("common.pageState.filteredEmpty.description")}
-        </CardSurface>
+        achievements.length === 0 ? (
+          <PageStateCard state="empty" description={tr("users.achievements.emptyState")} />
+        ) : (
+          <PageStateCard
+            state="filtered-empty"
+            onAction={() => {
+              setRarityFilter(null);
+              setLockFilter("all");
+              setSearch("");
+            }}
+          />
+        )
       ) : null}
 
       <AchievementDetailDialog achievement={selected} onClose={() => setSelected(null)} />

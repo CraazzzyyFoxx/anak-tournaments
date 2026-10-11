@@ -1,76 +1,56 @@
 "use client";
 
-import { useTranslations } from "next-intl";
-import { BarChart3, LayoutGrid, Trophy } from "lucide-react";
-
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { cn } from "@/lib/utils";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
-import { SORT_OPTIONS, type ViewMode } from "./users-index.model";
 import { useUsersIndexParams } from "./useUsersIndexParams";
 import { useUsersIndexData } from "./useUsersIndexData";
 import { UsersIndexHero } from "./UsersIndexHero";
 import { UsersIndexFilters } from "./UsersIndexFilters";
-import { UsersAnalyticsView } from "./UsersAnalyticsView";
+import { UsersTableView } from "./UsersTableView";
 import { UsersCatalogView } from "./UsersCatalogView";
-import styles from "./Users.module.css";
+import { UsersCompareBar, useCompareSelection } from "./UsersCompareBar";
 
 /**
- * The player index. Both views share one set of URL-backed filters, and both
- * stay mounted — switching is a CSS toggle, so returning to a view keeps its
- * scroll position and its already-fetched page.
+ * The player index. Both views share one set of URL-backed filters; only the
+ * one on screen fetches its own list, and the compare selection survives a
+ * switch between them.
  *
  * `scope` is resolved on the server (the cross-workspace mode does not exist
  * on a tenant host).
  */
 const UsersClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
-  const t = useTranslations();
   const controls = useUsersIndexParams(scope);
   const data = useUsersIndexData(controls.params);
-  const { view, sort } = controls.params;
-  const sortLabel = t(
-    SORT_OPTIONS.find((option) => option.value === sort)?.labelKey ?? "users.list.sort.name"
-  );
+  const compare = useCompareSelection();
+  const { view } = controls.params;
 
   return (
-    <div className={styles.surface}>
+    // Bottom padding leaves room for the fixed compare bar.
+    <div className="space-y-4 pb-24">
       <UsersIndexHero stats={data.statsQuery.data} />
+      <UsersIndexFilters
+        controls={controls}
+        stats={data.statsQuery.data}
+        // `null` means "we could not load it", which is not a count of zero and
+        // not a load that is still running.
+        foundCount={
+          view === "catalog"
+            ? data.catalogQuery.isError
+              ? null
+              : data.catalogQuery.data?.total
+            : data.overviewQuery.isError
+              ? null
+              : data.overviewQuery.data?.total
+        }
+      />
 
-      <section className={styles.toolbar}>
-        <ToggleGroup
-          type="single"
-          variant="pill"
-          size="sm"
-          value={view}
-          onValueChange={(next) => next && controls.setView(next as ViewMode)}
-          aria-label={t("users.list.a11y.viewMode")}
-        >
-          <ToggleGroupItem value="analytics">
-            <BarChart3 size={14} aria-hidden /> {t("users.list.view.analytics")}
-            <span className="text-muted-foreground">{t("users.list.view.analyticsBadge")}</span>
-          </ToggleGroupItem>
-          <ToggleGroupItem value="catalog">
-            <LayoutGrid size={14} aria-hidden /> {t("users.list.view.catalog")}
-            <span className="text-muted-foreground">{t("users.list.view.catalogBadge")}</span>
-          </ToggleGroupItem>
-        </ToggleGroup>
-        <div className={styles.toolbarActions}>
-          <span className={styles.pill}>
-            <Trophy size={11} aria-hidden /> {t("users.list.view.rosterLive")}
-          </span>
-        </div>
-      </section>
+      {view === "catalog" ? (
+        <UsersCatalogView controls={controls} data={data} compare={compare} />
+      ) : (
+        <UsersTableView controls={controls} data={data} compare={compare} />
+      )}
 
-      <UsersIndexFilters controls={controls} stats={data.statsQuery.data} />
-
-      <div className={cn(styles.viewBlock, view === "analytics" && styles.viewBlockActive)}>
-        <UsersAnalyticsView controls={controls} data={data} sortLabel={sortLabel} />
-      </div>
-
-      <div className={cn(styles.viewBlock, view === "catalog" && styles.viewBlockActive)}>
-        <UsersCatalogView controls={controls} data={data} />
-      </div>
+      <UsersCompareBar compare={compare} />
     </div>
   );
 };

@@ -72,9 +72,12 @@ export default class userService {
       next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
-  /** The draft room's player card: career totals, per-role and per-hero maps, last five events. */
-  static async getDraftCard(id: number): Promise<UserDraftCard> {
+  /** The draft room's player card: career totals, per-role and per-hero maps,
+   *  last five events. `workspaceId` pins the scope — `"all"` for the players
+   *  index on the platform apex, where rows span every workspace. */
+  static async getDraftCard(id: number, workspaceId?: number | "all" | null): Promise<UserDraftCard> {
     return apiFetch(`/api/v1/users/${id}/draft-card`, {
+      query: workspaceId != null ? { workspace_id: workspaceId } : undefined,
       next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
@@ -326,18 +329,30 @@ export default class userService {
     order = "asc",
     query,
     role,
-    divMin,
-    divMax,
+    divisions,
+    hasLogs,
+    minEncounters,
     workspaceId
   }: {
     page?: number;
     perPage?: number;
-    sort?: "id" | "name" | "tournaments_count" | "achievements_count" | "avg_placement";
+    sort?:
+      | "id"
+      | "name"
+      | "tournaments_count"
+      | "achievements_count"
+      | "avg_placement"
+      | "winrate"
+      | "best_placement";
     order?: "asc" | "desc";
     query?: string;
     role?: UserRoleType;
-    divMin?: number;
-    divMax?: number;
+    /** Division numbers; a player matches when any (filtered) role sits in the set. */
+    divisions?: number[];
+    /** Only players with parsed match logs. */
+    hasLogs?: boolean;
+    /** `sort=winrate` only: below this many encounters a player is ordered last. */
+    minEncounters?: number;
     /** A workspace id, or `"all"` for every workspace (platform apex only). */
     workspaceId?: number | "all" | null;
   } = {}): Promise<UserOverviewResponse> {
@@ -350,8 +365,9 @@ export default class userService {
         query,
         fields: ["name"],
         role,
-        div_min: divMin,
-        div_max: divMax,
+        divisions,
+        has_logs: hasLogs || undefined,
+        min_encounters: minEncounters,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());
@@ -360,22 +376,22 @@ export default class userService {
   static async getUsersOverviewStats({
     query,
     role,
-    divMin,
-    divMax,
+    divisions,
+    hasLogs,
     workspaceId
   }: {
     query?: string;
     role?: UserRoleType;
-    divMin?: number;
-    divMax?: number;
+    divisions?: number[];
+    hasLogs?: boolean;
     workspaceId?: number | "all" | null;
   } = {}): Promise<UserOverviewStats> {
     return apiFetch("/api/v1/users/overview/stats", {
       query: {
         query,
         role,
-        div_min: divMin,
-        div_max: divMax,
+        divisions,
+        has_logs: hasLogs || undefined,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());
@@ -384,8 +400,8 @@ export default class userService {
   static async getUsersCatalog({
     query,
     role,
-    divMin,
-    divMax,
+    divisions,
+    hasLogs,
     letter,
     perLetter = 12,
     maxLetters = 27,
@@ -393,8 +409,8 @@ export default class userService {
   }: {
     query?: string;
     role?: UserRoleType;
-    divMin?: number;
-    divMax?: number;
+    divisions?: number[];
+    hasLogs?: boolean;
     letter?: string;
     perLetter?: number;
     maxLetters?: number;
@@ -404,8 +420,8 @@ export default class userService {
       query: {
         query,
         role,
-        div_min: divMin,
-        div_max: divMax,
+        divisions,
+        has_logs: hasLogs || undefined,
         letter,
         per_letter: perLetter,
         max_letters: maxLetters,
@@ -423,6 +439,7 @@ export default class userService {
       divMin,
       divMax,
       tournamentId,
+      workspaceId,
       signal
     }: {
       baseline?: UserCompareBaselineMode;
@@ -431,6 +448,7 @@ export default class userService {
       divMin?: number;
       divMax?: number;
       tournamentId?: number;
+      workspaceId?: number | "all";
       signal?: AbortSignal;
     } = {}
   ): Promise<UserCompareResponse> {
@@ -442,7 +460,8 @@ export default class userService {
         role,
         div_min: divMin,
         div_max: divMax,
-        tournament_id: tournamentId
+        tournament_id: tournamentId,
+        workspace_id: workspaceId
       }
     }).then((res) => res.json());
   }
@@ -459,6 +478,7 @@ export default class userService {
       divMin,
       divMax,
       tournamentId,
+      workspaceId,
       stats,
       signal
     }: {
@@ -471,6 +491,7 @@ export default class userService {
       divMin?: number;
       divMax?: number;
       tournamentId?: number;
+      workspaceId?: number | "all";
       stats?: LogStatsName[];
       signal?: AbortSignal;
     }
@@ -487,6 +508,7 @@ export default class userService {
         div_min: divMin,
         div_max: divMax,
         tournament_id: tournamentId,
+        workspace_id: workspaceId,
         stats
       }
     }).then((res) => res.json());

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -23,7 +23,8 @@ import {
   LogicalNode,
   RuleBuilderContext,
   type RuleBuilderConfig,
-  type RuleBuilderLabels,
+  type RuleBuilderEditLabels,
+  type RuleBuilderViewLabels,
   type RuleLeafFieldsProps,
   type RuleLeafOption,
 } from "./RuleNodes";
@@ -43,24 +44,57 @@ import {
   type TreeNode,
 } from "./rule-tree";
 
-export interface RuleBuilderProps {
+interface RuleBuilderCommonProps {
   value: TreeNode;
-  onChange?: (tree: TreeNode) => void;
-  readOnly?: boolean;
-  /** Leaf types the type `<Select>` offers, in menu order. */
-  leafOptions: RuleLeafOption[];
   /** The leaf a fresh node and an unnamed stored one resolve to. */
   defaultLeafType: string;
-  palette: RulePaletteGroup[];
-  /** One leaf's parameter form — the only engine-specific part of a node. */
-  renderLeafFields: (props: RuleLeafFieldsProps) => ReactNode;
   labelForLeaf: (type: string | undefined) => string;
   /** One-line read-only summary, for the outline and read-only nodes. */
   summarizeLeaf: (type: string, params: Record<string, unknown>) => string;
-  labels: RuleBuilderLabels;
   /** Canvas height class; defaults to the editor/viewer heights. */
   heightClass?: string;
 }
+
+/**
+ * Editing and viewing are two different components behind one name: a viewer
+ * has no palette, no type picker and no parameter form, so requiring them
+ * would mean every read-only call site inventing dummies.
+ */
+export type RuleBuilderProps = RuleBuilderCommonProps &
+  (
+    | {
+        readOnly: true;
+        onChange?: never;
+        leafOptions?: never;
+        palette?: never;
+        renderLeafFields?: never;
+        labels: RuleBuilderViewLabels;
+      }
+    | {
+        readOnly?: boolean;
+        onChange?: (tree: TreeNode) => void;
+        /** Leaf types the type `<Select>` offers, in menu order. */
+        leafOptions: RuleLeafOption[];
+        palette: RulePaletteGroup[];
+        /** One leaf's parameter form — the only engine-specific part of a node. */
+        renderLeafFields: (props: RuleLeafFieldsProps) => ReactNode;
+        labels: RuleBuilderEditLabels;
+      }
+  );
+
+/** xyflow chrome repainted in the app's shadcn tokens (see the `colorMode` note below). */
+const XY_THEME = {
+  "--xy-background-color": "transparent",
+  "--xy-background-pattern-color": "hsl(var(--muted-foreground) / 0.22)",
+  "--xy-edge-stroke": "hsl(var(--muted-foreground) / 0.55)",
+  "--xy-controls-box-shadow": "none",
+  "--xy-controls-button-background-color": "hsl(var(--card))",
+  "--xy-controls-button-background-color-hover": "hsl(var(--accent))",
+  "--xy-controls-button-color": "hsl(var(--muted-foreground))",
+  "--xy-controls-button-color-hover": "hsl(var(--foreground))",
+  "--xy-controls-button-border-color": "hsl(var(--border))",
+  "--xy-minimap-background-color": "hsl(var(--card))"
+} as CSSProperties;
 
 /**
  * The shared condition-tree canvas: React Flow over a flat parent-pointer
@@ -265,7 +299,15 @@ function RuleBuilderInner({
         labelForLeaf={labelForLeaf}
         summarizeLeaf={summarizeLeaf}
       />
-      {!readOnly && <RulePalette groups={palette} labels={labels} onAdd={addPaletteItem} />}
+      {!readOnly && palette && (
+        // Only the editable variant carries a palette, and with it the editing
+        // strings the palette renders.
+        <RulePalette
+          groups={palette}
+          labels={labels as RuleBuilderEditLabels}
+          onAdd={addPaletteItem}
+        />
+      )}
       <div className="flex-1 relative">
         <ReactFlow
           nodes={nodes}
@@ -283,6 +325,12 @@ function RuleBuilderInner({
           minZoom={0.3}
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
+          // The app is dark-only (`<body className="dark">`). `colorMode` flips
+          // xyflow's own chrome to dark; the `--xy-*` overrides then repaint it in
+          // the app's tokens, since xyflow's dark palette is a neutral grey that
+          // clashes with the blue-tinted surfaces around it.
+          colorMode="dark"
+          style={XY_THEME}
         >
           <Background gap={20} size={1} />
           <Controls showInteractive={false} />

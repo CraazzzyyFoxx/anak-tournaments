@@ -478,8 +478,8 @@ def test_overview_stats_with_logs_probes_from_the_candidate_side() -> None:
         overview_queries.get_overview_stats(
             session,
             role=None,
-            div_min=None,
-            div_max=None,
+            divisions=[],
+            has_logs=False,
             query=None,
             grid=DEFAULT_GRID,
             workspace_id=None,
@@ -551,14 +551,16 @@ def test_overview_encounter_exprs_use_union_all_sides() -> None:
 
 def _overview_query_stub():
     overview = MagicMock()
-    overview.get_overview_users = AsyncMock(return_value=([SimpleNamespace(id=7, name="Subject")], 1))
-    overview.get_catalog_users = AsyncMock(return_value=([("S", [SimpleNamespace(id=7, name="Subject")])], 1, ["S"]))
+    user = SimpleNamespace(id=7, name="Subject", avatar_url=None)
+    overview.get_overview_users = AsyncMock(return_value=([user], 1))
+    overview.get_catalog_users = AsyncMock(return_value=([("S", [user])], 1, ["S"]))
     overview.get_overview_role_divisions = AsyncMock(return_value={})
     overview.get_overview_tournaments_count = AsyncMock(return_value={})
     overview.get_overview_achievements_count = AsyncMock(return_value={})
     overview.get_overview_averages = AsyncMock(return_value={})
     overview.get_overview_top_heroes = AsyncMock(return_value={})
-    overview.get_overview_top_hero_metrics = AsyncMock(return_value={})
+    overview.get_overview_map_records = AsyncMock(return_value={})
+    overview.get_overview_last_active = AsyncMock(return_value={})
     return overview
 
 
@@ -582,8 +584,9 @@ def test_overview_enrichment_opens_isolated_sessions() -> None:
     with patch.object(user_service, "async_session_maker", side_effect=lambda: _SessionCM(opened)):
         result = asyncio.run(svc.get_overview(AsyncMock(), schemas.UserOverviewParams(), grid=DEFAULT_GRID))
 
-    assert len(opened) == 5
-    overview.get_overview_top_hero_metrics.assert_awaited_once()
+    assert len(opened) == 7
+    overview.get_overview_map_records.assert_awaited_once()
+    overview.get_overview_last_active.assert_awaited_once()
     assert overview.get_overview_top_heroes.await_args.kwargs["limit"] == 5
     assert result.total == 1
     assert result.results[0].id == 7
@@ -596,9 +599,9 @@ def test_catalog_enrichment_opens_isolated_sessions_with_hero_limit() -> None:
     with patch.object(user_service, "async_session_maker", side_effect=lambda: _SessionCM(opened)):
         result = asyncio.run(svc.get_catalog(AsyncMock(), schemas.UserCatalogParams(), grid=DEFAULT_GRID))
 
-    assert len(opened) == 5
+    assert len(opened) == 7
     assert overview.get_overview_top_heroes.await_args.kwargs["limit"] == 3
-    overview.get_overview_top_hero_metrics.assert_awaited_once()
+    overview.get_overview_map_records.assert_awaited_once()
     assert result.total == 1
     assert result.letters[0].letter == "S"
 
@@ -613,5 +616,5 @@ def test_overview_skips_enrichment_when_page_is_empty() -> None:
 
     assert opened == []
     overview.get_overview_role_divisions.assert_not_awaited()
-    overview.get_overview_top_hero_metrics.assert_not_awaited()
+    overview.get_overview_map_records.assert_not_awaited()
     assert result.results == []

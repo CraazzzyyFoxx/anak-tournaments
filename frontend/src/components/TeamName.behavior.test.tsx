@@ -1,7 +1,15 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// `next/image` outside a Next build resolves src through the optimizer loader,
+// which rewrites it to /_next/image?url=…; the shipped config sets
+// `images.unoptimized`, so the real render keeps the src verbatim.
+vi.mock("next/image", () => ({
+  // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt ?? ""} />
+}));
 
 import TeamName, { TeamLogo } from "./TeamName";
 

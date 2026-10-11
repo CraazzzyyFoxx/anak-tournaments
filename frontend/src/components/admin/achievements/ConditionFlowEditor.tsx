@@ -7,14 +7,10 @@ import { RuleBuilder, type RuleLeafFieldsProps } from "@/components/rule-builder
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
+import { DEFAULT_CONDITION_TYPE, useConditionText } from "@/lib/achievements/condition-text";
 
 import { ConditionLeafFields } from "./ConditionLeafFields";
-import {
-  DEFAULT_CONDITION_TYPE,
-  SIDEBAR_GROUPS,
-  conditionLabel,
-  formatParamsSummary,
-} from "./condition-flow.model";
+import { SIDEBAR_GROUPS } from "./condition-flow.model";
 
 /** The canvas chrome, in the editor's own voice. Achievements are admin-only
  *  and English throughout, so these are literals rather than message keys. */
@@ -59,6 +55,7 @@ interface ConditionFlowEditorProps {
  * `optional` come from the same place the validator reads.
  */
 export function ConditionFlowEditor({ value, onChange, readOnly }: Readonly<ConditionFlowEditorProps>) {
+  const { leafLabel, leafLine } = useConditionText(value);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   // The registry only changes when the engine ships a new node, so it is cached
   // for the session rather than refetched per editor mount.
@@ -75,8 +72,8 @@ export function ConditionFlowEditor({ value, onChange, readOnly }: Readonly<Cond
     () =>
       (conditionTypes ?? [])
         .filter((option) => !option.subcondition_only)
-        .map((option) => ({ value: option.name, label: conditionLabel(option.name) })),
-    [conditionTypes]
+        .map((option) => ({ value: option.name, label: leafLabel(option.name) })),
+    [conditionTypes, leafLabel]
   );
 
   const renderLeafFields = useCallback(
@@ -101,8 +98,8 @@ export function ConditionFlowEditor({ value, onChange, readOnly }: Readonly<Cond
       defaultLeafType={DEFAULT_CONDITION_TYPE}
       palette={SIDEBAR_GROUPS}
       renderLeafFields={renderLeafFields}
-      labelForLeaf={conditionLabel}
-      summarizeLeaf={formatParamsSummary}
+      labelForLeaf={leafLabel}
+      summarizeLeaf={leafLine}
       labels={LABELS}
     />
   );

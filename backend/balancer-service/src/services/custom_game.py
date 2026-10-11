@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import base64
 import copy
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -62,7 +64,8 @@ from shared.services.workspace_roster import (
     workspace_member_user_ids,
 )
 from src.domain.balancer.result_serializer import as_lobby_document, seat_rating
-from src.domain.mix_discord import SignupPlayer, lineup_card, signup_card
+from src.domain.mix_discord import SignupPlayer, lineup_card, lineup_picture, signup_card
+from src.domain.mix_lineup_image import LineupPicture, load_images, render_png
 from src.domain.mix_lobbies import seated_member_ids, seated_teams
 from src.domain.mix_lobby_split import LobbySplitError, SplitCandidate, split_into_lobbies
 from src.domain.mix_ranker import Ranker
@@ -88,10 +91,9 @@ _MAX_TEAM_NAME_LEN = 60
 #: Every Discord message a mix sends is filed under this subject, and the slot
 #: says which of the mix's messages it is: one ``signup`` card plus one row per
 #: lineup posted. Deleting a mix is then one read of ``discord_message``.
-#: Public: the signup-card projector reads the same slot back.
+#: Public: the Discord-card projector reads the same slot back.
 SIGNUP_SLOT = "signup"
-#: The file name a lineup PNG travels under, on both the card and the command.
-_LINEUP_IMAGE = "lineup.png"
+
 #: A roster row owns only its lineup state. A rank correction goes into the
 #: host's own layer of ``member_rank``, so it outlives the game it was made in.
 _PLAYER_PATCH_FIELDS = frozenset({"participation", "roles", "is_flex", "lobby_pin"})
@@ -113,6 +115,12 @@ _BLOCKER_STATUS = {
     "role_edit_off": status.HTTP_409_CONFLICT,
     "not_on_roster": status.HTTP_404_NOT_FOUND,
 }
+
+
+async def _png_b64(picture: LineupPicture) -> str:
+    """``picture`` drawn, base64 for the command: its pictures fetched first, the draw off the event loop."""
+    images = await load_images(picture.image_urls)
+    return base64.b64encode(await asyncio.to_thread(render_png, picture, images)).decode("ascii")
 
 
 def _blocker(code: str) -> HTTPException:
@@ -604,7 +612,7 @@ class CustomGameService:
             roles=list(REGISTRATION_ROLE_CODES),
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
-            grid=await get_effective_division_grid(session, None),
+            grid=await get_effective_division_grid(session, game.workspace_id),
         )
         for member_id in members:
             seed: dict[str, int] = {}
@@ -1020,7 +1028,7 @@ class CustomGameService:
         if ctx.row is not None:
             stored = (await self.player_roles.roles_for_players(session, [ctx.row.id])).get(ctx.row.id, [])
             explicit = ctx.row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
-            grid = await get_effective_division_grid(session, None)
+            grid = await get_effective_division_grid(session, ctx.game.workspace_id)
             resolved = await self.ranks.resolve(
                 session,
                 workspace_id=ctx.game.workspace_id,
@@ -1312,7 +1320,7 @@ class CustomGameService:
         Rebuilt from current state on every publish rather than kept anywhere:
         the card is the mix's roster seen from a channel, and the roster is the
         only copy of it. Names resolve exactly as the balancer resolves them.
-        Public because the projector (:mod:`src.services.mix_signup_projector`)
+        Public because the projector (:mod:`src.services.mix_discord_projector`)
         renders the same card for the same mix on every change event.
         """
         roster = list(await self.roster.list_for_game(session, game.id))
@@ -1330,7 +1338,7 @@ class CustomGameService:
             roles=list(REGISTRATION_ROLE_CODES),
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
-            grid=await get_effective_division_grid(session, None),
+            grid=await get_effective_division_grid(session, game.workspace_id),
         )
         players = []
         for row in roster:
@@ -1343,18 +1351,19 @@ class CustomGameService:
                 for role in REGISTRATION_ROLE_CODES
                 if (found := resolved.get((member_id, role))) is not None and found.value is not None
             }
-            # The first role they named, or -- playing anything -- their best.
-            # An explicit empty order plays nothing, so it shows no rank.
+            # The role they come for: the first they named or -- playing
+            # anything -- their best. An explicit empty order plays nothing.
             if roles is None:
-                rank = max(ranks.values(), default=None)
+                role = max(ranks, key=ranks.__getitem__, default=None)
             else:
-                rank = ranks.get(roles[0]) if roles else None
+                role = roles[0] if roles else None
             players.append(
                 SignupPlayer(
                     name=name or f"player-{member_id}",
-                    roles=roles,
+                    # Only Full Flex is flex; everyone else counts on their own role.
+                    role="flex" if row.is_flex else role,
                     benched=row.participation == MixParticipation.BENCHED,
-                    rank=rank,
+                    rank=ranks.get(role) if role else None,
                 )
             )
         return signup_card(
@@ -1546,7 +1555,7 @@ class CustomGameService:
             # mix balances on this host's read of these players, not the official one.
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
-            grid=await get_effective_division_grid(session, None),
+            grid=await get_effective_division_grid(session, game.workspace_id),
         )
         open_ranks = {
             key: ranked.value for key, ranked in resolved.items() if ranked is not None and ranked.value is not None
@@ -2128,7 +2137,6 @@ class CustomGameService:
         actor_user_id: int,
         actor_is_superuser: bool = False,
         board_url_base: str,
-        image_b64: str | None = None,
     ) -> tuple[int, list[DiscordCommandEvent]]:
         """The channel to post to plus the commands that post one balance option.
 
@@ -2139,9 +2147,8 @@ class CustomGameService:
         and the host can take it down again; publishing is the RPC layer's job
         -- that is where the broker is -- so this returns the command.
 
-        ``image_b64`` is the host's own capture of the matchup card: the picture
-        then IS the lineup and the card drops the per-team seat lists it would
-        otherwise print.
+        The card shows the matchup as a picture drawn here
+        (:mod:`src.domain.mix_lineup_image`), not as seat lists.
 
         Whichever option is on screen (``variant_index``), same as
         :meth:`swap_seats`: a host who paged to option 2 is posting that one.
@@ -2176,7 +2183,7 @@ class CustomGameService:
         # "game 5" in the other.
         activity = await self.casual_matches.activity_for_lobbies(session, game.id)
         matches_count = activity.get(lobby_index, (0, None))[0]
-        card = await self._lineup_card(
+        card, picture = await self._lineup(
             session,
             game,
             lobby,
@@ -2184,7 +2191,6 @@ class CustomGameService:
             variant_index=variant_index,
             match_number=matches_count + 1,
             board_url_base=board_url_base,
-            image=bool(image_b64),
         )
         # Only the newest card of a lobby moves people: the older ones lose their buttons.
         retired = [
@@ -2202,15 +2208,15 @@ class CustomGameService:
             card=card,
             workspace_id=workspace_id,
             channel_id=channel_id,
-            image_b64=image_b64,
-            image_filename=_LINEUP_IMAGE,
+            image_b64=await _png_b64(picture),
+            image_filename=picture.filename,
             # The card mentions the players it seats; a lineup nobody is pinged
             # by is a lineup half the lobby misses.
             allow_mentions=True,
         )
         return channel_id, [*retired, *([] if command is None else [command])]
 
-    async def _lineup_card(
+    async def _lineup(
         self,
         session: AsyncSession,
         game: models.CustomGame,
@@ -2220,10 +2226,10 @@ class CustomGameService:
         variant_index: int,
         match_number: int,
         board_url_base: str,
-        image: bool,
-    ) -> DiscordCard:
-        """The matchup card of one lobby, as the lineup stands right now."""
+    ) -> tuple[DiscordCard, LineupPicture]:
+        """The matchup card of one lobby and the picture it shows, as the lineup stands right now."""
         next_map: tuple[str, str | None] | None = None
+        map_image: str | None = None
         if lobby.next_map_id is not None:
             # The gamemode is eager-loaded: an async session raises on an
             # unawaited lazy load, and the card names the mode next to the map.
@@ -2234,28 +2240,42 @@ class CustomGameService:
             )
             if row is not None:
                 next_map = (row.name, row.gamemode.name if row.gamemode is not None else None)
+                map_image = row.image_path or None
+        # The host's knob, resolved: the card promises what recording this
+        # match will actually move. ``0`` is "off", and off prints nothing.
+        points_per_win = await self.host_points_per_win(session, game.host_user_id) or None
+        board_url = self._board_url(board_url_base, game.id)
+        # Every lobby posts into the same channel, so a multi-lobby mix says
+        # which one this lineup is; a one-lobby mix has nothing to qualify.
+        lobby_label = LOBBY_LETTERS[lobby.lobby_index] if game.lobby_count > 1 else None
 
-        return lineup_card(
+        picture = lineup_picture(
             mix_name=game.name,
             match_number=match_number,
             variant=variant,
             players=_lobby_players(as_lobby_document(lobby.balance_result_json)),
             team_names=await self._lobby_team_names(session, game.id, lobby.lobby_index),
             next_map=next_map,
-            # The host's knob, resolved: the card promises what recording this
-            # match will actually move. ``0`` is "off", and off prints nothing.
-            points_per_win=await self.host_points_per_win(session, game.host_user_id) or None,
-            board_url=self._board_url(board_url_base, game.id),
-            # Every lobby posts into the same channel, so a multi-lobby mix says
-            # which one this lineup is; a one-lobby mix has nothing to qualify.
-            lobby_label=LOBBY_LETTERS[lobby.lobby_index] if game.lobby_count > 1 else None,
-            image_filename=_LINEUP_IMAGE if image else None,
+            map_image=map_image,
+            points_per_win=points_per_win,
+            board_url=board_url,
+            lobby_label=lobby_label,
+        )
+        card = lineup_card(
+            mix_name=game.name,
+            match_number=match_number,
+            next_map=next_map,
+            points_per_win=points_per_win,
+            board_url=board_url,
+            image_filename=picture.filename,
+            lobby_label=lobby_label,
             # Everyone this matchup seats, so the lobby hears about it.
             mentions=await self.discord_mentions(
                 session, sorted(seated_member_ids(lobby.balance_result_json, variant_index))
             ),
             voice_target=f"{game.id}-{lobby.lobby_index}",
         )
+        return card, picture
 
     async def _live_lineups(
         self, session: AsyncSession, custom_game_id: int, lobby_index: int
@@ -2278,67 +2298,65 @@ class CustomGameService:
             return None
         return await discord_messages.edit_command(session, locked, card.model_copy(update={"answers": []}))
 
-    async def refresh_lineup(
-        self,
-        session: AsyncSession,
-        *,
-        workspace_id: int,
-        custom_game_id: int,
-        lobby_index: int,
-        image_b64: str | None,
-        actor_user_id: int,
-        actor_is_superuser: bool = False,
-        board_url_base: str,
+    async def redraw_lineups(
+        self, session: AsyncSession, game: models.CustomGame, *, board_url_base: str
     ) -> list[DiscordCommandEvent]:
-        """Re-render the lobby's newest lineup card from the lineup as it stands now.
+        """Redraw each lobby's newest lineup card from the lineup as it stands now.
 
-        The mix page calls this after the lineup changed; ``image_b64`` is its fresh
-        capture, and without one the card falls back to the text roster. The
-        match number stays the one the card was posted with (its slot). A card
-        whose match is already recorded is history: the next round's lineup is
-        the host's next post, not an edit of the one that was played.
+        The projector (:mod:`src.services.mix_discord_projector`) calls this for
+        every change event of the mix, so the card follows the board without
+        anyone on the page. The match number stays the one the card was posted
+        with (its slot). A card whose match is already recorded is history: the
+        next round's lineup is the host's next post, not an edit of the one that
+        was played. A finished mix is left as it ended.
+
+        Most events (a Join click, a rename) change nothing a lineup card shows.
+        Its picture's file name hashes everything drawn, so such a card compares
+        equal to the row's and is skipped without drawing; a card whose text
+        changed but whose picture did not is edited without a new upload.
         """
-        game = await self._writable(
-            session,
-            workspace_id=workspace_id,
-            custom_game_id=custom_game_id,
-            actor_user_id=actor_user_id,
-            actor_is_superuser=actor_is_superuser,
-        )
-        lobby = await self._lobby(session, game, lobby_index)
-        live = await self._live_lineups(session, game.id, lobby_index)
-        if not live:
+        if game.status in _TERMINAL:
             return []
-        row = await discord_messages.repository.get_for_update(session, live[-1].id)
-        if row is None or row.status not in LIVE_STATUSES:
-            return []
-        match_number = int(row.slot.rsplit(":", 1)[1])
         activity = await self.casual_matches.activity_for_lobbies(session, game.id)
-        if match_number <= activity.get(lobby_index, (0, None))[0]:
-            return []
-        result = as_lobby_document(lobby.balance_result_json)
-        variants = result.get("variants") if isinstance(result, dict) else None
-        index = lobby.selected_variant_index
-        if (
-            not isinstance(variants, list)
-            or not (0 <= index < len(variants))
-            or not isinstance(variants[index], Mapping)
-        ):
-            return []
-        card = await self._lineup_card(
-            session,
-            game,
-            lobby,
-            variant=variants[index],
-            variant_index=index,
-            match_number=match_number,
-            board_url_base=board_url_base,
-            image=image_b64 is not None,
-        )
-        command = await discord_messages.edit_command(
-            session, row, card, image_b64=image_b64, image_filename=_LINEUP_IMAGE
-        )
-        return [] if command is None else [command]
+        commands: list[DiscordCommandEvent] = []
+        for lobby in await self.lobbies.list_for_game(session, game.id):
+            live = await self._live_lineups(session, game.id, lobby.lobby_index)
+            if not live:
+                continue
+            row = await discord_messages.repository.get_for_update(session, live[-1].id)
+            if row is None or row.status not in LIVE_STATUSES:
+                continue
+            match_number = int(row.slot.rsplit(":", 1)[1])
+            if match_number <= activity.get(lobby.lobby_index, (0, None))[0]:
+                continue
+            result = as_lobby_document(lobby.balance_result_json)
+            variants = result.get("variants") if isinstance(result, dict) else None
+            index = lobby.selected_variant_index
+            if (
+                not isinstance(variants, list)
+                or not (0 <= index < len(variants))
+                or not isinstance(variants[index], Mapping)
+            ):
+                continue
+            card, picture = await self._lineup(
+                session,
+                game,
+                lobby,
+                variant=variants[index],
+                variant_index=index,
+                match_number=match_number,
+                board_url_base=board_url_base,
+            )
+            shown = row.card_json or {}
+            if shown == card.model_dump(mode="json"):
+                continue
+            image = None if shown.get("image_url") == card.image_url else await _png_b64(picture)
+            command = await discord_messages.edit_command(
+                session, row, card, image_b64=image, image_filename=picture.filename
+            )
+            if command is not None:
+                commands.append(command)
+        return commands
 
     async def transfer_host(
         self,

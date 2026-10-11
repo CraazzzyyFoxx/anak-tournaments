@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Swords, Trophy, Users } from "lucide-react";
+import { Swords, Trophy } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
@@ -11,6 +11,7 @@ import achievementsService from "@/services/achievements.service";
 import PlayerName from "@/components/PlayerName";
 import TeamName from "@/components/TeamName";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import { Skeleton } from "@/components/ui/skeleton";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
 import type { StatsScope } from "@/lib/site/stats-scope";
@@ -33,25 +34,14 @@ const AchievementUsers = ({ achievement, scope }: { achievement: Achievement; sc
   const firstRank = (page - 1) * PER_PAGE + 1;
 
   return (
-    <section className="aqt-card-surface min-w-0">
-      <div className="aqt-card-head">
-        <div className="aqt-card-title">
-          <span className="aqt-card-title-ic">
-            <Users size={15} aria-hidden />
-          </span>
-          <span>{t("achievements.detail.earnedBy")}</span>
-        </div>
-        {total > 0 ? (
-          <span className="aqt-card-sub tabular-nums">
-            {t("achievements.detail.earnersCount", { count: total })}
-          </span>
-        ) : null}
-      </div>
-
+    <CardSurface
+      className="min-w-0"
+      title={t("achievements.detail.earnedBy")}
+      subtitle={total > 0 ? t("achievements.detail.earnersCount", { count: total }) : undefined}
+      flush={!isError && (isLoading || earners.length > 0)}
+    >
       {isError ? (
-        <div className="aqt-card-body text-center text-sm text-[color:var(--aqt-fg-muted)]">
-          {t("common.loadError")}
-        </div>
+        <p className="text-center text-sm text-[color:var(--aqt-fg-muted)]">{t("common.loadError")}</p>
       ) : isLoading ? (
         <div>
           {Array.from({ length: 6 }).map((_, i) => (
@@ -63,9 +53,7 @@ const AchievementUsers = ({ achievement, scope }: { achievement: Achievement; sc
           ))}
         </div>
       ) : earners.length === 0 ? (
-        <div className="aqt-card-body text-center text-sm text-[color:var(--aqt-fg-dim)]">
-          {t("achievements.detail.noEarners")}
-        </div>
+        <p className="text-center text-sm text-[color:var(--aqt-fg-dim)]">{t("achievements.detail.noEarners")}</p>
       ) : (
         <div>
           {earners.map((earned, i) => (
@@ -112,7 +100,7 @@ const AchievementUsers = ({ achievement, scope }: { achievement: Achievement; sc
           />
         </div>
       )}
-    </section>
+    </CardSurface>
   );
 };
 

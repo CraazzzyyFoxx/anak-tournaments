@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import sys
 from collections.abc import Sequence
 from datetime import datetime
@@ -27,6 +28,7 @@ from shared.core.enums import (  # noqa: E402
     HeroClass,
     MixParticipation,
     MixRoleSelectionMode,
+    MixStatus,
 )
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
@@ -39,7 +41,7 @@ from shared.testing import install_postgres_type_shims  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
 from src.domain.mix_ranker import Ranker  # noqa: E402
 from src.domain.mix_self_service import MAX_ROSTER  # noqa: E402
-from src.services import mix_signup_projector  # noqa: E402
+from src.services import mix_discord_projector  # noqa: E402
 from src.services.custom_game import _MAX_CO_HOSTS, CustomGameService  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
 
@@ -431,8 +433,14 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             "src.services.custom_game.get_effective_division_grid",
             new=AsyncMock(return_value=self.grid),
         )
-        self._grid_patch.start()
+        self.grid_lookup = self._grid_patch.start()
         self.addCleanup(self._grid_patch.stop)
+        # A lineup picture's map art and rank badges come over the network; here
+        # none load, and the picture is drawn without them.
+        self.load_images = AsyncMock(return_value={})
+        self._images_patch = patch("src.services.custom_game.load_images", new=self.load_images)
+        self._images_patch.start()
+        self.addCleanup(self._images_patch.stop)
         # No workspace-level roster default unless a test says otherwise --
         # `roster_shape`/`balance` then fall back to the built-in Overwatch 5v5
         # shape, matching every existing assertion below.
@@ -1456,16 +1464,22 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
     async def test_the_signup_card_lists_the_roster_at_the_ranks_the_balancer_uses(self) -> None:
         """Live, not a snapshot: the card is built from the roster every time,
         under the names the balancer shows and at the numbers it balances with
-        -- the first named role's, or the best one for "any role"."""
+        -- the first named role's, or the best one for "any role". Only Full
+        Flex rows are flex; an "any role" row counts on its best role."""
         self.games.get.return_value = _game(name="Friday mix", self_signup="pool")
         self.roster.list_for_game.return_value = [
             _roster_row(1, 7, 0, roles=["tank"]),
             _roster_row(2, 8, 1, roles=["damage", "support"]),
             _roster_row(3, 9, 2, participation=MixParticipation.BENCHED),
+            _roster_row(4, 10, 3, roles=["support"], is_flex=True, participation=MixParticipation.BENCHED),
         ]
         self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
         self.load_hosts.return_value = {9: "Foxx"}
-        self.ranks.resolve.return_value = {**_ranks(7, 9), (8, "damage"): ResolvedRank(2200, "author")}
+        self.ranks.resolve.return_value = {
+            **_ranks(7, 10),
+            (8, "damage"): ResolvedRank(2200, "author"),
+            (9, "support"): ResolvedRank(2700, "author"),
+        }
 
         _channel_id, [post] = await self.service.signup_post(
             self.session,
@@ -1476,16 +1490,17 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             board_url_base="https://owt.example",
         )
 
-        self.assertIn(":owt_players: **3** записано", post.card.details)
-        self.assertIn(":owt_tank: 1 · :owt_damage: 1 · :owt_support: 0 · любая роль 1", post.card.details)
+        self.assertIn(":owt_players: **4** записано", post.card.details)
+        self.assertIn(":owt_tank: 1 · :owt_damage: 1 · :owt_support: 1 · :owt_flex: 1", post.card.details)
         self.assertIn(":owt_host: Foxx", post.card.text)
         lines = post.card.details.splitlines()
         pool = lines[lines.index("**Игроки**") + 1 : lines.index(":owt_bench: **Скамейка**")]
         self.assertEqual(len(pool), 2)
         self.assertTrue(pool[0].startswith(":owt_tank: ") and pool[0].endswith(" P7 · 2500"), pool[0])
         self.assertTrue(pool[1].startswith(":owt_damage: ") and pool[1].endswith(" P8 · 2200"), pool[1])
-        bench = lines[lines.index(":owt_bench: **Скамейка**") + 1]
-        self.assertTrue(bench.startswith(":owt_flex: ") and bench.endswith(" P9 · 2500"), bench)
+        bench = lines[lines.index(":owt_bench: **Скамейка**") + 1 :][:2]
+        self.assertTrue(bench[0].startswith(":owt_support: ") and bench[0].endswith(" P9 · 2700"), bench[0])
+        self.assertTrue(bench[1].startswith(":owt_flex: ") and bench[1].endswith(" P10 · 2300"), bench[1])
         kwargs = self.ranks.resolve.await_args.kwargs
         self.assertEqual((kwargs["order"], kwargs["author_user_id"]), (MIX_ORDER, 9))
 
@@ -1495,8 +1510,8 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.session.commit = AsyncMock()
         self.session.add = MagicMock()
         event = PickupMixChangedEvent(workspace_id=1, custom_game_id=custom_game_id, change="roster")
-        with patch.object(mix_signup_projector, "custom_game_service", self.service):
-            rendered = await mix_signup_projector.project(self.session, event)
+        with patch.object(mix_discord_projector, "custom_game_service", self.service):
+            rendered = await mix_discord_projector.project(self.session, event)
         return rendered, [call.args[0] for call in self.session.add.call_args_list]
 
     async def test_a_mix_with_no_live_post_projects_nothing(self) -> None:
@@ -1939,6 +1954,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["order"], MIX_ORDER)
         self.assertEqual(kwargs["author_user_id"], 9)
         self.assertIs(kwargs["grid"], self.grid)
+        # The mix's own workspace grid: the system default once read every OW
+        # rank >= 2000 as its top tier and seeded 2000 into the host's book.
+        self.grid_lookup.assert_awaited_with(self.session, 1)
 
     async def test_seeding_leaves_a_rank_the_host_already_owns_alone(self) -> None:
         """Re-adding somebody must not undo a correction the host already made."""
@@ -2763,7 +2781,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.session.scalar = AsyncMock(
             side_effect=[
                 {"mix_discord_channel_id": "777"},
-                _row(id=42, name="Busan", gamemode=_row(name="Control")),
+                _row(id=42, name="Busan", gamemode=_row(name="Control"), image_path="https://s3.example/busan.jpg"),
             ]
         )
         # Only the first seat's account linked a Discord.
@@ -2783,9 +2801,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertIn("Scrim · Игра 4", card.text)
         self.assertIn(":owt_map: Busan · Control", card.text)
         self.assertIn(":owt_points: +25 за победу", card.text)
-        self.assertIn("**Blue**\n:owt_tank: Ana · 3000", card.details)
-        self.assertIn("**Команда 2**\n:owt_tank: Bob · 2900", card.details)
-        self.assertIn("-# :owt_players: <@111>", card.details)
+        self.assertEqual(card.details, "-# :owt_players: <@111>")
         self.assertEqual(card.rows[0][0].url, "https://owt.example/balancer/mix/11")
         # The lineup is a message of this mix like the signup card, filed by the
         # lobby it belongs to and the match it announces.
@@ -2793,8 +2809,18 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(command.message_ref, row.id)
         self.assertEqual((row.subject, row.slot, row.kind), ("mix:11", "lineup:0:4", "mix.lineup"))
         self.assertTrue(command.allow_mentions)
+        # The picture is drawn with the map's art from the database and the OW2 ladder's badges,
+        # not the workspace's tournament grid (``self.grid``, bare "Division 1" tiers).
+        self.assertEqual(
+            self.load_images.await_args.args[0],
+            {
+                "https://s3.example/busan.jpg",
+                "https://owt.example/divisions/diamond-5.png",
+                "https://owt.example/divisions/emerald-1.png",
+            },
+        )
 
-    async def test_discord_lineup_with_the_hosts_capture_shows_the_png_instead_of_the_seats(self) -> None:
+    async def test_discord_lineup_posts_the_matchup_as_a_picture_drawn_here(self) -> None:
         result = {"variants": [{"teams": [{"roster": {"Tank": [{"uuid": "1", "name": "Ana"}]}}]}]}
         self.games.get.return_value = _game()
         self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document(result["variants"]))
@@ -2810,11 +2836,11 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             variant_index=0,
             actor_user_id=9,
             board_url_base="https://owt.example",
-            image_b64="iVBORw0KGgo=",
         )
 
-        self.assertEqual(command.card.image_url, "attachment://lineup.png")
-        self.assertEqual((command.image_b64, command.image_filename), ("iVBORw0KGgo=", "lineup.png"))
+        self.assertRegex(command.image_filename, r"^lineup-[0-9a-f]{12}\.png$")
+        self.assertEqual(command.card.image_url, f"attachment://{command.image_filename}")
+        self.assertEqual(base64.b64decode(command.image_b64)[:8], b"\x89PNG\r\n\x1a\n")
         # Nobody linked a Discord, so there is no mention line either.
         self.assertIsNone(command.card.details)
 
@@ -2853,13 +2879,13 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             [("voice.move", "11-0"), ("voice.return", "11-0")],
         )
 
-    async def test_refresh_lineup_re_renders_the_lobbys_newest_card_with_the_new_capture(self) -> None:
+    async def test_redraw_lineups_redraws_the_lobbys_newest_card_with_a_new_picture(self) -> None:
         """The lineup changed under a card already posted: the newest one is
         redrawn from the lineup as it stands, keeping the match it announces."""
         result = {
             "variants": [{"teams": [{"roster": {"Tank": [{"uuid": "1", "name": "Ana", "assigned_rating": 3000}]}}]}]
         }
-        self.games.get.return_value = _game()
+        game = _game()
         self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document(result["variants"]))
         older = self.messages.add(
             subject="mix:11", slot="lineup:0:1", kind="mix.lineup", status="posted", card_json=_voice_card_json("11-0")
@@ -2869,92 +2895,75 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
         self._discord_links({})
 
-        [command] = await self.service.refresh_lineup(
-            self.session,
-            workspace_id=1,
-            custom_game_id=11,
-            lobby_index=0,
-            image_b64="iVBORw0KGgo=",
-            actor_user_id=9,
-            board_url_base="https://owt.example",
-        )
+        [command] = await self.service.redraw_lineups(self.session, game, board_url_base="https://owt.example")
 
         self.assertEqual((command.action, command.message_ref), ("edit_message", newest.id))
-        self.assertEqual((command.image_b64, command.image_filename), ("iVBORw0KGgo=", "lineup.png"))
+        self.assertEqual(base64.b64decode(command.image_b64)[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(newest.card_json["image_url"], f"attachment://{command.image_filename}")
         self.assertIn("Игра 2", newest.card_json["text"])
-        self.assertEqual(newest.card_json["image_url"], "attachment://lineup.png")
         self.assertEqual([button["action"] for button in newest.card_json["answers"]], ["voice.move", "voice.return"])
         # Only the newest card is touched.
         self.assertEqual(len(older.card_json["answers"]), 2)
 
-    async def test_refresh_lineup_without_a_capture_falls_back_to_the_seat_lists(self) -> None:
+    async def test_redraw_lineups_skips_a_card_that_would_come_out_the_same(self) -> None:
+        """Most events change nothing a lineup shows: no edit, no upload."""
         result = {
             "variants": [{"teams": [{"roster": {"Tank": [{"uuid": "1", "name": "Ana", "assigned_rating": 3000}]}}]}]
         }
-        self.games.get.return_value = _game()
+        game = _game()
         self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document(result["variants"]))
         row = self.messages.add(
             subject="mix:11", slot="lineup:0:1", kind="mix.lineup", status="posted", card_json=_voice_card_json("11-0")
         )
         self._discord_links({})
+        [first] = await self.service.redraw_lineups(self.session, game, board_url_base="https://owt.example")
+        self.assertIsNotNone(first.image_b64)
 
-        [command] = await self.service.refresh_lineup(
-            self.session,
-            workspace_id=1,
-            custom_game_id=11,
-            lobby_index=0,
-            image_b64=None,
-            actor_user_id=9,
-            board_url_base="https://owt.example",
+        self.assertEqual(
+            [], await self.service.redraw_lineups(self.session, game, board_url_base="https://owt.example")
         )
 
-        self.assertIsNone(command.image_b64)
-        self.assertIsNone(row.card_json["image_url"])
-        self.assertIn(":owt_tank: Ana · 3000", row.card_json["details"])
+        # The text moved (a new mention), the picture did not: an edit without a re-upload.
+        self._discord_links({1: "111"})
+        [second] = await self.service.redraw_lineups(self.session, game, board_url_base="https://owt.example")
+        self.assertIsNone(second.image_b64)
+        self.assertIn("<@111>", row.card_json["details"])
 
-    async def test_refresh_lineup_has_nothing_to_do_without_a_live_card_or_an_option(self) -> None:
-        """No card standing, or a lineup whose selected option is gone: the mix
-        page refreshes after every lineup change, and most of them have neither."""
-        self.games.get.return_value = _game()
+    async def test_redraw_lineups_has_nothing_to_do_without_a_live_card_or_an_option(self) -> None:
+        """No card standing, or a lineup whose selected option is gone: the
+        projector asks after every change, and most mixes have neither."""
+        game = _game()
         self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document([{"teams": []}]))
         self.messages.add(subject="mix:11", slot="lineup:0:1", kind="mix.lineup", status="deleted")
-
-        kwargs: dict[str, object] = {
-            "workspace_id": 1,
-            "custom_game_id": 11,
-            "lobby_index": 0,
-            "image_b64": None,
-            "actor_user_id": 9,
-            "board_url_base": "https://owt.example",
-        }
-        self.assertEqual([], await self.service.refresh_lineup(self.session, **kwargs))
+        self.assertEqual(
+            [], await self.service.redraw_lineups(self.session, game, board_url_base="https://owt.example")
+        )
 
         self.messages.add(subject="mix:11", slot="lineup:0:1", kind="mix.lineup", status="posted")
         self.lobby_rows[0] = _lobby(0, selected_variant_index=4, balance_result_json=lobby_document([{"teams": []}]))
-        self.assertEqual([], await self.service.refresh_lineup(self.session, **kwargs))
+        self.assertEqual(
+            [], await self.service.redraw_lineups(self.session, game, board_url_base="https://owt.example")
+        )
 
-    async def test_refresh_lineup_leaves_a_recorded_rounds_card_alone(self) -> None:
+    async def test_redraw_lineups_leaves_a_recorded_rounds_card_and_a_finished_mix_alone(self) -> None:
         """The round on the newest card was recorded: the next shuffle belongs to
-        the next post, so the played card is not rewritten under its result."""
-        self.games.get.return_value = _game()
+        the next post, so the played card is not rewritten under its result. A
+        closed mix keeps its cards as they ended."""
         self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document([{"teams": []}]))
         row = self.messages.add(
             subject="mix:11", slot="lineup:0:1", kind="mix.lineup", status="posted", card_json=_voice_card_json("11-0")
         )
-        self.casual_matches.activity_for_lobbies = AsyncMock(return_value={0: (1, datetime(2026, 1, 1, 20, 0))})
         before = dict(row.card_json)
+        self.casual_matches.activity_for_lobbies = AsyncMock(return_value={0: (1, datetime(2026, 1, 1, 20, 0))})
 
-        commands = await self.service.refresh_lineup(
-            self.session,
-            workspace_id=1,
-            custom_game_id=11,
-            lobby_index=0,
-            image_b64=None,
-            actor_user_id=9,
-            board_url_base="https://owt.example",
+        self.assertEqual(
+            [], await self.service.redraw_lineups(self.session, _game(), board_url_base="https://owt.example")
         )
-
-        self.assertEqual([], commands)
+        self.casual_matches.activity_for_lobbies = AsyncMock(return_value={})
+        closed = _game(status=MixStatus.COMPLETED)
+        self.assertEqual(
+            [], await self.service.redraw_lineups(self.session, closed, board_url_base="https://owt.example")
+        )
         self.assertEqual(before, row.card_json)
 
     async def test_set_voice_channels_writes_the_mixs_general_voice_and_both_team_voices(self) -> None:

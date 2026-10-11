@@ -12,7 +12,7 @@ import { CardSurface, ProfileStat } from "@/app/(site)/users/components/shared/a
 import MapRow from "@/app/(site)/users/components/maps/MapRow";
 import MapsFilters from "@/app/(site)/users/components/maps/MapsFilters";
 import { DataPagination } from "@/components/ui/data-pagination";
-import { winrateColor } from "@/app/(site)/users/components/heroes/utils";
+import { winrateColor } from "@/lib/colors";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import type { StatsScope } from "@/lib/site/stats-scope";
 

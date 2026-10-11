@@ -99,7 +99,7 @@ generated documentation; the subject list above is the complete one.
 **Queues consumed.** `balancer_jobs` (durable, `x-message-ttl` 15 min, dead-lettered to `dlx` →
 `balancer_jobs.dlq`), on its own channel with `prefetch_count=2` so a multi-minute solve cannot
 stall the RPC channel. And `pickup_mix_changed` (dead-lettered to `pickup_mix_changed.dlq`, declared
-on startup), on its own channel with `prefetch_count=4`: the signup-card projector, below. The bot
+on startup), on its own channel with `prefetch_count=4`: the Discord-card projector, below. The bot
 reports nothing back here — every Discord message this service sends is a `discord_message` row
 claimed in the transaction that decides to send it, and discord-service writes the outcome (the ids,
 or Discord's refusal) onto that same row.
@@ -124,17 +124,30 @@ written in the mutation's own transaction, so a rolled-back write announces noth
   It carries no state, only where to look.
 - `DiscordCommandEvent` onto `discord_commands` for the mix's Discord surface, every one naming its
   row by `message_ref`: `custom.post_signup` (the delete of the previous card, then the new one),
-  `custom.post_discord` (the lineup card, the host's PNG as `attachment://lineup.png` when supplied,
+  `custom.post_discord` (the lineup card with its picture as `attachment://lineup-<digest>.png`,
   seated players mentioned with `allow_mentions=True`), `custom.delete_discord_post` and
   `custom.hard_delete` (deletes).
 
-No handler edits the live signup card. `src/services/mix_signup_projector.py` consumes
-`pickup_mix_changed` and re-renders it from the committed state (`src/domain/mix_discord.py`): the
+No handler edits a live card. `src/services/mix_discord_projector.py` consumes
+`pickup_mix_changed` and re-renders from the committed state (`src/domain/mix_discord.py`): the
 newest live `signup` row of the named mix, or of every mix of the workspace when the event names
-none. It locks that `discord_message` row, writes the card onto it (`card_json`) and queues an
-`edit_message` command carrying no card — the bot coalesces edits by `message_ref` and reads the
+none; and, for an event naming a mix, each lobby's newest live lineup card whose match is not
+recorded yet. It locks that `discord_message` row, writes the card onto it (`card_json`) and queues
+an `edit_message` command carrying no card — the bot coalesces edits by `message_ref` and reads the
 row's card at flush. The lock, not the queue, is what orders concurrent renders: the one that reads
 the roster last writes and queues last, so a burst of Join clicks converges on the newest roster.
+
+**Lineup picture.** The lineup card shows the matchup as a 1200×630 PNG drawn here with Pillow
+(`src/domain/mix_lineup_image.py`) from the stored balance, in the mix board's own look: the next
+map's art behind one card with both teams around a VS seam, a tile per seat (role, rank badge, name,
+rating), team averages and the gap between them. The map art comes by the URL the database holds
+(`map.image_path`); the rank badge is the Overwatch 2 ladder tier the seat's rating lands in — the
+board's own `OW_REFERENCE_GRID`, never a workspace's tournament grid — served by the site at
+`PUBLIC_SITE_URL/divisions/<slug>.png`. Both are fetched with a 3 s timeout and an hour's in-memory cache; one that
+fails to load is left out and the post still goes. Fonts (Onest, Inter — the site's faces) and the
+role glyphs are copies in `assets/lineup`. The file name hashes everything drawn, so a card that
+would look the same is skipped without drawing, and a card whose text changed but whose picture did
+not is edited without re-uploading it.
 
 **Realtime topics** (published to Redis, relayed to clients by the gateway):
 

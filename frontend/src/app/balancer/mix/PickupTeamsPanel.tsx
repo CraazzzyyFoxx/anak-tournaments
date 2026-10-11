@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -38,9 +38,6 @@ import {
 
 /** The demoted share/close tools: quiet glyphs that only light up on hover. */
 const TOOL_ICON_CLASS = "size-9 text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]";
-
-/** How long the lineup has to sit still before this lobby's Discord card is re-sent. */
-const LINEUP_REFRESH_DELAY_MS = 2_000;
 
 type PickupTeamsPanelProps = {
   canWrite: boolean;
@@ -95,11 +92,7 @@ type PickupTeamsPanelProps = {
   onCopyBattleTags: () => void;
   postingToDiscord?: boolean;
   /** Omitted -- no Post to Discord button, matching a page that offers no post. */
-  onPostToDiscord?: (variantIndex: number, image: Blob | null) => void;
-  /** The id of this lobby's live lineup card, or `null` -- nothing in Discord to keep in step. */
-  liveLineupPostId?: number | null;
-  /** Omitted -- a lineup change is not re-sent to Discord. */
-  onRefreshLineup?: (image: Blob | null) => void;
+  onPostToDiscord?: (variantIndex: number) => void;
   /** Replaces the "No teams yet" card while this lobby has no balance. */
   emptyState?: ReactNode;
 };
@@ -147,8 +140,6 @@ export function PickupTeamsPanel({
   onCopyBattleTags,
   postingToDiscord = false,
   onPostToDiscord,
-  liveLineupPostId = null,
-  onRefreshLineup,
   emptyState
 }: Readonly<PickupTeamsPanelProps>) {
   const t = useTranslations("mixes.lobbies");
@@ -162,46 +153,7 @@ export function PickupTeamsPanel({
   const lobbyCount = game?.lobby_count ?? 1;
   // The matchup card is a self-contained graphic, so "share the teams" here needs
   // no detour through the fullscreen board.
-  const { ref: captureRef, capturing, capture, rasterize } = useNodeCapture();
-  // The lobby's newest Discord card follows what this host sees: a lineup change
-  // (rebalance, swap, another option, map, team names) recaptures the card and
-  // re-sends it, once the edits stop for a moment. Keyed by content, so a refetch
-  // that changes nothing sends nothing.
-  // ponytail: a change made in the last 2 s before leaving the page is not sent.
-  const lineupSignature = JSON.stringify([
-    variant?.teams ?? null,
-    lobby?.next_map_id ?? null,
-    teamNames
-  ]);
-  const shown = useRef({ lobbyIndex, signature: lineupSignature });
-  // Read, never re-run on: a changed handler identity must not restart the
-  // debounce. Declared first, so it is already current when the effect below
-  // runs in the same commit.
-  const refresh = useRef({ canWrite, liveLineupPostId, onRefreshLineup, rasterize });
-  useEffect(() => {
-    refresh.current = { canWrite, liveLineupPostId, onRefreshLineup, rasterize };
-  });
-  useEffect(() => {
-    const previous = shown.current;
-    shown.current = { lobbyIndex, signature: lineupSignature };
-    // A tab switch shows another lobby's lineup; that lobby's card is not stale.
-    if (previous.lobbyIndex !== lobbyIndex || previous.signature === lineupSignature) return;
-    const scheduled = refresh.current;
-    if (!scheduled.canWrite || !scheduled.onRefreshLineup || scheduled.liveLineupPostId == null) return;
-    const timer = window.setTimeout(() => {
-      // Read live, never from the schedule-time snapshot: `rasterize` is rebuilt
-      // around the `capturing` guard, so a frozen one either runs a second
-      // capture over a manual copy or refuses forever after it. The write gate
-      // is re-checked for the same reason -- it can close inside the window.
-      const now = refresh.current;
-      if (!now.canWrite || !now.onRefreshLineup || now.liveLineupPostId == null) return;
-      void now
-        .rasterize()
-        .catch(() => null)
-        .then((image) => refresh.current.onRefreshLineup?.(image));
-    }, LINEUP_REFRESH_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [lineupSignature, lobbyIndex]);
+  const { ref: captureRef, capturing, capture } = useNodeCapture();
   const [closeOpen, setCloseOpen] = useState(false);
   // A balance replaces this lobby's lineup. If the lineup on screen was never
   // played into the log, that is a result about to be lost, so it is the one
@@ -488,18 +440,9 @@ export function PickupTeamsPanel({
                     variant="ghost"
                     size="icon"
                     className={TOOL_ICON_CLASS}
-                    disabled={postingToDiscord || capturing}
+                    disabled={postingToDiscord}
                     aria-label="Post to Discord"
-                    onClick={() => {
-                      // The same rasterised card "Copy image" produces, sent as
-                      // the attachment: the bot has no renderer, and a host who
-                      // shares the matchup means the card, not a transcript of
-                      // it. A failed capture posts without one -- the server
-                      // falls back to the text embed rather than to nothing.
-                      void rasterize()
-                        .catch(() => null)
-                        .then((image) => onPostToDiscord(index, image));
-                    }}
+                    onClick={() => onPostToDiscord(index)}
                   >
                     {postingToDiscord ? (
                       <Spinner />

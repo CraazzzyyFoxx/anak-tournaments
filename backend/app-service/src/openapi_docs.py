@@ -133,11 +133,21 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.compare": {
         "summary": "Compare users",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a head-to-head comparison between the given user and others, resolved against the default division grid.",
+        "description": (
+            "Permission: public; no authentication required, though a hidden tournament 404s unless the "
+            "optional identity may view it. Returns a head-to-head comparison between the given user and "
+            "others, resolved against the `workspace_id` workspace's division grid and tournaments, or "
+            "across every workspace with `workspace_id=all` (the default)."
+        ),
     },
     "rpc.app.users.compare_heroes": {
         "summary": "Compare user heroes",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-hero head-to-head comparison for the given user against others using the default grid.",
+        "description": (
+            "Permission: public; no authentication required, though a hidden tournament 404s unless the "
+            "optional identity may view it. Returns a per-hero head-to-head comparison for the given user "
+            "against others, resolved against the `workspace_id` workspace's division grid and tournaments, "
+            "or across every workspace with `workspace_id=all` (the default)."
+        ),
     },
     "rpc.app.users.by_name": {
         "summary": "Get user by name",

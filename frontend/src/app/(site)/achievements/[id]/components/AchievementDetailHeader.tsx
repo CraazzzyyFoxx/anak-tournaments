@@ -1,51 +1,39 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
-import { HeroFrame, HeroCoord, HeroStat } from "@/components/site/PageHero";
+import { HeroFrame, HeroStat } from "@/components/site/PageHero";
+import { AchievementArt } from "@/components/achievements/AchievementArt";
+import { Badge } from "@/components/ui/badge";
 import type { Achievement } from "@/types/achievement.types";
-import { classifyRarity, rarityTitles } from "@/app/(site)/users/components/achievements/rarity";
+import { classifyRarity, localizedText } from "@/lib/achievements/rarity";
 
-interface Props {
-  achievement: Achievement;
-}
-
-/** Detail-page identity banner: rarity-framed crest, name, description, tag
- *  pills and a compact stats trio. Rarity tint is inherited from `--rar` set
- *  on the page root, so this stays a plain presentational block. */
-const AchievementDetailHeader = ({ achievement }: Props) => {
+/** Detail-page identity banner: rarity-framed crest, name, description, tags
+ *  and two figures. The rarity tint is inherited from `--rar` on the page root. */
+const AchievementDetailHeader = ({ achievement }: { achievement: Achievement }) => {
   const t = useTranslations();
+  const locale = useLocale();
   const format = useFormatter();
-  const rarity = classifyRarity(achievement.rarity * 100);
-  const titles = rarityTitles(t);
-  const imgSrc = achievement.image_url ?? `/achievements/${achievement.slug}.webp`;
-  const description = achievement.description_ru || achievement.description_en;
+  const holders = achievement.count ?? 0;
+  const description = localizedText(locale, achievement.description_ru, achievement.description_en);
 
   return (
     <HeroFrame>
       <div className="flex flex-col gap-7 px-6 py-8 md:px-10 md:py-9 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-start gap-5">
-          <div className="aqt-ach-crest">
-            <Image src={imgSrc} alt={achievement.name} fill sizes="132px" quality={100} />
-          </div>
+        <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-start">
+          <AchievementArt achievement={achievement} sizes="132px" className="aqt-ach-crest" />
 
           <div className="flex min-w-0 flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <Link
-                href="/achievements"
-                className="inline-flex items-center gap-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)] transition-colors hover:text-[color:var(--aqt-teal)]"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-                {t("achievements.detail.backToCatalog")}
-              </Link>
-              {achievement.category ? (
-                <HeroCoord>{t(`achievements.category.${achievement.category}`)}</HeroCoord>
-              ) : null}
-            </div>
+            <Link
+              href="/achievements"
+              className="inline-flex items-center gap-1.5 self-start text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)] transition-colors hover:text-[color:var(--aqt-teal)]"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+              {t("achievements.detail.backToCatalog")}
+            </Link>
 
             <h1 className="font-onest text-[clamp(1.7rem,3.4vw,2.6rem)] font-semibold leading-[1.05] tracking-[-0.01em] text-[color:var(--aqt-fg)]">
               {achievement.name}
@@ -58,27 +46,36 @@ const AchievementDetailHeader = ({ achievement }: Props) => {
             ) : null}
 
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="aqt-meta-pill rar">{titles[rarity]}</span>
+              {holders > 0 ? (
+                <Badge
+                  shape="pill"
+                  className="border-[hsl(var(--rar)/0.4)] bg-[hsl(var(--rar)/0.08)] font-semibold text-[hsl(var(--rar))]"
+                >
+                  {t(`achievements.rarityName.${classifyRarity(achievement.rarity * 100)}`)}
+                </Badge>
+              ) : null}
+              {achievement.category ? (
+                <Badge variant="secondary" shape="pill">
+                  {t(`achievements.category.${achievement.category}`)}
+                </Badge>
+              ) : null}
               {achievement.scope ? (
-                <span className="aqt-meta-pill">{t(`achievements.scope.${achievement.scope}`)}</span>
+                <Badge variant="secondary" shape="pill">
+                  {t(`achievements.scope.${achievement.scope}`)}
+                </Badge>
               ) : null}
             </div>
           </div>
         </div>
 
-        <div className="grid shrink-0 grid-cols-2 gap-x-8 gap-y-5 border-t border-[color:var(--aqt-border)] pt-6 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0">
-          <HeroStat
-            label={t("achievements.stats.rarest")}
-            value={
-              <span className="aqt-rar-fg">{(achievement.rarity * 100).toFixed(2)}%</span>
-            }
-            sub={t("achievements.detail.rarityShare")}
-          />
-          <HeroStat
-            label={t("achievements.stats.totalEarned")}
-            value={format.number(achievement.count ?? 0)}
-            sub={t("achievements.detail.timesAwarded")}
-          />
+        <div className="flex shrink-0 gap-x-10 gap-y-5 border-t border-[color:var(--aqt-border)] pt-6 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-10">
+          {holders > 0 ? (
+            <HeroStat
+              label={t("achievements.detail.rarity")}
+              value={<span className="aqt-rar-fg">{(achievement.rarity * 100).toFixed(2)}%</span>}
+            />
+          ) : null}
+          <HeroStat label={t("common.playersLabel")} value={format.number(holders)} />
         </div>
       </div>
     </HeroFrame>

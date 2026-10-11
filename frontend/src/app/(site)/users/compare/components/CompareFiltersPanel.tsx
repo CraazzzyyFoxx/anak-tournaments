@@ -1,24 +1,24 @@
 "use client";
 
-import { useMemo } from "react";
-import Image from "next/image";
+import { useMemo, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
 import { CompareScope } from "@/app/(site)/users/compare/types";
-import { getDivisionOptions, ROLE_FILTER_OPTIONS } from "@/app/(site)/users/compare/constants";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { parseOptionalInt, getMapIconSrc, roleLabelKey } from "@/app/(site)/users/compare/utils";
+import { ROLE_FILTER_OPTIONS } from "@/app/(site)/users/compare/constants";
+import { parseOptionalInt, getMapIconSrc } from "@/app/(site)/users/compare/utils";
 import { roleImageSrc } from "@/lib/roster/player-role";
+import type { DivisionGridLike } from "@/lib/divisions/grid";
 import UserSearchCombobox from "@/app/(site)/users/compare/components/UserSearchCombobox";
 import SearchableImageSelect, {
   type SearchableImageOption,
 } from "@/components/ui/searchable-image-select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { DivisionCombobox } from "@/components/DivisionCombobox";
 import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
 import { Hero } from "@/types/hero.types";
 import { MapRead } from "@/types/map.types";
 import { Tournament } from "@/types/tournament.types";
 import { UserRoleType } from "@/types/user.types";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface CompareFiltersPanelProps {
   subjectUserId?: number;
@@ -36,6 +36,8 @@ interface CompareFiltersPanelProps {
   selectedTargetName?: string;
   subjectNameLoading?: boolean;
   targetNameLoading?: boolean;
+  /** The grid the backend reads div_min/div_max against. */
+  divisionGrid: DivisionGridLike;
   heroes: Hero[];
   maps: MapRead[];
   tournaments: Tournament[];
@@ -47,6 +49,16 @@ interface CompareFiltersPanelProps {
   isTournamentsError: boolean;
   updateParams: (updates: Record<string, string | number | undefined>) => void;
 }
+
+const SECTION_LABEL =
+  "aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+
+const FilterField = ({ label, children }: Readonly<{ label: string; children: ReactNode }>) => (
+  <div className="flex min-w-0 flex-col gap-1.5">
+    <span className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{label}</span>
+    {children}
+  </div>
+);
 
 const CompareFiltersPanel = ({
   subjectUserId,
@@ -64,6 +76,7 @@ const CompareFiltersPanel = ({
   selectedTargetName,
   subjectNameLoading = false,
   targetNameLoading = false,
+  divisionGrid,
   heroes,
   maps,
   tournaments,
@@ -76,8 +89,6 @@ const CompareFiltersPanel = ({
   updateParams
 }: CompareFiltersPanelProps) => {
   const t = useTranslations();
-  const grid = useDivisionGrid();
-  const divisionOptions = getDivisionOptions(grid);
   const heroOptions: SearchableImageOption[] = useMemo(
     () =>
       heroes.map((hero) => ({
@@ -98,73 +109,31 @@ const CompareFiltersPanel = ({
     [maps]
   );
 
+  const roleOptions: SearchableImageOption[] = ROLE_FILTER_OPTIONS.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+    imageSrc: roleImageSrc(option.value)
+  }));
+
   const isHeroScope = scope === "hero";
 
-  const renderDivisionBoundSelect = (bound: "min" | "max") => {
-    const value = bound === "min" ? divMin : divMax;
-    const fieldKey = bound === "min" ? "div_min" : "div_max";
-    const labelKey = bound === "min" ? "divisionMin" : "divisionMax";
-
-    return (
-      <div className="space-y-1">
-        <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">
-          {t(`users.compare.filters.${labelKey}`)}
-        </div>
-        <Select
-          value={value ? String(value) : "all"}
-          disabled={isTargetBaseline}
-          onValueChange={(v) =>
-            updateParams({ [fieldKey]: v === "all" ? undefined : parseOptionalInt(v) })
-          }
-        >
-          <SelectTrigger className="liquid-glass-panel h-8" aria-label={t(`users.compare.filters.${labelKey}`)}>
-            <div className="flex items-center gap-2">
-              {value ? (
-                <Image
-                  src={`/divisions/${value}.png`}
-                  alt={t("common.divisionWithId", { id: String(value) })}
-                  width={22}
-                  height={22}
-                  className="h-5.5 w-5.5"
-                />
-              ) : null}
-              <span className="truncate">
-                {value ? t("common.divisionWithId", { id: String(value) }) : t("common.any")}
-              </span>
-            </div>
-          </SelectTrigger>
-          <SelectContent className="liquid-glass-panel">
-            <SelectItem value="all">{t("common.any")}</SelectItem>
-            {divisionOptions.map((division) => (
-              <SelectItem key={`${bound}-${division}`} value={String(division)}>
-                <div className="flex items-center gap-2">
-                  <Image
-                    src={`/divisions/${division}.png`}
-                    alt={t("common.divisionWithId", { id: String(division) })}
-                    width={20}
-                    height={20}
-                    className="h-5 w-5"
-                  />
-                  <span>{t("common.divisionWithId", { id: String(division) })}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    );
+  const setDivisionBound = (bound: "min" | "max", division: number | undefined) => {
+    let nextMin = bound === "min" ? division : divMin;
+    let nextMax = bound === "max" ? division : divMax;
+    // The API takes division numbers and rejects min > max; a crossed pick
+    // swaps the bounds instead of producing a request that can only fail.
+    if (nextMin !== undefined && nextMax !== undefined && nextMin > nextMax) {
+      [nextMin, nextMax] = [nextMax, nextMin];
+    }
+    updateParams({ div_min: nextMin, div_max: nextMax });
   };
 
   return (
-    <div className="space-y-0">
-      {/* ── Row 1: Players ── */}
-      <div className="space-y-2">
-        <div className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("common.playersLabel")}
-        </div>
+    <div className="space-y-5">
+      <section className="space-y-3">
+        <h2 className={SECTION_LABEL}>{t("common.playersLabel")}</h2>
         <div className="grid gap-3 md:grid-cols-2">
-          <div className="space-y-1">
-            <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("users.compare.selectedUser")}</div>
+          <FilterField label={t("users.compare.selectedUser")}>
             <UserSearchCombobox
               value={subjectUserId}
               selectedName={selectedSubjectName}
@@ -177,10 +146,9 @@ const CompareFiltersPanel = ({
                 }
               }}
             />
-          </div>
+          </FilterField>
 
-          <div className="space-y-1">
-            <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("users.compare.compareAgainst")}</div>
+          <FilterField label={t("users.compare.compareAgainst")}>
             <UserSearchCombobox
               value={targetUserId}
               selectedName={selectedTargetName}
@@ -199,106 +167,93 @@ const CompareFiltersPanel = ({
                 updateParams({ target_user_id: undefined });
               }}
             />
-          </div>
+          </FilterField>
         </div>
-      </div>
+      </section>
 
-      {/* ── Separator ── */}
-      <div className="border-t border-[color:var(--aqt-border)] my-4" />
-
-      {/* ── Row 2: Filters ── */}
-      <div className="space-y-2">
-        <div className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("users.compare.filters.title")}
+      <section className="space-y-3 border-t border-[color:var(--aqt-border)] pt-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className={SECTION_LABEL}>{t("users.compare.filters.title")}</h2>
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            value={scope}
+            onValueChange={(value) => updateParams({ scope: value as CompareScope })}
+            aria-label={t("users.compare.filters.compareScope")}
+          >
+            <ToggleGroupItem value="overall">
+              {t("users.compare.filters.overallPerformance")}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="hero">
+              {t("users.compare.filters.heroMapPerformance")}
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          <div className="space-y-1">
-            <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("users.compare.filters.compareScope")}</div>
-            <Select value={scope} onValueChange={(value) => updateParams({ scope: value as CompareScope })}>
-              <SelectTrigger className="liquid-glass-panel h-8" aria-label={t("users.compare.filters.compareScope")}>
-                <SelectValue placeholder={t("users.compare.filters.scopePlaceholder")} />
-              </SelectTrigger>
-              <SelectContent className="liquid-glass-panel">
-                <SelectItem value="overall">{t("users.compare.filters.overallPerformance")}</SelectItem>
-                <SelectItem value="hero">{t("users.compare.filters.heroMapPerformance")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
-          <div className="space-y-1">
-            <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("users.compare.filters.roleFilter")}</div>
-            <Select
-              value={role ?? "all"}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <FilterField label={t("users.compare.filters.roleFilter")}>
+            <SearchableImageSelect
+              value={role}
+              onValueChange={(value) => updateParams({ role: value })}
+              options={roleOptions}
+              placeholder={t("users.compare.allRoles")}
+              ariaLabel={t("users.compare.filters.roleFilter")}
               disabled={isTargetBaseline}
-              onValueChange={(value) => updateParams({ role: value === "all" ? undefined : value })}
-            >
-              <SelectTrigger className="liquid-glass-panel h-8" aria-label={t("users.compare.filters.roleFilter")}>
-                <div className="flex items-center gap-2">
-                  {role ? (
-                    <Image
-                      src={roleImageSrc(role)}
-                      alt={t("users.compare.filters.roleIconAlt", { role: t(roleLabelKey(role)) })}
-                      width={22}
-                      height={22}
-                      className="h-5.5 w-5.5"
-                    />
-                  ) : null}
-                  <span className="truncate">{role ? t(roleLabelKey(role)) : t("users.compare.allRoles")}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent className="liquid-glass-panel">
-                {ROLE_FILTER_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    <div className="flex items-center gap-2">
-                      {option.value === "all" ? null : (
-                        <Image
-                          src={roleImageSrc(option.value)}
-                          alt={t("users.compare.filters.roleIconAlt", { role: t(option.labelKey) })}
-                          width={20}
-                          height={20}
-                          className="h-5 w-5"
-                        />
-                      )}
-                      <span>{t(option.labelKey)}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            />
+          </FilterField>
 
-          {renderDivisionBoundSelect("min")}
+          <FilterField label={t("users.compare.filters.divisionMin")}>
+            <DivisionCombobox
+              value={divMin}
+              onValueChange={(division) => setDivisionBound("min", division)}
+              grid={divisionGrid}
+              ariaLabel={t("users.compare.filters.divisionMin")}
+              disabled={isTargetBaseline}
+            />
+          </FilterField>
 
-          {renderDivisionBoundSelect("max")}
+          <FilterField label={t("users.compare.filters.divisionMax")}>
+            <DivisionCombobox
+              value={divMax}
+              onValueChange={(division) => setDivisionBound("max", division)}
+              grid={divisionGrid}
+              ariaLabel={t("users.compare.filters.divisionMax")}
+              disabled={isTargetBaseline}
+            />
+          </FilterField>
 
-          <div className="space-y-1">
-            <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("common.tournament")}</div>
+          <FilterField label={t("common.tournament")}>
             <TournamentCombobox
               tournaments={tournaments}
               value={tournamentId}
               onValueChange={(id) => updateParams({ tournament_id: id })}
+              ariaLabel={t("common.tournament")}
               isLoading={isTournamentsLoading}
               disabled={isTournamentsLoading || isTournamentsError}
             />
-          </div>
+          </FilterField>
         </div>
-      </div>
 
-      {/* ── Row 3: Hero & Map (animated reveal) ── */}
+        {isTargetBaseline ? (
+          <p className="text-xs text-[color:var(--aqt-fg-dim)]">
+            {t("users.compare.filters.cohortLockedHint")}
+          </p>
+        ) : null}
+      </section>
+
+      {/* Hero & map: revealed with the scope; `inert` keeps the collapsed
+          pickers out of the tab order. */}
       <div
-        className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+        className="grid transition-[grid-template-rows] duration-300 ease-in-out motion-reduce:transition-none"
         style={{ gridTemplateRows: isHeroScope ? "1fr" : "0fr" }}
+        inert={!isHeroScope}
       >
         <div className="overflow-hidden">
-          <div className="border-t border-[color:var(--aqt-border)] mt-4 mb-4" />
-
-          <div className="space-y-2 pb-0.5">
-            <div className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-              {t("users.compare.filters.heroAndMap")}
-            </div>
+          <section className="space-y-3 border-t border-[color:var(--aqt-border)] pt-5 pb-0.5">
+            <h2 className={SECTION_LABEL}>{t("users.compare.filters.heroAndMap")}</h2>
             <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-1">
-                <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("users.compare.filters.primaryHero")}</div>
+              <FilterField label={t("users.compare.filters.primaryHero")}>
                 <SearchableImageSelect
                   value={leftHeroId ? String(leftHeroId) : undefined}
                   onValueChange={(val) => {
@@ -308,13 +263,13 @@ const CompareFiltersPanel = ({
                   options={heroOptions}
                   placeholder={t("users.compare.allHeroes")}
                   searchPlaceholder={t("users.compare.filters.searchHero")}
+                  ariaLabel={t("users.compare.filters.primaryHero")}
                   isLoading={isHeroesLoading}
                   disabled={isHeroesLoading || isHeroesError}
                 />
-              </div>
+              </FilterField>
 
-              <div className="space-y-1">
-                <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("users.compare.filters.compareHero")}</div>
+              <FilterField label={t("users.compare.filters.compareHero")}>
                 <SearchableImageSelect
                   value={rightHeroId ? String(rightHeroId) : undefined}
                   onValueChange={(val) =>
@@ -323,13 +278,13 @@ const CompareFiltersPanel = ({
                   options={heroOptions}
                   placeholder={t("users.compare.allHeroes")}
                   searchPlaceholder={t("users.compare.filters.searchHero")}
+                  ariaLabel={t("users.compare.filters.compareHero")}
                   isLoading={isHeroesLoading}
                   disabled={isHeroesLoading || isHeroesError}
                 />
-              </div>
+              </FilterField>
 
-              <div className="space-y-1">
-                <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("users.compare.filters.mapFilter")}</div>
+              <FilterField label={t("users.compare.filters.mapFilter")}>
                 <SearchableImageSelect
                   value={mapId ? String(mapId) : undefined}
                   onValueChange={(val) =>
@@ -338,12 +293,13 @@ const CompareFiltersPanel = ({
                   options={mapOptions}
                   placeholder={t("users.compare.filters.allMaps")}
                   searchPlaceholder={t("users.compare.filters.searchMap")}
+                  ariaLabel={t("users.compare.filters.mapFilter")}
                   isLoading={isMapsLoading}
                   disabled={isMapsLoading || isMapsError}
                 />
-              </div>
+              </FilterField>
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </div>

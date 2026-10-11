@@ -42,12 +42,20 @@ export interface RuleLeafFieldsProps {
   controlName: (field: string) => string;
 }
 
-/** Every string the canvas itself renders. The builder is engine-agnostic, so
- *  its chrome is the caller's to translate. */
-export interface RuleBuilderLabels {
+/** The chrome a read-only canvas renders. The builder is engine-agnostic, so
+ *  its strings are the caller's to translate. */
+export interface RuleBuilderViewLabels {
   outlineTitle: string;
   /** How the outline names one group row, e.g. "1.2 AND group". */
   outlineGroup: (path: string, op: string) => string;
+  fullscreen: string;
+  fullscreenLabel: string;
+  exitFullscreen: string;
+  exitFullscreenLabel: string;
+}
+
+/** Everything above plus the strings only an editable canvas renders. */
+export interface RuleBuilderEditLabels extends RuleBuilderViewLabels {
   paletteSearchPlaceholder: string;
   paletteSearchLabel: string;
   paletteHint: string;
@@ -65,10 +73,6 @@ export interface RuleBuilderLabels {
   leafTypeLabel: (path: string) => string;
   /** Accessible name of one parameter control inside a leaf node. */
   leafFieldLabel: (field: string, leafLabel: string, path: string) => string;
-  fullscreen: string;
-  fullscreenLabel: string;
-  exitFullscreen: string;
-  exitFullscreenLabel: string;
 }
 
 /**
@@ -78,14 +82,28 @@ export interface RuleBuilderLabels {
  * every node would rebuild the whole layout whenever the catalogue query
  * resolves — so the per-instance registry travels by context, while the
  * per-node callbacks travel in `data`.
+ *
+ * A read-only builder has no type picker and no parameter form, so the parts
+ * that only an editor needs are absent rather than stubbed.
  */
 export interface RuleBuilderConfig {
-  leafOptions: RuleLeafOption[];
+  leafOptions?: RuleLeafOption[];
   defaultLeafType: string;
   labelForLeaf: (type: string | undefined) => string;
   summarizeLeaf: (type: string, params: Record<string, unknown>) => string;
-  renderLeafFields: (props: RuleLeafFieldsProps) => ReactNode;
-  labels: RuleBuilderLabels;
+  renderLeafFields?: (props: RuleLeafFieldsProps) => ReactNode;
+  labels: RuleBuilderViewLabels;
+}
+
+/**
+ * The editing strings of a config that is rendering editable nodes.
+ *
+ * Only a builder constructed with `RuleBuilderEditLabels` ever renders the
+ * branches below — `readOnly` nodes return before reaching them — so the
+ * narrowing the type system cannot see is restated here once.
+ */
+function editLabels(config: RuleBuilderConfig): RuleBuilderEditLabels {
+  return config.labels as RuleBuilderEditLabels;
 }
 
 export const RuleBuilderContext = createContext<RuleBuilderConfig | null>(null);
@@ -114,13 +132,29 @@ type LeafNodeData = FlatNode & {
 };
 
 export function LogicalNode({ data, id }: NodeProps) {
-  const { labels } = useRuleBuilderConfig();
+  const config = useRuleBuilderConfig();
   const d = data as unknown as LogicalNodeData;
   const op = d.logicalOp ?? "AND";
   const color = LOGICAL_COLORS[op];
+  const path = d.path ?? "1";
+
+  if (d.readOnly) {
+    return (
+      <div className="rounded-lg border-2 px-4 py-2 bg-card shadow-md" style={{ borderColor: color }}>
+        <Handle type="target" position={Position.Left} aria-hidden style={{ background: HANDLE_COLOR }} />
+        <div className="flex items-center gap-2">
+          <span className="text-xs tabular-nums text-muted-foreground">{path}</span>
+          <span className="text-xs font-bold px-2" style={{ color }}>{op}</span>
+        </div>
+        <Handle type="source" position={Position.Right} aria-hidden style={{ background: HANDLE_COLOR }} />
+      </div>
+    );
+  }
+
+  const labels = editLabels(config);
   // Every control below is named by tree position, never by `id` — a node id
   // like "node_7" is a DOM detail and says nothing about which group is meant.
-  const groupName = labels.groupName(d.path ?? "1");
+  const groupName = labels.groupName(path);
 
   return (
     <div
@@ -129,62 +163,54 @@ export function LogicalNode({ data, id }: NodeProps) {
     >
       <Handle type="target" position={Position.Left} aria-hidden style={{ background: HANDLE_COLOR }} />
       <div className="flex items-center gap-2">
-        <span className="text-xs tabular-nums text-muted-foreground">{d.path ?? "1"}</span>
-        {d.readOnly ? (
-          <span className="text-xs font-bold px-2" style={{ color }}>{op}</span>
-        ) : (
-          <Select value={op} onValueChange={(val) => d.onChangeOp?.(id, val)}>
-            <SelectTrigger
-              className="w-20 h-8 text-xs font-bold"
-              style={{ color }}
-              aria-label={labels.operatorLabel(groupName)}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {LOGICAL_OPS.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {value}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {!d.readOnly && (
-          <>
-            <div className="flex-1" />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => d.onAddChild?.(id, "leaf")}
-              title={labels.addLeaf}
-              aria-label={labels.addLeafLabel(groupName)}
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => d.onAddChild?.(id, "logical")}
-              title={labels.addGroup}
-              aria-label={labels.addGroupLabel(groupName)}
-            >
-              <FolderPlus className="h-3.5 w-3.5" aria-hidden />
-            </Button>
-            {d.parentId && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => d.onDelete?.(id)}
-                aria-label={labels.deleteGroupLabel(groupName)}
-              >
-                <Trash2 className="h-3.5 w-3.5 text-destructive" aria-hidden />
-              </Button>
-            )}
-          </>
+        <span className="text-xs tabular-nums text-muted-foreground">{path}</span>
+        <Select value={op} onValueChange={(val) => d.onChangeOp?.(id, val)}>
+          <SelectTrigger
+            className="w-20 h-8 text-xs font-bold"
+            style={{ color }}
+            aria-label={labels.operatorLabel(groupName)}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LOGICAL_OPS.map((value) => (
+              <SelectItem key={value} value={value}>
+                {value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex-1" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={() => d.onAddChild?.(id, "leaf")}
+          title={labels.addLeaf}
+          aria-label={labels.addLeafLabel(groupName)}
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={() => d.onAddChild?.(id, "logical")}
+          title={labels.addGroup}
+          aria-label={labels.addGroupLabel(groupName)}
+        >
+          <FolderPlus className="h-3.5 w-3.5" aria-hidden />
+        </Button>
+        {d.parentId && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => d.onDelete?.(id)}
+            aria-label={labels.deleteGroupLabel(groupName)}
+          >
+            <Trash2 className="h-3.5 w-3.5 text-destructive" aria-hidden />
+          </Button>
         )}
       </div>
       <Handle type="source" position={Position.Right} aria-hidden style={{ background: HANDLE_COLOR }} />
@@ -196,18 +222,9 @@ export function LeafNode({ data, id }: NodeProps) {
   const config = useRuleBuilderConfig();
   const d = data as unknown as LeafNodeData;
   const leafType = d.leafType ?? config.defaultLeafType;
-  // Before the catalogue resolves the list is empty — keep the node's own type
-  // selectable so the control never renders blank.
-  const options =
-    config.leafOptions.length > 0
-      ? config.leafOptions
-      : [{ value: leafType, label: config.labelForLeaf(leafType) }];
   const params = d.params ?? {};
-
-  const setParam = (key: string, value: unknown) => d.onChangeParam?.(id, key, value);
   const label = config.labelForLeaf(d.leafType);
   const path = d.path ?? "1";
-  const controlName = (field: string) => config.labels.leafFieldLabel(field, label, path);
 
   if (d.readOnly) {
     const summary = config.summarizeLeaf(leafType, params);
@@ -226,6 +243,14 @@ export function LeafNode({ data, id }: NodeProps) {
     );
   }
 
+  const labels = editLabels(config);
+  // Before the catalogue resolves the list is empty — keep the node's own type
+  // selectable so the control never renders blank.
+  const options =
+    config.leafOptions && config.leafOptions.length > 0
+      ? config.leafOptions
+      : [{ value: leafType, label: config.labelForLeaf(leafType) }];
+
   return (
     <div
       className="rounded-lg border-2 px-3 py-2 bg-card shadow-md space-y-2"
@@ -235,7 +260,7 @@ export function LeafNode({ data, id }: NodeProps) {
       <div className="flex items-center gap-2">
         <span className="text-xs tabular-nums text-muted-foreground">{path}</span>
         <Select value={leafType} onValueChange={(val) => d.onChangeType?.(id, val)}>
-          <SelectTrigger className="h-7 text-xs flex-1" aria-label={config.labels.leafTypeLabel(path)}>
+          <SelectTrigger className="h-7 text-xs flex-1" aria-label={labels.leafTypeLabel(path)}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -252,14 +277,20 @@ export function LeafNode({ data, id }: NodeProps) {
             size="icon"
             className="h-6 w-6"
             onClick={() => d.onDelete?.(id)}
-            aria-label={config.labels.deleteLeafLabel(label, path)}
+            aria-label={labels.deleteLeafLabel(label, path)}
           >
             <Trash2 className="h-3.5 w-3.5 text-destructive" aria-hidden />
           </Button>
         )}
       </div>
 
-      {config.renderLeafFields({ nodeId: id, leafType: d.leafType, params, setParam, controlName })}
+      {config.renderLeafFields?.({
+        nodeId: id,
+        leafType: d.leafType,
+        params,
+        setParam: (key, value) => d.onChangeParam?.(id, key, value),
+        controlName: (field) => labels.leafFieldLabel(field, label, path),
+      })}
     </div>
   );
 }

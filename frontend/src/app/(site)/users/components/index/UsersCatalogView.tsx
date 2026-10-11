@@ -1,202 +1,228 @@
 "use client";
 
-import Image from "next/image";
+import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
-import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
-import { cn, initials } from "@/lib/utils";
-import { getPlayerSlug } from "@/lib/player";
-import { formatOptional } from "@/app/(site)/users/components/shared/list-utils";
-import type { UserCatalogEntry } from "@/types/user.types";
+import { HeroStrip } from "@/components/hero/HeroImage";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { PlaceBadge } from "@/components/ui/place-badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+import type { UserCatalogEntry, UserOverviewRow } from "@/types/user.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
-import { DivisionHex } from "./DivisionHex";
-import { ALPHABET, gridForRole, primaryRoleLabel, splitTag } from "./users-index.model";
+import {
+  CompareCheckbox,
+  LastActive,
+  PlayerAvatar,
+  PlayerName,
+  RolesCrests,
+  WinrateCell
+} from "./users-index.atoms";
+import { ALPHABET } from "./users-index.model";
+import type { CompareSelection } from "./UsersCompareBar";
 import type { UsersIndexData } from "./useUsersIndexData";
 import type { UsersIndexParamControls } from "./useUsersIndexParams";
-import styles from "./Users.module.css";
 
-/** A-Z browse view: one card grid per initial, with an alphabet jump bar. */
+/**
+ * One player as a card. Shared by the catalog and by the table view below `md`,
+ * where a ten-column table cannot be read at all.
+ */
+export function PlayerCard({
+  user,
+  grids,
+  minEncounters,
+  compare
+}: Readonly<{
+  user: UserCatalogEntry | UserOverviewRow;
+  grids: DivisionGridVersion[] | undefined;
+  minEncounters: number;
+  compare: CompareSelection;
+}>) {
+  const t = useTranslations();
+  const selected = compare.isSelected(user.id);
+
+  return (
+    <article className="flex flex-col gap-3 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-3">
+      <div className="flex items-start gap-2.5">
+        <PlayerAvatar user={user} size={40} />
+        <div className="min-w-0 flex-1">
+          <PlayerName name={user.name} className="block" />
+          <LastActive at={user.last_active_at} className="mt-0.5" />
+        </div>
+        <CompareCheckbox
+          user={user}
+          selected={selected}
+          disabled={compare.isFull && !selected}
+          onToggle={() => compare.toggle(user)}
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <RolesCrests roles={user.roles} grids={grids} size={26} />
+        <HeroStrip heroes={user.top_heroes.slice(0, 3).map((entry) => entry.hero)} limit={3} />
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 border-t border-[color:var(--aqt-border)] pt-2.5">
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+            {t("users.list.table.tournaments")}
+          </span>
+          <span className="font-semibold tabular-nums">{user.tournaments_count}</span>
+        </div>
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+            {t("users.list.table.winrate")}
+          </span>
+          <WinrateCell user={user} minEncounters={minEncounters} />
+        </div>
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+            {t("users.list.table.bestPlacement")}
+          </span>
+          {user.best_placement ? (
+            <PlaceBadge place={user.best_placement} />
+          ) : (
+            <span className="text-[color:var(--aqt-fg-faint)]">-</span>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+/** A-Z browse: an alphabet jump bar over one card grid per initial. */
 export function UsersCatalogView({
   controls,
-  data
+  data,
+  compare
 }: Readonly<{
   controls: UsersIndexParamControls;
   data: UsersIndexData;
+  compare: CompareSelection;
 }>) {
   const t = useTranslations();
-  const { letter } = controls.params;
+  const { letter, minEncounters } = controls.params;
   const { catalogQuery, availableLetters } = data;
 
   return (
-    <section>
-      <div className={styles.alphaBar}>
-        <span className={styles.alphaLabel}>{t("users.list.catalog.jumpTo")}</span>
-        <button
-          type="button"
-          className={cn(styles.alphaLink, !letter && styles.alphaLinkActive)}
-          onClick={() => controls.setLetter(null)}
-        >
+    <section className="space-y-4">
+      <nav
+        aria-label={t("users.list.catalog.jumpTo")}
+        className="flex flex-wrap items-center gap-1 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2"
+      >
+        <span className="mr-1 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+          {t("users.list.catalog.jumpTo")}
+        </span>
+        <LetterButton active={!letter} onClick={() => controls.setLetter(null)}>
           {t("common.all")}
-        </button>
+        </LetterButton>
         {ALPHABET.map((alpha) => {
-          const isAvailable = availableLetters.has(alpha);
+          const available = availableLetters.has(alpha);
           return (
-            <button
+            <LetterButton
               key={alpha}
-              type="button"
-              className={cn(
-                styles.alphaLink,
-                letter === alpha && styles.alphaLinkActive,
-                !isAvailable && !catalogQuery.isLoading && styles.alphaLinkDisabled
-              )}
-              disabled={!isAvailable && !catalogQuery.isLoading}
+              active={letter === alpha}
+              disabled={!available && !catalogQuery.isPending}
               onClick={() => controls.setLetter(alpha)}
             >
               {alpha}
-            </button>
+            </LetterButton>
           );
         })}
-      </div>
+      </nav>
 
       {catalogQuery.isError ? (
-        <p className={styles.errorMsg}>
-          {(catalogQuery.error as Error)?.message || t("users.list.errors.catalog")}
-        </p>
+        <PageStateCard
+          state="error"
+          description={(catalogQuery.error as Error)?.message || t("users.list.errors.catalog")}
+          onAction={() => catalogQuery.refetch()}
+        />
+      ) : catalogQuery.isPending ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <Skeleton key={`card-skeleton-${index}`} className="h-44 rounded-xl" />
+          ))}
+        </div>
       ) : catalogQuery.data && catalogQuery.data.letters.length > 0 ? (
         <>
           {catalogQuery.data.letters.map((bucket) => (
-            <div key={bucket.letter} className={styles.catSection}>
-              <h3 className={styles.catLetter}>{bucket.letter}</h3>
-              <div className={styles.catGrid}>
-                {bucket.users.map((cardUser) => (
-                  <CatalogCard
-                    key={cardUser.id}
-                    user={cardUser}
+            <div key={bucket.letter} className="space-y-2.5">
+              <h2 className="flex items-baseline gap-2 font-display text-title">
+                {bucket.letter}
+                <span className="text-label tabular-nums text-[color:var(--aqt-fg-faint)]">
+                  {bucket.count}
+                </span>
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {bucket.users.map((entry) => (
+                  <PlayerCard
+                    key={entry.id}
+                    user={entry}
                     grids={catalogQuery.data?.division_grids}
+                    minEncounters={minEncounters}
+                    compare={compare}
                   />
                 ))}
               </div>
+              {bucket.users.length < bucket.count ? (
+                <button
+                  type="button"
+                  onClick={() => controls.setLetter(bucket.letter)}
+                  className="aqt-filter-chip"
+                >
+                  {t("users.list.catalog.showMore", {
+                    count: bucket.count - bucket.users.length
+                  })}
+                </button>
+              ) : null}
             </div>
           ))}
-          <div
-            className={styles.paginationBar}
-            style={{
-              marginTop: 18,
-              border: "1px solid var(--u-border)",
-              borderRadius: 12,
-              borderTop: "1px solid var(--u-border)"
-            }}
-          >
-            <span className={styles.pageInfo}>
-              {t("users.list.catalog.showing", {
-                count: catalogQuery.data.letters.reduce((acc, b) => acc + b.users.length, 0),
-                total: catalogQuery.data.total
-              })}
-            </span>
-            <span className={styles.pageInfo}>
-              {catalogQuery.isFetching ? t("users.list.pagination.refreshing") : null}
-            </span>
-          </div>
+          <p className="text-label text-[color:var(--aqt-fg-faint)]">
+            {t("users.list.catalog.showing", {
+              count: catalogQuery.data.letters.reduce((acc, item) => acc + item.users.length, 0),
+              total: catalogQuery.data.total
+            })}
+          </p>
         </>
-      ) : catalogQuery.isPending ? (
-        <div className={styles.catSection}>
-          <div className={styles.catGrid}>
-            {Array.from({ length: 8 }).map((_, idx) => (
-              <div
-                key={`cat-skel-${idx}`}
-                className={cn(styles.catCard, styles.skelRow)}
-                style={{ height: 160 }}
-              />
-            ))}
-          </div>
-        </div>
       ) : (
-        <div className={styles.empty}>{t("users.list.empty")}</div>
+        <PageStateCard
+          state={controls.hasActiveFilters ? "filtered-empty" : "empty"}
+          description={t("users.list.empty")}
+          onAction={controls.hasActiveFilters ? controls.resetFilters : undefined}
+        />
       )}
     </section>
   );
 }
 
-function CatalogCard({
-  user,
-  grids
+function LetterButton({
+  active,
+  disabled,
+  onClick,
+  children
 }: Readonly<{
-  user: UserCatalogEntry;
-  grids: DivisionGridVersion[] | undefined;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
 }>) {
-  const t = useTranslations();
-  const { handle, tag } = splitTag(user.name);
-  const topHeroes = user.top_heroes.slice(0, 3);
-
   return (
-    <HoverPrefetchLink
-      href={`/users/${getPlayerSlug(user.name)}`}
-      className={styles.catCard}
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      aria-current={active ? "true" : undefined}
+      className={cn(
+        "inline-flex h-7 min-w-7 items-center justify-center rounded-[6px] px-1.5 text-caption outline-none transition-colors",
+        "focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+        active
+          ? "bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] text-[color:var(--aqt-teal)]"
+          : "text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]",
+        disabled && "cursor-not-allowed opacity-30 hover:bg-transparent"
+      )}
     >
-      <div className={styles.catCardTop}>
-        <div className={styles.catCardAvatar} aria-hidden>
-          {initials(user.name)}
-        </div>
-        <div className={styles.catCardInfo}>
-          <div className={styles.catCardName} title={user.name}>
-            {handle}
-            {tag ? <span className="tag">{tag}</span> : null}
-          </div>
-          <div className={styles.catCardMeta}>{primaryRoleLabel(user.roles, t)}</div>
-        </div>
-        <div className={styles.catCardRoles}>
-          {user.roles.map((roleRow) => (
-            <DivisionHex
-              key={`${user.id}-cat-${roleRow.role}-${roleRow.division}`}
-              role={roleRow.role}
-              division={roleRow.division}
-              roleGrid={gridForRole(roleRow, grids)}
-              size={28}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className={styles.catCardHeroes}>
-        <span>{t("users.list.table.topHeroes")}</span>
-        <div className={styles.catCardHeroesStrip}>
-          {topHeroes.length === 0 ? (
-            <span className={styles.playerSub}>—</span>
-          ) : (
-            topHeroes.map((heroRow) => (
-              <div
-                key={`${user.id}-heroes-${heroRow.hero.id}`}
-                className={styles.heroChip}
-                title={heroRow.hero.name}
-              >
-                <Image
-                  src={heroRow.hero.image_path}
-                  alt={heroRow.hero.name}
-                  width={28}
-                  height={28}
-                  className="object-contain select-none"
-                />
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      <div className={styles.catStats}>
-        <div className={styles.catStat}>
-          <span className={styles.catStatLabel}>{t("users.list.catalog.tournaments")}</span>
-          <span className={styles.catStatValue}>{user.tournaments_count}</span>
-        </div>
-        <div className={styles.catStat}>
-          <span className={styles.catStatLabel}>{t("users.list.catalog.achievements")}</span>
-          <span className={styles.catStatValue}>{user.achievements_count}</span>
-        </div>
-        <div className={styles.catStat}>
-          <span className={styles.catStatLabel}>{t("users.list.catalog.avgPlacement")}</span>
-          <span className={styles.catStatValue}>{formatOptional(user.avg_placement)}</span>
-        </div>
-      </div>
-    </HoverPrefetchLink>
+      {children}
+    </button>
   );
 }

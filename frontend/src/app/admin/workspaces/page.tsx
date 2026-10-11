@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -33,10 +34,12 @@ const PAGE_SIZE = 15;
 function WorkspaceIcon({ workspace }: Readonly<{ workspace: Workspace }>) {
   if (workspace.icon_url) {
     return (
-      <img
+      <Image
         src={workspace.icon_url}
         alt=""
         aria-hidden
+        width={32}
+        height={32}
         className="size-8 shrink-0 rounded-md border border-border object-cover"
       />
     );

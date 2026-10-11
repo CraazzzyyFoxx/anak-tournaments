@@ -1,5 +1,6 @@
 """Overview / catalog list queries for the ``/users`` grid."""
 
+import datetime
 import typing
 from collections import defaultdict
 
@@ -20,6 +21,8 @@ from ._scope import (
     _compare_player_scope_filters,
     _compare_team_scope_exists,
     _compare_tournament_scope_exists,
+    apply_has_logs_filter,
+    overview_division_number_expr,
     union_encounter_team_sides,
 )
 
@@ -28,13 +31,8 @@ if typing.TYPE_CHECKING:
 
 # Overview sorts whose ORDER BY is a correlated scalar subquery evaluated over the
 # whole filtered population (not just the page). Cached id-order applies to these.
-_EXPENSIVE_OVERVIEW_SORTS = frozenset({"tournaments_count", "achievements_count", "avg_placement"})
-
-OVERVIEW_HERO_METRICS: tuple[enums.LogStatsName, ...] = (
-    enums.LogStatsName.Eliminations,
-    enums.LogStatsName.FinalBlows,
-    enums.LogStatsName.HeroDamageDealt,
-    enums.LogStatsName.HealingDealt,
+_EXPENSIVE_OVERVIEW_SORTS = frozenset(
+    {"tournaments_count", "achievements_count", "avg_placement", "winrate", "best_placement"}
 )
 
 
@@ -50,13 +48,16 @@ class UserOverviewQueries:
         div_max: int | None,
         tournament_id: int | None,
         grid: DivisionGrid,
+        workspace_id: int | None = None,
         extra: typing.Sequence[typing.Any] = (),
     ) -> list[typing.Any]:
         """WHERE list shared by every correlated overview aggregate.
 
         ``extra`` slots in between the finished/league predicates and the
         optional tournament pin, which is where each caller used to put its own
-        extra predicate — keeping the emitted SQL order unchanged.
+        extra predicate — keeping the emitted SQL order unchanged. Every caller
+        joins ``Tournament``, so ``workspace_id`` scopes the aggregate to the
+        same workspace as the value the row displays.
         """
         where_conditions: list[typing.Any] = [
             *_compare_player_scope_filters(
@@ -72,6 +73,8 @@ class UserOverviewQueries:
             models.Tournament.is_league.is_(False),
             *extra,
         ]
+        if workspace_id is not None:
+            where_conditions.append(models.Tournament.workspace_id == workspace_id)
         if tournament_id is not None:
             where_conditions.append(models.Tournament.id == tournament_id)
         return where_conditions
@@ -127,6 +130,7 @@ class UserOverviewQueries:
         div_max: int | None = None,
         tournament_id: int | None = None,
         grid: DivisionGrid,
+        workspace_id: int | None = None,
     ) -> sa.ScalarSelect:
         where_conditions = self._overview_scope_where(
             user_id_column,
@@ -135,6 +139,7 @@ class UserOverviewQueries:
             div_max=div_max,
             tournament_id=tournament_id,
             grid=grid,
+            workspace_id=workspace_id,
         )
         return (
             sa.select(sa.func.count(sa.distinct(models.Team.tournament_id)))
@@ -154,9 +159,13 @@ class UserOverviewQueries:
         div_max: int | None = None,
         tournament_id: int | None = None,
         grid: DivisionGrid,
+        workspace_id: int | None = None,
     ) -> sa.ScalarSelect:
+        # The workspace filter lives inside the effective-rows subquery, the same
+        # way the displayed per-page count builds it.
         effective_rows = build_effective_achievement_rows_subquery(
             user_ids=None,
+            workspace_id=workspace_id,
             name="overview_effective_achievement_rows",
         )
         query = sa.select(sa.func.count(sa.distinct(effective_rows.c.achievement_rule_id))).where(
@@ -206,6 +215,7 @@ class UserOverviewQueries:
         div_max: int | None = None,
         tournament_id: int | None = None,
         grid: DivisionGrid,
+        workspace_id: int | None = None,
     ) -> sa.ScalarSelect:
         where_conditions = self._overview_scope_where(
             user_id_column,
@@ -214,6 +224,7 @@ class UserOverviewQueries:
             div_max=div_max,
             tournament_id=tournament_id,
             grid=grid,
+            workspace_id=workspace_id,
         )
         team_placement_subquery = (
             self._overview_standing_select(
@@ -228,6 +239,34 @@ class UserOverviewQueries:
         return (
             sa.select(sa.func.avg(team_placement_subquery.c.overall_position))
             .select_from(team_placement_subquery)
+            .scalar_subquery()
+        )
+
+    def _overview_best_placement_expr(
+        self,
+        user_id_column: sa.ColumnElement[typing.Any],
+        *,
+        role: enums.HeroClass | None = None,
+        div_min: int | None = None,
+        div_max: int | None = None,
+        tournament_id: int | None = None,
+        grid: DivisionGrid,
+        workspace_id: int | None = None,
+    ) -> sa.ScalarSelect:
+        """Best (lowest, positive) overall position — NULL when never placed."""
+        where_conditions = self._overview_scope_where(
+            user_id_column,
+            role=role,
+            div_min=div_min,
+            div_max=div_max,
+            tournament_id=tournament_id,
+            grid=grid,
+            workspace_id=workspace_id,
+            extra=(models.Standing.overall_position > 0,),
+        )
+        return (
+            self._overview_standing_select(sa.func.min(models.Standing.overall_position))
+            .where(*where_conditions)
             .scalar_subquery()
         )
 
@@ -354,6 +393,68 @@ class UserOverviewQueries:
         ).subquery("overview_maps_lost_sides")
         return sa.select(sa.func.coalesce(sa.func.sum(sides.c.value), 0)).select_from(sides).scalar_subquery()
 
+    def _overview_winrate_expr(
+        self,
+        user_id_column: sa.ColumnElement[typing.Any],
+        *,
+        grid: DivisionGrid,
+        workspace_id: int | None = None,
+    ) -> sa.ScalarSelect:
+        """Map winrate over the scoped encounters — NULL when no maps were played.
+
+        ponytail: two correlated subqueries per sorted row (this and
+        ``_overview_encounters_played_expr``); the unfiltered page is served from
+        the cached id order, so only a *filtered* winrate sort pays for them.
+        """
+        where_conditions = self._overview_scope_where(
+            user_id_column,
+            role=None,
+            div_min=None,
+            div_max=None,
+            tournament_id=None,
+            grid=grid,
+            workspace_id=workspace_id,
+        )
+        sides = self._overview_encounter_select(
+            lambda _fk, won, lost: (won.label("won"), lost.label("lost")),
+            *where_conditions,
+        ).subquery("overview_winrate_sides")
+        return (
+            sa.select(
+                sa.func.sum(sides.c.won) / sa.func.nullif(sa.func.sum(sides.c.won + sides.c.lost), 0).cast(sa.Float)
+            )
+            .select_from(sides)
+            .scalar_subquery()
+        )
+
+    def _overview_encounters_played_expr(
+        self,
+        user_id_column: sa.ColumnElement[typing.Any],
+        *,
+        grid: DivisionGrid,
+        workspace_id: int | None = None,
+    ) -> sa.ScalarSelect:
+        """Scoped encounters that have a result — the winrate's sample size."""
+        where_conditions = self._overview_scope_where(
+            user_id_column,
+            role=None,
+            div_min=None,
+            div_max=None,
+            tournament_id=None,
+            grid=grid,
+            workspace_id=workspace_id,
+        )
+        sides = self._overview_encounter_select(
+            lambda _fk, won, lost: (models.Encounter.id.label("encounter_id"), (won + lost).label("maps")),
+            *where_conditions,
+        ).subquery("overview_encounters_played_sides")
+        return (
+            sa.select(sa.func.count(sa.distinct(sides.c.encounter_id)))
+            .select_from(sides)
+            .where(sides.c.maps > 0)
+            .scalar_subquery()
+        )
+
     def _overview_match_stat_avg_10_expr(
         self,
         user_id_column: sa.ColumnElement[typing.Any],
@@ -412,23 +513,56 @@ class UserOverviewQueries:
 
         return query.where(*where_conditions).scalar_subquery()
 
-    def _overview_sort_expr(self, sort_key: str, grid: DivisionGrid) -> sa.ColumnElement[typing.Any]:
+    def _overview_order_by(
+        self,
+        sort_key: str,
+        *,
+        descending: bool,
+        grid: DivisionGrid,
+        workspace_id: int | None,
+        min_encounters: int,
+    ) -> list[sa.ColumnElement[typing.Any]]:
+        """ORDER BY terms for an overview sort, workspace-scoped like the displayed values.
+
+        ``models.User.id`` is always the final tiebreaker so paging is stable.
+        """
+
+        def _directed(expr: sa.ColumnElement[typing.Any]) -> sa.ColumnElement[typing.Any]:
+            # NULL (never placed / no maps) always sorts last, in both directions.
+            return expr.desc().nullslast() if descending else expr.asc().nullslast()
+
         if sort_key == "tournaments_count":
-            return self._overview_tournaments_count_expr(models.User.id, grid=grid)
-        if sort_key == "achievements_count":
-            return self._overview_achievements_count_expr(models.User.id, grid=grid)
-        if sort_key == "avg_placement":
-            return self._overview_avg_placement_expr(models.User.id, grid=grid)
-        return models.User.depth_get_column(sort_key.split("."))
+            expr = self._overview_tournaments_count_expr(models.User.id, grid=grid, workspace_id=workspace_id)
+        elif sort_key == "achievements_count":
+            expr = self._overview_achievements_count_expr(models.User.id, grid=grid, workspace_id=workspace_id)
+        elif sort_key == "avg_placement":
+            expr = self._overview_avg_placement_expr(models.User.id, grid=grid, workspace_id=workspace_id)
+        elif sort_key == "best_placement":
+            expr = self._overview_best_placement_expr(models.User.id, grid=grid, workspace_id=workspace_id)
+        elif sort_key == "winrate":
+            encounters = self._overview_encounters_played_expr(models.User.id, grid=grid, workspace_id=workspace_id)
+            winrate = self._overview_winrate_expr(models.User.id, grid=grid, workspace_id=workspace_id)
+            # Thin samples go after everybody else whichever way the column is
+            # sorted: a 100% winrate off two maps is not the top of the table.
+            return [
+                sa.case((encounters >= min_encounters, 0), else_=1).asc(),
+                _directed(winrate),
+                models.User.id.asc(),
+            ]
+        else:
+            expr = models.User.depth_get_column(sort_key.split("."))
+
+        return [_directed(expr), models.User.id.asc()]
 
     # Cache key intentionally omits `session`/`grid` (see get_profile). For the sorts
-    # this path serves — the correlated aggregates with *no* role/division/search
-    # filter — the ordering depends only on (workspace, sort, direction); `grid` only
-    # feeds the division predicates, which are absent here. Short TTL + invalidation
-    # on a tournament.standings invalidation (services.cache_resources) bound staleness.
+    # this path serves — the correlated aggregates with *no* role/division/logs/search
+    # filter — the ordering depends only on (workspace, sort, direction, min_encounters);
+    # `grid` only feeds the division predicates, which are absent here. Short TTL +
+    # invalidation on a tournament.standings invalidation (services.cache_resources)
+    # bound staleness.
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_overview_order:{workspace_id}:{sort_key}:{descending}",
+        key="backend:user_overview_order:{workspace_id}:{sort_key}:{descending}:{min_encounters}",
     )
     async def _overview_ordered_ids(
         self,
@@ -437,20 +571,26 @@ class UserOverviewQueries:
         workspace_id: int | None,
         sort_key: str,
         descending: bool,
+        min_encounters: int,
         grid: DivisionGrid,
     ) -> tuple[list[int], int]:
         """Full workspace-scoped user-id order + total for an expensive overview sort.
 
         The correlated aggregate in ORDER BY is evaluated over the whole population,
-        so this whole-population sort is cached per (workspace, sort, direction)
-        instead of being recomputed for every page and every concurrent viewer.
+        so this whole-population sort is cached per (workspace, sort, direction,
+        min_encounters) instead of being recomputed for every page and every
+        concurrent viewer.
         """
         id_query = _apply_workspace_member_filter(sa.select(models.User.id), workspace_id)
-        sort_expr = self._overview_sort_expr(sort_key, grid)
-        if descending:
-            id_query = id_query.order_by(sort_expr.desc(), models.User.id.asc())
-        else:
-            id_query = id_query.order_by(sort_expr.asc(), models.User.id.asc())
+        id_query = id_query.order_by(
+            *self._overview_order_by(
+                sort_key,
+                descending=descending,
+                grid=grid,
+                workspace_id=workspace_id,
+                min_encounters=min_encounters,
+            )
+        )
         ids = list((await session.execute(id_query)).scalars().all())
         # EXISTS-scoped User.id is unique — len(ids) is the count query.
         return ids, len(ids)
@@ -465,22 +605,24 @@ class UserOverviewQueries:
         is_desc = params.order == pagination.SortOrder.DESC or params.order == "desc"
         sort_key = params.sort
 
-        # Fast path (H13): an expensive correlated sort with no search/role/division
-        # filter has a population-wide ORDER BY that depends only on
-        # (workspace, sort, direction). Reuse a short-TTL cached id order and fetch
-        # only the page, instead of re-sorting the whole population on every request.
+        # Fast path (H13): an expensive correlated sort with no search/role/division/
+        # logs filter has a population-wide ORDER BY that depends only on
+        # (workspace, sort, direction, min_encounters). Reuse a short-TTL cached id
+        # order and fetch only the page, instead of re-sorting the whole population
+        # on every request.
         if (
             sort_key in _EXPENSIVE_OVERVIEW_SORTS
             and not params.query
             and params.role is None
-            and params.div_min is None
-            and params.div_max is None
+            and not params.divisions
+            and not params.has_logs
         ):
             ordered_ids, total = await self._overview_ordered_ids(
                 session,
                 workspace_id=workspace_id,
                 sort_key=sort_key,
                 descending=is_desc,
+                min_encounters=params.min_encounters,
                 grid=grid,
             )
             offset = (params.page - 1) * params.per_page
@@ -502,30 +644,35 @@ class UserOverviewQueries:
             query = params.apply_search(query, models.User)
             total_query = params.apply_search(total_query, models.User)
 
-        if params.role is not None or params.div_min is not None or params.div_max is not None:
+        if params.has_logs:
+            query = apply_has_logs_filter(query)
+            total_query = apply_has_logs_filter(total_query)
+
+        if params.role is not None or params.divisions:
             query = _apply_overview_role_filters(
                 query,
                 role=params.role,
-                div_min=params.div_min,
-                div_max=params.div_max,
+                divisions=params.divisions,
                 grid=grid,
                 workspace_id=workspace_id,
             )
             total_query = _apply_overview_role_filters(
                 total_query,
                 role=params.role,
-                div_min=params.div_min,
-                div_max=params.div_max,
+                divisions=params.divisions,
                 grid=grid,
                 workspace_id=workspace_id,
             )
 
-        sort_expr = self._overview_sort_expr(sort_key, grid)
-
-        if is_desc:
-            query = query.order_by(sort_expr.desc(), models.User.id.asc())
-        else:
-            query = query.order_by(sort_expr.asc(), models.User.id.asc())
+        query = query.order_by(
+            *self._overview_order_by(
+                sort_key,
+                descending=is_desc,
+                grid=grid,
+                workspace_id=workspace_id,
+                min_encounters=params.min_encounters,
+            )
+        )
 
         paged = params.apply_pagination(query.add_columns(sa.func.count().over().label("overview_total")))
         rows = (await session.execute(paged)).unique().all()
@@ -664,7 +811,7 @@ class UserOverviewQueries:
         session: AsyncSession,
         user_ids: list[int],
         workspace_id: int | None = None,
-    ) -> dict[int, tuple[float | None, float | None, float | None, float | None]]:
+    ) -> dict[int, tuple[float | None, float | None, float | None, float | None, int | None]]:
         if not user_ids:
             return {}
 
@@ -675,6 +822,10 @@ class UserOverviewQueries:
                 models.WorkspaceMember.player_id.label("user_id"),
                 models.Player.team_id.label("team_id"),
                 sa.func.min(models.Standing.overall_position).label("overall_position"),
+                # Best placement ignores 0 ("no placement"), like resolve_team_placement.
+                sa.func.min(sa.case((models.Standing.overall_position > 0, models.Standing.overall_position))).label(
+                    "positive_overall_position"
+                ),
             )
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
@@ -701,6 +852,7 @@ class UserOverviewQueries:
         placement_query = sa.select(
             team_overall_subquery.c.user_id,
             sa.func.avg(team_overall_subquery.c.overall_position).label("avg_placement"),
+            sa.func.min(team_overall_subquery.c.positive_overall_position).label("best_placement"),
         ).group_by(team_overall_subquery.c.user_id)
 
         placement_stage_query = (
@@ -765,25 +917,25 @@ class UserOverviewQueries:
         placement_stage_result = await session.execute(placement_stage_query)
         closeness_result = await session.execute(closeness_query)
 
-        payload: dict[int, tuple[float | None, float | None, float | None, float | None]] = dict.fromkeys(
-            user_ids, (None, None, None, None)
-        )
+        placements = {
+            user_id: (avg_placement, best_placement)
+            for user_id, avg_placement, best_placement in placement_result.all()
+        }
+        stages = {
+            user_id: (avg_playoff_placement, avg_group_placement)
+            for user_id, avg_group_placement, avg_playoff_placement in placement_stage_result.all()
+        }
+        closeness_by_user = dict(closeness_result.all())
 
-        for user_id, avg_placement in placement_result.all():
-            _, _, _, current_closeness = payload.get(user_id, (None, None, None, None))
-            payload[user_id] = (avg_placement, None, None, current_closeness)
-
-        for user_id, avg_group_placement, avg_playoff_placement in placement_stage_result.all():
-            avg_placement, _, _, current_closeness = payload.get(user_id, (None, None, None, None))
-            payload[user_id] = (avg_placement, avg_playoff_placement, avg_group_placement, current_closeness)
-
-        for user_id, avg_closeness in closeness_result.all():
-            avg_placement, avg_playoff_placement, avg_group_placement, _ = payload.get(
-                user_id, (None, None, None, None)
+        return {
+            user_id: (
+                placements.get(user_id, (None, None))[0],
+                *stages.get(user_id, (None, None)),
+                closeness_by_user.get(user_id),
+                placements.get(user_id, (None, None))[1],
             )
-            payload[user_id] = (avg_placement, avg_playoff_placement, avg_group_placement, avg_closeness)
-
-        return payload
+            for user_id in user_ids
+        }
 
     async def get_overview_top_heroes(
         self,
@@ -850,86 +1002,104 @@ class UserOverviewQueries:
 
         return dict(payload)
 
-    async def get_overview_top_hero_metrics(
+    async def get_overview_map_records(
         self,
         session: AsyncSession,
-        top_heroes: dict[int, list[tuple[models.Hero, float]]],
+        user_ids: list[int],
         workspace_id: int | None = None,
-    ) -> dict[tuple[int, int], dict[enums.LogStatsName, float]]:
-        if not top_heroes:
+    ) -> dict[int, tuple[int, int, int]]:
+        """``(maps_won, maps_lost, encounters_played)`` per user for the page.
+
+        Same scope as the other overview aggregates (not substitution, finished
+        non-league tournaments, optional workspace) and the same UNION ALL over
+        the two encounter sides — ``home_team_id = id OR away_team_id = id`` can
+        use neither FK index. "Played" is an encounter with a result (non-zero
+        score sum); the per-side DISTINCT stops a user rostered twice on one
+        team from counting that encounter's maps twice.
+        """
+        if not user_ids:
             return {}
 
-        hero_pairs = [(user_id, hero.id) for user_id, heroes in top_heroes.items() for hero, _ in heroes]
-        if not hero_pairs:
+        ws_filter = [models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []
+
+        def _side(team_fk, won, lost):
+            return (
+                sa.select(
+                    models.WorkspaceMember.player_id.label("user_id"),
+                    models.Encounter.id.label("encounter_id"),
+                    won.label("won"),
+                    lost.label("lost"),
+                )
+                .select_from(models.Player)
+                .join(models.Team, models.Team.id == models.Player.team_id)
+                .join(models.Encounter, team_fk == models.Team.id)
+                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+                .where(
+                    models.WorkspaceMember.player_id.in_(user_ids),
+                    models.Player.is_substitution.is_(False),
+                    models.Tournament.is_finished.is_(True),
+                    models.Tournament.is_league.is_(False),
+                    *ws_filter,
+                )
+                .distinct()
+            )
+
+        sides = union_encounter_team_sides(_side).subquery("overview_map_record_sides")
+        query = sa.select(
+            sides.c.user_id,
+            sa.func.coalesce(sa.func.sum(sides.c.won), 0),
+            sa.func.coalesce(sa.func.sum(sides.c.lost), 0),
+            sa.func.count(sa.distinct(sa.case(((sides.c.won + sides.c.lost) > 0, sides.c.encounter_id)))),
+        ).group_by(sides.c.user_id)
+
+        return {
+            user_id: (int(won), int(lost), int(played))
+            for user_id, won, lost, played in (await session.execute(query)).all()
+        }
+
+    async def get_overview_last_active(
+        self,
+        session: AsyncSession,
+        user_ids: list[int],
+        workspace_id: int | None = None,
+    ) -> dict[int, datetime.datetime | None]:
+        """Latest tournament date per user: ``MAX(COALESCE(end_date, start_date))``.
+
+        Non-league and optionally workspace-scoped, exactly like the
+        ``active_last_30d`` KPI — the row's "last active" has to agree with it,
+        so an unfinished tournament counts: being in one right now is activity.
+        """
+        if not user_ids:
             return {}
 
-        hero_playtime_stat = sa.alias(models.MatchStatistics)
-        eligible_stats = (
-            sa.select(
-                models.MatchStatistics.match_id.label("match_id"),
-                models.MatchStatistics.user_id.label("user_id"),
-                models.MatchStatistics.hero_id.label("hero_id"),
-                models.MatchStatistics.name.label("name"),
-                models.MatchStatistics.value.label("value"),
-            )
-            .where(
-                models.MatchStatistics.round == 0,
-                models.MatchStatistics.hero_id.isnot(None),
-                models.MatchStatistics.name.in_(OVERVIEW_HERO_METRICS),
-                sa.tuple_(models.MatchStatistics.user_id, models.MatchStatistics.hero_id).in_(hero_pairs),
-                sa.exists(
-                    sa.select(1)
-                    .select_from(hero_playtime_stat)
-                    .where(
-                        hero_playtime_stat.c.match_id == models.MatchStatistics.match_id,
-                        hero_playtime_stat.c.user_id == models.MatchStatistics.user_id,
-                        hero_playtime_stat.c.hero_id == models.MatchStatistics.hero_id,
-                        hero_playtime_stat.c.name == enums.LogStatsName.HeroTimePlayed,
-                        hero_playtime_stat.c.round == 0,
-                        hero_playtime_stat.c.value > 60,
-                    )
-                ),
-            )
-            .cte("overview_eligible_stats")
-        )
-
+        ws_filter = [models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []
         query = (
             sa.select(
-                eligible_stats.c.user_id,
-                eligible_stats.c.hero_id,
-                eligible_stats.c.name,
-                (sa.func.sum(eligible_stats.c.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600).label(
-                    "avg_10"
-                ),
+                models.WorkspaceMember.player_id,
+                sa.func.max(sa.func.coalesce(models.Tournament.end_date, models.Tournament.start_date)),
             )
-            .join(models.Match, models.Match.id == eligible_stats.c.match_id)
-            .group_by(eligible_stats.c.user_id, eligible_stats.c.hero_id, eligible_stats.c.name)
+            .select_from(models.Player)
+            .join(models.Team, models.Team.id == models.Player.team_id)
+            .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(
+                models.WorkspaceMember.player_id.in_(user_ids),
+                models.Player.is_substitution.is_(False),
+                models.Tournament.is_league.is_(False),
+                *ws_filter,
+            )
+            .group_by(models.WorkspaceMember.player_id)
         )
-        if workspace_id is not None:
-            # Scope the per-metric aggregation to the workspace's matches
-            # (Match -> Encounter -> Tournament, all 1:1) so avg_10 reflects
-            # workspace-only performance, consistent with the scoped hero list.
-            query = (
-                query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-                .where(models.Tournament.workspace_id == workspace_id)
-            )
-
-        result = await session.execute(query)
-
-        payload: dict[tuple[int, int], dict[enums.LogStatsName, float]] = defaultdict(dict)
-        for user_id, hero_id, stat_name, avg_10 in result.all():
-            payload[(user_id, hero_id)][stat_name] = avg_10
-
-        return dict(payload)
+        return dict((await session.execute(query)).all())
 
     async def get_overview_stats(
         self,
         session: AsyncSession,
         *,
         role: enums.HeroClass | None,
-        div_min: int | None,
-        div_max: int | None,
+        divisions: typing.Sequence[int],
+        has_logs: bool,
         query: str | None,
         grid: DivisionGrid,
         workspace_id: int | None = None,
@@ -937,13 +1107,15 @@ class UserOverviewQueries:
         """Compute KPI numbers for the users hero header.
 
         Counts respect the same filter chips as the main overview table:
-        role, division range, and search query. The result includes:
+        role, divisions, logs and search query. The result includes:
           - total_players: distinct users matching the filters
           - with_logs_count / with_logs_pct: how many have at least one parsed match stat row
           - avg_tournaments_per_player / median_tournaments_per_player
           - active_last_30d / active_last_30d_pct: distinct players in tournaments
             whose start_date or end_date falls within the last 30 days
           - tank / damage / support / flex counts (distinct roles per user)
+          - flex_declared_count: what the Flex chip itself selects
+          - division_counts: per-division chip counts, ignoring the division chips
         """
         base_query = sa.select(models.User.id).select_from(models.User)
         base_query = _apply_workspace_member_filter(base_query, workspace_id)
@@ -951,12 +1123,13 @@ class UserOverviewQueries:
         if query:
             base_query = pagination.apply_search(models.User, base_query, query, ["name"])
 
-        if role is not None or div_min is not None or div_max is not None:
+        if has_logs:
+            base_query = apply_has_logs_filter(base_query)
+
+        if role is not None:
             base_query = _apply_overview_role_filters(
                 base_query,
                 role=role,
-                div_min=div_min,
-                div_max=div_max,
                 grid=grid,
                 workspace_id=workspace_id,
             )
@@ -965,6 +1138,20 @@ class UserOverviewQueries:
         # against this CTE instead of the old shape, which pulled every matching
         # user id into Python and re-inlined it as a literal ``IN (...)`` list
         # into four further statements.
+        #
+        # Two sets: the division chip counts are computed *without* the division
+        # chips, everything else with them.
+        division_candidates = base_query.distinct().cte("overview_division_candidates")
+
+        if divisions:
+            base_query = _apply_overview_role_filters(
+                base_query,
+                role=role,
+                divisions=divisions,
+                grid=grid,
+                workspace_id=workspace_id,
+            )
+
         candidates = base_query.distinct().cte("overview_candidates")
         candidate_ids = sa.select(candidates.c.id)
 
@@ -985,6 +1172,8 @@ class UserOverviewQueries:
                 "damage_count": 0,
                 "support_count": 0,
                 "flex_count": 0,
+                "flex_declared_count": 0,
+                "division_counts": [],
             }
 
         # Scope the KPI sub-aggregates to the workspace so they stay consistent with
@@ -1005,13 +1194,13 @@ class UserOverviewQueries:
         # per candidate and stops at the first row. Same number: `candidates` is
         # DISTINCT, so counting candidates that own a stats row equals counting the
         # distinct stats user_ids inside the candidate set.
-        has_logs = (
+        owns_logs = (
             sa.select(sa.literal(1))
             .select_from(models.MatchStatistics)
             .where(models.MatchStatistics.user_id == candidates.c.id)
             .exists()
         )
-        with_logs_query = sa.select(sa.func.count()).select_from(candidates).where(has_logs)
+        with_logs_query = sa.select(sa.func.count()).select_from(candidates).where(owns_logs)
         with_logs_count = (await session.execute(with_logs_query)).scalar_one() or 0
 
         tournaments_query = (
@@ -1084,7 +1273,7 @@ class UserOverviewQueries:
         for user_id, player_role in (await session.execute(roles_query)).all():
             user_roles[user_id].add(player_role)
 
-        tank_count = damage_count = support_count = flex_count = 0
+        tank_count = damage_count = support_count = flex_count = flex_declared_count = 0
         for roles_set in user_roles.values():
             # "Flex" here means "plays anything", which a player reaches two ways:
             # by having been rostered on more than one role, or by carrying the
@@ -1093,12 +1282,43 @@ class UserOverviewQueries:
             # one-element role set and would otherwise land in no bucket at all.
             if len(roles_set) > 1 or enums.HeroClass.flex in roles_set:
                 flex_count += 1
+            # What the Flex *chip* selects: ``role=flex`` matches the declared
+            # role literally, so its count cannot be the broader flex_count.
+            if enums.HeroClass.flex in roles_set:
+                flex_declared_count += 1
             if enums.HeroClass.tank in roles_set:
                 tank_count += 1
             if enums.HeroClass.damage in roles_set:
                 damage_count += 1
             if enums.HeroClass.support in roles_set:
                 support_count += 1
+
+        # Per-division chip counts, over the candidate set *before* the division
+        # chips were applied: picking division 5 must not zero every other chip.
+        # ponytail: in the all-workspaces read the division number is a correlated
+        # per-row subquery (each rank on its own grid), so this groups over one
+        # subquery per player row; add a materialized player-division view if the
+        # stats call shows up in the slow log.
+        division_expr = overview_division_number_expr(
+            models.Player.rank, models.Player.tournament_id, grid, workspace_id
+        )
+        division_counts_query = (
+            sa.select(division_expr.label("division"), sa.func.count(sa.distinct(models.WorkspaceMember.player_id)))
+            .select_from(models.Player)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(
+                models.WorkspaceMember.player_id.in_(sa.select(division_candidates.c.id)),
+                models.Player.is_substitution.is_(False),
+                *([models.Player.role == role] if role is not None else []),
+            )
+            .group_by(division_expr)
+            .order_by(division_expr)
+        )
+        division_counts = [
+            {"division": int(division), "count": int(count)}
+            for division, count in (await session.execute(division_counts_query)).all()
+            if division is not None
+        ]
 
         return {
             "total_players": total_players,
@@ -1112,6 +1332,8 @@ class UserOverviewQueries:
             "damage_count": damage_count,
             "support_count": support_count,
             "flex_count": flex_count,
+            "flex_declared_count": flex_declared_count,
+            "division_counts": division_counts,
         }
 
     def _classify_letter(self, name: str) -> str:
@@ -1128,8 +1350,8 @@ class UserOverviewQueries:
         session: AsyncSession,
         *,
         role: enums.HeroClass | None,
-        div_min: int | None,
-        div_max: int | None,
+        divisions: typing.Sequence[int],
+        has_logs: bool,
         query: str | None,
         letter: str | None,
         per_letter: int,
@@ -1155,12 +1377,14 @@ class UserOverviewQueries:
         if query:
             base_query = pagination.apply_search(models.User, base_query, query, ["name"])
 
-        if role is not None or div_min is not None or div_max is not None:
+        if has_logs:
+            base_query = apply_has_logs_filter(base_query)
+
+        if role is not None or divisions:
             base_query = _apply_overview_role_filters(
                 base_query,
                 role=role,
-                div_min=div_min,
-                div_max=div_max,
+                divisions=divisions,
                 grid=grid,
                 workspace_id=workspace_id,
             )

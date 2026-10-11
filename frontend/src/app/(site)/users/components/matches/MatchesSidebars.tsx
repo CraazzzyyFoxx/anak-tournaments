@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { winrateColor } from "@/app/(site)/users/components/heroes/utils";
+import { winrateColor } from "@/lib/colors";
 import { ArrowRight } from "lucide-react";
 import {
   Dialog,

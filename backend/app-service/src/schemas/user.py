@@ -48,7 +48,7 @@ __all__ = (
     "UserMatchesSummary",
     "UserSearch",
     "UserOverviewRoleDivision",
-    "UserOverviewHeroMetric",
+    "UserOverviewDivisionCount",
     "UserOverviewHero",
     "UserOverviewAverages",
     "UserOverviewRow",
@@ -505,15 +505,9 @@ class UserOverviewRoleDivision(BaseModel):
     division_grid_version_id: int | None = None
 
 
-class UserOverviewHeroMetric(BaseModel):
-    name: enums.LogStatsName
-    avg_10: float
-
-
 class UserOverviewHero(BaseModel):
     hero: schemas.HeroRead
     playtime_seconds: float
-    metrics: list[UserOverviewHeroMetric]
 
 
 class UserOverviewAverages(BaseModel):
@@ -526,10 +520,18 @@ class UserOverviewAverages(BaseModel):
 class UserOverviewRow(BaseModel):
     id: int
     name: str
+    avatar_url: str | None = None
     roles: list[UserOverviewRoleDivision]
     top_heroes: list[UserOverviewHero]
     tournaments_count: int
     achievements_count: int
+    maps_won: int
+    maps_lost: int
+    encounters_played: int
+    best_placement: int | None
+    #: ISO date of the latest tournament the user played in, scoped like the
+    #: other aggregates. ``None`` when they never played one.
+    last_active_at: str | None
     averages: UserOverviewAverages
 
 
@@ -537,6 +539,10 @@ class UserOverviewResponse(pagination.Paginated[UserOverviewRow]):
     """Overview page plus every division grid its rows' divisions refer to."""
 
     division_grids: list[DivisionGridVersionRead] = Field(default_factory=list)
+
+
+#: A division chip value. Repeated param: ``?divisions=3&divisions=5``.
+DivisionNumber = typing.Annotated[int, Field(ge=1, le=20)]
 
 
 class UserOverviewQueryParams(
@@ -547,23 +553,34 @@ class UserOverviewQueryParams(
             "tournaments_count",
             "achievements_count",
             "avg_placement",
+            "winrate",
+            "best_placement",
         ]
     ]
 ):
     role: enums.HeroClass | None = None
-    div_min: int | None = Field(default=None, ge=1, le=20)
-    div_max: int | None = Field(default=None, ge=1, le=20)
+    divisions: list[DivisionNumber] = Field(default_factory=list)
+    has_logs: bool = False
+    #: ``sort=winrate`` only: users under this many encounters are ordered after
+    #: everyone else, in both directions.
+    min_encounters: int = Field(default=20, ge=0)
 
 
 @dataclass
 class UserOverviewParams(pagination.PaginationSortSearchParams):
     role: enums.HeroClass | None = None
-    div_min: int | None = None
-    div_max: int | None = None
+    divisions: list[int] = field(default_factory=list)
+    has_logs: bool = False
+    min_encounters: int = 20
 
     def apply_search(self, query: sa.Select, model: type) -> sa.Select:
         fields = self.fields if self.fields else ["name"]
         return pagination.apply_search(model, query, self.query, fields)
+
+
+class UserOverviewDivisionCount(BaseModel):
+    division: int
+    count: int
 
 
 class UserOverviewStats(BaseModel):
@@ -578,22 +595,33 @@ class UserOverviewStats(BaseModel):
     damage_count: int
     support_count: int
     flex_count: int
+    #: What the Flex chip selects (declared ``role=flex``), unlike the broader
+    #: ``flex_count`` which also counts multi-role players.
+    flex_declared_count: int
+    #: Per-division chip counts, computed without the division filter itself.
+    division_counts: list[UserOverviewDivisionCount] = Field(default_factory=list)
 
 
 class UserOverviewStatsQueryParams(BaseModel):
     role: enums.HeroClass | None = None
-    div_min: int | None = Field(default=None, ge=1, le=20)
-    div_max: int | None = Field(default=None, ge=1, le=20)
+    divisions: list[DivisionNumber] = Field(default_factory=list)
+    has_logs: bool = False
     query: str | None = None
 
 
 class UserCatalogEntry(BaseModel):
     id: int
     name: str
+    avatar_url: str | None = None
     roles: list[UserOverviewRoleDivision]
     top_heroes: list[UserOverviewHero]
     tournaments_count: int
     achievements_count: int
+    maps_won: int
+    maps_lost: int
+    encounters_played: int
+    best_placement: int | None
+    last_active_at: str | None
     avg_placement: float | None
 
 
@@ -612,8 +640,8 @@ class UserCatalogResponse(BaseModel):
 
 class UserCatalogQueryParams(BaseModel):
     role: enums.HeroClass | None = None
-    div_min: int | None = Field(default=None, ge=1, le=20)
-    div_max: int | None = Field(default=None, ge=1, le=20)
+    divisions: list[DivisionNumber] = Field(default_factory=list)
+    has_logs: bool = False
     query: str | None = None
     letter: str | None = Field(default=None, min_length=1, max_length=2)
     per_letter: int = Field(default=12, ge=1, le=50)
@@ -623,8 +651,8 @@ class UserCatalogQueryParams(BaseModel):
 @dataclass
 class UserCatalogParams:
     role: enums.HeroClass | None = None
-    div_min: int | None = None
-    div_max: int | None = None
+    divisions: list[int] = field(default_factory=list)
+    has_logs: bool = False
     query: str | None = None
     letter: str | None = None
     per_letter: int = 12

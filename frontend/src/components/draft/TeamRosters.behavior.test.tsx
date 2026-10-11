@@ -11,6 +11,14 @@ vi.mock("next-intl", () => ({
     values ? `${key}:${JSON.stringify(values)}` : key
 }));
 
+// `next/image` outside a Next build rewrites src through the optimizer loader;
+// the shipped config sets `images.unoptimized`, so the real render keeps it
+// verbatim.
+vi.mock("next/image", () => ({
+  // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt ?? ""} />
+}));
+
 // Dynamic, not static: `mock.module` only applies to modules imported after it
 // runs, and the components call `useTranslations` at render time.
 const { TeamRosters } = await import("./TeamRosters");

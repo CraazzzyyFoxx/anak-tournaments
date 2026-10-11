@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
@@ -53,10 +54,6 @@ const CoverFallback = ({ name }: { name: string }) => (
  *
  * Both images are `alt=""`: the name, dates and counters directly below carry
  * every fact the picture does, so announcing the artwork adds only noise.
- *
- * Plain `<img>` (not `next/image`) for the same reason team logos use one — the
- * URL points at whatever S3/MinIO host the deployment configured, and
- * `next/image` hard-errors on a hostname missing from `remotePatterns`.
  */
 const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
   const t = useTranslations();
@@ -74,12 +71,13 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
     >
       <div className="relative aspect-video w-full overflow-hidden bg-[color:var(--aqt-bg-2)]">
         {tournament.cover_image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- see the note above
-          <img
+          <Image
             src={tournament.cover_image_url}
             alt=""
             aria-hidden
             data-cover
+            fill
+            sizes="(max-width: 768px) 100vw, 33vw"
             loading="lazy"
             decoding="async"
             className="absolute inset-0 h-full w-full object-cover"
@@ -96,8 +94,7 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
         />
 
         {tournament.logo_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- see the note above
-          <img
+          <Image
             src={tournament.logo_url}
             alt=""
             aria-hidden

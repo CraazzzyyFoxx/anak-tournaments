@@ -17,6 +17,16 @@ const allowedDevOrigins = (process.env.NEXT_ALLOWED_DEV_ORIGINS ?? "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+// Image hosts `next/image` is allowed to load from. Comma-separated URL
+// patterns (`https://cdn.example.com/aqt/**`), so no deployment's CDN is
+// hardcoded here; Next accepts URL objects in `remotePatterns`. Build-time
+// value — it is read when `next build` runs.
+const imageRemotePatterns = (process.env.NEXT_PUBLIC_IMAGE_REMOTE_PATTERNS ?? "")
+  .split(",")
+  .map((pattern) => pattern.trim())
+  .filter(Boolean)
+  .map((pattern) => new URL(pattern));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Pin the Turbopack workspace root to this directory. Otherwise Next infers the
@@ -88,56 +98,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
     qualities: [25, 50, 75, 100],
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "d15f34w2p8l1cc.cloudfront.net",
-        port: "",
-        pathname: "/overwatch/**"
-      },
-      {
-        protocol: "https",
-        hostname: "img.clerk.com",
-        port: "",
-        pathname: "/**"
-      },
-      {
-        protocol: "https",
-        hostname: "cdn.discordapp.com",
-        port: "",
-        pathname: "/**"
-      },
-      {
-        protocol: "https",
-        hostname: "minio.craazzzyyfoxx.me",
-        port: "",
-        pathname: "/aqt/**"
-      },
-      {
-        protocol: "https",
-        hostname: "static.nl.craazzzyyfoxx.me",
-        port: "",
-        pathname: "/aqt/**"
-      },
-      {
-        protocol: "https",
-        hostname: "rustfs.craazzzyyfoxx.me",
-        port: "",
-        pathname: "/aqt/**"
-      },
-      {
-        protocol: "https",
-        hostname: "s3.twcstorage.ru",
-        port: "",
-        pathname: "/**"
-      },
-      {
-        protocol: "https",
-        hostname: "cdn.craazzzyyfoxx.me",
-        port: "",
-        pathname: "/**"
-      }
-    ]
+    remotePatterns: imageRemotePatterns
   }
 };
 

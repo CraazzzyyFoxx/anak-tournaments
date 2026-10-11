@@ -84,50 +84,46 @@ const CompareMetricRow = ({ row }: { row: CompareRow }) => {
 
   return (
     <tr className="border-b border-[color:var(--aqt-border)] last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]">
-      {/* Metric name */}
       <td
-        className="px-3.5 py-2.5 text-caption font-medium text-[color:var(--aqt-fg)]"
+        className="truncate px-3.5 py-2.5 text-caption font-medium text-[color:var(--aqt-fg)]"
         title={row.label}
       >
         {row.label}
       </td>
 
-      {/* Subject value */}
       <td
-        className={`aqt-tnum px-2 py-2.5 text-right text-caption tabular-nums whitespace-nowrap ${winner === "left" ? "font-bold" : ""}`}
+        className={`aqt-tnum px-3 py-2.5 text-right text-caption tabular-nums whitespace-nowrap ${winner === "left" ? "font-bold" : ""}`}
         style={leftValueStyle}
       >
         {formatMetricValue(row.subjectValue)}
       </td>
 
-      {/* Twin bars */}
-      <td className="px-2 py-2.5">
-        <div className="mx-auto flex w-full min-w-[140px] max-w-[240px] items-center gap-1.5">
+      {/* Twin bars, mirrored around the column's centre line (where "vs" sits). */}
+      <td className="px-3 py-2.5">
+        <div className="mx-auto flex w-full max-w-[260px] items-center gap-1.5">
           <div className="flex h-2.5 flex-1 justify-end overflow-hidden rounded-l-sm bg-[hsl(0_0%_100%/0.04)]">
             <div
-              className={`h-full rounded-l-sm transition-all duration-500 ${leftBarColor}`}
+              className={`h-full rounded-l-sm transition-all duration-500 motion-reduce:transition-none ${leftBarColor}`}
               style={{ width: `${leftPercent}%` }}
             />
           </div>
           <div className="h-2.5 w-px shrink-0 bg-[color:var(--aqt-border)]" />
           <div className="flex h-2.5 flex-1 justify-start overflow-hidden rounded-r-sm bg-[hsl(0_0%_100%/0.04)]">
             <div
-              className={`h-full rounded-r-sm transition-all duration-500 ${rightBarColor}`}
+              className={`h-full rounded-r-sm transition-all duration-500 motion-reduce:transition-none ${rightBarColor}`}
               style={{ width: `${rightPercent}%` }}
             />
           </div>
         </div>
       </td>
 
-      {/* Baseline value */}
       <td
-        className={`aqt-tnum px-2 py-2.5 text-left text-caption tabular-nums whitespace-nowrap ${winner === "right" ? "font-bold" : ""}`}
+        className={`aqt-tnum px-3 py-2.5 text-left text-caption tabular-nums whitespace-nowrap ${winner === "right" ? "font-bold" : ""}`}
         style={rightValueStyle}
       >
         {formatMetricValue(row.baselineValue)}
       </td>
 
-      {/* Delta */}
       <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
         <TrendDelta
           delta={row.delta}
@@ -154,17 +150,17 @@ const UnifiedSkeleton = ({ isHeroScope }: { isHeroScope: boolean }) => {
           className="border-b border-[color:var(--aqt-border)] last:border-b-0"
         >
           <td className="px-3.5 py-2.5">
-            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-40 max-w-full" />
           </td>
-          <td className="px-2 py-2.5">
+          <td className="px-3 py-2.5">
             <div className="flex justify-end">
               <Skeleton className="h-4 w-12" />
             </div>
           </td>
-          <td className="px-2 py-2.5">
-            <Skeleton className="mx-auto h-2.5 w-full min-w-[140px] max-w-[240px] rounded-sm" />
+          <td className="px-3 py-2.5">
+            <Skeleton className="mx-auto h-2.5 w-full max-w-[260px] rounded-sm" />
           </td>
-          <td className="px-2 py-2.5">
+          <td className="px-3 py-2.5">
             <Skeleton className="h-4 w-12" />
           </td>
           <td className="px-3.5 py-2.5">
@@ -179,16 +175,20 @@ const UnifiedSkeleton = ({ isHeroScope }: { isHeroScope: boolean }) => {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Identity band                                                      */
+/*  Column identity (header cell over each value column)               */
 /* ------------------------------------------------------------------ */
 
-const HeroBadge = ({
+/** Name over its own value column, mirrored: the subject reads toward the bars
+ *  from the left, the baseline from the right. */
+const ColumnIdentity = ({
+  name,
+  caption,
   hero,
-  label,
   align
 }: {
-  hero: HeroInfo;
-  label: string;
+  name: string;
+  caption: string;
+  hero?: HeroInfo;
   align: "left" | "right";
 }) => {
   const t = useTranslations();
@@ -197,30 +197,29 @@ const HeroBadge = ({
     m: t("common.duration.m"),
     s: t("common.duration.s")
   };
+  const heroName = hero?.name ?? t("users.compare.allHeroes");
 
   return (
     <div
-      className={`flex items-center gap-3 ${align === "right" ? "flex-row-reverse text-right" : ""}`}
+      className={`flex min-w-0 items-center gap-2.5 ${align === "right" ? "flex-row-reverse text-right" : "text-left"}`}
     >
-      {hero.imagePath ? (
+      {hero?.imagePath ? (
         <HeroImage
-          hero={{
-            name: hero.name ?? t("users.compare.allHeroes"),
-            image_path: hero.imagePath,
-            role: ""
-          }}
-          size={44}
+          hero={{ name: heroName, image_path: hero.imagePath, role: "" }}
+          size={36}
           rounded="lg"
-          title={hero.name ?? t("users.compare.allHeroes")}
+          title={heroName}
         />
       ) : null}
-      <div className="flex flex-col gap-0.5">
-        <span className="text-sm font-semibold text-[color:var(--aqt-fg)]">{label}</span>
-        <span className="text-xs text-[color:var(--aqt-fg-muted)]">
-          {hero.name ?? t("users.compare.allHeroes")}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate text-sm font-semibold normal-case tracking-normal text-[color:var(--aqt-fg)]" title={name}>
+          {name}
         </span>
-        {hero.playtimeSeconds !== undefined ? (
-          <span className="aqt-tnum text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+        <span className="truncate text-label font-medium normal-case tracking-normal text-[color:var(--aqt-fg-muted)]">
+          {hero ? heroName : caption}
+        </span>
+        {hero?.playtimeSeconds !== undefined ? (
+          <span className="aqt-tnum truncate text-label font-medium normal-case tracking-normal text-[color:var(--aqt-fg-dim)]">
             {hero.playtimeLabel ?? t("users.compare.playtime")}:{" "}
             {formatDuration(hero.playtimeSeconds, durationUnits)}
           </span>
@@ -235,7 +234,7 @@ const HeroBadge = ({
 /* ------------------------------------------------------------------ */
 
 const headBase =
-  "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-3.5 py-3 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+  "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] py-3 align-bottom text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 const CompareUnifiedTable = ({
   subjectName,
@@ -251,7 +250,6 @@ const CompareUnifiedTable = ({
   baselineHero
 }: CompareUnifiedTableProps) => {
   const t = useTranslations();
-  const rightLabel = isTargetBaseline ? baselineName : t("users.compare.baseline");
   const hasRows = !loading && rows.length > 0;
   const showError = Boolean(errorMessage) && !hasRows;
 
@@ -261,52 +259,49 @@ const CompareUnifiedTable = ({
       className={refreshing ? "opacity-70 transition-opacity" : "transition-opacity"}
     >
       <CardSurface flush>
-        {/* Identity band: subject vs baseline */}
-        <div className="flex items-center gap-3 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.012)] px-[18px] py-4">
-          {isHeroScope ? (
-            <div className="flex w-full items-center justify-between gap-3">
-              <HeroBadge hero={subjectHero ?? {}} label={subjectName} align="left" />
-              <span className="aqt-tnum shrink-0 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                {t("common.vs")}
-              </span>
-              <HeroBadge hero={baselineHero ?? {}} label={baselineName} align="right" />
-            </div>
-          ) : (
-            <div className="flex w-full items-center justify-between gap-3">
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold text-[color:var(--aqt-fg)]">
-                  {subjectName}
-                </span>
-                <span className="aqt-tnum text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                  {t("users.compare.selectedUserColumn")}
-                </span>
-              </div>
-              <span className="aqt-tnum shrink-0 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                {t("common.vs")}
-              </span>
-              <div className="flex flex-col items-end gap-0.5 text-right">
-                <span className="text-sm font-semibold text-[color:var(--aqt-fg)]">
-                  {baselineName}
-                </span>
-                <span className="aqt-tnum text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                  {isTargetBaseline
-                    ? t("users.compare.compareAgainst")
-                    : t("users.compare.baseline")}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="aqt-tnum w-full border-collapse text-caption">
+        <div
+          className="overflow-x-auto"
+          role="region"
+          aria-label={t("users.compare.hero.title")}
+          tabIndex={0}
+        >
+          {/* Fixed layout: every column keeps its width whatever the values, so
+              the names in the header sit exactly over their numbers. */}
+          <table className="aqt-tnum w-full min-w-[920px] table-fixed border-collapse text-caption">
+            <colgroup>
+              <col className="w-[22%]" />
+              <col className="w-[20%]" />
+              <col />
+              <col className="w-[20%]" />
+              <col className="w-[15%]" />
+            </colgroup>
             <thead>
               <tr>
-                <th className={`${headBase} text-left`}>{t("users.compare.colMetric")}</th>
-                <th className={`${headBase} text-right`}>{subjectName}</th>
-                <th className={`${headBase} text-center`} aria-hidden />
-                <th className={`${headBase} text-left`}>{rightLabel}</th>
-                <th className={`${headBase} text-right`}>{t("users.compare.colDelta")}</th>
+                <th className={`${headBase} px-3.5 text-left`}>{t("users.compare.colMetric")}</th>
+                <th className={`${headBase} px-3`}>
+                  <ColumnIdentity
+                    name={subjectName}
+                    caption={t("users.compare.selectedUserColumn")}
+                    hero={isHeroScope ? subjectHero ?? {} : undefined}
+                    align="right"
+                  />
+                </th>
+                <th className={`${headBase} px-3 text-center`}>{t("common.vs")}</th>
+                <th className={`${headBase} px-3`}>
+                  <ColumnIdentity
+                    name={baselineName}
+                    caption={
+                      isTargetBaseline ? t("users.compare.compareAgainst") : t("users.compare.baseline")
+                    }
+                    hero={isHeroScope ? baselineHero ?? {} : undefined}
+                    align="left"
+                  />
+                </th>
+                <th className={`${headBase} px-3.5 text-right`}>
+                  <abbr title={t("users.compare.colDeltaTitle")} className="no-underline">
+                    {t("users.compare.colDelta")}
+                  </abbr>
+                </th>
               </tr>
             </thead>
 

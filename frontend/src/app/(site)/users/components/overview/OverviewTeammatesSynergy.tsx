@@ -7,7 +7,7 @@ import { ArrowRight } from "lucide-react";
 import { UserBestTeammate } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { winrateColor } from "@/app/(site)/users/components/heroes/utils";
+import { winrateColor } from "@/lib/colors";
 import { heroInitials } from "@/components/hero/heroRole";
 import { getPlayerSlug } from "@/lib/player";
 import { DataPagination } from "@/components/ui/data-pagination";

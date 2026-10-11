@@ -15,18 +15,11 @@ export interface NodeCapture {
   ref: React.RefObject<HTMLDivElement | null>;
   /** A capture is in flight. Drives the spinner and the re-entry guard. */
   capturing: boolean;
-  /**
-   * The node as a PNG, for a destination other than the clipboard. `null` when
-   * there is nothing to rasterise or a capture is already running; throws when
-   * the rasteriser itself fails, so a caller can tell "nothing happened" from
-   * "it went wrong".
-   */
-  rasterize: () => Promise<Blob | null>;
   capture: () => Promise<void>;
 }
 
 /**
- * Rasterise a live DOM node to a PNG, for the clipboard or for a caller.
+ * Rasterise a live DOM node to a PNG on the clipboard.
  *
  * For a surface that already looks like what a host wants to share — a matchup
  * card, the lobby board — this beats the off-screen export frame the tournament
@@ -35,15 +28,8 @@ export interface NodeCapture {
  * image with `data-export-hide` and hide it while `capturing` is set; use
  * `invisible` rather than `hidden` so the capture measures the same box.
  *
- * The clipboard is not the only destination: `rasterize` hands the same PNG to
- * a caller that ships it somewhere else (the mix posts it to Discord), so the
- * bytes a host sends are provably the bytes they saw. What stays shared is the
- * one `capturing` flag, so `data-export-hide` controls disappear from every
- * capture, and the one re-entry guard.
- *
  * `capture` reports failure and swallows it: a blocked clipboard or a tainted
- * canvas should cost the screenshot, not the screen. `rasterize` throws
- * instead, leaving its caller to decide what a missing image costs.
+ * canvas should cost the screenshot, not the screen.
  */
 export function useNodeCapture(): NodeCapture {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -78,5 +64,5 @@ export function useNodeCapture(): NodeCapture {
     }
   }, [rasterize]);
 
-  return { ref, capturing, rasterize, capture };
+  return { ref, capturing, capture };
 }

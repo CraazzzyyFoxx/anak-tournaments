@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CustomGame, CustomGameDiscordPost } from "@/services/custom-game.service";
 
-import { PickupMixHeader, liveLineupPostOf } from "./PickupMixHeader";
+import { PickupMixHeader } from "./PickupMixHeader";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -590,47 +590,5 @@ describe("PickupMixHeader Discord posts list", () => {
     expect(
       document.querySelector('[aria-label="posts.delete(posts.signup)"]')?.hasAttribute("disabled")
     ).toBe(true);
-  });
-});
-
-// Which card a refresh (and the voice buttons) act on: the lobby's own newest
-// one that Discord still holds.
-describe("liveLineupPostOf", () => {
-  it("takes the lobby's newest standing card, not an older one or another lobby's", () => {
-    const current = game({
-      discord_posts: [
-        post({ id: 1, slot: "lineup:0:1", kind: "mix.lineup" }),
-        post({ id: 2, slot: "lineup:1:1", kind: "mix.lineup" }),
-        post({ id: 3, slot: "lineup:0:2", kind: "mix.lineup", status: "pending" }),
-        post({ id: 4, slot: "signup" })
-      ]
-    });
-
-    expect(liveLineupPostOf(current, 0)?.id).toBe(3);
-    expect(liveLineupPostOf(current, 1)?.id).toBe(2);
-  });
-
-  it("finds nothing once the lobby's card is gone, or never went up", () => {
-    for (const status of ["failed", "deleting", "lost"] as const) {
-      const current = game({
-        discord_posts: [post({ id: 7, slot: "lineup:0:1", kind: "mix.lineup", status })]
-      });
-
-      expect(liveLineupPostOf(current, 0)).toBeNull();
-    }
-    expect(liveLineupPostOf(game({ discord_posts: [] }), 0)).toBeNull();
-    expect(liveLineupPostOf(game(), 0)).toBeNull();
-  });
-
-  it("leaves a played round's card alone until the next one is posted", () => {
-    const current = game({
-      lobbies: [lobbyRow(0, { matches_count: 1 })],
-      discord_posts: [post({ id: 1, slot: "lineup:0:1", kind: "mix.lineup" })]
-    });
-
-    expect(liveLineupPostOf(current, 0)).toBeNull();
-    expect(
-      liveLineupPostOf({ ...current, discord_posts: [...current.discord_posts!, post({ id: 2, slot: "lineup:0:2", kind: "mix.lineup" })] }, 0)?.id
-    ).toBe(2);
   });
 });

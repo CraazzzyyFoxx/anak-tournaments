@@ -3,7 +3,8 @@ export {
   RuleBuilderContext,
   useRuleBuilderConfig,
   type RuleBuilderConfig,
-  type RuleBuilderLabels,
+  type RuleBuilderEditLabels,
+  type RuleBuilderViewLabels,
   type RuleLeafFieldsProps,
   type RuleLeafOption,
 } from "./RuleNodes";

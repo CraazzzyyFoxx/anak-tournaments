@@ -72,6 +72,7 @@ class UserCompareQueries:
         div_min: int | None,
         div_max: int | None,
         tournament_id: int | None,
+        workspace_id: int | None = None,
         grid: DivisionGrid,
         name: str = "compare_scoped_players",
         require_finished_nonleague: bool = True,
@@ -93,6 +94,8 @@ class UserCompareQueries:
         filters.extend(division_filter_predicates(models.Player.rank, div_min, div_max, grid))
         if tournament_id is not None:
             filters.append(models.Player.tournament_id == tournament_id)
+        if workspace_id is not None:
+            filters.append(models.Tournament.workspace_id == workspace_id)
 
         return (
             sa.select(
@@ -115,6 +118,7 @@ class UserCompareQueries:
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
+        workspace_id: int | None = None,
         grid: DivisionGrid,
     ) -> sa.Select:
         """Build one set-based query instead of correlated subqueries per user."""
@@ -124,6 +128,7 @@ class UserCompareQueries:
             div_min=div_min,
             div_max=div_max,
             tournament_id=tournament_id,
+            workspace_id=workspace_id,
             grid=grid,
         )
         stat_scoped_players = self._compare_scoped_players_cte(
@@ -131,11 +136,18 @@ class UserCompareQueries:
             div_min=div_min,
             div_max=div_max,
             tournament_id=tournament_id,
+            workspace_id=workspace_id,
             grid=grid,
             name="compare_stat_scoped_players",
             require_finished_nonleague=False,
         )
         has_scope_filter = role is not None or div_min is not None or div_max is not None or tournament_id is not None
+        # Which roster rows count: role/division narrow them, and so does the
+        # workspace — a workspace's tournaments are a subset, and a candidate's
+        # rows from someone else's workspace must not reach the metrics. The
+        # per-stat joins below key on (user_id, team_id), which a tournament_id
+        # filter handles via Encounter instead, hence the two separate flags.
+        has_roster_filter = role is not None or div_min is not None or div_max is not None or workspace_id is not None
 
         # The cohort, expressed once as something pushable into a subquery. Everything
         # downstream that would otherwise scan a whole table and only meet the cohort at
@@ -143,7 +155,7 @@ class UserCompareQueries:
         cohort_scope: typing.Any | None = None
         if user_ids is not None:
             cohort_scope = user_ids
-        elif has_scope_filter:
+        elif has_scope_filter or workspace_id is not None:
             cohort_scope = sa.select(scoped_players.c.user_id).distinct()
 
         candidates_query = sa.select(
@@ -286,6 +298,7 @@ class UserCompareQueries:
         # what timed the compare page out. ``candidates.id`` is a primary key, so
         # joining it and filtering by membership in it are the same thing.
         effective_achievements = build_effective_achievement_rows_subquery(
+            workspace_id=workspace_id,
             user_ids=cohort_scope,
             name="compare_effective_achievement_rows_v2",
         )
@@ -358,7 +371,7 @@ class UserCompareQueries:
                 stat.user_id.in_(sa.select(candidates.c.id)),
             )
         )
-        if role is not None or div_min is not None or div_max is not None:
+        if has_roster_filter:
             hero_match_stats = hero_match_stats.join(
                 stat_scoped_players,
                 sa.and_(
@@ -423,7 +436,7 @@ class UserCompareQueries:
                 models.MatchStatistics.name.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
             )
         )
-        if role is not None or div_min is not None or div_max is not None:
+        if has_roster_filter:
             mvp_per_match = mvp_per_match.join(
                 stat_scoped_players,
                 sa.and_(
@@ -501,6 +514,7 @@ class UserCompareQueries:
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
+        workspace_id: int | None = None,
         grid: DivisionGrid,
     ) -> list[dict[str, typing.Any]]:
         if user_ids is not None and not user_ids:
@@ -512,6 +526,7 @@ class UserCompareQueries:
             div_min=div_min,
             div_max=div_max,
             tournament_id=tournament_id,
+            workspace_id=workspace_id,
             grid=grid,
         )
 
@@ -537,6 +552,7 @@ class UserCompareQueries:
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
+        workspace_id: int | None = None,
         grid: DivisionGrid,
     ) -> bool:
         """Does the baseline cohort contain anybody?
@@ -547,7 +563,13 @@ class UserCompareQueries:
         rows) to evaluate ``if not population_users``.
         """
         query = sa.select(sa.literal(1)).select_from(models.User)
-        if role is not None or div_min is not None or div_max is not None or tournament_id is not None:
+        if (
+            role is not None
+            or div_min is not None
+            or div_max is not None
+            or tournament_id is not None
+            or workspace_id is not None
+        ):
             query = query.where(
                 _compare_user_scope_exists(
                     models.User.id,
@@ -555,6 +577,7 @@ class UserCompareQueries:
                     div_min=div_min,
                     div_max=div_max,
                     tournament_id=tournament_id,
+                    workspace_id=workspace_id,
                     grid=grid,
                 )
             )
@@ -568,6 +591,7 @@ class UserCompareQueries:
         div_min: int | None,
         div_max: int | None,
         tournament_id: int | None,
+        workspace_id: int | None = None,
         grid: DivisionGrid,
     ) -> sa.Select:
         """The users a hero-compare baseline covers, as a selectable.
@@ -583,7 +607,7 @@ class UserCompareQueries:
         query = sa.select(models.User.id.label("user_id"))
         if user_ids is not None:
             return query.where(models.User.id.in_(user_ids))
-        if role is None and div_min is None and div_max is None and tournament_id is None:
+        if role is None and div_min is None and div_max is None and tournament_id is None and workspace_id is None:
             return query
         return query.where(
             _compare_user_scope_exists(
@@ -592,6 +616,7 @@ class UserCompareQueries:
                 div_min=div_min,
                 div_max=div_max,
                 tournament_id=tournament_id,
+                workspace_id=workspace_id,
                 grid=grid,
             )
         )
@@ -607,6 +632,7 @@ class UserCompareQueries:
         div_min: int | None,
         div_max: int | None,
         tournament_id: int | None,
+        workspace_id: int | None = None,
         grid: DivisionGrid,
     ) -> sa.Select:
         """Return playtime and per-stat rows for all candidates in one statement.
@@ -636,6 +662,7 @@ class UserCompareQueries:
             div_min=div_min,
             div_max=div_max,
             tournament_id=tournament_id,
+            workspace_id=workspace_id,
             grid=grid,
         ).cte("compare_hero_candidates")
         scoped_players = self._compare_scoped_players_cte(
@@ -643,10 +670,15 @@ class UserCompareQueries:
             div_min=div_min,
             div_max=div_max,
             tournament_id=tournament_id,
+            workspace_id=workspace_id,
             grid=grid,
             name="compare_hero_scoped_players",
             require_finished_nonleague=False,
         )
+
+        # Same reasoning as ``_compare_metrics_query_v2``: the workspace narrows which
+        # roster rows — and therefore which stat rows — belong to the baseline.
+        has_roster_filter = role is not None or div_min is not None or div_max is not None or workspace_id is not None
 
         playtime_query = (
             sa.select(
@@ -662,7 +694,7 @@ class UserCompareQueries:
                 models.MatchStatistics.hero_id.isnot(None),
             )
         )
-        if role is not None or div_min is not None or div_max is not None:
+        if has_roster_filter:
             playtime_query = playtime_query.join(
                 scoped_players,
                 sa.and_(
@@ -715,7 +747,7 @@ class UserCompareQueries:
                 ),
             )
         )
-        if role is not None or div_min is not None or div_max is not None:
+        if has_roster_filter:
             stats_query = stats_query.join(
                 scoped_players,
                 sa.and_(
@@ -759,6 +791,7 @@ class UserCompareQueries:
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
+        workspace_id: int | None = None,
         grid: DivisionGrid,
     ) -> tuple[dict[int, float], dict[tuple[int, enums.LogStatsName], float]]:
         """``user_ids=None`` resolves the baseline population in SQL — see
@@ -776,6 +809,7 @@ class UserCompareQueries:
                 div_min=div_min,
                 div_max=div_max,
                 tournament_id=tournament_id,
+                workspace_id=workspace_id,
                 grid=grid,
             )
         )
@@ -802,6 +836,7 @@ class UserCompareQueries:
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
+        workspace_id: int | None = None,
         grid: DivisionGrid,
     ) -> tuple[float, dict[enums.LogStatsName, float]]:
         playtime_by_user, stats_by_user = await self.get_users_hero_compare_stats(
@@ -814,6 +849,7 @@ class UserCompareQueries:
             div_min=div_min,
             div_max=div_max,
             tournament_id=tournament_id,
+            workspace_id=workspace_id,
             grid=grid,
         )
         return (

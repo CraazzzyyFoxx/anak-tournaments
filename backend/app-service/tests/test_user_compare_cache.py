@@ -51,6 +51,31 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
         self.assertEqual(third, response)
         self.assertEqual(2, compute.await_count)
 
+    async def test_two_workspaces_sharing_a_grid_version_do_not_share_an_entry(self) -> None:
+        """``grid_version`` alone is not a workspace: two workspaces can sit on the
+        same version while comparing different tournaments."""
+        compute = AsyncMock(return_value={"result": "scoped"})
+        params = schemas.UserCompareParams(baseline="global")
+
+        with patch.object(flows.users, "get_compare", compute):
+            await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17), workspace_id=1)
+            await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17), workspace_id=1)
+            await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17), workspace_id=2)
+            await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17))
+
+        self.assertEqual(3, compute.await_count)
+
+    async def test_hero_cache_keys_the_workspace_apart(self) -> None:
+        compute = AsyncMock(return_value=object())
+        params = schemas.UserHeroCompareParams(baseline="global", stats=[enums.LogStatsName.Eliminations])
+
+        with patch.object(flows.users, "get_hero_compare", compute):
+            await flows.users.get_hero_compare_cached(object(), 202, params, grid=_grid(), workspace_id=1)
+            await flows.users.get_hero_compare_cached(object(), 202, params, grid=_grid(), workspace_id=1)
+            await flows.users.get_hero_compare_cached(object(), 202, params, grid=_grid(), workspace_id=2)
+
+        self.assertEqual(2, compute.await_count)
+
     async def test_user_merge_invalidates_both_compare_namespaces(self) -> None:
         preview = SimpleNamespace(
             source=SimpleNamespace(social_accounts=[]),

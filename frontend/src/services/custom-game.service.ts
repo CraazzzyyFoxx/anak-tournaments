@@ -1,5 +1,4 @@
 import { apiFetch } from "@/lib/api/fetch";
-import { blobToBase64 } from "@/lib/image-capture";
 import type { RoleCode } from "@/lib/roster/roles";
 import type { RosterShape } from "@/lib/roster/shape";
 import type { DiscordVoicePermission } from "@/types/discord.types";
@@ -757,32 +756,20 @@ export const customGameService = {
    * Posts one lobby's current matchup -- teams and its next map -- to the mix's
    * Discord channel. Fire-and-forget: the response only says the message was
    * queued for the bot. `variantIndex` is whichever balance option that lobby is
-   * showing.
-   *
-   * `image` is that matchup rasterised in the browser; it is what the bot
-   * attaches. Passing `null` (a capture that failed, or a caller with no node
-   * to capture) posts the server's text embed instead.
+   * showing. The picture is drawn server-side, and the server keeps the card in
+   * step with later lineup changes on its own.
    */
-  async postToDiscord(
+  postToDiscord(
     workspaceId: number,
     gameId: number,
     lobbyIndex: number,
     variantIndex: number,
-    image: Blob | null = null,
   ): Promise<{ status: "queued"; channel_id: string }> {
-    const response = await apiFetch(
-      `/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/discord/post`,
-      {
-        skipWorkspace: true,
-        method: "POST",
-        body: {
-          lobby_index: lobbyIndex,
-          variant_index: variantIndex,
-          image_b64: image ? await blobToBase64(image) : null,
-        },
-      },
-    );
-    return response.json();
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/discord/post`, {
+      skipWorkspace: true,
+      method: "POST",
+      body: { lobby_index: lobbyIndex, variant_index: variantIndex },
+    }).then((r) => r.json());
   },
 
   /**
@@ -927,27 +914,5 @@ export const customGameService = {
       method: "POST",
       body: { lobby_index: lobbyIndex },
     }).then((r) => r.json());
-  },
-
-  /**
-   * Rewrites this lobby's posted lineup card in place, with the matchup
-   * rasterised in the browser exactly like `postToDiscord`; `null` falls back
-   * to the server's text embed.
-   */
-  async refreshLineup(
-    workspaceId: number,
-    gameId: number,
-    lobbyIndex: number,
-    image: Blob | null = null,
-  ): Promise<{ status: "queued" | "nothing_to_update" }> {
-    const response = await apiFetch(
-      `/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/discord/lineup`,
-      {
-        skipWorkspace: true,
-        method: "PUT",
-        body: { lobby_index: lobbyIndex, image_b64: image ? await blobToBase64(image) : null },
-      },
-    );
-    return response.json();
   },
 };

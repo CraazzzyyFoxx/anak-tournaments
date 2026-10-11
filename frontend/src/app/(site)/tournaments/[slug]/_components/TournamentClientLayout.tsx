@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname } from "next/navigation";
 import { ExternalLink } from "lucide-react";
@@ -236,12 +237,8 @@ export default function TournamentClientLayout({
             title={
               <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 {tournament.logo_url ? (
-                  /* Plain `<img>`, like every other S3 image on the site: the URL
-                     points at whatever host the deployment configured, and
-                     `next/image` hard-errors on a hostname missing from
-                     `remotePatterns`. Decorative — the h1 beside it is the name. */
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  /* Decorative — the h1 beside it is the name. */
+                  <Image
                     src={tournament.logo_url}
                     alt=""
                     aria-hidden
@@ -308,9 +305,7 @@ export default function TournamentClientLayout({
             className="flex min-h-10 min-w-0 items-center gap-2.5 transition-colors hover:text-[color:var(--aqt-teal)]"
           >
             {tournament.logo_url ? (
-              /* Same plain `<img>` as the hero's, for the same reason. */
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={tournament.logo_url}
                 alt=""
                 aria-hidden

@@ -2089,7 +2089,7 @@
       "summary": "Get user by name"
     },
     "rpc.app.users.compare": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a head-to-head comparison between the given user and others, resolved against the default division grid.",
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a head-to-head comparison between the given user and others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default).",
       "query_params": [
         {
           "name": "baseline",
@@ -2198,7 +2198,7 @@
       "summary": "Compare users"
     },
     "rpc.app.users.compare_heroes": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-hero head-to-head comparison for the given user against others using the default grid.",
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-hero head-to-head comparison for the given user against others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default).",
       "query_params": [
         {
           "name": "baseline",
@@ -3007,7 +3007,9 @@
               "name",
               "tournaments_count",
               "achievements_count",
-              "avg_placement"
+              "avg_placement",
+              "winrate",
+              "best_placement"
             ],
             "title": "Sort",
             "type": "string"
@@ -3057,39 +3059,35 @@
           }
         },
         {
-          "name": "div_min",
+          "name": "divisions",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Min"
+            "items": {
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "title": "Divisions",
+            "type": "array"
           }
         },
         {
-          "name": "div_max",
+          "name": "has_logs",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Max"
+            "default": false,
+            "title": "Has Logs",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "min_encounters",
+          "required": false,
+          "schema": {
+            "default": 20,
+            "minimum": 0,
+            "title": "Min Encounters",
+            "type": "integer"
           }
         }
       ],
@@ -3118,39 +3116,25 @@
           }
         },
         {
-          "name": "div_min",
+          "name": "divisions",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Min"
+            "items": {
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "title": "Divisions",
+            "type": "array"
           }
         },
         {
-          "name": "div_max",
+          "name": "has_logs",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Max"
+            "default": false,
+            "title": "Has Logs",
+            "type": "boolean"
           }
         },
         {
@@ -3235,39 +3219,25 @@
           }
         },
         {
-          "name": "div_min",
+          "name": "divisions",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Min"
+            "items": {
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "title": "Divisions",
+            "type": "array"
           }
         },
         {
-          "name": "div_max",
+          "name": "has_logs",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Max"
+            "default": false,
+            "title": "Has Logs",
+            "type": "boolean"
           }
         },
         {
@@ -4143,12 +4113,6 @@
       "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Deletes the lobby's most recent match and gives back exactly the rank points it applied, read from the match and its seats rather than the host's current settings, then rebuilds the workspace's hidden ratings from the remaining history. 404 when the match belongs to another mix and 409 when a newer match of the SAME lobby exists, since the rank book compounds. must_play pins the recording redeemed are not restored.",
       "summary": "Undo custom game match"
     },
-    "rpc.balancer.custom.update_lineup": {
-      "request": {
-        "array": false,
-        "ref": "balancer.CustomGameLineupRefresh"
-      }
-    },
     "rpc.balancer.custom.update_player": {
       "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order or flex flag and returns the refreshed mix; 404 when the member is not on this mix's roster.",
       "request": {
@@ -4638,7 +4602,7 @@
       "summary": "Set my pickup mix preferences"
     },
     "rpc.balancer.ranks.list": {
-      "description": "Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the global grid. `division` is resolved on the workspace's effective grid for every row. Filtering, sorting, the exact total and the page all run in the database.",
+      "description": "Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid for every row. Filtering, sorting, the exact total and the page all run in the database.",
       "query_params": [
         {
           "name": "page",
@@ -17909,6 +17873,18 @@
           "title": "Achievements Count",
           "type": "integer"
         },
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Url"
+        },
         "avg_placement": {
           "anyOf": [
             {
@@ -17920,8 +17896,42 @@
           ],
           "title": "Avg Placement"
         },
+        "best_placement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Best Placement"
+        },
+        "encounters_played": {
+          "title": "Encounters Played",
+          "type": "integer"
+        },
         "id": {
           "title": "Id",
+          "type": "integer"
+        },
+        "last_active_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Active At"
+        },
+        "maps_lost": {
+          "title": "Maps Lost",
+          "type": "integer"
+        },
+        "maps_won": {
+          "title": "Maps Won",
           "type": "integer"
         },
         "name": {
@@ -17954,6 +17964,11 @@
         "top_heroes",
         "tournaments_count",
         "achievements_count",
+        "maps_won",
+        "maps_lost",
+        "encounters_played",
+        "best_placement",
+        "last_active_at",
         "avg_placement"
       ],
       "title": "UserCatalogEntry",
@@ -17987,33 +18002,19 @@
     },
     "app.UserCatalogQueryParams": {
       "properties": {
-        "div_max": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Max"
+        "divisions": {
+          "items": {
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Divisions",
+          "type": "array"
         },
-        "div_min": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Min"
+        "has_logs": {
+          "default": false,
+          "title": "Has Logs",
+          "type": "boolean"
         },
         "letter": {
           "anyOf": [
@@ -19901,17 +19902,28 @@
       "title": "UserOverviewAverages",
       "type": "object"
     },
+    "app.UserOverviewDivisionCount": {
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "division": {
+          "title": "Division",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "division",
+        "count"
+      ],
+      "title": "UserOverviewDivisionCount",
+      "type": "object"
+    },
     "app.UserOverviewHero": {
       "properties": {
         "hero": {
           "$ref": "#/components/schemas/app.HeroRead"
-        },
-        "metrics": {
-          "items": {
-            "$ref": "#/components/schemas/app.UserOverviewHeroMetric"
-          },
-          "title": "Metrics",
-          "type": "array"
         },
         "playtime_seconds": {
           "title": "Playtime Seconds",
@@ -19920,58 +19932,21 @@
       },
       "required": [
         "hero",
-        "playtime_seconds",
-        "metrics"
+        "playtime_seconds"
       ],
       "title": "UserOverviewHero",
       "type": "object"
     },
-    "app.UserOverviewHeroMetric": {
-      "properties": {
-        "avg_10": {
-          "title": "Avg 10",
-          "type": "number"
-        },
-        "name": {
-          "$ref": "#/components/schemas/app.LogStatsName"
-        }
-      },
-      "required": [
-        "name",
-        "avg_10"
-      ],
-      "title": "UserOverviewHeroMetric",
-      "type": "object"
-    },
     "app.UserOverviewQueryParams": {
       "properties": {
-        "div_max": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Max"
-        },
-        "div_min": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Min"
+        "divisions": {
+          "items": {
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Divisions",
+          "type": "array"
         },
         "entities": {
           "items": {
@@ -19986,6 +19961,17 @@
           },
           "title": "Fields",
           "type": "array"
+        },
+        "has_logs": {
+          "default": false,
+          "title": "Has Logs",
+          "type": "boolean"
+        },
+        "min_encounters": {
+          "default": 20,
+          "minimum": 0,
+          "title": "Min Encounters",
+          "type": "integer"
         },
         "only_count": {
           "default": false,
@@ -20032,7 +20018,9 @@
             "name",
             "tournaments_count",
             "achievements_count",
-            "avg_placement"
+            "avg_placement",
+            "winrate",
+            "best_placement"
           ],
           "title": "Sort",
           "type": "string"
@@ -20115,11 +20103,57 @@
           "title": "Achievements Count",
           "type": "integer"
         },
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Url"
+        },
         "averages": {
           "$ref": "#/components/schemas/app.UserOverviewAverages"
         },
+        "best_placement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Best Placement"
+        },
+        "encounters_played": {
+          "title": "Encounters Played",
+          "type": "integer"
+        },
         "id": {
           "title": "Id",
+          "type": "integer"
+        },
+        "last_active_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Active At"
+        },
+        "maps_lost": {
+          "title": "Maps Lost",
+          "type": "integer"
+        },
+        "maps_won": {
+          "title": "Maps Won",
           "type": "integer"
         },
         "name": {
@@ -20152,6 +20186,11 @@
         "top_heroes",
         "tournaments_count",
         "achievements_count",
+        "maps_won",
+        "maps_lost",
+        "encounters_played",
+        "best_placement",
+        "last_active_at",
         "averages"
       ],
       "title": "UserOverviewRow",
@@ -20175,8 +20214,19 @@
           "title": "Damage Count",
           "type": "integer"
         },
+        "division_counts": {
+          "items": {
+            "$ref": "#/components/schemas/app.UserOverviewDivisionCount"
+          },
+          "title": "Division Counts",
+          "type": "array"
+        },
         "flex_count": {
           "title": "Flex Count",
+          "type": "integer"
+        },
+        "flex_declared_count": {
+          "title": "Flex Declared Count",
           "type": "integer"
         },
         "median_tournaments_per_player": {
@@ -20215,40 +20265,27 @@
         "tank_count",
         "damage_count",
         "support_count",
-        "flex_count"
+        "flex_count",
+        "flex_declared_count"
       ],
       "title": "UserOverviewStats",
       "type": "object"
     },
     "app.UserOverviewStatsQueryParams": {
       "properties": {
-        "div_max": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Max"
+        "divisions": {
+          "items": {
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Divisions",
+          "type": "array"
         },
-        "div_min": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Min"
+        "has_logs": {
+          "default": false,
+          "title": "Has Logs",
+          "type": "boolean"
         },
         "query": {
           "anyOf": [
@@ -23475,34 +23512,6 @@
       "title": "CustomGameHostTransfer",
       "type": "object"
     },
-    "balancer.CustomGameLineupRefresh": {
-      "additionalProperties": false,
-      "description": "The lobby's newest lineup card, re-rendered from the lineup on screen now.",
-      "properties": {
-        "image_b64": {
-          "anyOf": [
-            {
-              "maxLength": 8388608,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Image B64"
-        },
-        "lobby_index": {
-          "default": 0,
-          "maximum": 5,
-          "minimum": 0,
-          "title": "Lobby Index",
-          "type": "integer"
-        }
-      },
-      "title": "CustomGameLineupRefresh",
-      "type": "object"
-    },
     "balancer.CustomGameLobbyCountPatch": {
       "additionalProperties": false,
       "description": "How many lobbies the mix runs at once.",
@@ -23712,21 +23721,8 @@
     },
     "balancer.CustomGamePostDiscord": {
       "additionalProperties": false,
-      "description": "Which balance option's lineup to post, and the PNG of it to attach.\n\nThe image is the matchup card the host is looking at, rasterised in their\nbrowser (see ``frontend/src/hooks/useNodeCapture.ts``) -- the bot has no\nrenderer, and a screenshot of the real card is the one thing guaranteed to\nmatch what the mix page shows. Omitted when the capture fails, and the\ntext embed is then posted instead.",
+      "description": "Which balance option's lineup to post; the picture of it is drawn server-side.",
       "properties": {
-        "image_b64": {
-          "anyOf": [
-            {
-              "maxLength": 8388608,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Image B64"
-        },
         "lobby_index": {
           "default": 0,
           "maximum": 5,

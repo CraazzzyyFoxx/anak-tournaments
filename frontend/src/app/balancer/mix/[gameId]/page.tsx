@@ -12,7 +12,7 @@ import { PickupAddPlayersDialog } from "@/app/balancer/mix/PickupAddPlayersDialo
 import { PickupGettingStarted } from "@/app/balancer/mix/PickupGettingStarted";
 import { PickupLobbyPanel } from "@/app/balancer/mix/PickupLobbyPanel";
 import { PickupAccessDialog } from "@/app/balancer/mix/PickupAccessDialog";
-import { PickupMixHeader, liveLineupPostOf } from "@/app/balancer/mix/PickupMixHeader";
+import { PickupMixHeader } from "@/app/balancer/mix/PickupMixHeader";
 import { PickupMySeatPanel } from "@/app/balancer/mix/PickupMySeatPanel";
 import { PickupLobbyTabs } from "@/app/balancer/mix/PickupLobbyTabs";
 import { PickupPlayerSheet } from "@/app/balancer/mix/PickupPlayerSheet";
@@ -141,7 +141,6 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
     setTeamNames,
     renameMix,
     postToDiscord,
-    refreshLineup,
     transferHost,
     addCoHost,
     removeCoHost,
@@ -331,11 +330,7 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
               }
               onCopyBattleTags={copyBattleTags}
               postingToDiscord={postToDiscord.isPending}
-              onPostToDiscord={(idx, image) =>
-                postToDiscord.mutate({ lobbyIndex: activeLobby, variantIndex: idx, image })
-              }
-              liveLineupPostId={game ? (liveLineupPostOf(game, activeLobby)?.id ?? null) : null}
-              onRefreshLineup={(image) => refreshLineup.mutate({ lobbyIndex: activeLobby, image })}
+              onPostToDiscord={(idx) => postToDiscord.mutate({ lobbyIndex: activeLobby, variantIndex: idx })}
               emptyState={
                 canWrite && game != null && game.matches_count === 0 ? (
                   <PickupGettingStarted

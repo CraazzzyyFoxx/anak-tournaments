@@ -13,6 +13,7 @@ import {
   Trash2
 } from "lucide-react";
 
+import { AchievementArt } from "@/components/achievements/AchievementArt";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { Button } from "@/components/ui/button";
@@ -46,13 +47,7 @@ export function AchievementDetailHeader({
           <ArrowLeft aria-hidden className="h-4 w-4" />
         </Link>
       </Button>
-      {rule.image_url && (
-        <img
-          src={rule.image_url}
-          alt={rule.name}
-          className="h-12 w-12 rounded-lg object-cover border"
-        />
-      )}
+      <AchievementArt achievement={rule} sizes="48px" className="size-12 shrink-0 rounded-lg border" />
       <div className="min-w-0 flex-1">
         <AdminPageHeader
           title={rule.name}

@@ -4101,7 +4101,7 @@ export interface paths {
         };
         /**
          * Compare users
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a head-to-head comparison between the given user and others, resolved against the default division grid.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a head-to-head comparison between the given user and others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default).
          *
          *     RPC subject: `rpc.app.users.compare`
          */
@@ -4123,7 +4123,7 @@ export interface paths {
         };
         /**
          * Compare user heroes
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-hero head-to-head comparison for the given user against others using the default grid.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-hero head-to-head comparison for the given user against others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default).
          *
          *     RPC subject: `rpc.app.users.compare_heroes`
          */
@@ -10036,26 +10036,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/discord/lineup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Update lineup
-         * @description RPC subject: `rpc.balancer.custom.update_lineup`
-         */
-        put: operations["put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__discord_lineup"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/discord/post": {
         parameters: {
             query?: never;
@@ -10727,7 +10707,7 @@ export interface paths {
         };
         /**
          * List all rank values in the workspace
-         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the global grid. `division` is resolved on the workspace's effective grid for every row. Filtering, sorting, the exact total and the page all run in the database.
+         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid for every row. Filtering, sorting, the exact total and the page all run in the database.
          *
          *     RPC subject: `rpc.balancer.ranks.list`
          */
@@ -13199,10 +13179,25 @@ export interface components {
         "app.UserCatalogEntry": {
             /** Achievements Count */
             achievements_count: number;
+            /**
+             * Avatar Url
+             * @default null
+             */
+            avatar_url: string | null;
             /** Avg Placement */
             avg_placement: number | null;
+            /** Best Placement */
+            best_placement: number | null;
+            /** Encounters Played */
+            encounters_played: number;
             /** Id */
             id: number;
+            /** Last Active At */
+            last_active_at: string | null;
+            /** Maps Lost */
+            maps_lost: number;
+            /** Maps Won */
+            maps_won: number;
             /** Name */
             name: string;
             /** Roles */
@@ -13600,19 +13595,18 @@ export interface components {
             /** Avg Playoff Placement */
             avg_playoff_placement: number | null;
         };
+        /** UserOverviewDivisionCount */
+        "app.UserOverviewDivisionCount": {
+            /** Count */
+            count: number;
+            /** Division */
+            division: number;
+        };
         /** UserOverviewHero */
         "app.UserOverviewHero": {
             hero: components["schemas"]["app.HeroRead"];
-            /** Metrics */
-            metrics: components["schemas"]["app.UserOverviewHeroMetric"][];
             /** Playtime Seconds */
             playtime_seconds: number;
-        };
-        /** UserOverviewHeroMetric */
-        "app.UserOverviewHeroMetric": {
-            /** Avg 10 */
-            avg_10: number;
-            name: components["schemas"]["app.LogStatsName"];
         };
         /**
          * UserOverviewResponse
@@ -13645,9 +13639,24 @@ export interface components {
         "app.UserOverviewRow": {
             /** Achievements Count */
             achievements_count: number;
+            /**
+             * Avatar Url
+             * @default null
+             */
+            avatar_url: string | null;
             averages: components["schemas"]["app.UserOverviewAverages"];
+            /** Best Placement */
+            best_placement: number | null;
+            /** Encounters Played */
+            encounters_played: number;
             /** Id */
             id: number;
+            /** Last Active At */
+            last_active_at: string | null;
+            /** Maps Lost */
+            maps_lost: number;
+            /** Maps Won */
+            maps_won: number;
             /** Name */
             name: string;
             /** Roles */
@@ -13667,8 +13676,12 @@ export interface components {
             avg_tournaments_per_player: number;
             /** Damage Count */
             damage_count: number;
+            /** Division Counts */
+            division_counts?: components["schemas"]["app.UserOverviewDivisionCount"][];
             /** Flex Count */
             flex_count: number;
+            /** Flex Declared Count */
+            flex_declared_count: number;
             /** Median Tournaments Per Player */
             median_tournaments_per_player: number;
             /** Support Count */
@@ -20537,22 +20550,6 @@ export interface components {
             new_host_user_id: number;
         };
         /**
-         * CustomGameLineupRefresh
-         * @description The lobby's newest lineup card, re-rendered from the lineup on screen now.
-         */
-        "balancer.CustomGameLineupRefresh": {
-            /**
-             * Image B64
-             * @default null
-             */
-            image_b64: string | null;
-            /**
-             * Lobby Index
-             * @default 0
-             */
-            lobby_index: number;
-        };
-        /**
          * CustomGameLobbyCountPatch
          * @description How many lobbies the mix runs at once.
          */
@@ -20629,20 +20626,9 @@ export interface components {
         };
         /**
          * CustomGamePostDiscord
-         * @description Which balance option's lineup to post, and the PNG of it to attach.
-         *
-         *     The image is the matchup card the host is looking at, rasterised in their
-         *     browser (see ``frontend/src/hooks/useNodeCapture.ts``) -- the bot has no
-         *     renderer, and a screenshot of the real card is the one thing guaranteed to
-         *     match what the mix page shows. Omitted when the capture fails, and the
-         *     text embed is then posted instead.
+         * @description Which balance option's lineup to post; the picture of it is drawn server-side.
          */
         "balancer.CustomGamePostDiscord": {
-            /**
-             * Image B64
-             * @default null
-             */
-            image_b64: string | null;
             /**
              * Lobby Index
              * @default 0
@@ -41943,8 +41929,9 @@ export interface operations {
                 query?: string;
                 fields?: string[];
                 role?: components["schemas"]["app.HeroClass"] | null;
-                div_min?: number | null;
-                div_max?: number | null;
+                divisions?: number[];
+                has_logs?: boolean;
+                min_encounters?: number;
             };
             header?: never;
             path?: never;
@@ -42005,8 +41992,8 @@ export interface operations {
         parameters: {
             query?: {
                 role?: components["schemas"]["app.HeroClass"] | null;
-                div_min?: number | null;
-                div_max?: number | null;
+                divisions?: number[];
+                has_logs?: boolean;
                 query?: string | null;
                 letter?: string | null;
                 per_letter?: number;
@@ -42071,8 +42058,8 @@ export interface operations {
         parameters: {
             query?: {
                 role?: components["schemas"]["app.HeroClass"] | null;
-                div_min?: number | null;
-                div_max?: number | null;
+                divisions?: number[];
+                has_logs?: boolean;
                 query?: string | null;
             };
             header?: never;
@@ -66970,89 +66957,6 @@ export interface operations {
             };
         };
     };
-    put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__discord_lineup: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: string;
-                game_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["balancer.CustomGameLineupRefresh"];
-            };
-        };
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__discord_post: {
         parameters: {
             query?: never;
@@ -73517,7 +73421,9 @@ export enum PathsApiV1UsersOverviewGetParametersQuerySort {
     name = "name",
     tournaments_count = "tournaments_count",
     achievements_count = "achievements_count",
-    avg_placement = "avg_placement"
+    avg_placement = "avg_placement",
+    winrate = "winrate",
+    best_placement = "best_placement"
 }
 export enum PathsApiV1UsersIdCompareGetParametersQueryBaseline {
     target_user = "target_user",

@@ -1,12 +1,18 @@
 // @vitest-environment happy-dom
 //
-// Rank crests are stored as whatever public S3 URL the deployment wrote.
-// `next/image` hard-errors on a hostname missing from remotePatterns, which is
-// how both prod (Timeweb) and dev (rustfs) went blank after the old CDN died.
-// This pins the renderer to a plain <img> that paints any http(s) src.
+// Rank crests are stored as whatever public S3 URL the deployment wrote, and
+// the hosts `next/image` accepts come from NEXT_PUBLIC_IMAGE_REMOTE_PATTERNS.
+// `next/image` is stubbed here for the same reason as in TeamName's test: the
+// optimizer loader rewrites src outside a Next build, while the shipped config
+// sets `images.unoptimized` and keeps it verbatim.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/image", () => ({
+  // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt ?? ""} />
+}));
 
 import DivisionIcon from "./DivisionIcon";
 
@@ -48,7 +54,7 @@ beforeEach(() => {
 });
 
 describe("DivisionIcon", () => {
-  it("paints a stored S3 crest as a plain img so an unlisted hostname still shows", () => {
+  it("paints the stored S3 crest with its division label", () => {
     render(<DivisionIcon division={18} />);
 
     const img = container.querySelector("img");

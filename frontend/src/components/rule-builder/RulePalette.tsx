@@ -8,7 +8,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 
 import { LEAF_COLOR, type RulePaletteGroup, type RulePaletteItem } from "./rule-tree";
-import type { RuleBuilderLabels } from "./RuleNodes";
+import type { RuleBuilderEditLabels } from "./RuleNodes";
 
 /** The drag payload a palette row writes and the canvas reads back. */
 export const RULE_NODE_MIME = "application/rule-node";
@@ -25,7 +25,7 @@ export function RulePalette({
   onAdd,
 }: Readonly<{
   groups: RulePaletteGroup[];
-  labels: RuleBuilderLabels;
+  labels: RuleBuilderEditLabels;
   onAdd: (item: RulePaletteItem) => void;
 }>) {
   const [search, setSearch] = useState("");

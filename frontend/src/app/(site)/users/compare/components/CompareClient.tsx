@@ -35,7 +35,8 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     compareDisplayName,
     heroesQuery,
     mapsQuery,
-    tournamentsQuery
+    tournamentsQuery,
+    divisionGrid
   } = useUserCompareData({
     isHeroScope: compareParams.isHeroScope,
     subjectUserId: compareParams.subjectUserId,
@@ -102,6 +103,7 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
           targetNameLoading={
             Boolean(compareParams.targetUserId) && activeLoading && !selectedTargetName
           }
+          divisionGrid={divisionGrid}
           heroes={heroes}
           maps={maps}
           tournaments={tournaments}

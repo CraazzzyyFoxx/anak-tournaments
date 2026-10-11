@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { AchievementArt } from "@/components/achievements/AchievementArt";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useLocale, useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import type { AchievementRarity, AchievementMatchLink } from "@/types/achievement.types";
 import { cn } from "@/lib/utils";
-import { classifyRarity, localizedText, rarityVarClass, type Rarity } from "./rarity";
+import { classifyRarity, localizedText, rarityVarClass, type Rarity } from "@/lib/achievements/rarity";
 
 const MatchRow = ({ match }: { match: AchievementMatchLink }) => {
   const format = useFormatter();
@@ -24,15 +24,15 @@ const MatchRow = ({ match }: { match: AchievementMatchLink }) => {
     at && !Number.isNaN(at.getTime())
       ? format.dateTime(at, { year: "numeric", month: "short", day: "numeric" })
       : "";
-  const home = match.home_team?.name ?? "—";
-  const away = match.away_team?.name ?? "—";
+  const home = match.home_team?.name ?? "?";
+  const away = match.away_team?.name ?? "?";
   return (
     <HoverPrefetchLink
       href={`/encounters/${match.encounter_id}`}
       className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] py-2 text-caption transition-colors last:border-b-0 hover:text-[color:var(--aqt-teal)]"
     >
       <span className="truncate">
-        {home} <span className="aqt-tnum opacity-80">{match.score.home}–{match.score.away}</span> {away}
+        {home} <span className="aqt-tnum opacity-80">{match.score.home}:{match.score.away}</span> {away}
       </span>
       {date ? <span className="aqt-tnum shrink-0 text-label text-[color:var(--aqt-fg-muted)]">{date}</span> : null}
     </HoverPrefetchLink>
@@ -52,7 +52,6 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
   const ach = achievement;
   const rarity: Rarity | null = ach ? classifyRarity(ach.rarity * 100) : null;
   const locked = ach ? ach.count === 0 : false;
-  const imgSrc = ach ? (ach.image_url ?? `/achievements/${ach.slug}.webp`) : null;
   const description = ach ? localizedText(locale, ach.description_ru, ach.description_en) : "";
 
   return (
@@ -68,11 +67,7 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
             <>
               <DialogHeader className="border-b border-[color:var(--aqt-border)] px-5 py-4 text-left">
                 <div className="flex items-start gap-3">
-                  <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-xl bg-[color:var(--aqt-card-2)]">
-                    {imgSrc ? (
-                      <Image src={imgSrc} alt="" fill sizes="52px" className="object-cover" />
-                    ) : null}
-                  </div>
+                  <AchievementArt achievement={ach} sizes="52px" className="size-[52px] shrink-0 rounded-xl" />
                   <div className="flex min-w-0 flex-col gap-1">
                     <DialogTitle className="text-base text-[color:var(--aqt-fg)]">{ach.name}</DialogTitle>
                     <div className="flex items-center gap-2 text-label text-[color:var(--aqt-fg-muted)]">
